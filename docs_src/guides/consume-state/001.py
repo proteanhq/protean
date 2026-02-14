@@ -1,5 +1,5 @@
 from protean import Domain, handle
-from pydantic import Field
+from protean.fields import Identifier, Integer, String
 
 domain = Domain()
 domain.config["event_processing"] = "sync"
@@ -7,21 +7,18 @@ domain.config["event_processing"] = "sync"
 
 @domain.event(part_of="Order")
 class OrderShipped:
-    order_id: str
-    book_id: str
-    quantity: int
-    total_amount: int
+    order_id = Identifier(required=True)
+    book_id = Identifier(required=True)
+    quantity = Integer(required=True)
+    total_amount = Integer(required=True)
 
 
 @domain.aggregate
 class Order:
-    book_id: str
-    quantity: int
-    total_amount: int
-    status: str = Field(
-        default="PENDING",
-        json_schema_extra={"choices": ["PENDING", "SHIPPED", "DELIVERED"]},
-    )
+    book_id = Identifier(required=True)
+    quantity = Integer(required=True)
+    total_amount = Integer(required=True)
+    status = String(choices=["PENDING", "SHIPPED", "DELIVERED"], default="PENDING")
 
     def ship_order(self):
         self.status = "SHIPPED"
@@ -38,8 +35,8 @@ class Order:
 
 @domain.aggregate
 class Inventory:
-    book_id: str
-    in_stock: int
+    book_id = Identifier(required=True)
+    in_stock = Integer(required=True)
 
 
 @domain.event_handler(part_of=Inventory, stream_category="order")
@@ -57,11 +54,11 @@ class ManageInventory:
 domain.init()
 with domain.domain_context():
     # Persist Order
-    order = Order(book_id="1", quantity=10, total_amount=100)
+    order = Order(book_id=1, quantity=10, total_amount=100)
     domain.repository_for(Order).add(order)
 
     # Persist Inventory
-    inventory = Inventory(book_id="1", in_stock=100)
+    inventory = Inventory(book_id=1, in_stock=100)
     domain.repository_for(Inventory).add(inventory)
 
     # Ship Order
@@ -71,3 +68,4 @@ with domain.domain_context():
     # Verify that Inventory Level has been reduced
     stock = domain.repository_for(Inventory).get(inventory.id)
     print(stock.to_dict())
+    assert stock.in_stock == 90

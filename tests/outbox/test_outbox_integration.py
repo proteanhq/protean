@@ -5,13 +5,14 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
+from protean.fields import Integer, String
 from protean.utils.inflection import camelize
 from protean.utils.outbox import OutboxStatus
 
 
 class DummyAggregate(BaseAggregate):
-    name: str
-    count: int = 0
+    name = String(max_length=50, required=True)
+    count = Integer(default=0)
 
     def increment(self):
         self.count += 1
@@ -20,18 +21,18 @@ class DummyAggregate(BaseAggregate):
 
 
 class DummyEvent(BaseEvent):
-    aggregate_id: str
-    name: str
-    count: int
+    aggregate_id = String(required=True)
+    name = String(required=True)
+    count = Integer(required=True)
 
 
 class AnotherAggregate(BaseAggregate):
-    description: str | None = None
+    description = String(max_length=100)
 
 
 class AnotherEvent(BaseEvent):
-    aggregate_id: str
-    description: str
+    aggregate_id = String(required=True)
+    description = String(required=True)
 
 
 @pytest.fixture

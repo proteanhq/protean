@@ -1,6 +1,7 @@
 import pytest
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
+from protean.fields import Float
 from protean.utils.reflection import attributes, declared_fields
 
 from .elements import (
@@ -17,7 +18,7 @@ from .elements import (
 
 def test_vo_marked_abstract_cannot_be_instantiated(test_domain):
     class AbstractBalance(Balance):
-        pass
+        amount = Float()
 
     test_domain.register(AbstractBalance, abstract=True)
 
@@ -216,12 +217,12 @@ class TestEmailVOEmbedding:
         with pytest.raises(ValidationError) as multi_exceptions:
             User()
 
-        assert "email" in multi_exceptions.value.messages
+        assert multi_exceptions.value.messages["email"] == ["is required"]
 
         with pytest.raises(ValidationError) as email_exception:
             User(name="John Doe")
 
-        assert "email" in email_exception.value.messages
+        assert email_exception.value.messages["email"] == ["is required"]
 
 
 class TestBalanceVOEmbedding:
@@ -251,12 +252,15 @@ class TestBalanceVOEmbedding:
             Account()
 
         assert "balance" in multi_exceptions.value.messages
+        assert multi_exceptions.value.messages["balance"] == ["is required"]
         assert "kind" in multi_exceptions.value.messages
+        assert multi_exceptions.value.messages["kind"] == ["is required"]
 
         with pytest.raises(ValidationError) as email_exception:
             Account(kind="PRIMARY")
 
         assert "balance" in email_exception.value.messages
+        assert email_exception.value.messages["balance"] == ["is required"]
 
 
 class TestNamedEmbedding:

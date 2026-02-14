@@ -3,20 +3,20 @@
 from datetime import datetime
 
 from protean.domain import Domain
-from protean.fields import HasMany, Reference
+from protean.fields import DateTime, HasMany, Reference, String
 
 domain = Domain(name="TEST9")
 
 
 @domain.aggregate
 class Post:
-    title: str | None = None
-    created_on: datetime | None = None
+    title = String(max_length=50)
+    created_on = DateTime(default=datetime.now)
 
     comments = HasMany("Comment")
 
 
 @domain.entity(part_of=Post)
 class Comment:
-    content: str | None = None
+    content = String(max_length=500)
     post = Reference(Post)

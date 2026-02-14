@@ -2,16 +2,15 @@
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.projection import BaseProjection
+from protean.fields import Identifier, Integer, String
 
 
 class Person(BaseProjection):
-    person_id: str = Field(json_schema_extra={"identifier": True})
-    first_name: str
-    last_name: str | None = None
-    age: int = 21
+    person_id = Identifier(identifier=True)
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50)
+    age = Integer(default=21)
 
 
 @pytest.fixture(autouse=True)

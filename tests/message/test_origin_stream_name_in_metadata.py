@@ -5,28 +5,28 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-
+from protean.fields import String
+from protean.fields.basic import Identifier
 from protean.utils.globals import g
 from protean.utils.eventing import DomainMeta, Message, Metadata
-from pydantic import Field
 
 
 class User(BaseAggregate):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    user_id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    user_id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 @pytest.fixture(autouse=True)

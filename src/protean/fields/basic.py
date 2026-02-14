@@ -1,10 +1,25 @@
-"""Module for defining the ValueObjectList field descriptor"""
+"""Module for defining the ValueObjectList field descriptor and backward-compat re-exports"""
 
 import datetime
 
 from protean.exceptions import ValidationError
 from protean.fields import Field
 from protean.fields.embedded import ValueObject
+
+# Re-export FieldSpec factory functions for backward compatibility.
+# Old code uses ``from protean.fields.basic import String, Integer, ...``
+from protean.fields.containers import Dict, List
+from protean.fields.simple import (
+    Auto,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    Identifier,
+    Integer,
+    String,
+    Text,
+)
 
 # Supported Python types for List content_type
 _SUPPORTED_CONTENT_TYPES = (
@@ -79,3 +94,62 @@ class ValueObjectList(Field):
             return [str(item) if item else None for item in value]
 
         return list(value)
+
+
+class Method(Field):
+    """Helper field for custom methods associated with serializer fields"""
+
+    def __init__(self, method_name, **kwargs):
+        self.method_name = method_name
+        super().__init__(**kwargs)
+
+    def _cast_to_type(self, value):
+        """Perform no validation for Method fields. Return the value as is"""
+        return value
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
+
+
+class Nested(Field):
+    """Helper field for nested objects associated with serializer fields"""
+
+    def __init__(self, schema_name, many=False, **kwargs):
+        self.schema_name = schema_name
+        self.many = many
+        super().__init__(**kwargs)
+
+    def _cast_to_type(self, value):
+        """Perform no validation for Nested fields. Return the value as is"""
+        return value
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
+
+    def __repr__(self):
+        values = []
+        if self.schema_name:
+            values.append(f"'{self.schema_name}'")
+        if self.many:
+            values.append(f"many={self.many}")
+        return f"Nested({', '.join(values)})"
+
+
+__all__ = [
+    "Auto",
+    "Boolean",
+    "Date",
+    "DateTime",
+    "Dict",
+    "Float",
+    "Identifier",
+    "Integer",
+    "List",
+    "Method",
+    "Nested",
+    "String",
+    "Text",
+    "ValueObjectList",
+]

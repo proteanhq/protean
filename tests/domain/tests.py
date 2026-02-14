@@ -1,8 +1,4 @@
-from datetime import datetime
-
 import pytest
-
-from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
@@ -12,7 +8,7 @@ from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
 )
-from protean.fields import HasMany, HasOne, Reference
+from protean.fields import DateTime, HasMany, HasOne, Reference, String, Text
 from protean.utils import fully_qualified_name
 from protean.utils.reflection import declared_fields
 
@@ -107,11 +103,13 @@ class TestElementRegistration:
     def test_that_an_improperly_subclassed_element_cannot_be_registered(
         self, test_domain
     ):
+        from protean.fields import String
+
         class Foo:
             pass
 
         class Bar(Foo):
-            foo: str | None = None
+            foo = String(max_length=50)
 
         with pytest.raises(NotSupportedError) as exc:
             test_domain.register(Bar)
@@ -120,7 +118,7 @@ class TestElementRegistration:
 
     def test_options_are_validated_on_element_registration(self, test_domain):
         class Foo(BaseAggregate):
-            foo: str | None = None
+            foo = String(max_length=50)
 
         with pytest.raises(ConfigurationError) as exc:
             test_domain.register(Foo, foo="bar")
@@ -136,11 +134,13 @@ class TestDomainAnnotations:
         # Standard Library Imports
         from enum import Enum
 
+        from protean.fields import String
+
         class DummyElement(Enum):
             FOO = "FOO"
 
         class FooBar:
-            foo: str | None = None
+            foo = String(max_length=50)
 
         with pytest.raises(IncorrectUsageError):
             test_domain._register_element(DummyElement.FOO, FooBar, part_of="foo")
@@ -152,7 +152,7 @@ class TestDomainLevelClassResolution:
             self, test_domain
         ):
             class Post(BaseAggregate):
-                content: str
+                content = Text(required=True)
                 comments = HasMany("Comment")
 
             test_domain.register(Post)
@@ -171,7 +171,7 @@ class TestDomainLevelClassResolution:
             self, test_domain
         ):
             class Post(BaseAggregate):
-                content: str
+                content = Text(required=True)
                 comments = HasMany("Comment")
 
             test_domain.register(Post)
@@ -180,8 +180,8 @@ class TestDomainLevelClassResolution:
             assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
-                content: str | None = None
-                added_on: datetime | None = None
+                content = Text()
+                added_on = DateTime()
 
                 post = Reference("Post")
 
@@ -214,7 +214,7 @@ class TestDomainLevelClassResolution:
             domain = Domain()
 
             class Post(BaseAggregate):
-                content: str
+                content = Text(required=True)
                 comments = HasMany("Comment")
 
             domain.register(Post)
@@ -223,8 +223,8 @@ class TestDomainLevelClassResolution:
             assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
-                content: str | None = None
-                added_on: datetime | None = None
+                content = Text()
+                added_on = DateTime()
 
                 post = Reference("Post")
 
@@ -240,7 +240,7 @@ class TestDomainLevelClassResolution:
             domain = Domain(name="Inline Domain")
 
             class Post(BaseAggregate):
-                content: str
+                content = Text(required=True)
                 comments = HasMany("Comment")
 
             domain.register(Post)
@@ -249,8 +249,8 @@ class TestDomainLevelClassResolution:
             assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
-                content: str | None = None
-                added_on: datetime | None = None
+                content = Text()
+                added_on = DateTime()
 
                 post = Reference("Post")
 
@@ -271,7 +271,7 @@ class TestDomainLevelClassResolution:
             domain = Domain(name="Inline Domain")
 
             class Post(BaseAggregate):
-                content: str
+                content = Text(required=True)
                 comments = HasMany("Comment")
 
             domain.register(Post)
@@ -280,8 +280,8 @@ class TestDomainLevelClassResolution:
             assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
-                content: str | None = None
-                added_on: datetime | None = None
+                content = Text()
+                added_on = DateTime()
 
                 post = Reference("Post")
                 foo = Reference("Foo")
@@ -304,12 +304,12 @@ class TestDomainLevelClassResolution:
     class TestWithDifferentTypesOfAssociations:
         def test_that_has_many_field_references_are_resolved(self, test_domain):
             class Post(BaseAggregate):
-                content: str
+                content = Text(required=True)
                 comments = HasMany("Comment")
 
             class Comment(BaseEntity):
-                content: str | None = None
-                added_on: datetime | None = None
+                content = Text()
+                added_on = DateTime()
 
                 post = Reference("Post")
 
@@ -324,12 +324,14 @@ class TestDomainLevelClassResolution:
 
         def test_that_has_one_field_references_are_resolved(self, test_domain):
             class Account(BaseAggregate):
-                email: str = Field(json_schema_extra={"identifier": True})
+                email = String(
+                    required=True, max_length=255, unique=True, identifier=True
+                )
                 author = HasOne("Author")
 
             class Author(BaseEntity):
-                first_name: str
-                last_name: str | None = None
+                first_name = String(required=True, max_length=25)
+                last_name = String(max_length=25)
                 account = Reference("Account")
 
             test_domain.register(Account)

@@ -1,12 +1,13 @@
 import datetime
 
 from protean.core.aggregate import BaseAggregate
+from protean.fields import Date, Integer, String
 
 
 class User(BaseAggregate):
-    name: str | None = None
-    joined_on: datetime.date | None = None
-    seq: int | None = None
+    name = String()
+    joined_on = Date()
+    seq = Integer()
 
 
 def test_for_sorting_without_nulls(test_domain):

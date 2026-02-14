@@ -1,11 +1,11 @@
 from protean import Domain
-from pydantic import Field
+from protean.fields import Integer
 
 domain = Domain()
 
 
 @domain.aggregate
 class Building:
-    doors: int = Field(
-        json_schema_extra={"error_messages": {"required": "Every building needs some!"}}
+    doors = Integer(
+        required=True, error_messages={"required": "Every building needs some!"}
     )

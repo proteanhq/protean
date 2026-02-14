@@ -30,14 +30,13 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Pydantic-based BaseEvent
+# BaseEvent
 # ---------------------------------------------------------------------------
 class BaseEvent(BaseMessageType):
     """Base Event class that all Events should inherit from.
 
-    Uses Pydantic v2 BaseModel for field declaration, validation, and serialization.
     Fields are declared using standard Python type annotations with optional
-    pydantic.Field constraints.
+    Field constraints.
     """
 
     element_type: ClassVar[str] = DomainObjects.EVENT
@@ -52,7 +51,9 @@ class BaseEvent(BaseMessageType):
         expected_version = kwargs.pop("_expected_version", -1)
 
         # Support template dict pattern: Event({"key": "val"}, key2="val2")
+        # Keyword args take precedence over template dict values.
         if args:
+            merged: dict[str, Any] = {}
             for template in args:
                 if not isinstance(template, dict):
                     raise AssertionError(
@@ -60,16 +61,21 @@ class BaseEvent(BaseMessageType):
                         f"This argument serves as a template for loading common "
                         f"values.",
                     )
-                kwargs.update(template)
+                merged.update(template)
+            merged.update(kwargs)
+            kwargs = merged
 
-        # Template dicts (e.g. from to_dict()) may re-introduce _metadata
-        # and _expected_version; prefer the explicitly passed keyword args.
+        # Template dicts (e.g. from to_dict()) may re-introduce _metadata,
+        # _expected_version, and _version; prefer the explicitly passed
+        # keyword args.  _version is an aggregate-internal field and is not
+        # part of the event schema, so discard it silently.
         template_metadata = kwargs.pop("_metadata", None)
         if incoming_metadata is None:
             incoming_metadata = template_metadata
         template_expected_version = kwargs.pop("_expected_version", None)
         if expected_version == -1 and template_expected_version is not None:
             expected_version = template_expected_version
+        kwargs.pop("_version", None)
 
         try:
             super().__init__(**kwargs)

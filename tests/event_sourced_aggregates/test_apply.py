@@ -3,12 +3,11 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
+from protean.fields import Identifier, String
 from protean.utils import fqn
 
 
@@ -19,25 +18,25 @@ class UserStatus(Enum):
 
 
 class UserRegistered(BaseEvent):
-    user_id: str
-    name: str
-    email: str
+    user_id = Identifier(required=True)
+    name = String(max_length=50, required=True)
+    email = String(required=True)
 
 
 class UserActivated(BaseEvent):
-    user_id: str
+    user_id = Identifier(required=True)
 
 
 class UserRenamed(BaseEvent):
-    user_id: str
-    name: str
+    user_id = Identifier(required=True)
+    name = String(required=True, max_length=50)
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    name: str
-    email: str
-    status: UserStatus | None = None
+    user_id = Identifier(identifier=True)
+    name = String(max_length=50, required=True)
+    email = String(required=True)
+    status = String(choices=UserStatus)
 
     @classmethod
     def register(cls, user_id, name, email):
@@ -53,11 +52,11 @@ class User(BaseAggregate):
 
     @apply
     def registered(self, _: UserRegistered):
-        self.status = UserStatus.INACTIVE
+        self.status = UserStatus.INACTIVE.value
 
     @apply
     def activated(self, _: UserActivated):
-        self.status = UserStatus.ACTIVE
+        self.status = UserStatus.ACTIVE.value
 
     @apply
     def renamed(self, event: UserRenamed):
@@ -90,10 +89,10 @@ def test_apply_decorator_method_should_have_exactly_one_argument():
     with pytest.raises(IncorrectUsageError) as exc:
 
         class Sent(BaseEvent):
-            email_id: str | None = None
+            email_id = Identifier()
 
         class _(BaseAggregate):
-            email_id: str = Field(json_schema_extra={"identifier": True})
+            email_id = Identifier(identifier=True)
 
             @apply
             def sent(self, event: Sent, _: str) -> None:
@@ -106,13 +105,13 @@ def test_apply_decorator_method_should_have_exactly_one_argument():
 
 def test_that_apply_decorator_without_event_cls_raises_error():
     class Send(BaseCommand):
-        email_id: str | None = None
+        email_id = Identifier()
 
     # Argument should be an event class
     with pytest.raises(IncorrectUsageError) as exc:
 
         class _(BaseAggregate):
-            email_id: str = Field(json_schema_extra={"identifier": True})
+            email_id = Identifier(identifier=True)
 
             @apply
             def sent(self, _: Send) -> None:
@@ -127,7 +126,7 @@ def test_that_apply_decorator_without_event_cls_raises_error():
     with pytest.raises(IncorrectUsageError) as exc:
 
         class _(BaseAggregate):
-            email_id: str = Field(json_schema_extra={"identifier": True})
+            email_id = Identifier(identifier=True)
 
             @apply
             def sent(self, _) -> None:
@@ -142,7 +141,7 @@ def test_that_apply_decorator_without_event_cls_raises_error():
     with pytest.raises(IncorrectUsageError) as exc:
 
         class _(BaseAggregate):
-            email_id: str = Field(json_schema_extra={"identifier": True})
+            email_id = Identifier(identifier=True)
 
             @apply
             def sent(self) -> None:
@@ -156,7 +155,7 @@ def test_that_apply_decorator_without_event_cls_raises_error():
 
 def test_event_to_be_applied_should_have_a_projection(test_domain):
     class UserArchived(BaseEvent):
-        user_id: str
+        user_id = Identifier(required=True)
 
     test_domain.register(UserArchived, part_of=User)
     test_domain.init(traverse=False)

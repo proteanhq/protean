@@ -2,13 +2,12 @@
 
 import pytest
 
-from datetime import date
-
 from protean.core.aggregate import BaseAggregate
+from protean.fields import Date
 
 
 class Order(BaseAggregate):
-    ordered_on: date | None = None
+    ordered_on = Date()
 
 
 @pytest.fixture(autouse=True)

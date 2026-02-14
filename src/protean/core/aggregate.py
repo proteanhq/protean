@@ -15,7 +15,7 @@ from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import (
     BaseValueObject,
-    _PydanticFieldShim,
+    _FieldShim,
 )
 from protean.exceptions import (
     ConfigurationError,
@@ -39,11 +39,10 @@ logger = logging.getLogger(__name__)
 
 
 class BaseAggregate(BaseEntity):
-    """Pydantic-based base class for Aggregate root entities.
+    """Base class for Aggregate root entities.
 
-    Inherits from the new Pydantic ``BaseEntity``. Adds versioning, event
-    raising (``raise_``), event sourcing (``_apply`` / ``from_events``),
-    and projection dispatch.
+    Inherits from ``BaseEntity``. Adds versioning, event raising (``raise_``),
+    event sourcing (``_apply`` / ``from_events``), and projection dispatch.
     """
 
     element_type: ClassVar[str] = DomainObjects.AGGREGATE
@@ -94,10 +93,10 @@ class BaseAggregate(BaseEntity):
         """
         super().__pydantic_init_subclass__(**kwargs)
 
-        from protean.core.value_object import _PydanticFieldShim
+        from protean.core.value_object import _FieldShim
 
         fields_dict = getattr(cls, _FIELDS, {})
-        fields_dict["_version"] = _PydanticFieldShim("_version", None, int)
+        fields_dict["_version"] = _FieldShim("_version", None, int)
         setattr(cls, _FIELDS, fields_dict)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -294,7 +293,7 @@ def _pydantic_element_to_fact_event(element_cls):
             namespace[key] = None
             association_descriptors[key] = value
 
-        elif isinstance(value, _PydanticFieldShim):
+        elif isinstance(value, _FieldShim):
             # Regular Pydantic model field
             finfo = model_field_info.get(key)
             if finfo:
@@ -316,7 +315,7 @@ def _pydantic_element_to_fact_event(element_cls):
         container_fields = fields(element_cls)
         for key in list(annotations.keys()):
             field_obj = container_fields.get(key)
-            if isinstance(field_obj, _PydanticFieldShim) and (
+            if isinstance(field_obj, _FieldShim) and (
                 field_obj.identifier or field_obj.unique
             ):
                 annotations[key] = annotations[key] | None

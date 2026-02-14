@@ -1,27 +1,24 @@
 import json
 
 from protean import Domain
-from protean.fields import HasOne
-from typing import Annotated
-from pydantic import Field
+from protean.fields import HasOne, String
+from protean.utils.eventing import Message
 
 domain = Domain(name="Authentication")
 
 
 @domain.aggregate(fact_events=True)
 class User:
-    name: Annotated[str, Field(max_length=50)]
-    email: str
-    status: str | None = Field(
-        default=None, json_schema_extra={"choices": ["ACTIVE", "ARCHIVED"]}
-    )
+    name = String(max_length=50, required=True)
+    email = String(required=True)
+    status = String(choices=["ACTIVE", "ARCHIVED"])
 
     account = HasOne("Account")
 
 
 @domain.entity(part_of=User)
 class Account:
-    password_hash: Annotated[str, Field(max_length=512)] | None = None
+    password_hash = String(max_length=512)
 
 
 domain.init(traverse=False)
@@ -34,7 +31,7 @@ with domain.domain_context():
     event_message = domain.event_store.store.read(
         f"authentication::user-fact-{user.id}"
     )[0]
-    event = event_message.to_domain_object()
+    event = Message.to_object(event_message)
 
     print(json.dumps(event.to_dict(), indent=4))
 

@@ -1,23 +1,21 @@
 from protean import Domain
-from protean.fields import HasOne, List, ValueObject
-from typing import Annotated
-from pydantic import Field
+from protean.fields import HasOne, List, String, ValueObject
 
 domain = Domain()
 
 
 @domain.value_object
 class Address:
-    street: Annotated[str, Field(max_length=100)] | None = None
-    city: Annotated[str, Field(max_length=25)] | None = None
-    state: Annotated[str, Field(max_length=25)] | None = None
-    country: Annotated[str, Field(max_length=25)] | None = None
+    street = String(max_length=100)
+    city = String(max_length=25)
+    state = String(max_length=25)
+    country = String(max_length=25)
 
 
 @domain.entity(part_of="Order")
 class Customer:
-    name: Annotated[str, Field(max_length=50)]
-    email: Annotated[str, Field(max_length=254)]
+    name = String(max_length=50, required=True)
+    email = String(max_length=254, required=True)
     addresses = List(content_type=ValueObject(Address))
 
 

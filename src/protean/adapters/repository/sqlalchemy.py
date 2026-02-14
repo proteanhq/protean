@@ -23,7 +23,7 @@ from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.core.value_object import (
     BaseValueObject,
-    _PydanticFieldShim,
+    _FieldShim,
 )
 from protean.exceptions import (
     ConfigurationError,
@@ -152,8 +152,8 @@ def _custom_json_dumps(value):
     return json.dumps(value, default=_default)
 
 
-def _resolve_python_type(shim: _PydanticFieldShim) -> type:
-    """Extract the core Python type from a _PydanticFieldShim.
+def _resolve_python_type(shim: _FieldShim) -> type:
+    """Extract the core Python type from a _FieldShim.
 
     Unwraps Optional/Union, and normalises generic aliases
     (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``).
@@ -201,8 +201,8 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             """Return SQLAlchemy-equivalent type for Protean's field"""
             from protean.core.value_object import BaseValueObject
 
-            # Handle _PydanticFieldShim: resolve Python type → SA type
-            if isinstance(field_obj, _PydanticFieldShim):
+            # Handle _FieldShim: resolve Python type → SA type
+            if isinstance(field_obj, _FieldShim):
                 if field_obj.increment:
                     return sa_types.Integer
                 if field_obj.identifier:
@@ -238,7 +238,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         field_obj = field_obj.field_obj
 
                     # Resolve the Python type for Pydantic shims (used in dialect checks)
-                    if isinstance(field_obj, _PydanticFieldShim):
+                    if isinstance(field_obj, _FieldShim):
                         resolved_type = _resolve_python_type(field_obj)
                     elif isinstance(field_obj, ValueObjectList):
                         resolved_type = list
@@ -268,7 +268,13 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                                 #
                                 # `ValueObject` instances are essentially treated as `Dict`. If not pickled,
                                 #   they are persisted as JSON.
-                                if isinstance(content_type, ValueObject):
+                                from protean.core.value_object import BaseValueObject
+
+                                _is_vo = isinstance(content_type, ValueObject) or (
+                                    isinstance(content_type, type)
+                                    and issubclass(content_type, BaseValueObject)
+                                )
+                                if _is_vo:
                                     if not pickled:
                                         field_mapping_type = psql.JSON
                                     else:
@@ -358,8 +364,11 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     value = getattr(entity, attr_obj.attribute_name)
                     key = attr_obj.attribute_name
 
-                # Serialize List-of-VOs to dicts for JSON/ARRAY(JSON) storage
+                # Serialize List-of-VOs to dicts for JSON/ARRAY(JSON) storage.
+                # Works for both legacy ValueObjectList and _FieldShim.
                 if isinstance(attr_obj, ValueObjectList) and value:
+                    value = attr_obj.as_dict(value)
+                elif hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple)):
                     value = attr_obj.as_dict(value)
 
                 item_dict[key] = value

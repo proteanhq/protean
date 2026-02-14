@@ -35,9 +35,13 @@ class TestValidations:
         person = Person(first_name="Johnny", last_name="John")
 
         with pytest.raises(ValidationError) as error:
-            person.first_name = (
-                None  # Simulate an error by setting a non-optional field to None
-            )
+            person.first_name = ""  # Simulate an error by force-resetting an attribute
+
+        assert "first_name" in error.value.messages
+
+        # Setting None on a required field also raises a validation error
+        with pytest.raises(ValidationError) as error:
+            person.first_name = None
 
         assert error.value.messages == {
             "first_name": ["Input should be a valid string"]

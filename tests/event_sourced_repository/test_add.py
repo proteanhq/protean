@@ -5,17 +5,19 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
+from protean.fields import Identifier, String
 
 
 class UserRegistered(BaseEvent):
-    id: str
-    name: str
-    email: str
+    id = Identifier(required=True)
+    name = String(max_length=50, required=True)
+    email = String(required=True)
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
     @classmethod
     def register(cls, id, name, email):

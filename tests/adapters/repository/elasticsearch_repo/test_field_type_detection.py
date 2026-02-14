@@ -1,31 +1,30 @@
 """Comprehensive tests for field type detection and caching optimization in Elasticsearch adapter"""
 
-import datetime as dt_module
+import pytest
 from datetime import datetime
 
-import pytest
-
 from protean.core.aggregate import BaseAggregate
+from protean.fields import String, Integer, Float, Boolean, DateTime, Date
 
 
 class DummyEntity(BaseAggregate):
     """Test entity with various field types for comprehensive testing"""
 
     # String fields - should use .keyword
-    name: str
-    description: str | None = None
+    name = String(max_length=100, required=True)
+    description = String(max_length=500)
 
     # Numeric fields - should NOT use .keyword
-    age: int | None = None
-    score: float | None = None
-    count: int = 0
+    age = Integer()
+    score = Float()
+    count = Integer(default=0)
 
     # Boolean field - should NOT use .keyword
-    is_active: bool = True
+    is_active = Boolean(default=True)
 
     # Date/time fields - should NOT use .keyword
-    created_at: datetime | None = None
-    birth_date: dt_module.date | None = None
+    created_at = DateTime(default=datetime.now)
+    birth_date = Date()
 
     # Auto field (identifier) - should NOT use .keyword (already keyword-mapped)
     # id field is automatically added by BaseAggregate
@@ -34,17 +33,17 @@ class DummyEntity(BaseAggregate):
 class MinimalEntity(BaseAggregate):
     """Minimal entity with just string fields"""
 
-    title: str
-    content: str | None = None
+    title = String(max_length=100, required=True)
+    content = String(max_length=1000)
 
 
 class NumericEntity(BaseAggregate):
     """Entity with only numeric fields"""
 
-    value: int | None = None
-    ratio: float | None = None
-    enabled: bool | None = None
-    timestamp: datetime | None = None
+    value = Integer()
+    ratio = Float()
+    enabled = Boolean()
+    timestamp = DateTime()
 
 
 @pytest.mark.elasticsearch

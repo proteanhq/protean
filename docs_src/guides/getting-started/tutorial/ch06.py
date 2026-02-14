@@ -1,8 +1,6 @@
 from protean import Domain, handle
-from protean.fields import ValueObject
+from protean.fields import Float, Identifier, String, Text, ValueObject
 from protean.utils.globals import current_domain
-from typing import Annotated
-from pydantic import Field
 
 domain = Domain()
 
@@ -11,28 +9,28 @@ domain.config["command_processing"] = "sync"
 
 @domain.value_object
 class Money:
-    currency: Annotated[str, Field(max_length=3)] = "USD"
-    amount: float
+    currency = String(max_length=3, default="USD")
+    amount = Float(required=True)
 
 
 @domain.aggregate
 class Book:
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    isbn: Annotated[str, Field(max_length=13)] | None = None
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    isbn = String(max_length=13)
     price = ValueObject(Money)
-    description: str | None = None
+    description = Text()
 
 
 # --8<-- [start:command]
 @domain.command(part_of=Book)
 class AddBook:
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    isbn: Annotated[str, Field(max_length=13)] | None = None
-    price_amount: float
-    price_currency: Annotated[str, Field(max_length=3)] = "USD"
-    description: str | None = None
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    isbn = String(max_length=13)
+    price_amount = Float(required=True)
+    price_currency = String(max_length=3, default="USD")
+    description = Text()
 
 
 # --8<-- [end:command]
@@ -42,7 +40,7 @@ class AddBook:
 @domain.command_handler(part_of=Book)
 class BookCommandHandler:
     @handle(AddBook)
-    def add_book(self, command: AddBook) -> str:
+    def add_book(self, command: AddBook) -> Identifier:
         book = Book(
             title=command.title,
             author=command.author,

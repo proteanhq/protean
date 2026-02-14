@@ -1,4 +1,4 @@
-"""Tests for association support on Pydantic-based BaseEntity / BaseAggregate.
+"""Tests for association support on BaseEntity / BaseAggregate.
 
 Validates:
 - HasMany: add/remove/access, pseudo-methods, change tracking
@@ -28,7 +28,7 @@ from protean.utils.reflection import (
 
 
 # ---------------------------------------------------------------------------
-# Test domain elements (Pydantic annotations + legacy descriptors)
+# Test domain elements
 # ---------------------------------------------------------------------------
 class Order(BaseAggregate):
     id: str = Field(
@@ -36,8 +36,8 @@ class Order(BaseAggregate):
         default_factory=lambda: str(uuid4()),
     )
     order_number: str = ""
-    items = HasMany("tests.entity.test_pydantic_associations.OrderItem")
-    shipping = HasOne("tests.entity.test_pydantic_associations.ShippingInfo")
+    items = HasMany("tests.entity.test_entity_associations.OrderItem")
+    shipping = HasOne("tests.entity.test_entity_associations.ShippingInfo")
 
 
 class OrderItem(BaseEntity):
@@ -47,7 +47,7 @@ class OrderItem(BaseEntity):
     )
     product_name: str = ""
     quantity: int = 1
-    order = Reference("tests.entity.test_pydantic_associations.Order")
+    order = Reference("tests.entity.test_entity_associations.Order")
 
 
 class ShippingInfo(BaseEntity):
@@ -56,7 +56,7 @@ class ShippingInfo(BaseEntity):
         default_factory=lambda: str(uuid4()),
     )
     address: str = ""
-    order = Reference("tests.entity.test_pydantic_associations.Order")
+    order = Reference("tests.entity.test_entity_associations.Order")
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ def register_elements(test_domain):
 # Tests: __container_fields__ bridge
 # ---------------------------------------------------------------------------
 class TestContainerFieldsBridge:
-    def test_pydantic_fields_in_container_fields(self):
+    def test_annotated_fields_in_container_fields(self):
         cf = getattr(Order, _FIELDS, {})
         assert "id" in cf
         assert "order_number" in cf
@@ -98,7 +98,7 @@ class TestContainerFieldsBridge:
         af = association_fields(Order)
         assert "items" in af
         assert "shipping" in af
-        # Pydantic model fields should not appear in association_fields
+        # Regular model fields should not appear in association_fields
         assert "order_number" not in af
 
 

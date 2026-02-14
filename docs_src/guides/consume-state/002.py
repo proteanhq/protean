@@ -1,8 +1,6 @@
 from protean import Domain
 from protean.core.projector import on
-from datetime import datetime
-from typing import Annotated
-from pydantic import Field
+from protean.fields import DateTime, Float, Identifier, Integer, String, Text
 
 domain = Domain()
 
@@ -13,10 +11,10 @@ domain.config["event_processing"] = "sync"
 
 @domain.aggregate
 class Product:
-    name: Annotated[str, Field(max_length=100)]
-    description: str | None = None
-    price: float
-    stock_quantity: int = 0
+    name = String(max_length=100, required=True)
+    description = Text()
+    price = Float(required=True)
+    stock_quantity = Integer(default=0)
 
     def adjust_stock(self, quantity):
         self.stock_quantity += quantity
@@ -50,41 +48,41 @@ class Product:
 
 @domain.event(part_of=Product)
 class ProductAdded:
-    product_id: str
-    name: Annotated[str, Field(max_length=100)]
-    description: str
-    price: float
-    stock_quantity: int = 0
+    product_id = Identifier(required=True)
+    name = String(max_length=100, required=True)
+    description = Text(required=True)
+    price = Float(required=True)
+    stock_quantity = Integer(default=0)
 
 
 @domain.event(part_of=Product)
 class StockAdjusted:
-    product_id: str
-    quantity: int
-    new_stock_quantity: int
+    product_id = Identifier(required=True)
+    quantity = Integer(required=True)
+    new_stock_quantity = Integer(required=True)
 
 
 @domain.projection
 class ProductInventory:
     """Projection for product inventory data optimized for querying."""
 
-    product_id: str = Field(json_schema_extra={"identifier": True})
-    name: Annotated[str, Field(max_length=100)]
-    description: str
-    price: float
-    stock_quantity: int = 0
-    last_updated: datetime | None = None
+    product_id = Identifier(identifier=True, required=True)
+    name = String(max_length=100, required=True)
+    description = Text(required=True)
+    price = Float(required=True)
+    stock_quantity = Integer(default=0)
+    last_updated = DateTime()
 
 
 @domain.projection
 class ProductCatalog:
     """Projection for product catalog data optimized for browsing."""
 
-    product_id: str = Field(json_schema_extra={"identifier": True})
-    name: Annotated[str, Field(max_length=100)]
-    description: str
-    price: float
-    in_stock: str = Field(default="YES", json_schema_extra={"choices": ["YES", "NO"]})
+    product_id = Identifier(identifier=True, required=True)
+    name = String(max_length=100, required=True)
+    description = Text(required=True)
+    price = Float(required=True)
+    in_stock = String(choices=["YES", "NO"], default="YES")
 
 
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])

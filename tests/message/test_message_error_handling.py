@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError, DeserializationError
-
+from protean.fields import Identifier, String
 from protean.utils.eventing import (
     Message,
     MessageEnvelope,
@@ -15,31 +15,30 @@ from protean.utils.eventing import (
     Metadata,
     EventStoreMeta,
 )
-from pydantic import Field
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class UnregisteredEvent(BaseEvent):
     """Event that won't be registered with domain for testing purposes"""
 
-    id: str | None = None
-    data: str | None = None
+    id = Identifier()
+    data = String()
 
 
 @pytest.fixture(autouse=True)

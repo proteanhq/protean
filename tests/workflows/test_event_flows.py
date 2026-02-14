@@ -6,11 +6,9 @@ Event Consumption flows:
 """
 
 import asyncio
-import datetime as dt
 from datetime import datetime, timezone
 
 import pytest
-from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -23,7 +21,15 @@ from protean.core.value_object import BaseValueObject
 from protean.domain import Domain
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import (
+    Date,
+    DateTime,
+    Float,
     HasMany,
+    Identifier,
+    Integer,
+    List,
+    String,
+    ValueObject,
 )
 from protean.server import Engine
 from protean.utils import Processing
@@ -32,48 +38,46 @@ from protean.utils.mixins import handle
 
 
 class Order(BaseAggregate):
-    customer_id: str
+    customer_id = Identifier(required=True)
     items = HasMany("OrderItem")
-    total: float
-    ordered_at: datetime = None
+    total = Float(required=True)
+    ordered_at = DateTime(default=lambda: datetime.now(timezone.utc))
 
 
 class OrderItem(BaseEntity):
-    product_id: str
-    price: float
-    quantity: int
+    product_id = Identifier(required=True)
+    price = Float(required=True)
+    quantity = Integer(required=True)
 
 
 # FIXME Auto-generate ValueObject from Entity?
 class OrderItemValueObject(BaseValueObject):
-    product_id: str
-    price: float
-    quantity: int
+    product_id = Identifier(required=True)
+    price = Float(required=True)
+    quantity = Integer(required=True)
 
 
 class PlaceOrder(BaseCommand):
-    order_id: str | None = None
-    customer_id: str
-    items: list = []
-    total: float
-    ordered_at: datetime
+    order_id = Identifier(identifier=True)
+    customer_id = Identifier(required=True)
+    items = List(content_type=ValueObject(OrderItemValueObject))
+    total = Float(required=True)
+    ordered_at = DateTime(required=True)
 
 
 class OrderPlaced(BaseEvent):
-    order_id: str | None = None
-    customer_id: str
-    items: list = []
-    total: float
-    ordered_at: datetime
+    order_id = Identifier(identifier=True)
+    customer_id = Identifier(required=True)
+    items = List(content_type=ValueObject(OrderItemValueObject))
+    total = Float(required=True)
+    ordered_at = DateTime(required=True)
 
 
 class OrdersCommandHandler(BaseCommandHandler):
     @handle(PlaceOrder)
     def place_order(self, command: PlaceOrder):
-        items = [
-            OrderItem(**(item if isinstance(item, dict) else item.to_dict()))
-            for item in command.items
-        ]
+        # FIXME Cumbersome conversion to and from OrderItemValueObject
+        items = [OrderItem(**item.to_dict()) for item in command.items]
         order = Order(
             id=command.order_id,
             customer_id=command.customer_id,
@@ -94,8 +98,8 @@ class OrdersCommandHandler(BaseCommandHandler):
 
 
 class DailyOrders(BaseProjection):
-    date: dt.date | None = Field(default=None, json_schema_extra={"identifier": True})
-    total: int
+    date = Date(identifier=True)
+    total = Integer(required=True)
 
 
 class OrdersEventHandler(BaseEventHandler):
@@ -111,15 +115,15 @@ class OrdersEventHandler(BaseEventHandler):
 
 
 class Customer(BaseAggregate):
-    name: str
+    name = String(required=True)
     order_history = HasMany("OrderHistory")
 
 
 class OrderHistory(BaseEntity):
-    order_id: str | None = None
-    items: list = []
-    total: float
-    ordered_at: datetime
+    order_id = Identifier(identifier=True)
+    items = List(content_type=ValueObject(OrderItemValueObject))
+    total = Float(required=True)
+    ordered_at = DateTime(required=True)
 
 
 class CustomerOrderEventHandler(BaseEventHandler):
@@ -137,11 +141,13 @@ class CustomerOrderEventHandler(BaseEventHandler):
 
 
 class Shipment(BaseAggregate):
-    order_id: str
-    customer_id: str
-    items: list = []
-    status: str = "PENDING"
-    shipped_at: datetime | None = None
+    order_id = Identifier(required=True)
+    customer_id = Identifier(required=True)
+    items = List(content_type=ValueObject(OrderItemValueObject))
+    status = String(
+        choices=["PENDING", "SHIPPED", "DELIVERED", "CANCELLED"], default="PENDING"
+    )
+    shipped_at = DateTime()
 
 
 class ShipmentEventHandler(BaseEventHandler):
@@ -272,10 +278,7 @@ def test_workflow_among_protean_domains(test_domain, shipment_domain):
         assert len(shipments) == 1
         assert shipments[0].order_id == command.order_id
         assert shipments[0].customer_id == command.customer_id
-        assert shipments[0].items == [
-            item.to_dict() if hasattr(item, "to_dict") else item
-            for item in command.items
-        ]
+        assert shipments[0].items == command.items
         assert shipments[0].status == "PENDING"
         assert shipments[0].shipped_at is None
 

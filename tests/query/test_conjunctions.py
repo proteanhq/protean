@@ -1,13 +1,8 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
 from protean.utils.query import Q
 
-
-class Person(BaseAggregate):
-    first_name: str
-    last_name: str
-    age: int = 21
+from .elements import Person
 
 
 class TestConjunctions:
@@ -20,31 +15,31 @@ class TestConjunctions:
     @pytest.fixture
     def create_3_people(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
     @pytest.fixture
     def create_5_people(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="5", first_name="Leslie", age=6, last_name="Underwood"
+            id=5, first_name="Leslie", age=6, last_name="Underwood"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="6", first_name="Dave", age=6, last_name="Carrie"
+            id=6, first_name="Dave", age=6, last_name="Carrie"
         )
 
     def test_that_kwargs_to_filter_are_ANDed_by_default(

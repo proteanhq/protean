@@ -371,13 +371,14 @@ class TestCloneClass:
     def test_clone_domain_aggregate(self):
         """Test cloning an actual Protean domain aggregate."""
         from protean.core.aggregate import BaseAggregate
+        from protean.fields import String, Integer, DateTime
         from datetime import datetime
 
         class User(BaseAggregate):
-            name: str
-            email: str
-            age: int = 18
-            created_at: datetime = datetime.now
+            name = String(max_length=50, required=True)
+            email = String(max_length=100, required=True, unique=True)
+            age = Integer(default=18)
+            created_at = DateTime(default=datetime.now)
 
             @classmethod
             def create_user(cls, name, email):
@@ -403,8 +404,6 @@ class TestCloneClass:
 
         # Test that it's still a BaseAggregate
         assert issubclass(cloned_aggregate, BaseAggregate)
-        # Pydantic clones are thin subclasses of the original
-        assert User in cloned_aggregate.__bases__
 
         # Test domain object element type is preserved
         assert cloned_aggregate.element_type == User.element_type

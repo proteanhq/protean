@@ -6,26 +6,28 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
+from protean.fields import String
+from protean.fields.basic import Identifier
 from protean.utils.eventing import Message
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String(max_length=50)
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
+    id = Identifier()
+    email = String()
 
 
 class Activated(BaseEvent):
-    id: str
+    id = Identifier(required=True)
 
 
 class Renamed(BaseEvent):
-    id: str
-    name: str
+    id = Identifier(required=True)
+    name = String(required=True, max_length=50)
 
 
 @pytest.fixture(autouse=True)

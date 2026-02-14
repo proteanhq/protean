@@ -1,11 +1,10 @@
 from protean import Domain
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Integer, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class Person:
-    name: Annotated[str, Field(max_length=255)] | None = None
-    age: int
+    name = String(max_length=255)
+    age = Integer(required=True)

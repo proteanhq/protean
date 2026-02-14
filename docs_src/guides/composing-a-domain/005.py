@@ -1,38 +1,36 @@
 from protean import Domain
-from protean.fields import ValueObject
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Identifier, Integer, String, ValueObject
 
 domain = Domain()
 
 
 @domain.aggregate
 class User:
-    first_name: Annotated[str, Field(max_length=50)] | None = None
-    last_name: Annotated[str, Field(max_length=50)] | None = None
-    age: int | None = None
+    first_name = String(max_length=50)
+    last_name = String(max_length=50)
+    age = Integer()
 
 
 @domain.value_object(part_of="Subscription")
 class Subscriber:
-    id: str | None = None
-    full_name: Annotated[str, Field(max_length=102)] | None = None
+    id = Identifier()
+    full_name = String(max_length=102)
 
 
 @domain.aggregate
 class Subscription:
-    plan: Annotated[str, Field(max_length=50)] | None = None
+    plan = String(max_length=50)
     user = ValueObject(Subscriber)
-    status: Annotated[str, Field(max_length=50)] | None = None
+    status = String(max_length=50)
 
 
 @domain.aggregate
 class Plan:
-    name: Annotated[str, Field(max_length=50)] | None = None
-    price: int | None = None
+    name = String(max_length=50)
+    price = Integer()
 
 
-@domain.domain_service(part_of=[Subscription, Plan])
+@domain.domain_service
 class SubscriptionManagement:
     def subscribe_user(self, user, plan):
         subscription = Subscription(user=user, plan=plan, status="ACTIVE")

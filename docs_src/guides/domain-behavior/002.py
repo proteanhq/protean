@@ -1,5 +1,5 @@
 from protean import Domain, invariant
-from pydantic import Field
+from protean.fields import Float, Identifier
 
 banking = Domain()
 
@@ -10,15 +10,15 @@ class InsufficientFundsException(Exception):
 
 @banking.event(part_of="Account")
 class AccountWithdrawn:
-    account_number: str
-    amount: float
+    account_number = Identifier(required=True)
+    amount = Float(required=True)
 
 
 @banking.aggregate
 class Account:
-    account_number: str = Field(json_schema_extra={"unique": True})
-    balance: float | None = None
-    overdraft_limit: float = 0.0
+    account_number = Identifier(required=True, unique=True)
+    balance = Float()
+    overdraft_limit = Float(default=0.0)
 
     @invariant.post
     def balance_must_be_greater_than_or_equal_to_overdraft_limit(self):

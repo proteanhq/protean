@@ -8,6 +8,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
+from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils import Processing
@@ -40,9 +41,9 @@ def reset_counters():
 
 # Event-based test classes
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    email = String()
+    name = String()
+    password_hash = String()
 
     def register(self):
         """Register user and raise event."""
@@ -61,15 +62,15 @@ class User(BaseAggregate):
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class EmailSent(BaseEvent):
-    id: str | None = None
-    email: str | None = None
+    id = Identifier()
+    email = String()
 
 
 # Event handlers
@@ -111,13 +112,13 @@ class FailingErrorHandlerEventHandler(BaseEventHandler):
 
 # Command-based test classes
 class RegisterUser(BaseCommand):
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class SendEmail(BaseCommand):
-    email: str | None = None
+    email = String()
 
 
 class SuccessfulCommandHandler(BaseCommandHandler):
@@ -535,9 +536,7 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
         type=sync_event._metadata.headers.type,
         stream="test_stream-1",
     )
-    new_metadata = Metadata(
-        **{**sync_event._metadata.to_dict(), "headers": new_headers}
-    )
+    new_metadata = Metadata(sync_event._metadata.to_dict(), headers=new_headers)
     new_sync_event = EmailSent(
         id=sync_event.id, email=sync_event.email, _metadata=new_metadata
     )
@@ -546,7 +545,7 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     # Create an asynchronous message (should be processed)
     async_event = EmailSent(id=str(uuid4()), email="async@example.com")
     new_domain_meta = DomainMeta(
-        **{**async_event._metadata.domain.to_dict(), "asynchronous": False}
+        async_event._metadata.domain.to_dict(), asynchronous=False
     )
     new_headers = MessageHeaders.build(
         id=async_event.id,
@@ -555,11 +554,7 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
         stream="test_stream-2",
     )
     new_metadata = Metadata(
-        **{
-            **async_event._metadata.to_dict(),
-            "domain": new_domain_meta,
-            "headers": new_headers,
-        }
+        async_event._metadata.to_dict(), domain=new_domain_meta, headers=new_headers
     )
     new_async_event = EmailSent(
         id=async_event.id, email=async_event.email, _metadata=new_metadata
@@ -624,10 +619,8 @@ async def test_subscription_exception_handling_with_position_updates(
 
     # Update the asynchronous flag in the domain metadata
     old_domain_meta = message.metadata.domain
-    new_domain_meta = DomainMeta(**{**old_domain_meta.to_dict(), "asynchronous": True})
-    message.metadata = Metadata(
-        **{**message.metadata.to_dict(), "domain": new_domain_meta}
-    )
+    new_domain_meta = DomainMeta(old_domain_meta.to_dict(), asynchronous=True)
+    message.metadata = Metadata(message.metadata.to_dict(), domain=new_domain_meta)
 
     # Process the batch
     await subscription.process_batch([message])

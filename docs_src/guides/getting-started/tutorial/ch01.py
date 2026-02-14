@@ -1,6 +1,5 @@
 from protean import Domain
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Float, String
 
 domain = Domain()
 
@@ -8,10 +7,10 @@ domain = Domain()
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Book:
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    isbn: Annotated[str, Field(max_length=13)] | None = None
-    price: float | None = None
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    isbn = String(max_length=13)
+    price = Float()
 
 
 # --8<-- [end:aggregate]

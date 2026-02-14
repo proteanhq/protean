@@ -3,17 +3,17 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.exceptions import IncorrectUsageError
-from protean.fields import HasOne
+from protean.fields import HasOne, Integer, String
 
 
 class Department(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name: str | None = None
-    age: int | None = None
+    name = String(max_length=50)
+    age = Integer(min_value=21)
 
 
 class TestAggregateAndEntityDefaultProvider:

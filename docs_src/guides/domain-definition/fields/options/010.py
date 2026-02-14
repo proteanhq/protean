@@ -2,7 +2,7 @@ from typing import Any
 
 from protean import Domain
 from protean.exceptions import ValidationError
-from pydantic import Field
+from protean.fields import String
 
 domain = Domain()
 
@@ -19,9 +19,4 @@ class EmailDomainValidator:
 
 @domain.aggregate
 class Employee:
-    email: str = Field(
-        json_schema_extra={
-            "identifier": True,
-            "validators": [EmailDomainValidator("mydomain.com")],
-        }
-    )
+    email = String(identifier=True, validators=[EmailDomainValidator("mydomain.com")])

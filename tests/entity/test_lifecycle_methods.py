@@ -2,6 +2,7 @@ import pytest
 
 from protean.core.entity import BaseEntity
 from protean.exceptions import ValidationError
+from protean.fields import String
 
 from .elements import Area, Building, BuildingStatus
 
@@ -23,12 +24,21 @@ class TestDefaults:
 
         assert building.status == BuildingStatus.WIP.value
 
-    def test_defaults_are_applied_before_validation(self):
+    def test_defaults_are_applied_after_field_validation(self):
+        """Field validation happens during __init__ before defaults() can
+        run.  So a required field without any value will still raise a
+        ValidationError.
+
+        However, defaults() can augment optional fields or override
+        non-required field values after construction.
+        """
+
         class Foo(BaseEntity):
-            name: str | None = None
+            name = String(required=True, default="placeholder")
 
             def defaults(self):
-                self.name = "bar"
+                if self.name == "placeholder":
+                    self.name = "bar"
 
         assert Foo().name == "bar"
 

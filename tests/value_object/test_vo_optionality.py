@@ -3,26 +3,26 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import ValueObject
+from protean.fields import String, ValueObject
 
 
 class Foo(BaseValueObject):
-    bar: str | None = None
-    qux: str | None = None
+    bar = String()
+    qux = String()
 
 
 class Address(BaseValueObject):
-    unit_no: str | None = None
-    street_no: str
-    street_name: str
-    province: str | None = None
-    country: str
-    zipcode: str
+    unit_no = String()
+    street_no = String(required=True)
+    street_name = String(required=True)
+    province = String()
+    country = String(required=True)
+    zipcode = String(required=True)
 
 
 def test_that_a_vo_can_be_declared_optional():
     class Foobar(BaseAggregate):
-        baz: str
+        baz = String(required=True)
         foo = ValueObject(Foo)
 
     try:
@@ -33,7 +33,7 @@ def test_that_a_vo_can_be_declared_optional():
 
 def test_that_a_vo_can_be_declared_mandatory():
     class Foobar(BaseAggregate):
-        baz: str
+        baz = String(required=True)
         foo = ValueObject(Foo, required=True)
 
     with pytest.raises(ValidationError):
@@ -42,7 +42,7 @@ def test_that_a_vo_can_be_declared_mandatory():
 
 def test_that_a_vo_can_have_mandatory_fields_but_declared_optional():
     class User(BaseAggregate):
-        name: str
+        name = String(required=True)
         address = ValueObject(Address)
 
     try:
@@ -53,7 +53,7 @@ def test_that_a_vo_can_have_mandatory_fields_but_declared_optional():
 
 def test_that_a_vo_can_have_mandatory_fields_and_can_be_declared_mandatory():
     class User(BaseAggregate):
-        name: str
+        name = String(required=True)
         address = ValueObject(Address, required=True)
 
     with pytest.raises(ValidationError):

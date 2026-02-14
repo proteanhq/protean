@@ -1,8 +1,8 @@
-"""Tests for the new Pydantic-based BaseAggregate.
+"""Tests for BaseAggregate basics.
 
 Validates:
 - Creation with annotated fields
-- Field mutation with Pydantic validate_assignment
+- Field mutation with validate_assignment
 - _initialized flag lifecycle
 - _EntityState tracking (new/changed/persisted/destroyed)
 - Invariant pre/post checks
@@ -28,7 +28,7 @@ from protean.exceptions import NotSupportedError, ValidationError
 
 
 # ---------------------------------------------------------------------------
-# Test domain elements (Pydantic syntax)
+# Test domain elements
 # ---------------------------------------------------------------------------
 class Person(BaseAggregate):
     id: str = Field(
@@ -93,7 +93,7 @@ def register_elements(test_domain):
 # ---------------------------------------------------------------------------
 # Tests: Structure
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateStructure:
+class TestAggregateStructure:
     def test_base_aggregate_cannot_be_instantiated(self):
         with pytest.raises(NotSupportedError) as exc:
             BaseAggregate()
@@ -121,7 +121,7 @@ class TestPydanticAggregateStructure:
 # ---------------------------------------------------------------------------
 # Tests: Initialization
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateInitialization:
+class TestAggregateInitialization:
     def test_successful_creation(self):
         role = Role(name="ADMIN")
         assert role.name == "ADMIN"
@@ -165,7 +165,7 @@ class TestPydanticAggregateInitialization:
 # ---------------------------------------------------------------------------
 # Tests: Validation
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateValidation:
+class TestAggregateValidation:
     def test_max_length_constraint(self):
         with pytest.raises(ValidationError):
             Role(name="THIS_IS_A_VERY_LONG_ROLE_NAME")
@@ -183,7 +183,7 @@ class TestPydanticAggregateValidation:
 # ---------------------------------------------------------------------------
 # Tests: Root and Owner
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateRootOwner:
+class TestAggregateRootOwner:
     def test_root_is_self(self):
         account = Account(name="Savings")
         assert account._root is account
@@ -196,7 +196,7 @@ class TestPydanticAggregateRootOwner:
 # ---------------------------------------------------------------------------
 # Tests: Mutation
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateMutation:
+class TestAggregateMutation:
     def test_mutate_field(self):
         person = Person(first_name="John", last_name="Doe")
         person.first_name = "Jane"
@@ -230,7 +230,7 @@ class TestPydanticAggregateMutation:
 # ---------------------------------------------------------------------------
 # Tests: State tracking
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateState:
+class TestAggregateState:
     def test_new_aggregate_is_new(self):
         person = Person(first_name="John", last_name="Doe")
         assert person.state_ is not None
@@ -270,7 +270,7 @@ class TestPydanticAggregateState:
 # ---------------------------------------------------------------------------
 # Tests: Version tracking
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateVersioning:
+class TestAggregateVersioning:
     def test_initial_version(self):
         role = Role(name="ADMIN")
         assert role._version == -1
@@ -284,7 +284,7 @@ class TestPydanticAggregateVersioning:
 # ---------------------------------------------------------------------------
 # Tests: Identity-based equality
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateEquality:
+class TestAggregateEquality:
     def test_same_id_equal(self):
         uid = str(uuid4())
         r1 = Role(id=uid, name="ADMIN")
@@ -314,7 +314,7 @@ class TestPydanticAggregateEquality:
 # ---------------------------------------------------------------------------
 # Tests: Serialization
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateSerialization:
+class TestAggregateSerialization:
     def test_to_dict(self):
         uid = str(uuid4())
         person = Person(id=uid, first_name="John", last_name="Doe", age=30)
@@ -331,7 +331,9 @@ class TestPydanticAggregateSerialization:
         assert "_root" not in data
         assert "_owner" not in data
         assert "_events" not in data
-        assert "_version" not in data
+        # _version IS included in to_dict() because it is explicitly added
+        # to __container_fields__ for persistence round-tripping.
+        assert "_version" in data
         assert "_next_version" not in data
         assert "_event_position" not in data
 
@@ -353,7 +355,7 @@ class TestPydanticAggregateSerialization:
 # ---------------------------------------------------------------------------
 # Tests: Invariant registration
 # ---------------------------------------------------------------------------
-class TestPydanticAggregateInvariants:
+class TestAggregateInvariants:
     def test_post_invariants_discovered(self):
         account = Account(name="Savings", balance=100.0)
         assert "balance_must_not_be_negative" in account._invariants.get("post", {})
@@ -370,7 +372,7 @@ class TestPydanticAggregateInvariants:
 # ---------------------------------------------------------------------------
 # Tests: Entity within aggregate context
 # ---------------------------------------------------------------------------
-class TestPydanticEntityInAggregate:
+class TestEntityInAggregate:
     def test_entity_creation(self):
         item = Item(name="Widget", price=10.0)
         assert item.name == "Widget"

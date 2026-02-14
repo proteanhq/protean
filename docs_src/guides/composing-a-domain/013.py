@@ -1,25 +1,24 @@
 from protean import Domain
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Identifier, Integer, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class User:
-    first_name: Annotated[str, Field(max_length=50)] | None = None
-    last_name: Annotated[str, Field(max_length=50)] | None = None
-    age: int | None = None
+    first_name = String(max_length=50)
+    last_name = String(max_length=50)
+    age = Integer()
 
 
 @domain.entity(part_of=User)
 class Credentials:
-    email: Annotated[str, Field(max_length=254)] | None = None
-    password_hash: Annotated[str, Field(max_length=128)] | None = None
+    email = String(max_length=254)
+    password_hash = String(max_length=128)
 
 
-@domain.projection
+@domain.projection(part_of=User)
 class Token:
-    key: str = Field(json_schema_extra={"identifier": True})
-    id: str
-    email: str
+    key = Identifier(identifier=True)
+    id = Identifier(required=True)
+    email = String(required=True)

@@ -1,8 +1,6 @@
 from protean.domain import Domain
 from protean.exceptions import ValidationError
-from protean.fields import ValueObject
-from typing import Annotated
-from pydantic import Field
+from protean.fields import String, ValueObject
 
 domain = Domain(__name__)
 
@@ -50,13 +48,11 @@ class Email:
     """
 
     # This is the external facing data attribute
-    address: Annotated[
-        str, Field(max_length=254, json_schema_extra={"validators": [EmailValidator()]})
-    ]
+    address = String(max_length=254, required=True, validators=[EmailValidator()])
 
 
 @domain.aggregate
 class User:
     email = ValueObject(Email)
-    name: Annotated[str, Field(max_length=30)] | None = None
-    timezone: Annotated[str, Field(max_length=30)] | None = None
+    name = String(max_length=30)
+    timezone = String(max_length=30)

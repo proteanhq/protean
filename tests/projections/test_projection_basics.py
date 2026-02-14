@@ -1,8 +1,8 @@
-"""Tests for the new Pydantic-based BaseProjection.
+"""Tests for BaseProjection basics.
 
 Validates:
 - Creation with annotated fields
-- Field mutation with Pydantic validate_assignment
+- Field mutation with validate_assignment
 - _EntityState tracking (new/persisted)
 - Identity-based equality and hashing
 - Template dict initialization
@@ -32,7 +32,7 @@ from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 
 
 # ---------------------------------------------------------------------------
-# Test domain elements (Pydantic syntax)
+# Test domain elements
 # ---------------------------------------------------------------------------
 class Person(BaseProjection):
     person_id: str = Field(json_schema_extra={"identifier": True})
@@ -98,7 +98,7 @@ def register_elements(test_domain):
 # ---------------------------------------------------------------------------
 # Tests: Structure
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionStructure:
+class TestProjectionStructure:
     def test_base_projection_cannot_be_instantiated(self):
         with pytest.raises(NotSupportedError) as exc:
             BaseProjection()
@@ -121,7 +121,7 @@ class TestPydanticProjectionStructure:
 # ---------------------------------------------------------------------------
 # Tests: Registration
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionRegistration:
+class TestProjectionRegistration:
     def test_manual_registration(self, test_domain):
         assert fully_qualified_name(Person) in test_domain.registry.projections
 
@@ -142,7 +142,7 @@ class TestPydanticProjectionRegistration:
 # ---------------------------------------------------------------------------
 # Tests: Initialization
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionInitialization:
+class TestProjectionInitialization:
     def test_successful_creation(self):
         person = Person(person_id="123", first_name="John", last_name="Doe")
         assert person.person_id == "123"
@@ -178,7 +178,7 @@ class TestPydanticProjectionInitialization:
 # ---------------------------------------------------------------------------
 # Tests: Defaults hook
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionDefaults:
+class TestProjectionDefaults:
     def test_defaults_method_called(self):
         building = Building(building_id="B1", name="Tower", floors=4)
         assert building.status == BuildingStatus.DONE.value
@@ -191,16 +191,18 @@ class TestPydanticProjectionDefaults:
 # ---------------------------------------------------------------------------
 # Tests: Mutation
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionMutation:
+class TestProjectionMutation:
     def test_mutate_field(self):
         person = Person(person_id="123", first_name="John")
         person.first_name = "Jane"
         assert person.first_name == "Jane"
 
-    def test_mutation_validates(self):
+    def test_identifier_immutability(self):
+        from protean.exceptions import InvalidOperationError
+
         person = PersonExplicitID(ssn="ABC", first_name="John")
-        with pytest.raises(ValidationError):
-            person.ssn = "X" * 37  # max_length=36 violation
+        with pytest.raises(InvalidOperationError):
+            person.ssn = "XYZ"  # identifier cannot be changed once set
 
     def test_mutation_type_check(self):
         person = Person(person_id="123", first_name="John")
@@ -211,7 +213,7 @@ class TestPydanticProjectionMutation:
 # ---------------------------------------------------------------------------
 # Tests: State tracking
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionState:
+class TestProjectionState:
     def test_new_projection_has_state(self):
         person = Person(person_id="123", first_name="John")
         assert person.state_ is not None
@@ -232,7 +234,7 @@ class TestPydanticProjectionState:
 # ---------------------------------------------------------------------------
 # Tests: Identity-based equality
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionEquality:
+class TestProjectionEquality:
     def test_same_id_equal(self):
         p1 = Person(person_id="123", first_name="John")
         p2 = Person(person_id="123", first_name="Jane")
@@ -259,7 +261,7 @@ class TestPydanticProjectionEquality:
 # ---------------------------------------------------------------------------
 # Tests: Serialization
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionSerialization:
+class TestProjectionSerialization:
     def test_to_dict(self):
         person = Person(person_id="123", first_name="John", last_name="Doe", age=30)
         data = person.to_dict()
@@ -308,7 +310,7 @@ class TestPydanticProjectionSerialization:
 # ---------------------------------------------------------------------------
 # Tests: Meta options
 # ---------------------------------------------------------------------------
-class TestPydanticProjectionMeta:
+class TestProjectionMeta:
     def test_default_schema_name(self):
         assert Person.meta_.schema_name == "person"
 

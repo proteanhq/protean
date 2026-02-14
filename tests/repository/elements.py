@@ -1,29 +1,19 @@
-from __future__ import annotations
-
 import re
-
-from typing import Annotated, ClassVar, List
-from uuid import uuid4
-
-from pydantic import Field
+from typing import List
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import invariant
 from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import ValueObject
+from protean.fields import Integer, String, ValueObject
 from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):
-    id: str = Field(
-        json_schema_extra={"identifier": True},
-        default_factory=lambda: str(uuid4()),
-    )
-    first_name: Annotated[str, Field(max_length=50)]
-    last_name: Annotated[str, Field(max_length=50)]
-    age: int = 21
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
 
 class PersonRepository(BaseRepository):
@@ -32,10 +22,10 @@ class PersonRepository(BaseRepository):
 
 
 class Email(BaseValueObject):
-    REGEXP: ClassVar[str] = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
+    REGEXP = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
 
     # This is the external facing data attribute
-    address: Annotated[str, Field(max_length=254)]
+    address = String(max_length=254, required=True)
 
     @invariant.post
     def validate_email_address(self):
@@ -45,9 +35,5 @@ class Email(BaseValueObject):
 
 
 class User(BaseAggregate):
-    id: str = Field(
-        json_schema_extra={"identifier": True},
-        default_factory=lambda: str(uuid4()),
-    )
     email = ValueObject(Email, required=True)
-    password: Annotated[str, Field(max_length=255)]
+    password = String(required=True, max_length=255)

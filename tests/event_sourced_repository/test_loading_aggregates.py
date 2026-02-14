@@ -4,49 +4,49 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.exceptions import ObjectNotFoundError
+from protean.fields import Identifier, String
+from protean.fields.basic import Boolean
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
 
 class Register(BaseCommand):
-    user_id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    user_id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class ChangeAddress(BaseCommand):
-    user_id: str | None = None
-    address: str | None = None
+    user_id = Identifier()
+    address = String()
 
 
 class Registered(BaseEvent):
-    user_id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    user_id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class AddressChanged(BaseEvent):
-    user_id: str | None = None
-    address: str | None = None
+    user_id = Identifier()
+    address = String()
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
-    address: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
+    password_hash = String()
+    address = String()
 
-    is_registered: bool | None = None
+    is_registered = Boolean()
 
     @classmethod
     def register(cls, command: Register) -> User:
@@ -67,7 +67,7 @@ class User(BaseAggregate):
 
         return user
 
-    def change_address(self, address: str) -> None:
+    def change_address(self, address: String) -> None:
         if address != self.address:
             self.address = address
             self.raise_(AddressChanged(user_id=self.user_id, address=address))

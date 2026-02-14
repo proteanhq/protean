@@ -12,6 +12,7 @@ import pytest
 from protean.core.entity import invariant
 from protean.domain import Domain
 from protean.exceptions import ValidationError
+from protean.fields import Identifier, Integer, String
 from protean.utils import clone_class
 from protean.utils import (
     _fix_function_class_cell,
@@ -39,12 +40,12 @@ class TestDomainServiceSuperWithDecorator:
 
         @domain.aggregate
         class Order:
-            customer_id: str
+            customer_id = Identifier(required=True)
 
         @domain.aggregate
         class Inventory:
-            product_id: str
-            quantity: int | None = None
+            product_id = Identifier(required=True)
+            quantity = Integer()
 
         @domain.domain_service(part_of=[Order, Inventory])
         class OrderPlacementService:
@@ -72,12 +73,12 @@ class TestDomainServiceSuperWithDecorator:
 
         @domain.aggregate
         class Order:
-            customer_id: str
+            customer_id = Identifier(required=True)
 
         @domain.aggregate
         class Inventory:
-            product_id: str
-            quantity: int | None = None
+            product_id = Identifier(required=True)
+            quantity = Integer()
 
         @domain.domain_service(part_of=[Order, Inventory])
         class place_order:
@@ -107,13 +108,13 @@ class TestInvariantAttributesPreserved:
 
         @domain.aggregate
         class Order:
-            customer_id: str
-            payment_id: str | None = None
+            customer_id = Identifier(required=True)
+            payment_id = Identifier()
 
         @domain.aggregate
         class Inventory:
-            product_id: str
-            quantity: int | None = None
+            product_id = Identifier(required=True)
+            quantity = Integer()
 
         @domain.domain_service(part_of=[Order, Inventory])
         class OrderPlacementService:
@@ -155,11 +156,11 @@ class TestMethodsWithoutSuperUnaffected:
 
         @domain.aggregate
         class Agg1:
-            name: str | None = None
+            name = String()
 
         @domain.aggregate
         class Agg2:
-            name: str | None = None
+            name = String()
 
         @domain.domain_service(part_of=[Agg1, Agg2])
         class SomeService:

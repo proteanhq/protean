@@ -2,13 +2,13 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany
+from protean.fields import Float, HasMany, Integer, String
 
 
 class OrderItem(BaseEntity):
-    product_id: str | None = None
-    quantity: int | None = None
-    price: float | None = None
+    product_id = String(max_length=50)
+    quantity = Integer()
+    price = Float()
 
 
 class Order(BaseAggregate):

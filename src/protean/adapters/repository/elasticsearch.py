@@ -20,7 +20,7 @@ from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, id_field
-from protean.core.value_object import _PydanticFieldShim
+from protean.core.value_object import _FieldShim
 
 logger = logging.getLogger(__name__)
 
@@ -501,7 +501,7 @@ class ESProvider(BaseProvider):
 
         for field_name, field_obj in entity_attributes.items():
             # Handle Pydantic field shims: check Python type
-            if isinstance(field_obj, _PydanticFieldShim):
+            if isinstance(field_obj, _FieldShim):
                 if field_obj.identifier:
                     continue
 

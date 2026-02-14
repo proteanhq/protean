@@ -1,8 +1,8 @@
-"""Tests for the new Pydantic-based BaseEntity.
+"""Tests for BaseEntity basics.
 
 Validates:
 - Creation with annotated fields
-- Field mutation with Pydantic validate_assignment
+- Field mutation with validate_assignment
 - _initialized flag lifecycle
 - _EntityState tracking (new/changed/persisted/destroyed)
 - Invariant pre/post checks
@@ -26,7 +26,7 @@ from protean.exceptions import NotSupportedError, ValidationError
 
 
 # ---------------------------------------------------------------------------
-# Test domain elements (Pydantic syntax)
+# Test domain elements
 # ---------------------------------------------------------------------------
 class Warehouse(BaseAggregate):
     id: str = Field(
@@ -84,7 +84,7 @@ def register_elements(test_domain):
 # ---------------------------------------------------------------------------
 # Tests: Structure
 # ---------------------------------------------------------------------------
-class TestPydanticEntityStructure:
+class TestEntityStructure:
     def test_base_entity_cannot_be_instantiated(self):
         with pytest.raises(NotSupportedError) as exc:
             BaseEntity()
@@ -108,7 +108,7 @@ class TestPydanticEntityStructure:
 # ---------------------------------------------------------------------------
 # Tests: Initialization
 # ---------------------------------------------------------------------------
-class TestPydanticEntityInitialization:
+class TestEntityInitialization:
     def test_successful_creation(self):
         product = Product(name="Widget", price=10.0, quantity=5)
         assert product.name == "Widget"
@@ -155,9 +155,9 @@ class TestPydanticEntityInitialization:
 # ---------------------------------------------------------------------------
 # Tests: Validation
 # ---------------------------------------------------------------------------
-class TestPydanticEntityValidation:
-    def test_pydantic_constraint_on_init(self):
-        """Pydantic Field(ge=0) prevents negative price at init."""
+class TestEntityValidation:
+    def test_field_constraint_on_init(self):
+        """Field(ge=0) prevents negative price at init."""
         with pytest.raises(ValidationError):
             Product(name="Widget", price=-1.0)
 
@@ -166,7 +166,7 @@ class TestPydanticEntityValidation:
             Product(name="X" * 51, price=10.0)
 
     def test_type_coercion_or_rejection(self):
-        """Pydantic rejects incompatible types."""
+        """Incompatible types are rejected."""
         with pytest.raises(ValidationError):
             Product(name="Widget", price="not_a_number")
 
@@ -180,7 +180,7 @@ class TestPydanticEntityValidation:
 # ---------------------------------------------------------------------------
 # Tests: Mutation
 # ---------------------------------------------------------------------------
-class TestPydanticEntityMutation:
+class TestEntityMutation:
     def test_mutate_field(self):
         product = Product(name="Widget", price=10.0)
         product.name = "Gadget"
@@ -217,7 +217,7 @@ class TestPydanticEntityMutation:
 # ---------------------------------------------------------------------------
 # Tests: State tracking
 # ---------------------------------------------------------------------------
-class TestPydanticEntityState:
+class TestEntityState:
     def test_new_entity_is_new(self):
         product = Product(name="Widget", price=10.0)
         assert product.state_.is_new is True
@@ -261,7 +261,7 @@ class TestPydanticEntityState:
 # ---------------------------------------------------------------------------
 # Tests: Identity-based equality
 # ---------------------------------------------------------------------------
-class TestPydanticEntityEquality:
+class TestEntityEquality:
     def test_same_id_equal(self):
         uid = str(uuid4())
         p1 = Product(id=uid, name="one", price=10.0)
@@ -291,7 +291,7 @@ class TestPydanticEntityEquality:
 # ---------------------------------------------------------------------------
 # Tests: Serialization
 # ---------------------------------------------------------------------------
-class TestPydanticEntitySerialization:
+class TestEntitySerialization:
     def test_to_dict(self):
         uid = str(uuid4())
         product = Product(id=uid, name="Widget", price=10.0, quantity=5)
@@ -330,7 +330,7 @@ class TestPydanticEntitySerialization:
 # ---------------------------------------------------------------------------
 # Tests: Invariant registration
 # ---------------------------------------------------------------------------
-class TestPydanticEntityInvariants:
+class TestEntityInvariants:
     def test_post_invariants_discovered(self):
         product = Product(name="Widget", price=10.0)
         assert "price_must_be_positive" in product._invariants.get("post", {})

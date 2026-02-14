@@ -1,21 +1,19 @@
 # Test that limit provided in Entity options is respected
 
-from datetime import date
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany
+from protean.fields import Date, Float, HasMany, Integer, String
 
 
 class Order(BaseAggregate):
-    ordered_on: date | None = None
+    ordered_on = Date()
     items = HasMany("OrderItem")
 
 
 class OrderItem(BaseEntity):
-    product_id: str | None = None
-    quantity: int | None = None
-    price: float | None = None
+    product_id = String(max_length=50)
+    quantity = Integer()
+    price = Float()
 
 
 def test_entity_query_limit_is_1000_by_default(test_domain):

@@ -1,9 +1,10 @@
 from protean import Domain
+from protean.fields import Boolean, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class User:
-    name: str
-    subscribed: bool = False
+    name = String(required=True)
+    subscribed = Boolean(default=False)

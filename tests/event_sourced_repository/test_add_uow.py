@@ -3,17 +3,19 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
+from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
 
 
 @pytest.fixture(autouse=True)
@@ -32,8 +34,8 @@ def test_that_method_is_enclosed_in_uow(mock_commit, mock_start, test_domain):
     mock_parent.attach_mock(mock_commit, "m2")
 
     with test_domain.domain_context():
-        user = User(id="1", email="john.doe@example.com", name="John Doe")
-        user.raise_(Registered(id="1", email="john.doe@example.com", name="John Doe"))
+        user = User(id=1, email="john.doe@example.com", name="John Doe")
+        user.raise_(Registered(id=1, email="john.doe@example.com", name="John Doe"))
         test_domain.repository_for(User).add(user)
 
     mock_parent.assert_has_calls(

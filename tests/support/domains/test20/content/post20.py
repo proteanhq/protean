@@ -1,19 +1,19 @@
 from datetime import datetime
 
-from protean.fields import HasMany, Reference
+from protean.fields import DateTime, HasMany, Reference, String
 
 from ..publishing20 import publishing
 
 
 @publishing.aggregate
 class Post:
-    title: str | None = None
-    created_on: datetime | None = None
+    title = String(max_length=50)
+    created_on = DateTime(default=datetime.now)
 
     comments = HasMany("Comment")
 
 
 @publishing.entity(part_of=Post)
 class Comment:
-    content: str | None = None
+    content = String(max_length=500)
     post = Reference(Post)

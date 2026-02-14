@@ -9,6 +9,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
+from protean.fields import String, Integer
 from protean.server import Engine
 from protean.server.outbox_processor import OutboxProcessor
 from protean.utils.outbox import Outbox, OutboxStatus
@@ -32,8 +33,8 @@ class MockEngine:
 class DummyAggregate(BaseAggregate):
     """Test aggregate for outbox testing"""
 
-    name: str
-    count: int = 0
+    name = String(max_length=50, required=True)
+    count = Integer(default=0)
 
     def increment(self):
         self.count += 1
@@ -43,9 +44,9 @@ class DummyAggregate(BaseAggregate):
 class DummyEvent(BaseEvent):
     """Test event for outbox testing"""
 
-    aggregate_id: str
-    name: str
-    count: int
+    aggregate_id = String(required=True)
+    name = String(required=True)
+    count = Integer(required=True)
 
 
 @pytest.fixture

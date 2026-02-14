@@ -6,23 +6,23 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
-from protean.fields import HasMany, Reference, ValueObject
+from protean.fields import DateTime, Dict, HasMany, Reference, Text, ValueObject
 
 
 class Comment(BaseEntity):
-    content: str | None = None
-    added_on: datetime | None = None
+    content = Text()
+    added_on = DateTime()
 
     post = Reference("Post")
 
 
 class Post(BaseAggregate):
-    content: str
+    content = Text(required=True)
     comments = HasMany(Comment)
 
 
 class Permission(BaseValueObject):
-    dict_object: dict | None = None
+    dict_object = Dict()
 
 
 class Audit(BaseAggregate):

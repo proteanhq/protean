@@ -5,18 +5,20 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.exceptions import IncorrectUsageError
-from pydantic import Field
+from protean.fields import String
+from protean.fields.basic import Identifier
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 def test_command_submission_without_aggregate(test_domain):

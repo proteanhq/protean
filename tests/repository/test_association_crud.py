@@ -1,4 +1,4 @@
-"""Tests for association persistence with Pydantic-based entities.
+"""Tests for association persistence.
 
 Full CRUD lifecycle through memory repository for aggregates with
 HasMany, HasOne, and ValueObject associations.
@@ -31,12 +31,8 @@ class Invoice(BaseAggregate):
         default_factory=lambda: str(uuid4()),
     )
     number: str = ""
-    line_items = HasMany(
-        "tests.repository.test_pydantic_association_persistence.LineItem"
-    )
-    billing = HasOne(
-        "tests.repository.test_pydantic_association_persistence.BillingInfo"
-    )
+    line_items = HasMany("tests.repository.test_association_crud.LineItem")
+    billing = HasOne("tests.repository.test_association_crud.BillingInfo")
     shipping_address = ValueObject(Address)
 
 
@@ -47,9 +43,7 @@ class LineItem(BaseEntity):
     )
     description: str = ""
     amount: float = 0.0
-    invoice = Reference(
-        "tests.repository.test_pydantic_association_persistence.Invoice"
-    )
+    invoice = Reference("tests.repository.test_association_crud.Invoice")
 
 
 class BillingInfo(BaseEntity):
@@ -58,9 +52,7 @@ class BillingInfo(BaseEntity):
         default_factory=lambda: str(uuid4()),
     )
     method: str = "credit_card"
-    invoice = Reference(
-        "tests.repository.test_pydantic_association_persistence.Invoice"
-    )
+    invoice = Reference("tests.repository.test_association_crud.Invoice")
 
 
 # ---------------------------------------------------------------------------

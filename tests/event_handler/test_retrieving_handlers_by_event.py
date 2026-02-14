@@ -1,46 +1,45 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import DateTime, Identifier, String
 from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class Email(BaseAggregate):
-    email: str | None = None
-    sent_at: datetime | None = None
+    email = String()
+    sent_at = DateTime()
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class Activated(BaseEvent):
-    id: str | None = None
-    activated_at: datetime | None = None
+    id = Identifier()
+    activated_at = DateTime()
 
 
 class Renamed(BaseEvent):
-    id: str | None = None
-    name: str | None = None
+    id = Identifier()
+    name = String()
 
 
 class Sent(BaseEvent):
-    email: str | None = None
-    sent_at: datetime | None = None
+    email = String()
+    sent_at = DateTime()
 
 
 class UserEventHandler(BaseEventHandler):

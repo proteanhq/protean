@@ -1,6 +1,5 @@
 from protean.domain import Domain
-from typing import Annotated
-from pydantic import Field
+from protean.fields import List, String
 
 domain = Domain(__name__)
 
@@ -11,5 +10,5 @@ def standard_topics():
 
 @domain.aggregate
 class Adult:
-    name: Annotated[str, Field(max_length=255)] | None = None
-    topics: list = standard_topics
+    name = String(max_length=255)
+    topics = List(default=standard_topics)

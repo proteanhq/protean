@@ -3,15 +3,16 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.fields import String, Text
 from protean.utils import fully_qualified_name
 
 
 class Person(BaseAggregate):
-    name: str | None = None
+    name = String()
 
 
 class PersonModel(BaseDatabaseModel):
-    name: str | None = None
+    name = Text()
 
 
 class TestDatabaseModelInitialization:

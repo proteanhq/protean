@@ -2,11 +2,12 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate, element_to_fact_event
 from protean.core.event import BaseEvent
+from protean.fields import String
 from protean.utils.reflection import declared_fields
 
 
 class University(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
 
 
 @pytest.fixture(autouse=True)

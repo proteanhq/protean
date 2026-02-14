@@ -1,9 +1,7 @@
 from enum import Enum
 
 from protean import Domain
-from datetime import date
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Boolean, Date, Float, Integer, List, String, Text
 
 domain = Domain()
 
@@ -25,16 +23,16 @@ class Genre(Enum):
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Book:
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    isbn: Annotated[str, Field(max_length=13)] | None = None
-    price: float | None = None
-    description: str | None = None
-    publication_date: date | None = None
-    page_count: int | None = None
-    in_print: bool = True
-    genre: Annotated[Genre, Field(max_length=20)] | None = None
-    tags: list[str] = []
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    isbn = String(max_length=13)
+    price = Float()
+    description = Text()
+    publication_date = Date()
+    page_count = Integer()
+    in_print = Boolean(default=True)
+    genre = String(max_length=20, choices=Genre)
+    tags = List(content_type=String)
 
 
 # --8<-- [end:aggregate]

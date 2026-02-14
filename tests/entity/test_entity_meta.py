@@ -1,5 +1,6 @@
 import pytest
 
+from protean.core.value_object import _FieldShim
 from protean.utils.container import Options
 from protean.utils.reflection import attributes, declared_fields
 
@@ -50,11 +51,12 @@ class TestEntityMeta:
             for key in ["age", "first_name", "id", "last_name"]
         )
 
-    def test_entity_declared_fields_hold_correct_field_names(self):
-        assert declared_fields(Person)["first_name"].field_name == "first_name"
-        assert declared_fields(Person)["last_name"].field_name == "last_name"
-        assert declared_fields(Person)["age"].field_name == "age"
-        assert declared_fields(Person)["id"].field_name == "id"
+    def test_entity_declared_fields_hold_correct_field_types(self):
+        assert isinstance(declared_fields(Person)["first_name"], _FieldShim)
+        assert isinstance(declared_fields(Person)["last_name"], _FieldShim)
+        assert isinstance(declared_fields(Person)["age"], _FieldShim)
+        assert isinstance(declared_fields(Person)["id"], _FieldShim)
+        assert declared_fields(Person)["id"].identifier is True
 
     def test_default_and_overridden_abstract_flags(self):
         # Entity is not abstract by default
@@ -82,10 +84,10 @@ class TestEntityMeta:
 
     def test_entity_meta_has_attributes_on_construction(self):
         assert list(attributes(Person).keys()) == [
-            "id",
             "first_name",
             "last_name",
             "age",
+            "id",
             "account_id",
         ]
         assert list(attributes(PersonAutoSSN).keys()) == [
@@ -96,10 +98,10 @@ class TestEntityMeta:
             "account_id",
         ]
         assert list(attributes(Relative).keys()) == [
-            "id",
             "first_name",
             "last_name",
             "age",
+            "id",
             "account_id",
         ]  # `relative_of` is ignored
 

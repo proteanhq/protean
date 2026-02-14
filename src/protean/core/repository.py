@@ -144,8 +144,9 @@ class BaseRepository(Element, OptionsMixin):
             if item.element_type == DomainObjects.AGGREGATE and item.meta_.fact_events:
                 payload = item.to_dict()
 
-                # Remove state attribute from the payload, as it is not needed for the Fact Event
+                # Remove internal attributes from the payload, as they are not needed for the Fact Event
                 payload.pop("state_", None)
+                payload.pop("_version", None)
 
                 # Construct and raise the Fact Event
                 fact_event = item._fact_event_cls(**payload)

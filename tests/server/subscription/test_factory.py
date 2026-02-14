@@ -11,6 +11,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.server.subscription.factory import SubscriptionFactory
@@ -21,19 +22,19 @@ from protean.utils.mixins import handle
 
 # Test domain elements
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class UserRegistered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
 
 
 class RegisterUser(BaseCommand):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 def dummy(*args):

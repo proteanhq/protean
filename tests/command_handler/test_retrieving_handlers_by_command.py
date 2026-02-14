@@ -1,34 +1,31 @@
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import ConfigurationError, NotSupportedError
+from protean.fields import Identifier, String, Text
 from protean.utils.mixins import handle
 
 
 class UnknownCommand(BaseCommand):
-    foo: str | None = None
+    foo = String()
 
 
 class User(BaseAggregate):
-    user_id: str = Field(
-        json_schema_extra={"identifier": True}
-    )  # FIXME Auto-associate ID
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)  # FIXME Auto-associate ID
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    user_id: str | None = None
-    email: str | None = None
+    user_id = Identifier()
+    email = String()
 
 
 class ChangeAddress(BaseCommand):
-    user_id: str | None = None
-    full_address: str | None = None
+    user_id = Identifier()
+    full_address = String()
 
 
 class UserCommandHandlers(BaseCommandHandler):
@@ -44,14 +41,14 @@ class AdminUserCommandHandlers(BaseCommandHandler):
 
 
 class Post(BaseAggregate):
-    topic: str | None = None
-    content: str | None = None
+    topic = String()
+    content = Text()
 
 
 class Create(BaseCommand):
-    id: str | None = None
-    topic: str | None = None
-    content: str | None = None
+    id = Identifier()
+    topic = String()
+    content = Text()
 
 
 class PostCommandHandler(BaseCommandHandler):

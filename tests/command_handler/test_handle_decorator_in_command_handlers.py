@@ -4,22 +4,23 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import NotSupportedError
+from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    user_id: str | None = None
-    email: str | None = None
+    user_id = Identifier()
+    email = String()
 
 
 class ChangeAddress(BaseCommand):
-    user_id: str | None = None
-    full_address: str | None = None
+    user_id = Identifier()
+    full_address = String()
 
 
 def test_that_a_handler_is_recorded_against_command_handler(test_domain):

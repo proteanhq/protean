@@ -7,6 +7,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
+from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
@@ -24,9 +25,9 @@ broker_counter = 0
 
 # Event-based test classes
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    email = String()
+    name = String()
+    password_hash = String()
 
     def register(self, event_cls=None):
         """Register user and raise appropriate event."""
@@ -46,23 +47,23 @@ class User(BaseAggregate):
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class SyncRegistered(BaseEvent):
     """Registered event that will be processed synchronously"""
 
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
 
 
 class EmailSent(BaseEvent):
-    id: str | None = None
-    email: str | None = None
+    id = Identifier()
+    email = String()
 
 
 # Event handlers

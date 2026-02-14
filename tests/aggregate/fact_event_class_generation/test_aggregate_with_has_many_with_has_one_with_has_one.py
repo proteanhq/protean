@@ -4,30 +4,30 @@ from protean.core.aggregate import BaseAggregate, element_to_fact_event
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
-from protean.fields import HasMany, HasOne, ValueObject
+from protean.fields import HasMany, HasOne, Integer, String, ValueObject
 from protean.fields.basic import ValueObjectList
 from protean.utils.reflection import declared_fields
 
 
 class University(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
     departments = HasMany("Department")
 
 
 class Department(BaseEntity):
-    name: str | None = None
+    name = String(max_length=50)
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name: str | None = None
-    age: int | None = None
+    name = String(max_length=50)
+    age = Integer(min_value=21)
     office = HasOne("Office")
 
 
 class Office(BaseEntity):
-    building: str | None = None
-    room: int | None = None
+    building = String(max_length=25)
+    room = Integer(min_value=1)
 
 
 @pytest.fixture(autouse=True)

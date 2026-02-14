@@ -3,17 +3,18 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.fields import Identifier, String
 from protean.utils import fully_qualified_name
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    user_id: str | None = None
-    email: str | None = None
+    user_id = Identifier()
+    email = String()
 
 
 def test_registering_an_command_handler_manually(test_domain):

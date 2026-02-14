@@ -1,30 +1,28 @@
-from datetime import date
-
 import pytest
 
 from protean.core.aggregate import BaseAggregate, element_to_fact_event
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
-from protean.fields import HasMany, ValueObject
+from protean.fields import Date, HasMany, String, ValueObject
 from protean.fields.basic import ValueObjectList
 from protean.utils.reflection import declared_fields
 
 
 class Customer(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
     orders = HasMany("Order")
     addresses = HasMany("Address")
 
 
 class Order(BaseEntity):
-    ordered_on: date | None = None
+    ordered_on = Date()
 
 
 class Address(BaseEntity):
-    street: str | None = None
-    city: str | None = None
-    state: str | None = None
-    zip_code: str | None = None
+    street = String(max_length=50)
+    city = String(max_length=50)
+    state = String(max_length=50)
+    zip_code = String(max_length=10)
 
 
 @pytest.fixture(autouse=True)

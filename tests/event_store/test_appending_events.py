@@ -6,16 +6,16 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from pydantic import Field
+from protean.fields.basic import Identifier
 from protean.utils.eventing import Message
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
+    user_id = Identifier(identifier=True)
 
 
 class UserLoggedIn(BaseEvent):
-    user_id: str = Field(json_schema_extra={"identifier": True})
+    user_id = Identifier(identifier=True)
 
 
 @pytest.mark.eventstore

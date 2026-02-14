@@ -3,21 +3,20 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
-from protean.fields import HasOne, ValueObject
-from protean.fields.basic import ValueObjectList
+from protean.fields import HasOne, List, String, ValueObject
 
 
 class Address(BaseValueObject):
-    street: str | None = None
-    city: str | None = None
-    state: str | None = None
-    country: str | None = None
+    street = String(max_length=100)
+    city = String(max_length=25)
+    state = String(max_length=25)
+    country = String(max_length=25)
 
 
 class Customer(BaseEntity):
-    name: str
-    email: str
-    addresses = ValueObjectList(content_type=ValueObject(Address))
+    name = String(max_length=50, required=True)
+    email = String(max_length=254, required=True)
+    addresses = List(content_type=ValueObject(Address))
 
 
 # Aggregate that encloses Customer Entity

@@ -1,4 +1,4 @@
-"""Tests for ValueObject embedding in Pydantic-based BaseEntity / BaseAggregate.
+"""Tests for ValueObject embedding in BaseEntity / BaseAggregate.
 
 Validates:
 - VO assignment and access
@@ -64,7 +64,7 @@ class TestVOFieldsBridge:
         assert "billing_address" in cf
         assert isinstance(cf["billing_address"], ValueObject)
 
-    def test_pydantic_fields_coexist(self):
+    def test_annotated_fields_coexist(self):
         cf = getattr(Customer, _FIELDS, {})
         assert "id" in cf
         assert "name" in cf
@@ -155,7 +155,7 @@ class TestVOSerialization:
         # ValueObject field should not appear when None
         assert "billing_address" not in d
 
-    def test_to_dict_pydantic_fields_included(self):
+    def test_to_dict_annotated_fields_included(self):
         customer = Customer(name="Alice")
         d = customer.to_dict()
 

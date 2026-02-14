@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
-from protean.fields import HasOne
+from protean.fields import HasOne, Identifier, String
 from protean.utils.globals import current_domain
 
 
@@ -16,7 +16,7 @@ class UserStatus(Enum):
 
 
 class Account(BaseEntity):
-    password_hash: str | None = None
+    password_hash = String(max_length=512)
 
     def change_password(self, password):
         self.password_hash = password
@@ -24,14 +24,14 @@ class Account(BaseEntity):
 
 
 class PasswordChanged(BaseEvent):
-    account_id: str
-    user_id: str
+    account_id = Identifier(required=True)
+    user_id = Identifier(required=True)
 
 
 class User(BaseAggregate):
-    name: str
-    email: str
-    status: UserStatus | None = None
+    name = String(max_length=50, required=True)
+    email = String(required=True)
+    status = String(choices=UserStatus)
 
     account = HasOne(Account)
 
@@ -43,12 +43,12 @@ class User(BaseAggregate):
 
 
 class UserActivated(BaseEvent):
-    user_id: str
+    user_id = Identifier(required=True)
 
 
 class UserRenamed(BaseEvent):
-    user_id: str
-    name: str
+    user_id = Identifier(required=True)
+    name = String(required=True, max_length=50)
 
 
 @pytest.fixture(autouse=True)

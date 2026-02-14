@@ -8,7 +8,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.command import BaseCommand
 from protean.exceptions import DeserializationError
-
+from protean.fields import Identifier, String
 from protean.utils.eventing import (
     Message,
     MessageEnvelope,
@@ -18,31 +18,30 @@ from protean.utils.eventing import (
     EventStoreMeta,
     MessageType,
 )
-from pydantic import Field
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class UnregisteredCommand(BaseCommand):
     """Command that won't be registered with domain."""
 
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    data: str | None = None
+    id = Identifier(identifier=True)
+    data = String()
 
 
 @pytest.fixture(autouse=True)
@@ -437,9 +436,9 @@ class TestMessageFromDomainObjectEdgeCases:
         """Test that fact events don't get expected_version set."""
 
         class UserFactEvent(BaseEvent):
-            id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-            email: str | None = None
-            name: str | None = None
+            id = Identifier(identifier=True)
+            email = String()
+            name = String()
 
         # Register the fact event
         test_domain.register(UserFactEvent, part_of=User)

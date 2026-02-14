@@ -1,20 +1,21 @@
 import pytest
 
 from protean.core.value_object import BaseValueObject
+from protean.fields import String, ValueObject
 from protean.utils.reflection import fields
 
 
 class Address(BaseValueObject):
-    street: str | None = None
-    city: str | None = None
-    state: str | None = None
-    zip_code: str | None = None
+    street = String(max_length=50)
+    city = String(max_length=25)
+    state = String(max_length=25)
+    zip_code = String(max_length=10)
 
 
 class Contact(BaseValueObject):
-    email: str | None = None
-    phone_number: str | None = None
-    address: Address | None = None
+    email = String(max_length=255)
+    phone_number = String(max_length=255)
+    address = ValueObject(Address)
 
 
 @pytest.fixture(autouse=True)
@@ -24,7 +25,7 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_contact_has_address_field():
+def test_contact_has_address_vo():
     assert "address" in fields(Contact)
 
 

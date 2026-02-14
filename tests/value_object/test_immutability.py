@@ -2,21 +2,21 @@ import pytest
 
 from protean import Domain
 from protean.exceptions import IncorrectUsageError
-from protean.fields import ValueObject
+from protean.fields import Float, String, ValueObject
 
 domain = Domain(__name__)
 
 
 @domain.value_object
 class Balance:
-    currency: str
-    amount: float
+    currency = String(max_length=3, required=True)
+    amount = Float(required=True)
 
 
 @domain.aggregate
 class Account:
     balance = ValueObject(Balance)
-    name: str | None = None
+    name = String(max_length=30)
 
 
 def test_value_objects_are_immutable():

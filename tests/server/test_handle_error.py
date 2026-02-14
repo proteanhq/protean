@@ -8,6 +8,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
+from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import Processing
 from protean.utils.eventing import Message
@@ -35,22 +36,22 @@ def reset_counters():
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class Register(BaseCommand):
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class NormalEventHandler(BaseEventHandler):

@@ -1,14 +1,14 @@
-"""Tests for Pydantic-based BaseEmail.
+"""Tests for BaseEmail basics.
 
 Validates:
 - Direct BaseEmail instantiation
-- Subclassing with Pydantic syntax
+- Subclassing with annotated syntax
 - defaults() coercion (string → list)
 - recipients property
 - to_dict() serialization
 - extra="forbid" enforcement
 - Class-level constants (unannotated) coexistence
-- __container_fields__ bridge with _PydanticFieldShim
+- __container_fields__ bridge
 - WelcomeEmail custom __init__ pattern
 - Domain registration
 """
@@ -26,10 +26,10 @@ from protean.utils.reflection import _FIELDS
 
 
 # ---------------------------------------------------------------------------
-# Test domain elements (Pydantic syntax)
+# Test domain elements
 # ---------------------------------------------------------------------------
 class NotificationEmail(BaseEmail):
-    """A simple Pydantic-syntax email with no custom __init__."""
+    """A simple email with no custom __init__."""
 
     pass
 
@@ -53,7 +53,7 @@ class WelcomeEmail(BaseEmail):
 # ---------------------------------------------------------------------------
 # Tests: Basic Functionality
 # ---------------------------------------------------------------------------
-class TestPydanticEmailBasics:
+class TestEmailBasics:
     def test_base_email_can_be_instantiated(self):
         email = BaseEmail()
         assert email is not None
@@ -87,7 +87,7 @@ class TestPydanticEmailBasics:
 # ---------------------------------------------------------------------------
 # Tests: defaults() Coercion
 # ---------------------------------------------------------------------------
-class TestPydanticEmailDefaults:
+class TestEmailDefaults:
     def test_string_to_converted_to_list(self):
         email = NotificationEmail(to="single@email.com")
         assert email.to == ["single@email.com"]
@@ -120,7 +120,7 @@ class TestPydanticEmailDefaults:
 # ---------------------------------------------------------------------------
 # Tests: recipients Property
 # ---------------------------------------------------------------------------
-class TestPydanticEmailRecipients:
+class TestEmailRecipients:
     def test_recipients_combines_to_cc_bcc(self):
         email = NotificationEmail(to=["a@b.com"], cc=["c@d.com"], bcc=["e@f.com"])
         assert set(email.recipients) == {"a@b.com", "c@d.com", "e@f.com"}
@@ -137,7 +137,7 @@ class TestPydanticEmailRecipients:
 # ---------------------------------------------------------------------------
 # Tests: Serialization
 # ---------------------------------------------------------------------------
-class TestPydanticEmailSerialization:
+class TestEmailSerialization:
     def test_to_dict(self):
         email = NotificationEmail(
             subject="Hello", to=["a@b.com"], from_email="sender@b.com"
@@ -185,7 +185,7 @@ class TestPydanticEmailSerialization:
 # ---------------------------------------------------------------------------
 # Tests: Class-level Constants
 # ---------------------------------------------------------------------------
-class TestPydanticEmailClassConstants:
+class TestEmailClassConstants:
     def test_unannotated_string_constants_preserved(self):
         assert WelcomeEmail.SUBJECT == "Welcome!"
         assert WelcomeEmail.TEMPLATE == "Hi %NAME%, welcome!"
@@ -198,7 +198,7 @@ class TestPydanticEmailClassConstants:
 # ---------------------------------------------------------------------------
 # Tests: WelcomeEmail Pattern (custom __init__ + super())
 # ---------------------------------------------------------------------------
-class TestPydanticEmailWelcomePattern:
+class TestEmailWelcomePattern:
     def test_welcome_email_instantiation(self):
         email = WelcomeEmail(to=["john@example.com"], data={"name": "John"})
         assert email.subject == "Welcome!"
@@ -222,7 +222,7 @@ class TestPydanticEmailWelcomePattern:
 # ---------------------------------------------------------------------------
 # Tests: __container_fields__ Bridge
 # ---------------------------------------------------------------------------
-class TestPydanticEmailFieldsBridge:
+class TestEmailFieldsBridge:
     def test_container_fields_populated(self):
         cf = getattr(NotificationEmail, _FIELDS, {})
         assert len(cf) > 0
@@ -250,8 +250,8 @@ class TestPydanticEmailFieldsBridge:
 # ---------------------------------------------------------------------------
 # Tests: Domain Registration
 # ---------------------------------------------------------------------------
-class TestPydanticEmailRegistration:
-    def test_register_pydantic_email(self, test_domain):
+class TestEmailRegistration:
+    def test_register_email(self, test_domain):
         test_domain.register(NotificationEmail)
         assert fully_qualified_name(NotificationEmail) in test_domain.registry.emails
 
