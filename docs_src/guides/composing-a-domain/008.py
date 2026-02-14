@@ -1,29 +1,28 @@
 from protean import Domain, handle
-from protean.fields import Identifier, String
 
 domain = Domain()
 
 
-@domain.event_sourced_aggregate
+@domain.aggregate(is_event_sourced=True)
 class User:
-    id = Identifier()
-    email = String()
-    name = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 @domain.command(part_of=User)
 class Register:
-    user_id = Identifier()
-    email = String()
+    user_id: str | None = None
+    email: str | None = None
 
 
 @domain.command(part_of=User)
 class ChangePassword:
-    old_password_hash = String()
-    new_password_hash = String()
+    old_password_hash: str | None = None
+    new_password_hash: str | None = None
 
 
-@domain.command_handler
+@domain.command_handler(part_of=User)
 class UserCommandHandlers:
     @handle(Register)
     def register(self, command: Register) -> None:

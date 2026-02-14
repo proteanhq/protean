@@ -1,8 +1,9 @@
 """Example projection for read models."""
 
 from datetime import datetime
+from typing import Annotated
 
-from protean.fields import DateTime, Identifier, Integer, String
+from pydantic import Field
 
 from {{ package_name }}.domain import {{ domain_name }}
 
@@ -11,15 +12,15 @@ from {{ package_name }}.domain import {{ domain_name }}
 class ExampleSummary:
     """Read-optimized projection of Example aggregates."""
 
-    example_id = Identifier(required=True)
-    name = String(required=True, max_length=100)
-    status = String(required=True)
-    created_at = DateTime(required=True)
-    updated_at = DateTime(required=True)
+    example_id: str
+    name: Annotated[str, Field(max_length=100)]
+    status: str
+    created_at: datetime
+    updated_at: datetime
 
     # Computed/denormalized fields for fast querying
-    days_since_creation = Integer()
-    is_active = Integer()  # 1 or 0 for efficient filtering
+    days_since_creation: int | None = None
+    is_active: int | None = None  # 1 or 0 for efficient filtering
 
     class Meta:
         # Customize projection behavior

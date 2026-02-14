@@ -1,10 +1,11 @@
 from protean import Domain
-from protean.fields import String, Text
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate
 class Book:
-    title = String(max_length=255)
-    content = Text(required=True)
+    title: Annotated[str, Field(max_length=255)] | None = None
+    content: str

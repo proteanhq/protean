@@ -1,6 +1,8 @@
 """Commands for the Example aggregate."""
 
-from protean.fields import Identifier, String
+from typing import Annotated
+
+from pydantic import Field
 
 from {{ package_name }}.domain import {{ domain_name }}
 
@@ -9,19 +11,19 @@ from {{ package_name }}.domain import {{ domain_name }}
 class CreateExample:
     """Command to create a new Example."""
 
-    name = String(required=True, max_length=100)
-    description = String(max_length=500)
+    name: Annotated[str, Field(max_length=100)]
+    description: Annotated[str, Field(max_length=500)] | None = None
 
 
 @{{ domain_name }}.command(part_of="Example")
 class ActivateExample:
     """Command to activate an Example."""
 
-    example_id = Identifier(required=True)
+    example_id: str
 
 
 @{{ domain_name }}.command(part_of="Example")
 class ArchiveExample:
     """Command to archive an Example."""
 
-    example_id = Identifier(required=True)
+    example_id: str

@@ -10,7 +10,7 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import Integer, List, ValueObject
+from protean.fields import ValueObject
 
 
 class Person(BaseAggregate):
@@ -59,9 +59,9 @@ class Receiver(BaseAggregate):
 
 class ListUser(BaseAggregate):
     email: str
-    roles = List()  # Defaulted to String Content Type
+    roles: list[str] = []
 
 
 class IntegerListUser(BaseAggregate):
     email: str
-    roles = List(content_type=Integer)
+    roles: list[int] = []

@@ -1,10 +1,11 @@
 from protean import Domain
-from protean.fields import List, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate
 class User:
-    email = String(max_length=255, required=True, unique=True)
-    roles = List()
+    email: Annotated[str, Field(max_length=255, json_schema_extra={"unique": True})]
+    roles: list = []

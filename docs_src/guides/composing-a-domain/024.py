@@ -1,7 +1,7 @@
 import time
 
 from protean import Domain
-from protean.fields import Auto, String
+from pydantic import Field
 
 domain = Domain()
 
@@ -12,10 +12,10 @@ def gen_id():  # (1)
 
 @domain.aggregate
 class User:
-    user_id = Auto(
-        identifier=True,
-        identity_strategy="function",  # (2)
+    user_id: str = Field(
+        json_schema_extra={"identifier": True},
+        identity_strategy="function",
         identity_function=gen_id,
         identity_type="integer",
     )
-    name = String(required=True)
+    name: str

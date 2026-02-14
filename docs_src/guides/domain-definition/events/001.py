@@ -1,7 +1,8 @@
 from enum import Enum
 
 from protean import Domain
-from protean.fields import Identifier, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain(name="Authentication")
 
@@ -13,20 +14,20 @@ class UserStatus(Enum):
 
 @domain.event(part_of="User")
 class UserActivated:
-    user_id = Identifier(required=True)
+    user_id: str
 
 
 @domain.event(part_of="User")
 class UserRenamed:
-    user_id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    user_id: str
+    name: Annotated[str, Field(max_length=50)]
 
 
 @domain.aggregate
 class User:
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=UserStatus)
+    name: Annotated[str, Field(max_length=50)]
+    email: str
+    status: UserStatus | None = None
 
     def activate(self) -> None:
         self.status = UserStatus.ACTIVE.value

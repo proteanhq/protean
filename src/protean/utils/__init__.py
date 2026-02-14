@@ -249,28 +249,6 @@ def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
                 pass
 
 
-def _has_legacy_data_fields(cls: type) -> bool:
-    """Check if a class uses legacy data field descriptors (String, Integer, etc.).
-
-    Returns True if the class has any attribute that is an instance of
-    ``protean.fields.base.Field`` but is NOT a Reference or ValueObject
-    (which are dual-compatible with both legacy and Pydantic classes).
-
-    Association descriptors (HasMany, HasOne) inherit from ``Association``,
-    not ``Field``, and are excluded automatically.
-    """
-    from protean.fields.association import Reference
-    from protean.fields.base import Field as LegacyDataField
-    from protean.fields.embedded import ValueObject
-
-    for attr in cls.__dict__.values():
-        if isinstance(attr, LegacyDataField) and not isinstance(
-            attr, (Reference, ValueObject)
-        ):
-            return True
-    return False
-
-
 def _prepare_pydantic_namespace(
     new_dict: dict,
     base_cls: type,
@@ -557,7 +535,6 @@ def clone_class(cls: Element, new_name: str) -> Type[Element]:
 
 
 __all__ = [
-    "_has_legacy_data_fields",
     "Cache",
     "convert_str_values_to_list",
     "Database",

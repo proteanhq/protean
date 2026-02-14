@@ -1,7 +1,6 @@
 import pytest
 
-from protean.core.value_object import BaseValueObject, _LegacyBaseValueObject
-from protean.fields import String, ValueObject
+from protean.core.value_object import BaseValueObject
 from protean.utils.reflection import fields
 
 
@@ -12,12 +11,10 @@ class Address(BaseValueObject):
     zip_code: str | None = None
 
 
-# Contact uses _LegacyBaseValueObject because the Pydantic-based BaseValueObject
-# does not yet support ValueObject descriptors (VO-in-VO embedding).
-class Contact(_LegacyBaseValueObject):
-    email = String(max_length=255)
-    phone_number = String(max_length=255)
-    address = ValueObject(Address)
+class Contact(BaseValueObject):
+    email: str | None = None
+    phone_number: str | None = None
+    address: Address | None = None
 
 
 @pytest.fixture(autouse=True)
@@ -27,9 +24,8 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_contact_has_address_vo():
-    assert isinstance(fields(Contact)["address"], ValueObject)
-    assert hasattr(Contact, "address")
+def test_contact_has_address_field():
+    assert "address" in fields(Contact)
 
 
 def test_outer_vo_initialization():
@@ -46,17 +42,19 @@ def test_outer_vo_initialization():
     assert contact.address == Address(
         street="123 Main Street", city="Anytown", state="CA", zip_code="12345"
     )
-    assert contact.address_street == "123 Main Street"
+    assert contact.address.street == "123 Main Street"
 
 
-def test_vo_initialization_with_attributes():
+def test_vo_initialization_with_nested_dict():
     contact = Contact(
         email="john.doe@example.com",
         phone_number="123-456-7890",
-        address_street="123 Main Street",
-        address_city="Anytown",
-        address_state="CA",
-        address_zip_code="12345",
+        address={
+            "street": "123 Main Street",
+            "city": "Anytown",
+            "state": "CA",
+            "zip_code": "12345",
+        },
     )
 
     assert contact is not None

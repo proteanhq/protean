@@ -21,7 +21,6 @@ from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, id_field
 from protean.core.value_object import _PydanticFieldShim
-from protean.fields import Integer, Float, Boolean, DateTime, Date, Auto, Identifier
 
 logger = logging.getLogger(__name__)
 
@@ -523,20 +522,9 @@ class ESProvider(BaseProvider):
                 keyword_fields.add(field_name)
                 continue
 
-            # Legacy field path
-            # Numeric and date fields should not use .keyword subfield
-            # They are mapped as their native types (long, double, date) in Elasticsearch
-            numeric_and_date_types = (Integer, Float, Boolean, DateTime, Date)
-            if isinstance(field_obj, numeric_and_date_types):
+            # Non-shim fields (association descriptors etc.) — skip for keyword
+            if getattr(field_obj, "identifier", False):
                 continue
-
-            # Identifier fields are explicitly mapped as keyword type, so don't need .keyword suffix
-            if isinstance(field_obj, (Auto, Identifier)) or getattr(
-                field_obj, "identifier", False
-            ):
-                continue
-
-            # All other fields (String, Text, etc.) should use .keyword for exact matching
             keyword_fields.add(field_name)
 
         return keyword_fields

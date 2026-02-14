@@ -20,10 +20,8 @@ from protean.exceptions import (
     InvalidDataError,
     DeserializationError,
 )
-from protean.fields import Dict, ValueObject
-from protean.fields.association import Association, Reference
-from protean.utils.container import BaseContainer, OptionsMixin
-from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, declared_fields, fields
+from protean.utils.container import OptionsMixin
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 from protean.utils.globals import current_domain
 
 if TYPE_CHECKING:
@@ -172,117 +170,8 @@ class Metadata(BaseValueObject):
     event_store: EventStoreMeta | None = None
 
 
-class _LegacyBaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
-    """Legacy base class inherited by Event and Command element classes.
-
-    Core functionality associated with message type structures, like timestamping, are specified
-    as part of this base class.
-    """
-
-    # Track Metadata
-    _metadata = ValueObject(Metadata)
-
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
-
-        if not subclass.meta_.abstract:
-            subclass.__track_id_field()
-
-        # Use explicit version if specified, else default to "v1"
-        if not hasattr(subclass, "__version__"):
-            setattr(subclass, "__version__", "v1")
-
-        subclass.__validate_for_basic_field_types()
-
-    @classmethod
-    def __validate_for_basic_field_types(subclass):
-        for field_name, field_obj in fields(subclass).items():
-            # Value objects can hold all kinds of fields, except associations
-            if isinstance(field_obj, (Reference, Association)):
-                raise IncorrectUsageError(
-                    f"Events/Commands cannot have associations. "
-                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
-                )
-
-    def __setattr__(self, name, value):
-        if not hasattr(self, "_initialized") or not self._initialized:
-            return super().__setattr__(name, value)
-        else:
-            raise IncorrectUsageError(
-                "Event/Command Objects are immutable and cannot be modified once created"
-            )
-
-    @classmethod
-    def _default_options(cls):
-        return [
-            ("abstract", False),
-            ("aggregate_cluster", None),
-            ("part_of", None),
-        ]
-
-    @classmethod
-    def __track_id_field(subclass):
-        """Check if an identifier field has been associated with the event/command.
-
-        When an identifier is provided, its value is used to construct
-        unique stream name."""
-        try:
-            id_field = next(
-                field
-                for _, field in declared_fields(subclass).items()
-                if getattr(field, "identifier", False)
-            )
-
-            setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
-
-        except StopIteration:
-            # No Identity fields declared
-            pass
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, finalize=False, **kwargs)
-
-        if not hasattr(self.__class__, "__type__"):
-            raise ConfigurationError(
-                f"`{self.__class__.__name__}` should be registered with a domain"
-            )
-
-    @property
-    def payload(self):
-        """Return the payload of the event."""
-        return {
-            field_name: field_obj.as_dict(getattr(self, field_name, None))
-            for field_name, field_obj in fields(self).items()
-            if field_name not in {"_metadata"}
-        }
-
-    def __eq__(self, other) -> bool:
-        """Equivalence check based only on identifier."""
-        if type(other) is not type(self):
-            return False
-
-        return (self._metadata.headers.id if self._metadata.headers else None) == (
-            other._metadata.headers.id if other._metadata.headers else None
-        )
-
-    def __hash__(self) -> int:
-        """Hash based on data."""
-        return hash(json.dumps(self.payload, sort_keys=True))
-
-    def to_dict(self):
-        """Return data as a dictionary.
-
-        We need to override this method in Event, because `to_dict()` of `BaseContainer`
-        eliminates `_metadata`.
-        """
-        return {
-            field_name: field_obj.as_dict(getattr(self, field_name, None))
-            for field_name, field_obj in fields(self).items()
-        }
-
-
 # ---------------------------------------------------------------------------
-# New Pydantic-based BaseMessageType
+# Pydantic-based BaseMessageType
 # ---------------------------------------------------------------------------
 class BaseMessageType(BaseModel, OptionsMixin):
     """Pydantic-based base class for Command and Event element classes.
@@ -393,7 +282,7 @@ class BaseMessageType(BaseModel, OptionsMixin):
         return result
 
 
-class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
+class Message(BaseModel, OptionsMixin):
     """Generic message class
     It provides concrete implementations for:
     - ID generation
@@ -402,11 +291,43 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     - Message format versioning for schema evolution
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     # JSON representation of the message body
-    data = Dict()
+    data: dict = {}
 
     # JSON representation of the message metadata
-    metadata = ValueObject(Metadata)
+    metadata: Metadata | None = None
+
+    @classmethod
+    def _default_options(cls) -> list[tuple[str, Any]]:
+        return []
+
+    def to_dict(self) -> dict:
+        """Return data as a dictionary."""
+        result: dict[str, Any] = {"data": self.data}
+        result["metadata"] = self.metadata.to_dict() if self.metadata else None
+        return result
+
+    def __eq__(self, other: object) -> bool:
+        if type(other) is not type(self):
+            return False
+        return self.to_dict() == other.to_dict()
+
+    def __hash__(self) -> int:
+        return hash(json.dumps(self.to_dict(), sort_keys=True))
+
+    def __repr__(self) -> str:
+        return "<%s: %s>" % (self.__class__.__name__, self)
+
+    def __str__(self) -> str:
+        return "%s object (%s)" % (
+            self.__class__.__name__,
+            "{}".format(self.to_dict()),
+        )
+
+    def __bool__(self) -> bool:
+        return bool(self.data) or bool(self.metadata)
 
     @classmethod
     def _build_envelope(cls, metadata_dict: dict, message: dict) -> None:

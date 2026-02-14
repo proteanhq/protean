@@ -1,13 +1,14 @@
 from protean import Domain
-from protean.fields import String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate
 class Person:
-    name = String(required=True, max_length=50)
-    email = String(required=True, max_length=254)
+    name: Annotated[str, Field(max_length=50)]
+    email: Annotated[str, Field(max_length=254)]
 
 
 domain.init(traverse=False)

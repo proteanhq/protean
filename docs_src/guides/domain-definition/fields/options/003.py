@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 
 from protean.domain import Domain
-from protean.fields import DateTime, String
+from typing import Annotated
+from pydantic import Field
 
 publishing = Domain(__name__)
 
@@ -12,5 +13,5 @@ def utc_now():
 
 @publishing.aggregate
 class Post:
-    title = String(max_length=50)
-    created_at = DateTime(default=utc_now)
+    title: Annotated[str, Field(max_length=50)] | None = None
+    created_at: datetime = utc_now

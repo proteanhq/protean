@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Type, Union
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-from protean.fields import Identifier
 from protean.utils.eventing import Message
 
 
@@ -108,7 +107,7 @@ class BaseEventStore(metaclass=ABCMeta):
         return position
 
     def load_aggregate(
-        self, part_of: Type[BaseAggregate], identifier: Identifier
+        self, part_of: Type[BaseAggregate], identifier: str
     ) -> Optional[BaseAggregate]:
         """Load an aggregate from underlying events.
 

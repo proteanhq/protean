@@ -13,8 +13,6 @@ from protean.exceptions import (
     TooManyObjectsError,
     ValidationError,
 )
-from protean.core.value_object import _PydanticFieldShim
-from protean.fields import Auto, Field
 from protean.port.provider import BaseProvider
 from protean.utils import DomainObjects
 from protean.utils.globals import current_uow
@@ -331,10 +329,7 @@ class BaseDAO(metaclass=ABCMeta):
 
             # Reverse update auto fields into entity
             for field_name, field_obj in declared_fields(entity_obj).items():
-                is_auto = isinstance(field_obj, Auto) or (
-                    isinstance(field_obj, _PydanticFieldShim)
-                    and getattr(field_obj, "increment", False)
-                )
+                is_auto = getattr(field_obj, "increment", False)
                 if is_auto and not getattr(entity_obj, field_name):
                     if isinstance(model_obj, dict):
                         field_val = model_obj[field_name]
@@ -477,7 +472,7 @@ class BaseDAO(metaclass=ABCMeta):
             lookup_value = getattr(entity_obj, field_name, None)
 
             # Ignore empty lookup values
-            if lookup_value in Field.empty_values:
+            if lookup_value in (None, "", [], (), {}):
                 continue
 
             # Ignore identifiers on updates

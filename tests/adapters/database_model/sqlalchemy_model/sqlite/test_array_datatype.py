@@ -5,27 +5,16 @@ from sqlalchemy import types as sa_types
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ValidationError
-from protean.fields import (
-    Auto,
-    Boolean,
-    Date,
-    DateTime,
-    Float,
-    Identifier,
-    Integer,
-    List,
-    String,
-)
 
 
 class ArrayUser(BaseAggregate):
     email: str
-    roles = List()  # Defaulted to String Content Type
+    roles: list[str] = []
 
 
 class IntegerArrayUser(BaseAggregate):
     email: str
-    roles = List(content_type=Integer)
+    roles: list[int] = []
 
 
 @pytest.mark.sqlite
@@ -55,16 +44,15 @@ def test_array_content_type_validation(test_domain):
     test_domain.register(ArrayUser)
     test_domain.register(IntegerArrayUser)
 
+    # Pydantic's list[str] does not auto-coerce non-string values
     for kwargs in [
         {"email": "john.doe@gmail.com", "roles": [1, 2]},
         {"email": "john.doe@gmail.com", "roles": ["1", 2]},
         {"email": "john.doe@gmail.com", "roles": [1.0, 2.0]},
         {"email": "john.doe@gmail.com", "roles": [datetime.now(UTC)]},
     ]:
-        try:
+        with pytest.raises(ValidationError):
             ArrayUser(**kwargs)
-        except ValidationError:
-            pytest.fail("Failed to convert integers into strings in List field type")
 
     database_model_cls = test_domain.repository_for(IntegerArrayUser)._database_model
     user = IntegerArrayUser(email="john.doe@gmail.com", roles=[1, 2])
@@ -80,20 +68,4 @@ def test_array_content_type_validation(test_domain):
     ]:
         with pytest.raises(ValidationError) as exception:
             IntegerArrayUser(**kwargs)
-        assert exception.value.messages["roles"][0].startswith("Invalid value")
-
-
-@pytest.mark.sqlite
-def test_that_only_specific_primitive_types_are_allowed_as_content_types(test_domain):
-    List(content_type=String)
-    List(content_type=Identifier)
-    List(content_type=Integer)
-    List(content_type=Float)
-    List(content_type=Boolean)
-    List(content_type=Date)
-    List(content_type=DateTime)
-
-    with pytest.raises(ValidationError) as error:
-        List(content_type=Auto)
-
-    assert error.value.messages == {"content_type": ["Content type not supported"]}
+        assert "roles" in exception.value.messages

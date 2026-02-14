@@ -4,16 +4,15 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
 from protean import Domain
-from protean.fields import Identifier, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class User:
-    id = Identifier()
-    email = String()
-    name = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 @domain.database_model(part_of=User)

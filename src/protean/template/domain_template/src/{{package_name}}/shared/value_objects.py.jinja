@@ -1,6 +1,8 @@
 """Shared value objects used across multiple aggregates."""
 
-from protean.fields import Float, String
+from typing import Annotated
+
+from pydantic import Field
 
 from {{ package_name }}.domain import {{ domain_name }}
 
@@ -9,8 +11,8 @@ from {{ package_name }}.domain import {{ domain_name }}
 class Money:
     """Value object representing monetary values."""
 
-    amount = Float(required=True)
-    currency = String(max_length=3, default="USD")
+    amount: float
+    currency: Annotated[str, Field(max_length=3)] | None = "USD"
 
     def add(self, other: "Money") -> "Money":
         """Add two money values."""
@@ -29,7 +31,7 @@ class Money:
 class EmailAddress:
     """Value object for email addresses."""
 
-    email = String(required=True, max_length=254)
+    email: Annotated[str, Field(max_length=254)]
 
     def __post_init__(self):
         """Validate email format."""

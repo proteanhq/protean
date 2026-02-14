@@ -1,5 +1,7 @@
 from protean import Domain
-from protean.fields import Float, String, Text, ValueObject
+from protean.fields import ValueObject
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
@@ -7,8 +9,8 @@ domain = Domain()
 # --8<-- [start:money_vo]
 @domain.value_object
 class Money:
-    currency = String(max_length=3, default="USD")
-    amount = Float(required=True)
+    currency: Annotated[str, Field(max_length=3)] = "USD"
+    amount: float
 
 
 # --8<-- [end:money_vo]
@@ -17,11 +19,11 @@ class Money:
 # --8<-- [start:address_vo]
 @domain.value_object
 class Address:
-    street = String(max_length=200, required=True)
-    city = String(max_length=100, required=True)
-    state = String(max_length=50)
-    zip_code = String(max_length=20, required=True)
-    country = String(max_length=50, default="US")
+    street: Annotated[str, Field(max_length=200)]
+    city: Annotated[str, Field(max_length=100)]
+    state: Annotated[str, Field(max_length=50)] | None = None
+    zip_code: Annotated[str, Field(max_length=20)]
+    country: Annotated[str, Field(max_length=50)] = "US"
 
 
 # --8<-- [end:address_vo]
@@ -30,11 +32,11 @@ class Address:
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
+    title: Annotated[str, Field(max_length=200)]
+    author: Annotated[str, Field(max_length=150)]
+    isbn: Annotated[str, Field(max_length=13)] | None = None
     price = ValueObject(Money)
-    description = Text()
+    description: str | None = None
 
 
 # --8<-- [end:aggregate]

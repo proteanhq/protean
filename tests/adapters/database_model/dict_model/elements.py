@@ -7,7 +7,7 @@ from protean.core.entity import invariant
 from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import Text, ValueObject
+from protean.fields import ValueObject
 from protean.utils.globals import current_domain
 
 
@@ -46,7 +46,7 @@ class Provider(BaseAggregate):
 
 
 class ProviderCustomModel(BaseDatabaseModel):
-    name = Text()
+    name: str | None = None
 
 
 class Receiver(BaseAggregate):

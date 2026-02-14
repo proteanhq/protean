@@ -1,31 +1,30 @@
 from protean import Domain, handle
-from protean.fields import Identifier, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class User:
-    id = Identifier()
-    email = String()
-    name = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 @domain.command(part_of=User)
 class Register:
-    id = Identifier()
-    email = String()
+    id: str | None = None
+    email: str | None = None
 
 
 @domain.event(part_of=User)
 class Registered:
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
-@domain.event_handler
+@domain.event_handler(part_of=User)
 class UserEventHandlers:
     @handle(Registered)
     def send_email_notification(self, event: Registered) -> None:

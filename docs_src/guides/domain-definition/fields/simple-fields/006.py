@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 
 from protean import Domain
-from protean.fields import DateTime, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate
 class Post:
-    title = String(max_length=255)
-    created_at = DateTime(default=lambda: datetime.now(timezone.utc))
+    title: Annotated[str, Field(max_length=255)] | None = None
+    created_at: datetime = lambda: datetime.now(timezone.utc)

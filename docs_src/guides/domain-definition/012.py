@@ -1,14 +1,15 @@
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain(__name__)
 
 
 @domain.value_object
 class Balance:
-    currency = String(max_length=3, required=True)
-    amount = Float(required=True)
+    currency: Annotated[str, Field(max_length=3)]
+    amount: float
 
     @invariant.post
     def check_balance_is_positive_if_currency_is_USD(self):

@@ -2,17 +2,20 @@ import json
 from datetime import datetime, timezone
 
 from protean import BaseEvent, Domain
-from protean.fields import DateTime, Identifier, String
+from pydantic import Field
 
 domain = Domain(__name__, name="Authentication")
 
 
 @domain.aggregate
 class User:
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
-    status = String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
+    id: str = Field(json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
+    status: str = Field(
+        default="INACTIVE",
+        json_schema_extra={"choices": ["INACTIVE", "ACTIVE", "ARCHIVED"]},
+    )
 
     def login(self):
         self.raise_(UserLoggedIn(user_id=self.id))
@@ -24,15 +27,15 @@ class User:
 
 @domain.event(part_of="User")
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: str = Field(json_schema_extra={"identifier": True})
 
 
 @domain.event(part_of="User")
 class UserActivated:
     __version__ = "v2"
 
-    user_id = Identifier(required=True)
-    activated_at = DateTime(required=True, default=lambda: datetime.now(timezone.utc))
+    user_id: str
+    activated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 domain.init(traverse=False)

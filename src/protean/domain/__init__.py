@@ -19,10 +19,10 @@ from inflection import parameterize, titleize, transliterate, underscore, cameli
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
 from protean.core.aggregate import element_to_fact_event
-from protean.core.command import BaseCommand, _LegacyBaseCommand
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.database_model import BaseDatabaseModel
-from protean.core.event import BaseEvent, _LegacyBaseEvent
+from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector
@@ -916,7 +916,7 @@ class Domain:
 
     def _assign_aggregate_clusters(self):
         """Assign Aggregate Clusters to all relevant elements"""
-        from protean.core.aggregate import BaseAggregate, _LegacyBaseAggregate
+        from protean.core.aggregate import BaseAggregate
 
         # Assign Aggregates and EventSourcedAggregates to their own cluster
         for element_type in [
@@ -935,9 +935,7 @@ class Domain:
                 part_of = element.cls.meta_.part_of
                 if part_of:
                     # Traverse up the graph tree to find the root aggregate
-                    while not issubclass(
-                        part_of, (BaseAggregate, _LegacyBaseAggregate)
-                    ):
+                    while not issubclass(part_of, BaseAggregate):
                         part_of = part_of.meta_.part_of
 
                 element.cls.meta_.aggregate_cluster = part_of
@@ -979,7 +977,7 @@ class Domain:
         """
         # Ensure class is an event
         if (
-            not issubclass(event_cls, (BaseEvent, _LegacyBaseEvent))
+            not issubclass(event_cls, BaseEvent)
             or event_cls.element_type != DomainObjects.EVENT
         ):
             raise IncorrectUsageError(f"Class `{event_cls.__name__}` is not an Event")
@@ -1001,9 +999,7 @@ class Domain:
                             # Throw error if target_cls is not a Command
                             if not inspect.isclass(
                                 method._target_cls
-                            ) or not issubclass(
-                                method._target_cls, (BaseCommand, _LegacyBaseCommand)
-                            ):
+                            ) or not issubclass(method._target_cls, BaseCommand):
                                 raise IncorrectUsageError(
                                     f"Method `{method_name}` in Command Handler `{element.cls.__name__}` "
                                     "is not associated with a command"
@@ -1029,7 +1025,7 @@ class Domain:
                                 method._target_cls.__type__
                                 if issubclass(
                                     method._target_cls,
-                                    (BaseCommand, _LegacyBaseCommand),
+                                    BaseCommand,
                                 )
                                 else method._target_cls
                             )
@@ -1067,9 +1063,7 @@ class Domain:
                             # Target could be an event or an event type string
                             event_type = (
                                 method._target_cls.__type__
-                                if issubclass(
-                                    method._target_cls, (BaseEvent, _LegacyBaseEvent)
-                                )
+                                if issubclass(method._target_cls, BaseEvent)
                                 else method._target_cls
                             )
                             element.cls._handlers[event_type].add(method)
@@ -1089,9 +1083,7 @@ class Domain:
                             # Throw error if target_cls is not an Event
                             if not inspect.isclass(
                                 method._target_cls
-                            ) or not issubclass(
-                                method._target_cls, (BaseEvent, _LegacyBaseEvent)
-                            ):
+                            ) or not issubclass(method._target_cls, BaseEvent):
                                 raise IncorrectUsageError(
                                     f"Projector method `{method_name}` in `{element.cls.__name__}` "
                                     "is not associated with an event"
@@ -1099,9 +1091,7 @@ class Domain:
 
                             event_type = (
                                 method._target_cls.__type__
-                                if issubclass(
-                                    method._target_cls, (BaseEvent, _LegacyBaseEvent)
-                                )
+                                if issubclass(method._target_cls, BaseEvent)
                                 else method._target_cls
                             )
 

@@ -1,7 +1,8 @@
 from enum import Enum
 
 from protean import Domain
-from protean.fields import Integer, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
@@ -13,6 +14,6 @@ class BuildingStatus(Enum):
 
 @domain.aggregate
 class Building:
-    name = String(max_length=50)
-    floors = Integer()
-    status = String(choices=BuildingStatus)
+    name: Annotated[str, Field(max_length=50)] | None = None
+    floors: int | None = None
+    status: BuildingStatus | None = None

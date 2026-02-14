@@ -15,183 +15,11 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.fields import Reference, ValueObject
-from protean.fields.association import Association
-from protean.utils import DomainObjects, _has_legacy_data_fields, derive_element_class
-from protean.utils.container import BaseContainer, OptionsMixin, fields
+from protean.utils import DomainObjects, derive_element_class
+from protean.utils.container import OptionsMixin
 from protean.utils.reflection import _FIELDS
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Legacy BaseValueObject (old BaseContainer-based implementation)
-# ---------------------------------------------------------------------------
-class _LegacyBaseValueObject(BaseContainer, OptionsMixin):
-    """Legacy BaseValueObject backed by BaseContainer and Protean field descriptors.
-
-    This class preserves the original implementation for:
-    - Internal VOs in eventing.py (MessageHeaders, Metadata, etc.)
-    - VOs created dynamically by element_to_fact_event
-    - VOs that use ValueObject embedding (VO-in-VO)
-    - Any code still using old-style field descriptors (String, Float, etc.)
-    """
-
-    element_type = DomainObjects.VALUE_OBJECT
-
-    def __new__(cls, *args, **kwargs):
-        if cls is _LegacyBaseValueObject:
-            raise NotSupportedError("_LegacyBaseValueObject cannot be instantiated")
-        return super().__new__(cls)
-
-    @classmethod
-    def _default_options(cls):
-        return [
-            ("abstract", False),
-            ("part_of", None),
-        ]
-
-    def __init_subclass__(cls) -> None:
-        super().__init_subclass__()
-
-        # Record invariant methods
-        setattr(cls, "_invariants", defaultdict(dict))
-
-        cls.__validate_for_basic_field_types()
-        cls.__validate_for_non_identifier_fields()
-        cls.__validate_for_non_unique_fields()
-
-    @classmethod
-    def __validate_for_basic_field_types(cls):
-        for field_name, field_obj in fields(cls).items():
-            # Value objects can hold all kinds of fields, except associations
-            if isinstance(field_obj, (Reference, Association)):
-                raise IncorrectUsageError(
-                    f"Value Objects cannot have associations. "
-                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {cls.__name__}"
-                )
-
-    @classmethod
-    def __validate_for_non_identifier_fields(cls):
-        for field_name, field_obj in fields(cls).items():
-            if field_obj.identifier:
-                raise IncorrectUsageError(
-                    f"Value Objects cannot contain fields marked 'identifier' (field '{field_name}')"
-                )
-
-    @classmethod
-    def __validate_for_non_unique_fields(cls):
-        for field_name, field_obj in fields(cls).items():
-            if field_obj.unique:
-                raise IncorrectUsageError(
-                    f"Value Objects cannot contain fields marked 'unique' (field '{field_name}')"
-                )
-
-    def __init__(self, *template, **kwargs):  # noqa: C901
-        """Initialise the container.
-
-        During initialization, set value on fields if validation passes.
-
-        This initialization technique supports keyword arguments as well as dictionaries. You
-            can even use a template for initial data.
-        """
-
-        if self.meta_.abstract is True:
-            raise NotSupportedError(
-                f"{self.__class__.__name__} class has been marked abstract"
-                f" and cannot be instantiated"
-            )
-
-        self.errors = defaultdict(list)
-
-        # Set the flag to prevent any further modifications
-        self._initialized = False
-
-        # Load the attributes based on the template
-        loaded_fields = []
-        for dictionary in template:
-            if not isinstance(dictionary, dict):
-                raise AssertionError(
-                    f"Positional argument {dictionary} passed must be a dict. "
-                    f"This argument serves as a template for loading common "
-                    f"values.",
-                )
-            for field_name, val in dictionary.items():
-                loaded_fields.append(field_name)
-                setattr(self, field_name, val)
-
-        # Now load against the keyword arguments
-        for field_name, val in kwargs.items():
-            loaded_fields.append(field_name)
-            try:
-                setattr(self, field_name, val)
-            except ValidationError as err:
-                for field_name in err.messages:
-                    self.errors[field_name].extend(err.messages[field_name])
-
-        # Load Value Objects from associated fields
-        for field_name, field_obj in fields(self).items():
-            if isinstance(field_obj, (ValueObject)) and not getattr(self, field_name):
-                attrs = [
-                    (embedded_field.field_name, embedded_field.attribute_name)
-                    for embedded_field in field_obj.embedded_fields.values()
-                ]
-                values = {name: kwargs.get(attr) for name, attr in attrs}
-                try:
-                    value_object = field_obj.value_object_cls(**values)
-                    # Set VO value only if the value object is not None/Empty
-                    if value_object:
-                        setattr(self, field_name, value_object)
-                        loaded_fields.append(field_name)
-                except ValidationError as err:
-                    for sub_field_name in err.messages:
-                        self.errors["{}_{}".format(field_name, sub_field_name)].extend(
-                            err.messages[sub_field_name]
-                        )
-
-        # Now load the remaining fields with a None value, which will fail
-        # for required fields
-        for field_name in fields(self):
-            if field_name not in loaded_fields:
-                setattr(self, field_name, None)
-
-        self.defaults()
-
-        if not self.errors:
-            # `_postcheck()` will return a `defaultdict(list)` if errors are to be raised
-            custom_errors = self._postcheck() or {}
-            for field in custom_errors:
-                self.errors[field].extend(custom_errors[field])
-
-        # Raise any errors found during load
-        if self.errors:
-            logger.error(self.errors)
-            raise ValidationError(self.errors)
-
-        # If we made it this far, the Value Object is initialized
-        #   and should be marked as such
-        self._initialized = True
-
-    def __setattr__(self, name, value):
-        if not hasattr(self, "_initialized") or not self._initialized:
-            return super().__setattr__(name, value)
-        else:
-            raise IncorrectUsageError(
-                "Value Objects are immutable and cannot be modified once created"
-            )
-
-    def _postcheck(self):
-        """Invariant checks performed after initialization"""
-        errors = defaultdict(list)
-
-        for invariant_method in self._invariants["post"].values():
-            try:
-                invariant_method(self)
-            except ValidationError as err:
-                for field_name in err.messages:
-                    errors[field_name].extend(err.messages[field_name])
-
-        return errors
 
 
 # ---------------------------------------------------------------------------
@@ -293,10 +121,10 @@ class _PydanticFieldShim:
 
     @property
     def content_type(self) -> type | None:
-        """For list[X] types, return the legacy field class for adapter compatibility.
+        """For list[X] types, return the inner Python type.
 
         This allows the SQLAlchemy adapter to determine the correct ARRAY
-        element type (e.g., list[int] → ARRAY(Integer)).
+        element type (e.g., list[int] → int → ARRAY(Integer)).
         """
         import types as _types
         import typing
@@ -318,23 +146,7 @@ class _PydanticFieldShim:
         if not type_args:
             return None
 
-        inner_type = type_args[0]
-
-        # Lazy import to avoid circular dependency
-        from protean.fields.basic import Boolean, Date, DateTime, Float, Integer, String
-
-        from datetime import date as _date
-        from datetime import datetime as _datetime
-
-        _map: dict[type, type] = {
-            str: String,
-            int: Integer,
-            float: Float,
-            bool: Boolean,
-            _datetime: DateTime,
-            _date: Date,
-        }
-        return _map.get(inner_type)
+        return type_args[0]
 
     def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self."""
@@ -544,19 +356,8 @@ class BaseValueObject(BaseModel, OptionsMixin):
 # Factory
 # ---------------------------------------------------------------------------
 def value_object_factory(element_cls: type, domain: Any, **opts: Any) -> type:
-    # Determine the correct base class:
-    # 1. Explicit Pydantic inheritance → Pydantic
-    # 2. Already inherits from legacy base → Legacy
-    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
-    # 4. Otherwise (annotation-based or empty) → Pydantic
-    if issubclass(element_cls, BaseValueObject):
-        base_cls = BaseValueObject
-    elif issubclass(element_cls, _LegacyBaseValueObject):
-        base_cls = _LegacyBaseValueObject
-    elif _has_legacy_data_fields(element_cls):
-        base_cls = _LegacyBaseValueObject
-    else:
-        base_cls = BaseValueObject
+    # Always route to Pydantic base
+    base_cls = BaseValueObject
 
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 

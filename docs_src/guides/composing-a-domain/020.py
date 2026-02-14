@@ -1,14 +1,15 @@
 from protean import Domain
-from protean.fields import Integer, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate(stream_category="account")
 class User:
-    first_name = String(max_length=50)
-    last_name = String(max_length=50)
-    age = Integer()
+    first_name: Annotated[str, Field(max_length=50)] | None = None
+    last_name: Annotated[str, Field(max_length=50)] | None = None
+    age: int | None = None
 
 
 domain.register(User)
