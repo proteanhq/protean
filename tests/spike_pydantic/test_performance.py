@@ -192,20 +192,18 @@ class TestCurrentProteanBenchmarks:
     @pytest.fixture(autouse=True)
     def setup_domain(self):
         """Set up a minimal Protean domain."""
-        from protean.fields import Float, String
-
         self.domain = Domain(__file__, "benchmark")
 
         @self.domain.value_object
         class ProteanAddr:
-            street = String(max_length=200)
-            city = String(max_length=100)
-            zip_code = String(max_length=10)
+            street: str
+            city: str
+            zip_code: str
 
         @self.domain.aggregate
         class ProteanOrderAgg:
-            order_number = String(max_length=50)
-            total = Float(default=0.0)
+            order_number: str
+            total: float = 0.0
 
         self.ProteanAddr = ProteanAddr
         self.ProteanOrderAgg = ProteanOrderAgg

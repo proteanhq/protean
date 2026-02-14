@@ -14,8 +14,6 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.exceptions import DatabaseError, ObjectNotFoundError
-from protean.core.value_object import _PydanticFieldShim
-from protean.fields.basic import Auto
 from protean.fields.association import Reference
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
@@ -326,10 +324,7 @@ class DictDAO(BaseDAO):
         conn = self._get_session()
 
         for field_name, field_obj in fields(self.entity_cls).items():
-            is_auto_increment = (type(field_obj) is Auto and field_obj.increment) or (
-                isinstance(field_obj, _PydanticFieldShim)
-                and getattr(field_obj, "increment", False)
-            )
+            is_auto_increment = getattr(field_obj, "increment", False)
             if is_auto_increment:
                 counter_key = f"{self.schema_name}_{field_name}"
                 if not (field_name in model_obj and model_obj[field_name] is not None):

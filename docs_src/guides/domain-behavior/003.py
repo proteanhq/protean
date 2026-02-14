@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from protean import Domain
-from protean.fields import DateTime, Float, Integer, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
@@ -18,7 +19,7 @@ class AccountType(Enum):
 
 @domain.aggregate
 class Account:
-    account_number = Integer(required=True, unique=True)
-    account_type = String(required=True, max_length=7, choices=AccountType)
-    balance = Float(default=0.0)
-    opened_at = DateTime(default=utc_now)
+    account_number: int = Field(json_schema_extra={"unique": True})
+    account_type: Annotated[AccountType, Field(max_length=7)]
+    balance: float = 0.0
+    opened_at: datetime = utc_now

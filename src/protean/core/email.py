@@ -8,14 +8,12 @@ from pydantic import ValidationError as PydanticValidationError
 
 from protean.core.value_object import _PydanticFieldShim, _convert_pydantic_errors
 from protean.exceptions import ValidationError
-from protean.fields import Dict, List, String, Text
 from protean.utils import (
     DomainObjects,
-    _has_legacy_data_fields,
     convert_str_values_to_list,
     derive_element_class,
 )
-from protean.utils.container import BaseContainer, OptionsMixin
+from protean.utils.container import OptionsMixin
 from protean.utils.reflection import _FIELDS
 
 
@@ -39,62 +37,7 @@ class BaseEmailProvider:
 
 
 # ---------------------------------------------------------------------------
-# Legacy BaseEmail (BaseContainer-backed)
-# ---------------------------------------------------------------------------
-class _LegacyBaseEmail(BaseContainer, OptionsMixin):
-    """Legacy BaseEmail backed by BaseContainer and Protean field descriptors.
-
-    Preserved for backward compatibility with emails defined using old-style
-    field descriptors or created dynamically via ``@domain.email`` on plain
-    classes.
-    """
-
-    element_type = DomainObjects.EMAIL
-
-    @classmethod
-    def _default_options(cls):
-        return [("provider", "default")]
-
-    subject = String()
-    from_email = String()
-    to = List(content_type=String)
-    bcc = List(content_type=String)
-    cc = List(content_type=String)
-    reply_to = String()
-
-    # Supplied content
-    text = Text()
-    html = Text()
-
-    # JSON data with template
-    data = Dict()
-    template = String()
-
-    def defaults(self):
-        """
-        Initialize a single email message (which can be sent to multiple
-        recipients).
-        """
-        self.to = convert_str_values_to_list(self.to)
-        self.cc = convert_str_values_to_list(self.cc)
-        self.bcc = convert_str_values_to_list(self.bcc)
-        self.reply_to = (
-            convert_str_values_to_list(self.reply_to)
-            if self.reply_to
-            else self.from_email
-        )
-
-    @property
-    def recipients(self):
-        """
-        Return a list of all recipients of the email (includes direct
-        addressees as well as Cc and Bcc entries).
-        """
-        return [email for email in (self.to + self.cc + self.bcc) if email]
-
-
-# ---------------------------------------------------------------------------
-# New Pydantic-based BaseEmail
+# Pydantic-based BaseEmail
 # ---------------------------------------------------------------------------
 class BaseEmail(BaseModel, OptionsMixin):
     """Base Email class using Pydantic v2 BaseModel.
@@ -223,18 +166,7 @@ class BaseEmail(BaseModel, OptionsMixin):
 # Factory
 # ---------------------------------------------------------------------------
 def email_factory(element_cls: type, domain: Any, **opts: Any) -> type:
-    # Determine the correct base class:
-    # 1. Explicit Pydantic inheritance → Pydantic
-    # 2. Already inherits from legacy base → Legacy
-    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
-    # 4. Otherwise (annotation-based or empty) → Pydantic
-    if issubclass(element_cls, BaseEmail):
-        base_cls = BaseEmail
-    elif issubclass(element_cls, _LegacyBaseEmail):
-        base_cls = _LegacyBaseEmail
-    elif _has_legacy_data_fields(element_cls):
-        base_cls = _LegacyBaseEmail
-    else:
-        base_cls = BaseEmail
+    # Always route to Pydantic base
+    base_cls = BaseEmail
 
     return derive_element_class(element_cls, base_cls, **opts)

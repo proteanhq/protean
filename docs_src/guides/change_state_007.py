@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from protean import Domain, handle
-from protean.fields import DateTime, Identifier, String
 from protean.utils.globals import current_domain
 
 publishing = Domain(name="Publishing")
@@ -19,23 +18,23 @@ class ArticleStatus(Enum):
 
 @publishing.command(part_of="Article")
 class PublishArticle:
-    article_id = Identifier(required=True)
-    published_at = DateTime(default=utc_now)
+    article_id: str
+    published_at: datetime = utc_now
 
 
 @publishing.event(part_of="Article")
 class ArticlePublished:
-    article_id = Identifier(required=True)
-    published_at = DateTime()
+    article_id: str
+    published_at: datetime | None = None
 
 
 @publishing.aggregate
 class Article:
-    article_id = Identifier(required=True)
-    status = String(choices=ArticleStatus, default=ArticleStatus.DRAFT.value)
-    published_at = DateTime(default=utc_now)
+    article_id: str
+    status: ArticleStatus = ArticleStatus.DRAFT.value
+    published_at: datetime = utc_now
 
-    def publish(self, published_at: DateTime) -> None:
+    def publish(self, published_at: datetime) -> None:
         self.status = ArticleStatus.PUBLISHED.value
         self.published_at = published_at
 

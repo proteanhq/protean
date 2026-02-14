@@ -1,10 +1,11 @@
 from protean import Domain
-from protean.fields import Dict, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate
 class UserEvent:
-    name = String(max_length=255)
-    payload = Dict()
+    name: Annotated[str, Field(max_length=255)] | None = None
+    payload: dict | None = None

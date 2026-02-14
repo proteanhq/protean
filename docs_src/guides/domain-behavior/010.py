@@ -1,15 +1,19 @@
 from datetime import date
 
 from protean import Domain
-from protean.fields import Date, HasMany, Identifier, String
+from protean.fields import HasMany
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate
 class Patron:
-    name = String(required=True, max_length=50)
-    status = String(choices=["ACTIVE", "INACTIVE"], default="ACTIVE")
+    name: Annotated[str, Field(max_length=50)]
+    status: str = Field(
+        default="ACTIVE", json_schema_extra={"choices": ["ACTIVE", "INACTIVE"]}
+    )
     holds = HasMany("Hold")
 
     def cancel_hold(self, hold_id):
@@ -18,17 +22,20 @@ class Patron:
 
 @domain.event(part_of="Patron")
 class HoldCanceled:
-    hold_id = Identifier(required=True)
-    book_id = Identifier(required=True)
-    patron_id = Identifier(required=True)
-    canceled_on = Date(default=date.today())
+    hold_id: str
+    book_id: str
+    patron_id: str
+    canceled_on: date = date.today()
 
 
 @domain.entity(part_of="Patron")
 class Hold:
-    book_id = Identifier(required=True)
-    status = String(choices=["ACTIVE", "EXPIRED", "CANCELLED"], default="ACTIVE")
-    placed_on = Date(default=date.today())
+    book_id: str
+    status: str = Field(
+        default="ACTIVE",
+        json_schema_extra={"choices": ["ACTIVE", "EXPIRED", "CANCELLED"]},
+    )
+    placed_on: date = date.today()
 
     def cancel_hold(self):
         self.status = "CANCELLED"

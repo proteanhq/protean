@@ -1,7 +1,6 @@
 import pytest
 
 from protean.adapters.repository.memory import MemoryModel
-from protean.fields import Text
 
 from .elements import Email, Person, Provider, ProviderCustomModel, Receiver, User
 
@@ -95,13 +94,11 @@ class TestCustomModel:
         )
 
     def test_that_db_model_can_be_registered_with_domain_annotation(self, test_domain):
-        from protean.fields import Text
-
         test_domain.register(Receiver)
 
         @test_domain.database_model(part_of=Receiver)
         class ReceiverInlineModel:
-            about = Text()
+            about: str | None = None
 
         database_model_cls = test_domain.repository_for(Receiver)._database_model
 
@@ -113,7 +110,7 @@ class TestCustomModel:
 
     def test_explicit_model_is_returned_if_provided(self, test_domain):
         class ProviderCustomMemoryModel(MemoryModel):
-            name = Text()
+            name: str | None = None
 
         test_domain.register(Provider)
         test_domain.register(

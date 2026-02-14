@@ -1,6 +1,6 @@
 from protean import Domain
-from protean.fields import Boolean, Identifier, String
 from protean.utils import IdentityType
+from pydantic import Field
 
 domain = Domain()
 
@@ -11,6 +11,6 @@ domain.domain_context().push()
 
 @domain.aggregate
 class User:
-    user_id = Identifier(identifier=True)
-    name = String(required=True)
-    subscribed = Boolean(default=False)
+    user_id: str = Field(json_schema_extra={"identifier": True})
+    name: str
+    subscribed: bool = False

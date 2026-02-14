@@ -2,15 +2,17 @@ from enum import Enum
 
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
+from protean.fields import HasMany, ValueObject
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.value_object
 class Money:
-    currency = String(max_length=3, default="USD")
-    amount = Float(required=True)
+    currency: Annotated[str, Field(max_length=3)] = "USD"
+    amount: float
 
 
 class OrderStatus(Enum):
@@ -21,17 +23,15 @@ class OrderStatus(Enum):
 
 @domain.event(part_of="Order")
 class OrderConfirmed:
-    order_id = Identifier(required=True)
-    customer_name = String(max_length=150, required=True)
+    order_id: str
+    customer_name: Annotated[str, Field(max_length=150)]
 
 
 @domain.aggregate
 class Order:
-    customer_name = String(max_length=150, required=True)
-    payment_id = Identifier()
-    status = String(
-        max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
-    )
+    customer_name: Annotated[str, Field(max_length=150)]
+    payment_id: str | None = None
+    status: Annotated[OrderStatus, Field(max_length=20)] = OrderStatus.PENDING.value
     items = HasMany("OrderItem")
 
     def confirm(self):
@@ -41,22 +41,22 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    book_title = String(max_length=200, required=True)
-    quantity = Integer(required=True)
+    book_title: Annotated[str, Field(max_length=200)]
+    quantity: int
     unit_price = ValueObject(Money)
 
 
 @domain.event(part_of="Inventory")
 class StockReserved:
-    book_id = Identifier(required=True)
-    quantity = Integer(required=True)
+    book_id: str
+    quantity: int
 
 
 @domain.aggregate
 class Inventory:
-    book_id = Identifier(required=True)
-    title = String(max_length=200, required=True)
-    quantity = Integer(default=0)
+    book_id: str
+    title: Annotated[str, Field(max_length=200)]
+    quantity: int = 0
 
     def reserve_stock(self, amount: int):
         self.quantity -= amount

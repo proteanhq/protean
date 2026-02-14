@@ -1,7 +1,7 @@
 import logging
 
 from protean import Domain
-from protean.fields import Float, Identifier, String
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -11,9 +11,12 @@ domain.config["message_processing"] = "sync"
 
 @domain.aggregate
 class Payment:
-    order_id = Identifier(required=True)
-    amount = Float(required=True)
-    status = String(choices=["PENDING", "CONFIRMED", "FAILED"], default="PENDING")
+    order_id: str
+    amount: float
+    status: str = Field(
+        default="PENDING",
+        json_schema_extra={"choices": ["PENDING", "CONFIRMED", "FAILED"]},
+    )
 
     def confirm(self):
         self.status = "CONFIRMED"

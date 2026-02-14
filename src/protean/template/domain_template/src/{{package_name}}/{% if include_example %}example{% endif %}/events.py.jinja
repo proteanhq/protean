@@ -1,8 +1,9 @@
 """Events emitted by the Example aggregate."""
 
 from datetime import datetime
+from typing import Annotated
 
-from protean.fields import DateTime, Identifier, String
+from pydantic import Field
 
 from {{ package_name }}.domain import {{ domain_name }}
 
@@ -11,23 +12,23 @@ from {{ package_name }}.domain import {{ domain_name }}
 class ExampleCreated:
     """Event emitted when an Example is created."""
 
-    example_id = Identifier(required=True)
-    name = String(required=True, max_length=100)
-    description = String(max_length=500)
-    created_at = DateTime(required=True)
+    example_id: str
+    name: Annotated[str, Field(max_length=100)]
+    description: Annotated[str, Field(max_length=500)] | None = None
+    created_at: datetime
 
 
 @{{ domain_name }}.event(part_of="Example")
 class ExampleActivated:
     """Event emitted when an Example is activated."""
 
-    example_id = Identifier(required=True)
-    activated_at = DateTime(default=lambda: datetime.now())
+    example_id: str
+    activated_at: datetime = Field(default_factory=datetime.now)
 
 
 @{{ domain_name }}.event(part_of="Example")
 class ExampleArchived:
     """Event emitted when an Example is archived."""
 
-    example_id = Identifier(required=True)
-    archived_at = DateTime(default=lambda: datetime.now())
+    example_id: str
+    archived_at: datetime = Field(default_factory=datetime.now)

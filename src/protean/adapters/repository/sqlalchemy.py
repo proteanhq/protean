@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 from abc import abstractmethod
+from datetime import date as _date, datetime as _datetime
 from enum import Enum
 from typing import Any
 
@@ -22,7 +23,6 @@ from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.core.value_object import (
     BaseValueObject,
-    _LegacyBaseValueObject,
     _PydanticFieldShim,
 )
 from protean.exceptions import (
@@ -31,22 +31,9 @@ from protean.exceptions import (
     IncorrectUsageError,
     ObjectNotFoundError,
 )
-from protean.fields import (
-    Auto,
-    Boolean,
-    Date,
-    DateTime,
-    Dict,
-    Float,
-    Identifier,
-    Integer,
-    List,
-    String,
-    Text,
-    ValueObject,
-)
 from protean.fields.association import Reference, _ReferenceField
-from protean.fields.embedded import _ShadowField
+from protean.fields.basic import List as ProteanList
+from protean.fields.embedded import ValueObject, _ShadowField
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
 from protean.utils import IdentityType
@@ -152,7 +139,7 @@ def _default(value):
 
     `TypeError` is raised for unknown types.
     """
-    if isinstance(value, (BaseValueObject, _LegacyBaseValueObject)):
+    if isinstance(value, BaseValueObject):
         return value.to_dict()
     raise TypeError()
 
@@ -165,93 +152,78 @@ def _custom_json_dumps(value):
     return json.dumps(value, default=_default)
 
 
-def _resolve_shim_to_legacy_cls(shim: _PydanticFieldShim) -> type:
-    """Map a _PydanticFieldShim's Python type to its equivalent legacy field class.
+def _resolve_python_type(shim: _PydanticFieldShim) -> type:
+    """Extract the core Python type from a _PydanticFieldShim.
 
-    This allows the SQLAlchemy model generation code to re-use the existing
-    legacy-field-class-keyed ``field_mapping`` dict for Pydantic elements.
+    Unwraps Optional/Union, and normalises generic aliases
+    (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``).
     """
-    import types
+    import types as _types_mod
     import typing
 
     python_type = shim._python_type
 
     # Unwrap Optional/Union: str | None → str
     origin = typing.get_origin(python_type)
-    if origin is types.UnionType or origin is typing.Union:
+    if origin is _types_mod.UnionType or origin is typing.Union:
         args = [a for a in typing.get_args(python_type) if a is not type(None)]
         if args:
             python_type = args[0]
             origin = typing.get_origin(python_type)
 
-    # Handle generic aliases: list[X] → List, dict[K, V] → Dict
+    # Handle generic aliases: list[X] → list, dict[K, V] → dict
     if origin is list or python_type is list:
-        return List
+        return list
     if origin is dict or python_type is dict:
-        return Dict
+        return dict
 
-    # Handle BaseValueObject subclasses → ValueObject (maps to PickleType)
-    from protean.core.value_object import BaseValueObject
+    return python_type
 
-    if isinstance(python_type, type) and issubclass(python_type, BaseValueObject):
-        return ValueObject
 
-    _type_map: dict[type, type] = {
-        bool: Boolean,
-        int: Integer,
-        float: Float,
-        str: String,
-    }
-
-    # Check for datetime types (import lazily to avoid circular imports at module level)
-    from datetime import date as _date
-    from datetime import datetime as _datetime
-
-    _type_map[_datetime] = DateTime
-    _type_map[_date] = Date
-
-    return _type_map.get(python_type, String)
+# Python-type-to-SQLAlchemy-type mapping
+_PYTHON_TYPE_TO_SA: dict[type, type] = {
+    bool: sa_types.Boolean,
+    int: sa_types.Integer,
+    float: sa_types.Float,
+    str: sa_types.String,
+    _datetime: sa_types.DateTime,
+    _date: sa_types.Date,
+    dict: sa_types.PickleType,
+    list: sa_types.PickleType,
+}
 
 
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
     def __init_subclass__(subclass, **kwargs):  # noqa: C901
-        field_mapping = {
-            Boolean: sa_types.Boolean,
-            Date: sa_types.Date,
-            DateTime: sa_types.DateTime,
-            Dict: sa_types.PickleType,
-            Float: sa_types.Float,
-            Identifier: _get_identity_type(),
-            Integer: sa_types.Integer,
-            List: sa_types.PickleType,
-            String: sa_types.String,
-            Text: sa_types.Text,
-            _ReferenceField: _get_identity_type(),
-            ValueObject: sa_types.PickleType,
-        }
-
         def field_mapping_for(field_obj):
             """Return SQLAlchemy-equivalent type for Protean's field"""
-            # Handle _PydanticFieldShim: check increment first, then map Python type
+            from protean.core.value_object import BaseValueObject
+
+            # Handle _PydanticFieldShim: resolve Python type → SA type
             if isinstance(field_obj, _PydanticFieldShim):
                 if field_obj.increment:
                     return sa_types.Integer
                 if field_obj.identifier:
                     return _get_identity_type()
-                legacy_cls = _resolve_shim_to_legacy_cls(field_obj)
-                return field_mapping.get(legacy_cls, sa_types.String)
+                python_type = _resolve_python_type(field_obj)
+                # VO subclass → PickleType
+                if isinstance(python_type, type) and issubclass(
+                    python_type, BaseValueObject
+                ):
+                    return sa_types.PickleType
+                return _PYTHON_TYPE_TO_SA.get(python_type, sa_types.String)
 
+            # Association/embedded field descriptors
             field_cls = type(field_obj)
-
-            if field_cls is Auto:
-                if field_obj.increment is True:
-                    return sa_types.Integer
-                else:
-                    return _get_identity_type()
-
-            return field_mapping.get(field_cls)
+            if field_cls is _ReferenceField:
+                return _get_identity_type()
+            if field_cls is ValueObject:
+                return sa_types.PickleType
+            if field_cls is ProteanList:
+                return sa_types.PickleType
+            return sa_types.String
 
         # Update the class attrs with the entity attributes
         if "meta_" in subclass.__dict__:
@@ -265,11 +237,13 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     if isinstance(field_obj, _ShadowField):
                         field_obj = field_obj.field_obj
 
-                    # Resolve field class: for Pydantic shims, map to legacy equivalent
+                    # Resolve the Python type for Pydantic shims (used in dialect checks)
                     if isinstance(field_obj, _PydanticFieldShim):
-                        field_cls = _resolve_shim_to_legacy_cls(field_obj)
+                        resolved_type = _resolve_python_type(field_obj)
+                    elif isinstance(field_obj, ProteanList):
+                        resolved_type = list
                     else:
-                        field_cls = type(field_obj)
+                        resolved_type = None
                     type_args = []
                     type_kwargs = {}
 
@@ -280,10 +254,10 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     dialect_name = subclass.__dict__["engine"].dialect.name
                     pickled = getattr(field_obj, "pickled", False)
                     if dialect_name == "postgresql":
-                        if field_cls == Dict and not pickled:
+                        if resolved_type is dict and not pickled:
                             sa_type_cls = psql.JSON
 
-                        if field_cls == List and not pickled:
+                        if resolved_type is list and not pickled:
                             sa_type_cls = psql.ARRAY
 
                             # Associate Content Type
@@ -300,19 +274,21 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                                     else:
                                         field_mapping_type = sa_types.PickleType
                                 else:
-                                    field_mapping_type = field_mapping.get(content_type)
+                                    field_mapping_type = _PYTHON_TYPE_TO_SA.get(
+                                        content_type, sa_types.String
+                                    )
                                 type_args.append(field_mapping_type)
                             else:
                                 type_args.append(sa_types.Text)
                     elif dialect_name == "mssql":
                         # SQL Server doesn't have native JSON/Array types, use custom JSON type for JSON-like data
-                        if field_cls == Dict and not pickled:
+                        if resolved_type is dict and not pickled:
                             sa_type_cls = MSSQLJSON
                             type_args.append(
                                 None
                             )  # NVARCHAR(MAX) with JSON serialization
 
-                        if field_cls == List and not pickled:
+                        if resolved_type is list and not pickled:
                             sa_type_cls = MSSQLJSON
                             type_args.append(
                                 None
@@ -329,20 +305,12 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         "unique": field_obj.unique,
                     }
 
-                    # Update the arguments based on the field type
-                    # For Auto/Identifier fields mapped to String, set length to 255
+                    # For identifier fields mapped to String, set length to 255
                     #   Without explicit length, we are leaving the decision to the database. And that
                     #   will not work for MSSQL.
-                    if issubclass(field_cls, Auto) and sa_type_cls == sa_types.String:
+                    if field_obj.identifier and sa_type_cls == sa_types.String:
                         type_kwargs["length"] = 255
-                    # For Pydantic shims with identifier mapped to String, set length to 255
-                    elif (
-                        isinstance(field_obj, _PydanticFieldShim)
-                        and field_obj.identifier
-                        and sa_type_cls == sa_types.String
-                    ):
-                        type_kwargs["length"] = 255
-                    elif issubclass(field_cls, String):
+                    elif resolved_type is str:
                         type_kwargs["length"] = field_obj.max_length
 
                     # MSSQL requires explicit length on VARCHAR columns used
@@ -384,13 +352,17 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                 item_dict[attr_obj.relation.attribute_name] = attr_obj.relation.value
             else:
                 if attr_obj.referenced_as:
-                    item_dict[attr_obj.referenced_as] = getattr(
-                        entity, attr_obj.field_name
-                    )
+                    value = getattr(entity, attr_obj.field_name)
+                    key = attr_obj.referenced_as
                 else:
-                    item_dict[attr_obj.attribute_name] = getattr(
-                        entity, attr_obj.attribute_name
-                    )
+                    value = getattr(entity, attr_obj.attribute_name)
+                    key = attr_obj.attribute_name
+
+                # Serialize List-of-VOs to dicts for JSON/ARRAY(JSON) storage
+                if isinstance(attr_obj, ProteanList) and value:
+                    value = attr_obj.as_dict(value)
+
+                item_dict[key] = value
         return cls(**item_dict)
 
     @classmethod
@@ -910,7 +882,14 @@ class SAProvider(BaseProvider):
             custom_attrs = {
                 key: value
                 for (key, value) in vars(database_model_cls).items()
-                if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
+                if key
+                not in [
+                    "Meta",
+                    "__module__",
+                    "__doc__",
+                    "__weakref__",
+                    "__annotations__",
+                ]
                 and not isinstance(value, Column)
             }
 

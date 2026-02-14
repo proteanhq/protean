@@ -1,7 +1,8 @@
 from protean import Domain, handle, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Identifier, String, Text
 from protean.utils.globals import current_domain
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
@@ -9,9 +10,9 @@ domain = Domain()
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Post:
-    title = String(max_length=100, required=True)
-    body = Text(required=True)
-    status = String(max_length=20, default="DRAFT")
+    title: Annotated[str, Field(max_length=100)]
+    body: str
+    status: Annotated[str, Field(max_length=20)] = "DRAFT"
 
     def publish(self):
         self.status = "PUBLISHED"
@@ -31,8 +32,8 @@ class Post:
 # --8<-- [start:event]
 @domain.event(part_of="Post")
 class PostPublished:
-    post_id = Identifier(required=True)
-    title = String(required=True)
+    post_id: str
+    title: str
 
 
 # --8<-- [end:event]
@@ -41,8 +42,8 @@ class PostPublished:
 # --8<-- [start:command]
 @domain.command(part_of="Post")
 class CreatePost:
-    title = String(max_length=100, required=True)
-    body = Text(required=True)
+    title: Annotated[str, Field(max_length=100)]
+    body: str
 
 
 # --8<-- [end:command]

@@ -377,7 +377,7 @@ class TestMSSQLSchemaHandling:
 
         with domain.domain_context():
             with pytest.raises(IncorrectUsageError) as exc_info:
-                domain.repository_for(BadUniqueEntity)
+                domain.repository_for(BadUniqueEntity)._database_model
 
             assert "max_length" in str(exc_info.value)
             assert "email" in str(exc_info.value)

@@ -15,98 +15,21 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.fields import Field, Reference, ValueObject
+from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.association import Association
 from protean.utils import (
     DomainObjects,
-    _has_legacy_data_fields,
     derive_element_class,
     inflection,
 )
-from protean.utils.container import BaseContainer, OptionsMixin
-from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, declared_fields, id_field
+from protean.utils.container import OptionsMixin
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Legacy BaseProjection (old BaseContainer-based implementation)
-# ---------------------------------------------------------------------------
-class _LegacyBaseProjection(BaseContainer, OptionsMixin):
-    element_type = DomainObjects.PROJECTION
-
-    def __new__(cls, *args, **kwargs):
-        if cls is _LegacyBaseProjection:
-            raise NotSupportedError("_LegacyBaseProjection cannot be instantiated")
-        return super().__new__(cls)
-
-    @classmethod
-    def _default_options(cls):
-        return [
-            ("abstract", False),
-            ("cache", None),
-            ("database_model", None),
-            ("order_by", ()),
-            ("provider", "default"),
-            ("schema_name", inflection.underscore(cls.__name__)),
-            ("limit", 100),
-        ]
-
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
-
-        subclass.__assign_id_field()
-
-        subclass.__validate_for_basic_field_types()
-
-    @classmethod
-    def __assign_id_field(subclass):
-        """Lookup the id field for this projection and assign"""
-        if declared_fields(subclass):
-            try:
-                id_field = next(
-                    field
-                    for _, field in declared_fields(subclass).items()
-                    if isinstance(field, (Field)) and field.identifier
-                )
-
-                setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
-
-            except StopIteration:
-                pass
-
-    @classmethod
-    def __validate_for_basic_field_types(subclass):
-        for field_name, field_obj in declared_fields(subclass).items():
-            if isinstance(field_obj, (Reference, Association, ValueObject)):
-                raise IncorrectUsageError(
-                    f"Projections can only contain basic field types. "
-                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
-                )
-
-    def __init__(self, *template, **kwargs):
-        super().__init__(*template, **kwargs)
-
-        # Set up the storage for instance state
-        self.state_ = _EntityState()
-
-    def __eq__(self, other):
-        """Equivalence check to be based only on Identity"""
-        if type(other) is type(self):
-            self_id = getattr(self, id_field(self).field_name)
-            other_id = getattr(other, id_field(other).field_name)
-
-            return self_id == other_id
-
-        return False
-
-    def __hash__(self):
-        """Overrides the default implementation and bases hashing on identity"""
-        return hash(getattr(self, id_field(self).field_name))
-
-
-# ---------------------------------------------------------------------------
-# New Pydantic-based BaseProjection
+# Pydantic-based BaseProjection
 # ---------------------------------------------------------------------------
 class BaseProjection(BaseModel, OptionsMixin):
     """Pydantic-based base class for Projection domain elements.
@@ -125,6 +48,7 @@ class BaseProjection(BaseModel, OptionsMixin):
     model_config = ConfigDict(
         validate_assignment=True,
         extra="forbid",
+        ignored_types=(HasOne, HasMany, Reference, ValueObject),
     )
 
     # Internal state (PrivateAttr — excluded from model_dump/schema)
@@ -151,6 +75,19 @@ class BaseProjection(BaseModel, OptionsMixin):
         super().__init_subclass__(**kwargs)
         # Set empty __container_fields__ as placeholder
         setattr(cls, _FIELDS, {})
+
+        # Validate that only basic field types are used (no descriptors)
+        cls.__validate_for_basic_field_types()
+
+    @classmethod
+    def __validate_for_basic_field_types(cls) -> None:
+        """Reject non-basic field descriptors (ValueObject, Reference, Association)."""
+        for field_name, field_obj in vars(cls).items():
+            if isinstance(field_obj, (Reference, Association, ValueObject)):
+                raise IncorrectUsageError(
+                    f"Projections can only contain basic field types. "
+                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {cls.__name__}"
+                )
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
@@ -295,19 +232,8 @@ def projection_factory(element_cls, domain, **opts):
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
         opts["limit"] = None
 
-    # Determine the correct base class:
-    # 1. Explicit Pydantic inheritance → Pydantic
-    # 2. Already inherits from legacy base → Legacy
-    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
-    # 4. Otherwise (annotation-based or empty) → Pydantic
-    if issubclass(element_cls, BaseProjection):
-        base_cls = BaseProjection
-    elif issubclass(element_cls, _LegacyBaseProjection):
-        base_cls = _LegacyBaseProjection
-    elif _has_legacy_data_fields(element_cls):
-        base_cls = _LegacyBaseProjection
-    else:
-        base_cls = BaseProjection
+    # Always route to Pydantic base
+    base_cls = BaseProjection
 
     # Derive the projection class from the base projection class
     element_cls = derive_element_class(element_cls, base_cls, **opts)

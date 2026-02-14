@@ -2,7 +2,6 @@ import sqlalchemy as sa
 
 from protean import Domain
 from protean.adapters.repository.sqlalchemy import SqlalchemyModel
-from protean.fields import Integer, String
 
 domain = Domain()
 domain.config["databases"]["default"] = {
@@ -13,8 +12,8 @@ domain.config["databases"]["default"] = {
 
 @domain.aggregate
 class Provider:
-    name = String()
-    age = Integer()
+    name: str | None = None
+    age: int | None = None
 
 
 @domain.database_model(part_of=Provider)

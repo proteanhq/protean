@@ -1,10 +1,10 @@
 from protean import Domain
-from protean.fields import String
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate
 class Person:
-    email = String(unique=True)
-    name = String(referenced_as="fullname", required=True)
+    email: str | None = Field(default=None, json_schema_extra={"unique": True})
+    name: str = Field(json_schema_extra={"referenced_as": "fullname"})

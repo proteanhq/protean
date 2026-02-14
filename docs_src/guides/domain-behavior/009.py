@@ -2,31 +2,33 @@ from datetime import datetime, timezone
 
 from protean import Domain, fields, invariant
 from protean.exceptions import ValidationError
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.event(part_of="Order")
 class OrderConfirmed:
-    order_id = fields.Identifier(required=True)
-    confirmed_at = fields.DateTime(required=True)
+    order_id: str
+    confirmed_at: datetime
 
 
 @domain.event(part_of="Order")
 class OrderDiscountApplied:
-    order_id = fields.Identifier(required=True)
-    customer_id = fields.Identifier(required=True)
+    order_id: str
+    customer_id: str
 
 
 @domain.aggregate
 class Order:
-    customer_id = fields.Identifier(required=True)
-    premium_customer = fields.Boolean(default=False)
+    customer_id: str
+    premium_customer: bool = False
     items = fields.HasMany("OrderItem")
-    status = fields.String(
-        choices=["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED"], default="PENDING"
+    status: str = Field(
+        default="PENDING",
+        json_schema_extra={"choices": ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED"]},
     )
-    payment_id = fields.Identifier()
+    payment_id: str | None = None
 
     @invariant.post
     def order_should_contain_items(self):
@@ -47,6 +49,6 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_id = fields.Identifier(required=True)
-    quantity = fields.Integer()
-    price = fields.Float()
+    product_id: str
+    quantity: int | None = None
+    price: float | None = None

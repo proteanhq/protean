@@ -7,7 +7,6 @@ from protean.exceptions import (
     NotSupportedError,
     ObjectNotFoundError,
 )
-from protean.fields import Identifier
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
@@ -62,7 +61,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             if own_current_uow:
                 own_current_uow.commit()
 
-    def get(self, identifier: Identifier) -> BaseAggregate:
+    def get(self, identifier: str) -> BaseAggregate:
         """Retrieve a fully-formed Aggregate from a stream of Events.
 
         If the aggregate was already loaded in the current UnitOfWork,

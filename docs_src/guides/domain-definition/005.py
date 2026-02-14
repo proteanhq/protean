@@ -1,7 +1,8 @@
 import sqlalchemy
 
 from protean import Domain
-from protean.fields import String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 domain.config["DATABASES"] = {
@@ -15,11 +16,11 @@ domain.config["DATABASES"] = {
 
 @domain.aggregate
 class Person:
-    first_name = String(max_length=30)
-    last_name = String(max_length=30)
+    first_name: Annotated[str, Field(max_length=30)] | None = None
+    last_name: Annotated[str, Field(max_length=30)] | None = None
 
 
-@domain.database_model(entity_cls=Person)
+@domain.database_model(part_of=Person)
 class PersonModel:
     first_name = sqlalchemy.Column(sqlalchemy.Text)
     last_name = sqlalchemy.Column(sqlalchemy.Text)

@@ -3,15 +3,7 @@ from enum import Enum
 
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import (
-    DateTime,
-    Float,
-    HasMany,
-    Identifier,
-    Integer,
-    String,
-    ValueObject,
-)
+from protean.fields import HasMany, ValueObject
 
 domain = Domain()
 
@@ -25,16 +17,16 @@ class OrderStatus(Enum):
 
 @domain.event(part_of="Order")
 class OrderConfirmed:
-    order_id = Identifier(required=True)
-    confirmed_at = DateTime(required=True)
+    order_id: str
+    confirmed_at: datetime
 
 
 @domain.aggregate
 class Order:
-    customer_id = Identifier(required=True)
+    customer_id: str
     items = HasMany("OrderItem")
-    status = String(choices=OrderStatus, default=OrderStatus.PENDING.value)
-    payment_id = Identifier()
+    status: OrderStatus = OrderStatus.PENDING.value
+    payment_id: str | None = None
 
     @invariant.post
     def order_should_contain_items(self):
@@ -50,28 +42,28 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_id = Identifier(required=True)
-    quantity = Integer()
-    price = Float()
+    product_id: str
+    quantity: int | None = None
+    price: float | None = None
 
 
 @domain.value_object(part_of="Inventory")
 class Warehouse:
-    location = String()
-    contact = String()
+    location: str | None = None
+    contact: str | None = None
 
 
 @domain.event(part_of="Inventory")
 class StockReserved:
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True)
-    reserved_at = DateTime(required=True)
+    product_id: str
+    quantity: int
+    reserved_at: datetime
 
 
 @domain.aggregate
 class Inventory:
-    product_id = Identifier(required=True)
-    quantity = Integer()
+    product_id: str
+    quantity: int | None = None
     warehouse = ValueObject(Warehouse)
 
     def reserve_stock(self, quantity: int):

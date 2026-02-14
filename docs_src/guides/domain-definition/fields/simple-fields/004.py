@@ -1,10 +1,11 @@
 from protean import Domain
-from protean.fields import Float, String
+from typing import Annotated
+from pydantic import Field
 
 domain = Domain()
 
 
 @domain.aggregate
 class Account:
-    name = String(max_length=255)
-    balance = Float(default=0.0)
+    name: Annotated[str, Field(max_length=255)] | None = None
+    balance: float = 0.0

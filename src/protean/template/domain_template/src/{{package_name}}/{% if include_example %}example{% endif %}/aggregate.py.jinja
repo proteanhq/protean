@@ -1,8 +1,9 @@
 """Example aggregate demonstrating the pattern."""
 
 from datetime import datetime
+from typing import Annotated
 
-from protean.fields import DateTime, String
+from pydantic import Field
 
 from {{ package_name }}.domain import {{ domain_name }}
 from .events import ExampleActivated, ExampleArchived, ExampleCreated
@@ -17,14 +18,11 @@ class Example:
     """
 
     # Fields
-    name = String(required=True, max_length=100)
-    description = String(max_length=500)
-    status = String(
-        default="DRAFT",
-        choices=["DRAFT", "ACTIVE", "ARCHIVED"],
-    )
-    created_at = DateTime(default=lambda: datetime.now())
-    updated_at = DateTime(default=lambda: datetime.now())
+    name: Annotated[str, Field(max_length=100)]
+    description: Annotated[str, Field(max_length=500)] | None = None
+    status: str | None = "DRAFT"
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
 
     # Business methods
     @classmethod

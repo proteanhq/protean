@@ -1,7 +1,8 @@
 import logging
 
 from protean import Domain
-from protean.fields import Float, String
+from typing import Annotated
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -11,10 +12,11 @@ domain.config["message_processing"] = "sync"
 
 @domain.aggregate
 class Order:
-    customer_email = String(max_length=255, required=True)
-    total_amount = Float(required=True)
-    status = String(
-        choices=["PENDING", "PAID", "SHIPPED", "CANCELLED"], default="PENDING"
+    customer_email: Annotated[str, Field(max_length=255)]
+    total_amount: float
+    status: str = Field(
+        default="PENDING",
+        json_schema_extra={"choices": ["PENDING", "PAID", "SHIPPED", "CANCELLED"]},
     )
 
     def mark_paid(self):

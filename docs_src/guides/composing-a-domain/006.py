@@ -1,10 +1,9 @@
 from protean import Domain
-from protean.fields import Integer, String
 
 domain = Domain()
 
 
-@domain.event_sourced_aggregate
+@domain.aggregate(is_event_sourced=True)
 class Person:
-    name = String()
-    age = Integer()
+    name: str | None = None
+    age: int | None = None

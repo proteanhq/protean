@@ -1,21 +1,12 @@
 import pytest
 
+from pydantic import Field
+
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.entity import BaseEntity
-from protean.core.event import _LegacyBaseEvent as LegacyBaseEvent
 from protean.core.event import BaseEvent
-from protean.core.value_object import (
-    _LegacyBaseValueObject as LegacyBaseValueObject,
-)
-from protean.fields import (
-    HasMany,
-    HasOne,
-    Identifier,
-    Integer,
-    List,
-    String,
-    ValueObject,
-)
+from protean.core.value_object import BaseValueObject
+from protean.fields import HasMany, HasOne
 
 
 class Department(BaseEntity):
@@ -34,32 +25,29 @@ class Office(BaseEntity):
     room: int | None = None
 
 
-# These VOs use ValueObject() descriptors, so they must stay on legacy base.
-class OfficeVO(LegacyBaseValueObject):
-    id = Identifier()
-    building = String(max_length=25)
-    room = Integer(min_value=1)
+class OfficeVO(BaseValueObject):
+    id: str | None = None
+    building: str | None = None
+    room: int | None = None
 
 
-class DeanVO(LegacyBaseValueObject):
-    id = Identifier()
-    name = String(max_length=50)
-    age = Integer(min_value=21)
-    office = ValueObject(OfficeVO)
+class DeanVO(BaseValueObject):
+    id: str | None = None
+    name: str | None = None
+    age: int | None = None
+    office: OfficeVO | None = None
 
 
-class DepartmentVO(LegacyBaseValueObject):
-    id = Identifier()
-    name = String(max_length=50)
-    dean = ValueObject(DeanVO)
+class DepartmentVO(BaseValueObject):
+    id: str | None = None
+    name: str | None = None
+    dean: DeanVO | None = None
 
 
-# This event uses ValueObject() and List(content_type=ValueObject(...)) descriptors,
-# so it must stay on the legacy base.
-class UniversityCreated(LegacyBaseEvent):
-    id = Identifier(identifier=True)
-    name = String(max_length=50)
-    departments = List(content_type=ValueObject(DepartmentVO))
+class UniversityCreated(BaseEvent):
+    id: str = Field(json_schema_extra={"identifier": True})
+    name: str | None = None
+    departments: list[DepartmentVO] = []
 
 
 class NameChanged(BaseEvent):
