@@ -40,12 +40,12 @@ class TestDomainServiceSuperWithDecorator:
 
         @domain.aggregate
         class Order:
-            customer_id = Identifier(required=True)
+            customer_id: Identifier(required=True)
 
         @domain.aggregate
         class Inventory:
-            product_id = Identifier(required=True)
-            quantity = Integer()
+            product_id: Identifier(required=True)
+            quantity: Integer()
 
         @domain.domain_service(part_of=[Order, Inventory])
         class OrderPlacementService:
@@ -73,12 +73,12 @@ class TestDomainServiceSuperWithDecorator:
 
         @domain.aggregate
         class Order:
-            customer_id = Identifier(required=True)
+            customer_id: Identifier(required=True)
 
         @domain.aggregate
         class Inventory:
-            product_id = Identifier(required=True)
-            quantity = Integer()
+            product_id: Identifier(required=True)
+            quantity: Integer()
 
         @domain.domain_service(part_of=[Order, Inventory])
         class place_order:
@@ -108,13 +108,13 @@ class TestInvariantAttributesPreserved:
 
         @domain.aggregate
         class Order:
-            customer_id = Identifier(required=True)
-            payment_id = Identifier()
+            customer_id: Identifier(required=True)
+            payment_id: Identifier()
 
         @domain.aggregate
         class Inventory:
-            product_id = Identifier(required=True)
-            quantity = Integer()
+            product_id: Identifier(required=True)
+            quantity: Integer()
 
         @domain.domain_service(part_of=[Order, Inventory])
         class OrderPlacementService:
@@ -156,11 +156,11 @@ class TestMethodsWithoutSuperUnaffected:
 
         @domain.aggregate
         class Agg1:
-            name = String()
+            name: String()
 
         @domain.aggregate
         class Agg2:
-            name = String()
+            name: String()
 
         @domain.domain_service(part_of=[Agg1, Agg2])
         class SomeService:

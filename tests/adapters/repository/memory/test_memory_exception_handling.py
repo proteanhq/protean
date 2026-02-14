@@ -11,8 +11,8 @@ from protean.utils.query import Q
 
 
 class ExceptionTestEntity(BaseAggregate):
-    name = String(max_length=100, required=True)
-    value = Integer()
+    name: String(max_length=100, required=True)
+    value: Integer()
 
 
 @pytest.fixture(autouse=True)

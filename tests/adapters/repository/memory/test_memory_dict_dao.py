@@ -3,8 +3,8 @@ from protean.fields import String
 
 
 class User(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    password = String(max_length=3026)
+    email: String(max_length=255, required=True, unique=True)
+    password: String(max_length=3026)
 
 
 def test_memory_dao_repr(test_domain):

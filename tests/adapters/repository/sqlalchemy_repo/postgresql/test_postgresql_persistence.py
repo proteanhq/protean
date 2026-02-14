@@ -7,9 +7,9 @@ from protean.fields import DateTime, Dict, String
 
 
 class Event(BaseAggregate):
-    name = String(max_length=255)
-    created_at = DateTime(default=datetime.now(UTC))
-    payload = Dict()
+    name: String(max_length=255)
+    created_at: DateTime(default=datetime.now(UTC))
+    payload: Dict()
 
 
 @pytest.mark.postgresql

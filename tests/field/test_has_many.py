@@ -8,12 +8,12 @@ from protean.utils.reflection import attributes, declared_fields
 
 
 class Post(BaseAggregate):
-    content = String()
+    content: String()
     comments = HasMany("Comment")
 
 
 class Comment(BaseEntity):
-    content = String()
+    content: String()
 
 
 @pytest.fixture(autouse=True)

@@ -8,13 +8,13 @@ from protean.fields.basic import Identifier
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +36,7 @@ def test_event_definition_without_aggregate_or_stream(test_domain):
 
 def test_that_abstract_events_can_be_defined_without_aggregate_or_stream(test_domain):
     class AbstractEvent(BaseEvent):
-        foo = String()
+        foo: String()
 
     try:
         test_domain.register(AbstractEvent, abstract=True)

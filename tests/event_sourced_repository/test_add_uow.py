@@ -7,15 +7,15 @@ from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 @pytest.fixture(autouse=True)

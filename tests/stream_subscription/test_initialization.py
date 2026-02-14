@@ -21,24 +21,24 @@ from protean.utils import fqn
 class User(BaseAggregate):
     """User aggregate for initialization tests."""
 
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class UserRegistered(BaseEvent):
     """Test event for initialization tests."""
 
-    user_id = Identifier(required=True)
-    email = String()
-    name = String()
+    user_id: Identifier(required=True)
+    email: String()
+    name: String()
 
 
 class SendWelcomeEmail(BaseCommand):
     """Test command for initialization tests."""
 
-    user_id = Identifier(required=True)
-    email = String()
+    user_id: Identifier(required=True)
+    email: String()
 
 
 class UserEventHandler(BaseEventHandler):

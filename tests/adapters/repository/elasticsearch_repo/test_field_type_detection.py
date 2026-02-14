@@ -11,20 +11,20 @@ class DummyEntity(BaseAggregate):
     """Test entity with various field types for comprehensive testing"""
 
     # String fields - should use .keyword
-    name = String(max_length=100, required=True)
-    description = String(max_length=500)
+    name: String(max_length=100, required=True)
+    description: String(max_length=500)
 
     # Numeric fields - should NOT use .keyword
-    age = Integer()
-    score = Float()
-    count = Integer(default=0)
+    age: Integer()
+    score: Float()
+    count: Integer(default=0)
 
     # Boolean field - should NOT use .keyword
-    is_active = Boolean(default=True)
+    is_active: Boolean(default=True)
 
     # Date/time fields - should NOT use .keyword
-    created_at = DateTime(default=datetime.now)
-    birth_date = Date()
+    created_at: DateTime(default=datetime.now)
+    birth_date: Date()
 
     # Auto field (identifier) - should NOT use .keyword (already keyword-mapped)
     # id field is automatically added by BaseAggregate
@@ -33,17 +33,17 @@ class DummyEntity(BaseAggregate):
 class MinimalEntity(BaseAggregate):
     """Minimal entity with just string fields"""
 
-    title = String(max_length=100, required=True)
-    content = String(max_length=1000)
+    title: String(max_length=100, required=True)
+    content: String(max_length=1000)
 
 
 class NumericEntity(BaseAggregate):
     """Entity with only numeric fields"""
 
-    value = Integer()
-    ratio = Float()
-    enabled = Boolean()
-    timestamp = DateTime()
+    value: Integer()
+    ratio: Float()
+    enabled: Boolean()
+    timestamp: DateTime()
 
 
 @pytest.mark.elasticsearch

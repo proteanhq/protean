@@ -14,18 +14,18 @@ counter = 0
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
+    user_id: Identifier(identifier=True)
+    email: String()
 
 
 class Login(BaseCommand):
-    user_id = Identifier()
+    user_id: Identifier()
 
 
 class UserCommandHandlers(BaseCommandHandler):

@@ -5,17 +5,17 @@ from protean.fields import Integer, String
 
 
 class User(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: String()
+    age: Integer()
 
 
 class AdminUser(BaseAggregate):
-    name = String()
+    name: String()
 
 
 class Person(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: String()
+    age: Integer()
 
 
 @pytest.fixture(autouse=True)
@@ -40,14 +40,14 @@ def test_stream_category_option_of_an_event_sourced_aggregate_defined_via_annota
 ):
     @test_domain.aggregate(is_event_sourced=True)
     class Adult(BaseAggregate):
-        name = String()
-        age = Integer()
+        name: String()
+        age: Integer()
 
     assert Adult.meta_.stream_category == "test::adult"
 
     @test_domain.aggregate(is_event_sourced=True, stream_category="children")
     class Child(BaseAggregate):
-        name = String()
-        age = Integer()
+        name: String()
+        age: Integer()
 
     assert Child.meta_.stream_category == "test::children"

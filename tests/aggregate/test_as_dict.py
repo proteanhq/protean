@@ -19,9 +19,9 @@ from protean.utils import utcnow_func
 class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
     def test_basic_as_dict(self):
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
+            title: String(required=True, max_length=1000)
+            slug: String(required=True, max_length=1024)
+            content: Text(required=True)
 
         post = Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
 
@@ -35,10 +35,10 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
 
     def test_as_dict_with_date_fields(self):
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
-            posted_at = DateTime(required=True, default=utcnow_func)
+            title: String(required=True, max_length=1000)
+            slug: String(required=True, max_length=1024)
+            content: Text(required=True)
+            posted_at: DateTime(required=True, default=utcnow_func)
 
         current_time = datetime.now(UTC)
         post = Post(
@@ -59,14 +59,14 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
 
     def test_as_dict_with_aggregate_that_has_many_entities(self, test_domain):
         class Comment(BaseEntity):
-            content = Text(required=True)
+            content: Text(required=True)
 
             post = Reference("Post")
 
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
+            title: String(required=True, max_length=1000)
+            slug: String(required=True, max_length=1024)
+            content: Text(required=True)
 
             comments = HasMany(Comment)
 
@@ -95,13 +95,13 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
         self, test_domain
     ):
         class Comment(BaseEntity):
-            content = Text(required=True)
+            content: Text(required=True)
             post = Reference("Post")
 
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
+            title: String(required=True, max_length=1000)
+            slug: String(required=True, max_length=1024)
+            content: Text(required=True)
 
             comments = HasMany(Comment)
 
@@ -128,14 +128,14 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
 
     def test_as_dict_with_aggregate_that_has_one_entity(self, test_domain):
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
+            title: String(required=True, max_length=1000)
+            slug: String(required=True, max_length=1024)
+            content: Text(required=True)
 
             meta = HasOne("PostMeta")
 
         class PostMeta(BaseEntity):
-            likes = Integer(default=0)
+            likes: Integer(default=0)
 
         test_domain.register(Post)
         test_domain.register(PostMeta, part_of=Post)
@@ -157,11 +157,11 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
 
     def test_as_dict_with_aggregate_that_has_a_value_object(self, test_domain):
         class Email(BaseValueObject):
-            address = String(max_length=254, required=True)
+            address: String(max_length=254, required=True)
 
         class User(BaseAggregate):
             email = ValueObject(Email, required=True)
-            password = String(required=True, max_length=255)
+            password: String(required=True, max_length=255)
 
         user = User(email=Email(address="john.doe@gmail.com"), password="secret")
         assert user.to_dict() == {

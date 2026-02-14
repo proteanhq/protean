@@ -20,7 +20,7 @@ def test_choices_as_enum():
         ERROR = "Error"
 
     class StatusVO(BaseValueObject):
-        status = String(max_length=10, choices=StatusChoices)
+        status: String(max_length=10, choices=StatusChoices)
 
     # Test loading a valid value
     vo = StatusVO(status="Pending")
@@ -35,7 +35,7 @@ def test_choices_as_list():
     """Test choices validations for the string field with list"""
 
     class StatusVO(BaseValueObject):
-        status = String(max_length=10, choices=["Pending", "Success", "Error"])
+        status: String(max_length=10, choices=["Pending", "Success", "Error"])
 
     # Test loading a valid value
     vo = StatusVO(status="Pending")

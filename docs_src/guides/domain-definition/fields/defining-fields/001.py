@@ -14,4 +14,4 @@ class LineItem:
 @domain.aggregate
 class Order:
     customer_name: String(max_length=100, required=True)
-    items: HasMany["LineItem"]
+    items = HasMany("LineItem")

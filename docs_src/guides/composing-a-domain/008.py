@@ -6,21 +6,21 @@ domain = Domain()
 
 @domain.event_sourced_aggregate
 class User:
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 @domain.command(part_of=User)
 class Register:
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 @domain.command(part_of=User)
 class ChangePassword:
-    old_password_hash = String()
-    new_password_hash = String()
+    old_password_hash: String()
+    new_password_hash: String()
 
 
 @domain.command_handler

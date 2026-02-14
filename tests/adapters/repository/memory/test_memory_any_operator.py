@@ -3,7 +3,7 @@ from protean.fields import List
 
 
 class User(BaseAggregate):
-    emails = List()
+    emails: List()
 
 
 def test_for_any_lookup(test_domain):

@@ -7,7 +7,7 @@ from protean.fields import Date
 
 
 class Order(BaseAggregate):
-    ordered_on = Date()
+    ordered_on: Date()
 
 
 @pytest.fixture(autouse=True)

@@ -9,14 +9,14 @@ from protean.fields import Date, Float, HasMany, Integer, String
 
 
 class Order(BaseAggregate):
-    ordered_on = Date()
+    ordered_on: Date()
     items = HasMany("OrderItem")
 
 
 class OrderItem(BaseEntity):
-    product_id = String(max_length=50)
-    quantity = Integer()
-    price = Float()
+    product_id: String(max_length=50)
+    quantity: Integer()
+    price: Float()
 
 
 @pytest.fixture(autouse=True)

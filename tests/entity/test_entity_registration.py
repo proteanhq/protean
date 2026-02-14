@@ -7,10 +7,10 @@ from protean.utils import fully_qualified_name
 class TestEntityRegistration:
     def test_manual_registration_of_entity(self, test_domain):
         class Post(BaseAggregate):
-            name = String(max_length=50)
+            name: String(max_length=50)
 
         class Comment(BaseEntity):
-            content = String(max_length=500)
+            content: String(max_length=500)
 
         test_domain.register(Post)
         test_domain.register(Comment, part_of=Post)
@@ -21,11 +21,11 @@ class TestEntityRegistration:
     def test_setting_provider_in_decorator_based_registration(self, test_domain):
         @test_domain.aggregate
         class Post:
-            name = String(max_length=50)
+            name: String(max_length=50)
 
         @test_domain.entity(part_of=Post)
         class Comment(BaseEntity):
-            content = String(max_length=500)
+            content: String(max_length=500)
 
         assert Comment.meta_.part_of == Post
 
@@ -34,11 +34,11 @@ class TestEntityRegistration:
     ):
         @test_domain.aggregate
         class Post:
-            name = String(max_length=50)
+            name: String(max_length=50)
 
         @test_domain.entity(part_of=Post)
         class Comment(BaseEntity):
-            content = String(max_length=500)
+            content: String(max_length=500)
 
         assert Comment.meta_.part_of == Post
 
@@ -49,6 +49,6 @@ class TestEntityRegistration:
 
         @test_domain.entity(part_of="foo")
         class FooBar:
-            foo = String(max_length=50)
+            foo: String(max_length=50)
 
         assert FooBar.meta_.part_of == "foo"

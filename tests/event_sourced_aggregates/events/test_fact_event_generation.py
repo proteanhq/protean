@@ -6,19 +6,19 @@ from protean.fields import Identifier, String
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 class Renamed(BaseEvent):
-    id = Identifier()
-    name = String()
+    id: Identifier()
+    name: String()
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
     @apply
     def registered(self, event: Registered) -> None:

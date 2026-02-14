@@ -99,11 +99,11 @@ own class to deserialize it:
 # NOT imported from the Order domain
 @domain.event(part_of=Shipment)
 class ExternalOrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float()
-    placed_at = DateTime()
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float()
+    placed_at: DateTime()
 ```
 
 This class mirrors the external event's structure but belongs to **your**
@@ -232,20 +232,20 @@ to update:
 
 ```python
 class ExternalOrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float()
+    order_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float()
 ```
 
 ### After: External event v2 (renamed field)
 
 ```python
 class ExternalOrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    line_items = List(required=True)  # Renamed from 'items'
-    subtotal = Float()                # Renamed from 'total'
-    tax = Float()
-    total = Float()                   # Now includes tax
+    order_id: Identifier(required=True)
+    line_items: List(required=True)  # Renamed from 'items'
+    subtotal: Float()                # Renamed from 'total'
+    tax: Float()
+    total: Float()                   # Now includes tax
 ```
 
 Only the subscriber changes:

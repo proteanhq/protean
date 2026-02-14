@@ -9,8 +9,8 @@ from protean.fields import DateTime, Float, Identifier, String
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
     @classmethod
     def register(cls, email: str, name: str):
@@ -20,34 +20,34 @@ class User(BaseAggregate):
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
-    name = String()
+    user_id: Identifier()
+    email: String()
+    name: String()
 
 
 class LoggedIn(BaseEvent):
-    user_id = Identifier()
+    user_id: Identifier()
 
 
 class LoggedOut(BaseEvent):
-    user_id = Identifier()
+    user_id: Identifier()
 
 
 class Token(BaseProjection):
-    key = Identifier(identifier=True)
-    id = Identifier(required=True)
-    email = String(required=True)
+    key: Identifier(identifier=True)
+    id: Identifier(required=True)
+    email: String(required=True)
 
 
 class FullUser(BaseProjection):
-    email = String(identifier=True)
-    name = String()
+    email: String(identifier=True)
+    name: String()
 
 
 class NewUserReport(BaseProjection):
-    email = String(identifier=True)
-    name = String()
-    registered_at = DateTime(default=datetime.now)
+    email: String(identifier=True)
+    name: String()
+    registered_at: DateTime(default=datetime.now)
 
 
 class TokenProjector(BaseProjector):
@@ -88,9 +88,9 @@ class NewUserProjector(BaseProjector):
 
 
 class Transaction(BaseAggregate):
-    user_id = Identifier()
-    amount = Float()
-    at = DateTime(default=datetime.now)
+    user_id: Identifier()
+    amount: Float()
+    at: DateTime(default=datetime.now)
 
     @classmethod
     def transact(cls, user_id: Identifier, amount: float):
@@ -100,15 +100,15 @@ class Transaction(BaseAggregate):
 
 
 class Transacted(BaseEvent):
-    user_id = Identifier()
-    amount = Float()
-    at = DateTime(default=datetime.now)
+    user_id: Identifier()
+    amount: Float()
+    at: DateTime(default=datetime.now)
 
 
 class Balances(BaseProjection):
-    user_id = Identifier(identifier=True)
-    name = String()
-    balance = Float()
+    user_id: Identifier(identifier=True)
+    name: String()
+    balance: Float()
 
 
 class TransactionProjector(BaseProjector):

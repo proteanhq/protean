@@ -7,9 +7,9 @@ A developer adds email validation to a `User` aggregate:
 ```python
 @domain.aggregate
 class User:
-    user_id = Auto(identifier=True)
-    email = String(required=True, max_length=254)
-    role = String(required=True, choices=["admin", "member", "guest"])
+    user_id: Auto(identifier=True)
+    email: String(required=True, max_length=254)
+    role: String(required=True, choices=["admin", "member", "guest"])
 
     @invariant.post
     def email_must_be_valid(self):
@@ -91,13 +91,13 @@ commands, and events.
 ```python
 @domain.aggregate
 class Product:
-    product_id = Auto(identifier=True)
-    name = String(required=True, max_length=200)
-    sku = String(required=True, max_length=20)
-    price = Float(required=True, min_value=0.0)
-    weight_kg = Float(min_value=0.0)
-    stock_count = Integer(min_value=0, default=0)
-    status = String(choices=["draft", "active", "discontinued"], default="draft")
+    product_id: Auto(identifier=True)
+    name: String(required=True, max_length=200)
+    sku: String(required=True, max_length=20)
+    price: Float(required=True, min_value=0.0)
+    weight_kg: Float(min_value=0.0)
+    stock_count: Integer(min_value=0, default=0)
+    status: String(choices=["draft", "active", "discontinued"], default="draft")
 ```
 
 **What this catches:**
@@ -133,7 +133,7 @@ construction or field assignment).
 ```python
 @domain.value_object
 class Email:
-    address = String(required=True, max_length=254)
+    address: String(required=True, max_length=254)
 
     @invariant.post
     def must_have_valid_format(self):
@@ -150,8 +150,8 @@ class Email:
 
 @domain.value_object
 class Money:
-    amount = Float(required=True)
-    currency = String(max_length=3, required=True)
+    amount: Float(required=True)
+    currency: String(max_length=3, required=True)
 
     @invariant.post
     def amount_must_be_non_negative(self):
@@ -170,8 +170,8 @@ class Money:
 
 @domain.value_object
 class DateRange:
-    start_date = Date(required=True)
-    end_date = Date(required=True)
+    start_date: Date(required=True)
+    end_date: Date(required=True)
 
     @invariant.post
     def end_must_be_after_start(self):
@@ -212,10 +212,10 @@ before specific operations (pre-invariants).
 ```python
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)
     items = HasMany(OrderItem)
-    status = String(default="draft")
+    status: String(default="draft")
     total = ValueObject(Money)
     discount = ValueObject(Money)
 
@@ -421,7 +421,7 @@ of the processing pipeline.
 ```python
 # Anti-pattern: business rule encoded as a field constraint
 class Order:
-    discount_percent = Float(max_value=50.0)  # "Max 50% discount" is a business rule
+    discount_percent: Float(max_value=50.0)  # "Max 50% discount" is a business rule
 ```
 
 This embeds a business rule in the field definition. When the business changes
@@ -430,7 +430,7 @@ business rule layer. Use an invariant instead:
 
 ```python
 class Order:
-    discount_percent = Float(min_value=0.0, max_value=100.0)  # Physical range
+    discount_percent: Float(min_value=0.0, max_value=100.0)  # Physical range
 
     @invariant.post
     def discount_within_policy(self):
@@ -446,7 +446,7 @@ class Order:
 # Anti-pattern: email validated in both VO and aggregate
 @domain.value_object
 class Email:
-    address = String(required=True)
+    address: String(required=True)
 
     @invariant.post
     def must_be_valid(self):
@@ -522,11 +522,11 @@ structure is correct before it reaches the handler:
 ```python
 @domain.command(part_of=Order)
 class PlaceOrder(BaseCommand):
-    order_id = Identifier(identifier=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True, min_value=0.0)
-    currency = String(required=True, max_length=3)
+    order_id: Identifier(identifier=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float(required=True, min_value=0.0)
+    currency: String(required=True, max_length=3)
 ```
 
 If `total` is negative or `customer_id` is missing, the error is caught at

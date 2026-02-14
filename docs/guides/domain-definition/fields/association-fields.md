@@ -151,7 +151,7 @@ Every entity associated with an aggregate automatically gets a `Reference` field
 ```python hl_lines="4"
 @domain.entity(part_of=Post)
 class Comment:
-    content = String(max_length=500)
+    content: String(max_length=500)
     post = Reference(Post)  # Explicit reference field
 ```
 
@@ -176,7 +176,7 @@ Use `referenced_as` to specify a custom name for the shadow field:
 ```python
 @domain.entity(part_of=Order)
 class OrderItem:
-    quantity = Integer()
+    quantity: Integer()
     order = Reference(Order, referenced_as="order_number")
     # Creates shadow field 'order_number' instead of 'order_id'
 ```
@@ -186,7 +186,7 @@ The same name has to be specified on the `HasOne` or `HasMany` field with the `v
 ```python
 @domain.aggregate
 class Order:
-   ordered_at = DateTime()
+   ordered_at: DateTime()
    items = HasMany(OrderItem, via="order_number")
 ```
 
@@ -197,13 +197,13 @@ By default, association fields create foreign keys following the pattern `<aggre
 ```python hl_lines="4 9"
 @domain.aggregate  
 class Product:
-    name = String(max_length=100)
+    name: String(max_length=100)
     reviews = HasMany("Review", via="product_sku")
 
 @domain.entity(part_of=Product)
 class Review:
-    content = String(max_length=1000)
-    product_sku = String()  # Custom foreign key field
+    content: String(max_length=1000)
+    product_sku: String()  # Custom foreign key field
 ```
 
 This is particularly useful when you want to link entities using fields other than the default identifier, or when you need specific naming conventions for your foreign key relationships.

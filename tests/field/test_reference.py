@@ -7,7 +7,7 @@ from protean.fields import Reference, String
 
 
 class Address(BaseEntity):
-    postal_code = String(max_length=6)
+    postal_code: String(max_length=6)
 
 
 class User(BaseAggregate):

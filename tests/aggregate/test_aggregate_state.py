@@ -9,18 +9,18 @@ from .elements import Person, PersonRepository
 
 
 class Balance(BaseValueObject):
-    currency = String(max_length=3)
-    amount = Float()
+    currency: String(max_length=3)
+    amount: Float()
 
 
 class BalanceUpdated(BaseEvent):
-    account_id = Identifier(required=True)
-    old_amount = Float()
-    new_amount = Float()
+    account_id: Identifier(required=True)
+    old_amount: Float()
+    new_amount: Float()
 
 
 class Account(BaseAggregate):
-    name = String(max_length=50, required=True)
+    name: String(max_length=50, required=True)
     balance = ValueObject(Balance)
 
     def update_balance(self, new_balance: Balance) -> None:

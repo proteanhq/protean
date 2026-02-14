@@ -12,36 +12,36 @@ from protean.utils.eventing import Message, Metadata, DomainMeta, MessageHeaders
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Activate(BaseCommand):
-    id = Identifier()
+    id: Identifier()
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 class SendEmail(BaseAggregate):
-    to = String()
-    subject = String()
-    content = String()
+    to: String()
+    subject: String()
+    content: String()
 
 
 class SendEmailCommand(BaseCommand):
-    to = String()
-    subject = String()
-    content = String()
+    to: String()
+    subject: String()
+    content: String()
 
 
 @pytest.fixture(autouse=True)

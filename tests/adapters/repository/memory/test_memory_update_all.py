@@ -9,10 +9,10 @@ from protean.utils.query import Q
 
 
 class UpdateTestEntity(BaseAggregate):
-    name = String(max_length=100, required=True)
-    category = String(max_length=50)
-    value = Integer()
-    active = Boolean(default=True)
+    name: String(max_length=100, required=True)
+    category: String(max_length=50)
+    value: Integer()
+    active: Boolean(default=True)
 
 
 @pytest.fixture(autouse=True)

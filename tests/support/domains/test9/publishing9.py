@@ -10,13 +10,13 @@ domain = Domain(name="TEST9")
 
 @domain.aggregate
 class Post:
-    title = String(max_length=50)
-    created_on = DateTime(default=datetime.now)
+    title: String(max_length=50)
+    created_on: DateTime(default=datetime.now)
 
     comments = HasMany("Comment")
 
 
 @domain.entity(part_of=Post)
 class Comment:
-    content = String(max_length=500)
+    content: String(max_length=500)
     post = Reference(Post)

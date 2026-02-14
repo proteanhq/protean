@@ -7,8 +7,8 @@ domain = Domain()
 # --8<-- [start:money_vo]
 @domain.value_object
 class Money:
-    currency = String(max_length=3, default="USD")
-    amount = Float(required=True)
+    currency: String(max_length=3, default="USD")
+    amount: Float(required=True)
 
 
 # --8<-- [end:money_vo]
@@ -17,11 +17,11 @@ class Money:
 # --8<-- [start:address_vo]
 @domain.value_object
 class Address:
-    street = String(max_length=200, required=True)
-    city = String(max_length=100, required=True)
-    state = String(max_length=50)
-    zip_code = String(max_length=20, required=True)
-    country = String(max_length=50, default="US")
+    street: String(max_length=200, required=True)
+    city: String(max_length=100, required=True)
+    state: String(max_length=50)
+    zip_code: String(max_length=20, required=True)
+    country: String(max_length=50, default="US")
 
 
 # --8<-- [end:address_vo]
@@ -30,11 +30,11 @@ class Address:
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
     price = ValueObject(Money)
-    description = Text()
+    description: Text()
 
 
 # --8<-- [end:aggregate]

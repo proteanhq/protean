@@ -6,8 +6,8 @@ from protean.fields import List, String
 
 
 class GenericPostgres(BaseAggregate):
-    ids = List()
-    role = String()
+    ids: List()
+    role: String()
 
 
 @pytest.mark.postgresql

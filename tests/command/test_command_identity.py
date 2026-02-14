@@ -4,15 +4,15 @@ from protean.utils.reflection import has_id_field, id_field
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class SendEmail(BaseCommand):
-    to = String()
-    subject = String()
-    content = String()
+    to: String()
+    subject: String()
+    content: String()
 
 
 def test_id_field_for_command_with_identifier():

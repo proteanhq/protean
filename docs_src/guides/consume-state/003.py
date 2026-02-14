@@ -11,9 +11,9 @@ domain.config["message_processing"] = "sync"
 
 @domain.aggregate
 class Payment:
-    order_id = Identifier(required=True)
-    amount = Float(required=True)
-    status = String(choices=["PENDING", "CONFIRMED", "FAILED"], default="PENDING")
+    order_id: Identifier(required=True)
+    amount: Float(required=True)
+    status: String(choices=["PENDING", "CONFIRMED", "FAILED"], default="PENDING")
 
     def confirm(self):
         self.status = "CONFIRMED"

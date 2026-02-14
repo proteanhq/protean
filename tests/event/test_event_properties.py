@@ -10,15 +10,15 @@ from protean.utils.reflection import id_field
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 @pytest.fixture(autouse=True)
@@ -37,7 +37,7 @@ def test_that_events_are_immutable():
 def test_that_no_id_field_is_assigned_if_event_is_marked_as_abstract(test_domain):
     @test_domain.event(abstract=True)
     class AbstractEvent:
-        foo = String(identifier=True)
+        foo: String(identifier=True)
 
     assert id_field(AbstractEvent) is None
 

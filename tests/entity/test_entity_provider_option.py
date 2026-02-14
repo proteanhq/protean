@@ -7,13 +7,13 @@ from protean.fields import HasOne, Integer, String
 
 
 class Department(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name = String(max_length=50)
-    age = Integer(min_value=21)
+    name: String(max_length=50)
+    age: Integer(min_value=21)
 
 
 class TestAggregateAndEntityDefaultProvider:

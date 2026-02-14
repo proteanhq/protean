@@ -8,18 +8,18 @@ from protean.utils.reflection import attributes
 
 
 class Book(BaseAggregate):
-    title = String(max_length=50)
-    isbn = String(identifier=True, max_length=13)
+    title: String(max_length=50)
+    isbn: String(identifier=True, max_length=13)
     comments = HasMany("Comment", via="isbn")
 
 
 class Comment(BaseEntity):
-    content = String(max_length=50)
+    content: String(max_length=50)
     book = Reference(Book, referenced_as="isbn")
 
 
 class Author(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
     # Default behavior - would create 'author_id' foreign key
     posts_default = HasMany("BlogPost")
     # With via - uses custom foreign key name
@@ -27,32 +27,32 @@ class Author(BaseAggregate):
 
 
 class BlogPost(BaseEntity):
-    title = String(max_length=100)
-    author_id = String()  # Default foreign key
-    author_uuid = String()  # Custom foreign key via 'via' parameter
+    title: String(max_length=100)
+    author_id: String()  # Default foreign key
+    author_uuid: String()  # Custom foreign key via 'via' parameter
 
 
 class Course(BaseAggregate):
-    name = String(max_length=100)
-    course_id = String(identifier=True, max_length=10)
+    name: String(max_length=100)
+    course_id: String(identifier=True, max_length=10)
     instructor = HasOne("Instructor", via="course_assigned")
 
 
 class Instructor(BaseEntity):
-    name = String(max_length=100)
-    course_assigned = String()
+    name: String(max_length=100)
+    course_assigned: String()
 
 
 class Project(BaseAggregate):
-    name = String(max_length=100)
-    project_code = String(identifier=True, max_length=10)
+    name: String(max_length=100)
+    project_code: String(identifier=True, max_length=10)
     lead_developer = HasOne("Developer", via="project_ref")
 
 
 class Developer(BaseEntity):
-    name = String(max_length=100)
-    skill_level = String(max_length=50)
-    project_ref = String()
+    name: String(max_length=100)
+    skill_level: String(max_length=50)
+    project_ref: String()
 
 
 def test_structure_of_entity_with_reference_field(test_domain):
@@ -277,13 +277,13 @@ def test_has_one_with_via_parameter_uses_custom_foreign_key(test_domain):
 
     # Create classes with HasOne using via parameter
     class University(BaseAggregate):
-        name = String(max_length=100)
-        code = String(identifier=True, max_length=10)
+        name: String(max_length=100)
+        code: String(identifier=True, max_length=10)
         main_campus = HasOne("Campus", via="university_code")
 
     class Campus(BaseEntity):
-        name = String(max_length=100)
-        university_code = String()  # Custom foreign key field via 'via' parameter
+        name: String(max_length=100)
+        university_code: String()  # Custom foreign key field via 'via' parameter
 
     test_domain.register(University)
     test_domain.register(Campus, part_of=University)
@@ -303,13 +303,13 @@ def test_has_one_with_via_parameter_persistence(test_domain):
     """Test that HasOne with via parameter persists and retrieves correctly."""
 
     class Company(BaseAggregate):
-        name = String(max_length=100)
-        registration_number = String(identifier=True, max_length=20)
+        name: String(max_length=100)
+        registration_number: String(identifier=True, max_length=20)
         headquarters = HasOne("Office", via="company_reg_num")
 
     class Office(BaseEntity):
-        address = String(max_length=200)
-        company_reg_num = String()  # Custom foreign key field
+        address: String(max_length=200)
+        company_reg_num: String()  # Custom foreign key field
 
     test_domain.register(Company)
     test_domain.register(Office, part_of=Company)
@@ -335,13 +335,13 @@ def test_has_one_with_via_parameter_linked_attribute_method(test_domain):
     """Test that _linked_attribute method returns the via value for HasOne when specified."""
 
     class School(BaseAggregate):
-        name = String(max_length=100)
-        school_id = String(identifier=True, max_length=10)
+        name: String(max_length=100)
+        school_id: String(identifier=True, max_length=10)
         principal = HasOne("Principal", via="school_identifier")
 
     class Principal(BaseEntity):
-        name = String(max_length=100)
-        school_identifier = String()
+        name: String(max_length=100)
+        school_identifier: String()
 
     test_domain.register(School)
     test_domain.register(Principal, part_of=School)
@@ -358,16 +358,16 @@ def test_has_one_with_via_parameter_vs_default_behavior(test_domain):
     """Test comparison between via parameter and default foreign key naming for HasOne."""
 
     class Department(BaseAggregate):
-        name = String(max_length=100)
+        name: String(max_length=100)
         # Default behavior - would create 'department_id' foreign key
         manager_default = HasOne("Manager")
         # With via - uses custom foreign key name
         manager_custom = HasOne("Manager", via="dept_code")
 
     class Manager(BaseEntity):
-        name = String(max_length=100)
-        department_id = String()  # Default foreign key
-        dept_code = String()  # Custom foreign key via 'via' parameter
+        name: String(max_length=100)
+        department_id: String()  # Default foreign key
+        dept_code: String()  # Custom foreign key via 'via' parameter
 
     test_domain.register(Department)
     test_domain.register(Manager, part_of=Department)
@@ -388,13 +388,13 @@ def test_has_one_with_via_parameter_assignment_and_removal(test_domain):
     """Test assigning and removing HasOne with via parameter."""
 
     class Store(BaseAggregate):
-        name = String(max_length=100)
-        store_code = String(identifier=True, max_length=10)
+        name: String(max_length=100)
+        store_code: String(identifier=True, max_length=10)
         cashier = HasOne("Cashier", via="assigned_store")
 
     class Cashier(BaseEntity):
-        name = String(max_length=100)
-        assigned_store = String()
+        name: String(max_length=100)
+        assigned_store: String()
 
     test_domain.register(Store)
     test_domain.register(Cashier, part_of=Store)
@@ -423,14 +423,14 @@ def test_has_one_with_via_parameter_dictionary_assignment(test_domain):
     """Test assigning dictionary value to HasOne with via parameter."""
 
     class Restaurant(BaseAggregate):
-        name = String(max_length=100)
-        license_number = String(identifier=True, max_length=15)
+        name: String(max_length=100)
+        license_number: String(identifier=True, max_length=15)
         chef = HasOne("Chef", via="restaurant_license")
 
     class Chef(BaseEntity):
-        name = String(max_length=100)
-        specialty = String(max_length=100)
-        restaurant_license = String()
+        name: String(max_length=100)
+        specialty: String(max_length=100)
+        restaurant_license: String()
 
     test_domain.register(Restaurant)
     test_domain.register(Chef, part_of=Restaurant)
@@ -451,14 +451,14 @@ def test_has_one_with_via_parameter_update_scenarios(test_domain):
     """Test various update scenarios for HasOne with via parameter."""
 
     class Bank(BaseAggregate):
-        name = String(max_length=100)
-        swift_code = String(identifier=True, max_length=15)
+        name: String(max_length=100)
+        swift_code: String(identifier=True, max_length=15)
         branch_manager = HasOne("BranchManager", via="bank_swift")
 
     class BranchManager(BaseEntity):
-        name = String(max_length=100)
-        experience_years = String()
-        bank_swift = String()
+        name: String(max_length=100)
+        experience_years: String()
+        bank_swift: String()
 
     test_domain.register(Bank)
     test_domain.register(BranchManager, part_of=Bank)
@@ -488,12 +488,12 @@ def test_via_parameter_with_none_value(test_domain):
 
     # Create a field with via=None (should behave like default)
     class Library(BaseAggregate):
-        name = String(max_length=100)
+        name: String(max_length=100)
         books = HasMany("LibraryBook", via=None)
 
     class LibraryBook(BaseEntity):
-        title = String(max_length=100)
-        library_id = String()
+        title: String(max_length=100)
+        library_id: String()
 
     test_domain.register(Library)
     test_domain.register(LibraryBook, part_of=Library)
@@ -510,13 +510,13 @@ def test_via_parameter_with_empty_string(test_domain):
     """Test via parameter behavior when set to empty string."""
 
     class Museum(BaseAggregate):
-        name = String(max_length=100)
+        name: String(max_length=100)
         # Empty string should be treated as falsy and use default
         exhibits = HasMany("Exhibit", via="")
 
     class Exhibit(BaseEntity):
-        name = String(max_length=100)
-        museum_id = String()
+        name: String(max_length=100)
+        museum_id: String()
 
     test_domain.register(Museum)
     test_domain.register(Exhibit, part_of=Museum)
@@ -533,13 +533,13 @@ def test_via_parameter_with_different_data_types(test_domain):
     """Test via parameter with different field data types."""
 
     class Team(BaseAggregate):
-        name = String(max_length=100)
-        team_number = String(identifier=True, max_length=10)
+        name: String(max_length=100)
+        team_number: String(identifier=True, max_length=10)
         captain = HasOne("Player", via="team_num")
 
     class Player(BaseEntity):
-        name = String(max_length=100)
-        team_num = String()  # String field for foreign key
+        name: String(max_length=100)
+        team_num: String()  # String field for foreign key
 
     test_domain.register(Team)
     test_domain.register(Player, part_of=Team)
@@ -557,16 +557,16 @@ def test_via_parameter_with_multiple_associations_to_same_entity(test_domain):
     """Test multiple association fields with different via parameters pointing to same entity."""
 
     class Organization(BaseAggregate):
-        name = String(max_length=100)
-        org_code = String(identifier=True, max_length=10)
+        name: String(max_length=100)
+        org_code: String(identifier=True, max_length=10)
         # Multiple associations to the same entity type with different via parameters
         employees = HasMany("Person", via="employer_code")
         contractors = HasMany("Person", via="contractor_for")
 
     class Person(BaseEntity):
-        name = String(max_length=100)
-        employer_code = String()  # For employees
-        contractor_for = String()  # For contractors
+        name: String(max_length=100)
+        employer_code: String()  # For employees
+        contractor_for: String()  # For contractors
 
     test_domain.register(Organization)
     test_domain.register(Person, part_of=Organization)
@@ -589,13 +589,13 @@ def test_via_parameter_preserves_type_during_assignment(test_domain):
     """Test that via parameter preserves the type of the identifier field."""
 
     class Warehouse(BaseAggregate):
-        name = String(max_length=100)
-        warehouse_id = String(identifier=True, max_length=10)
+        name: String(max_length=100)
+        warehouse_id: String(identifier=True, max_length=10)
         inventory_manager = HasOne("InventoryManager", via="warehouse_ref")
 
     class InventoryManager(BaseEntity):
-        name = String(max_length=100)
-        warehouse_ref = String()
+        name: String(max_length=100)
+        warehouse_ref: String()
 
     test_domain.register(Warehouse)
     test_domain.register(InventoryManager, part_of=Warehouse)
@@ -616,14 +616,14 @@ def test_via_parameter_with_custom_identifier_field(test_domain):
     """Test via parameter when the aggregate has a custom identifier field."""
 
     class Vehicle(BaseAggregate):
-        make = String(max_length=50)
-        vin = String(identifier=True, max_length=17)  # Custom identifier
+        make: String(max_length=50)
+        vin: String(identifier=True, max_length=17)  # Custom identifier
         parts = HasMany("VehiclePart", via="vehicle_vin")
 
     class VehiclePart(BaseEntity):
-        name = String(max_length=100)
-        part_number = String(max_length=50)
-        vehicle_vin = String()  # Foreign key to VIN
+        name: String(max_length=100)
+        part_number: String(max_length=50)
+        vehicle_vin: String()  # Foreign key to VIN
 
     test_domain.register(Vehicle)
     test_domain.register(VehiclePart, part_of=Vehicle)
@@ -645,14 +645,14 @@ def test_via_parameter_with_composite_identifier_scenario(test_domain):
     """Test via parameter behavior when dealing with what would be composite key scenarios."""
 
     class Account(BaseAggregate):
-        account_number = String(max_length=20)
-        branch_code = String(identifier=True, max_length=10)  # Using branch as ID
+        account_number: String(max_length=20)
+        branch_code: String(identifier=True, max_length=10)  # Using branch as ID
         transactions = HasMany("Transaction", via="account_branch")
 
     class Transaction(BaseEntity):
-        amount = String(max_length=20)
-        transaction_type = String(max_length=50)
-        account_branch = String()  # Links to branch_code
+        amount: String(max_length=20)
+        transaction_type: String(max_length=50)
+        account_branch: String()  # Links to branch_code
 
     test_domain.register(Account)
     test_domain.register(Transaction, part_of=Account)
@@ -674,16 +674,14 @@ def test_via_parameter_with_multiple_custom_identifiers(test_domain):
     """Test via parameter when multiple entities have custom identifier fields."""
 
     class Supplier(BaseAggregate):
-        company_name = String(max_length=100)
-        supplier_code = String(identifier=True, max_length=15)
+        company_name: String(max_length=100)
+        supplier_code: String(identifier=True, max_length=15)
         products = HasMany("Product", via="supplier_ref")
 
     class Product(BaseEntity):
-        product_name = String(max_length=100)
-        product_sku = String(
-            identifier=True, max_length=20
-        )  # Entity also has custom ID
-        supplier_ref = String()
+        product_name: String(max_length=100)
+        product_sku: String(identifier=True, max_length=20)  # Entity also has custom ID
+        supplier_ref: String()
 
     test_domain.register(Supplier)
     test_domain.register(Product, part_of=Supplier)
@@ -708,14 +706,14 @@ def test_via_parameter_field_initialization_order(test_domain):
     """Test that via parameter works regardless of field definition order."""
 
     class EventVenue(BaseAggregate):
-        venue_name = String(max_length=100)
+        venue_name: String(max_length=100)
         # Define association before identifier to test initialization order
         events = HasMany("Event", via="venue_ref")
-        venue_code = String(identifier=True, max_length=10)
+        venue_code: String(identifier=True, max_length=10)
 
     class Event(BaseEntity):
-        event_name = String(max_length=100)
-        venue_ref = String()
+        event_name: String(max_length=100)
+        venue_ref: String()
 
     test_domain.register(EventVenue)
     test_domain.register(Event, part_of=EventVenue)
@@ -735,13 +733,13 @@ def test_via_parameter_with_integer_identifier(test_domain):
     """Test via parameter with non-string identifier fields."""
 
     class Region(BaseAggregate):
-        name = String(max_length=100)
-        region_id = Integer(identifier=True)
+        name: String(max_length=100)
+        region_id: Integer(identifier=True)
         offices = HasMany("Office", via="region_number")
 
     class Office(BaseEntity):
-        office_name = String(max_length=100)
-        region_number = Integer()
+        office_name: String(max_length=100)
+        region_number: Integer()
 
     test_domain.register(Region)
     test_domain.register(Office, part_of=Region)
@@ -762,13 +760,13 @@ def test_via_parameter_with_uuid_identifier(test_domain):
     """Test via parameter with UUID-like identifier fields."""
 
     class Patient(BaseAggregate):
-        name = String(max_length=100)
-        patient_uuid = String(identifier=True, max_length=36)
+        name: String(max_length=100)
+        patient_uuid: String(identifier=True, max_length=36)
         medical_records = HasMany("MedicalRecord", via="patient_id")
 
     class MedicalRecord(BaseEntity):
-        diagnosis = String(max_length=200)
-        patient_id = String()  # Will store UUID
+        diagnosis: String(max_length=200)
+        patient_id: String()  # Will store UUID
 
     test_domain.register(Patient)
     test_domain.register(MedicalRecord, part_of=Patient)

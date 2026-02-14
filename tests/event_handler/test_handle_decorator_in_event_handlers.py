@@ -8,18 +8,18 @@ from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 class AddressChanged(BaseEvent):
-    user_id = Identifier()
-    full_address = String()
+    user_id: Identifier()
+    full_address: String()
 
 
 def test_that_a_handler_is_recorded_against_event_handler(test_domain):

@@ -11,11 +11,11 @@ class Balance:
     * amount - a float value
     """
 
-    currency = String(max_length=3, required=True)
-    amount = Float(required=True, min_value=0.0)
+    currency: String(max_length=3, required=True)
+    amount: Float(required=True, min_value=0.0)
 
 
 @domain.aggregate
 class Account:
     balance = ValueObject(Balance)
-    name = String(max_length=30)
+    name: String(max_length=30)

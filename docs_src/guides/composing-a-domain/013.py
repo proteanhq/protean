@@ -6,19 +6,19 @@ domain = Domain()
 
 @domain.aggregate
 class User:
-    first_name = String(max_length=50)
-    last_name = String(max_length=50)
-    age = Integer()
+    first_name: String(max_length=50)
+    last_name: String(max_length=50)
+    age: Integer()
 
 
 @domain.entity(part_of=User)
 class Credentials:
-    email = String(max_length=254)
-    password_hash = String(max_length=128)
+    email: String(max_length=254)
+    password_hash: String(max_length=128)
 
 
 @domain.projection(part_of=User)
 class Token:
-    key = Identifier(identifier=True)
-    id = Identifier(required=True)
-    email = String(required=True)
+    key: Identifier(identifier=True)
+    id: Identifier(required=True)
+    email: String(required=True)

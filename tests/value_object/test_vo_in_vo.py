@@ -6,15 +6,15 @@ from protean.utils.reflection import fields
 
 
 class Address(BaseValueObject):
-    street = String(max_length=50)
-    city = String(max_length=25)
-    state = String(max_length=25)
-    zip_code = String(max_length=10)
+    street: String(max_length=50)
+    city: String(max_length=25)
+    state: String(max_length=25)
+    zip_code: String(max_length=10)
 
 
 class Contact(BaseValueObject):
-    email = String(max_length=255)
-    phone_number = String(max_length=255)
+    email: String(max_length=255)
+    phone_number: String(max_length=255)
     address = ValueObject(Address)
 
 

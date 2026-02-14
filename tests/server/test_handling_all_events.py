@@ -19,27 +19,27 @@ def count_up():
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: String()
+    name: String()
+    password_hash: String()
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: Identifier()
+    email: String()
+    name: String()
+    password_hash: String()
 
 
 class Post(BaseAggregate):
-    topic = String()
-    content = Text()
+    topic: String()
+    content: Text()
 
 
 class Created(BaseEvent):
-    id = Identifier(identifier=True)
-    topic = String()
-    content = Text()
+    id: Identifier(identifier=True)
+    topic: String()
+    content: Text()
 
 
 class SystemMetrics(BaseEventHandler):

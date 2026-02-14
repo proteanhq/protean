@@ -9,16 +9,16 @@ domain = Domain(name="Authentication")
 
 @domain.aggregate(fact_events=True)
 class User:
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "ARCHIVED"])
+    name: String(max_length=50, required=True)
+    email: String(required=True)
+    status: String(choices=["ACTIVE", "ARCHIVED"])
 
     account = HasOne("Account")
 
 
 @domain.entity(part_of=User)
 class Account:
-    password_hash = String(max_length=512)
+    password_hash: String(max_length=512)
 
 
 domain.init(traverse=False)

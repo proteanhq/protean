@@ -6,6 +6,6 @@ domain = Domain()
 
 @domain.aggregate
 class Person:
-    name = String(required=True, max_length=50)
-    age = Integer(default=21)
-    country = String(max_length=2)
+    name: String(required=True, max_length=50)
+    age: Integer(default=21)
+    country: String(max_length=2)

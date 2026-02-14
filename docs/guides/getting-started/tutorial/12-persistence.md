@@ -116,11 +116,11 @@ mappings, define a **database model**:
 ```python
 @domain.database_model(part_of=Book)
 class BookDatabaseModel:
-    title = String(max_length=200)
-    author = String(max_length=150)
-    isbn = String(max_length=13)
-    price_amount = Float()
-    price_currency = String(max_length=3)
+    title: String(max_length=200)
+    author: String(max_length=150)
+    isbn: String(max_length=13)
+    price_amount: Float()
+    price_currency: String(max_length=3)
 
     class Meta:
         schema_name = "books"

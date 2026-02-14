@@ -41,15 +41,15 @@ overridden and the Elasticsearch Model will have the default index value `*` and
 
 ```python
 class Person(BaseAggregate):
-    name = String()
-    about = Text()
+    name: String()
+    about: Text()
 
     class Meta:
         schema_name = "people"
 
 class PeopleModel(ElasticsearchModel):
-    name = Text(fields={"raw": Keyword()})
-    about = Text()
+    name: Text(fields={"raw": Keyword()})
+    about: Text()
 
     class Index:
         settings = {"number_of_shards": 1}

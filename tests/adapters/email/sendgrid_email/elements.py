@@ -8,10 +8,10 @@ from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):
-    email = String(max_length=255, required=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    email: String(max_length=255, required=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
     @classmethod
     def add_newcomer(cls, person_dict):
@@ -30,10 +30,10 @@ class Person(BaseAggregate):
 
 
 class PersonAdded(BaseEvent):
-    email = String(max_length=255, required=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    email: String(max_length=255, required=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
 
 class WelcomeEmail(BaseEmail):

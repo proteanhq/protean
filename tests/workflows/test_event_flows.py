@@ -38,39 +38,39 @@ from protean.utils.mixins import handle
 
 
 class Order(BaseAggregate):
-    customer_id = Identifier(required=True)
+    customer_id: Identifier(required=True)
     items = HasMany("OrderItem")
-    total = Float(required=True)
-    ordered_at = DateTime(default=lambda: datetime.now(timezone.utc))
+    total: Float(required=True)
+    ordered_at: DateTime(default=lambda: datetime.now(timezone.utc))
 
 
 class OrderItem(BaseEntity):
-    product_id = Identifier(required=True)
-    price = Float(required=True)
-    quantity = Integer(required=True)
+    product_id: Identifier(required=True)
+    price: Float(required=True)
+    quantity: Integer(required=True)
 
 
 # FIXME Auto-generate ValueObject from Entity?
 class OrderItemValueObject(BaseValueObject):
-    product_id = Identifier(required=True)
-    price = Float(required=True)
-    quantity = Integer(required=True)
+    product_id: Identifier(required=True)
+    price: Float(required=True)
+    quantity: Integer(required=True)
 
 
 class PlaceOrder(BaseCommand):
-    order_id = Identifier(identifier=True)
-    customer_id = Identifier(required=True)
-    items = List(content_type=ValueObject(OrderItemValueObject))
-    total = Float(required=True)
-    ordered_at = DateTime(required=True)
+    order_id: Identifier(identifier=True)
+    customer_id: Identifier(required=True)
+    items: List(content_type=ValueObject(OrderItemValueObject))
+    total: Float(required=True)
+    ordered_at: DateTime(required=True)
 
 
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(identifier=True)
-    customer_id = Identifier(required=True)
-    items = List(content_type=ValueObject(OrderItemValueObject))
-    total = Float(required=True)
-    ordered_at = DateTime(required=True)
+    order_id: Identifier(identifier=True)
+    customer_id: Identifier(required=True)
+    items: List(content_type=ValueObject(OrderItemValueObject))
+    total: Float(required=True)
+    ordered_at: DateTime(required=True)
 
 
 class OrdersCommandHandler(BaseCommandHandler):
@@ -98,8 +98,8 @@ class OrdersCommandHandler(BaseCommandHandler):
 
 
 class DailyOrders(BaseProjection):
-    date = Date(identifier=True)
-    total = Integer(required=True)
+    date: Date(identifier=True)
+    total: Integer(required=True)
 
 
 class OrdersEventHandler(BaseEventHandler):
@@ -115,15 +115,15 @@ class OrdersEventHandler(BaseEventHandler):
 
 
 class Customer(BaseAggregate):
-    name = String(required=True)
+    name: String(required=True)
     order_history = HasMany("OrderHistory")
 
 
 class OrderHistory(BaseEntity):
-    order_id = Identifier(identifier=True)
-    items = List(content_type=ValueObject(OrderItemValueObject))
-    total = Float(required=True)
-    ordered_at = DateTime(required=True)
+    order_id: Identifier(identifier=True)
+    items: List(content_type=ValueObject(OrderItemValueObject))
+    total: Float(required=True)
+    ordered_at: DateTime(required=True)
 
 
 class CustomerOrderEventHandler(BaseEventHandler):
@@ -141,13 +141,13 @@ class CustomerOrderEventHandler(BaseEventHandler):
 
 
 class Shipment(BaseAggregate):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(content_type=ValueObject(OrderItemValueObject))
-    status = String(
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(content_type=ValueObject(OrderItemValueObject))
+    status: String(
         choices=["PENDING", "SHIPPED", "DELIVERED", "CANCELLED"], default="PENDING"
     )
-    shipped_at = DateTime()
+    shipped_at: DateTime()
 
 
 class ShipmentEventHandler(BaseEventHandler):

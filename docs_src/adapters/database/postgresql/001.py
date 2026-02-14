@@ -13,8 +13,8 @@ domain.config["databases"]["default"] = {
 
 @domain.aggregate
 class Provider:
-    name = String()
-    age = Integer()
+    name: String()
+    age: Integer()
 
 
 @domain.database_model(part_of=Provider)

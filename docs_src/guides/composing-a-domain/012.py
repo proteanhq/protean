@@ -9,9 +9,9 @@ domain = Domain()
 
 @domain.aggregate
 class Person:
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
 
 @domain.repository(part_of=Person)

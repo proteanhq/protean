@@ -6,9 +6,9 @@ from protean.fields import Float, HasMany, Integer, String
 
 
 class OrderItem(BaseEntity):
-    product_id = String(max_length=50)
-    quantity = Integer()
-    price = Float()
+    product_id: String(max_length=50)
+    quantity: Integer()
+    price: Float()
 
 
 class Order(BaseAggregate):

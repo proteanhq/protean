@@ -10,15 +10,15 @@ class InsufficientFundsException(Exception):
 
 @banking.event(part_of="Account")
 class AccountWithdrawn:
-    account_number = Identifier(required=True)
-    amount = Float(required=True)
+    account_number: Identifier(required=True)
+    amount: Float(required=True)
 
 
 @banking.aggregate
 class Account:
-    account_number = Identifier(required=True, unique=True)
-    balance = Float()
-    overdraft_limit = Float(default=0.0)
+    account_number: Identifier(required=True, unique=True)
+    balance: Float()
+    overdraft_limit: Float(default=0.0)
 
     @invariant.post
     def balance_must_be_greater_than_or_equal_to_overdraft_limit(self):

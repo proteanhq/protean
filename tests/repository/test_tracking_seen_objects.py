@@ -6,7 +6,7 @@ from protean.fields import String
 
 
 class User(BaseAggregate):
-    name = String()
+    name: String()
 
 
 @pytest.fixture(autouse=True)

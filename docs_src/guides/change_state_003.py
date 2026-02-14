@@ -6,9 +6,9 @@ domain = Domain()
 
 @domain.aggregate
 class Post:
-    title = String(required=True, max_length=100)
-    body = Text()
-    published = Boolean(default=False)
+    title: String(required=True, max_length=100)
+    body: Text()
+    published: Boolean(default=False)
 
     def publish(self):
         self.published = True
@@ -17,5 +17,5 @@ class Post:
 
 @domain.event(part_of=Post)
 class PostPublished:
-    post_id = Identifier(required=True)
-    body = Text()
+    post_id: Identifier(required=True)
+    body: Text()

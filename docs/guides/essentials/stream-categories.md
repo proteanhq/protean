@@ -100,7 +100,7 @@ Commands follow the same pattern as events - they're routed to their target aggr
 ```python
 @domain.command(part_of=Order)
 class PlaceOrder:
-    order_id = Identifier(required=True)
+    order_id: Identifier(required=True)
     # Routes to Order's stream category
 ```
 
@@ -221,8 +221,8 @@ For event-sourced aggregates (marked with `is_event_sourced=True`), stream categ
 ```python
 @domain.aggregate(is_event_sourced=True)
 class Account:
-    account_number = String(required=True)
-    balance = Float(default=0.0)
+    account_number: String(required=True)
+    balance: Float(default=0.0)
 ```
 
 In event-sourced aggregates:

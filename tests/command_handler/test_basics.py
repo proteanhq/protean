@@ -10,20 +10,20 @@ from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 def test_that_base_command_handler_cannot_be_instantianted():
@@ -74,8 +74,8 @@ def test_command_and_command_handler_have_to_be_associated_with_same_aggregate(
             pass
 
     class User2(BaseAggregate):
-        email = String()
-        name = String()
+        email: String()
+        name: String()
 
     test_domain.register(User)
     test_domain.register(User2)

@@ -34,13 +34,13 @@ handler_call_count = 0
 
 
 class Account(BaseAggregate):
-    account_id = Identifier(identifier=True)
-    name = String()
+    account_id: Identifier(identifier=True)
+    name: String()
 
 
 class OpenAccount(BaseCommand):
-    account_id = Identifier(identifier=True)
-    name = String()
+    account_id: Identifier(identifier=True)
+    name: String()
 
 
 class AccountCommandHandlers(BaseCommandHandler):

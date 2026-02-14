@@ -8,26 +8,26 @@ from protean.fields import HasMany, HasOne, Identifier, Integer, String
 
 
 class University(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
     departments = HasMany("Department")
 
 
 class CloseDepartment(BaseCommand):
-    department_id = Integer()
+    department_id: Integer()
 
 
 class DepartmentClosed(BaseEvent):
-    department_id = Integer()
+    department_id: Integer()
 
 
 class Department(BaseEntity):
-    name = String(max_length=50)
+    name: String(max_length=50)
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name = String(max_length=50)
-    age = Integer(min_value=21)
+    name: String(max_length=50)
+    age: Integer(min_value=21)
 
 
 class TestAggregateClusterAssignment:
@@ -53,22 +53,22 @@ class TestAggregateClusterAssignment:
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: Identifier()
+    email: String()
+    name: String()
+    password_hash: String()
 
 
 class TestEventSourcedAggregateClusterAssignment:

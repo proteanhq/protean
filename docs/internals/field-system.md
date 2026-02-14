@@ -2,7 +2,7 @@
 
 Protean's field system lets you define domain model attributes using a
 domain-friendly vocabulary — `String(max_length=100)`, `Float(min_value=0)`,
-`HasMany["Product"]` — while Pydantic v2 handles validation, serialization,
+`HasMany("Product")` — while Pydantic v2 handles validation, serialization,
 and JSON Schema generation underneath.
 
 This page explains the internal architecture that makes this work: the
@@ -94,7 +94,7 @@ Protean supports three ways to define fields:
 ```python
 class Product(BaseEntity):
     name: String(max_length=50)                        # annotation
-    price = Float(min_value=0)                         # assignment
+    price: Float(min_value=0)                         # assignment
     metadata: Annotated[dict, Field(default_factory=dict)]  # raw Pydantic
 ```
 

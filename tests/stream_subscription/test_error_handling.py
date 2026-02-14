@@ -21,15 +21,15 @@ from protean.utils.eventing import Message
 class ErrorTestAggregate(BaseAggregate):
     """Test aggregate for error handling tests."""
 
-    test_id = Identifier(required=True)
-    message = String()
+    test_id: Identifier(required=True)
+    message: String()
 
 
 class ErrorTestEvent(BaseEvent):
     """Test event for error scenarios."""
 
-    test_id = Identifier(required=True)
-    message = String()
+    test_id: Identifier(required=True)
+    message: String()
 
 
 class ErrorTestEventHandler(BaseEventHandler):

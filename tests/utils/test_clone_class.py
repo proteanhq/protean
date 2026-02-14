@@ -375,10 +375,10 @@ class TestCloneClass:
         from datetime import datetime
 
         class User(BaseAggregate):
-            name = String(max_length=50, required=True)
-            email = String(max_length=100, required=True, unique=True)
-            age = Integer(default=18)
-            created_at = DateTime(default=datetime.now)
+            name: String(max_length=50, required=True)
+            email: String(max_length=100, required=True, unique=True)
+            age: Integer(default=18)
+            created_at: DateTime(default=datetime.now)
 
             @classmethod
             def create_user(cls, name, email):

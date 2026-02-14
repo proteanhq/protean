@@ -70,9 +70,9 @@ class TestMSSQLSchemaHandling:
 
         # Define test entity with unique name
         class UniqueMssqlSchemaTestEntity(BaseAggregate):
-            name = String(max_length=100, required=True)
-            count = Integer(default=0)
-            metadata = Dict()  # Test MSSQL JSON handling
+            name: String(max_length=100, required=True)
+            count: Integer(default=0)
+            metadata: Dict()  # Test MSSQL JSON handling
 
         domain.register(UniqueMssqlSchemaTestEntity)
         domain.init(traverse=False)
@@ -107,8 +107,8 @@ class TestMSSQLSchemaHandling:
 
         # Define test entity with custom schema name
         class UniqueMssqlCustomSchemaEntity(BaseAggregate):
-            title = String(max_length=200, required=True)
-            data = Dict()  # Test MSSQL custom JSON type
+            title: String(max_length=200, required=True)
+            data: Dict()  # Test MSSQL custom JSON type
 
         domain.register(
             UniqueMssqlCustomSchemaEntity, schema_name="unique_mssql_custom_table"
@@ -142,9 +142,9 @@ class TestMSSQLSchemaHandling:
 
         # Define test entity with JSON fields - use unique class name to avoid conflicts
         class MssqlJsonUniqueEntity(BaseAggregate):
-            name = String(max_length=100, required=True)
-            config_data = Dict()  # Test MSSQL JSON handling
-            tags = List()  # Test MSSQL array-like handling
+            name: String(max_length=100, required=True)
+            config_data: Dict()  # Test MSSQL JSON handling
+            tags: List()  # Test MSSQL array-like handling
 
         domain.register(MssqlJsonUniqueEntity)
         domain.init(traverse=False)

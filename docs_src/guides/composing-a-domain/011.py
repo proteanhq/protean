@@ -11,9 +11,9 @@ domain = Domain()
 
 @domain.aggregate
 class User:
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 @domain.database_model(part_of=User)

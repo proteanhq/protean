@@ -18,27 +18,27 @@ from protean.utils.eventing import (
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class UnregisteredEvent(BaseEvent):
     """Event that won't be registered with domain for testing purposes"""
 
-    id = Identifier()
-    data = String()
+    id: Identifier()
+    data: String()
 
 
 @pytest.fixture(autouse=True)

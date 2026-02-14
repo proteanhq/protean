@@ -8,25 +8,25 @@ from protean.fields import Identifier, String
 
 
 class UserRegistered(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
+    user_id: Identifier(required=True)
+    name: String(max_length=50, required=True)
+    email: String(required=True)
 
 
 class UserActivated(BaseEvent):
-    user_id = Identifier(required=True)
+    user_id: Identifier(required=True)
 
 
 class UserRenamed(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    user_id: Identifier(required=True)
+    name: String(required=True, max_length=50)
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "INACTIVE", "ARCHIVED"], default="INACTIVE")
+    user_id: Identifier(identifier=True)
+    name: String(max_length=50, required=True)
+    email: String(required=True)
+    status: String(choices=["ACTIVE", "INACTIVE", "ARCHIVED"], default="INACTIVE")
 
     @classmethod
     def register(cls, user_id, name, email):

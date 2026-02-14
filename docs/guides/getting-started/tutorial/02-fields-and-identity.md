@@ -96,8 +96,8 @@ You can also mark a specific field as the identifier using
 ```python
 @domain.aggregate
 class Book:
-    isbn = String(max_length=13, identifier=True)
-    title = String(max_length=200, required=True)
+    isbn: String(max_length=13, identifier=True)
+    title: String(max_length=200, required=True)
     # ...
 ```
 

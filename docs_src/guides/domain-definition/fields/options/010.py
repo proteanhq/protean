@@ -19,4 +19,4 @@ class EmailDomainValidator:
 
 @domain.aggregate
 class Employee:
-    email = String(identifier=True, validators=[EmailDomainValidator("mydomain.com")])
+    email: String(identifier=True, validators=[EmailDomainValidator("mydomain.com")])

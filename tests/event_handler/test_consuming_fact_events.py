@@ -9,16 +9,16 @@ from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "ARCHIVED"])
+    name: String(max_length=50, required=True)
+    email: String(required=True)
+    status: String(choices=["ACTIVE", "ARCHIVED"])
 
 
 class UserProjection(BaseProjection):
-    id = String(identifier=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(required=True)
+    id: String(identifier=True)
+    name: String(max_length=50, required=True)
+    email: String(required=True)
+    status: String(required=True)
 
 
 class ManageUserProjection(BaseEventHandler):

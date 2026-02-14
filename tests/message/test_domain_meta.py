@@ -19,20 +19,20 @@ from protean.utils.eventing import (
 
 
 class User(BaseAggregate):
-    email = String(identifier=True)
-    name = String()
+    email: String(identifier=True)
+    name: String()
 
 
 class Register(BaseCommand):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 @pytest.fixture(autouse=True)

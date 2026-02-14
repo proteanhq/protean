@@ -17,14 +17,14 @@ REDIS_IDEMPOTENCY_URL = "redis://localhost:6379/5"
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
+    user_id: Identifier(identifier=True)
+    email: String()
 
 
 class UserCommandHandlers(BaseCommandHandler):

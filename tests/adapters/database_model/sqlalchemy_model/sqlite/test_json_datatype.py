@@ -7,9 +7,9 @@ from protean.utils import utcnow_func
 
 
 class Event(BaseAggregate):
-    name = String(max_length=255)
-    created_at = DateTime(default=utcnow_func)
-    payload = Dict()
+    name: String(max_length=255)
+    created_at: DateTime(default=utcnow_func)
+    payload: Dict()
 
 
 @pytest.mark.sqlite

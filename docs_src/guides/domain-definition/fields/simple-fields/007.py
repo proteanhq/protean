@@ -6,5 +6,5 @@ domain = Domain()
 
 @domain.aggregate
 class User:
-    name = String(required=True)
-    subscribed = Boolean(default=False)
+    name: String(required=True)
+    subscribed: Boolean(default=False)

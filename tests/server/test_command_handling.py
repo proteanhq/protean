@@ -15,18 +15,18 @@ counter = 0
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 class Activate(BaseCommand):
-    user_id = Identifier()
+    user_id: Identifier()
 
 
 def dummy(*args):

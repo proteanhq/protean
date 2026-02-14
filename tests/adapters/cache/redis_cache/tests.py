@@ -10,9 +10,9 @@ from protean.fields import Identifier, String
 
 
 class Token(BaseProjection):
-    key = Identifier(identifier=True)
-    user_id = Identifier(required=True)
-    email = String(required=True)
+    key: Identifier(identifier=True)
+    user_id: Identifier(required=True)
+    email: String(required=True)
 
 
 @pytest.mark.redis

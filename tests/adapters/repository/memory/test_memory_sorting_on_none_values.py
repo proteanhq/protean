@@ -5,9 +5,9 @@ from protean.fields import Date, Integer, String
 
 
 class User(BaseAggregate):
-    name = String()
-    joined_on = Date()
-    seq = Integer()
+    name: String()
+    joined_on: Date()
+    seq: Integer()
 
 
 def test_for_sorting_without_nulls(test_domain):

@@ -19,21 +19,21 @@ class ArticleStatus(Enum):
 
 @publishing.command(part_of="Article")
 class PublishArticle:
-    article_id = Identifier(required=True)
-    published_at = DateTime(default=utc_now)
+    article_id: Identifier(required=True)
+    published_at: DateTime(default=utc_now)
 
 
 @publishing.event(part_of="Article")
 class ArticlePublished:
-    article_id = Identifier(required=True)
-    published_at = DateTime()
+    article_id: Identifier(required=True)
+    published_at: DateTime()
 
 
 @publishing.aggregate
 class Article:
-    article_id = Identifier(required=True)
-    status = String(choices=ArticleStatus, default=ArticleStatus.DRAFT.value)
-    published_at = DateTime(default=utc_now)
+    article_id: Identifier(required=True)
+    status: String(choices=ArticleStatus, default=ArticleStatus.DRAFT.value)
+    published_at: DateTime(default=utc_now)
 
     def publish(self, published_at: DateTime) -> None:
         self.status = ArticleStatus.PUBLISHED.value

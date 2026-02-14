@@ -17,8 +17,8 @@ from protean.server.subscription.stream_subscription import StreamSubscription
 class EdgeCaseEvent(BaseEvent):
     """Test event for testing."""
 
-    test_id = Identifier(required=True)
-    message = String()
+    test_id: Identifier(required=True)
+    message: String()
 
 
 class EdgeCaseEventHandler(BaseEventHandler):

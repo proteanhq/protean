@@ -9,19 +9,19 @@ from protean.utils.reflection import declared_fields
 
 
 class Shipment(BaseAggregate):
-    tracking_id = String(max_length=50)
+    tracking_id: String(max_length=50)
     order = HasOne("Order")
 
 
 class Order(BaseEntity):
-    ordered_on = Date()
+    ordered_on: Date()
     items = HasMany("OrderItem")
 
 
 class OrderItem(BaseEntity):
-    product_id = String(max_length=50)
-    quantity = Integer()
-    price = Float()
+    product_id: String(max_length=50)
+    quantity: Integer()
+    price: Float()
 
 
 @pytest.fixture(autouse=True)

@@ -286,23 +286,32 @@ class BaseValueObject(BaseModel, OptionsMixin):
         from protean.fields.spec import FieldSpec, resolve_fieldspecs
 
         # Validate VO constraints BEFORE resolving FieldSpecs
+        # Check both vars(cls) (assignment style) and __annotations__ (annotation style)
+        def _validate_fieldspec(name: str, value: FieldSpec) -> None:
+            if value.unique:
+                raise IncorrectUsageError(
+                    f"Value Objects cannot contain fields marked 'unique' "
+                    f"(field '{name}')"
+                )
+            if value.identifier:
+                raise IncorrectUsageError(
+                    f"Value Objects cannot contain fields marked 'identifier' "
+                    f"(field '{name}')"
+                )
+
         for name, value in list(vars(cls).items()):
             if isinstance(value, FieldSpec):
-                if value.unique:
-                    raise IncorrectUsageError(
-                        f"Value Objects cannot contain fields marked 'unique' "
-                        f"(field '{name}')"
-                    )
-                if value.identifier:
-                    raise IncorrectUsageError(
-                        f"Value Objects cannot contain fields marked 'identifier' "
-                        f"(field '{name}')"
-                    )
+                _validate_fieldspec(name, value)
             elif isinstance(value, (HasOne, HasMany, Reference)):
                 raise IncorrectUsageError(
                     f"Value Objects cannot have associations. "
                     f"Remove {name} ({type(value).__name__}) from class {cls.__name__}"
                 )
+
+        # Also check annotation-style FieldSpecs
+        for name, value in vars(cls).get("__annotations__", {}).items():
+            if isinstance(value, FieldSpec):
+                _validate_fieldspec(name, value)
 
         # Handle ValueObject() descriptors — convert to Pydantic annotations
         own_annots = vars(cls).get("__annotations__", {})

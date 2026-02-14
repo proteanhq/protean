@@ -14,7 +14,7 @@ class Email(BaseValueObject):
     """
 
     # This is the external facing data attribute
-    address = String(max_length=254, required=True)
+    address: String(max_length=254, required=True)
 
     @classmethod
     def from_address(cls, address):
@@ -44,7 +44,7 @@ class Email(BaseValueObject):
 
 class User(BaseAggregate):
     email = ValueObject(Email, required=True)
-    name = String(max_length=255)
+    name: String(max_length=255)
 
 
 class MyOrgEmail(Email):
@@ -65,8 +65,8 @@ class Balance(BaseValueObject):
     * amount - a float value
     """
 
-    currency = String(max_length=3, choices=Currency)
-    amount = Float()
+    currency: String(max_length=3, choices=Currency)
+    amount: Float()
 
     @invariant.post
     def validate_balance_cannot_be_less_than_1_trillion(self):
@@ -83,7 +83,7 @@ class Balance(BaseValueObject):
 
 class Account(BaseAggregate):
     balance = ValueObject(Balance, required=True)
-    kind = String(max_length=15, required=True)
+    kind: String(max_length=15, required=True)
 
 
 class BuildingStatus(Enum):
@@ -92,9 +92,9 @@ class BuildingStatus(Enum):
 
 
 class Building(BaseValueObject):
-    name = String(max_length=50)
-    floors = Integer()
-    status = String(choices=BuildingStatus)
+    name: String(max_length=50)
+    floors: Integer()
+    status: String(choices=BuildingStatus)
 
     def defaults(self):
         if not self.status:
@@ -110,8 +110,8 @@ class Building(BaseValueObject):
 
 
 class PolymorphicConnection(BaseValueObject):
-    connected_id = Identifier(referenced_as="connected_id")
-    connected_type = String(referenced_as="connected_type", max_length=15)
+    connected_id: Identifier(referenced_as="connected_id")
+    connected_type: String(referenced_as="connected_type", max_length=15)
 
 
 class PolymorphicOwner(BaseAggregate):

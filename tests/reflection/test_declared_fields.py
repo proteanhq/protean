@@ -7,8 +7,8 @@ from protean.utils.reflection import declared_fields
 
 
 class Person(BaseAggregate):
-    name = String(max_length=50, required=True)
-    age = Integer()
+    name: String(max_length=50, required=True)
+    age: Integer()
 
 
 def test_declared_fields():

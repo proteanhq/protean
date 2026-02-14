@@ -7,7 +7,7 @@ from protean.fields import HasOne, Identifier, String
 
 
 class Account(BaseEntity):
-    password_hash = String(max_length=512)
+    password_hash: String(max_length=512)
 
     def change_password(self, password):
         self.password_hash = password
@@ -15,14 +15,14 @@ class Account(BaseEntity):
 
 
 class PasswordChanged(BaseEvent):
-    account_id = Identifier(required=True)
-    user_id = Identifier(required=True)
+    account_id: Identifier(required=True)
+    user_id: Identifier(required=True)
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "ARCHIVED"])
+    name: String(max_length=50, required=True)
+    email: String(required=True)
+    status: String(choices=["ACTIVE", "ARCHIVED"])
 
     account = HasOne(Account)
 
@@ -36,12 +36,12 @@ class User(BaseAggregate):
 
 
 class UserActivated(BaseEvent):
-    user_id = Identifier(required=True)
+    user_id: Identifier(required=True)
 
 
 class UserRenamed(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    user_id: Identifier(required=True)
+    name: String(required=True, max_length=50)
 
 
 @pytest.fixture(autouse=True)

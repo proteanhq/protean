@@ -8,8 +8,8 @@ from protean.fields import String, Integer
 
 
 class Product(BaseAggregate):
-    name = String(max_length=100, required=True)
-    price = Integer()
+    name: String(max_length=100, required=True)
+    price: Integer()
 
 
 @pytest.fixture(autouse=True)

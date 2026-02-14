@@ -141,9 +141,9 @@ immediately -- at construction time, not at persistence time:
 ```python
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier()
-    total = Float()
+    order_id: Auto(identifier=True)
+    customer_id: Identifier()
+    total: Float()
 
 
 # Identity is assigned the moment the object is created
@@ -161,8 +161,8 @@ field named `id`:
 ```python
 @domain.aggregate
 class Order:
-    customer_id = Identifier()
-    total = Float()
+    customer_id: Identifier()
+    total: Float()
 
 order = Order(customer_id="cust-789", total=149.99)
 print(order.id)  # Auto-generated UUID
@@ -214,13 +214,13 @@ def gen_epoch_id():
 
 @domain.aggregate
 class Measurement:
-    measurement_id = Auto(
+    measurement_id: Auto(
         identifier=True,
         identity_strategy="function",
         identity_function=gen_epoch_id,
         identity_type="integer",
     )
-    value = Float()
+    value: Float()
 ```
 
 ### The Identifier Field on Commands
@@ -231,10 +231,10 @@ Commands use the `Identifier` field to carry aggregate identities. Unlike `Auto`
 ```python
 @domain.command(part_of=Order)
 class PlaceOrder(BaseCommand):
-    order_id = Identifier(identifier=True)
-    customer_id = Identifier()
-    items = List()
-    total = Float()
+    order_id: Identifier(identifier=True)
+    customer_id: Identifier()
+    items: List()
+    total: Float()
 ```
 
 This design reinforces the pattern: the identity originates at the caller and
@@ -418,8 +418,8 @@ where it may not apply:
   ```python
   @domain.aggregate
   class Book:
-      isbn = String(max_length=13, identifier=True)
-      title = String(max_length=200, required=True)
+      isbn: String(max_length=13, identifier=True)
+      title: String(max_length=200, required=True)
   ```
 
   The creation command carries this natural identity (`isbn`) from the caller
@@ -434,7 +434,7 @@ where it may not apply:
   ```python
   @domain.aggregate
   class Invoice:
-      invoice_number = Auto(identifier=True, increment=True)
+      invoice_number: Auto(identifier=True, increment=True)
       # ...
   ```
 

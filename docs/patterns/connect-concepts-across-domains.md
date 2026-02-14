@@ -130,10 +130,10 @@ sales = Domain(__file__, "Sales")
 
 @sales.aggregate
 class Customer:
-    customer_id = Auto(identifier=True)
-    name = String(required=True, max_length=100)
-    email = String(required=True)
-    segment = String(choices=CustomerSegment, default="STANDARD")
+    customer_id: Auto(identifier=True)
+    name: String(required=True, max_length=100)
+    email: String(required=True)
+    segment: String(choices=CustomerSegment, default="STANDARD")
 ```
 
 This aggregate owns the `customer_id`. When a customer is registered, this
@@ -151,21 +151,21 @@ These events carry the **shared identity** and the data that other contexts need
 ```python
 @sales.event(part_of=Customer)
 class CustomerRegistered:
-    customer_id = Identifier(required=True)
-    name = String(required=True)
-    email = String(required=True)
+    customer_id: Identifier(required=True)
+    name: String(required=True)
+    email: String(required=True)
 
 
 @sales.event(part_of=Customer)
 class CustomerEmailUpdated:
-    customer_id = Identifier(required=True)
-    new_email = String(required=True)
+    customer_id: Identifier(required=True)
+    new_email: String(required=True)
 
 
 @sales.event(part_of=Customer)
 class CustomerDeactivated:
-    customer_id = Identifier(required=True)
-    reason = String()
+    customer_id: Identifier(required=True)
+    reason: String()
 ```
 
 ### Delta Events vs. Fact Events
@@ -194,10 +194,10 @@ get a full snapshot with every event, simplifying their logic:
 # Sales context: enable fact events
 @sales.aggregate(fact_events=True)
 class Customer:
-    customer_id = Auto(identifier=True)
-    name = String(required=True, max_length=100)
-    email = String(required=True)
-    segment = String(choices=CustomerSegment, default="STANDARD")
+    customer_id: Auto(identifier=True)
+    name: String(required=True, max_length=100)
+    email: String(required=True)
+    segment: String(choices=CustomerSegment, default="STANDARD")
 ```
 
 With `fact_events=True`, Protean automatically generates a fact event containing
@@ -232,18 +232,18 @@ with the `stream_category` option to listen across aggregate boundaries:
 @domain.aggregate
 class Customer:
     """Authority for customer lifecycle."""
-    customer_id = Auto(identifier=True)
-    name = String(required=True)
-    email = String(required=True)
+    customer_id: Auto(identifier=True)
+    name: String(required=True)
+    email: String(required=True)
 
 
 @domain.aggregate
 class BillingAccount:
     """Billing context's local model of a customer."""
-    account_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)  # Correlation ID
-    email = String(required=True)
-    account_status = String(default="ACTIVE")
+    account_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)  # Correlation ID
+    email: String(required=True)
+    account_status: String(default="ACTIVE")
 
 
 @domain.event_handler(part_of=BillingAccount, stream_category="customer")
@@ -286,9 +286,9 @@ shipping = Domain(__file__, "Shipping")
 @shipping.aggregate
 class Recipient:
     """Shipping context's model of a customer."""
-    recipient_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)  # Correlation ID
-    name = String(required=True)
+    recipient_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)  # Correlation ID
+    name: String(required=True)
     delivery_address = ValueObject(Address)
 
 
@@ -351,11 +351,11 @@ simultaneously:
 @domain.projection
 class CustomerDashboard:
     """Read model combining data from Customer and BillingAccount."""
-    customer_id = Identifier(identifier=True)
-    name = String()
-    email = String()
-    account_status = String()
-    total_invoiced = Float(default=0.0)
+    customer_id: Identifier(identifier=True)
+    name: String()
+    email: String()
+    account_status: String()
+    total_invoiced: Float(default=0.0)
 
 
 @domain.projector(
@@ -401,12 +401,12 @@ its identity. All other contexts store this identity as a reference:
 ```python
 # Sales (authority): customer_id is the primary identity
 class Customer:
-    customer_id = Auto(identifier=True)
+    customer_id: Auto(identifier=True)
 
 # Billing (consumer): customer_id is a stored reference
 class BillingAccount:
-    account_id = Auto(identifier=True)       # Own identity
-    customer_id = Identifier(required=True)   # Correlation to Sales
+    account_id: Auto(identifier=True)       # Own identity
+    customer_id: Identifier(required=True)   # Correlation to Sales
 ```
 
 **Embed it in every event.** Every event that crosses context boundaries must
@@ -415,8 +415,8 @@ to the right local entity:
 
 ```python
 class CustomerEmailUpdated:
-    customer_id = Identifier(required=True)  # Always present
-    new_email = String(required=True)
+    customer_id: Identifier(required=True)  # Always present
+    new_email: String(required=True)
 ```
 
 **Index it for efficient lookup.** Consuming contexts will frequently query by
@@ -431,10 +431,10 @@ can carry multiple correlation IDs:
 ```python
 @domain.aggregate
 class Shipment:
-    shipment_id = Auto(identifier=True)
-    order_id = Identifier(required=True)     # Correlates to Order context
-    customer_id = Identifier(required=True)  # Correlates to Sales context
-    warehouse_id = Identifier(required=True) # Correlates to Inventory context
+    shipment_id: Auto(identifier=True)
+    order_id: Identifier(required=True)     # Correlates to Order context
+    customer_id: Identifier(required=True)  # Correlates to Sales context
+    warehouse_id: Identifier(required=True) # Correlates to Inventory context
 ```
 
 Each identifier traces back to a different authoritative context. Events from any
@@ -494,10 +494,10 @@ scenarios:
 @domain.projection
 class CustomerReference:
     """Read-only reference to a customer, built from Sales events."""
-    customer_id = Identifier(identifier=True)
-    name = String()
-    email = String()
-    is_active = Boolean(default=True)
+    customer_id: Identifier(identifier=True)
+    name: String()
+    email: String()
+    is_active: Boolean(default=True)
 ```
 
 Projections are simpler than aggregates. They have no business logic, no

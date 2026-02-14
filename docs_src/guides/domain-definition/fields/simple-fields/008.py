@@ -11,6 +11,6 @@ domain.domain_context().push()
 
 @domain.aggregate
 class User:
-    user_id = Identifier(identifier=True)
-    name = String(required=True)
-    subscribed = Boolean(default=False)
+    user_id: Identifier(identifier=True)
+    name: String(required=True)
+    subscribed: Boolean(default=False)

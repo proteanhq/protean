@@ -23,16 +23,16 @@ class Genre(Enum):
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
-    price = Float()
-    description = Text()
-    publication_date = Date()
-    page_count = Integer()
-    in_print = Boolean(default=True)
-    genre = String(max_length=20, choices=Genre)
-    tags = List(content_type=String)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
+    price: Float()
+    description: Text()
+    publication_date: Date()
+    page_count: Integer()
+    in_print: Boolean(default=True)
+    genre: String(max_length=20, choices=Genre)
+    tags: List(content_type=String)
 
 
 # --8<-- [end:aggregate]

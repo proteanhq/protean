@@ -10,5 +10,5 @@ def standard_topics():
 
 @domain.aggregate
 class Adult:
-    name = String(max_length=255)
-    topics = List(default=standard_topics)
+    name: String(max_length=255)
+    topics: List(default=standard_topics)

@@ -6,5 +6,5 @@ domain = Domain()
 
 @domain.aggregate
 class Person:
-    email = String(identifier=True)
-    name = String(required=True)
+    email: String(identifier=True)
+    name: String(required=True)

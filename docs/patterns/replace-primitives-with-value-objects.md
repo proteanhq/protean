@@ -7,18 +7,18 @@ A developer models a `User` aggregate:
 ```python
 @domain.aggregate
 class User:
-    user_id = Auto(identifier=True)
-    name = String(required=True)
-    email = String(required=True)
-    phone = String()
-    address_line1 = String()
-    address_line2 = String()
-    city = String()
-    state = String()
-    postal_code = String()
-    country = String()
-    balance_amount = Float(default=0.0)
-    balance_currency = String(default="USD")
+    user_id: Auto(identifier=True)
+    name: String(required=True)
+    email: String(required=True)
+    phone: String()
+    address_line1: String()
+    address_line2: String()
+    city: String()
+    state: String()
+    postal_code: String()
+    country: String()
+    balance_amount: Float(default=0.0)
+    balance_currency: String(default="USD")
 ```
 
 This compiles, tests pass, and the application works -- until it doesn't.
@@ -100,8 +100,8 @@ The simplest case -- a string with format rules.
 ```python
 @domain.aggregate
 class User:
-    user_id = Auto(identifier=True)
-    email = String(required=True)
+    user_id: Auto(identifier=True)
+    email: String(required=True)
 
     @invariant.post
     def email_must_be_valid(self):
@@ -118,7 +118,7 @@ this check.
 ```python
 @domain.value_object
 class Email:
-    address = String(required=True, max_length=254)
+    address: String(required=True, max_length=254)
 
     @invariant.post
     def must_be_valid_format(self):
@@ -136,7 +136,7 @@ class Email:
 
 @domain.aggregate
 class User:
-    user_id = Auto(identifier=True)
+    user_id: Auto(identifier=True)
     email = ValueObject(Email, required=True)
 ```
 
@@ -161,12 +161,12 @@ Two fields that are meaningless apart.
 ```python
 @domain.aggregate
 class Product:
-    product_id = Auto(identifier=True)
-    name = String(required=True)
-    price_amount = Float(required=True)
-    price_currency = String(max_length=3, required=True)
-    cost_amount = Float(required=True)
-    cost_currency = String(max_length=3, required=True)
+    product_id: Auto(identifier=True)
+    name: String(required=True)
+    price_amount: Float(required=True)
+    price_currency: String(max_length=3, required=True)
+    cost_amount: Float(required=True)
+    cost_currency: String(max_length=3, required=True)
 ```
 
 Can you calculate margin? `price_amount - cost_amount` -- but only if the
@@ -178,8 +178,8 @@ You could set `price_currency="XYZ"` and the system would happily store it.
 ```python
 @domain.value_object
 class Money:
-    amount = Float(required=True)
-    currency = String(max_length=3, required=True)
+    amount: Float(required=True)
+    currency: String(max_length=3, required=True)
 
     @invariant.post
     def amount_must_be_non_negative(self):
@@ -216,8 +216,8 @@ class Money:
 
 @domain.aggregate
 class Product:
-    product_id = Auto(identifier=True)
-    name = String(required=True)
+    product_id: Auto(identifier=True)
+    name: String(required=True)
     price = ValueObject(Money, required=True)
     cost = ValueObject(Money, required=True)
 
@@ -256,18 +256,18 @@ Six fields that form a single concept.
 ```python
 @domain.aggregate
 class Customer:
-    customer_id = Auto(identifier=True)
-    name = String(required=True)
-    shipping_street = String()
-    shipping_city = String()
-    shipping_state = String()
-    shipping_postal_code = String()
-    shipping_country = String()
-    billing_street = String()
-    billing_city = String()
-    billing_state = String()
-    billing_postal_code = String()
-    billing_country = String()
+    customer_id: Auto(identifier=True)
+    name: String(required=True)
+    shipping_street: String()
+    shipping_city: String()
+    shipping_state: String()
+    shipping_postal_code: String()
+    shipping_country: String()
+    billing_street: String()
+    billing_city: String()
+    billing_state: String()
+    billing_postal_code: String()
+    billing_country: String()
 ```
 
 Twelve address fields on one aggregate. To add a "work address," you'd add
@@ -279,11 +279,11 @@ each field individually.
 ```python
 @domain.value_object
 class Address:
-    street = String(required=True)
-    city = String(required=True)
-    state = String(required=True)
-    postal_code = String(required=True)
-    country = String(max_length=2, required=True)
+    street: String(required=True)
+    city: String(required=True)
+    state: String(required=True)
+    postal_code: String(required=True)
+    country: String(max_length=2, required=True)
 
     @invariant.post
     def country_must_be_iso_code(self):
@@ -295,8 +295,8 @@ class Address:
 
 @domain.aggregate
 class Customer:
-    customer_id = Auto(identifier=True)
-    name = String(required=True)
+    customer_id: Auto(identifier=True)
+    name: String(required=True)
     shipping_address = ValueObject(Address)
     billing_address = ValueObject(Address)
 ```
@@ -332,8 +332,8 @@ A concept with operations beyond storage.
 ```python
 @domain.value_object
 class DateRange:
-    start_date = Date(required=True)
-    end_date = Date(required=True)
+    start_date: Date(required=True)
+    end_date: Date(required=True)
 
     @invariant.post
     def end_must_be_after_start(self):
@@ -354,8 +354,8 @@ class DateRange:
 
 @domain.aggregate
 class Campaign:
-    campaign_id = Auto(identifier=True)
-    name = String(required=True)
+    campaign_id: Auto(identifier=True)
+    name: String(required=True)
     active_period = ValueObject(DateRange, required=True)
 
     def is_active_on(self, date) -> bool:
@@ -378,7 +378,7 @@ an aggregate or entity:
 ```python
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
+    order_id: Auto(identifier=True)
     total = ValueObject(Money, required=True)
     shipping_address = ValueObject(Address)
 ```
@@ -418,9 +418,9 @@ Protean explicitly rejects identifier fields on value objects:
 ```python
 @domain.value_object
 class Money:
-    id = Auto(identifier=True)  # Raises IncorrectUsageError
-    amount = Float()
-    currency = String()
+    id: Auto(identifier=True)  # Raises IncorrectUsageError
+    amount: Float()
+    currency: String()
 ```
 
 This enforces the distinction between entities (which have identity) and value
@@ -446,7 +446,7 @@ Value objects support `@invariant.post`, just like aggregates:
 ```python
 @domain.value_object
 class Percentage:
-    value = Float(required=True)
+    value: Float(required=True)
 
     @invariant.post
     def must_be_between_zero_and_hundred(self):
@@ -470,8 +470,8 @@ aggregate to the value object:
 ```python
 @domain.aggregate
 class User:
-    email = String(required=True)
-    phone = String()
+    email: String(required=True)
+    phone: String()
 
     @invariant.post
     def email_must_be_valid(self):
@@ -491,7 +491,7 @@ class User:
 ```python
 @domain.value_object
 class Email:
-    address = String(required=True, max_length=254)
+    address: String(required=True, max_length=254)
 
     @invariant.post
     def must_be_valid(self):
@@ -501,7 +501,7 @@ class Email:
 
 @domain.value_object
 class Phone:
-    number = String(required=True, max_length=20)
+    number: String(required=True, max_length=20)
 
     @invariant.post
     def must_be_valid(self):
@@ -512,7 +512,7 @@ class Phone:
 
 @domain.aggregate
 class User:
-    user_id = Auto(identifier=True)
+    user_id: Auto(identifier=True)
     email = ValueObject(Email, required=True)
     phone = ValueObject(Phone)
     # No email or phone validation invariants needed on User
@@ -531,8 +531,8 @@ Value objects can contain other value objects:
 ```python
 @domain.value_object
 class GeoLocation:
-    latitude = Float(required=True)
-    longitude = Float(required=True)
+    latitude: Float(required=True)
+    longitude: Float(required=True)
 
     @invariant.post
     def coordinates_must_be_valid(self):
@@ -548,11 +548,11 @@ class GeoLocation:
 
 @domain.value_object
 class Address:
-    street = String(required=True)
-    city = String(required=True)
-    state = String(required=True)
-    postal_code = String(required=True)
-    country = String(max_length=2, required=True)
+    street: String(required=True)
+    city: String(required=True)
+    state: String(required=True)
+    postal_code: String(required=True)
+    country: String(max_length=2, required=True)
     location = ValueObject(GeoLocation)  # Optional geo coordinates
 ```
 
@@ -626,7 +626,7 @@ two independent timestamps.
 # Anti-pattern: value object that adds no value
 @domain.value_object
 class Name:
-    value = String(required=True)
+    value: String(required=True)
     # No validation, no operations, no composition
 ```
 

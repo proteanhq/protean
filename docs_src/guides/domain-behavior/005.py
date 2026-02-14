@@ -21,5 +21,5 @@ class EmailValidator:
 
 @domain.aggregate
 class Person:
-    name = String(required=True, max_length=50)
-    email = String(required=True, max_length=254, validators=[EmailValidator()])
+    name: String(required=True, max_length=50)
+    email: String(required=True, max_length=254, validators=[EmailValidator()])

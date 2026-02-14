@@ -14,13 +14,13 @@ A `HasOne` relationship represents a one-to-one association between an aggregate
 ```python
 @domain.aggregate
 class Blog:
-    title = String(max_length=100)
+    title: String(max_length=100)
     settings = HasOne("BlogSettings")
 
 @domain.entity(part_of=Blog)
 class BlogSettings:
-    theme = String(max_length=50)
-    allow_comments = Boolean(default=True)
+    theme: String(max_length=50)
+    allow_comments: Boolean(default=True)
 ```
 
 ### One-to-Many (HasMany)
@@ -30,13 +30,13 @@ A `HasMany` relationship represents a one-to-many association where an aggregate
 ```python
 @domain.aggregate
 class Post:
-    title = String(max_length=100)
+    title: String(max_length=100)
     comments = HasMany("Comment")
 
 @domain.entity(part_of=Post)
 class Comment:
-    content = String(max_length=500)
-    author = String(max_length=50)
+    content: String(max_length=500)
+    author: String(max_length=50)
 ```
 
 ## Reference Fields
@@ -60,7 +60,7 @@ You can explicitly define reference fields for more control:
 ```python
 @domain.entity(part_of=Post)
 class Comment:
-    content = String(max_length=500)
+    content: String(max_length=500)
     post = Reference(Post)  # Explicit reference field
 ```
 
@@ -80,15 +80,15 @@ The `via` parameter allows you to specify which field in the child entity should
 ```python
 @domain.aggregate
 class Product:
-    name = String(max_length=100)
-    sku = String(identifier=True, max_length=20)
+    name: String(max_length=100)
+    sku: String(identifier=True, max_length=20)
     reviews = HasMany("Review", via="product_sku")
 
 @domain.entity(part_of=Product)
 class Review:
-    content = String(max_length=1000)
-    rating = Integer(min_value=1, max_value=5)
-    product_sku = String()  # Custom foreign key field
+    content: String(max_length=1000)
+    rating: Integer(min_value=1, max_value=5)
+    product_sku: String()  # Custom foreign key field
 ```
 
 Without `via`, the foreign key would be `product_id`. With `via="product_sku"`, it uses `product_sku` instead.
@@ -100,7 +100,7 @@ The `referenced_as` parameter in Reference fields allows you to specify a custom
 ```python
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_name = String(max_length=100)
+    product_name: String(max_length=100)
     order = Reference(Order, referenced_as="order_number")
     # Creates shadow field named 'order_number' instead of 'order_id'
 ```

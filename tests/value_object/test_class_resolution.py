@@ -8,12 +8,12 @@ from protean.utils.reflection import declared_fields
 
 class Account(BaseAggregate):
     balance = ValueObject("Balance", required=True)
-    kind = String(max_length=15, required=True)
+    kind: String(max_length=15, required=True)
 
 
 class Balance(BaseValueObject):
-    currency = String(max_length=3)
-    amount = Float()
+    currency: String(max_length=3)
+    amount: Float()
 
 
 def test_value_object_class_resolution(test_domain):

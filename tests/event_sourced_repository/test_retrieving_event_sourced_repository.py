@@ -8,8 +8,8 @@ from protean.utils import DomainObjects
 
 
 class User(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: String()
+    age: Integer()
 
 
 def test_that_event_sourced_repository_is_returned_for_event_sourced_aggregate(

@@ -7,13 +7,13 @@ from protean.fields.embedded import ValueObject
 
 
 class SimpleVO(BaseValueObject):
-    foo = String()
-    bar = String()
+    foo: String()
+    bar: String()
 
 
 class VOWithDateTime(BaseValueObject):
-    foo = String()
-    now = DateTime()
+    foo: String()
+    now: DateTime()
 
 
 class SimpleVOEntity(BaseAggregate):

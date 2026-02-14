@@ -102,11 +102,11 @@ mechanism for keeping aggregates small while maintaining relationships.
 # Anti-pattern: Customer embedded inside Order
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
+    order_id: Auto(identifier=True)
     customer = HasOne(Customer)        # Embeds the entire Customer aggregate
     items = HasMany(OrderItem)
-    status = String(default="pending")
-    total = Float(default=0.0)
+    status: String(default="pending")
+    total: Float(default=0.0)
 ```
 
 This design means:
@@ -121,11 +121,11 @@ This design means:
 # Pattern: Order references Customer by identity
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)  # Just the identity
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)  # Just the identity
     items = HasMany(OrderItem)
-    status = String(default="pending")
-    total = Float(default=0.0)
+    status: String(default="pending")
+    total: Float(default=0.0)
 ```
 
 Now the Order knows *which* customer placed it, but doesn't own or embed the
@@ -144,11 +144,11 @@ The caller already has the data and passes it to the command:
 ```python
 @domain.command(part_of=Order)
 class PlaceOrder(BaseCommand):
-    order_id = Identifier(identifier=True)
-    customer_id = Identifier(required=True)
-    customer_name = String(required=True)    # Included by the caller
-    customer_email = String(required=True)   # Included by the caller
-    items = List(required=True)
+    order_id: Identifier(identifier=True)
+    customer_id: Identifier(required=True)
+    customer_name: String(required=True)    # Included by the caller
+    customer_email: String(required=True)   # Included by the caller
+    items: List(required=True)
 ```
 
 The command handler doesn't need to load the Customer aggregate. The command
@@ -161,18 +161,18 @@ When you need a frozen-in-time copy of another aggregate's data:
 ```python
 @domain.value_object
 class CustomerSnapshot:
-    customer_id = String(required=True)
-    name = String(required=True)
-    email = String(required=True)
+    customer_id: String(required=True)
+    name: String(required=True)
+    email: String(required=True)
 
 
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
+    order_id: Auto(identifier=True)
     customer = ValueObject(CustomerSnapshot)  # Snapshot, not the live aggregate
     items = HasMany(OrderItem)
-    status = String(default="pending")
-    total = Float(default=0.0)
+    status: String(default="pending")
+    total: Float(default=0.0)
 ```
 
 The `CustomerSnapshot` is a value object -- immutable, embedded, and
@@ -222,15 +222,15 @@ stores the identity of another aggregate without embedding it:
 ```python
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)  # References Customer aggregate
-    product_id = Identifier(required=True)   # References Product aggregate
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)  # References Customer aggregate
+    product_id: Identifier(required=True)   # References Product aggregate
 
 @domain.aggregate
 class Shipment:
-    shipment_id = Auto(identifier=True)
-    order_id = Identifier(required=True)     # References Order aggregate
-    carrier_id = Identifier(required=True)   # References Carrier aggregate
+    shipment_id: Auto(identifier=True)
+    order_id: Identifier(required=True)     # References Order aggregate
+    carrier_id: Identifier(required=True)   # References Carrier aggregate
 ```
 
 Each aggregate stands alone. Relationships are expressed as identities, not
@@ -244,18 +244,18 @@ in the same transaction -- use entities:
 ```python
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_id = Identifier(required=True)
-    product_name = String(required=True)
-    quantity = Integer(min_value=1, required=True)
-    unit_price = Float(required=True)
+    product_id: Identifier(required=True)
+    product_name: String(required=True)
+    quantity: Integer(min_value=1, required=True)
+    unit_price: Float(required=True)
 
 
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)
     items = HasMany(OrderItem)
-    status = String(default="pending")
+    status: String(default="pending")
 
     def add_item(self, product_id, product_name, quantity, unit_price):
         item = OrderItem(
@@ -284,23 +284,23 @@ When data describes an aspect of the aggregate but doesn't have identity:
 ```python
 @domain.value_object
 class Money:
-    amount = Float(required=True)
-    currency = String(max_length=3, required=True)
+    amount: Float(required=True)
+    currency: String(max_length=3, required=True)
 
 
 @domain.value_object
 class ShippingAddress:
-    street = String(required=True)
-    city = String(required=True)
-    state = String(required=True)
-    postal_code = String(required=True)
-    country = String(required=True)
+    street: String(required=True)
+    city: String(required=True)
+    state: String(required=True)
+    postal_code: String(required=True)
+    country: String(required=True)
 
 
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)
     items = HasMany(OrderItem)
     total = ValueObject(Money)
     shipping_address = ValueObject(ShippingAddress)  # Snapshot at order time
@@ -318,9 +318,9 @@ domain events:
 ```python
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    total_amount = Float(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    total_amount: Float(required=True)
 
 
 @domain.aggregate
@@ -433,13 +433,13 @@ Consider a project management system with these requirements:
 # Anti-pattern: everything in one aggregate
 @domain.aggregate
 class Project:
-    name = String(required=True)
-    description = Text()
-    status = String(default="active")
+    name: String(required=True)
+    description: Text()
+    status: String(default="active")
     team = HasOne(Team)
     tasks = HasMany(Task)              # Could be hundreds
     time_entries = HasMany(TimeEntry)   # Could be thousands
-    progress = Float(default=0.0)
+    progress: Float(default=0.0)
 ```
 
 Every time someone logs a time entry, the entire Project -- with all its tasks,
@@ -462,11 +462,11 @@ Apply the consistency boundary test to each relationship:
 ```python
 @domain.aggregate
 class Project:
-    project_id = Auto(identifier=True)
-    name = String(required=True)
-    description = Text()
-    status = String(default="active")
-    progress = Float(default=0.0)
+    project_id: Auto(identifier=True)
+    name: String(required=True)
+    description: Text()
+    status: String(default="active")
+    progress: Float(default=0.0)
 
     def update_progress(self, completed_count, total_count):
         if total_count > 0:
@@ -475,24 +475,24 @@ class Project:
 
 @domain.aggregate
 class Team:
-    team_id = Auto(identifier=True)
-    project_id = Identifier(required=True)  # References Project
+    team_id: Auto(identifier=True)
+    project_id: Identifier(required=True)  # References Project
     members = HasMany(TeamMember)
 
 
 @domain.entity(part_of=Team)
 class TeamMember:
-    user_id = Identifier(required=True)
-    role = String(default="member")
+    user_id: Identifier(required=True)
+    role: String(default="member")
 
 
 @domain.aggregate
 class Task:
-    task_id = Auto(identifier=True)
-    project_id = Identifier(required=True)  # References Project
-    assignee_id = Identifier()               # References a User
-    title = String(required=True)
-    status = String(default="open")
+    task_id: Auto(identifier=True)
+    project_id: Identifier(required=True)  # References Project
+    assignee_id: Identifier()               # References a User
+    title: String(required=True)
+    status: String(default="open")
     comments = HasMany(Comment)
 
     def complete(self):
@@ -507,18 +507,18 @@ class Task:
 
 @domain.entity(part_of=Task)
 class Comment:
-    author_id = Identifier(required=True)
-    content = Text(required=True)
-    posted_at = DateTime()
+    author_id: Identifier(required=True)
+    content: Text(required=True)
+    posted_at: DateTime()
 
 
 @domain.aggregate
 class TimeEntry:
-    entry_id = Auto(identifier=True)
-    task_id = Identifier(required=True)    # References Task
-    user_id = Identifier(required=True)    # References User
-    hours = Float(required=True)
-    description = Text()
+    entry_id: Auto(identifier=True)
+    task_id: Identifier(required=True)    # References Task
+    user_id: Identifier(required=True)    # References User
+    hours: Float(required=True)
+    description: Text()
 ```
 
 Now each aggregate is small and focused:
@@ -611,7 +611,7 @@ to other aggregates, use `Identifier`:
 # Correct: identity reference to another aggregate
 @domain.aggregate
 class Order:
-    customer_id = Identifier(required=True)  # References Customer
+    customer_id: Identifier(required=True)  # References Customer
 ```
 
 ### Mistake 3: Premature Splitting

@@ -20,17 +20,17 @@ domain.config["event_processing"] = "sync"
 
 @domain.value_object
 class Money:
-    currency = String(max_length=3, default="USD")
-    amount = Float(required=True)
+    currency: String(max_length=3, default="USD")
+    amount: Float(required=True)
 
 
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
     price = ValueObject(Money)
-    description = Text()
+    description: Text()
 
     def add_to_catalog(self):
         self.raise_(
@@ -45,10 +45,10 @@ class Book:
 
 @domain.event(part_of=Book)
 class BookAdded:
-    book_id = Identifier(required=True)
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    price_amount = Float()
+    book_id: Identifier(required=True)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    price_amount: Float()
 
 
 class OrderStatus(Enum):
@@ -59,8 +59,8 @@ class OrderStatus(Enum):
 
 @domain.aggregate
 class Order:
-    customer_name = String(max_length=150, required=True)
-    status = String(
+    customer_name: String(max_length=150, required=True)
+    status: String(
         max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
     )
     items = HasMany("OrderItem")
@@ -76,36 +76,36 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    book_title = String(max_length=200, required=True)
-    quantity = Integer(required=True)
+    book_title: String(max_length=200, required=True)
+    quantity: Integer(required=True)
     unit_price = ValueObject(Money)
 
 
 @domain.event(part_of=Order)
 class OrderPlaced:
-    order_id = Identifier(required=True)
-    customer_name = String(max_length=150, required=True)
-    total_items = Integer(required=True)
+    order_id: Identifier(required=True)
+    customer_name: String(max_length=150, required=True)
+    total_items: Integer(required=True)
 
 
 @domain.event(part_of=Order)
 class OrderConfirmed:
-    order_id = Identifier(required=True)
-    customer_name = String(max_length=150, required=True)
+    order_id: Identifier(required=True)
+    customer_name: String(max_length=150, required=True)
 
 
 @domain.event(part_of=Order)
 class OrderShipped:
-    order_id = Identifier(required=True)
-    customer_name = String(max_length=150, required=True)
+    order_id: Identifier(required=True)
+    customer_name: String(max_length=150, required=True)
 
 
 # --8<-- [start:inventory]
 @domain.aggregate
 class Inventory:
-    book_id = Identifier(required=True)
-    title = String(max_length=200, required=True)
-    quantity = Integer(default=0)
+    book_id: Identifier(required=True)
+    title: String(max_length=200, required=True)
+    quantity: Integer(default=0)
 
     def adjust_stock(self, amount: int):
         self.quantity += amount
@@ -153,11 +153,11 @@ class OrderEventHandler:
 
 @domain.command(part_of=Book)
 class AddBook:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
-    price_amount = Float(required=True)
-    description = Text()
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
+    price_amount: Float(required=True)
+    description: Text()
 
 
 @domain.command_handler(part_of=Book)

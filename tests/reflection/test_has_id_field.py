@@ -8,11 +8,11 @@ from protean.utils.reflection import has_id_field
 
 
 class Aggregate1(BaseAggregate):
-    foo = String()
+    foo: String()
 
 
 class Entity1(BaseEntity):
-    foo = String()
+    foo: String()
 
 
 class ApplicationService1(BaseApplicationService):
@@ -20,11 +20,11 @@ class ApplicationService1(BaseApplicationService):
 
 
 class CommandWithId(BaseCommand):
-    foo_id = Identifier(identifier=True)
+    foo_id: Identifier(identifier=True)
 
 
 class CommandWithoutId(BaseCommand):
-    foo_id = Identifier()
+    foo_id: Identifier()
 
 
 def test_elements_with_id_fields():

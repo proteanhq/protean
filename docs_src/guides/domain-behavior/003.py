@@ -18,7 +18,7 @@ class AccountType(Enum):
 
 @domain.aggregate
 class Account:
-    account_number = Integer(required=True, unique=True)
-    account_type = String(required=True, max_length=7, choices=AccountType)
-    balance = Float(default=0.0)
-    opened_at = DateTime(default=utc_now)
+    account_number: Integer(required=True, unique=True)
+    account_type: String(required=True, max_length=7, choices=AccountType)
+    balance: Float(default=0.0)
+    opened_at: DateTime(default=utc_now)

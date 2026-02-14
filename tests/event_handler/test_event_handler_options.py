@@ -8,13 +8,13 @@ from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 def test_that_base_command_handler_cannot_be_instantianted():

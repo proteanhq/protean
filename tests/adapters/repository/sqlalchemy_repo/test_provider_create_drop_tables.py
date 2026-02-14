@@ -8,7 +8,7 @@ from protean.fields import String
 
 
 class Person(BaseAggregate):
-    name = String(required=True)
+    name: String(required=True)
 
 
 @pytest.fixture

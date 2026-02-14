@@ -22,11 +22,11 @@ def count_up():
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 class UserEventHandler(BaseEventHandler):
