@@ -285,37 +285,58 @@ def _prepare_pydantic_namespace(
 
     if needs_identity and auto_add is not False:
         # Check if an identifier is already declared
+        from protean.fields.spec import FieldSpec
+
         has_id = False
-        for attr_name, annotation in annots.items():
+
+        # Check namespace values for FieldSpec with identifier=True
+        for attr_name, attr_val in new_dict.items():
             if attr_name.startswith("_"):
                 continue
-
-            # Handle string annotations (from __future__ import annotations)
-            if isinstance(annotation, str) and '"identifier": True' in annotation:
-                has_id = True
-                break
-            if isinstance(annotation, str) and "'identifier': True" in annotation:
+            if isinstance(attr_val, FieldSpec) and attr_val.identifier:
                 has_id = True
                 break
 
-            # Check Annotated[type, Field(..., json_schema_extra={"identifier": True})]
-            if get_origin(annotation) is Annotated:
-                for arg in get_args(annotation)[1:]:
-                    if isinstance(arg, FieldInfo):
-                        extra = getattr(arg, "json_schema_extra", None) or {}
-                        if isinstance(extra, dict) and extra.get("identifier"):
-                            has_id = True
-                            break
-            if has_id:
-                break
-
-            # Check direct default: field_name = Field(json_schema_extra={"identifier": True})
-            attr_val = new_dict.get(attr_name)
-            if isinstance(attr_val, FieldInfo):
-                extra = getattr(attr_val, "json_schema_extra", None) or {}
-                if isinstance(extra, dict) and extra.get("identifier"):
+        # Check annotations for FieldSpec with identifier=True
+        if not has_id:
+            for attr_name, annotation in annots.items():
+                if attr_name.startswith("_"):
+                    continue
+                if isinstance(annotation, FieldSpec) and annotation.identifier:
                     has_id = True
                     break
+
+        if not has_id:
+            for attr_name, annotation in annots.items():
+                if attr_name.startswith("_"):
+                    continue
+
+                # Handle string annotations (from __future__ import annotations)
+                if isinstance(annotation, str) and '"identifier": True' in annotation:
+                    has_id = True
+                    break
+                if isinstance(annotation, str) and "'identifier': True" in annotation:
+                    has_id = True
+                    break
+
+                # Check Annotated[type, Field(..., json_schema_extra={"identifier": True})]
+                if get_origin(annotation) is Annotated:
+                    for arg in get_args(annotation)[1:]:
+                        if isinstance(arg, FieldInfo):
+                            extra = getattr(arg, "json_schema_extra", None) or {}
+                            if isinstance(extra, dict) and extra.get("identifier"):
+                                has_id = True
+                                break
+                if has_id:
+                    break
+
+                # Check direct default: field_name = Field(json_schema_extra={"identifier": True})
+                attr_val = new_dict.get(attr_name)
+                if isinstance(attr_val, FieldInfo):
+                    extra = getattr(attr_val, "json_schema_extra", None) or {}
+                    if isinstance(extra, dict) and extra.get("identifier"):
+                        has_id = True
+                        break
 
         if not has_id:
             annots["id"] = str | int | UUID

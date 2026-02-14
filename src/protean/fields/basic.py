@@ -1,4 +1,4 @@
-"""Module for defining the List field descriptor"""
+"""Module for defining the ValueObjectList field descriptor"""
 
 import datetime
 
@@ -18,7 +18,7 @@ _SUPPORTED_CONTENT_TYPES = (
 )
 
 
-class List(Field):
+class ValueObjectList(Field):
     """
     A field that represents a list of values.
 

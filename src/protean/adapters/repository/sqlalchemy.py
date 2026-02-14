@@ -32,7 +32,7 @@ from protean.exceptions import (
     ObjectNotFoundError,
 )
 from protean.fields.association import Reference, _ReferenceField
-from protean.fields.basic import List as ProteanList
+from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
@@ -221,7 +221,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                 return _get_identity_type()
             if field_cls is ValueObject:
                 return sa_types.PickleType
-            if field_cls is ProteanList:
+            if field_cls is ValueObjectList:
                 return sa_types.PickleType
             return sa_types.String
 
@@ -240,7 +240,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     # Resolve the Python type for Pydantic shims (used in dialect checks)
                     if isinstance(field_obj, _PydanticFieldShim):
                         resolved_type = _resolve_python_type(field_obj)
-                    elif isinstance(field_obj, ProteanList):
+                    elif isinstance(field_obj, ValueObjectList):
                         resolved_type = list
                     else:
                         resolved_type = None
@@ -359,7 +359,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     key = attr_obj.attribute_name
 
                 # Serialize List-of-VOs to dicts for JSON/ARRAY(JSON) storage
-                if isinstance(attr_obj, ProteanList) and value:
+                if isinstance(attr_obj, ValueObjectList) and value:
                     value = attr_obj.as_dict(value)
 
                 item_dict[key] = value

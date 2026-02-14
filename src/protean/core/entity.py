@@ -23,10 +23,11 @@ from protean.exceptions import (
 from protean.fields import (
     HasMany,
     HasOne,
-    List as ProteanList,
     Reference,
     ValueObject,
 )
+from protean.fields.basic import ValueObjectList
+from protean.fields.spec import FieldSpec
 from protean.fields.association import Association, _ReferenceField
 from protean.fields.embedded import _ShadowField
 from protean.utils import (
@@ -59,7 +60,7 @@ _DESCRIPTOR_TYPES = (
     Association,
     Reference,
     ValueObject,
-    ProteanList,
+    ValueObjectList,
     _ReferenceField,
     _ShadowField,
 )
@@ -139,7 +140,14 @@ class BaseEntity(BaseModel, OptionsMixin):
     model_config = ConfigDict(
         validate_assignment=True,
         extra="forbid",
-        ignored_types=(HasOne, HasMany, Reference, ValueObject, ProteanList),
+        ignored_types=(
+            HasOne,
+            HasMany,
+            Reference,
+            ValueObject,
+            ValueObjectList,
+            FieldSpec,
+        ),
     )
 
     # Internal state (PrivateAttr — excluded from model_dump/schema)
@@ -178,10 +186,21 @@ class BaseEntity(BaseModel, OptionsMixin):
         # Set empty __container_fields__ as placeholder (populated later by __pydantic_init_subclass__)
         setattr(cls, _FIELDS, {})
 
+        # Resolve FieldSpec declarations BEFORE auto-id injection, so that
+        # FieldSpec identifiers (e.g. ``id = Identifier()``) are visible
+        # to ``_maybe_inject_auto_id()``.
+        cls._resolve_fieldspecs()
+
         # Auto-inject `id` field for concrete aggregate/entity subclasses.
         # This runs BEFORE Pydantic's complete_model_class(), so the injected
         # annotation is picked up by Pydantic's model field processing.
         cls._maybe_inject_auto_id()
+
+    @classmethod
+    def _resolve_fieldspecs(cls) -> None:
+        from protean.fields.spec import resolve_fieldspecs
+
+        resolve_fieldspecs(cls)
 
     @classmethod
     def _maybe_inject_auto_id(cls) -> None:
@@ -265,7 +284,9 @@ class BaseEntity(BaseModel, OptionsMixin):
         for klass in cls.__mro__:
             for name, attr in vars(klass).items():
                 if (
-                    isinstance(attr, (Association, Reference, ValueObject, ProteanList))
+                    isinstance(
+                        attr, (Association, Reference, ValueObject, ValueObjectList)
+                    )
                     and name not in fields_dict
                 ):
                     fields_dict[name] = attr
