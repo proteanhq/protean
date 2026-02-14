@@ -108,26 +108,26 @@ With its own class, it defines only the fields it cares about:
 # Order domain publishes this
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    customer_email = String(required=True)
-    items = List(required=True)
-    subtotal = Float(required=True)
-    tax = Float(required=True)
-    total = Float(required=True)
-    currency = String(required=True)
-    discount_code = String()
-    placed_at = DateTime(required=True)
-    ip_address = String()
-    user_agent = String()
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    customer_email: String(required=True)
+    items: List(required=True)
+    subtotal: Float(required=True)
+    tax: Float(required=True)
+    total: Float(required=True)
+    currency: String(required=True)
+    discount_code: String()
+    placed_at: DateTime(required=True)
+    ip_address: String()
+    user_agent: String()
 
 
 # Fulfillment domain only needs this
 @domain.event(part_of=Shipment)
 class ExternalOrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
 ```
 
 The Fulfillment domain ignores `customer_email`, `tax`, `discount_code`,
@@ -292,10 +292,10 @@ agree to share a subset of their domain model. This is appropriate when:
 ```python
 # shared_kernel/events.py -- intentionally shared
 class OrderPlacedEvent(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float(required=True)
 ```
 
 A shared kernel is a conscious architectural decision, not an accidental
@@ -343,14 +343,14 @@ accidental shared kernel -- coupling by convenience, not by design.
 ```python
 # Anti-pattern: sharing events that include internal details
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float(required=True)
     # Internal implementation details shared with consumers
-    _processing_flags = Dict()
-    _audit_trail = List()
-    _internal_status = String()
+    _processing_flags: Dict()
+    _audit_trail: List()
+    _internal_status: String()
 ```
 
 Only publish events with fields that consumers should see. Internal details

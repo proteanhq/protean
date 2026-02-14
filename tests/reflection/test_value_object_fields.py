@@ -9,31 +9,31 @@ from protean.utils.reflection import value_object_fields
 
 
 class Address(BaseValueObject):
-    street = String(max_length=100)
-    city = String(max_length=50)
-    postal_code = String(max_length=10)
+    street: String(max_length=100)
+    city: String(max_length=50)
+    postal_code: String(max_length=10)
 
 
 class Balance(BaseValueObject):
-    amount = Float(required=True)
-    currency = String(max_length=3, default="USD")
+    amount: Float(required=True)
+    currency: String(max_length=3, default="USD")
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, required=True)
-    age = Integer()
+    name: String(max_length=50, required=True)
+    age: Integer()
     address = ValueObject(Address)
 
 
 class Account(BaseAggregate):
-    email = String(max_length=255, required=True)
+    email: String(max_length=255, required=True)
     balance = ValueObject(Balance)
     primary_address = ValueObject(Address)
 
 
 class PersonWithoutValueObjects(BaseAggregate):
-    name = String(max_length=50, required=True)
-    age = Integer()
+    name: String(max_length=50, required=True)
+    age: Integer()
 
 
 def test_value_object_fields():
@@ -104,7 +104,7 @@ def test_value_object_fields_with_string_reference():
     """Test ValueObject field defined with string class name"""
 
     class ProductWithStringRef(BaseAggregate):
-        name = String(max_length=100)
+        name: String(max_length=100)
         shipping_address = ValueObject("Address")
 
     vo_fields = value_object_fields(ProductWithStringRef)
@@ -118,7 +118,7 @@ def test_value_object_fields_on_entity():
     """Test value_object_fields works on entities"""
 
     class OrderItem(BaseEntity):
-        name = String(max_length=100)
+        name: String(max_length=100)
         price = ValueObject(Balance)
 
     vo_fields = value_object_fields(OrderItem)
@@ -132,8 +132,8 @@ def test_value_object_fields_mixed_with_other_fields():
     """Test element with mix of ValueObject and other field types"""
 
     class ComplexEntity(BaseAggregate):
-        name = String(max_length=100)
-        age = Integer()
+        name: String(max_length=100)
+        age: Integer()
         address = ValueObject(Address)
         balance = ValueObject(Balance)
 

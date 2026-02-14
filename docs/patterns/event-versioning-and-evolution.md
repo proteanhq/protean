@@ -9,11 +9,11 @@ aggregate and to the `OrderPlaced` event:
 ```python
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
-    discount_code = String()  # New field
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float(required=True)
+    discount_code: String()  # New field
 ```
 
 The change works for new orders. But in an event-sourced system, the event
@@ -80,21 +80,21 @@ the behavior of events written before the field existed:
 # Version 1: original event
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float(required=True)
 
 
 # Version 2: added discount_code and channel
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
-    discount_code = String(default=None)    # New, optional
-    channel = String(default="web")         # New, with sensible default
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float(required=True)
+    discount_code: String(default=None)    # New, optional
+    channel: String(default="web")         # New, with sensible default
 ```
 
 Old events deserialize successfully: `discount_code` is `None`, `channel` is
@@ -116,9 +116,9 @@ When a new business operation is introduced, create a new event type:
 # New business operation: gift wrapping
 @domain.event(part_of=Order)
 class OrderGiftWrapped(BaseEvent):
-    order_id = Identifier(required=True)
-    wrapping_style = String(required=True)
-    gift_message = String()
+    order_id: Identifier(required=True)
+    wrapping_style: String(required=True)
+    gift_message: String()
 ```
 
 New event types don't affect existing consumers. Consumers that don't handle
@@ -155,22 +155,22 @@ and keep the old one for historical events:
 # Original event (keep for historical data)
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float(required=True)
 
 
 # New event for the updated business process
 @domain.event(part_of=Order)
 class OrderPlacedV2(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    line_items = List(required=True)       # Renamed from 'items'
-    subtotal = Float(required=True)        # Changed semantics
-    tax = Float(required=True)             # New required field
-    total = Float(required=True)
-    currency = String(required=True)       # New required field
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    line_items: List(required=True)       # Renamed from 'items'
+    subtotal: Float(required=True)        # Changed semantics
+    tax: Float(required=True)             # New required field
+    total: Float(required=True)
+    currency: String(required=True)       # New required field
 ```
 
 The aggregate now raises `OrderPlacedV2`. Consumers must handle both types:
@@ -290,12 +290,12 @@ This simplifies some evolution scenarios but creates others:
 ```python
 @domain.aggregate(fact_events=True)
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)
     items = HasMany(OrderItem)
-    status = String(default="draft")
-    total = Float(default=0.0)
-    currency = String(default="USD")  # New field
+    status: String(default="draft")
+    total: Float(default=0.0)
+    currency: String(default="USD")  # New field
 ```
 
 **Benefits:**
@@ -350,10 +350,10 @@ upcasting or compensating events.
 # Instead, raise a correcting event:
 @domain.event(part_of=Order)
 class OrderTotalCorrected(BaseEvent):
-    order_id = Identifier(required=True)
-    old_total = Float(required=True)
-    new_total = Float(required=True)
-    correction_reason = String(required=True)
+    order_id: Identifier(required=True)
+    old_total: Float(required=True)
+    new_total: Float(required=True)
+    correction_reason: String(required=True)
 ```
 
 ### Stream Position After Schema Changes
@@ -449,11 +449,11 @@ Keep the transition period short.
 ```python
 # Version 1: total includes tax
 class OrderPlaced(BaseEvent):
-    total = Float()  # Includes tax
+    total: Float()  # Includes tax
 
 # Version 2: total excludes tax (BREAKING CHANGE)
 class OrderPlaced(BaseEvent):
-    total = Float()  # Now excludes tax
+    total: Float()  # Now excludes tax
 ```
 
 The field name is the same, but the meaning changed. Every consumer that
@@ -465,7 +465,7 @@ instead: `subtotal` for the tax-exclusive amount.
 ```python
 # Version 1
 class OrderPlaced(BaseEvent):
-    customer_name = String()
+    customer_name: String()
 
 # Version 2: removed customer_name (BREAKING CHANGE)
 class OrderPlaced(BaseEvent):
@@ -481,8 +481,8 @@ and deprecate it in documentation.
 ```python
 # NEVER add a required field to an existing event
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    currency = String(required=True)  # BREAKS all historical events
+    order_id: Identifier(required=True)
+    currency: String(required=True)  # BREAKS all historical events
 ```
 
 Historical events don't have `currency`. Deserialization fails. Always use

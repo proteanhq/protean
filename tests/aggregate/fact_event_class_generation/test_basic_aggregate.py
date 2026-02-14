@@ -7,7 +7,7 @@ from protean.utils.reflection import declared_fields
 
 
 class University(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
 
 
 @pytest.fixture(autouse=True)

@@ -7,8 +7,8 @@ from protean.fields import Float, String
 
 
 class Balance(BaseValueObject):
-    currency = String(max_length=3, required=True)
-    amount = Float(required=True)
+    currency: String(max_length=3, required=True)
+    amount: Float(required=True)
 
     @invariant.post
     def check_balance_is_positive_if_currency_is_USD(self):

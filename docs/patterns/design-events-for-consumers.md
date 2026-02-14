@@ -7,7 +7,7 @@ A developer raises a domain event when an order is placed:
 ```python
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
+    order_id: Identifier(required=True)
 ```
 
 The event carries just the order ID. Downstream, an event handler needs to
@@ -129,33 +129,33 @@ relevant to that particular state transition:
 ```python
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    customer_name = String(required=True)
-    customer_email = String(required=True)
-    items = List(required=True)
-    total = Float(required=True)
-    placed_at = DateTime(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    customer_name: String(required=True)
+    customer_email: String(required=True)
+    items: List(required=True)
+    total: Float(required=True)
+    placed_at: DateTime(required=True)
 
 
 @domain.event(part_of=Order)
 class OrderShipped(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    customer_email = String(required=True)
-    tracking_number = String(required=True)
-    carrier = String(required=True)
-    shipped_at = DateTime(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    customer_email: String(required=True)
+    tracking_number: String(required=True)
+    carrier: String(required=True)
+    shipped_at: DateTime(required=True)
 
 
 @domain.event(part_of=Order)
 class OrderItemAdded(BaseEvent):
-    order_id = Identifier(required=True)
-    product_id = Identifier(required=True)
-    product_name = String(required=True)
-    quantity = Integer(required=True)
-    unit_price = Float(required=True)
-    new_total = Float(required=True)
+    order_id: Identifier(required=True)
+    product_id: Identifier(required=True)
+    product_name: String(required=True)
+    quantity: Integer(required=True)
+    unit_price: Float(required=True)
+    new_total: Float(required=True)
 ```
 
 Delta events are **specific and intentional**. Each event type carries exactly
@@ -177,11 +177,11 @@ can generate these automatically:
 ```python
 @domain.aggregate(fact_events=True)
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)
     items = HasMany(OrderItem)
-    status = String(default="draft")
-    total = Float(default=0.0)
+    status: String(default="draft")
+    total: Float(default=0.0)
     # ...
 ```
 
@@ -249,9 +249,9 @@ identity in the event:
 ```python
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)      # This aggregate
-    customer_id = Identifier(required=True)    # Referenced aggregate
-    shipping_address_id = Identifier()         # Referenced aggregate
+    order_id: Identifier(required=True)      # This aggregate
+    customer_id: Identifier(required=True)    # Referenced aggregate
+    shipping_address_id: Identifier()         # Referenced aggregate
 ```
 
 Even if a consumer doesn't need all of them, including identifiers is cheap
@@ -269,13 +269,13 @@ Think about what each consumer does with this event:
 
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    customer_name = String(required=True)      # For notifications
-    customer_email = String(required=True)     # For notifications
-    items = List(required=True)                # For projections, analytics
-    total = Float(required=True)              # For loyalty, analytics
-    placed_at = DateTime(required=True)        # For analytics, projections
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    customer_name: String(required=True)      # For notifications
+    customer_email: String(required=True)     # For notifications
+    items: List(required=True)                # For projections, analytics
+    total: Float(required=True)              # For loyalty, analytics
+    placed_at: DateTime(required=True)        # For analytics, projections
 ```
 
 ### 3. Include Cross-Aggregate Data at Event Time
@@ -330,11 +330,11 @@ consumer needs should be omitted:
 # Too much -- includes internal implementation details
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    internal_processing_flags = Dict()     # Internal detail, no consumer needs this
-    database_version = Integer()           # Infrastructure concern
-    raw_request_payload = Dict()           # API concern, not domain
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    internal_processing_flags: Dict()     # Internal detail, no consumer needs this
+    database_version: Integer()           # Infrastructure concern
+    raw_request_payload: Dict()           # API concern, not domain
 ```
 
 The rule of thumb: include business data that consumers need, exclude
@@ -361,13 +361,13 @@ design is to **work backward from the projection**:
 ```python
 @domain.projection
 class OrderSummaryProjection:
-    order_id = Identifier(identifier=True)
-    customer_name = String()
-    status = String()
-    item_count = Integer()
-    total = Float()
-    placed_at = DateTime()
-    shipped_at = DateTime()
+    order_id: Identifier(identifier=True)
+    customer_name: String()
+    status: String()
+    item_count: Integer()
+    total: Float()
+    placed_at: DateTime()
+    shipped_at: DateTime()
 ```
 
 ### Step 2: Identify What Data Each Event Must Carry
@@ -384,17 +384,17 @@ For the projector to build this projection:
 ```python
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_name = String(required=True)
-    items = List(required=True)
-    total = Float(required=True)
-    placed_at = DateTime(required=True)
+    order_id: Identifier(required=True)
+    customer_name: String(required=True)
+    items: List(required=True)
+    total: Float(required=True)
+    placed_at: DateTime(required=True)
 
 
 @domain.event(part_of=Order)
 class OrderShipped(BaseEvent):
-    order_id = Identifier(required=True)
-    shipped_at = DateTime(required=True)
+    order_id: Identifier(required=True)
+    shipped_at: DateTime(required=True)
 ```
 
 ### Step 4: Write the Projector
@@ -440,13 +440,13 @@ never need to query back to the producing domain.
 # In the Order domain: event published to the broker
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    customer_email = String(required=True)
-    items = List(required=True)
-    total = Float(required=True)
-    currency = String(required=True)
-    placed_at = DateTime(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    customer_email: String(required=True)
+    items: List(required=True)
+    total: Float(required=True)
+    currency: String(required=True)
+    placed_at: DateTime(required=True)
 
 
 # In the Fulfillment domain: subscriber consumes the event
@@ -483,7 +483,7 @@ projection rebuild) can be thin:
 # Internal trigger -- no external consumers
 @domain.event(part_of=Order)
 class OrderProjectionStale(BaseEvent):
-    order_id = Identifier(required=True)
+    order_id: Identifier(required=True)
 ```
 
 ### Events with Fact Event Fallback
@@ -495,8 +495,8 @@ because consumers that need full state can listen for the fact event instead:
 # Thin delta event for specific consumers
 @domain.event(part_of=Order)
 class OrderCancelled(BaseEvent):
-    order_id = Identifier(required=True)
-    reason = String(required=True)
+    order_id: Identifier(required=True)
+    reason: String(required=True)
     # Consumers that need full order state use the OrderFactEvent instead
 ```
 
@@ -516,7 +516,7 @@ consider that consumers may be added later.
 # Anti-pattern: event that's useless without a query
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
+    order_id: Identifier(required=True)
     # That's it. Every consumer must load the Order aggregate.
 ```
 
@@ -526,21 +526,21 @@ class OrderPlaced(BaseEvent):
 # Anti-pattern: event with every field from the aggregate
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    customer_name = String()
-    customer_email = String()
-    customer_phone = String()
-    customer_address = Dict()
-    items = List()
-    item_count = Integer()          # Derivable from items
-    total = Float()
-    subtotal = Float()              # Derivable from items
-    tax = Float()                   # Derivable from total - subtotal
-    discount = Float()
-    coupon_code = String()
-    internal_notes = String()       # No consumer needs this
-    created_by_admin = Boolean()    # Internal flag
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    customer_name: String()
+    customer_email: String()
+    customer_phone: String()
+    customer_address: Dict()
+    items: List()
+    item_count: Integer()          # Derivable from items
+    total: Float()
+    subtotal: Float()              # Derivable from items
+    tax: Float()                   # Derivable from total - subtotal
+    discount: Float()
+    coupon_code: String()
+    internal_notes: String()       # No consumer needs this
+    created_by_admin: Boolean()    # Internal flag
     # ... 20 more fields
 ```
 
@@ -553,10 +553,10 @@ fields (item_count from items, subtotal from items) are noise.
 # Anti-pattern: leaking implementation details
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    state_machine_state = String()   # Internal implementation detail
-    _version = Integer()             # Framework concern
-    retry_count = Integer()          # Infrastructure concern
+    order_id: Identifier(required=True)
+    state_machine_state: String()   # Internal implementation detail
+    _version: Integer()             # Framework concern
+    retry_count: Integer()          # Infrastructure concern
 ```
 
 Events are part of your domain's public contract. They should contain

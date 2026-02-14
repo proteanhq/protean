@@ -323,8 +323,8 @@ This requires explicit deduplication.
 ```python
 @domain.aggregate
 class CustomerLoyalty:
-    customer_id = Identifier(identifier=True)
-    points = Integer(default=0)
+    customer_id: Identifier(identifier=True)
+    points: Integer(default=0)
     point_transactions = HasMany(PointTransaction)
 
     def award_points(self, order_id: str, amount: int) -> None:
@@ -344,9 +344,9 @@ class CustomerLoyalty:
 
 @domain.entity(part_of=CustomerLoyalty)
 class PointTransaction:
-    source_id = Identifier(required=True)
-    amount = Integer(required=True)
-    type = String(required=True)
+    source_id: Identifier(required=True)
+    amount: Integer(required=True)
+    type: String(required=True)
 
 
 @domain.event_handler(part_of=CustomerLoyalty)
@@ -373,8 +373,8 @@ in the handler. The handler is thin. The aggregate checks its
 ```python
 @domain.aggregate
 class Inventory:
-    product_id = Identifier(identifier=True)
-    available_quantity = Integer(default=0)
+    product_id: Identifier(identifier=True)
+    available_quantity: Integer(default=0)
     reservations = HasMany(Reservation)
 
     def reserve(self, order_id: str, quantity: int) -> None:
@@ -431,12 +431,12 @@ because they cannot be rolled back:
 ```python
 @domain.aggregate
 class Notification:
-    notification_id = Auto(identifier=True)
-    recipient_id = Identifier(required=True)
-    type = String(required=True)
-    source_event_id = Identifier(required=True)
-    status = String(default="pending")
-    sent_at = DateTime()
+    notification_id: Auto(identifier=True)
+    recipient_id: Identifier(required=True)
+    type: String(required=True)
+    source_event_id: Identifier(required=True)
+    status: String(default="pending")
+    sent_at: DateTime()
 
     def mark_sent(self) -> None:
         self.status = "sent"

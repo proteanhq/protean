@@ -6,8 +6,8 @@ domain = Domain()
 
 @domain.aggregate
 class Person:
-    name = String(required=True, max_length=50)
-    email = String(required=True, max_length=254)
+    name: String(required=True, max_length=50)
+    email: String(required=True, max_length=254)
 
 
 domain.init(traverse=False)

@@ -10,7 +10,7 @@ from protean.fields import Boolean
 
 
 class BoolVO(BaseValueObject):
-    flag = Boolean(required=True)
+    flag: Boolean(required=True)
 
 
 @pytest.mark.parametrize(

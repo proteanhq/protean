@@ -16,54 +16,54 @@ from protean.fields import (
 
 
 class Department(BaseEntity):
-    name = String(max_length=50)
+    name: String(max_length=50)
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name = String(max_length=50)
-    age = Integer(min_value=21)
+    name: String(max_length=50)
+    age: Integer(min_value=21)
     office = HasOne("Office")
 
 
 class Office(BaseEntity):
-    building = String(max_length=25)
-    room = Integer(min_value=1)
+    building: String(max_length=25)
+    room: Integer(min_value=1)
 
 
 class OfficeVO(BaseValueObject):
-    id = Identifier()
-    building = String(max_length=25)
-    room = Integer(min_value=1)
+    id: Identifier()
+    building: String(max_length=25)
+    room: Integer(min_value=1)
 
 
 class DeanVO(BaseValueObject):
-    id = Identifier()
-    name = String(max_length=50)
-    age = Integer(min_value=21)
+    id: Identifier()
+    name: String(max_length=50)
+    age: Integer(min_value=21)
     office = ValueObject(OfficeVO)
 
 
 class DepartmentVO(BaseValueObject):
-    id = Identifier()
-    name = String(max_length=50)
+    id: Identifier()
+    name: String(max_length=50)
     dean = ValueObject(DeanVO)
 
 
 class UniversityCreated(BaseEvent):
-    id = Identifier(identifier=True)
-    _version = Integer()
-    name = String(max_length=50)
-    departments = List(content_type=ValueObject(DepartmentVO))
+    id: Identifier(identifier=True)
+    _version: Integer()
+    name: String(max_length=50)
+    departments: List(content_type=ValueObject(DepartmentVO))
 
 
 class NameChanged(BaseEvent):
-    id = Identifier(identifier=True)
-    name = String(max_length=50)
+    id: Identifier(identifier=True)
+    name: String(max_length=50)
 
 
 class University(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
     departments = HasMany(Department)
 
     def raise_event(self):

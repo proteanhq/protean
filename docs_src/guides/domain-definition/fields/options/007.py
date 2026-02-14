@@ -13,6 +13,6 @@ class BuildingStatus(Enum):
 
 @domain.aggregate
 class Building:
-    name = String(max_length=50)
-    floors = Integer()
-    status = String(choices=BuildingStatus)
+    name: String(max_length=50)
+    floors: Integer()
+    status: String(choices=BuildingStatus)

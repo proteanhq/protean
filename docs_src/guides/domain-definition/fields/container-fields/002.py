@@ -6,5 +6,5 @@ domain = Domain()
 
 @domain.aggregate
 class UserEvent:
-    name = String(max_length=255)
-    payload = Dict()
+    name: String(max_length=255)
+    payload: Dict()

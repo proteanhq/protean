@@ -6,5 +6,5 @@ domain = Domain()
 
 @domain.aggregate
 class Book:
-    title = String(max_length=255)
-    content = Text(required=True)
+    title: String(max_length=255)
+    content: Text(required=True)

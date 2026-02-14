@@ -15,26 +15,26 @@ domain = Domain()
 
 @domain.value_object
 class Money:
-    currency = String(max_length=3, default="USD")
-    amount = Float(required=True)
+    currency: String(max_length=3, default="USD")
+    amount: Float(required=True)
 
 
 @domain.value_object
 class Address:
-    street = String(max_length=200, required=True)
-    city = String(max_length=100, required=True)
-    state = String(max_length=50)
-    zip_code = String(max_length=20, required=True)
-    country = String(max_length=50, default="US")
+    street: String(max_length=200, required=True)
+    city: String(max_length=100, required=True)
+    state: String(max_length=50)
+    zip_code: String(max_length=20, required=True)
+    country: String(max_length=50, default="US")
 
 
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
     price = ValueObject(Money)
-    description = Text()
+    description: Text()
 
 
 class OrderStatus(Enum):
@@ -47,10 +47,10 @@ class OrderStatus(Enum):
 # --8<-- [start:order_aggregate]
 @domain.aggregate
 class Order:
-    customer_name = String(max_length=150, required=True)
-    customer_email = String(max_length=254, required=True)
+    customer_name: String(max_length=150, required=True)
+    customer_email: String(max_length=254, required=True)
     shipping_address = ValueObject(Address)
-    status = String(
+    status: String(
         max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
     )
     items = HasMany("OrderItem")
@@ -62,8 +62,8 @@ class Order:
 # --8<-- [start:order_item_entity]
 @domain.entity(part_of=Order)
 class OrderItem:
-    book_title = String(max_length=200, required=True)
-    quantity = Integer(required=True)
+    book_title: String(max_length=200, required=True)
+    quantity: Integer(required=True)
     unit_price = ValueObject(Money)
 
 

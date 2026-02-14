@@ -22,9 +22,9 @@ failed_count = 0
 
 
 class User(BaseAggregate):
-    email = String(identifier=True)
-    name = String()
-    password_hash = String()
+    email: String(identifier=True)
+    name: String()
+    password_hash: String()
 
     @classmethod
     def register(cls, email: str, name: str, password: str):
@@ -43,20 +43,20 @@ class User(BaseAggregate):
 
 
 class UserRegistered(BaseEvent):
-    email = String(required=True)
-    name = String(required=True)
+    email: String(required=True)
+    name: String(required=True)
 
 
 class SendWelcomeEmail(BaseCommand):
-    email = String(required=True)
-    name = String(required=True)
+    email: String(required=True)
+    name: String(required=True)
 
 
 class Notification(BaseAggregate):
-    notification_id = Identifier(identifier=True)
-    user_email = String()
-    message = String()
-    sent_count = Integer(default=0)
+    notification_id: Identifier(identifier=True)
+    user_email: String()
+    message: String()
+    sent_count: Integer(default=0)
 
     @classmethod
     def create(cls, user_email: str, message: str):

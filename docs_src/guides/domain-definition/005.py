@@ -15,8 +15,8 @@ domain.config["DATABASES"] = {
 
 @domain.aggregate
 class Person:
-    first_name = String(max_length=30)
-    last_name = String(max_length=30)
+    first_name: String(max_length=30)
+    last_name: String(max_length=30)
 
 
 @domain.database_model(entity_cls=Person)

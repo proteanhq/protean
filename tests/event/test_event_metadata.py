@@ -12,16 +12,16 @@ from protean.utils.eventing import MessageEnvelope, MessageHeaders, Metadata, Do
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
     def login(self):
         self.raise_(UserLoggedIn(user_id=self.id))
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 @pytest.fixture(autouse=True)
@@ -84,7 +84,7 @@ class TestMetadataVersion:
     def test_overridden_version(self, test_domain):
         class UserLoggedIn(BaseEvent):
             __version__ = "v2"
-            user_id = Identifier(identifier=True)
+            user_id: Identifier(identifier=True)
 
         test_domain.register(UserLoggedIn, part_of=User)
         test_domain.init(traverse=False)
@@ -95,14 +95,14 @@ class TestMetadataVersion:
     def test_version_value_in_multiple_event_definitions(self, test_domain):
         def version1():
             class DummyEvent(BaseEvent):
-                user_id = Identifier(identifier=True)
+                user_id: Identifier(identifier=True)
 
             return DummyEvent
 
         def version2():
             class DummyEvent(BaseEvent):
                 __version__ = "v2"
-                user_id = Identifier(identifier=True)
+                user_id: Identifier(identifier=True)
 
             return DummyEvent
 

@@ -7,8 +7,8 @@ from protean.fields import Integer, String
 
 
 class User(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: String()
+    age: Integer()
 
 
 class TestEventSourcedAggregateEquivalence:

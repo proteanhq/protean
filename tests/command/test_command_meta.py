@@ -10,15 +10,15 @@ from protean.fields.basic import Identifier
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 def test_command_definition_without_aggregate_or_stream(test_domain):
@@ -35,7 +35,7 @@ def test_command_definition_without_aggregate_or_stream(test_domain):
 
 def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_domain):
     class AbstractCommand(BaseCommand):
-        foo = String()
+        foo: String()
 
     try:
         test_domain.register(AbstractCommand, abstract=True)

@@ -97,13 +97,13 @@ When an entity is associated with an aggregate, Protean automatically creates a 
 ```python
 @domain.aggregate
 class Order:
-    number = String(max_length=20)
+    number: String(max_length=20)
     items = HasMany("OrderItem")
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_name = String(max_length=100)
-    quantity = Integer()
+    product_name: String(max_length=100)
+    quantity: Integer()
     # Automatically gets: order = Reference(Order)
     # Automatically gets: order_id = String()  # Shadow field
 ```
@@ -115,8 +115,8 @@ You can also explicitly define reference fields for more control:
 ```python
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_name = String(max_length=100)
-    quantity = Integer()
+    product_name: String(max_length=100)
+    quantity: Integer()
     order = Reference(Order, referenced_as="order_number")
     # Creates shadow field 'order_number' instead of 'order_id'
 ```

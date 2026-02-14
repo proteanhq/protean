@@ -12,10 +12,10 @@ def gen_id():  # (1)
 
 @domain.aggregate
 class User:
-    user_id = Auto(
+    user_id: Auto(
         identifier=True,
         identity_strategy="function",  # (2)
         identity_function=gen_id,
         identity_type="integer",
     )
-    name = String(required=True)
+    name: String(required=True)

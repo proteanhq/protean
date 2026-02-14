@@ -10,9 +10,9 @@ from protean.utils.globals import current_domain
 
 
 class PersonGeneric(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
 
 class PersonCustomRepository(BaseRepository):
@@ -23,9 +23,9 @@ class PersonCustomRepository(BaseRepository):
 
 
 class PersonSQLite(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
 
 class PersonSQLiteGenericRepository(BaseRepository):

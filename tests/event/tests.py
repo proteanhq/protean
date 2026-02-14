@@ -31,14 +31,14 @@ class TestDomainEventDefinition:
 
     def test_that_domain_event_can_accommodate_value_objects(self, test_domain):
         class Email(BaseValueObject):
-            address = String(max_length=255)
+            address: String(max_length=255)
 
         class User(BaseAggregate):
             email = ValueObject(Email, required=True)
-            name = String(max_length=50)
+            name: String(max_length=50)
 
         class UserAdded(BaseEvent):
-            id = Identifier(identifier=True)
+            id: Identifier(identifier=True)
             email: Email | None = None
             name: str | None = None
 
@@ -138,15 +138,15 @@ class TestDomainEventDefinition:
 
     def test_error_on_invalid_value_object(self, test_domain):
         class Address(BaseValueObject):
-            street = String(max_length=50, required=True)
-            city = String(max_length=25, required=True)
+            street: String(max_length=50, required=True)
+            city: String(max_length=25, required=True)
 
         class Person(BaseAggregate):
-            name = String(max_length=50)
+            name: String(max_length=50)
             address = ValueObject(Address, required=True)
 
         class PersonAdded(BaseEvent):
-            id = Identifier(identifier=True)
+            id: Identifier(identifier=True)
             name: str | None = None
             address: Address | None = None
 
@@ -166,11 +166,11 @@ class TestDomainEventDefinition:
         self, test_domain
     ):
         class Email(BaseValueObject):
-            address = String(max_length=255)
+            address: String(max_length=255)
 
         class User(BaseAggregate):
             email = ValueObject(Email, required=True)
-            name = String(max_length=50)
+            name: String(max_length=50)
 
         class UserAdded(BaseEvent):
             email: Email | None = None
@@ -224,7 +224,7 @@ class TestDomainEventRegistration:
 
     def test_registering_external_event(self, test_domain):
         class ExternalEvent(BaseEvent):
-            foo = String()
+            foo: String()
 
         test_domain.register_external_event(ExternalEvent, "Bar.ExternalEvent.v1")
 

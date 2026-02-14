@@ -10,19 +10,19 @@ from protean.fields import DateTime, Dict, HasMany, Reference, Text, ValueObject
 
 
 class Comment(BaseEntity):
-    content = Text()
-    added_on = DateTime()
+    content: Text()
+    added_on: DateTime()
 
     post = Reference("Post")
 
 
 class Post(BaseAggregate):
-    content = Text(required=True)
+    content: Text(required=True)
     comments = HasMany(Comment)
 
 
 class Permission(BaseValueObject):
-    dict_object = Dict()
+    dict_object: Dict()
 
 
 class Audit(BaseAggregate):

@@ -7,10 +7,10 @@ domain = Domain()
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
-    price = Float()
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
+    price: Float()
 
 
 # --8<-- [end:aggregate]

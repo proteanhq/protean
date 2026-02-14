@@ -14,7 +14,7 @@ from tests.shared import assert_int_is_uuid, assert_str_is_uuid
 class TestValueGeneration:
     def test_automatic_uuid_generation_of_identity_field(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(identifier=True)
+            auto_field: Auto(identifier=True)
 
         test_domain.register(AutoTest)
 
@@ -26,8 +26,8 @@ class TestValueGeneration:
 
     def test_automatic_uuid_generation_of_non_identifier_fields(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field1 = Auto()
-            auto_field2 = Auto()
+            auto_field1: Auto()
+            auto_field2: Auto()
 
         test_domain.register(AutoTest)
 
@@ -45,7 +45,7 @@ class TestValueGeneration:
 
     def test_automatic_incrementing_of_identifier_field(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(identifier=True, increment=True)
+            auto_field: Auto(identifier=True, increment=True)
 
         test_domain.register(AutoTest)
 
@@ -63,7 +63,7 @@ class TestValueGeneration:
 
     def test_automatic_incrementing_of_non_identifier_fields(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(increment=True)
+            auto_field: Auto(increment=True)
 
         test_domain.register(AutoTest)
 
@@ -83,7 +83,7 @@ class TestValueGeneration:
         self, test_domain
     ):
         class AutoTest(BaseProjection):
-            auto_field1 = Auto(identifier=True)
+            auto_field1: Auto(identifier=True)
 
         test_domain.register(AutoTest)
 
@@ -99,8 +99,8 @@ class TestValueGeneration:
         self, test_domain
     ):
         class AutoTest(BaseProjection):
-            identifier = Auto(identifier=True)
-            auto_field1 = Auto()
+            identifier: Auto(identifier=True)
+            auto_field1: Auto()
 
         test_domain.register(AutoTest)
 
@@ -115,7 +115,7 @@ class TestValueGeneration:
 
     def test_specifying_explicit_values_for_auto_field(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(identifier=True)
+            auto_field: Auto(identifier=True)
 
         test_domain.register(AutoTest)
 
@@ -127,7 +127,7 @@ class TestValueGeneration:
 class TestCustomIdentityType:
     def test_default_identity_type(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(identifier=True)
+            auto_field: Auto(identifier=True)
 
         test_domain.register(AutoTest)
         test_domain.init(traverse=False)
@@ -140,7 +140,7 @@ class TestCustomIdentityType:
 
     def test_str_identity_type(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(identifier=True, identity_type="string")
+            auto_field: Auto(identifier=True, identity_type="string")
 
         test_domain.register(AutoTest)
         test_domain.init(traverse=False)
@@ -153,7 +153,7 @@ class TestCustomIdentityType:
 
     def test_integer_identity_type(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(identifier=True, identity_type="integer")
+            auto_field: Auto(identifier=True, identity_type="integer")
 
         test_domain.register(AutoTest)
         test_domain.init(traverse=False)
@@ -166,7 +166,7 @@ class TestCustomIdentityType:
 
     def test_uuid_identity_type(self, test_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(identifier=True, identity_type="uuid")
+            auto_field: Auto(identifier=True, identity_type="uuid")
 
         test_domain.register(AutoTest)
         test_domain.init(traverse=False)
@@ -200,7 +200,7 @@ class TestCustomIdentityStrategy:
         self, customized_domain
     ):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(identifier=True, identity_strategy="function")
+            auto_field: Auto(identifier=True, identity_strategy="function")
 
         customized_domain.register(AutoTest)
         customized_domain.init(traverse=False)
@@ -213,7 +213,7 @@ class TestCustomIdentityStrategy:
 
     def test_custom_identity_strategy_with_lambda(self, customized_domain):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(
+            auto_field: Auto(
                 identifier=True,
                 identity_strategy="function",
                 identity_function=TestCustomIdentityStrategy.gen_ids2,
@@ -232,7 +232,7 @@ class TestCustomIdentityStrategy:
         self, customized_domain
     ):
         class AutoTest(BaseAggregate):
-            auto_field = Auto(
+            auto_field: Auto(
                 identifier=True,
                 identity_strategy="function",
                 identity_function=TestCustomIdentityStrategy.gen_ids3,

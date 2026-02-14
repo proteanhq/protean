@@ -109,7 +109,7 @@ class TestElementRegistration:
             pass
 
         class Bar(Foo):
-            foo = String(max_length=50)
+            foo: String(max_length=50)
 
         with pytest.raises(NotSupportedError) as exc:
             test_domain.register(Bar)
@@ -118,7 +118,7 @@ class TestElementRegistration:
 
     def test_options_are_validated_on_element_registration(self, test_domain):
         class Foo(BaseAggregate):
-            foo = String(max_length=50)
+            foo: String(max_length=50)
 
         with pytest.raises(ConfigurationError) as exc:
             test_domain.register(Foo, foo="bar")
@@ -140,7 +140,7 @@ class TestDomainAnnotations:
             FOO = "FOO"
 
         class FooBar:
-            foo = String(max_length=50)
+            foo: String(max_length=50)
 
         with pytest.raises(IncorrectUsageError):
             test_domain._register_element(DummyElement.FOO, FooBar, part_of="foo")
@@ -152,7 +152,7 @@ class TestDomainLevelClassResolution:
             self, test_domain
         ):
             class Post(BaseAggregate):
-                content = Text(required=True)
+                content: Text(required=True)
                 comments = HasMany("Comment")
 
             test_domain.register(Post)
@@ -171,7 +171,7 @@ class TestDomainLevelClassResolution:
             self, test_domain
         ):
             class Post(BaseAggregate):
-                content = Text(required=True)
+                content: Text(required=True)
                 comments = HasMany("Comment")
 
             test_domain.register(Post)
@@ -180,8 +180,8 @@ class TestDomainLevelClassResolution:
             assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
-                content = Text()
-                added_on = DateTime()
+                content: Text()
+                added_on: DateTime()
 
                 post = Reference("Post")
 
@@ -214,7 +214,7 @@ class TestDomainLevelClassResolution:
             domain = Domain()
 
             class Post(BaseAggregate):
-                content = Text(required=True)
+                content: Text(required=True)
                 comments = HasMany("Comment")
 
             domain.register(Post)
@@ -223,8 +223,8 @@ class TestDomainLevelClassResolution:
             assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
-                content = Text()
-                added_on = DateTime()
+                content: Text()
+                added_on: DateTime()
 
                 post = Reference("Post")
 
@@ -240,7 +240,7 @@ class TestDomainLevelClassResolution:
             domain = Domain(name="Inline Domain")
 
             class Post(BaseAggregate):
-                content = Text(required=True)
+                content: Text(required=True)
                 comments = HasMany("Comment")
 
             domain.register(Post)
@@ -249,8 +249,8 @@ class TestDomainLevelClassResolution:
             assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
-                content = Text()
-                added_on = DateTime()
+                content: Text()
+                added_on: DateTime()
 
                 post = Reference("Post")
 
@@ -271,7 +271,7 @@ class TestDomainLevelClassResolution:
             domain = Domain(name="Inline Domain")
 
             class Post(BaseAggregate):
-                content = Text(required=True)
+                content: Text(required=True)
                 comments = HasMany("Comment")
 
             domain.register(Post)
@@ -280,8 +280,8 @@ class TestDomainLevelClassResolution:
             assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
-                content = Text()
-                added_on = DateTime()
+                content: Text()
+                added_on: DateTime()
 
                 post = Reference("Post")
                 foo = Reference("Foo")
@@ -304,12 +304,12 @@ class TestDomainLevelClassResolution:
     class TestWithDifferentTypesOfAssociations:
         def test_that_has_many_field_references_are_resolved(self, test_domain):
             class Post(BaseAggregate):
-                content = Text(required=True)
+                content: Text(required=True)
                 comments = HasMany("Comment")
 
             class Comment(BaseEntity):
-                content = Text()
-                added_on = DateTime()
+                content: Text()
+                added_on: DateTime()
 
                 post = Reference("Post")
 
@@ -324,14 +324,14 @@ class TestDomainLevelClassResolution:
 
         def test_that_has_one_field_references_are_resolved(self, test_domain):
             class Account(BaseAggregate):
-                email = String(
+                email: String(
                     required=True, max_length=255, unique=True, identifier=True
                 )
                 author = HasOne("Author")
 
             class Author(BaseEntity):
-                first_name = String(required=True, max_length=25)
-                last_name = String(max_length=25)
+                first_name: String(required=True, max_length=25)
+                last_name: String(max_length=25)
                 account = Reference("Account")
 
             test_domain.register(Account)

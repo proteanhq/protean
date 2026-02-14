@@ -10,25 +10,25 @@ from protean.utils.mixins import handle
 
 
 class UserRegistered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 class OrderPlaced(BaseEvent):
-    id = Identifier()
-    user_id = Identifier()
-    amount = String()
+    id: Identifier()
+    user_id: Identifier()
+    amount: String()
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Order(BaseAggregate):
-    user_id = Identifier()
-    amount = String()
+    user_id: Identifier()
+    amount: String()
 
 
 class UserSubscriber(BaseSubscriber):

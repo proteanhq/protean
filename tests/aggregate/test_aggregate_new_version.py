@@ -5,9 +5,9 @@ from protean.fields import String
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "ARCHIVED"], default="ACTIVE")
+    name: String(max_length=50, required=True)
+    email: String(required=True)
+    status: String(choices=["ACTIVE", "ARCHIVED"], default="ACTIVE")
 
 
 @pytest.fixture(autouse=True)

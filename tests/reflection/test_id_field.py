@@ -7,32 +7,32 @@ from protean.utils.reflection import declared_fields, id_field
 
 
 class Balance(BaseValueObject):
-    currency = String(max_length=3, required=True)
-    amount = Float(required=True)
+    currency: String(max_length=3, required=True)
+    amount: Float(required=True)
 
 
 class User(BaseAggregate):
-    name = String()
+    name: String()
 
 
 class Account(BaseAggregate):
-    account_id = String(identifier=True)
+    account_id: String(identifier=True)
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 class SendEmail(BaseCommand):
-    email = String()
+    email: String()
 
 
 class Registered(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 class EmailSent(BaseEvent):
-    email = String()
+    email: String()
 
 
 def test_id_field_values():

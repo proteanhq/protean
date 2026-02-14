@@ -33,8 +33,8 @@ class MockEngine:
 class DummyAggregate(BaseAggregate):
     """Test aggregate for outbox testing"""
 
-    name = String(max_length=50, required=True)
-    count = Integer(default=0)
+    name: String(max_length=50, required=True)
+    count: Integer(default=0)
 
     def increment(self):
         self.count += 1
@@ -44,9 +44,9 @@ class DummyAggregate(BaseAggregate):
 class DummyEvent(BaseEvent):
     """Test event for outbox testing"""
 
-    aggregate_id = String(required=True)
-    name = String(required=True)
-    count = Integer(required=True)
+    aggregate_id: String(required=True)
+    name: String(required=True)
+    count: Integer(required=True)
 
 
 @pytest.fixture

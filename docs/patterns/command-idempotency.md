@@ -305,8 +305,8 @@ or ten times.
 ```python
 @domain.command(part_of=User)
 class UpdateEmail(BaseCommand):
-    user_id = Identifier(identifier=True)
-    new_email = String()
+    user_id: Identifier(identifier=True)
+    new_email: String()
 
 
 @domain.command_handler(part_of=User)
@@ -339,9 +339,9 @@ Commands that create new aggregates can use existence checks:
 ```python
 @domain.command(part_of=Order)
 class PlaceOrder(BaseCommand):
-    order_id = Identifier(identifier=True)
-    items = List()
-    total = Float()
+    order_id: Identifier(identifier=True)
+    items: List()
+    total: Float()
 
 
 @domain.command_handler(part_of=Order)
@@ -380,9 +380,9 @@ available, the handler can track processed commands on the aggregate:
 ```python
 @domain.command(part_of=Cart)
 class AddItemToCart(BaseCommand):
-    cart_id = Identifier(identifier=True)
-    product_id = String()
-    quantity = Integer()
+    cart_id: Identifier(identifier=True)
+    product_id: String()
+    quantity: Integer()
 
 
 @domain.command_handler(part_of=Cart)
@@ -423,8 +423,8 @@ aggregate has moved forward), the version check fails.
 ```python
 @domain.aggregate(is_event_sourced=True)
 class BankAccount(BaseAggregate):
-    account_id = Identifier(identifier=True)
-    balance = Float(default=0.0)
+    account_id: Identifier(identifier=True)
+    balance: Float(default=0.0)
 
     @apply
     def on_deposited(self, event: MoneyDeposited):
@@ -489,10 +489,10 @@ deduplication (Layer 2).
 ```python
 @domain.command(part_of=Account)
 class TransferMoney(BaseCommand):
-    transfer_id = Identifier(identifier=True)
-    from_account = String()
-    to_account = String()
-    amount = Float()
+    transfer_id: Identifier(identifier=True)
+    from_account: String()
+    to_account: String()
+    amount: Float()
 
 
 @domain.command_handler(part_of=Account)

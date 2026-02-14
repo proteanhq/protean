@@ -43,8 +43,8 @@ To make an aggregate event-sourced, add `is_event_sourced=True`:
 ```python
 @domain.aggregate(is_event_sourced=True)
 class Order:
-    customer_name = String(max_length=150, required=True)
-    status = String(max_length=20, default="PENDING")
+    customer_name: String(max_length=150, required=True)
+    status: String(max_length=20, default="PENDING")
     items = HasMany("OrderItem")
     ...
 ```
@@ -63,8 +63,8 @@ from protean.core.aggregate import apply
 
 @domain.aggregate(is_event_sourced=True)
 class Order:
-    customer_name = String(max_length=150, required=True)
-    status = String(max_length=20, default="PENDING")
+    customer_name: String(max_length=150, required=True)
+    status: String(max_length=20, default="PENDING")
 
     @classmethod
     def place(cls, customer_name, items):
@@ -206,8 +206,8 @@ state after each persistence:
 ```python
 @domain.aggregate(fact_events=True)
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
     ...
 ```
 

@@ -34,7 +34,7 @@ class TestDefaults:
         """
 
         class Foo(BaseEntity):
-            name = String(required=True, default="placeholder")
+            name: String(required=True, default="placeholder")
 
             def defaults(self):
                 if self.name == "placeholder":

@@ -18,19 +18,19 @@ event_counter2 = 0
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    name = String()
+    user_id: Identifier(identifier=True)
+    name: String()
 
 
 class LoginCommand(BaseCommand):
-    user_id = Identifier()
-    name = String()
-    password = String()
+    user_id: Identifier()
+    name: String()
+    password: String()
 
 
 class UserRegisteredEvent(BaseEvent):
-    user_id = Identifier()
-    name = String()
+    user_id: Identifier()
+    name: String()
 
 
 class UserCommandHandler(BaseCommandHandler):

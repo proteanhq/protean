@@ -108,8 +108,8 @@ mutates the aggregate's state:
 ```python
 @domain.aggregate(is_event_sourced=True)
 class Order:
-    status = String(default="draft")
-    total = Float(default=0.0)
+    status: String(default="draft")
+    total: Float(default=0.0)
 
     @apply
     def placed(self, event: OrderPlaced):

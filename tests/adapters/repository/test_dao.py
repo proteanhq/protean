@@ -10,15 +10,15 @@ from protean.utils.query import Q
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
-    created_at = DateTime(default=datetime.now())
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
+    created_at: DateTime(default=datetime.now())
 
 
 class User(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    password = String(max_length=3026)
+    email: String(max_length=255, required=True, unique=True)
+    password: String(max_length=3026)
 
 
 @pytest.mark.database

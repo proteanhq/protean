@@ -10,10 +10,10 @@ from protean.fields import DateTime, Integer, String, ValueObject
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
-    created_at = DateTime(default=datetime.now())
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
+    created_at: DateTime(default=datetime.now())
 
 
 class PersonRepository(BaseRepository):
@@ -21,21 +21,21 @@ class PersonRepository(BaseRepository):
 
 
 class Alien(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
 
 class User(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    password = String(max_length=3026)
+    email: String(max_length=255, required=True, unique=True)
+    password: String(max_length=3026)
 
 
 class Email(BaseValueObject):
     REGEXP = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
 
     # This is the external facing data attribute
-    address = String(max_length=254, required=True)
+    address: String(max_length=254, required=True)
 
     @invariant.post
     def validate_email_address(self):
@@ -46,4 +46,4 @@ class Email(BaseValueObject):
 
 class ComplexUser(BaseAggregate):
     email = ValueObject(Email, required=True)
-    password = String(required=True, max_length=255)
+    password: String(required=True, max_length=255)

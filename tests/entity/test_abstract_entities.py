@@ -7,7 +7,7 @@ from protean.fields import String
 
 # Aggregates to test Abstraction # START #
 class AbstractRole(BaseAggregate):
-    foo = String(max_length=25)
+    foo: String(max_length=25)
 
 
 def test_that_abstract_entities_cannot_be_initialized(test_domain):

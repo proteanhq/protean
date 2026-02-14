@@ -25,9 +25,9 @@ broker_counter = 0
 
 # Event-based test classes
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: String()
+    name: String()
+    password_hash: String()
 
     def register(self, event_cls=None):
         """Register user and raise appropriate event."""
@@ -47,23 +47,23 @@ class User(BaseAggregate):
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: Identifier()
+    email: String()
+    name: String()
+    password_hash: String()
 
 
 class SyncRegistered(BaseEvent):
     """Registered event that will be processed synchronously"""
 
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 class EmailSent(BaseEvent):
-    id = Identifier()
-    email = String()
+    id: Identifier()
+    email: String()
 
 
 # Event handlers

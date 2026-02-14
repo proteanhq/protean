@@ -16,16 +16,16 @@ from protean.utils.mixins import handle
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: Identifier()
+    email: String()
+    name: String()
+    password_hash: String()
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: String()
+    name: String()
+    password_hash: String()
 
     @classmethod
     def register(cls, id, email, name, password_hash):

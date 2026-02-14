@@ -28,11 +28,11 @@ class TestAggregateAbstraction:
     def test_that_abstract_entities_can_be_created_with_annotations(self, test_domain):
         @test_domain.aggregate(abstract=True)
         class CustomBaseClass:
-            foo = String(max_length=25)
+            foo: String(max_length=25)
 
         @test_domain.aggregate
         class ConcreateSubclass(CustomBaseClass):
-            bar = String(max_length=25)
+            bar: String(max_length=25)
 
         assert all(key in declared_fields(ConcreateSubclass) for key in ["foo", "bar"])
 

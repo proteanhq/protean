@@ -11,7 +11,7 @@ def test_invalid_identity_strategy():
     domain.config["identity_strategy"] = "invalid"
 
     class AutoTest(BaseAggregate):
-        auto_field = Auto(identifier=True)
+        auto_field: Auto(identifier=True)
 
     domain.register(AutoTest)
     domain.init(traverse=False)
@@ -27,7 +27,7 @@ def test_error_on_no_identity_function_if_strategy_is_function():
     domain.config["identity_strategy"] = "function"
 
     class AutoTest(BaseAggregate):
-        auto_field = Auto(identifier=True)
+        auto_field: Auto(identifier=True)
 
     domain.register(AutoTest)
     with pytest.raises(ConfigurationError) as exc:

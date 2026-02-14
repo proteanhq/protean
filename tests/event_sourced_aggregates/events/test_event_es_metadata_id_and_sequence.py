@@ -9,16 +9,16 @@ from protean.fields.basic import Identifier
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
     def login(self):
         self.raise_(UserLoggedIn(user_id=self.id))
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 @pytest.fixture(autouse=True)

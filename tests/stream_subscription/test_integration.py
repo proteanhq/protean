@@ -29,10 +29,10 @@ from protean.utils.eventing import Message
 class Account(BaseAggregate):
     """Account aggregate for integration tests."""
 
-    account_id = Identifier(identifier=True)
-    email = String()
-    balance = Integer(default=0)
-    is_active = Boolean(default=True)
+    account_id: Identifier(identifier=True)
+    email: String()
+    balance: Integer(default=0)
+    is_active: Boolean(default=True)
 
     @classmethod
     def create_account(cls, email):
@@ -67,37 +67,37 @@ class Account(BaseAggregate):
 class AccountCreated(BaseEvent):
     """Event raised when an account is created."""
 
-    account_id = Identifier(required=True)
-    email = String()
+    account_id: Identifier(required=True)
+    email: String()
 
 
 class MoneyDeposited(BaseEvent):
     """Event raised when money is deposited."""
 
-    account_id = Identifier(required=True)
-    amount = Integer()
-    new_balance = Integer()
-    old_balance = Integer()
+    account_id: Identifier(required=True)
+    amount: Integer()
+    new_balance: Integer()
+    old_balance: Integer()
 
 
 class AccountDeactivated(BaseEvent):
     """Event raised when an account is deactivated."""
 
-    account_id = Identifier(required=True)
+    account_id: Identifier(required=True)
 
 
 class SendWelcomeEmail(BaseCommand):
     """Command to send welcome email."""
 
-    account_id = Identifier(required=True)
-    email = String()
+    account_id: Identifier(required=True)
+    email: String()
 
 
 class UpdateAccountStatus(BaseCommand):
     """Command to update account status."""
 
-    account_id = Identifier(required=True)
-    is_active = Boolean()
+    account_id: Identifier(required=True)
+    is_active: Boolean()
 
 
 # Test Handlers

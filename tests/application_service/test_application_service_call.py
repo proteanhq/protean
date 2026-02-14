@@ -6,18 +6,18 @@ from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    status = String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
+    email: String()
+    name: String()
+    status: String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
 
     def activate(self):
         self.status = "ACTIVE"
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
-    name = String()
+    user_id: Identifier()
+    email: String()
+    name: String()
 
 
 class UserApplicationServices(BaseApplicationService):

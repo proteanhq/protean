@@ -70,8 +70,8 @@ class TestPostgreSQLSchemaHandling:
 
         # Define test entity with a unique name to avoid conflicts
         class UniqueSchemaTestEntity(BaseAggregate):
-            name = String(max_length=100, required=True)
-            count = Integer(default=0)
+            name: String(max_length=100, required=True)
+            count: Integer(default=0)
 
         domain.register(UniqueSchemaTestEntity)
         domain.init(traverse=False)
@@ -105,7 +105,7 @@ class TestPostgreSQLSchemaHandling:
 
         # Define test entity with custom schema name
         class UniqueCustomSchemaEntity(BaseAggregate):
-            title = String(max_length=200, required=True)
+            title: String(max_length=200, required=True)
 
         domain.register(
             UniqueCustomSchemaEntity, schema_name="unique_custom_table_name"
@@ -189,7 +189,7 @@ class TestPostgreSQLSchemaHandling:
 
         # Define test entity
         class DropTestEntity(BaseAggregate):
-            name = String(max_length=100, required=True)
+            name: String(max_length=100, required=True)
 
         domain.register(DropTestEntity)
         domain.init(traverse=False)

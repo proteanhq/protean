@@ -12,8 +12,8 @@ def utc_now():
 
 @publishing.aggregate
 class Post:
-    title = String(max_length=50)
-    created_at = DateTime(default=utc_now)
+    title: String(max_length=50)
+    created_at: DateTime(default=utc_now)
 
     stats = HasOne("Statistic")
     comments = HasMany("Comment")
@@ -21,13 +21,13 @@ class Post:
 
 @publishing.entity(part_of=Post)
 class Statistic:
-    likes = Integer()
-    dislikes = Integer()
+    likes: Integer()
+    dislikes: Integer()
     post = Reference(Post)
 
 
 @publishing.entity(part_of=Post)
 class Comment:
-    content = String(max_length=500)
+    content: String(max_length=500)
     post = Reference(Post)
-    added_at = DateTime()
+    added_at: DateTime()

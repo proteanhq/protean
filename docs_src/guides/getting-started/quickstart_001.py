@@ -9,9 +9,9 @@ domain = Domain()
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Post:
-    title = String(max_length=100, required=True)
-    body = Text(required=True)
-    status = String(max_length=20, default="DRAFT")
+    title: String(max_length=100, required=True)
+    body: Text(required=True)
+    status: String(max_length=20, default="DRAFT")
 
     def publish(self):
         self.status = "PUBLISHED"
@@ -31,8 +31,8 @@ class Post:
 # --8<-- [start:event]
 @domain.event(part_of="Post")
 class PostPublished:
-    post_id = Identifier(required=True)
-    title = String(required=True)
+    post_id: Identifier(required=True)
+    title: String(required=True)
 
 
 # --8<-- [end:event]
@@ -41,8 +41,8 @@ class PostPublished:
 # --8<-- [start:command]
 @domain.command(part_of="Post")
 class CreatePost:
-    title = String(max_length=100, required=True)
-    body = Text(required=True)
+    title: String(max_length=100, required=True)
+    body: Text(required=True)
 
 
 # --8<-- [end:command]

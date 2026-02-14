@@ -9,10 +9,10 @@ domain = Domain(__name__, name="Authentication")
 
 @domain.aggregate
 class User:
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
-    status = String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
+    status: String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
 
     def login(self):
         self.raise_(UserLoggedIn(user_id=self.id))
@@ -24,15 +24,15 @@ class User:
 
 @domain.event(part_of="User")
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 @domain.event(part_of="User")
 class UserActivated:
     __version__ = "v2"
 
-    user_id = Identifier(required=True)
-    activated_at = DateTime(required=True, default=lambda: datetime.now(timezone.utc))
+    user_id: Identifier(required=True)
+    activated_at: DateTime(required=True, default=lambda: datetime.now(timezone.utc))
 
 
 domain.init(traverse=False)

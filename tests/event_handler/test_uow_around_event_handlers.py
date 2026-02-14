@@ -8,13 +8,13 @@ from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 def dummy(*args):

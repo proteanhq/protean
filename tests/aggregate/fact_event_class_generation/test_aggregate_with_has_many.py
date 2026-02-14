@@ -9,12 +9,12 @@ from protean.utils.reflection import declared_fields
 
 
 class Customer(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
     orders = HasMany("Order")
 
 
 class Order(BaseEntity):
-    ordered_on = Date()
+    ordered_on: Date()
 
 
 @pytest.fixture(autouse=True)

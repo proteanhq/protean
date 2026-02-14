@@ -206,8 +206,8 @@ aggregates and entities to assign them a specific database.
 ```python hl_lines="1"
 @domain.aggregate(provider="sqlite")  # (1)
 class User:
-    name = String(max_length=50)
-    email = String(max_length=254)
+    name: String(max_length=50)
+    email: String(max_length=254)
 ```
 
 1. `sqlite` is the key of the database definition in the `[databases.sqlite]`

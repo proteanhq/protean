@@ -6,28 +6,28 @@ domain = Domain()
 
 @domain.aggregate
 class User:
-    first_name = String(max_length=50)
-    last_name = String(max_length=50)
-    age = Integer()
+    first_name: String(max_length=50)
+    last_name: String(max_length=50)
+    age: Integer()
 
 
 @domain.value_object(part_of="Subscription")
 class Subscriber:
-    id = Identifier()
-    full_name = String(max_length=102)
+    id: Identifier()
+    full_name: String(max_length=102)
 
 
 @domain.aggregate
 class Subscription:
-    plan = String(max_length=50)
+    plan: String(max_length=50)
     user = ValueObject(Subscriber)
-    status = String(max_length=50)
+    status: String(max_length=50)
 
 
 @domain.aggregate
 class Plan:
-    name = String(max_length=50)
-    price = Integer()
+    name: String(max_length=50)
+    price: Integer()
 
 
 @domain.domain_service

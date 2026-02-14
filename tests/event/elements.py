@@ -8,15 +8,15 @@ from protean.utils.globals import current_domain
 
 
 class PersonCommand(BaseCommand):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
     @classmethod
     def add_newcomer(cls, person_dict):
@@ -34,10 +34,10 @@ class Person(BaseAggregate):
 
 
 class PersonAdded(BaseEvent):
-    id = Identifier(required=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    id: Identifier(required=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
 
 
 class PersonService(BaseApplicationService):

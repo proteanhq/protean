@@ -8,5 +8,5 @@ domain = Domain()
 
 @domain.aggregate
 class Post:
-    title = String(max_length=255)
-    created_at = DateTime(default=lambda: datetime.now(timezone.utc))
+    title: String(max_length=255)
+    created_at: DateTime(default=lambda: datetime.now(timezone.utc))

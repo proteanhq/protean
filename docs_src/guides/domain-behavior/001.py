@@ -16,10 +16,10 @@ class OrderStatus(Enum):
 
 @domain.aggregate
 class Order:
-    customer_id = Identifier()
-    order_date = Date()
-    total_amount = Float()
-    status = String(max_length=50, choices=OrderStatus)
+    customer_id: Identifier()
+    order_date: Date()
+    total_amount: Float()
+    status: String(max_length=50, choices=OrderStatus)
     items = HasMany("OrderItem")
 
     @invariant.post
@@ -54,10 +54,10 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_id = Identifier()
-    quantity = Integer()
-    price = Float()
-    subtotal = Float()
+    product_id: Identifier()
+    quantity: Integer()
+    price: Float()
+    subtotal: Float()
 
     class Meta:
         part_of = Order

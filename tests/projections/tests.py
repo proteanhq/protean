@@ -23,40 +23,40 @@ from protean.utils.reflection import (
 
 
 class AbstractPerson(BaseProjection):
-    age = Integer(default=5)
+    age: Integer(default=5)
 
 
 class ConcretePerson(BaseProjection):
-    person_id = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
+    person_id: Identifier(identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
 
 
 class Person(BaseProjection):
-    person_id = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    person_id: Identifier(identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class PersonAutoSSN(BaseProjection):
-    ssn = Auto(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    ssn: Auto(identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class PersonExplicitID(BaseProjection):
-    ssn = String(max_length=36, identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    ssn: String(max_length=36, identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class PersonWithoutIdField(BaseProjection):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class Adult(Person):
@@ -64,18 +64,18 @@ class Adult(Person):
 
 
 class NotAPerson(BaseProjection):
-    identifier = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    identifier: Identifier(identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 # Entities to test Meta Info overriding # START #
 class DbPerson(BaseProjection):
-    person_id = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    person_id: Identifier(identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class SqlPerson(Person):
@@ -91,10 +91,10 @@ class SqlDifferentDbPerson(Person):
 
 
 class OrderedPerson(BaseProjection):
-    person_id = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    person_id: Identifier(identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class OrderedPersonSubclass(Person):
@@ -107,10 +107,10 @@ class BuildingStatus(Enum):
 
 
 class Building(BaseProjection):
-    building_id = Identifier(identifier=True)
-    name = String(max_length=50)
-    floors = Integer()
-    status = String(choices=BuildingStatus)
+    building_id: Identifier(identifier=True)
+    name: String(max_length=50)
+    floors: Integer()
+    status: String(choices=BuildingStatus)
 
     def defaults(self):
         if not self.status:
@@ -148,8 +148,8 @@ def test_projection_cannot_be_instantiated(test_domain):
 class TestProjectionRegistration:
     def test_manual_registration_of_projection(self, test_domain):
         class Comment(BaseProjection):
-            comment_id = Identifier(identifier=True)
-            content = String(max_length=500)
+            comment_id: Identifier(identifier=True)
+            content: String(max_length=500)
 
         test_domain.register(Comment)
 
@@ -158,8 +158,8 @@ class TestProjectionRegistration:
     def test_setting_provider_in_decorator_based_registration(self, test_domain):
         @test_domain.projection
         class Comment:
-            comment_id = Identifier(identifier=True)
-            content = String(max_length=500)
+            comment_id: Identifier(identifier=True)
+            content: String(max_length=500)
 
         assert fully_qualified_name(Comment) in test_domain.registry.projections
 
@@ -271,10 +271,10 @@ class TestProjectionMeta:
         with pytest.raises(NotSupportedError):
 
             class PersonWithNoDatabaseAndCache(BaseProjection):
-                person_id = Identifier(identifier=True)
-                first_name = String(max_length=50, required=True)
-                last_name = String(max_length=50)
-                age = Integer(default=21)
+                person_id: Identifier(identifier=True)
+                first_name: String(max_length=50, required=True)
+                last_name: String(max_length=50)
+                age: Integer(default=21)
 
             test_domain.register(
                 PersonWithNoDatabaseAndCache, provider=None, cache=None
@@ -282,10 +282,10 @@ class TestProjectionMeta:
 
     def test_that_specifying_cache_overrides_database_provider(self, test_domain):
         class PersonWithCache(BaseProjection):
-            person_id = Identifier(identifier=True)
-            first_name = String(max_length=50, required=True)
-            last_name = String(max_length=50)
-            age = Integer(default=21)
+            person_id: Identifier(identifier=True)
+            first_name: String(max_length=50, required=True)
+            last_name: String(max_length=50)
+            age: Integer(default=21)
 
         test_domain.register(PersonWithCache, cache="default")
 

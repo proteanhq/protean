@@ -8,9 +8,9 @@ from protean.utils.globals import current_domain
 
 
 class Event(BaseAggregate):
-    name = String(max_length=255)
-    created_at = DateTime(default=utcnow_func)
-    payload = Dict()
+    name: String(max_length=255)
+    created_at: DateTime(default=utcnow_func)
+    payload: Dict()
 
 
 @pytest.fixture(autouse=True)

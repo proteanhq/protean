@@ -24,9 +24,9 @@ from protean.utils.eventing import Message
 class Order(BaseAggregate):
     """Test aggregate for message processing tests."""
 
-    order_id = Identifier(required=True, identifier=True)
-    customer_id = String()
-    amount = Integer()
+    order_id: Identifier(required=True, identifier=True)
+    customer_id: String()
+    amount: Integer()
 
     def place_order(self):
         """Place an order and raise an event."""
@@ -40,9 +40,9 @@ class Order(BaseAggregate):
 class Payment(BaseAggregate):
     """Test aggregate for message processing tests."""
 
-    payment_id = Identifier(required=True, identifier=True)
-    order_id = Identifier(required=True)
-    amount = Integer()
+    payment_id: Identifier(required=True, identifier=True)
+    order_id: Identifier(required=True)
+    amount: Integer()
 
     def process_payment(self):
         """Process a payment by issuing a command."""
@@ -54,17 +54,17 @@ class Payment(BaseAggregate):
 class OrderEvent(BaseEvent):
     """Test event for message processing tests."""
 
-    order_id = Identifier(required=True)
-    customer_id = String()
-    amount = Integer()
+    order_id: Identifier(required=True)
+    customer_id: String()
+    amount: Integer()
 
 
 class PaymentCommand(BaseCommand):
     """Test command for message processing tests."""
 
-    payment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-    amount = Integer()
+    payment_id: Identifier(required=True)
+    order_id: Identifier(required=True)
+    amount: Integer()
 
 
 class OrderEventHandler(BaseEventHandler):

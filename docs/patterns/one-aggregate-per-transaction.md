@@ -173,10 +173,10 @@ raises an event, Protean stores it and delivers it to registered handlers:
 ```python
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(required=True)
+    total: Float(required=True)
 
 
 @domain.aggregate
@@ -252,17 +252,17 @@ def transfer(self, command: TransferMoney):
 ```python
 @domain.event(part_of=Account)
 class MoneyDebited(BaseEvent):
-    account_id = Identifier(required=True)
-    amount = Float(required=True)
-    transfer_id = Identifier(required=True)
-    target_account_id = Identifier(required=True)
+    account_id: Identifier(required=True)
+    amount: Float(required=True)
+    transfer_id: Identifier(required=True)
+    target_account_id: Identifier(required=True)
 
 
 @domain.aggregate
 class Account:
-    account_id = Auto(identifier=True)
-    balance = Float(default=0.0)
-    overdraft_limit = Float(default=0.0)
+    account_id: Auto(identifier=True)
+    balance: Float(default=0.0)
+    overdraft_limit: Float(default=0.0)
 
     def debit(self, amount, transfer_id, target_account_id):
         if self.balance - amount < -self.overdraft_limit:

@@ -8,8 +8,8 @@ from tests.shared import has_key_or_attr, get_value_from_key_or_attr
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, referenced_as="full_name")
-    age = Integer(default=21, referenced_as="years")
+    name: String(max_length=50, referenced_as="full_name")
+    age: Integer(default=21, referenced_as="years")
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +20,7 @@ def register_elements(test_domain):
 
 def test_attribute_name_is_field_name_when_no_referenced_as_specified():
     class BareUser(BaseAggregate):
-        name = String(max_length=50)
+        name: String(max_length=50)
 
     attrs = attributes(BareUser)
     assert "name" in attrs

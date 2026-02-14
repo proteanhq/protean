@@ -41,9 +41,9 @@ def reset_counters():
 
 # Event-based test classes
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: String()
+    name: String()
+    password_hash: String()
 
     def register(self):
         """Register user and raise event."""
@@ -62,15 +62,15 @@ class User(BaseAggregate):
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: Identifier()
+    email: String()
+    name: String()
+    password_hash: String()
 
 
 class EmailSent(BaseEvent):
-    id = Identifier()
-    email = String()
+    id: Identifier()
+    email: String()
 
 
 # Event handlers
@@ -112,13 +112,13 @@ class FailingErrorHandlerEventHandler(BaseEventHandler):
 
 # Command-based test classes
 class RegisterUser(BaseCommand):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: String()
+    name: String()
+    password_hash: String()
 
 
 class SendEmail(BaseCommand):
-    email = String()
+    email: String()
 
 
 class SuccessfulCommandHandler(BaseCommandHandler):

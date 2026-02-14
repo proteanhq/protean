@@ -8,13 +8,13 @@ from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 def test_part_of_is_mandatory(test_domain):

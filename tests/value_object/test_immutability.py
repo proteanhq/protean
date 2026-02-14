@@ -9,14 +9,14 @@ domain = Domain(__name__)
 
 @domain.value_object
 class Balance:
-    currency = String(max_length=3, required=True)
-    amount = Float(required=True)
+    currency: String(max_length=3, required=True)
+    amount: Float(required=True)
 
 
 @domain.aggregate
 class Account:
     balance = ValueObject(Balance)
-    name = String(max_length=30)
+    name: String(max_length=30)
 
 
 def test_value_objects_are_immutable():

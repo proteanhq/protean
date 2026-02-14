@@ -13,15 +13,15 @@ from protean.utils import DomainObjects
 
 
 class User(BaseAggregate):
-    first_name = String(max_length=50)
-    last_name = String(max_length=50)
-    age = Integer()
-    role_id = Identifier()
+    first_name: String(max_length=50)
+    last_name: String(max_length=50)
+    age: Integer()
+    role_id: Identifier()
 
 
 class Role(BaseEntity):
-    name = String(max_length=15, required=True)
-    created_on = DateTime(default=datetime.today())
+    name: String(max_length=15, required=True)
+    created_on: DateTime(default=datetime.today())
 
 
 def test_element_registration():
@@ -313,7 +313,7 @@ def test_elements_by_name_tracking():
     register = _DomainRegistry()
 
     class AnotherUser(BaseAggregate):
-        name = String(max_length=50)
+        name: String(max_length=50)
 
     # Register first User - this should trigger the 'else' branch
     register.register_element(User)
@@ -343,10 +343,10 @@ def test_multiple_elements_same_name_different_qualname():
 
     # Create two classes with the same name but different modules
     class TestElement(BaseAggregate):
-        field = String()
+        field: String()
 
     class AnotherTestElement(BaseAggregate):
-        field = String()
+        field: String()
 
     # Manually set different module names
     TestElement.__name__ = "SameName"

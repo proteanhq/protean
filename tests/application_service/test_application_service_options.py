@@ -7,8 +7,8 @@ from protean.fields import String
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 def test_that_base_command_handler_cannot_be_instantianted():

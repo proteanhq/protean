@@ -287,8 +287,8 @@ attribute:
 class UserActivated:
     __version__ = "v2"
 
-    user_id = Identifier(required=True)
-    activated_at = DateTime(required=True)
+    user_id: Identifier(required=True)
+    activated_at: DateTime(required=True)
 ```
 
 The configured version is reflected in `version` and `type` attributes of the

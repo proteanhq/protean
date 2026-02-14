@@ -10,17 +10,17 @@ domain.config["event_processing"] = "sync"
 
 @domain.value_object
 class Money:
-    currency = String(max_length=3, default="USD")
-    amount = Float(required=True)
+    currency: String(max_length=3, default="USD")
+    amount: Float(required=True)
 
 
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
     price = ValueObject(Money)
-    description = Text()
+    description: Text()
 
     def add_to_catalog(self):
         self.raise_(
@@ -35,10 +35,10 @@ class Book:
 
 @domain.event(part_of=Book)
 class BookAdded:
-    book_id = Identifier(required=True)
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    price_amount = Float()
+    book_id: Identifier(required=True)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    price_amount: Float()
 
 
 # --8<-- [start:catalog_service]

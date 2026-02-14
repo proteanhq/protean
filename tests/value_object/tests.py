@@ -18,7 +18,7 @@ from .elements import (
 
 def test_vo_marked_abstract_cannot_be_instantiated(test_domain):
     class AbstractBalance(Balance):
-        amount = Float()
+        amount: Float()
 
     test_domain.register(AbstractBalance, abstract=True)
 

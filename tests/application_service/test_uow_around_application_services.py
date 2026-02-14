@@ -8,14 +8,14 @@ from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
-    name = String()
+    user_id: Identifier()
+    email: String()
+    name: String()
 
 
 class UserApplicationServices(BaseApplicationService):

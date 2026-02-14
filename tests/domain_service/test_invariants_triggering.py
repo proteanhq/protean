@@ -30,29 +30,29 @@ class OrderStatus(Enum):
 
 
 class OrderItem(BaseEntity):
-    product_id = Identifier(required=True)
-    quantity = Integer()
-    price = Float()
+    product_id: Identifier(required=True)
+    quantity: Integer()
+    price: Float()
 
 
 class OrderItemVO(BaseValueObject):
-    product_id = Identifier(required=True)
-    quantity = Integer()
-    price = Float()
+    product_id: Identifier(required=True)
+    quantity: Integer()
+    price: Float()
 
 
 class OrderConfirmed(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(content_type=ValueObject(OrderItemVO), required=True)
-    confirmed_at = DateTime(required=True)
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    items: List(content_type=ValueObject(OrderItemVO), required=True)
+    confirmed_at: DateTime(required=True)
 
 
 class Order(BaseAggregate):
-    customer_id = Identifier(required=True)
+    customer_id: Identifier(required=True)
     items = HasMany("OrderItem")
-    status = String(choices=OrderStatus, default=OrderStatus.PENDING.value)
-    payment_id = Identifier()
+    status: String(choices=OrderStatus, default=OrderStatus.PENDING.value)
+    payment_id: Identifier()
 
     @invariant.post
     def order_should_contain_items(self):
@@ -79,19 +79,19 @@ class Order(BaseAggregate):
 
 
 class Warehouse(BaseValueObject):
-    location = String()
-    contact = String()
+    location: String()
+    contact: String()
 
 
 class StockReserved(BaseEvent):
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True)
-    reserved_at = DateTime(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    reserved_at: DateTime(required=True)
 
 
 class Inventory(BaseAggregate):
-    product_id = Identifier(required=True)
-    quantity = Integer()
+    product_id: Identifier(required=True)
+    quantity: Integer()
     warehouse = ValueObject(Warehouse)
 
     def reserve_stock(self, quantity: int):

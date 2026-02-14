@@ -6,5 +6,5 @@ publishing = Domain()
 
 @publishing.aggregate
 class Post:
-    name = String(max_length=50)
-    created_on = Date()
+    name: String(max_length=50)
+    created_on: Date()

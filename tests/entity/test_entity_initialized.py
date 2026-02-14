@@ -7,13 +7,13 @@ from protean.fields import Float, Integer, String
 
 
 class Store(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
 
 
 class Item(BaseEntity):
-    name = String(max_length=10, required=True)
-    price = Float(required=True)
-    quantity = Integer(default=0)
+    name: String(max_length=10, required=True)
+    price: Float(required=True)
+    quantity: Integer(default=0)
 
     @invariant.post
     def check_price_is_positive(self):

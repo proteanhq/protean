@@ -48,11 +48,11 @@ class Email:
     """
 
     # This is the external facing data attribute
-    address = String(max_length=254, required=True, validators=[EmailValidator()])
+    address: String(max_length=254, required=True, validators=[EmailValidator()])
 
 
 @domain.aggregate
 class User:
     email = ValueObject(Email)
-    name = String(max_length=30)
-    timezone = String(max_length=30)
+    name: String(max_length=30)
+    timezone: String(max_length=30)

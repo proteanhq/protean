@@ -70,7 +70,7 @@ def test_domain_identity_function_is_used_with_explicit_auto_field():
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
-        aggregate_id = Auto(identifier=True)
+        aggregate_id: Auto(identifier=True)
 
     domain.register(TestAggregate)
     domain.init(traverse=False)
@@ -90,7 +90,7 @@ def test_invalid_identity_function_raises_exception():
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
-        aggregate_id = Auto(identifier=True)
+        aggregate_id: Auto(identifier=True)
 
     domain.register(TestAggregate)
     domain.init(traverse=False)
@@ -110,7 +110,7 @@ def test_identity_function_returns_no_value():
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
-        aggregate_id = Auto(identifier=True)
+        aggregate_id: Auto(identifier=True)
 
     domain.register(TestAggregate)
     domain.init(traverse=False)

@@ -5,12 +5,12 @@ from protean.fields.basic import Identifier
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 def test_stream_category_from_part_of(test_domain):

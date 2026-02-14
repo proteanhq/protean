@@ -7,23 +7,23 @@ from protean.fields import Auto, String
 
 
 class AutoEntity(BaseAggregate):
-    name = String(max_length=100)
-    sequence = Auto(increment=True)
+    name: String(max_length=100)
+    sequence: Auto(increment=True)
 
 
 class AutoIdentifierEntity(BaseAggregate):
-    id = Auto(identifier=True, increment=True)
-    name = String(max_length=100)
+    id: Auto(identifier=True, increment=True)
+    name: String(max_length=100)
 
 
 class NoAutoEntity(BaseAggregate):
-    name = String(max_length=100)
+    name: String(max_length=100)
 
 
 class MultipleAutoEntity(BaseAggregate):
-    name = String(max_length=100)
-    seq1 = Auto(increment=True)
-    seq2 = Auto(increment=True)
+    name: String(max_length=100)
+    seq1: Auto(increment=True)
+    seq2: Auto(increment=True)
 
 
 @pytest.fixture(autouse=True)

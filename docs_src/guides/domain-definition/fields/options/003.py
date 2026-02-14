@@ -12,5 +12,5 @@ def utc_now():
 
 @publishing.aggregate
 class Post:
-    title = String(max_length=50)
-    created_at = DateTime(default=utc_now)
+    title: String(max_length=50)
+    created_at: DateTime(default=utc_now)

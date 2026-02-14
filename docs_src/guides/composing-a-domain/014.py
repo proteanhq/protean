@@ -6,9 +6,9 @@ domain = Domain()
 
 
 class User(BaseAggregate):
-    first_name = String(max_length=50)
-    last_name = String(max_length=50)
-    age = Integer()
+    first_name: String(max_length=50)
+    last_name: String(max_length=50)
+    age: Integer()
 
 
 domain.register(User, stream_category="account")

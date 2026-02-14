@@ -10,13 +10,13 @@ from protean.utils.eventing import MessageEnvelope
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Login(BaseCommand):
-    user_id = Identifier(identifier=True)
+    user_id: Identifier(identifier=True)
 
 
 @pytest.fixture(autouse=True)
@@ -56,7 +56,7 @@ class TestMetadataVersion:
     def test_overridden_version(self, test_domain):
         class Login(BaseCommand):
             __version__ = "v2"
-            user_id = Identifier(identifier=True)
+            user_id: Identifier(identifier=True)
 
         test_domain.register(Login, part_of=User)
         test_domain.init(traverse=False)

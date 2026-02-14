@@ -8,13 +8,13 @@ from protean.utils import fully_qualified_name
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 def test_registering_an_command_handler_manually(test_domain):

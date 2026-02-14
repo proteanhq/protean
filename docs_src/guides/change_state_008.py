@@ -6,9 +6,9 @@ auth = Domain(name="Auth")
 
 @auth.aggregate
 class User:
-    email = String()
-    name = String()
-    status = String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
+    email: String()
+    name: String()
+    status: String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
 
     @classmethod
     def register(cls, email: str, name: str):
@@ -23,9 +23,9 @@ class User:
 
 @auth.event(part_of=User)
 class Registered:
-    user_id = Identifier()
-    email = String()
-    name = String()
+    user_id: Identifier()
+    email: String()
+    name: String()
 
 
 @auth.application_service(part_of=User)

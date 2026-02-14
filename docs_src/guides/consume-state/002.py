@@ -11,10 +11,10 @@ domain.config["event_processing"] = "sync"
 
 @domain.aggregate
 class Product:
-    name = String(max_length=100, required=True)
-    description = Text()
-    price = Float(required=True)
-    stock_quantity = Integer(default=0)
+    name: String(max_length=100, required=True)
+    description: Text()
+    price: Float(required=True)
+    stock_quantity: Integer(default=0)
 
     def adjust_stock(self, quantity):
         self.stock_quantity += quantity
@@ -48,41 +48,41 @@ class Product:
 
 @domain.event(part_of=Product)
 class ProductAdded:
-    product_id = Identifier(required=True)
-    name = String(max_length=100, required=True)
-    description = Text(required=True)
-    price = Float(required=True)
-    stock_quantity = Integer(default=0)
+    product_id: Identifier(required=True)
+    name: String(max_length=100, required=True)
+    description: Text(required=True)
+    price: Float(required=True)
+    stock_quantity: Integer(default=0)
 
 
 @domain.event(part_of=Product)
 class StockAdjusted:
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True)
-    new_stock_quantity = Integer(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    new_stock_quantity: Integer(required=True)
 
 
 @domain.projection
 class ProductInventory:
     """Projection for product inventory data optimized for querying."""
 
-    product_id = Identifier(identifier=True, required=True)
-    name = String(max_length=100, required=True)
-    description = Text(required=True)
-    price = Float(required=True)
-    stock_quantity = Integer(default=0)
-    last_updated = DateTime()
+    product_id: Identifier(identifier=True, required=True)
+    name: String(max_length=100, required=True)
+    description: Text(required=True)
+    price: Float(required=True)
+    stock_quantity: Integer(default=0)
+    last_updated: DateTime()
 
 
 @domain.projection
 class ProductCatalog:
     """Projection for product catalog data optimized for browsing."""
 
-    product_id = Identifier(identifier=True, required=True)
-    name = String(max_length=100, required=True)
-    description = Text(required=True)
-    price = Float(required=True)
-    in_stock = String(choices=["YES", "NO"], default="YES")
+    product_id: Identifier(identifier=True, required=True)
+    name: String(max_length=100, required=True)
+    description: Text(required=True)
+    price: Float(required=True)
+    in_stock: String(choices=["YES", "NO"], default="YES")
 
 
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])

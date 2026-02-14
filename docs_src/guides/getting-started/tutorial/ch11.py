@@ -10,11 +10,11 @@ domain.config["event_processing"] = "sync"
 
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
-    price = Float(default=0.0)
-    description = Text()
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
+    price: Float(default=0.0)
+    description: Text()
 
     @classmethod
     def add_to_catalog(cls, title, author, isbn=None, price=0.0, description=""):
@@ -49,17 +49,17 @@ class Book:
 # --8<-- [start:events]
 @domain.event(part_of=Book)
 class BookAdded:
-    book_id = Identifier(required=True)
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    price = Float()
-    isbn = String(max_length=13)
+    book_id: Identifier(required=True)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    price: Float()
+    isbn: String(max_length=13)
 
 
 @domain.event(part_of=Book)
 class BookPriceUpdated:
-    book_id = Identifier(required=True)
-    new_price = Float(required=True)
+    book_id: Identifier(required=True)
+    new_price: Float(required=True)
 
 
 # --8<-- [end:events]
@@ -70,11 +70,11 @@ class BookPriceUpdated:
 class BookCatalog:
     """A read-optimized view of the book catalog for browsing."""
 
-    book_id = Identifier(identifier=True, required=True)
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    price = Float()
-    isbn = String(max_length=13)
+    book_id: Identifier(identifier=True, required=True)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    price: Float()
+    isbn: String(max_length=13)
 
 
 # --8<-- [end:projection]

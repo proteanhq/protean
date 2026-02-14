@@ -9,8 +9,8 @@ class DummyElement(Enum):
 
 
 class User:
-    username = String(max_length=50)
-    password = String(max_length=255)
+    username: String(max_length=50)
+    password: String(max_length=255)
 
 
 class UserAggregate(User):

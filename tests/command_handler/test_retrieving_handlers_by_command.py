@@ -9,23 +9,23 @@ from protean.utils.mixins import handle
 
 
 class UnknownCommand(BaseCommand):
-    foo = String()
+    foo: String()
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)  # FIXME Auto-associate ID
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)  # FIXME Auto-associate ID
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 class ChangeAddress(BaseCommand):
-    user_id = Identifier()
-    full_address = String()
+    user_id: Identifier()
+    full_address: String()
 
 
 class UserCommandHandlers(BaseCommandHandler):
@@ -41,14 +41,14 @@ class AdminUserCommandHandlers(BaseCommandHandler):
 
 
 class Post(BaseAggregate):
-    topic = String()
-    content = Text()
+    topic: String()
+    content: Text()
 
 
 class Create(BaseCommand):
-    id = Identifier()
-    topic = String()
-    content = Text()
+    id: Identifier()
+    topic: String()
+    content: Text()
 
 
 class PostCommandHandler(BaseCommandHandler):

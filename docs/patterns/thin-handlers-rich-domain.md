@@ -178,17 +178,17 @@ class OrderCommandHandler(BaseCommandHandler):
 # --- The aggregate: rich ---
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)
     items = HasMany(OrderItem)
-    status = String(default="draft")
-    total = Float(default=0.0)
-    partial_refund_amount = Float(default=0.0)
-    refund_amount = Float()
-    refund_reason = String()
-    refund_requested_at = DateTime()
-    delivered_at = DateTime()
-    tracking_number = String()
+    status: String(default="draft")
+    total: Float(default=0.0)
+    partial_refund_amount: Float(default=0.0)
+    refund_amount: Float()
+    refund_reason: String()
+    refund_requested_at: DateTime()
+    delivered_at: DateTime()
+    tracking_number: String()
 
     REFUND_WINDOW_DAYS = 30
 
@@ -260,12 +260,12 @@ methods:
 ```python
 @domain.aggregate
 class Account:
-    account_id = Auto(identifier=True)
-    balance = Float(default=0.0)
-    overdraft_limit = Float(default=0.0)
-    status = String(default="active")
-    daily_withdrawal_total = Float(default=0.0)
-    last_withdrawal_date = Date()
+    account_id: Auto(identifier=True)
+    balance: Float(default=0.0)
+    overdraft_limit: Float(default=0.0)
+    status: String(default="active")
+    daily_withdrawal_total: Float(default=0.0)
+    last_withdrawal_date: Date()
 
     DAILY_WITHDRAWAL_LIMIT = 5000.0
 
@@ -400,8 +400,8 @@ Logic intrinsic to a domain concept belongs in the value object:
 ```python
 @domain.value_object
 class Money:
-    amount = Float(required=True)
-    currency = String(max_length=3, required=True)
+    amount: Float(required=True)
+    currency: String(max_length=3, required=True)
 
     def add(self, other: "Money") -> "Money":
         if self.currency != other.currency:

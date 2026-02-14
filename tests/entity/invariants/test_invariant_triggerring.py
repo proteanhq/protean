@@ -16,10 +16,10 @@ class OrderStatus(Enum):
 
 
 class Order(BaseAggregate):
-    customer_id = Identifier()
-    order_date = Date()
-    total_amount = Float()
-    status = String(max_length=50, choices=OrderStatus)
+    customer_id: Identifier()
+    order_date: Date()
+    total_amount: Float()
+    status: String(max_length=50, choices=OrderStatus)
     items = HasMany("OrderItem")
 
     @invariant.pre
@@ -70,10 +70,10 @@ class Order(BaseAggregate):
 
 
 class OrderItem(BaseEntity):
-    product_id = Identifier()
-    quantity = Integer()
-    price = Float()
-    subtotal = Float()
+    product_id: Identifier()
+    quantity: Integer()
+    price: Float()
+    subtotal: Float()
 
     @invariant.post
     def the_quantity_must_be_a_positive_integer_and_the_subtotal_must_be_correctly_calculated(

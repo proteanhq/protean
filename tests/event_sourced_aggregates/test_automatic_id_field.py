@@ -6,13 +6,13 @@ from protean.utils.reflection import declared_fields, fields, id_field
 
 
 class User(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: String()
+    age: Integer()
 
 
 class Order(BaseAggregate):
-    order_id = Identifier(identifier=True)
-    placed_at = DateTime()
+    order_id: Identifier(identifier=True)
+    placed_at: DateTime()
 
 
 def test_auto_id_field_generation():
@@ -35,7 +35,7 @@ def test_no_auto_id_field_generation_when_an_identifier_is_provided():
 def test_that_an_aggregate_can_opt_to_have_no_id_field_by_default(test_domain):
     @test_domain.aggregate(is_event_sourced=True, auto_add_id_field=False)
     class TimeStamped:
-        created_at = DateTime(default=utcnow_func)
-        updated_at = DateTime(default=utcnow_func)
+        created_at: DateTime(default=utcnow_func)
+        updated_at: DateTime(default=utcnow_func)
 
     assert "id" not in declared_fields(TimeStamped)

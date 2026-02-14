@@ -13,12 +13,12 @@ from protean.utils.reflection import attributes, declared_fields
 
 
 class Book(BaseAggregate):
-    title = String(required=True, max_length=100)
+    title: String(required=True, max_length=100)
     author = HasOne("Author")
 
 
 class Author(BaseEntity):
-    name = String(required=True, max_length=50)
+    name: String(required=True, max_length=50)
 
 
 @pytest.fixture(autouse=True)

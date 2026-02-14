@@ -9,17 +9,17 @@ from protean.utils.reflection import fields
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
-    address = String()
+    email: String()
+    name: String()
+    password_hash: String()
+    address: String()
 
 
 class UserRegistrationCommand(BaseCommand):
-    email = String(required=True, identifier=True, max_length=250)
-    username = String(required=True, max_length=50)
-    password = String(required=True, max_length=255)
-    age = Integer(default=21)
+    email: String(required=True, identifier=True, max_length=250)
+    username: String(required=True, max_length=50)
+    password: String(required=True, max_length=255)
+    age: Integer(default=21)
 
 
 class TestCommandInitialization:
@@ -74,8 +74,8 @@ class TestCommandRegistration:
     def test_that_command_can_be_registered_via_annotations(self, test_domain):
         @test_domain.command(part_of=User)
         class ChangePasswordCommand:
-            old_password = String(required=True, max_length=255)
-            new_password = String(required=True, max_length=255)
+            old_password: String(required=True, max_length=255)
+            new_password: String(required=True, max_length=255)
 
         assert (
             fully_qualified_name(ChangePasswordCommand) in test_domain.registry.commands
@@ -140,10 +140,10 @@ class TestCommandProperties:
 
 class TestCommandInheritance:
     class AbstractCommand(BaseCommand):
-        foo = String()
+        foo: String()
 
     class ConcreteCommand(AbstractCommand):
-        bar = String()
+        bar: String()
 
     def test_inheritance_of_parent_fields(self):
         assert all(
@@ -154,11 +154,11 @@ class TestCommandInheritance:
     def test_inheritance_of_parent_fields_with_annotations(self, test_domain):
         @test_domain.command(abstract=True)
         class AbstractCommand2:
-            foo = String()
+            foo: String()
 
         @test_domain.command(part_of=User)
         class ConcreteCommand2(AbstractCommand2):
-            bar = String()
+            bar: String()
 
         assert all(
             field_name in fields(ConcreteCommand2) for field_name in ["foo", "bar"]
@@ -169,7 +169,7 @@ class TestCommandInheritance:
     ):
         @test_domain.command(part_of=User)
         class ConcreteCommand3(TestCommandInheritance.AbstractCommand):
-            bar = String()
+            bar: String()
 
         assert all(
             field_name in fields(ConcreteCommand3) for field_name in ["foo", "bar"]

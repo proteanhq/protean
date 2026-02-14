@@ -3,8 +3,8 @@
 Each function is a thin wrapper around ``FieldSpec`` that pre-fills the
 ``python_type`` and type-specific defaults.  Users write::
 
-    name = String(max_length=100, required=True)
-    price = Float(min_value=0)
+    name: String(max_length=100, required=True)
+    price: Float(min_value=0)
 
 and the framework translates these into Pydantic-compatible annotations
 during class creation.

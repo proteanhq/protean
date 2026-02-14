@@ -9,8 +9,8 @@ domain = Domain()
 
 @domain.value_object
 class Money:
-    currency = String(max_length=3, default="USD")
-    amount = Float(required=True)
+    currency: String(max_length=3, default="USD")
+    amount: Float(required=True)
 
 
 class OrderStatus(Enum):
@@ -23,8 +23,8 @@ class OrderStatus(Enum):
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Order:
-    customer_name = String(max_length=150, required=True)
-    status = String(
+    customer_name: String(max_length=150, required=True)
+    status: String(
         max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
     )
     items = HasMany("OrderItem")
@@ -76,8 +76,8 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    book_title = String(max_length=200, required=True)
-    quantity = Integer(required=True)
+    book_title: String(max_length=200, required=True)
+    quantity: Integer(required=True)
     unit_price = ValueObject(Money)
 
 

@@ -75,8 +75,8 @@ Value Objects can be embedded into Aggregates and Entities with the
     @domain.aggregate
     class User:
        email = ValueObject("Email")
-       name = String(max_length=30)
-       timezone = String(max_length=30)
+       name: String(max_length=30)
+       timezone: String(max_length=30)
     ```
 
 An email address can be supplied during user object creation, and the

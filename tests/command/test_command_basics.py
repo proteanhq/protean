@@ -4,15 +4,15 @@ from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 def test_domain_stores_command_type_for_easy_retrieval(test_domain):

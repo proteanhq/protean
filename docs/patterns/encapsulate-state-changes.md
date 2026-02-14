@@ -110,15 +110,15 @@ without needing to understand the field-level mechanics.
 ```python
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)
     items = HasMany(OrderItem)
-    status = String(default="draft")
-    total = Float(default=0.0)
-    shipped_at = DateTime()
-    tracking_number = String()
-    cancelled_at = DateTime()
-    cancellation_reason = String()
+    status: String(default="draft")
+    total: Float(default=0.0)
+    shipped_at: DateTime()
+    tracking_number: String()
+    cancelled_at: DateTime()
+    cancellation_reason: String()
 
 
 @domain.command_handler(part_of=Order)
@@ -187,15 +187,15 @@ Problems with this approach:
 ```python
 @domain.aggregate
 class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
+    order_id: Auto(identifier=True)
+    customer_id: Identifier(required=True)
     items = HasMany(OrderItem)
-    status = String(default="draft")
-    total = Float(default=0.0)
-    shipped_at = DateTime()
-    tracking_number = String()
-    cancelled_at = DateTime()
-    cancellation_reason = String()
+    status: String(default="draft")
+    total: Float(default=0.0)
+    shipped_at: DateTime()
+    tracking_number: String()
+    cancelled_at: DateTime()
+    cancellation_reason: String()
 
     def ship(self, tracking_number: str) -> None:
         """Ship this order with the given tracking number."""
@@ -348,9 +348,9 @@ alongside named methods:
 ```python
 @domain.aggregate
 class Account:
-    account_id = Auto(identifier=True)
-    balance = Float(default=0.0)
-    overdraft_limit = Float(default=50.0)
+    account_id: Auto(identifier=True)
+    balance: Float(default=0.0)
+    overdraft_limit: Float(default=50.0)
 
     def withdraw(self, amount: float) -> None:
         """Withdraw the specified amount."""
@@ -385,8 +385,8 @@ The method raises an event, and the `@apply` handler mutates state:
 ```python
 @domain.aggregate(is_event_sourced=True)
 class Account(BaseAggregate):
-    account_id = Auto(identifier=True)
-    balance = Float(default=0.0)
+    account_id: Auto(identifier=True)
+    balance: Float(default=0.0)
 
     def withdraw(self, amount: float) -> None:
         if amount <= 0:

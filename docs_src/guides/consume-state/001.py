@@ -7,18 +7,18 @@ domain.config["event_processing"] = "sync"
 
 @domain.event(part_of="Order")
 class OrderShipped:
-    order_id = Identifier(required=True)
-    book_id = Identifier(required=True)
-    quantity = Integer(required=True)
-    total_amount = Integer(required=True)
+    order_id: Identifier(required=True)
+    book_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    total_amount: Integer(required=True)
 
 
 @domain.aggregate
 class Order:
-    book_id = Identifier(required=True)
-    quantity = Integer(required=True)
-    total_amount = Integer(required=True)
-    status = String(choices=["PENDING", "SHIPPED", "DELIVERED"], default="PENDING")
+    book_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    total_amount: Integer(required=True)
+    status: String(choices=["PENDING", "SHIPPED", "DELIVERED"], default="PENDING")
 
     def ship_order(self):
         self.status = "SHIPPED"
@@ -35,8 +35,8 @@ class Order:
 
 @domain.aggregate
 class Inventory:
-    book_id = Identifier(required=True)
-    in_stock = Integer(required=True)
+    book_id: Identifier(required=True)
+    in_stock: Integer(required=True)
 
 
 @domain.event_handler(part_of=Inventory, stream_category="order")

@@ -6,10 +6,10 @@ domain = Domain()
 
 @domain.aggregate
 class Book:
-    title = String(required=True, max_length=100)
+    title: String(required=True, max_length=100)
     author = HasOne("Author")
 
 
 @domain.entity(part_of="Book")
 class Author:
-    name = String(required=True, max_length=50)
+    name: String(required=True, max_length=50)

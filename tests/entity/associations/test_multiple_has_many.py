@@ -9,20 +9,20 @@ from protean.utils.reflection import declared_fields
 
 
 class Customer(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
     orders = HasMany("Order")
     addresses = HasMany("Address")
 
 
 class Order(BaseEntity):
-    ordered_on = Date()
+    ordered_on: Date()
 
 
 class Address(BaseEntity):
-    street = String(max_length=50)
-    city = String(max_length=50)
-    state = String(max_length=50)
-    zip_code = String(max_length=10)
+    street: String(max_length=50)
+    city: String(max_length=50)
+    state: String(max_length=50)
+    zip_code: String(max_length=10)
 
 
 @pytest.fixture(autouse=True)

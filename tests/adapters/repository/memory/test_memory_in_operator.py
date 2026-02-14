@@ -4,7 +4,7 @@ from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
-    email = String()
+    email: String()
 
 
 def test_for_in_lookup(test_domain):

@@ -7,42 +7,42 @@ from protean.fields import Auto, HasOne, Integer, String
 
 
 class Account(BaseAggregate):
-    account_number = String(max_length=50, required=True)
+    account_number: String(max_length=50, required=True)
 
 
 class AbstractPerson(BaseAggregate):
-    age = Integer(default=5)
+    age: Integer(default=5)
 
 
 class ConcretePerson(BaseEntity):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
 
 
 class Person(BaseEntity):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class PersonAutoSSN(BaseEntity):
-    ssn = Auto(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    ssn: Auto(identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class PersonExplicitID(BaseEntity):
-    ssn = String(max_length=36, identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    ssn: String(max_length=36, identifier=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class Relative(BaseEntity):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
     relative_of = HasOne(Person)
 
 
@@ -51,16 +51,16 @@ class Adult(Person):
 
 
 class NotAPerson(BaseEntity):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 # Entities to test Meta Info overriding # START #
 class DbPerson(BaseEntity):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class SqlPerson(Person):
@@ -68,9 +68,9 @@ class SqlPerson(Person):
 
 
 class OrderedPerson(BaseEntity):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50)
+    age: Integer(default=21)
 
 
 class OrderedPersonSubclass(Person):
@@ -83,13 +83,13 @@ class BuildingStatus(Enum):
 
 
 class Area(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
 
 
 class Building(BaseEntity):
-    name = String(max_length=50)
-    floors = Integer()
-    status = String(choices=BuildingStatus)
+    name: String(max_length=50)
+    floors: Integer()
+    status: String(choices=BuildingStatus)
 
     def defaults(self):
         if not self.status:

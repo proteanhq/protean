@@ -21,27 +21,27 @@ from protean.utils.eventing import (
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class UnregisteredCommand(BaseCommand):
     """Command that won't be registered with domain."""
 
-    id = Identifier(identifier=True)
-    data = String()
+    id: Identifier(identifier=True)
+    data: String()
 
 
 @pytest.fixture(autouse=True)
@@ -436,9 +436,9 @@ class TestMessageFromDomainObjectEdgeCases:
         """Test that fact events don't get expected_version set."""
 
         class UserFactEvent(BaseEvent):
-            id = Identifier(identifier=True)
-            email = String()
-            name = String()
+            id: Identifier(identifier=True)
+            email: String()
+            name: String()
 
         # Register the fact event
         test_domain.register(UserFactEvent, part_of=User)

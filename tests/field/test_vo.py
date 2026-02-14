@@ -11,10 +11,10 @@ from protean.utils.reflection import fields
 
 def test_value_object_associated_class(test_domain):
     class Address(BaseValueObject):
-        street_address = String()
+        street_address: String()
 
     class User(BaseAggregate):
-        email = String()
+        email: String()
         address = ValueObject(Address)
 
     assert fields(User)["address"].value_object_cls == Address
@@ -22,12 +22,12 @@ def test_value_object_associated_class(test_domain):
 
 def test_value_object_to_cls_is_always_a_base_value_object_subclass(test_domain):
     class Address(BaseEntity):
-        street_address = String()
+        street_address: String()
 
     with pytest.raises(IncorrectUsageError) as exc:
 
         class User(BaseAggregate):
-            email = String()
+            email: String()
             address = ValueObject(Address)
 
     assert exc.value.args[0] == (
@@ -52,11 +52,11 @@ class TestShadowField:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
+            street: String()
 
         @test_domain.aggregate
         class User(BaseAggregate):
-            email = String()
+            email: String()
             address = ValueObject(Address)
 
         user = User(email="test@example.com")
@@ -74,11 +74,11 @@ class TestShadowField:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
+            street: String()
 
         @test_domain.aggregate
         class User(BaseAggregate):
-            email = String()
+            email: String()
             address = ValueObject(Address)
 
         user = User(email="test@example.com")
@@ -96,11 +96,11 @@ class TestShadowField:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
+            street: String()
 
         @test_domain.aggregate
         class User(BaseAggregate):
-            email = String()
+            email: String()
             address = ValueObject(Address)
 
         user = User(email="test@example.com")
@@ -136,12 +136,12 @@ class TestValueObjectField:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
-            city = String()
+            street: String()
+            city: String()
 
         @test_domain.aggregate
         class User(BaseAggregate):
-            email = String()
+            email: String()
             address = ValueObject(Address)
 
         user = User(email="test@example.com")
@@ -165,8 +165,8 @@ class TestValueObjectField:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
-            city = String()
+            street: String()
+            city: String()
 
         # Create a ValueObject field with string reference
         vo_field = ValueObject("Address")
@@ -185,8 +185,8 @@ class TestValueObjectField:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
-            city = String()
+            street: String()
+            city: String()
 
         # Create a ValueObject field with string reference
         vo_field = ValueObject("Address")
@@ -204,12 +204,12 @@ class TestValueObjectFieldEdgeCases:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
-            city = String()
+            street: String()
+            city: String()
 
         @test_domain.aggregate
         class User(BaseAggregate):
-            email = String()
+            email: String()
             address = ValueObject(Address)
 
         user = User(email="test@example.com")
@@ -225,8 +225,8 @@ class TestValueObjectFieldEdgeCases:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
-            city = String()
+            street: String()
+            city: String()
 
         vo_field = ValueObject(Address)
 
@@ -240,8 +240,8 @@ class TestValueObjectFieldEdgeCases:
 
         @test_domain.value_object
         class Address(BaseValueObject):
-            street = String()
-            city = String()
+            street: String()
+            city: String()
 
         vo_field = ValueObject(Address)
 

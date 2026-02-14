@@ -14,10 +14,10 @@ class OrderStatus(Enum):
 
 
 class Order(BaseAggregate):
-    ordered_on = Date()
-    total = Float()
+    ordered_on: Date()
+    total: Float()
     items = HasMany("OrderItem")
-    status = String(
+    status: String(
         max_length=50, choices=OrderStatus, default=OrderStatus.PENDING.value
     )
 
@@ -54,9 +54,9 @@ class Order(BaseAggregate):
 
 
 class OrderItem(BaseEntity):
-    product_id = String(max_length=50)
-    quantity = Integer()
-    price = Float()
+    product_id: String(max_length=50)
+    quantity: Integer()
+    price: Float()
 
     @invariant.post
     def price_should_be_non_negative(self):

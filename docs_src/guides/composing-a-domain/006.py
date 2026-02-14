@@ -6,5 +6,5 @@ domain = Domain()
 
 @domain.event_sourced_aggregate
 class Person:
-    name = String()
-    age = Integer()
+    name: String()
+    age: Integer()

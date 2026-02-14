@@ -22,8 +22,8 @@ from protean.server.subscription.profiles import (
 
 
 class Order(BaseAggregate):
-    order_id = Identifier(identifier=True)
-    customer_name = String()
+    order_id: Identifier(identifier=True)
+    customer_name: String()
 
 
 class TestConfigResolverInitialization:

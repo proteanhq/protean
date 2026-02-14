@@ -70,11 +70,11 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 ```python
 @domain.aggregate
 class Order:
-    order_number = String(max_length=20, required=True)
-    customer_id = String(required=True)
-    status = String(choices=['pending', 'confirmed', 'shipped'], default='pending')
+    order_number: String(max_length=20, required=True)
+    customer_id: String(required=True)
+    status: String(choices=['pending', 'confirmed', 'shipped'], default='pending')
     total_amount = ValueObject(Money)
-    created_at = DateTime(default=datetime.utcnow)
+    created_at: DateTime(default=datetime.utcnow)
 ```
 
 **Why Aggregate?**
@@ -88,8 +88,8 @@ class Order:
 ```python
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_id = String(required=True)
-    quantity = Integer(min_value=1, required=True)
+    product_id: String(required=True)
+    quantity: Integer(min_value=1, required=True)
     unit_price = ValueObject(Money)
     line_total = ValueObject(Money)
 ```
@@ -106,7 +106,7 @@ class OrderItem:
 @domain.value_object  
 class Money:
     amount = Decimal(required=True, min_value=0)
-    currency = String(max_length=3, required=True)
+    currency: String(max_length=3, required=True)
     
     def add(self, other):
         if self.currency != other.currency:
@@ -128,27 +128,27 @@ class Money:
 ```python
 @domain.aggregate
 class Post:
-    title = String(max_length=200, required=True)
-    content = Text()
-    author_id = String(required=True)
-    published_at = DateTime()
-    status = String(choices=['draft', 'published'], default='draft')
+    title: String(max_length=200, required=True)
+    content: Text()
+    author_id: String(required=True)
+    published_at: DateTime()
+    status: String(choices=['draft', 'published'], default='draft')
 ```
 
 #### Comment (Entity)
 ```python
 @domain.entity(part_of=Post)  
 class Comment:
-    content = String(max_length=500, required=True)
-    author_id = String(required=True)
-    created_at = DateTime(default=datetime.utcnow)
+    content: String(max_length=500, required=True)
+    author_id: String(required=True)
+    created_at: DateTime(default=datetime.utcnow)
 ```
 
 #### Email (Value Object)
 ```python
 @domain.value_object
 class Email:
-    address = String(max_length=255, required=True)
+    address: String(max_length=255, required=True)
     
     def clean(self):
         if '@' not in self.address:
@@ -188,7 +188,7 @@ class Order:
 # ❌ Bad: Entity without an aggregate
 @domain.entity  # Missing part_of parameter
 class Comment:
-    content = String(max_length=500)
+    content: String(max_length=500)
 # Error: Entity needs to be associated with an Aggregate
 ```
 
@@ -224,9 +224,9 @@ address.street = "456 Oak Ave"  # Will raise IncorrectUsageError
 # ❌ Bad: Adding identity to value object
 @domain.value_object
 class Money:
-    id = Auto()  # Will raise IncorrectUsageError
+    id: Auto()  # Will raise IncorrectUsageError
     amount = Decimal()
-    currency = String()
+    currency: String()
 ```
 
 **Primitive Obsession**
@@ -234,12 +234,12 @@ class Money:
 # ❌ Bad: Using primitives instead of value objects
 @domain.aggregate
 class User:
-    email = String()  # Should be ValueObject(Email)
-    phone = String()  # Should be ValueObject(Phone) 
-    address_line1 = String()  # Should be ValueObject(Address)
-    address_line2 = String()
-    city = String()
-    postal_code = String()
+    email: String()  # Should be ValueObject(Email)
+    phone: String()  # Should be ValueObject(Phone) 
+    address_line1: String()  # Should be ValueObject(Address)
+    address_line2: String()
+    city: String()
+    postal_code: String()
 ```
 
 ## Team Decision Flow

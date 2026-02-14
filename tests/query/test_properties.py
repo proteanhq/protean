@@ -3,8 +3,8 @@ from protean.fields import Integer, String
 
 
 class Person(BaseAggregate):
-    name = String(max_length=255)
-    age = Integer()
+    name: String(max_length=255)
+    age: Integer()
 
 
 class TestQueryLimitProperty:

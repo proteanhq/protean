@@ -22,19 +22,19 @@ from protean.utils.mixins import handle
 
 # Test domain elements
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class UserRegistered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 class RegisterUser(BaseCommand):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 def dummy(*args):

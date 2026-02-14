@@ -11,9 +11,9 @@ domain.config["message_processing"] = "sync"
 
 @domain.aggregate
 class Order:
-    customer_email = String(max_length=255, required=True)
-    total_amount = Float(required=True)
-    status = String(
+    customer_email: String(max_length=255, required=True)
+    total_amount: Float(required=True)
+    status: String(
         choices=["PENDING", "PAID", "SHIPPED", "CANCELLED"], default="PENDING"
     )
 

@@ -9,15 +9,15 @@ from protean.fields import Identifier, String
 
 
 class UserRegistered(BaseEvent):
-    id = Identifier(required=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
+    id: Identifier(required=True)
+    name: String(max_length=50, required=True)
+    email: String(required=True)
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
     @classmethod
     def register(cls, id, name, email):

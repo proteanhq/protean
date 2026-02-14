@@ -25,16 +25,16 @@ class OrderStatus(Enum):
 
 @domain.event(part_of="Order")
 class OrderConfirmed:
-    order_id = Identifier(required=True)
-    confirmed_at = DateTime(required=True)
+    order_id: Identifier(required=True)
+    confirmed_at: DateTime(required=True)
 
 
 @domain.aggregate
 class Order:
-    customer_id = Identifier(required=True)
+    customer_id: Identifier(required=True)
     items = HasMany("OrderItem")
-    status = String(choices=OrderStatus, default=OrderStatus.PENDING.value)
-    payment_id = Identifier()
+    status: String(choices=OrderStatus, default=OrderStatus.PENDING.value)
+    payment_id: Identifier()
 
     @invariant.post
     def order_should_contain_items(self):
@@ -50,28 +50,28 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_id = Identifier(required=True)
-    quantity = Integer()
-    price = Float()
+    product_id: Identifier(required=True)
+    quantity: Integer()
+    price: Float()
 
 
 @domain.value_object(part_of="Inventory")
 class Warehouse:
-    location = String()
-    contact = String()
+    location: String()
+    contact: String()
 
 
 @domain.event(part_of="Inventory")
 class StockReserved:
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True)
-    reserved_at = DateTime(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    reserved_at: DateTime(required=True)
 
 
 @domain.aggregate
 class Inventory:
-    product_id = Identifier(required=True)
-    quantity = Integer()
+    product_id: Identifier(required=True)
+    quantity: Integer()
     warehouse = ValueObject(Warehouse)
 
     def reserve_stock(self, quantity: int):

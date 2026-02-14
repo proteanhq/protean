@@ -8,13 +8,13 @@ from protean.utils import fully_qualified_name
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
+    user_id: Identifier()
+    email: String()
 
 
 def test_registering_an_event_handler_manually(test_domain):

@@ -12,20 +12,20 @@ from protean.utils.eventing import Metadata, DomainMeta, EventStoreMeta
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Registered(BaseEvent):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 @pytest.fixture(autouse=True)

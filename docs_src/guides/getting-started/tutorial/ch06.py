@@ -9,28 +9,28 @@ domain.config["command_processing"] = "sync"
 
 @domain.value_object
 class Money:
-    currency = String(max_length=3, default="USD")
-    amount = Float(required=True)
+    currency: String(max_length=3, default="USD")
+    amount: Float(required=True)
 
 
 @domain.aggregate
 class Book:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
     price = ValueObject(Money)
-    description = Text()
+    description: Text()
 
 
 # --8<-- [start:command]
 @domain.command(part_of=Book)
 class AddBook:
-    title = String(max_length=200, required=True)
-    author = String(max_length=150, required=True)
-    isbn = String(max_length=13)
-    price_amount = Float(required=True)
-    price_currency = String(max_length=3, default="USD")
-    description = Text()
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
+    price_amount: Float(required=True)
+    price_currency: String(max_length=3, default="USD")
+    description: Text()
 
 
 # --8<-- [end:command]

@@ -12,11 +12,11 @@ def utc_now():
 
 @domain.aggregate(abstract=True, auto_add_id_field=False)
 class TimeStamped:
-    created_at = DateTime(default=utc_now)
-    updated_at = DateTime(default=utc_now)
+    created_at: DateTime(default=utc_now)
+    updated_at: DateTime(default=utc_now)
 
 
 @domain.aggregate
 class User(TimeStamped):
-    name = String(max_length=30)
-    timezone = String(max_length=30)
+    name: String(max_length=30)
+    timezone: String(max_length=30)

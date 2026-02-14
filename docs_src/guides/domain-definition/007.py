@@ -6,10 +6,10 @@ publishing = Domain(__name__)
 
 @publishing.aggregate
 class Post:
-    name = String(max_length=50)
-    created_on = Date()
+    name: String(max_length=50)
+    created_on: Date()
 
 
 @publishing.entity(part_of=Post)
 class Comment:
-    content = String(max_length=500)
+    content: String(max_length=500)

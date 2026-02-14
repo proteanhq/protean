@@ -7,19 +7,19 @@ from protean.utils.reflection import declared_fields
 
 
 class University(BaseAggregate):
-    name = String(max_length=50)
+    name: String(max_length=50)
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name = String(max_length=50)
-    age = Integer(min_value=21)
+    name: String(max_length=50)
+    age: Integer(min_value=21)
     office = HasOne("Office")
 
 
 class Office(BaseEntity):
-    building = String(max_length=25)
-    room = Integer(min_value=1)
+    building: String(max_length=25)
+    room: Integer(min_value=1)
 
 
 @pytest.fixture(autouse=True)

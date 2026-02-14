@@ -30,14 +30,14 @@ call_counter = 0
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
+    user_id: Identifier(identifier=True)
+    email: String()
 
 
 class UserCommandHandlers(BaseCommandHandler):
@@ -179,7 +179,7 @@ class TestFailureRecovery:
 
         # Use a separate command/handler pair to avoid "multiple handlers" conflict
         class Activate(BaseCommand):
-            user_id = Identifier(identifier=True)
+            user_id: Identifier(identifier=True)
 
         fail_once = {"should_fail": True}
 
@@ -286,8 +286,8 @@ class TestFullFlowIntegration:
         test_domain._idempotency_store = None
 
         class UpdateEmail(BaseCommand):
-            user_id = Identifier(identifier=True)
-            email = String()
+            user_id: Identifier(identifier=True)
+            email: String()
 
         fail_flag = {"should_fail": True}
 
@@ -335,8 +335,8 @@ class TestFullFlowIntegration:
         to external APIs (e.g., Stripe)."""
 
         class ChargePayment(BaseCommand):
-            user_id = Identifier(identifier=True)
-            amount = String()
+            user_id: Identifier(identifier=True)
+            amount: String()
 
         class ChargePaymentHandlers(BaseCommandHandler):
             @handle(ChargePayment)

@@ -25,7 +25,7 @@ fully supported and can be mixed within a single class.
 @domain.aggregate
 class Product:
     name: String(max_length=50, required=True)   # annotation (recommended)
-    price = Float(min_value=0)                    # assignment
+    price: Float(min_value=0)                    # assignment
 ```
 
 Read more in [Defining fields](./defining-fields.md).

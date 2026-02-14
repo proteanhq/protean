@@ -6,7 +6,7 @@ domain = Domain()
 
 @domain.aggregate
 class UserProfile:
-    name = String(max_length=30)
+    name: String(max_length=30)
 
 
 print(UserProfile.meta_.schema_name)

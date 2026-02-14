@@ -18,6 +18,6 @@ domain.config["DATABASES"] = {
 
 @domain.aggregate(provider="nosql")
 class User:
-    name = String(max_length=30)
-    email = String(required=True)
-    timezone = String(max_length=30)
+    name: String(max_length=30)
+    email: String(required=True)
+    timezone: String(max_length=30)
