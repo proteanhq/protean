@@ -102,6 +102,7 @@ class TestAggregatesWithEntities:
             "slug": "test-post",
             "content": "Do Re Mi Fa",
             "posted_at": str(persisted_post.posted_at),
+            "meta": None,
             "comments": [
                 {
                     "id": comment1.id,
@@ -114,5 +115,4 @@ class TestAggregatesWithEntities:
                     "commented_at": str(comment2.commented_at),
                 },
             ],
-            "_version": -1,
         }

@@ -317,7 +317,7 @@ class OutboxProcessor(BaseSubscription):
             # The outbox already contains the proper data and metadata fields
             msg = Message(
                 data=message.data,
-                metadata=message.metadata,
+                metadata=message.metadata_,
             )
 
             # Convert to dict for publishing - this gives us the standard structure
@@ -326,8 +326,8 @@ class OutboxProcessor(BaseSubscription):
 
             # Publish the standardized message structure to broker
             stream_category = (
-                message.metadata.domain.stream_category
-                if message.metadata.domain
+                message.metadata_.domain.stream_category
+                if message.metadata_.domain
                 else None
             )
             broker_message_id = self.broker.publish(stream_category, message_dict)

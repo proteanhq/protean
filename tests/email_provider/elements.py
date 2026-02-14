@@ -1,17 +1,16 @@
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.email import BaseEmail
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.event import BaseEvent
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import InsufficientDataError, InvalidDataError
-from protean.fields import Identifier, Integer, String
 from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):
-    email = String(max_length=255, required=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    email: str
+    first_name: str
+    last_name: str
+    age: int = 21
 
     @classmethod
     def add_newcomer(cls, person_dict):
@@ -32,11 +31,11 @@ class Person(BaseAggregate):
 
 
 class PersonAdded(BaseEvent):
-    id = Identifier(required=True)
-    email = String(max_length=255, required=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    id: str
+    email: str
+    first_name: str
+    last_name: str
+    age: int = 21
 
 
 class WelcomeEmail(BaseEmail):

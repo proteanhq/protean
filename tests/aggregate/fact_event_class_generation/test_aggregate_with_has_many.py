@@ -1,22 +1,21 @@
+from datetime import date
+
 import pytest
 
-from protean.core.aggregate import (
-    _LegacyBaseAggregate as BaseAggregate,
-    element_to_fact_event,
-)
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import Date, HasMany, List, String, ValueObject
+from protean.core.aggregate import BaseAggregate, element_to_fact_event
+from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
+from protean.fields import HasMany, List, ValueObject
 from protean.utils.reflection import declared_fields
 
 
 class Customer(BaseAggregate):
-    name = String(max_length=50)
+    name: str | None = None
     orders = HasMany("Order")
 
 
 class Order(BaseEntity):
-    ordered_on = Date()
+    ordered_on: date | None = None
 
 
 @pytest.fixture(autouse=True)

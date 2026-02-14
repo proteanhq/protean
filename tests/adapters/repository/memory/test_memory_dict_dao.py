@@ -1,10 +1,9 @@
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import String
+from protean.core.aggregate import BaseAggregate
 
 
 class User(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    password = String(max_length=3026)
+    email: str
+    password: str | None = None
 
 
 def test_memory_dao_repr(test_domain):

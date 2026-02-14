@@ -1,15 +1,14 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.event_sourced_repository import BaseEventSourcedRepository
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Integer, String
 from protean.utils import DomainObjects
 
 
 class User(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: str | None = None
+    age: int | None = None
 
 
 def test_that_event_sourced_repository_is_returned_for_event_sourced_aggregate(

@@ -4,21 +4,13 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.domain_service import BaseDomainService
-from protean.core.entity import _LegacyBaseEntity as BaseEntity, invariant
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.entity import BaseEntity, invariant
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import (
-    DateTime,
-    Float,
-    HasMany,
-    Identifier,
-    Integer,
-    String,
-    ValueObject,
-)
+from protean.fields import HasMany, ValueObject
 
 
 class OrderStatus(Enum):
@@ -29,15 +21,15 @@ class OrderStatus(Enum):
 
 
 class OrderConfirmed(BaseEvent):
-    order_id = Identifier(required=True)
-    confirmed_at = DateTime(required=True)
+    order_id: str
+    confirmed_at: datetime
 
 
 class Order(BaseAggregate):
-    customer_id = Identifier(required=True)
+    customer_id: str
     items = HasMany("OrderItem")
-    status = String(choices=OrderStatus, default=OrderStatus.PENDING.value)
-    payment_id = Identifier()
+    status: str = OrderStatus.PENDING.value
+    payment_id: str | None = None
 
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
@@ -47,25 +39,25 @@ class Order(BaseAggregate):
 
 
 class OrderItem(BaseEntity):
-    product_id = Identifier(required=True)
-    quantity = Integer()
-    price = Float()
+    product_id: str
+    quantity: int | None = None
+    price: float | None = None
 
 
 class Warehouse(BaseValueObject):
-    location = String()
-    contact = String()
+    location: str | None = None
+    contact: str | None = None
 
 
 class StockReserved(BaseEvent):
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True)
-    reserved_at = DateTime(required=True)
+    product_id: str
+    quantity: int
+    reserved_at: datetime
 
 
 class Inventory(BaseAggregate):
-    product_id = Identifier(required=True)
-    quantity = Integer()
+    product_id: str
+    quantity: int | None = None
     warehouse = ValueObject(Warehouse)
 
     def reserve_stock(self, quantity: int):

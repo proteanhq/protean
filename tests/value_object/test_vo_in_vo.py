@@ -1,18 +1,20 @@
 import pytest
 
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.value_object import BaseValueObject, _LegacyBaseValueObject
 from protean.fields import String, ValueObject
 from protean.utils.reflection import fields
 
 
 class Address(BaseValueObject):
-    street = String(max_length=50)
-    city = String(max_length=25)
-    state = String(max_length=25)
-    zip_code = String(max_length=10)
+    street: str | None = None
+    city: str | None = None
+    state: str | None = None
+    zip_code: str | None = None
 
 
-class Contact(BaseValueObject):
+# Contact uses _LegacyBaseValueObject because the Pydantic-based BaseValueObject
+# does not yet support ValueObject descriptors (VO-in-VO embedding).
+class Contact(_LegacyBaseValueObject):
     email = String(max_length=255)
     phone_number = String(max_length=255)
     address = ValueObject(Address)

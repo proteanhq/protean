@@ -1,32 +1,32 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Integer, Reference, String
+from protean.fields import Reference
 from protean.utils.reflection import reference_fields
 
 
 class Account(BaseAggregate):
-    email = String(max_length=255, required=True)
-    password = String(max_length=255, required=True)
+    email: str
+    password: str
 
 
 class Author(BaseEntity):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
+    first_name: str
+    last_name: str | None = None
     account = Reference(Account)
 
 
 class Post(BaseAggregate):
-    title = String(max_length=100, required=True)
-    content = String(max_length=500)
+    title: str
+    content: str | None = None
     author = Reference(Author)
 
 
 class PersonWithoutReferences(BaseAggregate):
-    name = String(max_length=50, required=True)
-    age = Integer()
+    name: str
+    age: int | None = None
 
 
 def test_reference_fields():
@@ -42,7 +42,7 @@ def test_reference_fields_multiple_references():
     """Test element with multiple Reference fields"""
 
     class ArticleWithMultipleRefs(BaseAggregate):
-        title = String(max_length=100)
+        title: str | None = None
         author = Reference(Author)
         reviewer = Reference(Author)
 
@@ -103,7 +103,7 @@ def test_reference_fields_with_string_reference():
     """Test Reference field defined with string class name"""
 
     class BookWithStringRef(BaseAggregate):
-        title = String(max_length=100)
+        title: str | None = None
         author = Reference("Author")
 
     ref_fields = reference_fields(BookWithStringRef)

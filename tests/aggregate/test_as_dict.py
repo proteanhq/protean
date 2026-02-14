@@ -1,27 +1,22 @@
 from datetime import UTC, datetime
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.core.value_object import BaseValueObject
 from protean.fields import (
-    DateTime,
     HasMany,
     HasOne,
-    Integer,
     Reference,
-    String,
-    Text,
     ValueObject,
 )
-from protean.utils import utcnow_func
 
 
 class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
     def test_basic_as_dict(self):
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
+            title: str
+            slug: str
+            content: str
 
         post = Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
 
@@ -30,15 +25,14 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             "title": "Test Post",
             "slug": "test-post",
             "content": "Do Re Mi Fa",
-            "_version": -1,
         }
 
     def test_as_dict_with_date_fields(self):
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
-            posted_at = DateTime(required=True, default=utcnow_func)
+            title: str
+            slug: str
+            content: str
+            posted_at: datetime
 
         current_time = datetime.now(UTC)
         post = Post(
@@ -54,19 +48,18 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             "slug": "test-post",
             "content": "Do Re Mi Fa",
             "posted_at": str(current_time),
-            "_version": -1,
         }
 
     def test_as_dict_with_aggregate_that_has_many_entities(self, test_domain):
         class Comment(BaseEntity):
-            content = Text(required=True)
+            content: str
 
             post = Reference("Post")
 
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
+            title: str
+            slug: str
+            content: str
 
             comments = HasMany(Comment)
 
@@ -88,20 +81,19 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
                 {"id": comment1.id, "content": "first comment"},
                 {"id": comment2.id, "content": "second comment"},
             ],
-            "_version": -1,
         }
 
     def test_as_dict_with_aggregate_that_has_many_entities_with_reference(
         self, test_domain
     ):
         class Comment(BaseEntity):
-            content = Text(required=True)
+            content: str
             post = Reference("Post")
 
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
+            title: str
+            slug: str
+            content: str
 
             comments = HasMany(Comment)
 
@@ -123,19 +115,18 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
                 {"id": comment1.id, "content": "first comment"},
                 {"id": comment2.id, "content": "second comment"},
             ],
-            "_version": -1,
         }
 
     def test_as_dict_with_aggregate_that_has_one_entity(self, test_domain):
         class Post(BaseAggregate):
-            title = String(required=True, max_length=1000)
-            slug = String(required=True, max_length=1024)
-            content = Text(required=True)
+            title: str
+            slug: str
+            content: str
 
             meta = HasOne("PostMeta")
 
         class PostMeta(BaseEntity):
-            likes = Integer(default=0)
+            likes: int = 0
 
         test_domain.register(Post)
         test_domain.register(PostMeta, part_of=Post)
@@ -152,16 +143,15 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             "slug": "test-post",
             "content": "Do Re Mi Fa",
             "meta": {"id": meta.id, "likes": 27},
-            "_version": -1,
         }
 
     def test_as_dict_with_aggregate_that_has_a_value_object(self, test_domain):
         class Email(BaseValueObject):
-            address = String(max_length=254, required=True)
+            address: str
 
         class User(BaseAggregate):
-            email = ValueObject(Email, required=True)
-            password = String(required=True, max_length=255)
+            email = ValueObject(Email)
+            password: str
 
         user = User(email=Email(address="john.doe@gmail.com"), password="secret")
         assert user.to_dict() == {
@@ -170,5 +160,4 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
                 "address": "john.doe@gmail.com",
             },
             "password": "secret",
-            "_version": -1,
         }

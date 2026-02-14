@@ -1,18 +1,18 @@
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
-from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.fields import String
-from protean.fields.basic import Identifier
+from protean.core.command import BaseCommand
+from protean.core.entity import BaseEntity
 from protean.utils.reflection import has_id_field
 
 
 class Aggregate1(BaseAggregate):
-    foo = String()
+    foo: str | None = None
 
 
 class Entity1(BaseEntity):
-    foo = String()
+    foo: str | None = None
 
 
 class ApplicationService1(BaseApplicationService):
@@ -20,11 +20,11 @@ class ApplicationService1(BaseApplicationService):
 
 
 class CommandWithId(BaseCommand):
-    foo_id = Identifier(identifier=True)
+    foo_id: str = Field(json_schema_extra={"identifier": True})
 
 
 class CommandWithoutId(BaseCommand):
-    foo_id = Identifier()
+    foo_id: str | None = None
 
 
 def test_elements_with_id_fields():

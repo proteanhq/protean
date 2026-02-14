@@ -1,13 +1,13 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import HasOne, Identifier, String
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
+from protean.fields import HasOne
 
 
 class Account(BaseEntity):
-    password_hash = String(max_length=512)
+    password_hash: str | None = None
 
     def change_password(self, password):
         self.password_hash = password
@@ -15,14 +15,14 @@ class Account(BaseEntity):
 
 
 class PasswordChanged(BaseEvent):
-    account_id = Identifier(required=True)
-    user_id = Identifier(required=True)
+    account_id: str
+    user_id: str
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "ARCHIVED"])
+    name: str
+    email: str
+    status: str | None = None
 
     account = HasOne(Account)
 
@@ -36,12 +36,12 @@ class User(BaseAggregate):
 
 
 class UserActivated(BaseEvent):
-    user_id = Identifier(required=True)
+    user_id: str
 
 
 class UserRenamed(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    user_id: str
+    name: str
 
 
 @pytest.fixture(autouse=True)

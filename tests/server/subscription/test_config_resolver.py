@@ -8,10 +8,9 @@ import logging
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
-from protean.fields import Identifier, String
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import (
     DEFAULT_CONFIG,
@@ -22,8 +21,8 @@ from protean.server.subscription.profiles import (
 
 
 class Order(BaseAggregate):
-    order_id = Identifier(identifier=True)
-    customer_name = String()
+    order_id: str | None = None
+    customer_name: str | None = None
 
 
 class TestConfigResolverInitialization:

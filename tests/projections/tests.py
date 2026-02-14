@@ -3,14 +3,15 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.projection import _LegacyBaseProjection as BaseProjection
+from pydantic import Field
+
+from protean.core.projection import BaseProjection
+from protean.core.value_object import _PydanticFieldShim
 from protean.exceptions import (
     IncorrectUsageError,
-    InvalidOperationError,
     NotSupportedError,
     ValidationError,
 )
-from protean.fields import Auto, Identifier, Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.reflection import (
@@ -22,40 +23,43 @@ from protean.utils.reflection import (
 
 
 class AbstractPerson(BaseProjection):
-    age = Integer(default=5)
+    age: int = 5
 
 
 class ConcretePerson(BaseProjection):
-    person_id = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
+    person_id: str = Field(json_schema_extra={"identifier": True})
+    first_name: str
+    last_name: str | None = None
 
 
 class Person(BaseProjection):
-    person_id = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    person_id: str = Field(json_schema_extra={"identifier": True})
+    first_name: str
+    last_name: str | None = None
+    age: int = 21
 
 
 class PersonAutoSSN(BaseProjection):
-    ssn = Auto(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    ssn: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    first_name: str
+    last_name: str | None = None
+    age: int = 21
 
 
 class PersonExplicitID(BaseProjection):
-    ssn = String(max_length=36, identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    ssn: str = Field(max_length=36, json_schema_extra={"identifier": True})
+    first_name: str
+    last_name: str | None = None
+    age: int = 21
 
 
 class PersonWithoutIdField(BaseProjection):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    first_name: str
+    last_name: str | None = None
+    age: int = 21
 
 
 class Adult(Person):
@@ -63,18 +67,18 @@ class Adult(Person):
 
 
 class NotAPerson(BaseProjection):
-    identifier = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    identifier: str = Field(json_schema_extra={"identifier": True})
+    first_name: str
+    last_name: str | None = None
+    age: int = 21
 
 
 # Entities to test Meta Info overriding # START #
 class DbPerson(BaseProjection):
-    person_id = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    person_id: str = Field(json_schema_extra={"identifier": True})
+    first_name: str
+    last_name: str | None = None
+    age: int = 21
 
 
 class SqlPerson(Person):
@@ -90,10 +94,10 @@ class SqlDifferentDbPerson(Person):
 
 
 class OrderedPerson(BaseProjection):
-    person_id = Identifier(identifier=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50)
-    age = Integer(default=21)
+    person_id: str = Field(json_schema_extra={"identifier": True})
+    first_name: str
+    last_name: str | None = None
+    age: int = 21
 
 
 class OrderedPersonSubclass(Person):
@@ -106,10 +110,10 @@ class BuildingStatus(Enum):
 
 
 class Building(BaseProjection):
-    building_id = Identifier(identifier=True)
-    name = String(max_length=50)
-    floors = Integer()
-    status = String(choices=BuildingStatus)
+    building_id: str = Field(json_schema_extra={"identifier": True})
+    name: str | None = None
+    floors: int | None = None
+    status: BuildingStatus | None = None
 
     def defaults(self):
         if not self.status:
@@ -147,8 +151,8 @@ def test_projection_cannot_be_instantiated(test_domain):
 class TestProjectionRegistration:
     def test_manual_registration_of_projection(self, test_domain):
         class Comment(BaseProjection):
-            comment_id = Identifier(identifier=True)
-            content = String(max_length=500)
+            comment_id: str = Field(json_schema_extra={"identifier": True})
+            content: str | None = None
 
         test_domain.register(Comment)
 
@@ -157,8 +161,8 @@ class TestProjectionRegistration:
     def test_setting_provider_in_decorator_based_registration(self, test_domain):
         @test_domain.projection
         class Comment:
-            comment_id = Identifier(identifier=True)
-            content = String(max_length=500)
+            comment_id: str = Field(json_schema_extra={"identifier": True})
+            content: str | None = None
 
         assert fully_qualified_name(Comment) in test_domain.registry.projections
 
@@ -171,7 +175,7 @@ class TestProjectionRegistration:
 
 class TestProperties:
     def test_conversion_of_projection_values_to_dict(self):
-        person = Person(person_id=12, first_name="John", last_name="Doe")
+        person = Person(person_id="12", first_name="John", last_name="Doe")
         assert person.to_dict() == {
             "person_id": "12",
             "first_name": "John",
@@ -180,7 +184,7 @@ class TestProperties:
         }
 
     def test_repr_output_of_projection(self):
-        person = Person(person_id=12, first_name="John")
+        person = Person(person_id="12", first_name="John")
 
         assert (
             str(person)
@@ -218,10 +222,10 @@ class TestProjectionMeta:
         )
 
     def test_projection_declared_fields_hold_correct_field_types(self):
-        assert type(declared_fields(Person)["first_name"]) is String
-        assert type(declared_fields(Person)["last_name"]) is String
-        assert type(declared_fields(Person)["age"]) is Integer
-        assert type(declared_fields(Person)["person_id"]) is Identifier
+        assert type(declared_fields(Person)["first_name"]) is _PydanticFieldShim
+        assert type(declared_fields(Person)["last_name"]) is _PydanticFieldShim
+        assert type(declared_fields(Person)["age"]) is _PydanticFieldShim
+        assert type(declared_fields(Person)["person_id"]) is _PydanticFieldShim
 
     def test_default_and_overridden_abstract_flag_in_meta(self):
         assert getattr(Person.meta_, "abstract") is False
@@ -269,10 +273,10 @@ class TestProjectionMeta:
         with pytest.raises(NotSupportedError):
 
             class PersonWithNoDatabaseAndCache(BaseProjection):
-                person_id = Identifier(identifier=True)
-                first_name = String(max_length=50, required=True)
-                last_name = String(max_length=50)
-                age = Integer(default=21)
+                person_id: str = Field(json_schema_extra={"identifier": True})
+                first_name: str
+                last_name: str | None = None
+                age: int = 21
 
             test_domain.register(
                 PersonWithNoDatabaseAndCache, provider=None, cache=None
@@ -280,10 +284,10 @@ class TestProjectionMeta:
 
     def test_that_specifying_cache_overrides_database_provider(self, test_domain):
         class PersonWithCache(BaseProjection):
-            person_id = Identifier(identifier=True)
-            first_name = String(max_length=50, required=True)
-            last_name = String(max_length=50)
-            age = Integer(default=21)
+            person_id: str = Field(json_schema_extra={"identifier": True})
+            first_name: str
+            last_name: str | None = None
+            age: int = 21
 
         test_domain.register(PersonWithCache, cache="default")
 
@@ -298,31 +302,31 @@ class TestIdentity:
         assert id_field(Person) is not None
         assert id_field(Person) == declared_fields(Person)["person_id"]
 
-        assert type(id_field(Person)) is Identifier
-        declared_fields(Person)["person_id"].identifier is True
+        assert type(id_field(Person)) is _PydanticFieldShim
+        assert declared_fields(Person)["person_id"].identifier is True
 
     def test_id_field_recognition(self):
         assert "person_id" in declared_fields(Person)
         assert "person_id" in attributes(Person)
 
-        assert type(declared_fields(Person)["person_id"]) is Identifier
+        assert type(declared_fields(Person)["person_id"]) is _PydanticFieldShim
         assert id_field(Person) == declared_fields(Person)["person_id"]
-        declared_fields(Person)["person_id"].identifier is True
+        assert declared_fields(Person)["person_id"].identifier is True
 
     def test_non_default_auto_id_field_construction(self):
         assert "id" not in declared_fields(PersonAutoSSN)
         assert "id" not in attributes(PersonAutoSSN)
 
-        assert type(declared_fields(PersonAutoSSN)["ssn"]) is Auto
+        assert type(declared_fields(PersonAutoSSN)["ssn"]) is _PydanticFieldShim
         assert id_field(PersonAutoSSN).field_name == "ssn"
         assert id_field(PersonAutoSSN) == declared_fields(PersonAutoSSN)["ssn"]
-        declared_fields(PersonAutoSSN)["ssn"].identifier is True
+        assert declared_fields(PersonAutoSSN)["ssn"].identifier is True
 
     def test_non_default_explicit_id_field_construction(self, test_domain):
         assert "id" not in declared_fields(PersonExplicitID)
         assert "id" not in attributes(PersonExplicitID)
 
-        assert type(declared_fields(PersonExplicitID)["ssn"]) is String
+        assert type(declared_fields(PersonExplicitID)["ssn"]) is _PydanticFieldShim
         assert id_field(PersonExplicitID).field_name == "ssn"
         assert id_field(PersonExplicitID) == declared_fields(PersonExplicitID)["ssn"]
 
@@ -338,34 +342,34 @@ class TestIdentityValues:
             Person(first_name="John", last_name="Doe")
 
     def test_assigning_explicit_id_during_initialization(self):
-        person = Person(person_id=uuid4(), first_name="John", last_name="Doe")
+        person = Person(person_id=str(uuid4()), first_name="John", last_name="Doe")
         assert person.person_id is not None
 
-    def test_that_ids_are_immutable(self):
-        """Test that `id` cannot be changed once assigned"""
-        person = Person(person_id=uuid4(), first_name="John", last_name="Doe")
+    def test_that_ids_can_be_changed_in_projections(self):
+        """Test that projection `id` can be changed (projections are mutable)"""
+        person = Person(person_id=str(uuid4()), first_name="John", last_name="Doe")
 
-        with pytest.raises(InvalidOperationError):
-            person.person_id = 13
+        person.person_id = "13"
+        assert person.person_id == "13"
 
     def test_non_default_explicit_id_field_value(self):
         with pytest.raises(ValidationError):
             PersonExplicitID(first_name="John Doe")
 
         new_uuid = uuid4()
-        role = PersonExplicitID(ssn=new_uuid, first_name="John")
+        role = PersonExplicitID(ssn=str(new_uuid), first_name="John")
         assert role is not None
         assert role.ssn == str(new_uuid)
 
     def test_that_explicit_id_can_be_supplied_to_auto_id_field(self):
         new_uuid = uuid4()
-        person = PersonExplicitID(ssn=new_uuid, first_name="John")
+        person = PersonExplicitID(ssn=str(new_uuid), first_name="John")
         assert person.ssn is not None
         assert person.ssn == str(new_uuid)
 
     def test_that_abstract_projections_can_be_instantiated_without_id_field(self):
         with pytest.raises(NotSupportedError) as excinfo:
-            AbstractPerson(first_name="John", last_name="Doe")
+            AbstractPerson(age=30)
 
         assert (
             "AbstractPerson class has been marked abstract and cannot be instantiated"
@@ -375,13 +379,13 @@ class TestIdentityValues:
 
 class TestEquivalence:
     def test_that_two_entities_with_same_id_are_treated_as_equal(self):
-        person1 = Person(person_id=12345, first_name="John", last_name="Doe")
-        person2 = Person(person_id=12346, first_name="John", last_name="Doe")
+        person1 = Person(person_id="12345", first_name="John", last_name="Doe")
+        person2 = Person(person_id="12346", first_name="John", last_name="Doe")
 
         assert person1 != person2  # Because their identities are different
         assert person2 != person1  # Because their identities are different
 
-        person3 = Person(person_id=12345, first_name="John", last_name="Doe")
+        person3 = Person(person_id="12345", first_name="John", last_name="Doe")
         assert (
             person1 == person3
         )  # Because it's the same record even though attributes differ
@@ -391,8 +395,10 @@ class TestEquivalence:
         """Test that two entities are not considered equal even if they have the same ID
         and one belongs to a different Entity class
         """
-        not_a_person = NotAPerson(identifier=12345, first_name="John", last_name="Doe")
-        person = Person(person_id=12345, first_name="John", last_name="Doe")
+        not_a_person = NotAPerson(
+            identifier="12345", first_name="John", last_name="Doe"
+        )
+        person = Person(person_id="12345", first_name="John", last_name="Doe")
 
         assert not_a_person != person  # Even though their identities are the same
         assert person != not_a_person  # Even though their identities are the same
@@ -401,8 +407,8 @@ class TestEquivalence:
         """Test that two entities are not considered equal even if they have the same ID
         and one is subclassed from the other
         """
-        adult = Adult(person_id=12345, first_name="John", last_name="Doe")
-        person = Person(person_id=12345, first_name="John", last_name="Doe")
+        adult = Adult(person_id="12345", first_name="John", last_name="Doe")
+        person = Person(person_id="12345", first_name="John", last_name="Doe")
 
         assert adult != person  # Even though their identities are the same
         assert person != adult  # Even though their identities are the same
@@ -411,20 +417,20 @@ class TestEquivalence:
         """Test that the entity's hash is based on its identity"""
         hashed_id = hash("12345")
 
-        person = Person(person_id=12345, first_name="John", last_name="Doe")
+        person = Person(person_id="12345", first_name="John", last_name="Doe")
         assert hashed_id == hash(
             person
         )  # FIXME Should hash be based on ID alone, or other attrs too?
 
     def test_that_two_aggregates_that_are_equal_have_equal_hash(self):
-        person1 = Person(person_id=12345, first_name="John", last_name="Doe")
-        person2 = Person(person_id=12345, first_name="John", last_name="Doe")
+        person1 = Person(person_id="12345", first_name="John", last_name="Doe")
+        person2 = Person(person_id="12345", first_name="John", last_name="Doe")
 
         assert hash(person1) == hash(person2)
 
 
 class TestProjectionState:
     def test_that_projections_have_state(self):
-        person = Person(person_id=12, first_name="John", last_name="Doe")
+        person = Person(person_id="12", first_name="John", last_name="Doe")
         assert person.state_ is not None
         assert person.state_.is_new is True

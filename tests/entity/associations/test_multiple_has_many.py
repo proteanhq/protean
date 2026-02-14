@@ -1,28 +1,28 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.fields import Date, HasMany, String
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.fields import HasMany
 from protean.utils.reflection import declared_fields
 
 
 class Customer(BaseAggregate):
-    name = String(max_length=50)
+    name: str | None = None
     orders = HasMany("Order")
     addresses = HasMany("Address")
 
 
 class Order(BaseEntity):
-    ordered_on = Date()
+    ordered_on: date | None = None
 
 
 class Address(BaseEntity):
-    street = String(max_length=50)
-    city = String(max_length=50)
-    state = String(max_length=50)
-    zip_code = String(max_length=10)
+    street: str | None = None
+    city: str | None = None
+    state: str | None = None
+    zip_code: str | None = None
 
 
 @pytest.fixture(autouse=True)

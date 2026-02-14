@@ -46,7 +46,7 @@ class Outbox(BaseAggregate):
     stream_name: str
     type: str
     data: dict
-    metadata: Metadata
+    metadata_: Metadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     published_at: datetime | None = None
     retry_count: int = 0
@@ -113,7 +113,7 @@ class Outbox(BaseAggregate):
             stream_name=stream_name,
             type=message_type,
             data=data,
-            metadata=metadata,
+            metadata_=metadata,
             priority=priority,
             correlation_id=correlation_id,
             trace_id=trace_id,

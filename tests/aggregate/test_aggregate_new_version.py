@@ -1,13 +1,12 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import String
+from protean.core.aggregate import BaseAggregate
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "ARCHIVED"], default="ACTIVE")
+    name: str
+    email: str
+    status: str = "ACTIVE"
 
 
 @pytest.fixture(autouse=True)

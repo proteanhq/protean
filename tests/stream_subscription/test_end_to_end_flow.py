@@ -5,12 +5,11 @@ import pytest
 from uuid import uuid4
 
 from protean.utils.mixins import handle
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.fields import Identifier, String, Integer
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils import fqn
@@ -22,9 +21,9 @@ failed_count = 0
 
 
 class User(BaseAggregate):
-    email = String(identifier=True)
-    name = String()
-    password_hash = String()
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
     @classmethod
     def register(cls, email: str, name: str, password: str):
@@ -43,20 +42,20 @@ class User(BaseAggregate):
 
 
 class UserRegistered(BaseEvent):
-    email = String(required=True)
-    name = String(required=True)
+    email: str
+    name: str
 
 
 class SendWelcomeEmail(BaseCommand):
-    email = String(required=True)
-    name = String(required=True)
+    email: str
+    name: str
 
 
 class Notification(BaseAggregate):
-    notification_id = Identifier(identifier=True)
-    user_email = String()
-    message = String()
-    sent_count = Integer(default=0)
+    notification_id: str | None = None
+    user_email: str | None = None
+    message: str | None = None
+    sent_count: int = 0
 
     @classmethod
     def create(cls, user_email: str, message: str):

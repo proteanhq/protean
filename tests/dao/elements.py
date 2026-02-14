@@ -1,16 +1,17 @@
 from datetime import datetime
 from typing import List
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
-from protean.fields import DateTime, Integer, String
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
-    created_at = DateTime(default=datetime.now())
+    first_name: str
+    last_name: str
+    age: int = 21
+    created_at: datetime = datetime.now()
 
 
 class PersonRepository(BaseRepository):
@@ -19,5 +20,5 @@ class PersonRepository(BaseRepository):
 
 
 class User(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    password = String(max_length=3026)
+    email: str = Field(max_length=255, json_schema_extra={"unique": True})
+    password: str = Field(max_length=3026)

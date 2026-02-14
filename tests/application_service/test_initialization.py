@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
 from protean.exceptions import NotSupportedError
 from protean.utils import fully_qualified_name

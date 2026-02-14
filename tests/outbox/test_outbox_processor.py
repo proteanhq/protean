@@ -5,11 +5,10 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock, patch
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
-from protean.fields import String, Integer
 from protean.server import Engine
 from protean.server.outbox_processor import OutboxProcessor
 from protean.utils.outbox import Outbox, OutboxStatus
@@ -33,8 +32,8 @@ class MockEngine:
 class DummyAggregate(BaseAggregate):
     """Test aggregate for outbox testing"""
 
-    name = String(max_length=50, required=True)
-    count = Integer(default=0)
+    name: str
+    count: int = 0
 
     def increment(self):
         self.count += 1
@@ -44,9 +43,9 @@ class DummyAggregate(BaseAggregate):
 class DummyEvent(BaseEvent):
     """Test event for outbox testing"""
 
-    aggregate_id = String(required=True)
-    name = String(required=True)
-    count = Integer(required=True)
+    aggregate_id: str
+    name: str
+    count: int
 
 
 @pytest.fixture
@@ -496,7 +495,7 @@ class TestOutboxProcessor:
         assert payload["data"] == message.data
 
         # Metadata should be properly structured
-        assert payload["metadata"] == message.metadata.to_dict()
+        assert payload["metadata"] == message.metadata_.to_dict()
 
 
 @pytest.mark.database

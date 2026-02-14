@@ -2,9 +2,10 @@ from enum import Enum
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate, apply
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import Identifier, String
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.event import BaseEvent
 
 
 class UserStatus(Enum):
@@ -14,25 +15,25 @@ class UserStatus(Enum):
 
 
 class UserRegistered(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
+    user_id: str
+    name: str
+    email: str
 
 
 class UserActivated(BaseEvent):
-    user_id = Identifier(required=True)
+    user_id: str
 
 
 class UserRenamed(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    user_id: str
+    name: str
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=UserStatus)
+    user_id: str = Field(json_schema_extra={"identifier": True})
+    name: str
+    email: str
+    status: UserStatus | None = None
 
     @classmethod
     def register(cls, user_id, name, email):
@@ -48,11 +49,11 @@ class User(BaseAggregate):
 
     @apply
     def registered(self, _: UserRegistered):
-        self.status = UserStatus.INACTIVE.value
+        self.status = UserStatus.INACTIVE
 
     @apply
     def activated(self, _: UserActivated):
-        self.status = UserStatus.ACTIVE.value
+        self.status = UserStatus.ACTIVE
 
     @apply
     def renamed(self, event: UserRenamed):

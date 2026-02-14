@@ -1,20 +1,19 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.fields import Identifier, String
 from protean.utils import fully_qualified_name
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
-    email = String()
+    user_id: str | None = None
+    email: str | None = None
 
 
 def test_registering_an_command_handler_manually(test_domain):

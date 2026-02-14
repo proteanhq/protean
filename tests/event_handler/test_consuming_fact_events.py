@@ -1,24 +1,25 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 from protean.core.event_handler import BaseEventHandler
-from protean.core.projection import _LegacyBaseProjection as BaseProjection
-from protean.fields import String
+from protean.core.projection import BaseProjection
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "ARCHIVED"])
+    name: str
+    email: str
+    status: str | None = None
 
 
 class UserProjection(BaseProjection):
-    id = String(identifier=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(required=True)
+    id: str = Field(json_schema_extra={"identifier": True})
+    name: str
+    email: str
+    status: str
 
 
 class ManageUserProjection(BaseEventHandler):

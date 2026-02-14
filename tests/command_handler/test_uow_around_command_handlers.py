@@ -1,21 +1,20 @@
 import mock
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
-    email = String()
+    user_id: str | None = None
+    email: str | None = None
 
 
 def dummy(*args):
@@ -49,7 +48,7 @@ def test_that_method_is_enclosed_in_uow(mock_exit, mock_dummy, mock_enter):
     mock_parent.attach_mock(mock_exit, "m3")
 
     handler_obj = UserCommandHandlers()
-    command = Register(user_id=1, email="foo@bar.com")
+    command = Register(user_id="1", email="foo@bar.com")
 
     # Call the handler
     handler_obj.register(command)

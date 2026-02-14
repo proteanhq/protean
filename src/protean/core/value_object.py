@@ -231,6 +231,11 @@ class _PydanticFieldShim:
         self._python_type = python_type
         self._field_info = field_info
 
+        # Extract description from FieldInfo
+        self.description: str | None = (
+            getattr(field_info, "description", None) if field_info is not None else None
+        )
+
         # Extract metadata from json_schema_extra if present
         extra = (
             getattr(field_info, "json_schema_extra", None) or {}
@@ -286,8 +291,55 @@ class _PydanticFieldShim:
                     elif isinstance(m, Lt):
                         self.max_value = m.lt
 
+    @property
+    def content_type(self) -> type | None:
+        """For list[X] types, return the legacy field class for adapter compatibility.
+
+        This allows the SQLAlchemy adapter to determine the correct ARRAY
+        element type (e.g., list[int] → ARRAY(Integer)).
+        """
+        import types as _types
+        import typing
+
+        python_type = self._python_type
+
+        # Unwrap Optional/Union: list[str] | None → list[str]
+        origin = typing.get_origin(python_type)
+        if origin is _types.UnionType or origin is typing.Union:
+            args = [a for a in typing.get_args(python_type) if a is not type(None)]
+            if args:
+                python_type = args[0]
+                origin = typing.get_origin(python_type)
+
+        if origin is not list:
+            return None
+
+        type_args = typing.get_args(python_type)
+        if not type_args:
+            return None
+
+        inner_type = type_args[0]
+
+        # Lazy import to avoid circular dependency
+        from protean.fields.basic import Boolean, Date, DateTime, Float, Integer, String
+
+        from datetime import date as _date
+        from datetime import datetime as _datetime
+
+        _map: dict[type, type] = {
+            str: String,
+            int: Integer,
+            float: Float,
+            bool: Boolean,
+            _datetime: DateTime,
+            _date: Date,
+        }
+        return _map.get(inner_type)
+
     def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self."""
+        from enum import Enum
+
         if value is None:
             return None
         # Prefer custom to_dict() over Pydantic model_dump() — our VOs
@@ -298,6 +350,11 @@ class _PydanticFieldShim:
             return value.model_dump()
         if isinstance(value, datetime):
             return str(value)
+        if isinstance(value, Enum):
+            return value.value
+        # Handle lists/tuples of VOs or datetime values
+        if isinstance(value, (list, tuple)):
+            return [self.as_dict(item) for item in value]
         return value
 
     def get_attribute_name(self) -> str:
@@ -322,7 +379,13 @@ def _convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str
     errors: dict[str, list[str]] = defaultdict(list)
     for error in exc.errors():
         field = str(error["loc"][0]) if error["loc"] else "_entity"
-        errors[field].append(error["msg"])
+        msg = error["msg"]
+        # Normalise Pydantic's "Field required" to the Protean-canonical
+        # "is required" so that downstream assertions stay consistent
+        # with the legacy field system.
+        if msg == "Field required":
+            msg = "is required"
+        errors[field].append(msg)
     return dict(errors)
 
 

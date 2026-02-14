@@ -3,20 +3,19 @@
 import pytest
 
 from protean.adapters.repository.memory import MemoryProvider
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import Integer, String
+from protean.core.aggregate import BaseAggregate
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: str
+    last_name: str
+    age: int = 21
 
 
 class Alien(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: str
+    last_name: str
+    age: int = 21
 
 
 class TestMemoryProvider:

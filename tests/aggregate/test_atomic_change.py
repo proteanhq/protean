@@ -2,10 +2,9 @@
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate, atomic_change
+from protean.core.aggregate import BaseAggregate, atomic_change
 from protean.core.entity import invariant
 from protean.exceptions import ValidationError
-from protean.fields import Integer
 
 
 class TestAtomicChange:
@@ -22,8 +21,8 @@ class TestAtomicChange:
 
     def test_validation_is_not_triggered_within_context_manager(self, test_domain):
         class TestAggregate(BaseAggregate):
-            value1 = Integer()
-            value2 = Integer()
+            value1: int | None = None
+            value2: int | None = None
 
             @invariant.post
             def raise_error(self):

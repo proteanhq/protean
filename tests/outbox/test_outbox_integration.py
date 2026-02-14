@@ -2,17 +2,16 @@
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
-from protean.fields import Integer, String
 from protean.utils.inflection import camelize
 from protean.utils.outbox import OutboxStatus
 
 
 class DummyAggregate(BaseAggregate):
-    name = String(max_length=50, required=True)
-    count = Integer(default=0)
+    name: str
+    count: int = 0
 
     def increment(self):
         self.count += 1
@@ -21,18 +20,18 @@ class DummyAggregate(BaseAggregate):
 
 
 class DummyEvent(BaseEvent):
-    aggregate_id = String(required=True)
-    name = String(required=True)
-    count = Integer(required=True)
+    aggregate_id: str
+    name: str
+    count: int
 
 
 class AnotherAggregate(BaseAggregate):
-    description = String(max_length=100)
+    description: str | None = None
 
 
 class AnotherEvent(BaseEvent):
-    aggregate_id = String(required=True)
-    description = String(required=True)
+    aggregate_id: str
+    description: str
 
 
 @pytest.fixture
@@ -190,10 +189,10 @@ class TestOutboxIntegration:
         )
 
         assert test_event_record is not None
-        assert test_event_record.metadata is not None
-        assert test_event_record.metadata.headers.time is not None
-        assert test_event_record.metadata.domain.version is not None
-        assert test_event_record.metadata.domain.fqn is not None
+        assert test_event_record.metadata_ is not None
+        assert test_event_record.metadata_.headers.time is not None
+        assert test_event_record.metadata_.domain.version is not None
+        assert test_event_record.metadata_.domain.fqn is not None
         assert test_event_record.created_at is not None
         assert test_event_record.retry_count == 0
         assert test_event_record.max_retries >= 3

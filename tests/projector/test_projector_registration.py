@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.projection import _LegacyBaseProjection as BaseProjection
+from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector
 from protean.exceptions import IncorrectUsageError
 from protean.utils import fully_qualified_name

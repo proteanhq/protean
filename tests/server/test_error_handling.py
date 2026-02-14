@@ -2,10 +2,9 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import Processing
 from protean.utils.eventing import Message
@@ -13,16 +12,16 @@ from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
 def some_function():

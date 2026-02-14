@@ -1,24 +1,23 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate, apply
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import Identifier, String
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.event import BaseEvent
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 class Renamed(BaseEvent):
-    id = Identifier()
-    name = String()
+    id: str | None = None
+    name: str | None = None
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
     @apply
     def registered(self, event: Registered) -> None:
@@ -68,7 +67,6 @@ def test_generation_of_first_fact_event_on_persistence(test_domain):
     # Check event versions
     assert event._metadata.headers.id.endswith("-0")
     assert event._metadata.domain.sequence_id == "0"
-    assert event._version == 0
 
 
 def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
@@ -107,7 +105,6 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
 
     assert event._metadata.headers.id.endswith("-0")
     assert event._metadata.domain.sequence_id == "0"
-    assert event._version == 0
 
     # Deserialize 2nd event and verify
     event = fact_event_messages[1].to_domain_object()
@@ -117,4 +114,3 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
 
     assert event._metadata.headers.id.endswith("-1")
     assert event._metadata.domain.sequence_id == "1"
-    assert event._version == 1

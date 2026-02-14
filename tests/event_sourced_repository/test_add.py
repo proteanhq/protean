@@ -2,22 +2,20 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Identifier, String
 
 
 class UserRegistered(BaseEvent):
-    id = Identifier(required=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
+    id: str
+    name: str
+    email: str
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
     @classmethod
     def register(cls, id, name, email):

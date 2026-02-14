@@ -1,40 +1,40 @@
 import re
 from datetime import datetime
+from typing import ClassVar
 
 from elasticsearch_dsl import Keyword, Text
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import DateTime, Integer, String, ValueObject
-from protean.fields import Text as ProteanText
+from protean.fields import ValueObject
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
-    created_at = DateTime(default=datetime.now())
+    first_name: str
+    last_name: str
+    age: int = 21
+    created_at: datetime | None = datetime.now()
 
 
 class Alien(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: str
+    last_name: str
+    age: int = 21
 
 
 class User(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    password = String(max_length=3026)
+    email: str
+    password: str | None = None
 
 
 class Email(BaseValueObject):
-    REGEXP = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
+    REGEXP: ClassVar[str] = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
 
     # This is the external facing data attribute
-    address = String(max_length=254, required=True)
+    address: str
 
     @invariant.post
     def validate_email_address(self):
@@ -45,12 +45,12 @@ class Email(BaseValueObject):
 
 class ComplexUser(BaseAggregate):
     email = ValueObject(Email, required=True)
-    password = String(required=True, max_length=255)
+    password: str
 
 
 class Provider(BaseAggregate):
-    name = ProteanText()
-    about = ProteanText()
+    name: str | None = None
+    about: str | None = None
 
 
 class ProviderCustomModel(BaseDatabaseModel):
@@ -60,5 +60,5 @@ class ProviderCustomModel(BaseDatabaseModel):
 
 
 class Receiver(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: str | None = None
+    age: int | None = None

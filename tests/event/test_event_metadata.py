@@ -3,26 +3,25 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import String, ValueObject
-from protean.fields.basic import Identifier
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.utils import Processing, fqn
-from protean.utils.eventing import MessageEnvelope, DomainMeta
+from protean.utils.eventing import DomainMeta, MessageEnvelope, Metadata
 from protean.utils.reflection import fields
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
     def login(self):
         self.raise_(UserLoggedIn(user_id=self.id))
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: str = Field(json_schema_extra={"identifier": True})
 
 
 @pytest.fixture(autouse=True)
@@ -32,11 +31,10 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_event_has_metadata_value_object():
-    assert "_metadata" in fields(UserLoggedIn)
-    assert isinstance(fields(UserLoggedIn)["_metadata"], ValueObject)
-
-    assert hasattr(UserLoggedIn, "_metadata")
+def test_event_has_metadata_private_attr():
+    # In Pydantic-based events, _metadata is a PrivateAttr, not in fields()
+    assert "_metadata" not in fields(UserLoggedIn)
+    assert "_metadata" in UserLoggedIn.__private_attributes__
 
 
 def test_metadata_defaults():
@@ -48,7 +46,8 @@ def test_metadata_defaults():
 def test_metadata_can_be_overridden():
     now_timestamp = datetime.now() - timedelta(hours=1)
     event = UserLoggedIn(
-        user_id=str(uuid4()), _metadata={"headers": {"time": now_timestamp}}
+        user_id=str(uuid4()),
+        _metadata=Metadata(headers={"time": now_timestamp}),
     )
     assert event._metadata is not None
     assert event._metadata.headers.time == now_timestamp
@@ -56,8 +55,7 @@ def test_metadata_can_be_overridden():
 
 class TestMetadataType:
     def test_metadata_has_type_field(self):
-        metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert "headers" in metadata_field.value_object_cls.model_fields
+        assert "headers" in Metadata.model_fields
 
     def test_command_metadata_type_default(self):
         assert hasattr(UserLoggedIn, "__type__")
@@ -71,8 +69,7 @@ class TestMetadataType:
 
 class TestMetadataVersion:
     def test_metadata_has_event_version(self):
-        metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert "domain" in metadata_field.value_object_cls.model_fields
+        assert "domain" in Metadata.model_fields
         assert "version" in DomainMeta.model_fields
 
     def test_event_metadata_version_default(self):
@@ -82,7 +79,7 @@ class TestMetadataVersion:
     def test_overridden_version(self, test_domain):
         class UserLoggedIn(BaseEvent):
             __version__ = "v2"
-            user_id = Identifier(identifier=True)
+            user_id: str = Field(json_schema_extra={"identifier": True})
 
         test_domain.register(UserLoggedIn, part_of=User)
         test_domain.init(traverse=False)
@@ -93,14 +90,14 @@ class TestMetadataVersion:
     def test_version_value_in_multiple_event_definitions(self, test_domain):
         def version1():
             class DummyEvent(BaseEvent):
-                user_id = Identifier(identifier=True)
+                user_id: str = Field(json_schema_extra={"identifier": True})
 
             return DummyEvent
 
         def version2():
             class DummyEvent(BaseEvent):
                 __version__ = "v2"
-                user_id = Identifier(identifier=True)
+                user_id: str = Field(json_schema_extra={"identifier": True})
 
             return DummyEvent
 
@@ -128,8 +125,7 @@ class TestMetadataVersion:
 
 class TestMetadataAsynchronous:
     def test_metadata_has_asynchronous_field(self):
-        metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert "domain" in metadata_field.value_object_cls.model_fields
+        assert "domain" in Metadata.model_fields
         assert "asynchronous" in DomainMeta.model_fields
 
     def test_event_metadata_asynchronous_default(self):
