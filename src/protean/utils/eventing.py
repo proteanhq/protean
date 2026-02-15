@@ -221,11 +221,61 @@ class BaseMessageType(BaseModel, OptionsMixin):
         # Set empty __container_fields__ as placeholder
         setattr(cls, _FIELDS, {})
 
+        # Convert ValueObject descriptors to direct type annotations
+        # (commands/events don't need shadow fields — VOs serialize as nested dicts)
+        cls._convert_vo_descriptors()
+
         # Resolve FieldSpec declarations before Pydantic processes annotations
         cls._resolve_fieldspecs()
 
         # Validate that only basic field types are used (no associations/references)
         cls.__validate_for_basic_field_types()
+
+    @classmethod
+    def _convert_vo_descriptors(cls) -> None:
+        """Convert ValueObject descriptors to direct type annotations.
+
+        Commands/Events don't need shadow fields — VOs serialize as
+        nested dicts.  This converts ``email = ValueObject(Email)`` to
+        the equivalent of ``email: Email | None = None``.
+        """
+        own_annots = getattr(cls, "__annotations__", {})
+        names_to_remove: list[str] = []
+        defaults_to_set: dict[str, None] = {}
+
+        # 1. Assignment style: ``email = ValueObject(Email)``
+        for name, value in list(vars(cls).items()):
+            if isinstance(value, ValueObjectField):
+                vo_cls = value.value_object_cls
+                if value.required:
+                    own_annots[name] = vo_cls
+                else:
+                    own_annots[name] = vo_cls | None
+                    defaults_to_set[name] = None
+                names_to_remove.append(name)
+
+        # 2. Annotation style: ``email: ValueObject(Email)``
+        for name, annot_value in list(own_annots.items()):
+            if isinstance(annot_value, ValueObjectField):
+                vo_cls = annot_value.value_object_cls
+                if annot_value.required:
+                    own_annots[name] = vo_cls
+                else:
+                    own_annots[name] = vo_cls | None
+                    defaults_to_set[name] = None
+
+        # Remove descriptors from namespace
+        for name in names_to_remove:
+            try:
+                delattr(cls, name)
+            except AttributeError:
+                pass
+
+        # Set defaults for optional VO fields
+        for name, default in defaults_to_set.items():
+            setattr(cls, name, default)
+
+        cls.__annotations__ = own_annots
 
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
@@ -237,7 +287,7 @@ class BaseMessageType(BaseModel, OptionsMixin):
     def __validate_for_basic_field_types(cls) -> None:
         """Reject association/reference field descriptors in Commands and Events."""
         for field_name, field_obj in vars(cls).items():
-            if isinstance(field_obj, (Association, Reference, ValueObjectField)):
+            if isinstance(field_obj, (Association, Reference)):
                 raise IncorrectUsageError(
                     f"Commands and Events can only contain basic field types. "
                     f"Remove {field_name} ({field_obj.__class__.__name__}) from class {cls.__name__}"

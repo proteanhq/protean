@@ -40,6 +40,7 @@ from protean.fields import (
     Identifier,
     Integer,
     String,
+    ValueObject,
 )
 from protean.utils.reflection import declared_fields
 
@@ -128,6 +129,21 @@ class CmdPlain(BaseCommand):
 
 
 # =========================================================================
+# Command definitions with ValueObject — assignment and plain styles
+# =========================================================================
+class CmdVOAssign(BaseCommand):
+    user_id = Identifier(identifier=True)
+    email = String(required=True)
+    address = ValueObject(VOAssign)
+
+
+class CmdVOPlain(BaseCommand):
+    user_id: Identifier(identifier=True)
+    email: String(required=True)
+    address: VOPlain | None = None
+
+
+# =========================================================================
 # Event definitions — one per style
 # =========================================================================
 class EvtAssign(BaseEvent):
@@ -143,6 +159,21 @@ class EvtAnnot(BaseEvent):
 class EvtPlain(BaseEvent):
     user_id: str
     email: str
+
+
+# =========================================================================
+# Event definitions with ValueObject — assignment and plain styles
+# =========================================================================
+class EvtVOAssign(BaseEvent):
+    user_id = Identifier(identifier=True)
+    email = String(required=True)
+    address = ValueObject(VOAssign)
+
+
+class EvtVOPlain(BaseEvent):
+    user_id: Identifier(identifier=True)
+    email: String(required=True)
+    address: VOPlain | None = None
 
 
 # =========================================================================
@@ -187,11 +218,15 @@ def register_elements(test_domain):
     test_domain.register(CmdAssign, part_of=AggAssign)
     test_domain.register(CmdAnnot, part_of=AggAnnot)
     test_domain.register(CmdPlain, part_of=AggPlain)
+    test_domain.register(CmdVOAssign, part_of=AggAssign)
+    test_domain.register(CmdVOPlain, part_of=AggPlain)
 
     # Events
     test_domain.register(EvtAssign, part_of=AggAssign)
     test_domain.register(EvtAnnot, part_of=AggAnnot)
     test_domain.register(EvtPlain, part_of=AggPlain)
+    test_domain.register(EvtVOAssign, part_of=AggAssign)
+    test_domain.register(EvtVOPlain, part_of=AggPlain)
 
     # Projections
     test_domain.register(ProjAssign)
@@ -422,6 +457,68 @@ class TestEventFieldStyles:
         df = declared_fields(cls)
         assert "user_id" in df
         assert "email" in df
+
+
+# =========================================================================
+# VALUE OBJECTS IN COMMANDS AND EVENTS
+# =========================================================================
+class TestValueObjectInCommandsAndEvents:
+    """ValueObject() descriptors work in commands/events (converted to annotations)."""
+
+    @pytest.mark.parametrize(
+        "cls,vo_cls",
+        [(CmdVOAssign, VOAssign), (CmdVOPlain, VOPlain)],
+        ids=["cmd_vo_assign", "cmd_vo_plain"],
+    )
+    def test_command_with_vo_instantiation(self, cls, vo_cls):
+        vo = vo_cls(street="123 Main St", zip_code="12345")
+        obj = cls(user_id="u1", email="a@b.com", address=vo)
+        assert obj.address.street == "123 Main St"
+
+    @pytest.mark.parametrize(
+        "cls,vo_cls",
+        [(EvtVOAssign, VOAssign), (EvtVOPlain, VOPlain)],
+        ids=["evt_vo_assign", "evt_vo_plain"],
+    )
+    def test_event_with_vo_instantiation(self, cls, vo_cls):
+        vo = vo_cls(street="456 Elm St", zip_code="67890")
+        obj = cls(user_id="u1", email="a@b.com", address=vo)
+        assert obj.address.street == "456 Elm St"
+
+    @pytest.mark.parametrize(
+        "cls",
+        [CmdVOAssign, CmdVOPlain],
+        ids=["cmd_vo_assign", "cmd_vo_plain"],
+    )
+    def test_command_vo_optional_defaults_to_none(self, cls):
+        obj = cls(user_id="u1", email="a@b.com")
+        assert obj.address is None
+
+    @pytest.mark.parametrize(
+        "cls",
+        [CmdVOAssign, CmdVOPlain],
+        ids=["cmd_vo_assign", "cmd_vo_plain"],
+    )
+    def test_command_vo_declared_fields(self, cls):
+        df = declared_fields(cls)
+        assert "address" in df
+        assert "user_id" in df
+        assert "email" in df
+        # No shadow fields
+        assert "address_street" not in df
+        assert "address_zip_code" not in df
+
+    @pytest.mark.parametrize(
+        "cls",
+        [CmdVOAssign, CmdVOPlain],
+        ids=["cmd_vo_assign", "cmd_vo_plain"],
+    )
+    def test_command_vo_fields_are_resolved_fields(self, cls):
+        df = declared_fields(cls)
+        for name in ("user_id", "email", "address"):
+            assert isinstance(df[name], ResolvedField), (
+                f"{name} should be a ResolvedField"
+            )
 
 
 # =========================================================================

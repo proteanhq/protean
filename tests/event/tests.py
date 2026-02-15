@@ -162,6 +162,66 @@ class TestDomainEventDefinition:
 
         assert exc.value.messages == {"city": ["is required"]}
 
+    def test_event_can_hold_vo_descriptor(self, test_domain):
+        """ValueObject() descriptor style should work in events."""
+
+        class Email(BaseValueObject):
+            address: String(max_length=255)
+
+        class User(BaseAggregate):
+            email = ValueObject(Email, required=True)
+            name: String(max_length=50)
+
+        class UserAdded(BaseEvent):
+            id: Identifier(identifier=True)
+            email = ValueObject(Email)
+            name: str | None = None
+
+        test_domain.register(User)
+        test_domain.register(UserAdded, part_of=User)
+        test_domain.init(traverse=False)
+
+        event = UserAdded(
+            id="user-1",
+            email=Email(address="john@example.com"),
+            name="John",
+        )
+        assert event.email == Email(address="john@example.com")
+        assert event.email.address == "john@example.com"
+
+        # Verify nested dict serialization
+        d = event.to_dict()
+        assert d["email"] == {"address": "john@example.com"}
+
+        # Verify no shadow fields
+        df = declared_fields(UserAdded)
+        assert "email" in df
+        assert "email_address" not in df
+
+    def test_event_can_hold_required_vo_descriptor(self, test_domain):
+        """Required ValueObject() descriptor should enforce presence."""
+
+        class Email(BaseValueObject):
+            address: String(max_length=255)
+
+        class User(BaseAggregate):
+            email = ValueObject(Email, required=True)
+            name: String(max_length=50)
+
+        class UserRegistered(BaseEvent):
+            id: Identifier(identifier=True)
+            email = ValueObject(Email, required=True)
+
+        test_domain.register(User)
+        test_domain.register(UserRegistered, part_of=User)
+        test_domain.init(traverse=False)
+
+        event = UserRegistered(
+            id="user-1",
+            email=Email(address="alice@example.com"),
+        )
+        assert event.email.address == "alice@example.com"
+
     def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(
         self, test_domain
     ):
