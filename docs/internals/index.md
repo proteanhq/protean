@@ -14,3 +14,6 @@ shaped it.
 - [Field system](./field-system.md) -- How Protean's field functions translate
   domain vocabulary into Pydantic's type system, and why three definition
   styles are supported.
+- [Shadow fields](./shadow-fields.md) -- How ValueObject and Reference fields
+  are flattened into database columns via shadow fields, and why they live
+  outside Pydantic's model fields.

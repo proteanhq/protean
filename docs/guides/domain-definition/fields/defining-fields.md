@@ -83,6 +83,40 @@ capabilities that Protean's field functions don't expose directly.
 
 ---
 
+## Known limitation: `from __future__ import annotations`
+
+Annotation-style field definitions are **incompatible** with PEP 563 deferred
+evaluation (`from __future__ import annotations`). When this import is active,
+Python converts all annotations to strings at definition time. This means
+`String(max_length=50)` becomes the string `"String(max_length=50)"` before
+Protean's metaclass can process it, and the FieldSpec is never resolved.
+
+**If your project uses `from __future__ import annotations`**, use the
+assignment style instead:
+
+```python
+from __future__ import annotations
+
+@domain.aggregate
+class Product:
+    # Assignment style works correctly with deferred annotations
+    name = String(max_length=50, required=True)
+    price = Float(min_value=0)
+
+    # Raw Pydantic style also works
+    metadata: dict = {}
+```
+
+Assignment style places the FieldSpec in the class namespace (not in
+`__annotations__`), so deferred evaluation does not affect it. Raw Pydantic
+style also works because Pydantic handles string annotations natively.
+
+!!! warning
+    This limitation only affects annotation style. Assignment and raw Pydantic
+    styles are fully compatible with `from __future__ import annotations`.
+
+---
+
 ## How it works
 
 Regardless of which style you use, Protean normalizes every field into the

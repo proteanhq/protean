@@ -1,10 +1,121 @@
 Release History
 ===============
 
-0.14.0 (unreleased)
+0.15.0 (unreleased)
 -------------------
 
-* Added support for Python 3.13
+**Pydantic v2 Foundation**
+
+This release rewrites Protean's domain element internals on top of
+`Pydantic v2 <https://docs.pydantic.dev/latest/>`_. Every Aggregate, Entity,
+Value Object, Command, Event, and Projection is now a Pydantic ``BaseModel``
+under the hood, bringing Rust-powered validation, native JSON Schema
+generation, and full ecosystem compatibility.
+
+*Highlights:*
+
+* **Pydantic v2 as the validation and serialization engine** — all domain
+  elements inherit from Pydantic's ``BaseModel``. Validation runs through
+  Pydantic's Rust core for significantly improved performance.
+* **Three field definition styles** — annotation style (recommended),
+  assignment style (backward-compatible with existing Protean code), and
+  raw Pydantic style (escape hatch for advanced use cases). All three are
+  fully supported and can be mixed within a single class.
+* **FieldSpec abstraction** — Protean's field functions (``String``,
+  ``Integer``, ``Float``, etc.) now return ``FieldSpec`` objects that are
+  transparently resolved into Pydantic ``Annotated[type, Field(...)]`` at
+  class creation time. FieldSpec disappears before Pydantic ever sees the
+  class.
+* **JSON Schema generation** — domain elements support
+  ``model_json_schema()`` out of the box, useful for API documentation,
+  schema registries, and client SDK generation.
+* **Native serialization** — ``model_dump()`` and ``model_dump_json()`` are
+  available alongside Protean's existing ``to_dict()``.
+* **mypy plugin** — ships a mypy plugin (``protean.ext.mypy_plugin``) that
+  resolves FieldSpec return types to their underlying Python types
+  (``String`` → ``str``, ``Integer`` → ``int``, etc.) for full type safety.
+* **Pydantic version pinned** to ``>=2.10,<3.0`` for stability.
+
+*Field system changes:*
+
+* ``List`` field is now a ``FieldSpec`` factory for generic typed lists.
+  The previous ``List`` descriptor for embedding Value Object lists has been
+  renamed to ``ValueObjectList`` (available via
+  ``from protean.fields import ValueObjectList``).
+* New ``FieldSpec`` class exported from ``protean.fields``.
+* ``py.typed`` marker added for PEP 561 compliance.
+* ``pyrightconfig.json`` added to suppress ``reportInvalidTypeForm`` errors
+  for annotation-style field definitions.
+
+*Breaking changes:*
+
+* **Pydantic v2 is now a required dependency.** Protean no longer works
+  without Pydantic.
+* **Value Objects reject unknown fields.** ``BaseValueObject`` now uses
+  ``model_config = ConfigDict(extra="forbid")``. Code that passed extra
+  keyword arguments to VO constructors will raise ``ValidationError``.
+* **``List`` import semantics changed.** ``from protean.fields import List``
+  now returns a ``FieldSpec`` factory, not the old Value Object list
+  descriptor. Use ``ValueObjectList`` for the previous behavior.
+* **Annotation-style fields are incompatible with
+  ``from __future__ import annotations``** (PEP 563). Use assignment style
+  in modules that require deferred annotations. See the
+  `migration guide <https://docs.proteanhq.com/migration/0.15.0.html>`_ for
+  details.
+
+*Documentation:*
+
+* New guide: `Defining Fields <https://docs.proteanhq.com/guides/domain-definition/fields/defining-fields.html>`_
+  covering all three field definition styles.
+* New internals page: `Field System <https://docs.proteanhq.com/internals/field-system.html>`_
+  explaining FieldSpec architecture, translation rules, and design decisions.
+* New migration guide for upgrading from 0.12–0.14 to 0.15.
+
+*Other changes carried from main since 0.14.2:*
+
+* **Outbox pattern** for reliable message delivery — events are persisted in
+  the same transaction as aggregate changes and delivered by a background
+  ``OutboxProcessor``. Configurable retry, jitter, and cleanup.
+* **Message format versioning** with ``specversion``, ``checksum``, and
+  ``MessageHeaders`` for integrity assurance.
+* **Metadata attributes overhaul** — envelope attributes restructured across
+  commands and events; ``MessageRecord`` removed; ``message.py`` folded into
+  ``eventing.py``.
+* **Redis Streams** for async event/command processing.
+* **Broker registry** for runtime broker discovery and management.
+* **Subscription configuration system** with priority hierarchy.
+* **Command idempotency** with Redis-backed deduplication.
+* **Async message processing** improvements and Engine lifecycle hardening.
+* Mark aggregate dirty when ValueObject field is updated.
+* Rebind ``__class__`` cells in ``derive_element_class``.
+* Check invariants only when there are no field-level errors.
+* ``DeserializationError`` for enhanced error handling context.
+* Sorting by ``referenced_as`` attributes.
+* Comprehensive documentation overhaul: quickstart, long-form tutorial
+  (Online Bookstore), testing guide, application services guide, subscribers
+  guide, patterns & recipes, and landing page revamp.
+
+0.14.2
+------
+
+* Enhance Reference and Association fields to support ``via`` parameter
+* Refactor entity and model conversion methods to utilize ``referenced_as``
+  attributes
+* Documentation on entity relationships, per-aggregate CQRS/ES pattern
+  choice, and deciding between aggregates and entities
+
+0.14.1
+------
+
+* Support schema in MSSQL connection string
+
+0.14.0
+------
+
+* Add support for Microsoft SQL Server
+* Add support for Python 3.13
+* Outbox processor for reliable message delivery
+* ``has_table`` inspection method on all DAO implementations
 
 0.13.0
 ------
