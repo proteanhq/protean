@@ -17,7 +17,6 @@ class TestFieldSpecCopy:
             description="Test Text",
             identifier=True,
             default="default_value",
-            required=True,
             unique=True,
             choices=None,
             validators=[],
