@@ -281,6 +281,7 @@ nav:
 
   - Community:
     - community/index.md
+    - community/quality.md
     - community/contributing/setup.md
     - community/contributing/testing.md
     - community/contributing/adapters.md

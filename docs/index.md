@@ -100,9 +100,10 @@ to get started.
 
     ---
 
-    Run your full domain test suite in-memory in seconds. Add
-    integration tests for specific adapters when ready. Built-in pytest
-    and pytest-bdd support.
+    3,826 tests with a 3.5:1 test-to-code ratio. Run your full domain
+    test suite in-memory in seconds. Every commit is tested against
+    PostgreSQL, Redis, Elasticsearch, MessageDB, and MSSQL across
+    Python 3.11-3.14.
 
 </div>
 
@@ -159,6 +160,44 @@ graph LR
 
 Not sure which to pick? Start with DDD — you can evolve later. See
 [Choose a Path](./guides/pathways/index.md) for guidance.
+
+---
+
+## Built to Last
+
+<div class="grid cards" markdown>
+
+-   __:material-test-tube: 3,826 Tests__
+
+    ---
+
+    3.5:1 test-to-code ratio. Every commit validated against PostgreSQL,
+    Redis, Elasticsearch, MessageDB, and MSSQL.
+
+-   __:material-check-decagram: Zero Lint Violations__
+
+    ---
+
+    Fully clean Ruff linting and formatting, enforced on every commit
+    via pre-commit hooks.
+
+-   __:material-chart-line: A-Grade Maintainability__
+
+    ---
+
+    97% of source files score in the highest maintainability tier.
+    Average cyclomatic complexity of 2.97.
+
+-   __:material-puzzle-outline: 12 Adapters, 5 Ports__
+
+    ---
+
+    Pluggable infrastructure across databases, brokers, event stores,
+    and caches — tested across 4 Python versions.
+
+</div>
+
+[:material-arrow-right-box: Full Quality Report](./community/quality.md){ .md-button }
 
 ---
 
