@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from functools import lru_cache
 from typing import TYPE_CHECKING, Union
@@ -52,7 +50,7 @@ class BaseRepository(Element, OptionsMixin):
             raise NotSupportedError("BaseRepository cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, domain: Domain, provider: BaseProvider) -> None:
+    def __init__(self, domain: "Domain", provider: BaseProvider) -> None:
         self._domain = domain
         self._provider = provider
 

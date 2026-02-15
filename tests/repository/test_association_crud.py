@@ -4,8 +4,6 @@ Full CRUD lifecycle through memory repository for aggregates with
 HasMany, HasOne, and ValueObject associations.
 """
 
-from __future__ import annotations
-
 from uuid import uuid4
 
 import pytest

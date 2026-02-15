@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any
@@ -46,7 +44,7 @@ class BaseDAO(metaclass=ABCMeta):
 
     def __init__(
         self,
-        domain: Domain,
+        domain: "Domain",
         provider: BaseProvider,
         entity_cls: BaseEntity,
         database_model_cls: BaseDatabaseModel,

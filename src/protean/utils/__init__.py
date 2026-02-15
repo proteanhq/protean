@@ -4,8 +4,6 @@ Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
 
-from __future__ import annotations
-
 import importlib
 import logging
 import types
@@ -311,7 +309,6 @@ def _prepare_pydantic_namespace(
                 if attr_name.startswith("_"):
                     continue
 
-                # Handle string annotations (from __future__ import annotations)
                 if isinstance(annotation, str) and '"identifier": True' in annotation:
                     has_id = True
                     break
@@ -353,10 +350,10 @@ def _prepare_pydantic_namespace(
 
 
 def derive_element_class(
-    element_cls: Type[Element] | Type[Any],
-    base_cls: Type[Element],
+    element_cls: Type["Element"] | Type[Any],
+    base_cls: Type["Element"],
     **opts: dict[str, str | bool],
-) -> Type[Element]:
+) -> Type["Element"]:
     from pydantic import BaseModel
 
     from protean.utils.container import Options
@@ -457,7 +454,7 @@ def generate_identity(
     return id_value
 
 
-def clone_class(cls: Element, new_name: str) -> Type[Element]:
+def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
     """Clone a class with a new name.
 
     Creates a new class with the same attributes and behavior as the original,

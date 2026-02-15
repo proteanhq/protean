@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import logging
 import os
@@ -115,7 +113,7 @@ class StreamSubscription(BaseSubscription):
         engine,
         stream_category: str,
         handler: Union[BaseEventHandler, BaseCommandHandler],
-        config: SubscriptionConfig,
+        config: "SubscriptionConfig",
     ) -> "StreamSubscription":
         """Create a StreamSubscription instance from a SubscriptionConfig.
 

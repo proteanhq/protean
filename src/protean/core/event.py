@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from datetime import datetime, timezone
 from typing import Any, ClassVar
@@ -41,7 +39,7 @@ class BaseEvent(BaseMessageType):
 
     element_type: ClassVar[str] = DomainObjects.EVENT
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> BaseEvent:
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEvent":
         if cls is BaseEvent:
             raise NotSupportedError("BaseEvent cannot be instantiated")
         return super().__new__(cls)

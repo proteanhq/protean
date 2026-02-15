@@ -22,8 +22,6 @@ it the call returns ``str`` instead of ``FieldSpec``.  Mypy's normal type
 inference then correctly assigns ``str`` to the field variable.
 """
 
-from __future__ import annotations
-
 from typing import Callable
 
 from mypy.nodes import NameExpr

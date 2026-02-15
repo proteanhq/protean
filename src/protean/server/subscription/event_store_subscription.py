@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import os
 import secrets
@@ -88,7 +86,7 @@ class EventStoreSubscription(BaseSubscription):
         engine,
         stream_category: str,
         handler: Union[BaseEventHandler, BaseCommandHandler],
-        config: SubscriptionConfig,
+        config: "SubscriptionConfig",
     ) -> "EventStoreSubscription":
         """Create an EventStoreSubscription instance from a SubscriptionConfig.
 

@@ -1,7 +1,5 @@
 """Aggregate Functionality and Classes"""
 
-from __future__ import annotations
-
 import functools
 import inspect
 import logging
@@ -54,7 +52,7 @@ class BaseAggregate(BaseEntity):
     _projections: ClassVar[dict] = defaultdict(set)
     _events_cls_map: ClassVar[dict] = {}
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> BaseAggregate:
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseAggregate":
         if cls is BaseAggregate:
             raise NotSupportedError("BaseAggregate cannot be instantiated")
         return super().__new__(cls, *args, **kwargs)
@@ -204,7 +202,7 @@ class BaseAggregate(BaseEntity):
             self._version += 1
 
     @classmethod
-    def from_events(cls, events: list) -> BaseAggregate:
+    def from_events(cls, events: list) -> "BaseAggregate":
         """Event-Sourcing: reconstruct an aggregate from a list of events."""
         aggregate = cls(**events[0].payload)
         aggregate._apply(events[0])

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import collections.abc
 import logging
 from typing import TYPE_CHECKING, Any, Iterator

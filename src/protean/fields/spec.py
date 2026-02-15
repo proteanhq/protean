@@ -6,8 +6,6 @@ It is consumed during class creation and translated into Pydantic-compatible
 Pydantic's native machinery remains — FieldSpec itself is not stored on the class.
 """
 
-from __future__ import annotations
-
 import warnings
 from enum import Enum
 from typing import Any, Callable, Iterable

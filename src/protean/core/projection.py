@@ -1,7 +1,5 @@
 """Projection Functionality and Classes"""
 
-from __future__ import annotations
-
 import logging
 from typing import Any, ClassVar
 
@@ -72,7 +70,7 @@ class BaseProjection(BaseModel, OptionsMixin):
     _initialized: bool = PrivateAttr(default=False)
     _state: _EntityState = PrivateAttr(default_factory=_EntityState)
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> BaseProjection:
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseProjection":
         if cls is BaseProjection:
             raise NotSupportedError("BaseProjection cannot be instantiated")
         return super().__new__(cls)
