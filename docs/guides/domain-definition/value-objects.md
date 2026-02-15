@@ -237,7 +237,7 @@ IncorrectUsageError: "Value Objects cannot contain fields marked 'unique' (field
 Same case if you try to find a Value Object's `id_field`:
 
 ```shell
-In [4]: from protean.reflection import id_field
+In [4]: from protean.utils.reflection import id_field
 
 In [5]: id_field(Balance)
 ...

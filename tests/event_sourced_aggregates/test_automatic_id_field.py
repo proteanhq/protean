@@ -1,5 +1,5 @@
 from protean.core.aggregate import BaseAggregate
-from protean.core.value_object import _FieldShim
+from protean.fields.resolved import ResolvedField
 from protean.fields import DateTime, Identifier, Integer, String
 from protean.utils import utcnow_func
 from protean.utils.reflection import declared_fields, fields, id_field
@@ -19,7 +19,7 @@ def test_auto_id_field_generation():
     assert "id" in fields(User)
 
     field_obj = fields(User)["id"]
-    assert isinstance(field_obj, _FieldShim)
+    assert isinstance(field_obj, ResolvedField)
     assert field_obj.identifier is True
 
     assert id_field(User) == field_obj

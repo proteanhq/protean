@@ -99,7 +99,7 @@ The `User` aggregate will inherit the two fields from the parent `TimeStamped`
 class:
 
 ```shell hl_lines="3 4"
->>> from protean.reflection import declared_fields
+>>> from protean.utils.reflection import declared_fields
 >>> declared_fields(User)
 {'created_at': DateTime(default=utc_now),
  'updated_at': DateTime(default=utc_now),

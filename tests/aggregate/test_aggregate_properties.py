@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from protean.core.value_object import _FieldShim
+from protean.fields.resolved import ResolvedField
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.utils.reflection import (
     _ID_FIELD_NAME,
@@ -38,14 +38,14 @@ class TestIdentity:
 
     def test_for_id_field_presence(self):
         assert hasattr(Role, _ID_FIELD_NAME)
-        assert isinstance(id_field(Role), _FieldShim)
+        assert isinstance(id_field(Role), ResolvedField)
         assert id_field(Role).identifier is True
 
     def test_default_id_field_construction(self):
         assert "id" in declared_fields(Role)
         assert "id" in attributes(Role)
 
-        assert isinstance(declared_fields(Role)["id"], _FieldShim)
+        assert isinstance(declared_fields(Role)["id"], ResolvedField)
         assert declared_fields(Role)["id"].identifier is True
         assert id_field(Role) == declared_fields(Role)["id"]
 
@@ -53,7 +53,7 @@ class TestIdentity:
         assert "id" not in declared_fields(PersonAutoSSN)
         assert "id" not in attributes(PersonAutoSSN)
 
-        assert isinstance(declared_fields(PersonAutoSSN)["ssn"], _FieldShim)
+        assert isinstance(declared_fields(PersonAutoSSN)["ssn"], ResolvedField)
         assert declared_fields(PersonAutoSSN)["ssn"].field_kind == "auto"
         assert id_field(PersonAutoSSN).field_name == "ssn"
         assert id_field(PersonAutoSSN) == declared_fields(PersonAutoSSN)["ssn"]
@@ -62,7 +62,7 @@ class TestIdentity:
         assert "id" not in declared_fields(PersonExplicitID)
         assert "id" not in attributes(PersonExplicitID)
 
-        assert isinstance(declared_fields(PersonExplicitID)["ssn"], _FieldShim)
+        assert isinstance(declared_fields(PersonExplicitID)["ssn"], ResolvedField)
         assert declared_fields(PersonExplicitID)["ssn"].identifier is True
         assert id_field(PersonExplicitID).field_name == "ssn"
         assert id_field(PersonExplicitID) == declared_fields(PersonExplicitID)["ssn"]

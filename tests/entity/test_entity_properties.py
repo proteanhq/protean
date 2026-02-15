@@ -2,7 +2,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from protean.core.value_object import _FieldShim
+from protean.fields.resolved import ResolvedField
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.utils.reflection import (
     _ID_FIELD_NAME,
@@ -36,14 +36,14 @@ class TestIdentity:
 
     def test_id_field_in_meta(self):
         assert hasattr(Person, _ID_FIELD_NAME)
-        assert isinstance(id_field(Person), _FieldShim)
+        assert isinstance(id_field(Person), ResolvedField)
         assert id_field(Person).identifier is True
 
     def test_default_id_field_construction(self):
         assert "id" in declared_fields(Person)
         assert "id" in attributes(Person)
 
-        assert isinstance(declared_fields(Person)["id"], _FieldShim)
+        assert isinstance(declared_fields(Person)["id"], ResolvedField)
         assert declared_fields(Person)["id"].identifier is True
         assert id_field(Person) == declared_fields(Person)["id"]
 
@@ -51,7 +51,7 @@ class TestIdentity:
         assert "id" not in declared_fields(PersonAutoSSN)
         assert "id" not in attributes(PersonAutoSSN)
 
-        assert isinstance(declared_fields(PersonAutoSSN)["ssn"], _FieldShim)
+        assert isinstance(declared_fields(PersonAutoSSN)["ssn"], ResolvedField)
         assert declared_fields(PersonAutoSSN)["ssn"].field_kind == "auto"
         assert id_field(PersonAutoSSN).field_name == "ssn"
         assert id_field(PersonAutoSSN) == declared_fields(PersonAutoSSN)["ssn"]
@@ -60,7 +60,7 @@ class TestIdentity:
         assert "id" not in declared_fields(PersonExplicitID)
         assert "id" not in attributes(PersonExplicitID)
 
-        assert isinstance(declared_fields(PersonExplicitID)["ssn"], _FieldShim)
+        assert isinstance(declared_fields(PersonExplicitID)["ssn"], ResolvedField)
         assert declared_fields(PersonExplicitID)["ssn"].identifier is True
         assert id_field(PersonExplicitID).field_name == "ssn"
         assert id_field(PersonExplicitID) == declared_fields(PersonExplicitID)["ssn"]

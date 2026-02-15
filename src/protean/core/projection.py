@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
 
 from protean.core.entity import _EntityState
-from protean.core.value_object import _FieldShim, _convert_pydantic_errors
+from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.exceptions import (
     IncorrectUsageError,
     InvalidOperationError,
@@ -122,9 +122,9 @@ class BaseProjection(BaseModel, OptionsMixin):
         super().__pydantic_init_subclass__(**kwargs)
 
         # Build __container_fields__ bridge from Pydantic model_fields
-        fields_dict: dict[str, _FieldShim] = {}
+        fields_dict: dict[str, ResolvedField] = {}
         for fname, finfo in cls.model_fields.items():
-            fields_dict[fname] = _FieldShim(fname, finfo, finfo.annotation)
+            fields_dict[fname] = ResolvedField(fname, finfo, finfo.annotation)
         setattr(cls, _FIELDS, fields_dict)
 
         # Track identity field
@@ -171,7 +171,7 @@ class BaseProjection(BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(_convert_pydantic_errors(e))
+            raise ValidationError(convert_pydantic_errors(e))
 
     def model_post_init(self, __context: Any) -> None:
         self.defaults()
@@ -201,7 +201,7 @@ class BaseProjection(BaseModel, OptionsMixin):
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
-                raise ValidationError(_convert_pydantic_errors(e))
+                raise ValidationError(convert_pydantic_errors(e))
 
             # Mark projection as changed so repository persists updates
             self._state.mark_changed()

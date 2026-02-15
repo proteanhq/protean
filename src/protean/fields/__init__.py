@@ -15,6 +15,7 @@ from .simple import (
     String,
     Text,
 )
+from .resolved import ResolvedField
 from .spec import FieldSpec
 
 __all__ = [
@@ -32,6 +33,8 @@ __all__ = [
     "Text",
     # FieldSpec class
     "FieldSpec",
+    # Resolved field metadata
+    "ResolvedField",
     # Legacy base
     "Field",
     "FieldBase",

@@ -10,10 +10,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Union, Optional
 
 from pydantic import BaseModel, ConfigDict, Field as PydanticField, PrivateAttr
 
-from protean.core.value_object import (
-    BaseValueObject,
-    _FieldShim,
-)
+from protean.core.value_object import BaseValueObject
+from protean.fields.resolved import ResolvedField
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -253,9 +251,9 @@ class BaseMessageType(BaseModel, OptionsMixin):
         super().__pydantic_init_subclass__(**kwargs)
 
         # Build __container_fields__ bridge from Pydantic model_fields
-        fields_dict: dict[str, _FieldShim] = {}
+        fields_dict: dict[str, ResolvedField] = {}
         for fname, finfo in cls.model_fields.items():
-            fields_dict[fname] = _FieldShim(fname, finfo, finfo.annotation)
+            fields_dict[fname] = ResolvedField(fname, finfo, finfo.annotation)
         setattr(cls, _FIELDS, fields_dict)
 
         # Track id field

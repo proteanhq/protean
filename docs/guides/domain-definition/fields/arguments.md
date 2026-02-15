@@ -43,7 +43,7 @@ in RDBMS).
 The field is validated to be unique and non-blank:
 
 ```shell hl_lines="6 11"
-In [1]: from protean.reflection import declared_fields
+In [1]: from protean.utils.reflection import declared_fields
 
 In [2]: p = Person(email='john.doe@example.com', name='John Doe')
 
@@ -204,7 +204,7 @@ Defaults to the field's name.
 Protean will now persist the value under `fullname` instead of `name`.
 
 ```shell hl_lines="6 13"
-In [1]: from protean.reflection import declared_fields, attributes
+In [1]: from protean.utils.reflection import declared_fields, attributes
 
 In [2]: declared_fields(Person)
 Out[2]: 

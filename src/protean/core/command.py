@@ -5,7 +5,7 @@ from typing import Any, ClassVar
 
 from pydantic import ValidationError as PydanticValidationError
 
-from protean.core.value_object import _convert_pydantic_errors
+from protean.fields.resolved import convert_pydantic_errors
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -73,7 +73,7 @@ class BaseCommand(BaseMessageType):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise InvalidDataError(_convert_pydantic_errors(e))
+            raise InvalidDataError(convert_pydantic_errors(e))
 
         # Build metadata
         self._build_metadata(incoming_metadata)

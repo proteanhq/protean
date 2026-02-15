@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.value_object import _FieldShim
+from protean.fields.resolved import ResolvedField
 from protean.utils.container import Options
 from protean.utils.reflection import attributes, declared_fields
 
@@ -52,10 +52,10 @@ class TestEntityMeta:
         )
 
     def test_entity_declared_fields_hold_correct_field_types(self):
-        assert isinstance(declared_fields(Person)["first_name"], _FieldShim)
-        assert isinstance(declared_fields(Person)["last_name"], _FieldShim)
-        assert isinstance(declared_fields(Person)["age"], _FieldShim)
-        assert isinstance(declared_fields(Person)["id"], _FieldShim)
+        assert isinstance(declared_fields(Person)["first_name"], ResolvedField)
+        assert isinstance(declared_fields(Person)["last_name"], ResolvedField)
+        assert isinstance(declared_fields(Person)["age"], ResolvedField)
+        assert isinstance(declared_fields(Person)["id"], ResolvedField)
         assert declared_fields(Person)["id"].identifier is True
 
     def test_default_and_overridden_abstract_flags(self):
