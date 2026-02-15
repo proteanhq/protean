@@ -267,6 +267,54 @@ If a field name appears in both positions, the annotation takes precedence.
 This aligns with Pydantic's behavior, where `__annotations__` is the source
 of truth for field discovery.
 
+### `from __future__ import annotations` (PEP 563)
+
+Annotation-style field definitions are incompatible with PEP 563 deferred
+evaluation. When `from __future__ import annotations` is active, Python
+stringifies all annotations at definition time — `String(max_length=50)`
+becomes the string `"String(max_length=50)"`. The metaclass never sees the
+FieldSpec instance, so resolution cannot happen.
+
+This is a fundamental limitation of placing callable objects in annotation
+positions under deferred evaluation. PEP 649 (deferred evaluation of
+annotations) resolves this in Python 3.14+ by lazily evaluating annotations
+rather than stringifying them.
+
+**Workaround:** Use assignment style (`name = String(max_length=50)`) or raw
+Pydantic style in modules that require `from __future__ import annotations`.
+Assignment style stores the FieldSpec in the class namespace, which is
+unaffected by annotation stringification.
+
+### IDE type checkers and `FieldSpec`
+
+Because annotation-style fields place a `FieldSpec` instance (a function call
+like `String(max_length=100)`) in the annotation position, static type
+checkers that validate annotation forms may flag them. Pyright and Pylance,
+for example, report `reportInvalidTypeForm` errors since a FieldSpec is not
+a type in the traditional sense — it is a compile-time descriptor that the
+metaclass resolves before Pydantic ever sees the class.
+
+A `pyrightconfig.json` at the project root suppresses this:
+
+```json
+{
+  "reportInvalidTypeForm": false
+}
+```
+
+Projects scaffolded with `protean new` include this file automatically. If
+you are adding Protean to an existing project and your IDE shows type errors
+on field annotations, this is likely the fix.
+
+For **mypy** users, Protean ships a mypy plugin that resolves FieldSpec
+return types to their underlying Python types (`String → str`,
+`Integer → int`, etc.). Enable it in `pyproject.toml`:
+
+```toml
+[tool.mypy]
+plugins = ["protean.ext.mypy_plugin"]
+```
+
 ---
 
 ## Association fields are not data fields

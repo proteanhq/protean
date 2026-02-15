@@ -259,6 +259,13 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 - [Internals Overview](./internals/index.md) -- What this section covers.
 - [Field System](./internals/field-system.md) -- How FieldSpec translates domain vocabulary to Pydantic, and why three definition styles are supported.
+- [Shadow Fields](./internals/shadow-fields.md) -- How ValueObject and Reference fields are flattened into database columns via shadow fields.
+
+---
+
+## Migration
+
+- [Migrating to 0.15](./migration/v0-15.md) -- Upgrade guide for the Pydantic v2 foundation release. Covers breaking changes, field style migration, and new features.
 
 ---
 

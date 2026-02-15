@@ -270,6 +270,10 @@ nav:
   - Internals:
     - internals/index.md
     - internals/field-system.md
+    - internals/shadow-fields.md
+
+  - Migration:
+    - migration/v0-15.md
 
   - glossary.md
 
