@@ -142,6 +142,7 @@ specific area.
 - [Domain Discovery](./guides/cli/discovery.md) -- Use `--domain` to load and initialize domains.
 - [`protean new`](./guides/cli/new.md) -- Initialize new projects.
 - [`protean shell`](./guides/cli/shell.md) -- Interactive shell with the domain pre-loaded.
+- [`protean server`](./guides/cli/server.md) -- Run the async background message processing server.
 - [`protean docs`](./guides/cli/docs.md) -- Live preview server for documentation.
 - [`protean test`](./guides/cli/test.md) -- Run tests with category and technology options.
 
@@ -158,6 +159,16 @@ specific area.
 ## Core Concepts
 
 Architectural theory and the building blocks of domain-driven systems.
+
+### Foundations
+
+- [Ubiquitous Language](./core-concepts/ubiquitous-language.md) -- The shared vocabulary between domain experts and developers.
+- [Bounded Contexts](./core-concepts/bounded-contexts.md) -- Boundaries within which a domain model is defined and applicable.
+- [Analysis Model](./core-concepts/analysis-model.md) -- Bridging the gap between domain understanding and software implementation.
+- [Identity](./core-concepts/identity.md) -- The property that distinguishes one domain object from all others.
+- [Invariants](./core-concepts/invariants.md) -- Business rules that must always hold true within a domain concept.
+- [Changing State](./core-concepts/changing-state.md) -- Principles governing how state transitions occur in DDD.
+- [Streams](./core-concepts/streams.md) -- The primary unit of organization in evented systems.
 
 ### Architecture Patterns
 
@@ -251,6 +262,10 @@ Protean supports but does not enforce.
 - [Connecting Concepts Across Bounded Contexts](./patterns/connect-concepts-across-domains.md) -- Synchronize the same real-world concept across multiple contexts.
 - [Consuming Events from Other Domains](./patterns/consuming-events-from-other-domains.md) -- Subscribers as anti-corruption layers for external events.
 - [Sharing Event Classes Across Domains](./patterns/sharing-event-classes-across-domains.md) -- Share schemas, not code; use contract tests for compatibility.
+
+### Testing & Infrastructure
+
+- [Setting Up and Tearing Down Databases for Tests](./patterns/setting-up-and-tearing-down-database-for-tests.md) -- Manage database schema and test data lifecycles separately for fast, isolated integration tests.
 
 ---
 

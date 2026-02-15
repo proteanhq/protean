@@ -67,6 +67,7 @@ need by what you're trying to accomplish.
 | Process events and commands asynchronously      | [Server](./guides/server/index.md) |
 | Understand subscriptions and event processing   | [Subscriptions](./guides/server/subscriptions.md) |
 | Use the outbox pattern for reliable messaging   | [Outbox](./guides/server/outbox.md) |
+| Run the async background server                 | [`protean server`](./guides/cli/server.md) |
 | Use the CLI for development and operations      | [CLI](./guides/cli/index.md) |
 
 ## Choose an Architecture
@@ -87,6 +88,7 @@ need by what you're trying to accomplish.
 | Test application workflows (BDD-style)          | [Application Tests](./guides/testing/application-tests.md) |
 | Test with real databases and brokers             | [Integration Tests](./guides/testing/integration-tests.md) |
 | Set up test fixtures and patterns               | [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md) |
+| Set up databases for integration tests          | [Database Setup/Teardown](./patterns/setting-up-and-tearing-down-database-for-tests.md) |
 
 ## Use Specific Technologies
 

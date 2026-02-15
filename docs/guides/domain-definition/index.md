@@ -6,7 +6,7 @@
 Domain-driven Design (DDD) is all about identifying and naming domain concepts
 and translating them as closely as possible - terminology, structure, and
 behavior - in code. Protean supports the tactical patterns outlined by DDD
-to mirror the domain model in [code model](../../glossary.md#code-model).
+to mirror the domain model in code.
 
 In this section, we will talk about the foundational structures that make up
 the domain model. In the next, we will explore how to define behavior and

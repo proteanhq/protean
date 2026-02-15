@@ -105,7 +105,7 @@ perform complex queries without writing raw SQL. Lookups are typically used in
 the DAO layer to fetch records that match specific conditions.
 
 Refer to the section on
-[querying](../guides/change-state/retrieve-aggregates.md#advanced-filtering-criteria)
+[querying](../guides/change-state/retrieve-aggregates.md#filtering-criteria)
 aggregates for examples of lookups. Consult the documentation on your specific
 chosen adapter for more information. The adapter may support specialized
 lookups for efficient or technology-specific queries.

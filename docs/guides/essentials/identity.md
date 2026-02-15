@@ -15,7 +15,7 @@ helps fulfill this goal.
 ## Configuration
 
 Identity options are specified at the Domain level with
-[configuration attributes](configuration.md#domain-configuration-attributes). A combination of
+[configuration attributes](configuration.md#identity_strategy). A combination of
 identity strategy and identity type work together to generate identity values.
 
 ```toml

@@ -186,7 +186,7 @@ Out[3]:
 ```
 
 Identity values are UUIDs by default. You can customize this behavior with
-`identity_strategy` and `identity_type` [config attributes](../../essentials/configuration.md#domain-configuration-attributes).
+`identity_strategy` and `identity_type` [config attributes](../../essentials/configuration.md#identity_strategy).
 
 The [Identity](../../essentials/identity.md) section deep dives into identities in Protean.
 

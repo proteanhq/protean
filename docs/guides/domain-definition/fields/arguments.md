@@ -62,7 +62,7 @@ to act as the primary identifier. This means that you don’t need to explicitly
 set `identifier=True` on any of your fields unless you want to override the
 default behavior or the name of the field.
 
-Alternatively, you can use [`Identifier`](#identifier-field) field type for
+Alternatively, you can use [`Identifier`](./simple-fields.md#identifier) field type for
 primary identifier fields.
 
 By default, Protean dynamically generates UUIDs as values of identifier fields

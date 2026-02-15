@@ -127,4 +127,3 @@ class InstrumentedRedisBroker(RedisBroker):
 - Explore [Redis PubSub broker](./redis-pubsub.md) for simpler use cases
 - Learn about [broker capabilities](./index.md#broker-capabilities) in detail
 - Understand [custom broker development](./custom-brokers.md)
-- Read about [message processing patterns](../../patterns/message-processing.md)

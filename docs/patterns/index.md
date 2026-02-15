@@ -94,3 +94,10 @@ terminology.
   -- Share schemas (message contracts), not code (class definitions). Each domain
   defines its own event classes that conform to the agreed-upon schema. Use
   contract tests to verify compatibility without code dependencies.
+
+## Testing & Infrastructure
+
+- **[Setting Up and Tearing Down Databases for Tests](setting-up-and-tearing-down-database-for-tests.md)**
+  -- Manage database schema and test data lifecycles separately. Create schema
+  once per session, reset data after every test, and clean up all infrastructure
+  (providers, brokers, event stores) for fast, isolated integration tests.

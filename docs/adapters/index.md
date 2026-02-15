@@ -32,7 +32,6 @@ Current Implementations:
 
 - [PostgreSQL](./database/postgresql.md)
 - [Elasticsearch](./database/elasticsearch.md)
-- [Redis](./database/redis.md)
 
 ## Broker
 

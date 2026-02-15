@@ -7,7 +7,7 @@ DDD emphasizes on representing domain concepts as closely as possible in code.
 To accomplish this, DDD outlines a set of tactical patterns that we could use
 to model the domain. When you want to model domain concepts that have a unique
 identity and that change continuously over a long period of time, you
-represent them as [Aggregates](#aggregates) and [Entities](#entities).
+represent them as [Aggregates](#aggregates) and [Entities](./entities.md).
 
 Aggregates are fundamental, coarse-grained building blocks of a domain model.
 They are conceptual wholes - they enclose all behaviors and data of a distinct

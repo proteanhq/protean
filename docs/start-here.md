@@ -8,7 +8,7 @@ Ready to dive in? The first step is to get Protean up and running on your system
 
 ## Core Concepts
 
-Get to know the driving principles and core ideas that shape this framework in [Introduction](./core-concepts/index.md). In [Domain Elements](./core-concepts/domain-elements/index.md) section, explore key DDD elements like Aggregates, Repositories, Events, and more, to understand the core structures of Protean.
+Get to know the driving principles and core ideas that shape this framework in [Philosophy](./core-concepts/philosophy.md). In [Domain Elements](./core-concepts/domain-elements/index.md) section, explore key DDD elements like Aggregates, Repositories, Events, and more, to understand the core structures of Protean.
 
 ## Building with Protean
 

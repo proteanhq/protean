@@ -84,7 +84,7 @@ This separation also allows for optimized handling of write operations, focusing
 modifying the state of the system, while queries are handled separately,
 optimized for reading data. 
 
-Each Command is processed by a halder method in a Command Handler element.
+Each Command is processed by a handler method in a Command Handler element.
 
 Once a command is submitted, it is processed by the command handler. Each
 command handler method contains the logic necessary to interpret the command,
@@ -114,7 +114,7 @@ the aggregate mutates — changing its state accordingly.
 
 In addition to mutating, aggregates can also raise events that represent
 significant changes in the system. These events can be used to trigger other
-processes or communicate state changes to external systems, leadig to richer,
+processes or communicate state changes to external systems, leading to richer,
 complex workflows.
 
 ## Application layer persists mutated aggregates

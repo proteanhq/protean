@@ -226,4 +226,3 @@ print(f"Message counts: {health_stats.get('message_counts', {})}")
 - [Configure specific brokers](./inline.md) for your use case
 - [Create custom broker adapters](./custom-brokers.md) for other technologies
 - Learn about [subscribers and message processing](../../guides/consume-state/subscribers.md)
-- Understand [event-driven architecture patterns](../../patterns/event-driven-architecture.md)

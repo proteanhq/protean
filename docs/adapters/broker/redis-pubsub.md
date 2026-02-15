@@ -530,4 +530,3 @@ def ensure_subscribers(broker, stream: str, min_subscribers: int = 1):
 - Learn about [Redis Streams broker](./redis.md) for reliable messaging
 - Understand [broker capabilities](./index.md#broker-capabilities) in detail
 - Explore [custom broker development](./custom-brokers.md)
-- Read about [real-time patterns](../../patterns/real-time-messaging.md)

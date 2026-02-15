@@ -18,6 +18,12 @@ A comprehensive reference of terms used throughout Protean and the patterns it i
 
 ## Domain-Driven Design
 
+### Analysis Model
+
+A conceptual artifact that bridges the gap between the real-world domain and the software implementation. The analysis model captures the core concepts, behaviors, and rules of the domain using DDD's tactical patterns (aggregates, entities, value objects, domain services) without prescribing technological details. It is developed collaboratively by domain experts and developers and serves as a blueprint for the system's design. The goal of DDD is to keep the analysis model and the code model aligned throughout the life of the project.
+
+[Learn more →](core-concepts/analysis-model.md) | **See also**: [Domain Model](#domain-model), [Ubiquitous Language](#ubiquitous-language)
+
 ### Aggregate
 
 A cluster of domain objects treated as a single unit for the purpose of data changes. Every aggregate has a root entity (the *aggregate root*) that controls access to its internals and enforces business rules, guaranteeing consistency within its boundary.  In Protean, aggregates are defined with the `@domain.aggregate` decorator.

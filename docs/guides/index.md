@@ -116,7 +116,7 @@ or your domain has complex state transitions where history matters.
 ## How Do I...?
 
 A quick reference for common tasks. See the
-[full task index](./how-do-i.md) for more.
+[full task index](../how-do-i.md) for more.
 
 | I want to...                          | Go to                                                                 |
 |---------------------------------------|-----------------------------------------------------------------------|

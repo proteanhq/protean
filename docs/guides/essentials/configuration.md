@@ -213,7 +213,7 @@ class User:
 1. `sqlite` is the key of the database definition in the `[databases.sqlite]`
 section.
 
-Read more in [Adapters → Database](../adapters/database/index.md) section.
+Read more in [Adapters → Database](../../adapters/database/index.md) section.
 
 ### `caches`
 
@@ -231,7 +231,7 @@ TTL = 300
 
 Default provider: `memory`
 
-Read more in [Adapters → Cache](../adapters/cache/index.md) section.
+Read more in [Adapters → Cache](../../adapters/cache/index.md) section.
 
 ### `broker`
 
@@ -249,7 +249,7 @@ IS_ASYNC = true
 
 Default provider: `memory`
 
-Read more in [Adapters → Broker](../adapters/broker/index.md) section.
+Read more in [Adapters → Broker](../../adapters/broker/index.md) section.
 
 ### `event_store`
 
@@ -266,7 +266,7 @@ Note that there can only be only event store defined per domain.
 
 Default provider: `memory`
 
-Read more in [Adapters → Event Store](../adapters/eventstore/index.md) section.
+Read more in [Adapters → Event Store](../../adapters/eventstore/index.md) section.
 
 ### `server`
 

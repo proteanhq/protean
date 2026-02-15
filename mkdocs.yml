@@ -178,6 +178,7 @@ nav:
         - guides/cli/discovery.md
         - guides/cli/new.md
         - guides/cli/shell.md
+        - guides/cli/server.md
         - guides/cli/docs.md
         - guides/cli/test.md
 
@@ -205,6 +206,14 @@ nav:
   #   - advanced/troubleshooting.md
 
   - Core Concepts:
+    - Foundations:
+      - core-concepts/ubiquitous-language.md
+      - core-concepts/bounded-contexts.md
+      - core-concepts/analysis-model.md
+      - core-concepts/identity.md
+      - core-concepts/invariants.md
+      - core-concepts/changing-state.md
+      - core-concepts/streams.md
     - Architecture Patterns:
       - core-concepts/ddd.md
       - core-concepts/cqrs.md
@@ -267,6 +276,8 @@ nav:
       - patterns/connect-concepts-across-domains.md
       - patterns/consuming-events-from-other-domains.md
       - patterns/sharing-event-classes-across-domains.md
+    - Testing & Infrastructure:
+      - patterns/setting-up-and-tearing-down-database-for-tests.md
 
   - Internals:
     - internals/index.md
