@@ -35,6 +35,11 @@ need by what you're trying to accomplish.
 | Process a command and update an aggregate       | [Command Handlers](./guides/change-state/command-handlers.md) | CQRS, ES |
 | Save an aggregate to the database               | [Persist Aggregates](./guides/change-state/persist-aggregates.md) | All |
 | Load an aggregate by ID or query                | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
+| Define a custom repository with domain queries  | [Repositories](./guides/change-state/repositories.md) | All |
+| Query aggregates with complex filters            | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
+| Paginate query results                           | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
+| Use Q objects for AND/OR/NOT queries             | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
+| Perform bulk updates or deletes                  | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Manage transactions                             | [Unit of Work](./guides/change-state/unit-of-work.md) | All |
 
 ## React to State Changes
@@ -100,3 +105,4 @@ need by what you're trying to accomplish.
 |-------------------------------------------------|-------|
 | Understand how the field system works           | [Field System](./internals/field-system.md) |
 | Learn why three field definition styles exist   | [Field System](./internals/field-system.md) |
+| Understand how the query system works internally | [Query System](./internals/query-system.md) |

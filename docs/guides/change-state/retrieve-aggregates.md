@@ -1,9 +1,9 @@
-# Retreiving Aggregates
+# Retrieving aggregates
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-An aggregate can be retreived with the repository's `get` method, if you know
+An aggregate can be retrieved with the repository's `get` method, if you know
 its identity:
 
 ```python hl_lines="16 20"
@@ -17,225 +17,34 @@ In [1]: domain.repository_for(Person).get("1")
 Out[1]: <Person: Person object (id: 1)>
 ```
 
+`get` raises `ObjectNotFoundError` if no aggregate is found with the given
+identity.
+
 Finding an aggregate by a field value is also possible, but requires a custom
-repository to be defined with a business-oriented method.
-
-## Custom Repositories
-
-Protean needs anything beyond a simple `get` to be defined in a
-repository. A repository is to be treated as part of the domain layer, and is
-expected to enclose methods that represent business queries.
-
-Defining a custom repository is straight-forward:
-
-```python hl_lines="16"
-{! docs_src/guides/change_state_004.py !}
-```
-
-1. The repository is connected to `Person` aggregate through the `part_of`
-parameter.
-
-Protean now returns `CustomPersonRepository` upon fetching the repository for
-`Person` aggregate.
-
-```shell hl_lines="11 14"
-In [1]: person1 = Person(name="John Doe", email="john.doe@example.com", age=22)
-
-In [2]: person2 = Person(name="Jane Doe", email="jane.doe@example.com", age=20)
-
-In [3]: repository = domain.repository_for(Person)
-
-In [4]: repository
-Out[4]: <CustomPersonRepository at 0x1079af290>
-
-In [5]: repository.add(person1)
-Out[5]: <Person: Person object (id: 9ba6a890-e783-455e-9a6b-a0a16c0514df)>
-
-In [6]: repository.add(person2)
-Out[6]: <Person: Person object (id: edc78a03-aba6-47fc-a4a7-308eed3f7c67)>
-
-In [7]: retreived_person = repository.find_by_email("john.doe@example.com")
-
-In [8]: retreived_person.to_dict()
-Out[8]: 
-{'name': 'John Doe',
- 'email': 'john.doe@example.com',
- 'age': 22,
- 'id': '9ba6a890-e783-455e-9a6b-a0a16c0514df'}
-```
-
-!!!note
-    Methods in the repository should be named for the business queries they
-    perform. `adults` is a good name for a method that fetches persons
-    over the age of 18.
-
-!!!note
-   A repository can be connected to a specific persistence store by specifying
-   the `database` parameter.
+repository to be defined with a business-oriented method. See the
+[Repositories](./repositories.md) guide for details on defining custom
+repositories.
 
 ## Data Access Objects (DAO)
 
-You would have observed the query in the repository above was performed on a
-`_dao` object. This is a DAO object that is automatically generated for every
-repository, and internally used by Protean to access the persistence layer.
+Every repository has an internal `_dao` property that provides access to the
+Data Access Object -- the layer that talks to the database.
 
-At first glance, repositories and Data Access Objects may seem similar.
-But a repository leans towards the domain in its functionality. It contains
-methods and implementations that clearly identify what the domain is trying to
-ask/do with the persistence store. Data Access Objects, on the other hand,
-talk the language of the database. A repository works in conjunction with the
-DAO layer to access and manipulate on the persistence store.
+A repository leans towards the domain in its functionality. It contains
+methods whose names reflect what the domain is trying to ask. Data Access
+Objects, on the other hand, talk the language of the database. A repository
+works in conjunction with the DAO layer to access and manipulate the
+persistence store.
 
-## QuerySet
+The DAO exposes several methods for retrieving data:
 
-A QuerySet represents a collection of objects from your database that can be filtered and ordered. When you perform a query through the DAO layer, it returns a QuerySet object that provides convenient methods to work with the results.
+- **`.query`** -- returns a QuerySet for building filtered, sorted, paginated
+  queries.
+- **`.find_by(**kwargs)`** -- finds a single aggregate matching the given
+  field values.
+- **`.exists(excludes_, **filters)`** -- checks if matching aggregates exist.
 
-QuerySets are lazy, meaning they don't access the database until you actually need the data. This allows you to chain multiple filtering operations efficiently without hitting the database repeatedly.
-
-### Basic QuerySet Operations
-
-Here's an example of using QuerySet methods:
-
-```python
-# Get a reference to the DAO through the repository
-dao = repository._dao
-
-# Create a queryset
-queryset = dao.query
-
-# Chain operations on the queryset
-filtered_query = queryset.filter(country="CA")
-ordered_query = filtered_query.order_by("age")
-
-# Execute the query and get results
-results = ordered_query.all().items
-
-# Print the names of people from Canada, ordered by age
-for person in results:
-    print(f"{person.name}, {person.age}")
-```
-
-### QuerySet Attributes and Methods
-
-QuerySets expose several attributes and methods:
-
-- **`filter()`**: Narrows down the query results based on specified conditions
-- **`exclude()`**: Removes matching objects from the queryset
-- **`all()`**: Returns a ResultSet containing all objects
-- **`order_by()`**: Orders the queryset results by specified fields
-- **`first()`**: Returns the first object matching the query
-- **`count()`**: Returns the number of objects matching the query
-
-### Chaining Operations
-
-One of the most powerful features of QuerySets is the ability to chain operations:
-
-```shell
-In [1]: adults_in_ca = repository._dao.query.filter(age__gte=18).filter(country="CA").order_by("name").all().items
-
-In [2]: [f"{person.name}, {person.age}" for person in adults_in_ca]
-Out[2]: ['Jane Doe, 36', 'John Doe, 38']
-```
-
-### Using QuerySets in Repository Methods
-
-In a real application, you would typically wrap these QuerySet operations in repository methods:
-
-```python hl_lines="5-7 10-12"
-class PersonRepository(Repository):
-    part_of = Person
-    
-    def adults_in_country(self, country_code):
-        """Find all adults in the specified country."""
-        return self._dao.query.filter(
-            age__gte=18, country=country_code).all().items
-    
-    def children_by_age(self, country_code=None):
-        """Find all children ordered by age."""
-        query = self._dao.query.filter(age__lt=18)
-        if country_code:
-            query = query.filter(country=country_code)
-        return query.order_by("age").all().items
-```
-
-### Controlling Result Size with Limits
-
-By default, Protean limits the number of records returned by a query to 100. You can control this behavior in several ways:
-
-#### Setting Default Limit During Element Registration
-
-You can override the default limit when registering an element:
-
-```python hl_lines="2"
-@domain.aggregate(limit=50)
-class Person:
-    # This aggregate's queries will return at most 50 records by default
-    id = field.Integer(identifier=True)
-    name = field.String(required=True, max_length=50)
-```
-
-Setting the limit to `None` or a negative number removes the limit entirely:
-
-```python hl_lines="2"
-@domain.entity(part_of=Person, limit=None)  # No limit
-class Address:
-    id = field.Integer(identifier=True)
-    street = field.String(required=True)
-    person = field.Reference(Person)
-```
-
-#### Applying Limit to a QuerySet
-
-You can also control the limit at query time using the `limit()` method:
-
-```python
-# Limit to 10 records
-limited_query = repository._dao.query.limit(10).all()
-
-# Remove limit entirely
-unlimited_query = repository._dao.query.limit(None).all()
-```
-
-Here's a complete example:
-
-```python
-# Repository method that retrieves records with flexible limit
-def find_people_by_country(self, country_code, max_results=None):
-    """Find people from a specific country with optional limit."""
-    query = self._dao.query.filter(country=country_code)
-    
-    if max_results is not None:
-        query = query.limit(max_results)
-        
-    return query.all().items
-```
-
-#### Combining Limit with Offset for Pagination
-
-You can combine `limit` with `offset` for implementing pagination:
-
-```python
-def get_page(self, page_number, page_size=10):
-    """Get a specific page of results."""
-    offset = (page_number - 1) * page_size
-    return self._dao.query.offset(offset).limit(page_size).all()
-```
-
-!!!note
-    If you set a limit during element registration, it becomes the default for all queries on that element. You can always override it at query time using the `limit()` method.
-
-### Optimization Considerations
-
-!!!note
-    QuerySets are evaluated when you iterate over them, slice them, or convert them to lists. This is when the database query actually executes.
-
-!!!note
-    When working with large datasets, be mindful of query performance. Use specific filters early in your query chain to reduce the data being processed.
-
-## Filtering
-
-For all other filtering needs, the DAO exposes a method `filter` that can
-accept advanced filtering criteria.
+## Sample data
 
 For the purposes of this guide, assume that the following `Person` aggregates
 exist in the database:
@@ -256,16 +65,18 @@ In [2]: for person in [
    ...:     Person(name="Girl Doe", age=11, country="CA"),
    ...: ]:
    ...:     repository.add(person)
-   ...: 
+   ...:
 ```
 
-Queries below can be placed in repository methods.
+All queries below can be placed in
+[custom repository methods](./repositories.md#defining-a-custom-repository).
 
-### Finding by multiple fields
+## Finding a single aggregate
 
-Used when you want to find a single aggregate. Throws `ObjectNotFoundError` if
-no aggregates are found, and `TooManyObjectsError` when more than one
-aggregates are found.
+### `find_by`
+
+Use `find_by` when you want to find a single aggregate matching one or more
+field values:
 
 ```shell
 In [1]: person = repository._dao.find_by(age=36, country="CA")
@@ -274,9 +85,50 @@ In [2]: person.name
 Out[2]: 'Jane Doe'
 ```
 
-### Filtering by multiple fields
+`find_by` raises `ObjectNotFoundError` if no aggregates are found, and
+`TooManyObjectsError` when more than one aggregate matches.
 
-You can filter for more than one aggregate at a time, with a similar mechanism:
+### `exists`
+
+Use `exists` to check whether matching aggregates exist without loading them:
+
+```shell
+In [1]: repository._dao.exists({}, email="john.doe@example.com")
+Out[1]: True
+
+In [2]: repository._dao.exists({}, email="nobody@example.com")
+Out[2]: False
+```
+
+The first argument is a dictionary of exclusion criteria -- records matching
+these criteria are excluded from the check. This is useful for uniqueness
+checks that need to exclude the current record:
+
+```python
+# Check if another person (excluding current) has this email
+def email_taken(self, person_id: str, email: str) -> bool:
+    return self._dao.exists({"id": person_id}, email=email)
+```
+
+## QuerySet
+
+A QuerySet represents a collection of objects from your database that can be
+filtered, ordered, and paginated. You access a QuerySet through the DAO's
+`.query` property:
+
+```python
+queryset = repository._dao.query
+```
+
+QuerySets are **lazy** -- they don't access the database until you actually
+need the data. This allows you to chain multiple operations efficiently
+without hitting the database repeatedly. Each method returns a new QuerySet
+clone, leaving the original unchanged.
+
+### `filter` and `exclude`
+
+`filter` narrows down the query results based on specified conditions.
+Multiple keyword arguments are ANDed together:
 
 ```shell
 In [1]: people = repository._dao.query.filter(age__gte=18, country="CA").all().items
@@ -285,36 +137,160 @@ In [2]: [person.name for person in people]
 Out[2]: ['John Doe', 'Jane Doe']
 ```
 
-### Advanced filtering criteria
+`exclude` removes matching objects from the queryset:
 
-You would have observed that the query above contained a special annotation,
-`_gte`, to signify that the age should be greater than or equal to 18. There
-are many other annotations that can be used to filter results:
+```shell
+In [1]: people = repository._dao.query.exclude(country="US").all().items
 
-- **`exact`:** Match exact string
-- **`iexact`:** Match exact string, case-insensitive
-- **`contains`:** Match strings containing value
-- **`icontains`:** Match strings containing value, case-insensitive
-- **`gt`:** Match integer vales greater than value
-- **`gte`:** Match integer vales greater than or equal to value
-- **`lt`:** Match integer vales less than value
-- **`lte`:** Match integer vales less than or equal to value
-- **`in`:** Match value to be among list of values
-- **`any`:** Match any of given values to be among list of values
+In [2]: [person.name for person in people]
+Out[2]: ['John Doe', 'Jane Doe', 'Baby Doe', 'Boy Doe', 'Girl Doe']
+```
 
-These annotations have database-specific implementations. Refer to your chosen
-adapter's documentation for supported advanced filtering criteria.
+### Chaining operations
+
+One of the most powerful features of QuerySets is the ability to chain
+operations. Each chained call returns a new QuerySet -- the original is never
+modified:
+
+```shell
+In [1]: adults_in_ca = repository._dao.query.filter(age__gte=18).filter(country="CA").order_by("name").all().items
+
+In [2]: [f"{person.name}, {person.age}" for person in adults_in_ca]
+Out[2]: ['Jane Doe, 36', 'John Doe, 38']
+```
+
+### Using QuerySets in repository methods
+
+In a real application, you would wrap QuerySet operations in repository
+methods with domain-meaningful names:
+
+```python hl_lines="5-7 10-12"
+class PersonRepository(Repository):
+    part_of = Person
+
+    def adults_in_country(self, country_code):
+        """Find all adults in the specified country."""
+        return self._dao.query.filter(
+            age__gte=18, country=country_code).all().items
+
+    def children_by_age(self, country_code=None):
+        """Find all children ordered by age."""
+        query = self._dao.query.filter(age__lt=18)
+        if country_code:
+            query = query.filter(country=country_code)
+        return query.order_by("age").all().items
+```
+
+## Filtering criteria
+
+Queries use lookup suffixes appended to field names with double underscores
+(`__`) to express comparison operators. When no suffix is used, `exact` match
+is assumed.
+
+- **`exact`** -- match exact value (default when no suffix is used)
+- **`iexact`** -- case-insensitive exact match
+- **`contains`** -- substring containment (case-sensitive)
+- **`icontains`** -- substring containment (case-insensitive)
+- **`gt`** -- greater than
+- **`gte`** -- greater than or equal to
+- **`lt`** -- less than
+- **`lte`** -- less than or equal to
+- **`in`** -- value is in a given list
+- **`any`** -- any of given values matches items in a list field
+
+```shell
+In [1]: repository._dao.query.filter(name__contains="Doe").all().total
+Out[1]: 5
+
+In [2]: repository._dao.query.filter(age__gt=10, age__lt=40).all().total
+Out[2]: 3
+
+In [3]: repository._dao.query.filter(name__in=["John Doe", "Jane Doe"]).all().total
+Out[3]: 2
+```
+
+!!!note
+    These lookups have database-specific implementations. Refer to your chosen
+    adapter's documentation for supported filtering criteria.
+
+## Complex queries with Q objects
+
+For queries that require OR conditions or negation, use Q objects from
+`protean.utils.query`:
+
+```python
+from protean.utils.query import Q
+```
+
+### AND
+
+Combine Q objects with `&` to require all conditions:
+
+```python
+# People named "Doe" who are at least 18
+people = repository._dao.query.filter(
+    Q(name__contains="Doe") & Q(age__gte=18)
+).all().items
+```
+
+This is equivalent to passing multiple keyword arguments to `filter()`, since
+keyword arguments are ANDed together by default.
+
+### OR
+
+Combine Q objects with `|` to match any condition:
+
+```python
+# People who are under 5 OR over 40
+people = repository._dao.query.filter(
+    Q(age__lt=5) | Q(age__gt=40)
+).all().items
+```
+
+### NOT
+
+Negate a Q object with `~` to exclude matching records:
+
+```python
+# Everyone except those in the US
+people = repository._dao.query.filter(
+    ~Q(country="US")
+).all().items
+```
+
+### Nesting
+
+Q objects can be combined and nested to express complex criteria:
+
+```python
+# (Adults in CA) OR (children in US)
+people = repository._dao.query.filter(
+    (Q(age__gte=18) & Q(country="CA")) | (Q(age__lt=18) & Q(country="US"))
+).all().items
+```
+
+### Mixing Q objects with keyword arguments
+
+Q objects can be mixed with keyword arguments in `filter()`. The Q objects
+and keyword arguments are ANDed together:
+
+```python
+# People in CA who are either named "John Doe" or under age 5
+people = repository._dao.query.filter(
+    Q(name="John Doe") | Q(age__lt=5), country="CA"
+).all().items
+```
 
 ## Sorting results
 
-The `filter` method supports a param named `order_by` to specify the sort order
-of the results.
+Use `order_by()` to sort results by one or more fields. Prefix a field name
+with `-` for descending order:
 
 ```shell
 In [1]: people = repository._dao.query.order_by("-age").all().items
 
 In [2]: [(person.name, person.age) for person in people]
-Out[2]: 
+Out[2]:
 [('John Roe', 41),
  ('John Doe', 38),
  ('Jane Doe', 36),
@@ -323,20 +299,192 @@ Out[2]:
  ('Baby Doe', 3)]
 ```
 
-The `-` in the column name reversed the sort direction in the above example.
+You can sort by multiple fields by passing a list:
 
-## Resultset
+```python
+# Sort by country ascending, then age descending
+people = repository._dao.query.order_by(["country", "-age"]).all().items
+```
 
-The `filter(...).all()` method returns a `RecordSet` instance.
+## Pagination
 
-This class prevents DAO-specific data structures from leaking into the domain
-layer. It exposes basic aspects of the returned results for inspection and
-later use:
+### Controlling result size
 
-- **`total`:** Total number of aggregates matching the query
-- **`items`:** List of query results
-- **`limit`:** Number of aggregates to be fetched
-- **`offset`:** Number of aggregates to skip
+By default, Protean limits the number of records returned by a query to 100.
+You can control this behavior in several ways.
+
+**Setting a default limit during element registration:**
+
+```python hl_lines="2"
+@domain.aggregate(limit=50)
+class Person:
+    # Queries will return at most 50 records by default
+    id = field.Integer(identifier=True)
+    name = field.String(required=True, max_length=50)
+```
+
+Setting the limit to `None` removes the limit entirely.
+
+**Applying a limit at query time:**
+
+```python
+# Limit to 10 records
+limited_query = repository._dao.query.limit(10).all()
+
+# Remove limit entirely
+unlimited_query = repository._dao.query.limit(None).all()
+```
+
+!!!note
+    A limit set during element registration becomes the default for all
+    queries on that element. You can always override it at query time using
+    `limit()`.
+
+### Limit and offset
+
+Combine `limit` with `offset` for pagination:
+
+```python
+def get_page(self, page_number, page_size=10):
+    """Get a specific page of results."""
+    offset = (page_number - 1) * page_size
+    return self._dao.query.offset(offset).limit(page_size).all()
+```
+
+### Pagination navigation
+
+The result provides `has_next` and `has_prev` properties for pagination:
+
+```python
+result = repository._dao.query.offset(10).limit(10).all()
+
+result.has_next   # True if more pages exist beyond the current one
+result.has_prev   # True if this is not the first page
+```
+
+## Evaluating a QuerySet
+
+A QuerySet is lazy -- it does not hit the database until it is **evaluated**.
+Evaluation is triggered when you:
+
+- Call **`.all()`** -- returns a ResultSet
+- **Iterate**: `for person in queryset: ...`
+- Check **length**: `len(queryset)`
+- Check **truthiness**: `bool(queryset)` or `if queryset: ...`
+- **Slice**: `queryset[0]` or `queryset[0:5]`
+- Check **containment**: `person in queryset`
+- Access **properties**: `.total`, `.items`, `.first`, `.last`, `.has_next`,
+  `.has_prev`
+
+Once evaluated, results are cached internally. Call `.all()` again to force
+a fresh database query.
+
+### QuerySet properties
+
+These properties are available on the QuerySet itself and trigger evaluation
+on first access:
+
+- **`total`** -- total count of matching records (int)
+- **`items`** -- list of result entity objects
+- **`first`** -- first result, or `None` if empty
+- **`last`** -- last result, or `None` if empty
+- **`has_next`** -- `True` if more pages exist
+- **`has_prev`** -- `True` if previous pages exist
+
+```shell
+In [1]: query = repository._dao.query.filter(country="CA").order_by("age")
+
+In [2]: query.total
+Out[2]: 5
+
+In [3]: query.first.name
+Out[3]: 'Baby Doe'
+
+In [4]: query.last.name
+Out[4]: 'John Doe'
+```
+
+## Bulk operations
+
+QuerySets provide methods for updating and deleting multiple records at once.
+
+### `update`
+
+Updates each matching object individually -- loads every entity and triggers
+callbacks and validations:
+
+```python
+count = repository._dao.query.filter(country="CA", age__lt=18).update(country="XX")
+```
+
+Returns the number of objects matched.
+
+### `update_all`
+
+Sends the update directly to the database without loading entities:
+
+```python
+count = repository._dao.query.filter(country="CA", age__lt=18).update_all(country="XX")
+```
+
+Returns the number of objects matched.
+
+!!! warning
+    `update_all` bypasses entity instantiation, callbacks, and validations.
+    Use it only when you are certain no business logic needs to run during
+    the operation.
+
+### `delete`
+
+Deletes each matching object individually -- loads every entity first:
+
+```python
+count = repository._dao.query.filter(country="XX").delete()
+```
+
+Returns the number of objects deleted.
+
+### `delete_all`
+
+Sends the delete directly to the database without loading entities:
+
+```python
+count = repository._dao.query.filter(country="XX").delete_all()
+```
+
+Returns the number of objects deleted.
+
+!!! warning
+    `delete_all` bypasses entity instantiation, callbacks, and validations.
+    Use it only when you are certain no business logic needs to run during
+    the operation.
+
+## ResultSet
+
+The `.all()` method returns a `ResultSet` instance. This class prevents
+DAO-specific data structures from leaking into the domain layer.
+
+### Attributes
+
+- **`offset`** -- the current offset (zero-indexed)
+- **`limit`** -- the number of items requested
+- **`total`** -- total number of items matching the query (across all pages)
+- **`items`** -- list of result entity objects in the current page
+
+### Properties
+
+- **`first`** -- first item, or `None` if empty
+- **`last`** -- last item, or `None` if empty
+- **`has_next`** -- `True` if more pages exist beyond the current one
+- **`has_prev`** -- `True` if this is not the first page
+
+### Methods
+
+- **`to_dict()`** -- returns the result as a dictionary with `offset`,
+  `limit`, `total`, and `items` keys.
+
+A ResultSet also supports `bool()` (truthy if items exist), `iter()` (iterate
+over items), and `len()` (number of items in the current page, not the total).
 
 ```shell
 In [1]: result = repository._dao.query.all()
@@ -345,7 +493,7 @@ In [2]: result
 Out[2]: <ResultSet: 6 items>
 
 In [3]: result.to_dict()
-Out[3]: 
+Out[3]:
 {'offset': 0,
  'limit': 1000,
  'total': 6,
@@ -356,3 +504,21 @@ Out[3]:
   <Person: Person object (id: c5730eb0-9638-4d9d-8617-c2b3270be859)>,
   <Person: Person object (id: 4683a592-ffd5-4f01-84bc-02401c785922)>]}
 ```
+
+## Raw queries
+
+For database-specific queries that cannot be expressed through the QuerySet
+API, use `raw()`:
+
+```python
+results = repository._dao.query.raw('{"name": "John Doe", "age__gte": 18}')
+```
+
+The query format is database-specific -- a JSON string for the memory adapter,
+SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
+`limit`) are ignored for raw queries.
+
+!!! warning
+    Raw queries bypass Protean's query abstraction and are tied to a specific
+    database technology. Use them sparingly and only when the QuerySet API
+    cannot express your query.

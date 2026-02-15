@@ -85,3 +85,15 @@ aggregate or a [domain service](./domain-services.md).
 Avoid exposing database-specific details — column names, join strategies, raw
 query syntax — through the repository interface. The domain model should be
 able to evolve independently of the storage layer.
+
+---
+
+## Next steps
+
+For practical details on defining and using repositories in Protean, see the
+guide pages:
+
+- [Repositories](../../guides/change-state/repositories.md) — Defining
+  custom repositories, the DAO layer, and database-specific repositories.
+- [Retrieving Aggregates](../../guides/change-state/retrieve-aggregates.md) —
+  QuerySets, filtering, Q objects, bulk operations, and result navigation.

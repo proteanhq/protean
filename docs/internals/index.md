@@ -17,3 +17,6 @@ shaped it.
 - [Shadow fields](./shadow-fields.md) -- How ValueObject and Reference fields
   are flattened into database columns via shadow fields, and why they live
   outside Pydantic's model fields.
+- [Query system](./query-system.md) -- How the Repository → DAO → QuerySet →
+  Provider chain works, Q object expression trees, lookup resolution, lazy
+  evaluation, and entity state tracking.

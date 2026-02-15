@@ -153,6 +153,7 @@ nav:
       - guides/change-state/application-services.md
       - guides/change-state/commands.md
       - guides/change-state/command-handlers.md
+      - guides/change-state/repositories.md
       - guides/change-state/persist-aggregates.md
       - guides/change-state/retrieve-aggregates.md
     - Reactive Layer:
@@ -271,6 +272,7 @@ nav:
     - internals/index.md
     - internals/field-system.md
     - internals/shadow-fields.md
+    - internals/query-system.md
 
   - Migration:
     - migration/v0-15.md

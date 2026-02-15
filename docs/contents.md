@@ -107,8 +107,9 @@ specific area.
 - [Application Services](./guides/change-state/application-services.md) -- Bridge between the API layer and the domain model.
 - [Commands](./guides/change-state/commands.md) -- Data transfer objects expressing intention to change state.
 - [Command Handlers](./guides/change-state/command-handlers.md) -- Process commands and execute domain logic.
+- [Repositories](./guides/change-state/repositories.md) -- Define custom repositories, the DAO layer, and database-specific persistence.
 - [Persist Aggregates](./guides/change-state/persist-aggregates.md) -- Save aggregates using a repository's `add` method.
-- [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) -- Load aggregates using a repository's `get` method.
+- [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) -- QuerySets, filtering, Q objects, bulk operations, and result navigation.
 
 ### Reactive Layer
 
@@ -260,6 +261,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 - [Internals Overview](./internals/index.md) -- What this section covers.
 - [Field System](./internals/field-system.md) -- How FieldSpec translates domain vocabulary to Pydantic, and why three definition styles are supported.
 - [Shadow Fields](./internals/shadow-fields.md) -- How ValueObject and Reference fields are flattened into database columns via shadow fields.
+- [Query System](./internals/query-system.md) -- How the Repository → DAO → QuerySet → Provider chain works, Q object expression trees, lookup resolution, and lazy evaluation.
 
 ---
 
