@@ -12,8 +12,6 @@ Validates:
 - Extra fields rejected
 """
 
-from __future__ import annotations
-
 from typing import Annotated
 from uuid import uuid4
 

@@ -3,8 +3,6 @@
 These work alongside the simple field factories in ``simple.py``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from protean.fields.spec import FieldSpec

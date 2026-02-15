@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import hashlib
 import json
 import logging
@@ -46,7 +44,7 @@ class MessageEnvelope(BaseValueObject):
     checksum: str | None = None
 
     @classmethod
-    def build(cls, payload: dict) -> MessageEnvelope:
+    def build(cls, payload: dict) -> "MessageEnvelope":
         return cls(checksum=cls.compute_checksum(payload))
 
     @classmethod
@@ -68,7 +66,7 @@ class TraceParent(BaseValueObject):
     sampled: bool = False
 
     @classmethod
-    def build(cls, traceparent: str) -> TraceParent:
+    def build(cls, traceparent: str) -> "TraceParent":
         try:
             parts = traceparent.split("-")
             if len(parts) != 4:
@@ -124,7 +122,7 @@ class MessageHeaders(BaseValueObject):
     idempotency_key: str | None = None
 
     @classmethod
-    def build(cls, **kwargs) -> MessageHeaders:
+    def build(cls, **kwargs) -> "MessageHeaders":
         headers = kwargs.copy()
         if "traceparent" in headers and isinstance(headers["traceparent"], str):
             headers["traceparent"] = TraceParent.build(headers["traceparent"])
@@ -407,7 +405,7 @@ class Message(BaseModel, OptionsMixin):
             )
 
     @classmethod
-    def _validate_and_raise(cls, msg: Message, message: dict) -> None:
+    def _validate_and_raise(cls, msg: "Message", message: dict) -> None:
         """Validate message integrity and raise error if validation fails."""
         if not msg.verify_integrity():
             message_id = cls._extract_message_id(msg, message)
@@ -426,14 +424,14 @@ class Message(BaseModel, OptionsMixin):
             )
 
     @classmethod
-    def _extract_message_id(cls, msg: Message, message: dict) -> str:
+    def _extract_message_id(cls, msg: "Message", message: dict) -> str:
         """Extract message ID from message or return 'unknown'."""
         if msg.metadata.headers and msg.metadata.headers.id:
             return msg.metadata.headers.id
         return message.get("id", "unknown")
 
     @classmethod
-    def _extract_message_type(cls, msg: Message, message: dict) -> str:
+    def _extract_message_type(cls, msg: "Message", message: dict) -> str:
         """Extract message type from message or return 'unknown'."""
         if msg.metadata.headers and msg.metadata.headers.type:
             return msg.metadata.headers.type
@@ -471,7 +469,7 @@ class Message(BaseModel, OptionsMixin):
         ) from e
 
     @classmethod
-    def deserialize(cls, message: dict, validate: bool = True) -> Message:
+    def deserialize(cls, message: dict, validate: bool = True) -> "Message":
         """Deserialize a message from its dictionary representation."""
         try:
             metadata_dict = message["metadata"]
@@ -592,7 +590,7 @@ class Message(BaseModel, OptionsMixin):
         except (AttributeError, TypeError):
             return default
 
-    def to_domain_object(self) -> Union[BaseEvent, BaseCommand]:
+    def to_domain_object(self) -> Union["BaseEvent", "BaseCommand"]:
         """Convert this message back to its original domain object."""
         try:
             self._validate_message_kind()
@@ -616,7 +614,7 @@ class Message(BaseModel, OptionsMixin):
 
     @classmethod
     def _validate_aggregate_association(
-        cls, message_object: Union[BaseEvent, BaseCommand]
+        cls, message_object: Union["BaseEvent", "BaseCommand"]
     ) -> None:
         """Validate that the message object is associated with an aggregate."""
         if not message_object.meta_.part_of:
@@ -626,7 +624,7 @@ class Message(BaseModel, OptionsMixin):
 
     @classmethod
     def _determine_expected_version(
-        cls, message_object: Union[BaseEvent, BaseCommand]
+        cls, message_object: Union["BaseEvent", "BaseCommand"]
     ) -> Optional[int]:
         """Determine the expected version for the message.
 
@@ -641,7 +639,9 @@ class Message(BaseModel, OptionsMixin):
         return None
 
     @classmethod
-    def _ensure_headers(cls, message_object: Union[BaseEvent, BaseCommand]) -> Metadata:
+    def _ensure_headers(
+        cls, message_object: Union["BaseEvent", "BaseCommand"]
+    ) -> Metadata:
         """Ensure metadata has headers set correctly."""
         if not message_object._metadata.headers:
             headers = MessageHeaders(
@@ -671,8 +671,8 @@ class Message(BaseModel, OptionsMixin):
 
     @classmethod
     def from_domain_object(
-        cls, message_object: Union[BaseEvent, BaseCommand]
-    ) -> Message:
+        cls, message_object: Union["BaseEvent", "BaseCommand"]
+    ) -> "Message":
         """Create a message from a domain event or command."""
         cls._validate_aggregate_association(message_object)
 

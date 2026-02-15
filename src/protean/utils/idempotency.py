@@ -8,8 +8,6 @@ When Redis is not configured (redis_url is None), all operations are no-ops
 and the system behaves as if idempotency is disabled.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from typing import Any, Optional

@@ -10,8 +10,6 @@ The profile system follows a priority hierarchy:
 3. Hardcoded defaults (lowest priority)
 """
 
-from __future__ import annotations
-
 import logging
 import os
 from dataclasses import dataclass, field
@@ -334,7 +332,7 @@ class SubscriptionConfig:
         enable_dlq: Optional[bool] = None,
         position_update_interval: Optional[int] = None,
         origin_stream: Optional[str] = None,
-    ) -> SubscriptionConfig:
+    ) -> "SubscriptionConfig":
         """Create a configuration from a profile with optional overrides.
 
         Args:
@@ -417,7 +415,7 @@ class SubscriptionConfig:
         return cls(**config_kwargs)
 
     @classmethod
-    def from_dict(cls, config_dict: dict[str, Any]) -> SubscriptionConfig:
+    def from_dict(cls, config_dict: dict[str, Any]) -> "SubscriptionConfig":
         """Create a configuration from a dictionary.
 
         If the dictionary contains a 'profile' key, that profile's defaults are used

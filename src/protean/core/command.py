@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from typing import Any, ClassVar
 
@@ -38,7 +36,7 @@ class BaseCommand(BaseMessageType):
 
     element_type: ClassVar[str] = DomainObjects.COMMAND
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> BaseCommand:
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseCommand":
         if cls is BaseCommand:
             raise NotSupportedError("BaseCommand cannot be instantiated")
         return super().__new__(cls)

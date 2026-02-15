@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Type
 
 from protean.exceptions import IncorrectUsageError
@@ -12,7 +10,7 @@ _FIELDS = "__container_fields__"
 _ID_FIELD_NAME = "__container_id_field_name__"
 
 
-def fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+def fields(class_or_instance: Type["Element"] | "Element") -> dict[str, "Field"]:
     """Return a dictionary of fields in this element.
 
     Accepts an element or an instance of one.
@@ -27,7 +25,7 @@ def fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     return fields_dict
 
 
-def data_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+def data_fields(class_or_instance: Type["Element"] | "Element") -> dict[str, "Field"]:
     """Return a dictionary of data fields in this element.
 
     Accepts an element or an instance of one.
@@ -43,7 +41,7 @@ def data_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     return fields_dict
 
 
-def id_field(class_or_instance: Type[Element] | Element) -> Field | None:
+def id_field(class_or_instance: Type["Element"] | "Element") -> "Field | None":
     """Return the identity field in this element."""
     try:
         field_name = getattr(class_or_instance, _ID_FIELD_NAME)
@@ -53,7 +51,7 @@ def id_field(class_or_instance: Type[Element] | Element) -> Field | None:
     return fields(class_or_instance)[field_name]
 
 
-def has_id_field(class_or_instance: Type[Element] | Element) -> bool:
+def has_id_field(class_or_instance: Type["Element"] | "Element") -> bool:
     """Check if Element class/instance has an identity field.
 
     Args:
@@ -65,12 +63,12 @@ def has_id_field(class_or_instance: Type[Element] | Element) -> bool:
     return hasattr(class_or_instance, _ID_FIELD_NAME)
 
 
-def has_fields(class_or_instance: Type[Element] | Element) -> bool:
+def has_fields(class_or_instance: Type["Element"] | "Element") -> bool:
     """Check if the element encloses fields"""
     return hasattr(class_or_instance, _FIELDS)
 
 
-def attributes(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+def attributes(class_or_instance: Type["Element"] | "Element") -> dict[str, "Field"]:
     """Return a dictionary of attributes of this element.
 
     Accepts a element or an instance of one.
@@ -97,7 +95,7 @@ def attributes(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     return attributes_dict
 
 
-def unique_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+def unique_fields(class_or_instance: Type["Element"] | "Element") -> dict[str, "Field"]:
     """Return a dictionary of fields marked `unique` in this class or instance"""
     return {
         field_name: field_obj
@@ -106,7 +104,9 @@ def unique_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field
     }
 
 
-def declared_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+def declared_fields(
+    class_or_instance: Type["Element"] | "Element",
+) -> dict[str, "Field"]:
     """Return a dictionary of declared fields in this element.
 
     Accepts a dataclass or an instance of one.
@@ -128,7 +128,9 @@ def declared_fields(class_or_instance: Type[Element] | Element) -> dict[str, Fie
     return fields_dict
 
 
-def association_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+def association_fields(
+    class_or_instance: Type["Element"] | "Element",
+) -> dict[str, "Field"]:
     """Return a dictionary of association fields in this elment.
 
     Accepts an Element or an instance of one.
@@ -142,12 +144,14 @@ def association_fields(class_or_instance: Type[Element] | Element) -> dict[str, 
     }
 
 
-def has_association_fields(class_or_instance: Type[Element] | Element) -> bool:
+def has_association_fields(class_or_instance: Type["Element"] | "Element") -> bool:
     """Check if Element has association fields."""
     return bool(association_fields(class_or_instance))
 
 
-def reference_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+def reference_fields(
+    class_or_instance: Type["Element"] | "Element",
+) -> dict[str, "Field"]:
     """Return a dictionary of reference fields in this element.
 
     Accepts an Element or an instance of one.
@@ -161,7 +165,9 @@ def reference_fields(class_or_instance: Type[Element] | Element) -> dict[str, Fi
     }
 
 
-def value_object_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+def value_object_fields(
+    class_or_instance: Type["Element"] | "Element",
+) -> dict[str, "Field"]:
     """Return a dictionary of value object fields in this element.
 
     Accepts an Element or an instance of one.

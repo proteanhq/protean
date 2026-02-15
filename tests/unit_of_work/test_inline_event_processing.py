@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from uuid import uuid4
 
 import pytest
@@ -45,7 +43,7 @@ class User(BaseAggregate):
     is_registered = Boolean()
 
     @classmethod
-    def register(cls, command: Register) -> User:
+    def register(cls, command: Register) -> "User":
         user = cls(
             user_id=command.user_id,
             email=command.email,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import importlib
 import logging
 from collections import defaultdict
@@ -31,8 +29,8 @@ EVENT_STORE_PROVIDERS = {
 
 class EventStore:
     def __init__(self, domain):
-        self.domain: Domain = domain
-        self._event_store: BaseEventStore = None
+        self.domain: "Domain" = domain
+        self._event_store: "BaseEventStore" = None
         self._event_streams: DefaultDict[str, Set[BaseEventHandler]] = defaultdict(set)
         self._command_streams: DefaultDict[str, Set[BaseCommandHandler]] = defaultdict(
             set
@@ -43,7 +41,7 @@ class EventStore:
     def store(self):
         return self._event_store
 
-    def _initialize_event_store(self) -> BaseEventStore:
+    def _initialize_event_store(self) -> "BaseEventStore":
         configured_event_store = self.domain.config["event_store"]
         event_store_full_path = EVENT_STORE_PROVIDERS[
             configured_event_store["provider"]

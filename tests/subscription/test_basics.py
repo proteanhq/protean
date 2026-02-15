@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pytest
 
 from protean.core.aggregate import BaseAggregate

@@ -2,11 +2,13 @@
 
 Runs mypy programmatically on fixture files and verifies that field
 factory return types are correctly resolved by the plugin.
+
+All fixtures are checked in a single mypy invocation (cached via
+``@lru_cache``) so the expensive cold-start cost is paid only once.
 """
 
-from __future__ import annotations
-
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from mypy import api as mypy_api
@@ -21,21 +23,48 @@ _MYPY_FLAGS = [
     "--hide-error-context",
 ]
 
+# All fixture files to check in one mypy run
+_FIXTURE_FILES = [
+    "simple_fields.py",
+    "optional_fields.py",
+    "default_fields.py",
+    "container_fields.py",
+    "identifier_fields.py",
+    "class_fields.py",
+]
 
-def _run_mypy(fixture: str) -> tuple[list[str], list[str]]:
-    """Run mypy on a fixture file and return (notes, errors).
 
-    ``notes`` contains ``reveal_type`` output lines.
-    ``errors`` contains actual error lines.
+@lru_cache(maxsize=1)
+def _run_mypy_all() -> dict[str, tuple[list[str], list[str]]]:
+    """Run mypy once on all fixture files and return results keyed by filename.
+
+    Returns a dict mapping fixture filename to (notes, errors).
     """
-    filepath = str(FIXTURES_DIR / fixture)
-    result = mypy_api.run([*_MYPY_FLAGS, filepath])
+    filepaths = [str(FIXTURES_DIR / f) for f in _FIXTURE_FILES]
+    result = mypy_api.run([*_MYPY_FLAGS, *filepaths])
     stdout = result[0].strip()
     lines = stdout.splitlines() if stdout else []
 
-    notes = [line for line in lines if ": note:" in line]
-    errors = [line for line in lines if ": error:" in line]
-    return notes, errors
+    # Bucket lines by fixture filename
+    results: dict[str, tuple[list[str], list[str]]] = {
+        f: ([], []) for f in _FIXTURE_FILES
+    }
+    for line in lines:
+        for fixture in _FIXTURE_FILES:
+            if fixture in line:
+                notes, errors = results[fixture]
+                if ": note:" in line:
+                    notes.append(line)
+                elif ": error:" in line:
+                    errors.append(line)
+                break
+
+    return results
+
+
+def _get_mypy_results(fixture: str) -> tuple[list[str], list[str]]:
+    """Get mypy results for a specific fixture file."""
+    return _run_mypy_all()[fixture]
 
 
 def _extract_revealed_types(notes: list[str]) -> list[str]:
@@ -57,7 +86,7 @@ class TestSimpleFields:
     """Field factories for simple types resolve to the correct Python types."""
 
     def test_required_fields_are_not_optional(self) -> None:
-        notes, errors = _run_mypy("simple_fields.py")
+        notes, errors = _get_mypy_results("simple_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "builtins.str",  # String(required=True)
@@ -72,7 +101,7 @@ class TestSimpleFields:
         assert not errors
 
     def test_optional_fields(self) -> None:
-        notes, errors = _run_mypy("optional_fields.py")
+        notes, errors = _get_mypy_results("optional_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "builtins.str | None",  # String()
@@ -85,7 +114,7 @@ class TestSimpleFields:
         assert not errors
 
     def test_fields_with_defaults_are_not_optional(self) -> None:
-        notes, errors = _run_mypy("default_fields.py")
+        notes, errors = _get_mypy_results("default_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "builtins.str",  # String(default="hello")
@@ -100,7 +129,7 @@ class TestContainerFields:
     """List and Dict fields resolve to list/dict and are never Optional."""
 
     def test_container_fields_have_correct_types(self) -> None:
-        notes, errors = _run_mypy("container_fields.py")
+        notes, errors = _get_mypy_results("container_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "builtins.list",  # List()
@@ -116,7 +145,7 @@ class TestIdentifierFields:
     """Identifier and Auto fields resolve correctly."""
 
     def test_identifier_fields(self) -> None:
-        notes, errors = _run_mypy("identifier_fields.py")
+        notes, errors = _get_mypy_results("identifier_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "builtins.str",  # Identifier(identifier=True) - not Optional
@@ -130,7 +159,7 @@ class TestClassFields:
     """Fields declared in domain element classes resolve correctly."""
 
     def test_aggregate_field_types(self) -> None:
-        notes, errors = _run_mypy("class_fields.py")
+        notes, errors = _get_mypy_results("class_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "builtins.str",  # customer_name: required

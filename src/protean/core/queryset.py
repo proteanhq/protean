@@ -1,7 +1,5 @@
 """QuerySet Implementation"""
 
-from __future__ import annotations
-
 import copy
 import logging
 from typing import TYPE_CHECKING, Any, Union
@@ -45,9 +43,9 @@ class QuerySet:
 
     def __init__(
         self,
-        owner_dao: BaseDAO,
-        domain: Domain,
-        entity_cls: BaseEntity,
+        owner_dao: "BaseDAO",
+        domain: "Domain",
+        entity_cls: "BaseEntity",
         criteria: Q = None,
         offset: int = 0,
         limit: int = None,  # No limit by default
@@ -212,7 +210,7 @@ class QuerySet:
 
         return clone
 
-    def all(self) -> ResultSet:
+    def all(self) -> "ResultSet":
         """Primary method to fetch data based on filters
 
         Also trigged when the QuerySet is evaluated by calling one of the following methods:

@@ -1,7 +1,5 @@
 """Entity Functionality and Classes"""
 
-from __future__ import annotations
-
 import functools
 import logging
 import threading
@@ -172,7 +170,7 @@ class BaseEntity(BaseModel, OptionsMixin):
     _events: list = PrivateAttr(default_factory=list)
     _disable_invariant_checks: bool = PrivateAttr(default=False)
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> BaseEntity:
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEntity":
         if cls is BaseEntity:
             raise NotSupportedError("BaseEntity cannot be instantiated")
         return super().__new__(cls)
@@ -245,7 +243,6 @@ class BaseEntity(BaseModel, OptionsMixin):
                     return
 
         # Check annotations for identifier (handles Annotated with lazy strings
-        # from ``from __future__ import annotations``)
         for annot_value in own_annots.values():
             if isinstance(annot_value, str) and '"identifier": True' in annot_value:
                 return

@@ -10,8 +10,6 @@ and the framework translates these into Pydantic-compatible annotations
 during class creation.
 """
 
-from __future__ import annotations
-
 import datetime
 from typing import Any
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from uuid import uuid4
 
 import pytest
@@ -33,7 +31,7 @@ class User(BaseAggregate):
     password_hash = String()
 
     @classmethod
-    def register(cls, command: Register) -> User:
+    def register(cls, command: Register) -> "User":
         user = cls(
             id=command.id,
             email=command.email,

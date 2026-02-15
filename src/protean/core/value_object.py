@@ -1,7 +1,5 @@
 """Value Object Functionality and Classes"""
 
-from __future__ import annotations
-
 import logging
 from collections import defaultdict
 from typing import Any, ClassVar
@@ -57,7 +55,7 @@ class BaseValueObject(BaseModel, OptionsMixin):
         ),
     )
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> BaseValueObject:
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseValueObject":
         if cls is BaseValueObject:
             raise NotSupportedError("BaseValueObject cannot be instantiated")
         return super().__new__(cls)
