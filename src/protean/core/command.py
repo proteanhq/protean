@@ -7,8 +7,8 @@ from protean.fields.resolved import convert_pydantic_errors
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
-    InvalidDataError,
     NotSupportedError,
+    ValidationError,
 )
 from protean.utils import (
     DomainObjects,
@@ -71,7 +71,7 @@ class BaseCommand(BaseMessageType):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise InvalidDataError(convert_pydantic_errors(e))
+            raise ValidationError(convert_pydantic_errors(e))
 
         # Build metadata
         self._build_metadata(incoming_metadata)

@@ -79,6 +79,85 @@ class TestVOFieldsBridge:
 
 
 # ---------------------------------------------------------------------------
+# Tests: Flattened (shadow) attribute initialization
+# ---------------------------------------------------------------------------
+class TestVOFlattenedInit:
+    """Flattened VO initialization via shadow attributes (e.g.
+    ``billing_address_street="123 Main St"``) is supported at the
+    Entity/Aggregate level.  It is NOT supported for direct VO-to-VO
+    nesting because ValueObjects use ``extra="forbid"`` — flattened
+    kwargs are an Entity-level concern for database persistence.
+    """
+
+    def test_entity_flattened_vo_init(self):
+        """Entity can be initialized with flattened shadow attributes."""
+        customer = Customer(
+            name="Alice",
+            billing_address_street="123 Main St",
+            billing_address_city="Springfield",
+            billing_address_zip_code="62704",
+        )
+
+        assert customer.billing_address is not None
+        assert customer.billing_address.street == "123 Main St"
+        assert customer.billing_address.city == "Springfield"
+        assert customer.billing_address.zip_code == "62704"
+
+    def test_entity_flattened_and_instance_are_equivalent(self):
+        """Flattened shadow init produces the same result as instance init."""
+        addr = Address(street="123 Main St", city="Springfield", zip_code="62704")
+        via_instance = Customer(name="Alice", billing_address=addr)
+        via_flat = Customer(
+            name="Alice",
+            billing_address_street="123 Main St",
+            billing_address_city="Springfield",
+            billing_address_zip_code="62704",
+        )
+
+        assert via_instance.billing_address == via_flat.billing_address
+
+    def test_vo_to_vo_flattened_init_not_supported(self):
+        """Direct VO-to-VO flattened init is not supported by design.
+
+        Flattened (shadow) attributes are an Entity/Aggregate concern used
+        for database column mapping.  ValueObjects use extra='forbid' and
+        reject unknown kwargs.  Nested VOs must be passed as instances.
+        """
+        from protean.core.value_object import BaseValueObject
+        from protean.exceptions import ValidationError
+
+        class Inner(BaseValueObject):
+            x: float = 0.0
+            y: float = 0.0
+
+        class Outer(BaseValueObject):
+            label: str = ""
+            point = ValueObject(Inner)
+
+        with pytest.raises(ValidationError) as exc:
+            Outer(label="origin", point_x=1.0, point_y=2.0)
+
+        # Flattened kwargs are rejected as extra inputs
+        assert "point_x" in str(exc.value)
+
+    def test_vo_to_vo_instance_init_works(self):
+        """Nested VOs must be passed as instances, not flattened kwargs."""
+        from protean.core.value_object import BaseValueObject
+
+        class Inner(BaseValueObject):
+            x: float = 0.0
+            y: float = 0.0
+
+        class Outer(BaseValueObject):
+            label: str = ""
+            point = ValueObject(Inner)
+
+        outer = Outer(label="origin", point=Inner(x=1.0, y=2.0))
+        assert outer.point.x == 1.0
+        assert outer.point.y == 2.0
+
+
+# ---------------------------------------------------------------------------
 # Tests: Assignment and access
 # ---------------------------------------------------------------------------
 class TestVOAssignment:

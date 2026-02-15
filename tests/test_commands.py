@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
-from protean.exceptions import IncorrectUsageError, InvalidDataError, NotSupportedError
+from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.reflection import fields
@@ -42,7 +42,7 @@ class TestCommandInitialization:
         assert command is not None
 
     def test_that_invalid_data_input_throws_an_exception(self):
-        with pytest.raises(InvalidDataError) as exception1:
+        with pytest.raises(ValidationError) as exception1:
             UserRegistrationCommand(
                 foo="bar",
                 username="john.doe",
@@ -51,7 +51,7 @@ class TestCommandInitialization:
         assert "Extra inputs are not permitted" in str(exception1.value.messages["foo"])
         assert "is required" in str(exception1.value.messages["email"])
 
-        with pytest.raises(InvalidDataError) as exception2:
+        with pytest.raises(ValidationError) as exception2:
             UserRegistrationCommand(
                 email="john.doe@gmail.com",
                 username="123456789012345678901234567890123456789012345678901234567890",
@@ -60,6 +60,17 @@ class TestCommandInitialization:
         assert exception2.value.messages == {
             "username": ["String should have at most 50 characters"]
         }
+
+    def test_command_missing_required_fields_raises_validation_error(self):
+        """Missing required fields should raise ValidationError, not InvalidDataError."""
+        with pytest.raises(ValidationError) as exc:
+            UserRegistrationCommand(
+                username="john.doe",
+                password="secret1!",
+            )
+
+        assert "email" in exc.value.messages
+        assert "is required" in exc.value.messages["email"]
 
 
 class TestCommandRegistration:

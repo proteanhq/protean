@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 
 from protean.exceptions import ConfigurationError
 from protean.utils.globals import current_domain
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 
 if TYPE_CHECKING:
     from protean.utils.container import Element
@@ -349,6 +350,23 @@ def _prepare_pydantic_namespace(
     new_dict["__auto_id_handled__"] = True
 
 
+def _track_id_field(cls: type) -> None:
+    """Scan *cls* for a single identifier field and record its name.
+
+    This is a standalone helper that mirrors the ``__track_id_field``
+    classmethods on ``BaseEntity`` and ``BaseProjection``.  It is used by
+    :func:`derive_element_class` to re-trigger identity tracking after the
+    ``meta_.abstract`` flag has been cleared.
+    """
+    id_fields = [
+        field
+        for _, field in getattr(cls, _FIELDS, {}).items()
+        if getattr(field, "identifier", False)
+    ]
+    if len(id_fields) == 1:
+        setattr(cls, _ID_FIELD_NAME, id_fields[0].field_name)
+
+
 def derive_element_class(
     element_cls: Type["Element"] | Type[Any],
     base_cls: Type["Element"],
@@ -409,6 +427,13 @@ def derive_element_class(
 
     # Assign default options for remaining items
     element_cls._set_defaults()
+
+    # Re-trigger identity field tracking when a previously-abstract class
+    # is registered as concrete (e.g. via domain.register()).  During normal
+    # class creation __pydantic_init_subclass__ skips __track_id_field()
+    # because the inherited meta_.abstract is still True at that point.
+    if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
+        _track_id_field(element_cls)
 
     return element_cls
 

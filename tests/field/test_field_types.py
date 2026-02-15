@@ -51,6 +51,22 @@ class TestStringField:
         with pytest.raises(ValidationError):
             VO(name=1)
 
+    def test_float_rejected_by_string_field(self):
+        """Passing a float to a String field raises ValidationError.
+
+        Regression: Pydantic v2 enforces strict type checking for string
+        fields.  A String(max_length=10) field will not silently coerce
+        a float like 999.99 into "999.99".
+        """
+
+        class VO(BaseValueObject):
+            price = String(max_length=10)
+
+        with pytest.raises(ValidationError) as exc:
+            VO(price=999.99)
+
+        assert "price" in exc.value.messages
+
     def test_min_length(self):
         """Test minimum length validation for the string field"""
 
@@ -197,6 +213,38 @@ class TestFloatField:
 
         with pytest.raises(ValidationError):
             VO(score=5.6)
+
+    def test_min_value_error_message_format(self):
+        """min_value constraint produces Pydantic v2 'ge' error message.
+
+        Regression: FieldSpec translates min_value to Pydantic's ge constraint,
+        so the error message follows Pydantic's format, not the legacy
+        'value is lesser than' format.
+        """
+
+        class VO(BaseValueObject):
+            percentage = Float(min_value=0.0)
+
+        with pytest.raises(ValidationError) as exc:
+            VO(percentage=-10.0)
+
+        assert "Input should be greater than or equal to 0" in str(exc.value)
+
+    def test_max_value_error_message_format(self):
+        """max_value constraint produces Pydantic v2 'le' error message.
+
+        Regression: FieldSpec translates max_value to Pydantic's le constraint,
+        so the error message follows Pydantic's format, not the legacy
+        'value is greater than' format.
+        """
+
+        class VO(BaseValueObject):
+            percentage = Float(max_value=100.0)
+
+        with pytest.raises(ValidationError) as exc:
+            VO(percentage=150.0)
+
+        assert "Input should be less than or equal to 100" in str(exc.value)
 
 
 class TestBooleanField:

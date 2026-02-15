@@ -24,7 +24,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
 from protean.domain import Domain
-from protean.exceptions import InvalidDataError, ObjectNotFoundError, ValidationError
+from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
@@ -415,7 +415,7 @@ class TestValidationInFlow:
     """Tests that validation works correctly through the command flow."""
 
     def test_command_validation_rejects_invalid_data(self, invoice_domain):
-        with pytest.raises(InvalidDataError):
+        with pytest.raises(ValidationError):
             CreateInvoice(
                 invoice_id=str(uuid4()),
                 customer_name="",  # Empty string for required field

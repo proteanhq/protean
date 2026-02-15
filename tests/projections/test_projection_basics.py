@@ -136,6 +136,36 @@ class TestProjectionRegistration:
             AbstractPerson(age=30)
         assert "has been marked abstract" in str(exc.value)
 
+    def test_concrete_projection_inheriting_abstract_base_tracks_id(self, test_domain):
+        """Concrete projection registered via domain.register() after inheriting
+        from an abstract base should correctly track its identifier field.
+
+        Regression test: __pydantic_init_subclass__ skipped __track_id_field()
+        because the inherited meta_.abstract was True at class-creation time.
+        derive_element_class must re-trigger id tracking when clearing the flag.
+        """
+
+        @test_domain.projection(abstract=True)
+        class AbstractBase:
+            age: int = 0
+
+        class ConcreteView(AbstractBase):
+            view_id: str = Field(json_schema_extra={"identifier": True})
+            name: str | None = None
+
+        test_domain.register(ConcreteView)
+        test_domain.init(traverse=False)
+
+        assert ConcreteView.meta_.abstract is False
+        assert hasattr(ConcreteView, _ID_FIELD_NAME)
+        assert getattr(ConcreteView, _ID_FIELD_NAME) == "view_id"
+
+        # Verify the projection can be instantiated and used
+        view = ConcreteView(view_id="V-001", name="Test", age=25)
+        assert view.view_id == "V-001"
+        assert view.name == "Test"
+        assert view.age == 25
+
 
 # ---------------------------------------------------------------------------
 # Tests: Initialization

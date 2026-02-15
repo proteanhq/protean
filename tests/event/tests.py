@@ -261,6 +261,34 @@ class TestDomainEventInitialization:
         service = PersonAdded(id=str(uuid.uuid4()), first_name="John", last_name="Doe")
         assert service is not None
 
+    def test_event_missing_required_fields_raises_validation_error(self, test_domain):
+        """Missing required fields should raise ValidationError, not InvalidDataError."""
+        test_domain.register(Person)
+        test_domain.register(PersonAdded, part_of=Person)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ValidationError) as exc:
+            PersonAdded(id=str(uuid.uuid4()))  # Missing first_name and last_name
+
+        assert "first_name" in exc.value.messages
+        assert "is required" in exc.value.messages["first_name"]
+
+    def test_event_extra_fields_raises_validation_error(self, test_domain):
+        """Extra fields should raise ValidationError, not InvalidDataError."""
+        test_domain.register(Person)
+        test_domain.register(PersonAdded, part_of=Person)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ValidationError) as exc:
+            PersonAdded(
+                id=str(uuid.uuid4()),
+                first_name="John",
+                last_name="Doe",
+                unknown_field="bad",
+            )
+
+        assert "unknown_field" in exc.value.messages
+
 
 class TestDomainEventRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
