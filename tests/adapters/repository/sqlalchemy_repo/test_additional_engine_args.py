@@ -5,12 +5,12 @@ class TestAdditionalEngineArgs:
     """Test suite for SAProvider._additional_engine_args method"""
 
     def test_basic_extraction_of_arguments(self, test_domain):
-        provider = SqliteProvider(
+        provider = PostgresqlProvider(
             name="test_provider",
             domain=test_domain,
             conn_info={
-                "provider": "sqlite",
-                "database_uri": "sqlite:///:memory:",
+                "provider": "postgresql",
+                "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
                 "echo": True,
                 "pool_size": 10,
                 "pool_recycle": 1800,
@@ -25,6 +25,30 @@ class TestAdditionalEngineArgs:
         assert result["pool_size"] == 10
         assert "pool_recycle" in result
         assert result["pool_recycle"] == 1800
+
+    def test_sqlite_strips_incompatible_pool_args(self, test_domain):
+        """SQLite uses SingletonThreadPool which does not support pool configuration."""
+        provider = SqliteProvider(
+            name="test_provider",
+            domain=test_domain,
+            conn_info={
+                "provider": "sqlite",
+                "database_uri": "sqlite:///:memory:",
+                "echo": True,
+                "pool_size": 10,
+                "max_overflow": 5,
+                "pool_recycle": 1800,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "echo" in result
+        assert result["echo"] is True
+        # pool_size, max_overflow, and pool_recycle should be stripped for SQLite
+        assert "pool_size" not in result
+        assert "max_overflow" not in result
+        assert "pool_recycle" not in result
 
     def test_excluded_keys_are_not_included(self, test_domain):
         provider = PostgresqlProvider(

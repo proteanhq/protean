@@ -29,8 +29,12 @@ class TestPostgreSQLSchemaHandling:
         }
         domain.init(traverse=False)
 
-        provider = domain.providers["custom_schema"]
-        assert provider._metadata.schema == "test_schema"
+        try:
+            provider = domain.providers["custom_schema"]
+            assert provider._metadata.schema == "test_schema"
+        finally:
+            for provider in domain.providers.values():
+                provider.close()
 
     def test_schema_none_defaults_to_public(self):
         """Test that when no schema is specified, it defaults to 'public'"""
@@ -41,8 +45,12 @@ class TestPostgreSQLSchemaHandling:
         }
         domain.init(traverse=False)
 
-        provider = domain.providers["default_schema"]
-        assert provider._metadata.schema == "public"
+        try:
+            provider = domain.providers["default_schema"]
+            assert provider._metadata.schema == "public"
+        finally:
+            for provider in domain.providers.values():
+                provider.close()
 
     def test_existing_tables_are_in_configured_schema(self, test_domain):
         """Test that existing tables are in the configured schema"""
@@ -77,21 +85,24 @@ class TestPostgreSQLSchemaHandling:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            # Get DAO and check if table exists
-            dao = domain.repository_for(UniqueSchemaTestEntity)._dao
+            try:
+                # Get DAO and check if table exists
+                dao = domain.repository_for(UniqueSchemaTestEntity)._dao
 
-            # Initially table shouldn't exist
-            assert not dao.has_table()
+                # Initially table shouldn't exist
+                assert not dao.has_table()
 
-            # Create the table
-            provider = domain.providers["default"]
-            provider._create_database_artifacts()
+                # Create the table
+                provider = domain.providers["default"]
+                provider._create_database_artifacts()
 
-            # Now table should exist
-            assert dao.has_table()
+                # Now table should exist
+                assert dao.has_table()
 
-            # Clean up
-            provider._drop_database_artifacts()
+                # Clean up
+                provider._drop_database_artifacts()
+            finally:
+                domain.providers["default"].close()
 
     @pytest.mark.no_test_domain
     def test_custom_schema_name_in_entity_meta(self):
@@ -113,19 +124,22 @@ class TestPostgreSQLSchemaHandling:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            # Create database artifacts
-            provider = domain.providers["default"]
-            provider._create_database_artifacts()
+            try:
+                # Create database artifacts
+                provider = domain.providers["default"]
+                provider._create_database_artifacts()
 
-            # Verify table was created with custom name
-            inspector = inspect(provider._engine)
-            schema_name = provider._metadata.schema
-            tables = inspector.get_table_names(schema=schema_name)
-            # The table should be created with the custom schema_name, not the class name
-            assert "unique_custom_table_name" in tables
+                # Verify table was created with custom name
+                inspector = inspect(provider._engine)
+                schema_name = provider._metadata.schema
+                tables = inspector.get_table_names(schema=schema_name)
+                # The table should be created with the custom schema_name, not the class name
+                assert "unique_custom_table_name" in tables
 
-            # Clean up
-            provider._drop_database_artifacts()
+                # Clean up
+                provider._drop_database_artifacts()
+            finally:
+                domain.providers["default"].close()
 
     def test_schema_isolation_between_providers(self):
         """Test that different providers can use different schemas"""
@@ -144,11 +158,15 @@ class TestPostgreSQLSchemaHandling:
         }
         domain.init(traverse=False)
 
-        provider1 = domain.providers["schema1"]
-        provider2 = domain.providers["schema2"]
+        try:
+            provider1 = domain.providers["schema1"]
+            provider2 = domain.providers["schema2"]
 
-        assert provider1._metadata.schema == "schema_one"
-        assert provider2._metadata.schema == "schema_two"
+            assert provider1._metadata.schema == "schema_one"
+            assert provider2._metadata.schema == "schema_two"
+        finally:
+            for provider in domain.providers.values():
+                provider.close()
 
     def test_raw_sql_respects_schema_context(self, test_domain):
         """Test that raw SQL queries work within schema context"""
@@ -195,20 +213,23 @@ class TestPostgreSQLSchemaHandling:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            try:
+                provider = domain.providers["default"]
 
-            # Create artifacts
-            provider._create_database_artifacts()
+                # Create artifacts
+                provider._create_database_artifacts()
 
-            # Verify table exists
-            dao = domain.repository_for(DropTestEntity)._dao
-            assert dao.has_table()
+                # Verify table exists
+                dao = domain.repository_for(DropTestEntity)._dao
+                assert dao.has_table()
 
-            # Drop artifacts
-            provider._drop_database_artifacts()
+                # Drop artifacts
+                provider._drop_database_artifacts()
 
-            # Verify table no longer exists
-            assert not dao.has_table()
+                # Verify table no longer exists
+                assert not dao.has_table()
+            finally:
+                domain.providers["default"].close()
 
     def test_concurrent_schema_operations(self, test_domain):
         """Test that concurrent operations on schema work correctly"""

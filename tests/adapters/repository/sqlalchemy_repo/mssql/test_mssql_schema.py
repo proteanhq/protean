@@ -29,8 +29,12 @@ class TestMSSQLSchemaHandling:
         }
         domain.init(traverse=False)
 
-        provider = domain.providers["custom_schema"]
-        assert provider._metadata.schema == "test_mssql_schema"
+        try:
+            provider = domain.providers["custom_schema"]
+            assert provider._metadata.schema == "test_mssql_schema"
+        finally:
+            for provider in domain.providers.values():
+                provider.close()
 
     def test_schema_none_defaults_to_dbo(self):
         """Test that when no schema is specified, it defaults to 'dbo'"""
@@ -41,8 +45,12 @@ class TestMSSQLSchemaHandling:
         }
         domain.init(traverse=False)
 
-        provider = domain.providers["default_schema"]
-        assert provider._metadata.schema == "dbo"
+        try:
+            provider = domain.providers["default_schema"]
+            assert provider._metadata.schema == "dbo"
+        finally:
+            for provider in domain.providers.values():
+                provider.close()
 
     def test_existing_tables_are_in_configured_schema(self, test_domain):
         """Test that existing tables are in the configured schema"""
@@ -78,21 +86,24 @@ class TestMSSQLSchemaHandling:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            # Get DAO and check if table exists
-            dao = domain.repository_for(UniqueMssqlSchemaTestEntity)._dao
+            try:
+                # Get DAO and check if table exists
+                dao = domain.repository_for(UniqueMssqlSchemaTestEntity)._dao
 
-            # Initially table shouldn't exist
-            assert not dao.has_table()
+                # Initially table shouldn't exist
+                assert not dao.has_table()
 
-            # Create the table
-            provider = domain.providers["default"]
-            provider._create_database_artifacts()
+                # Create the table
+                provider = domain.providers["default"]
+                provider._create_database_artifacts()
 
-            # Now table should exist
-            assert dao.has_table()
+                # Now table should exist
+                assert dao.has_table()
 
-            # Clean up
-            provider._drop_database_artifacts()
+                # Clean up
+                provider._drop_database_artifacts()
+            finally:
+                domain.providers["default"].close()
 
     @pytest.mark.no_test_domain
     def test_custom_schema_name_in_entity_meta(self):
@@ -116,18 +127,21 @@ class TestMSSQLSchemaHandling:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            # Create database artifacts
-            provider = domain.providers["default"]
-            provider._create_database_artifacts()
+            try:
+                # Create database artifacts
+                provider = domain.providers["default"]
+                provider._create_database_artifacts()
 
-            # Verify table was created with custom name
-            inspector = inspect(provider._engine)
-            schema_name = provider._metadata.schema
-            tables = inspector.get_table_names(schema=schema_name)
-            assert "unique_mssql_custom_table" in tables
+                # Verify table was created with custom name
+                inspector = inspect(provider._engine)
+                schema_name = provider._metadata.schema
+                tables = inspector.get_table_names(schema=schema_name)
+                assert "unique_mssql_custom_table" in tables
 
-            # Clean up
-            provider._drop_database_artifacts()
+                # Clean up
+                provider._drop_database_artifacts()
+            finally:
+                domain.providers["default"].close()
 
     @pytest.mark.no_test_domain
     def test_mssql_json_type_handling_in_schema(self):
@@ -150,36 +164,39 @@ class TestMSSQLSchemaHandling:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
-
-            # Clean up any existing tables first
             try:
+                provider = domain.providers["default"]
+
+                # Clean up any existing tables first
+                try:
+                    provider._drop_database_artifacts()
+                except Exception:
+                    pass  # Ignore if no tables exist
+
+                provider._create_database_artifacts()
+
+                # Create entity with JSON data
+                entity = MssqlJsonUniqueEntity(
+                    name="JSON Test",
+                    config_data={"key": "value", "nested": {"inner": "data"}},
+                    tags=["tag1", "tag2", "tag3"],
+                )
+
+                # Save and retrieve
+                domain.repository_for(MssqlJsonUniqueEntity).add(entity)
+                retrieved = domain.repository_for(MssqlJsonUniqueEntity).get(entity.id)
+
+                # Verify JSON data is preserved
+                assert retrieved.config_data == {
+                    "key": "value",
+                    "nested": {"inner": "data"},
+                }
+                assert retrieved.tags == ["tag1", "tag2", "tag3"]
+
+                # Clean up
                 provider._drop_database_artifacts()
-            except Exception:
-                pass  # Ignore if no tables exist
-
-            provider._create_database_artifacts()
-
-            # Create entity with JSON data
-            entity = MssqlJsonUniqueEntity(
-                name="JSON Test",
-                config_data={"key": "value", "nested": {"inner": "data"}},
-                tags=["tag1", "tag2", "tag3"],
-            )
-
-            # Save and retrieve
-            domain.repository_for(MssqlJsonUniqueEntity).add(entity)
-            retrieved = domain.repository_for(MssqlJsonUniqueEntity).get(entity.id)
-
-            # Verify JSON data is preserved
-            assert retrieved.config_data == {
-                "key": "value",
-                "nested": {"inner": "data"},
-            }
-            assert retrieved.tags == ["tag1", "tag2", "tag3"]
-
-            # Clean up
-            provider._drop_database_artifacts()
+            finally:
+                domain.providers["default"].close()
 
     def test_schema_isolation_between_providers(self):
         """Test that different MSSQL providers can use different schemas"""
@@ -200,11 +217,15 @@ class TestMSSQLSchemaHandling:
         }
         domain.init(traverse=False)
 
-        provider1 = domain.providers["mssql_schema1"]
-        provider2 = domain.providers["mssql_schema2"]
+        try:
+            provider1 = domain.providers["mssql_schema1"]
+            provider2 = domain.providers["mssql_schema2"]
 
-        assert provider1._metadata.schema == "mssql_schema_one"
-        assert provider2._metadata.schema == "mssql_schema_two"
+            assert provider1._metadata.schema == "mssql_schema_one"
+            assert provider2._metadata.schema == "mssql_schema_two"
+        finally:
+            for provider in domain.providers.values():
+                provider.close()
 
     def test_raw_sql_respects_schema_context(self, test_domain):
         """Test that raw SQL queries work within MSSQL schema context"""

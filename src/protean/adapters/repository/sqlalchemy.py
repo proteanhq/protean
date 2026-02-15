@@ -403,6 +403,14 @@ class SADAO(BaseDAO):
         """
         if current_uow and not self._outside_uow:
             return current_uow.get_session(self.provider.name)
+        elif self._outside_uow:
+            # Create a session directly from the session factory, bypassing
+            # the scoped_session registry, so it is independent of any active
+            # UoW session and only sees committed data.
+            new_connection = self.provider._session_factory()
+            if not new_connection.is_active:
+                new_connection.begin()
+            return new_connection
         else:
             new_connection = self.provider.get_connection()
             if not new_connection.is_active:
@@ -476,7 +484,7 @@ class SADAO(BaseDAO):
             logger.error(f"Error while filtering: {exc}")
             raise
         finally:
-            if not current_uow:
+            if not current_uow or self._outside_uow:
                 conn.commit()
                 conn.close()
 
@@ -488,7 +496,7 @@ class SADAO(BaseDAO):
 
         conn.add(model_obj)
 
-        if not current_uow:
+        if not current_uow or self._outside_uow:
             try:
                 conn.commit()
             except DatabaseError as exc:
@@ -506,43 +514,37 @@ class SADAO(BaseDAO):
     def _update(self, model_obj):
         """Update a record in the sqlalchemy database"""
         conn = self._get_session()
-        db_item = None
 
-        # Fetch the record from database
         try:
+            # Fetch the record from database
             identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
-            db_item = conn.get(
-                self.database_model_cls, identifier
-            )  # This will raise exception if object was not found
-        except DatabaseError as exc:
-            logger.error(f"Database Record not found: {exc}")
-            raise
+            db_item = conn.get(self.database_model_cls, identifier)
 
-        if db_item is None:
-            conn.rollback()
-            conn.close()
-            raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
-            )
-
-        # Sync DB Record with current changes. When the session is committed, changes are automatically synced
-        for attribute in attributes(self.entity_cls):
-            if attribute != id_field(self.entity_cls).attribute_name and getattr(
-                model_obj, attribute
-            ) != getattr(db_item, attribute):
-                setattr(db_item, attribute, getattr(model_obj, attribute))
-
-        if not current_uow:
-            try:
-                conn.commit()
-            except DatabaseError as exc:
-                logger.error(f"Error while updating: {exc}")
+            if db_item is None:
                 conn.rollback()
-                raise ProteanDatabaseError(
-                    f"Database error during update: {str(exc)}", original_exception=exc
+                raise ObjectNotFoundError(
+                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    f"does not exist."
                 )
-            finally:
+
+            # Sync DB Record with current changes
+            for attribute in attributes(self.entity_cls):
+                if attribute != id_field(self.entity_cls).attribute_name and getattr(
+                    model_obj, attribute
+                ) != getattr(db_item, attribute):
+                    setattr(db_item, attribute, getattr(model_obj, attribute))
+
+            if not current_uow or self._outside_uow:
+                conn.commit()
+        except DatabaseError as exc:
+            logger.error(f"Error while updating: {exc}")
+            if not current_uow or self._outside_uow:
+                conn.rollback()
+            raise ProteanDatabaseError(
+                f"Database error during update: {str(exc)}", original_exception=exc
+            )
+        finally:
+            if not current_uow or self._outside_uow:
                 conn.close()
 
         return model_obj
@@ -563,7 +565,7 @@ class SADAO(BaseDAO):
             logger.error(f"Error while updating all: {exc}")
             raise
         finally:
-            if not current_uow:
+            if not current_uow or self._outside_uow:
                 conn.commit()
                 conn.close()
 
@@ -572,34 +574,30 @@ class SADAO(BaseDAO):
     def _delete(self, model_obj):
         """Delete the entity record in the dictionary"""
         conn = self._get_session()
-        db_item = None
 
-        # Fetch the record from database
         try:
+            # Fetch the record from database
             identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
-            db_item = conn.get(
-                self.database_model_cls, identifier
-            )  # This will raise exception if object was not found
-        except DatabaseError as exc:
-            logger.error(f"Database Record not found: {exc}")
-            raise
+            db_item = conn.get(self.database_model_cls, identifier)
 
-        if db_item is None:
-            conn.rollback()
-            conn.close()
-            raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
-            )
+            if db_item is None:
+                conn.rollback()
+                raise ObjectNotFoundError(
+                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    f"does not exist."
+                )
 
-        try:
             conn.delete(db_item)
+
+            if not current_uow or self._outside_uow:
+                conn.commit()
         except DatabaseError as exc:
             logger.error(f"Error while deleting: {exc}")
+            if not current_uow or self._outside_uow:
+                conn.rollback()
             raise
         finally:
-            if not current_uow:
-                conn.commit()
+            if not current_uow or self._outside_uow:
                 conn.close()
 
         return model_obj
@@ -622,7 +620,7 @@ class SADAO(BaseDAO):
             logger.error(f"Error while deleting all: {exc}")
             raise
         finally:
-            if not current_uow:
+            if not current_uow or self._outside_uow:
                 conn.commit()
                 conn.close()
 
@@ -652,7 +650,7 @@ class SADAO(BaseDAO):
             logger.error(f"Error while running raw query: {exc}")
             raise
         finally:
-            if not current_uow:
+            if not current_uow or self._outside_uow:
                 conn.commit()
                 conn.close()
 
@@ -693,6 +691,13 @@ class SAProvider(BaseProvider):
             }
         )
 
+        # SQLite uses SingletonThreadPool which does not support pool
+        # configuration parameters like pool_size, max_overflow, or pool_recycle.
+        uri = self.conn_info.get("database_uri", "")
+        if uri.startswith("sqlite"):
+            for key in ("pool_size", "max_overflow", "pool_recycle"):
+                extra_args.pop(key, None)
+
         return extra_args
 
     def _get_default_schema(self, database):
@@ -727,6 +732,14 @@ class SAProvider(BaseProvider):
         # A temporary cache of already constructed model classes
         self._database_model_classes = {}
 
+        # Cache the session factory and scoped session so they are created once
+        # per provider, not on every get_session() call.
+        kwargs = self._get_database_specific_session_args()
+        self._session_factory = orm.sessionmaker(
+            bind=self._engine, expire_on_commit=False, **kwargs
+        )
+        self._scoped_session_cls = orm.scoped_session(self._session_factory)
+
     @abstractmethod
     def _get_database_specific_engine_args(self):
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
@@ -745,15 +758,13 @@ class SAProvider(BaseProvider):
         """
 
     def get_session(self):
-        """Establish a session to the Database"""
-        # Create the session
-        kwargs = self._get_database_specific_session_args()
-        session_factory = orm.sessionmaker(
-            bind=self._engine, expire_on_commit=False, **kwargs
-        )
-        session_cls = orm.scoped_session(session_factory)
+        """Return the cached scoped session class for this provider.
 
-        return session_cls
+        The session factory and scoped session registry are created once
+        during __init__ and reused across all calls, avoiding the overhead
+        of constructing new factories on every invocation.
+        """
+        return self._scoped_session_cls
 
     @abstractmethod
     def _execute_database_specific_connection_statements(self, conn):
@@ -784,11 +795,10 @@ class SAProvider(BaseProvider):
 
     def is_alive(self) -> bool:
         """Check if the connection to the database is alive"""
+        conn = None
         try:
             conn = self.get_connection()
             conn.execute(text("SELECT 1"))
-            if not current_uow:  # If not in a UoW, we need to close the connection
-                conn.close()
             return True
         except DatabaseError as e:
             logger.error(
@@ -796,6 +806,9 @@ class SAProvider(BaseProvider):
             )
             logger.error(f"Error: {e}")
             return False
+        finally:
+            if conn is not None and not current_uow:
+                conn.close()
 
     def _data_reset(self):
         conn = self._engine.connect()
@@ -821,9 +834,12 @@ class SAProvider(BaseProvider):
     def close(self):
         """Close the provider and clean up all connections.
 
-        Disposes of the SQLAlchemy engine which closes all connections in the pool
-        and frees up database resources.
+        Removes the scoped session (closing the underlying session and discarding
+        it from the registry), then disposes of the SQLAlchemy engine which closes
+        all connections in the pool and frees up database resources.
         """
+        if hasattr(self, "_scoped_session_cls") and self._scoped_session_cls:
+            self._scoped_session_cls.remove()
         if hasattr(self, "_engine") and self._engine:
             self._engine.dispose()
 
@@ -991,7 +1007,13 @@ class PostgresqlProvider(SAProvider):
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
-        return {"isolation_level": "AUTOCOMMIT"}
+        return {
+            "isolation_level": "AUTOCOMMIT",
+            "pool_size": 2,
+            "max_overflow": 5,
+            "pool_pre_ping": True,
+            "pool_recycle": 1800,
+        }
 
     def _get_database_specific_session_args(self) -> dict:
         """Set Database specific session parameters.
@@ -1058,7 +1080,10 @@ class MssqlProvider(SAProvider):
         """
         return {
             "isolation_level": "AUTOCOMMIT",
-            "pool_pre_ping": True,  # Enable connection health checks
+            "pool_size": 2,
+            "max_overflow": 5,
+            "pool_pre_ping": True,
+            "pool_recycle": 1800,
         }
 
     def _get_database_specific_session_args(self) -> dict:

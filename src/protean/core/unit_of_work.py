@@ -173,9 +173,14 @@ class UnitOfWork:
         self._reset()
 
     def _reset(self):
-        # Close all sessions
+        # Remove all scoped sessions — this calls close() on the underlying
+        # session (releasing connections back to the pool) AND discards the
+        # session from the scoped registry, preventing stale session reuse.
         for session in self._sessions.values():
-            session.close()
+            if hasattr(session, "remove"):
+                session.remove()
+            else:
+                session.close()
 
         # Reset all state
         self._sessions = {}

@@ -32,6 +32,7 @@ def setup_db():
 
         yield
 
-        # Drop all tables at the end of test suite
+        # Drop all tables and dispose the engine to release connections
         default_provider = domain.providers["default"]
         default_provider._metadata.drop_all(default_provider._engine)
+        default_provider.close()
