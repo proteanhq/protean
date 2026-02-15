@@ -12,6 +12,7 @@ from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import Dict, Float, Integer, List, String
 from protean.fields.embedded import ValueObject
+from protean.fields.spec import FieldSpec
 
 
 class TestListFieldContentType:
@@ -124,3 +125,21 @@ class TestListFieldThroughAggregates:
         vo = OuterVO(items=[InnerVO(foo="bar"), InnerVO(foo="baz")])
         result = vo.to_dict()
         assert result["items"] == [{"foo": "bar"}, {"foo": "baz"}]
+
+
+# ---------------------------------------------------------------------------
+# Tests: List() factory with raw types and FieldSpec content
+# ---------------------------------------------------------------------------
+class TestListFieldFactory:
+    def test_list_with_raw_type_content(self):
+        """List() with a plain Python type as content_type."""
+        spec = List(content_type=int)
+        assert isinstance(spec, FieldSpec)
+        assert spec.python_type == list[int]
+
+    def test_list_with_fieldspec_non_union_type(self):
+        """List(FieldSpec) where resolved type is not a Union."""
+        # Integer(required=True) resolves to `int` (not Optional)
+        spec = List(content_type=Integer(required=True))
+        assert isinstance(spec, FieldSpec)
+        assert spec.python_type == list[int]

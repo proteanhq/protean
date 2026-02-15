@@ -228,6 +228,13 @@ class TestProjectionState:
         person.state_.mark_destroyed()
         assert person.state_.is_destroyed is True
 
+    def test_state_setter(self):
+        """state_ property setter sets _state."""
+        proj = Person(person_id="p-1", first_name="Alice")
+        original_state = proj.state_
+        proj.state_ = original_state
+        assert proj.state_ is original_state
+
 
 # ---------------------------------------------------------------------------
 # Tests: Identity-based equality
@@ -254,6 +261,33 @@ class TestProjectionEquality:
         assert hash(p1) == hash(p2)
         s = {p1, p2}
         assert len(s) == 1
+
+    def test_not_equal_to_non_projection(self):
+        p = Person(person_id="123", first_name="John")
+        assert p != "not a projection"
+
+    def test_eq_without_id_field(self):
+        """__eq__ returns False when _ID_FIELD_NAME is missing."""
+        p1 = Person(person_id="123", first_name="John")
+        p2 = Person(person_id="123", first_name="John")
+        saved = getattr(Person, _ID_FIELD_NAME, None)
+        try:
+            delattr(Person, _ID_FIELD_NAME)
+            assert p1 != p2
+        finally:
+            if saved is not None:
+                setattr(Person, _ID_FIELD_NAME, saved)
+
+    def test_hash_without_id_field(self):
+        """__hash__ falls back to id(self) when no id field."""
+        proj = Person(person_id="123", first_name="John")
+        saved = getattr(Person, _ID_FIELD_NAME, None)
+        try:
+            delattr(Person, _ID_FIELD_NAME)
+            assert hash(proj) == id(proj)
+        finally:
+            if saved is not None:
+                setattr(Person, _ID_FIELD_NAME, saved)
 
 
 # ---------------------------------------------------------------------------
