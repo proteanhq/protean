@@ -1,6 +1,6 @@
 import nox
 
-PYTHON_VERSIONS = ["3.11", "3.12", "3.13"]
+PYTHON_VERSIONS = ["3.11", "3.12", "3.13", "3.14"]
 
 # Packages with C extensions that must be rebuilt per Python version.
 # Poetry's wheel cache can serve a .so compiled for the wrong interpreter.

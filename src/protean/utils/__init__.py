@@ -370,6 +370,15 @@ def derive_element_class(
             new_dict = element_cls.__dict__.copy()
             new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
 
+            # PEP 649/749 (Python 3.14+): annotations are stored via a
+            # descriptor and no longer appear in __dict__.  Ensure they
+            # are present in new_dict so downstream helpers (e.g.
+            # _prepare_pydantic_namespace) can access them.
+            if "__annotations__" not in new_dict:
+                new_dict["__annotations__"] = getattr(
+                    element_cls, "__annotations__", {}
+                ).copy()
+
             new_dict["meta_"] = Options(opts)
 
             # When routing to a Pydantic base, prepare the namespace so that

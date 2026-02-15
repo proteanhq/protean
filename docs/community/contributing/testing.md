@@ -36,14 +36,14 @@ This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLI
 
 ## Multi-Version Testing with Nox
 
-Protean supports Python 3.11, 3.12, and 3.13. To run tests across all supported versions locally, Protean uses [Nox](https://nox.thea.codes/) with a `noxfile.py` at the repository root.
+Protean supports Python 3.11, 3.12, 3.13, and 3.14. To run tests across all supported versions locally, Protean uses [Nox](https://nox.thea.codes/) with a `noxfile.py` at the repository root.
 
 ### Prerequisites
 
-Install all three Python versions via [pyenv](https://github.com/pyenv/pyenv) and ensure they are listed in `.python-version` so that `python3.11`, `python3.12`, and `python3.13` are available on `$PATH`:
+Install all four Python versions via [pyenv](https://github.com/pyenv/pyenv) and ensure they are listed in `.python-version` so that `python3.11`, `python3.12`, `python3.13`, and `python3.14` are available on `$PATH`:
 
 ```shell
-pyenv install 3.11 3.12 3.13
+pyenv install 3.11 3.12 3.13 3.14
 ```
 
 ### Running
@@ -350,7 +350,7 @@ jobs:
 The CI pipeline:
 
 - Runs on each pull request and push to main
-- Tests against multiple Python versions (3.11, 3.12, 3.13)
+- Tests against multiple Python versions (3.11, 3.12, 3.13, 3.14)
 - Sets up all required services (PostgreSQL, Redis, Elasticsearch, Message-DB, ...)
 - Runs the full test suite with coverage
 - Reports coverage to Codecov
