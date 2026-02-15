@@ -103,6 +103,7 @@ docutils = ">=0.20.1"
 pre-commit = ">=2.16.0"
 ruff = ">=0.4.3"
 twine = ">=4.0.2"
+nox = "^2026.2.9"
 
 [tool.poetry.group.test]
 optional = true

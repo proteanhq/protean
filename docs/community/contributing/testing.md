@@ -34,6 +34,41 @@ protean test -c DATABASE
 
 This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).
 
+## Multi-Version Testing with Nox
+
+Protean supports Python 3.11, 3.12, and 3.13. To run tests across all supported versions locally, Protean uses [Nox](https://nox.thea.codes/) with a `noxfile.py` at the repository root.
+
+### Prerequisites
+
+Install all three Python versions via [pyenv](https://github.com/pyenv/pyenv) and ensure they are listed in `.python-version` so that `python3.11`, `python3.12`, and `python3.13` are available on `$PATH`:
+
+```shell
+pyenv install 3.11 3.12 3.13
+```
+
+### Running
+
+```shell
+make test-matrix            # Core tests across all Python versions
+make test-matrix-full       # Full suite across all versions (starts Docker services)
+```
+
+You can also target a single version:
+
+```shell
+poetry run nox -s tests-3.13    # Core tests on 3.13 only
+poetry run nox -s full-3.12     # Full suite on 3.12 only
+```
+
+Nox runs sessions **serially** (not in parallel) because the full suite shares database services started by `make up`.
+
+### Available Nox Sessions
+
+| Session | Description |
+|---------|-------------|
+| `tests-3.X` | Core tests (memory adapters) on Python 3.X |
+| `full-3.X` | Full test suite (all adapters) on Python 3.X |
+
 ## Docker Containers
 
 Protean uses Docker Compose to provide a consistent development and testing environment. The included `docker-compose.yml` file defines services for all supported adapters:
@@ -315,7 +350,7 @@ jobs:
 The CI pipeline:
 
 - Runs on each pull request and push to main
-- Tests against multiple Python versions (3.11, 3.12, ...)
+- Tests against multiple Python versions (3.11, 3.12, 3.13)
 - Sets up all required services (PostgreSQL, Redis, Elasticsearch, Message-DB, ...)
 - Runs the full test suite with coverage
 - Reports coverage to Codecov
