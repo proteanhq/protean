@@ -1,22 +1,19 @@
-"""Tests for FieldSpec in fields/spec.py.
-
-Covers uncovered lines:
-- Lines 24->26, 29, 32: _UNSET_TYPE repr and bool
-- Line 201: Mutable default (list/dict) wrapping
-- Line 229: error_messages in json_schema_extra
-- Lines 327, 329, 331: __repr__ for Date, DateTime, FieldSpec fallback
-- Lines 401-402, 409-414: resolve_fieldspecs duplicate warning
-- Lines 449-450: _sanitize_string when bleach is available
-"""
+"""Tests for FieldSpec in fields/spec.py."""
 
 import datetime
 import warnings
+from enum import Enum
 
+import pytest
 
+from protean.core.aggregate import BaseAggregate
+from protean.exceptions import ValidationError
+from protean.fields import String
 from protean.fields.spec import (
     FieldSpec,
     _UNSET,
     _UNSET_TYPE,
+    _coerce_to_str,
     _sanitize_string,
     resolve_fieldspecs,
 )
@@ -27,18 +24,48 @@ from protean.fields.spec import (
 # ---------------------------------------------------------------------------
 class TestUnsetSentinel:
     def test_repr(self):
-        """Line 29: _UNSET_TYPE.__repr__."""
         assert repr(_UNSET) == "UNSET"
 
     def test_bool_is_false(self):
-        """Line 32: _UNSET_TYPE.__bool__."""
         assert bool(_UNSET) is False
 
     def test_singleton(self):
-        """Lines 24->26: _UNSET_TYPE is a singleton."""
         a = _UNSET_TYPE()
         b = _UNSET_TYPE()
         assert a is b
+
+
+# ---------------------------------------------------------------------------
+# Tests: _coerce_to_str helper
+# ---------------------------------------------------------------------------
+class TestCoerceToStr:
+    def test_coerce_none_passes_through(self):
+        assert _coerce_to_str(None) is None
+
+    def test_coerce_int_to_str(self):
+        assert _coerce_to_str(42) == "42"
+
+
+# ---------------------------------------------------------------------------
+# Tests: FieldSpec resolve_type
+# ---------------------------------------------------------------------------
+class TestFieldSpecResolveType:
+    def test_resolve_type_with_enum_choices(self):
+        """Enum choices are resolved to Literal."""
+
+        class Color(Enum):
+            RED = "red"
+            GREEN = "green"
+
+        spec = FieldSpec(str, choices=Color)
+        resolved = spec.resolve_type()
+        assert "red" in str(resolved) or "Literal" in str(resolved)
+
+    def test_resolve_type_with_list_choices(self):
+        """List choices are resolved to Literal."""
+        spec = FieldSpec(str, choices=["a", "b", "c"])
+        resolved = spec.resolve_type()
+        assert "Literal" in str(resolved)
 
 
 # ---------------------------------------------------------------------------
@@ -46,17 +73,16 @@ class TestUnsetSentinel:
 # ---------------------------------------------------------------------------
 class TestFieldSpecResolveFieldKwargs:
     def test_mutable_list_default(self):
-        """Line 201: Mutable list default wrapped in default_factory."""
+        """Mutable list default is wrapped in default_factory."""
         spec = FieldSpec(list, default=[1, 2, 3])
         kwargs = spec.resolve_field_kwargs()
         assert "default_factory" in kwargs
-        # Calling the factory should return a copy of the list
         result = kwargs["default_factory"]()
         assert result == [1, 2, 3]
         assert result is not spec.default
 
     def test_mutable_dict_default(self):
-        """Line 201: Mutable dict default wrapped in default_factory."""
+        """Mutable dict default is wrapped in default_factory."""
         spec = FieldSpec(dict, default={"key": "val"})
         kwargs = spec.resolve_field_kwargs()
         assert "default_factory" in kwargs
@@ -64,7 +90,7 @@ class TestFieldSpecResolveFieldKwargs:
         assert result == {"key": "val"}
 
     def test_error_messages_in_json_extra(self):
-        """Line 229: error_messages added to json_schema_extra."""
+        """error_messages are stored in json_schema_extra."""
         spec = FieldSpec(str, error_messages={"invalid": "Bad value"})
         kwargs = spec.resolve_field_kwargs()
         assert kwargs["json_schema_extra"]["_error_messages"] == {
@@ -72,7 +98,7 @@ class TestFieldSpecResolveFieldKwargs:
         }
 
     def test_callable_default(self):
-        """Line 198: Callable default becomes default_factory."""
+        """Callable default becomes default_factory."""
 
         def factory():
             return "generated"
@@ -85,6 +111,44 @@ class TestFieldSpecResolveFieldKwargs:
         spec = FieldSpec(str, description="A test field")
         kwargs = spec.resolve_field_kwargs()
         assert kwargs["description"] == "A test field"
+
+    def test_non_str_type_skips_string_constraints(self):
+        """Non-string types ignore max_length/min_length constraints."""
+        spec = FieldSpec(int, max_length=10)
+        kwargs = spec.resolve_field_kwargs()
+        assert "max_length" not in kwargs
+
+
+# ---------------------------------------------------------------------------
+# Tests: FieldSpec resolve_annotated with validators
+# ---------------------------------------------------------------------------
+class TestFieldSpecWithValidators:
+    def test_resolve_annotated_with_validators(self):
+        """Validators are wrapped in AfterValidator."""
+
+        def my_validator(v):
+            if v == "bad":
+                raise ValidationError({"field": ["Bad value"]})
+
+        spec = FieldSpec(str, validators=[my_validator])
+        annotated = spec.resolve_annotated()
+        assert "Annotated" in str(annotated)
+
+    def test_validator_raises_validation_error(self, test_domain):
+        """Validator that raises ProteanValidationError is converted to ValueError for Pydantic."""
+
+        def no_spaces(v):
+            if " " in v:
+                raise ValidationError({"field": ["No spaces allowed"]})
+
+        class Validated(BaseAggregate):
+            code: String(max_length=50, validators=[no_spaces])
+
+        test_domain.register(Validated)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ValidationError):
+            Validated(code="has spaces")
 
 
 # ---------------------------------------------------------------------------
@@ -120,39 +184,32 @@ class TestFieldSpecRepr:
         assert repr(spec).startswith("Auto(")
 
     def test_repr_date(self):
-        """Line 331: Date repr."""
         spec = FieldSpec(datetime.date)
         assert repr(spec).startswith("Date(")
 
     def test_repr_datetime(self):
-        """Line 329: DateTime repr."""
         spec = FieldSpec(datetime.datetime)
         assert repr(spec).startswith("DateTime(")
 
     def test_repr_unknown_type_falls_back_to_fieldspec(self):
-        """Line 335: FieldSpec fallback when type not in _FACTORY_NAMES."""
         spec = FieldSpec(bytes)
         assert repr(spec).startswith("FieldSpec(")
 
     def test_repr_list_type(self):
-        """Line 327: List repr."""
         spec = FieldSpec(list[str])
         assert repr(spec).startswith("List(")
 
     def test_repr_dict_type(self):
-        """Line 329: Dict repr."""
         spec = FieldSpec(dict)
         assert repr(spec).startswith("Dict(")
 
     def test_repr_with_max_length(self):
         spec = FieldSpec(str, max_length=50)
-        r = repr(spec)
-        assert "max_length=50" in r
+        assert "max_length=50" in repr(spec)
 
     def test_repr_with_required(self):
         spec = FieldSpec(str, required=True)
-        r = repr(spec)
-        assert "required=True" in r
+        assert "required=True" in repr(spec)
 
     def test_repr_with_identifier(self):
         spec = FieldSpec(str, identifier=True)
@@ -163,31 +220,26 @@ class TestFieldSpecRepr:
 
     def test_repr_with_default_string(self):
         spec = FieldSpec(str, default="hello")
-        r = repr(spec)
-        assert "default='hello'" in r
+        assert "default='hello'" in repr(spec)
 
     def test_repr_with_default_number(self):
         spec = FieldSpec(int, default=42)
-        r = repr(spec)
-        assert "default=42" in r
+        assert "default=42" in repr(spec)
 
     def test_repr_with_default_callable(self):
         def my_factory():
             return "val"
 
         spec = FieldSpec(str, default=my_factory)
-        r = repr(spec)
-        assert "default=my_factory" in r
+        assert "default=my_factory" in repr(spec)
 
     def test_repr_with_referenced_as(self):
         spec = FieldSpec(str, referenced_as="other_name")
-        r = repr(spec)
-        assert "referenced_as='other_name'" in r
+        assert "referenced_as='other_name'" in repr(spec)
 
     def test_repr_with_min_length(self):
         spec = FieldSpec(str, min_length=5)
-        r = repr(spec)
-        assert "min_length=5" in r
+        assert "min_length=5" in repr(spec)
 
     def test_repr_with_min_max_value(self):
         spec = FieldSpec(int, min_value=1, max_value=100)
@@ -196,10 +248,9 @@ class TestFieldSpecRepr:
         assert "max_value=100" in r
 
     def test_repr_string_sanitize_false(self):
-        """Line 362-363: sanitize=False shown for String/Text types."""
+        """sanitize=False is shown for String/Text types."""
         spec = FieldSpec(str)
-        r = repr(spec)
-        assert "sanitize=False" in r
+        assert "sanitize=False" in repr(spec)
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +258,7 @@ class TestFieldSpecRepr:
 # ---------------------------------------------------------------------------
 class TestResolveFieldspecs:
     def test_duplicate_field_warning(self):
-        """Lines 401-402, 409-414: Warning when field in both assignment and annotation."""
-        # Create a class with a field in both assignment and annotation
+        """Warning when field declared in both assignment and annotation."""
         spec = FieldSpec(str, max_length=50)
         ns = {"name": spec, "__annotations__": {"name": spec}}
         cls = type("TestCls", (), ns)
@@ -216,7 +266,6 @@ class TestResolveFieldspecs:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             resolve_fieldspecs(cls)
-            # Should warn about duplicate
             assert len(w) == 1
             assert "assignment and annotation" in str(w[0].message)
 
@@ -226,7 +275,7 @@ class TestResolveFieldspecs:
 # ---------------------------------------------------------------------------
 class TestSanitizeString:
     def test_sanitize_removes_tags(self):
-        """Lines 449-450: bleach.clean() is called if available."""
+        """bleach.clean() is called if available."""
         try:
             import bleach  # noqa: F401
 
@@ -239,7 +288,6 @@ class TestSanitizeString:
             assert result == "<script>alert('xss')</script>hello"
 
     def test_sanitize_non_string_returns_as_is(self):
-        """Line 443-444: Non-string value returned as-is."""
         assert _sanitize_string(42) == 42  # type: ignore[arg-type]
 
 
@@ -248,7 +296,6 @@ class TestSanitizeString:
 # ---------------------------------------------------------------------------
 class TestFieldSpecWarning:
     def test_required_with_default_warns(self):
-        """Lines 97-102: Warning when required=True with explicit default."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             FieldSpec(str, required=True, default="hello")

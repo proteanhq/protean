@@ -1,8 +1,9 @@
-"""Test the Q object used for managing filter criteria"""
+"""Tests for QuerySet and ResultSet in core/queryset.py."""
 
 import pytest
 
 from protean import QuerySet
+from protean.core.queryset import ResultSet
 from protean.utils.query import Q
 
 from .elements import Person
@@ -641,3 +642,131 @@ class TestCriteriaConstruction:
 
         results = person_repo._dao.query.raw('{"last_name":"John", "age__in":[3,7]}')
         assert results.total == 2
+
+
+# ---------------------------------------------------------------------------
+# Tests: ResultSet
+# ---------------------------------------------------------------------------
+class TestResultSet:
+    def test_first_returns_none_when_empty(self):
+        rs = ResultSet(offset=0, limit=10, total=0, items=[])
+        assert rs.first is None
+
+    def test_last_returns_none_when_empty(self):
+        rs = ResultSet(offset=0, limit=10, total=0, items=[])
+        assert rs.last is None
+
+    def test_first_returns_first_item(self):
+        rs = ResultSet(offset=0, limit=10, total=2, items=["a", "b"])
+        assert rs.first == "a"
+
+    def test_last_returns_last_item(self):
+        rs = ResultSet(offset=0, limit=10, total=2, items=["a", "b"])
+        assert rs.last == "b"
+
+    def test_bool_true(self):
+        rs = ResultSet(offset=0, limit=10, total=1, items=["a"])
+        assert bool(rs) is True
+
+    def test_bool_false(self):
+        rs = ResultSet(offset=0, limit=10, total=0, items=[])
+        assert bool(rs) is False
+
+    def test_iter(self):
+        rs = ResultSet(offset=0, limit=10, total=2, items=["a", "b"])
+        assert list(rs) == ["a", "b"]
+
+    def test_len(self):
+        rs = ResultSet(offset=0, limit=10, total=3, items=["a", "b", "c"])
+        assert len(rs) == 3
+
+    def test_repr(self):
+        rs = ResultSet(offset=0, limit=10, total=2, items=["a", "b"])
+        assert repr(rs) == "<ResultSet: 2 items>"
+
+    def test_to_dict(self):
+        rs = ResultSet(offset=5, limit=10, total=20, items=["a"])
+        d = rs.to_dict()
+        assert d == {"offset": 5, "limit": 10, "total": 20, "items": ["a"]}
+
+    def test_has_prev_true(self):
+        rs = ResultSet(offset=10, limit=10, total=20, items=["a"])
+        assert rs.has_prev is True
+
+    def test_has_prev_false_at_start(self):
+        rs = ResultSet(offset=0, limit=10, total=20, items=["a"])
+        assert rs.has_prev is False
+
+    def test_has_prev_false_when_empty(self):
+        rs = ResultSet(offset=10, limit=10, total=0, items=[])
+        assert rs.has_prev is False
+
+    def test_has_next_true(self):
+        rs = ResultSet(offset=0, limit=10, total=20, items=["a"])
+        assert rs.has_next is True
+
+    def test_has_next_false(self):
+        rs = ResultSet(offset=10, limit=10, total=20, items=["a"])
+        assert rs.has_next is False
+
+
+# ---------------------------------------------------------------------------
+# Tests: QuerySet filter/order_by with unknown fields
+# ---------------------------------------------------------------------------
+class TestQuerySetBadKeys:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+
+    def test_filter_with_unknown_field_raises_key_error(self, test_domain):
+        """filter with unknown field name raises KeyError."""
+        query = test_domain.repository_for(Person)._dao.query
+        with pytest.raises(KeyError, match="not found in either fields or attributes"):
+            query.filter(nonexistent_field="value")
+
+    def test_order_by_with_unknown_field_raises_key_error(self, test_domain):
+        """order_by with unknown field name raises KeyError."""
+        query = test_domain.repository_for(Person)._dao.query
+        with pytest.raises(KeyError, match="not found in either fields or attributes"):
+            query.order_by("nonexistent_field")
+
+
+# ---------------------------------------------------------------------------
+# Tests: QuerySet.__contains__
+# ---------------------------------------------------------------------------
+class TestQuerySetContains:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+
+    def test_contains_existing_entity(self, test_domain):
+        person_repo = test_domain.repository_for(Person)
+        person = person_repo.add(
+            Person(id=10, first_name="Alice", last_name="Wonder", age=30)
+        )
+
+        query = person_repo._dao.query.filter(last_name="Wonder")
+        assert person in query
+
+    def test_contains_missing_entity(self, test_domain):
+        person_repo = test_domain.repository_for(Person)
+        person_repo.add(Person(id=10, first_name="Alice", last_name="Wonder", age=30))
+        other = Person(id=99, first_name="Bob", last_name="Other", age=25)
+
+        query = person_repo._dao.query.filter(last_name="Wonder")
+        assert other not in query
+
+
+# ---------------------------------------------------------------------------
+# Tests: QuerySet offset with non-int
+# ---------------------------------------------------------------------------
+class TestQuerySetOffsetEdge:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+
+    def test_offset_with_non_int_is_ignored(self, test_domain):
+        """Non-int offset value is ignored."""
+        query = test_domain.repository_for(Person)._dao.query
+        clone = query.offset("not_an_int")
+        assert clone._offset == 0  # Original offset preserved
