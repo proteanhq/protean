@@ -740,3 +740,271 @@ class TestDeferredAnnotations:
                 exec(compile(code, "<test>", "exec"), mod.__dict__)
         finally:
             sys.modules.pop("_test_deferred_annot", None)
+
+
+# =========================================================================
+# ANNOTATION-STYLE IDENTIFIER
+# =========================================================================
+class TestAnnotationIdentifier:
+    """Comprehensive tests for annotation-style identifier=True across all
+    domain element types.  Covers the scenarios described in the bug report:
+    projections requiring at least one identifier, aggregates with
+    auto_add_id_field=False, and FieldSpec metadata preservation.
+    """
+
+    # ----- Aggregates -----
+
+    def test_annot_identifier_suppresses_auto_id(self):
+        """Annotation-style identifier=True must suppress auto-id injection."""
+
+        class Agg(BaseAggregate):
+            custom_id: Identifier(identifier=True)
+            name: String(max_length=50)
+
+        df = declared_fields(Agg)
+        assert df["custom_id"].identifier is True
+        assert "id" not in df
+
+    def test_annot_identifier_with_auto_add_id_field_false(self):
+        """auto_add_id_field=False combined with annotation-style identifier."""
+
+        class Agg(BaseAggregate):
+            class Meta:
+                auto_add_id_field = False
+
+            order_id: Identifier(identifier=True)
+            total: Float(default=0.0)
+
+        df = declared_fields(Agg)
+        assert df["order_id"].identifier is True
+        assert "id" not in df
+
+    def test_annot_identifier_instantiation(self):
+        """Annotation-style identifier must be usable at runtime."""
+
+        class Agg(BaseAggregate):
+            order_id: Identifier(identifier=True)
+            total: Float(default=0.0)
+
+        obj = Agg(order_id="ORD-001", total=99.99)
+        assert obj.order_id == "ORD-001"
+        assert obj.total == 99.99
+
+    def test_annot_identifier_auto_generated(self):
+        """Identifier field without explicit value gets auto-generated."""
+
+        class Agg(BaseAggregate):
+            order_id: Identifier(identifier=True)
+            name: String(max_length=50)
+
+        obj = Agg(name="Test")
+        assert obj.order_id is not None
+
+    def test_annot_identifier_in_to_dict(self):
+        """Annotation-style identifier must appear in to_dict."""
+
+        class Agg(BaseAggregate):
+            order_id: Identifier(identifier=True)
+            name: String(max_length=50)
+
+        obj = Agg(order_id="ORD-001", name="Test")
+        d = obj.to_dict()
+        assert d["order_id"] == "ORD-001"
+        assert "id" not in d
+
+    # ----- Projections -----
+
+    def test_annot_identifier_on_projection(self, test_domain):
+        """Annotation-style identifier on a projection must satisfy the
+        'at least one identifier' requirement during registration."""
+
+        class OrderView(BaseProjection):
+            order_id: Identifier(identifier=True)
+            customer_name: String(max_length=100)
+
+        # Registration should succeed (not raise IncorrectUsageError)
+        test_domain.register(OrderView)
+        test_domain.init(traverse=False)
+
+        df = declared_fields(OrderView)
+        assert df["order_id"].identifier is True
+
+    def test_annot_identifier_projection_instantiation(self, test_domain):
+        """Projection with annotation-style identifier can be instantiated."""
+
+        class DashboardView(BaseProjection):
+            view_id: Identifier(identifier=True)
+            title: String(max_length=100)
+            count: Integer(default=0)
+
+        test_domain.register(DashboardView)
+        test_domain.init(traverse=False)
+
+        obj = DashboardView(view_id="v1", title="Dashboard", count=42)
+        assert obj.view_id == "v1"
+        assert obj.title == "Dashboard"
+        assert obj.count == 42
+
+    def test_assign_vs_annot_identifier_projection_equivalence(self, test_domain):
+        """Assignment and annotation styles must produce equivalent projections."""
+
+        class ProjA(BaseProjection):
+            pid = Identifier(identifier=True)
+            label = String(max_length=50)
+
+        class ProjB(BaseProjection):
+            pid: Identifier(identifier=True)
+            label: String(max_length=50)
+
+        test_domain.register(ProjA)
+        test_domain.register(ProjB)
+        test_domain.init(traverse=False)
+
+        df_a = declared_fields(ProjA)
+        df_b = declared_fields(ProjB)
+        assert set(df_a.keys()) == set(df_b.keys())
+        assert df_a["pid"].identifier == df_b["pid"].identifier
+
+    # ----- Entities -----
+
+    def test_annot_identifier_on_entity(self):
+        """Annotation-style identifier on entities suppresses auto-id."""
+
+        class Ent(BaseEntity):
+            ent_id: Identifier(identifier=True)
+            label: String(max_length=30)
+
+        df = declared_fields(Ent)
+        assert df["ent_id"].identifier is True
+        assert "id" not in df
+
+    def test_annot_identifier_entity_instantiation(self):
+        """Entity with annotation-style identifier can be instantiated."""
+
+        class Ent(BaseEntity):
+            ent_id: Identifier(identifier=True)
+            label: String(max_length=30)
+
+        obj = Ent(ent_id="e1", label="Widget")
+        assert obj.ent_id == "e1"
+        assert obj.label == "Widget"
+
+    # ----- Commands -----
+
+    def test_annot_identifier_on_command(self):
+        """Command with annotation-style identifier has correct metadata."""
+
+        class Cmd(BaseCommand):
+            cmd_id: Identifier(identifier=True)
+            body: String(max_length=200)
+
+        df = declared_fields(Cmd)
+        assert df["cmd_id"].identifier is True
+
+    # ----- Events -----
+
+    def test_annot_identifier_on_event(self):
+        """Event with annotation-style identifier has correct metadata."""
+
+        class Evt(BaseEvent):
+            evt_id: Identifier(identifier=True)
+            detail: String(max_length=200)
+
+        df = declared_fields(Evt)
+        assert df["evt_id"].identifier is True
+
+    # ----- FieldSpec metadata preservation -----
+
+    def test_annot_fieldspec_metadata_preserved(self):
+        """__protean_field_meta__ must be populated for annotation-style fields."""
+        from protean.fields.spec import FieldSpec
+
+        class Agg(BaseAggregate):
+            custom_id: Identifier(identifier=True)
+            name: String(max_length=50, required=True)
+
+        meta = getattr(Agg, "__protean_field_meta__", {})
+        assert "custom_id" in meta
+        assert "name" in meta
+        assert isinstance(meta["custom_id"], FieldSpec)
+        assert isinstance(meta["name"], FieldSpec)
+        assert meta["custom_id"].identifier is True
+        assert meta["name"].required is True
+
+    def test_annot_fieldspec_metadata_matches_assignment_style(self):
+        """Annotation and assignment styles produce equivalent __protean_field_meta__."""
+        from protean.fields.spec import FieldSpec
+
+        class AggA(BaseAggregate):
+            my_id = Identifier(identifier=True)
+            name = String(max_length=50, required=True)
+
+        class AggB(BaseAggregate):
+            my_id: Identifier(identifier=True)
+            name: String(max_length=50, required=True)
+
+        meta_a = getattr(AggA, "__protean_field_meta__", {})
+        meta_b = getattr(AggB, "__protean_field_meta__", {})
+
+        # Same field names tracked
+        assert set(meta_a.keys()) == set(meta_b.keys())
+
+        # Same metadata
+        for name in meta_a:
+            assert isinstance(meta_a[name], FieldSpec)
+            assert isinstance(meta_b[name], FieldSpec)
+            assert meta_a[name].identifier == meta_b[name].identifier
+            assert meta_a[name].required == meta_b[name].required
+
+    # ----- Multiple fields with annotation style -----
+
+    def test_annot_multiple_fields_all_resolved(self):
+        """Multiple annotation-style fields are all correctly resolved."""
+
+        class Agg(BaseAggregate):
+            agg_id: Identifier(identifier=True)
+            name: String(max_length=100, required=True)
+            score: Float(min_value=0.0, max_value=100.0)
+            count: Integer(default=0)
+            active: Boolean(default=True)
+
+        df = declared_fields(Agg)
+        assert df["agg_id"].identifier is True
+        assert "id" not in df
+
+        obj = Agg(agg_id="a1", name="Test", score=85.5)
+        assert obj.agg_id == "a1"
+        assert obj.name == "Test"
+        assert obj.score == 85.5
+        assert obj.count == 0
+        assert obj.active is True
+
+    # ----- Mixed annotation + assignment with identifier -----
+
+    def test_mixed_annot_identifier_with_assignment_fields(self):
+        """Annotation-style identifier mixed with assignment-style regular fields."""
+
+        class Agg(BaseAggregate):
+            agg_id: Identifier(identifier=True)
+            name = String(max_length=50, required=True)
+            count = Integer(default=0)
+
+        df = declared_fields(Agg)
+        assert df["agg_id"].identifier is True
+        assert "id" not in df
+        assert "name" in df
+        assert "count" in df
+
+    def test_assignment_identifier_with_annot_fields(self):
+        """Assignment-style identifier mixed with annotation-style regular fields."""
+
+        class Agg(BaseAggregate):
+            agg_id = Identifier(identifier=True)
+            name: String(max_length=50, required=True)
+            count: Integer(default=0)
+
+        df = declared_fields(Agg)
+        assert df["agg_id"].identifier is True
+        assert "id" not in df
+        assert "name" in df
+        assert "count" in df

@@ -111,12 +111,12 @@ class BaseValueObject(BaseModel, OptionsMixin):
                 )
 
         # Also check annotation-style FieldSpecs
-        for name, value in vars(cls).get("__annotations__", {}).items():
+        for name, value in getattr(cls, "__annotations__", {}).items():
             if isinstance(value, FieldSpec):
                 _validate_fieldspec(name, value)
 
         # Handle ValueObject() descriptors — convert to Pydantic annotations
-        own_annots = vars(cls).get("__annotations__", {})
+        own_annots = getattr(cls, "__annotations__", {})
         for name, value in list(vars(cls).items()):
             if isinstance(value, ValueObjectDescriptor):
                 vo_cls = value.value_object_cls

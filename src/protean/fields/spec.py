@@ -379,7 +379,7 @@ def resolve_fieldspecs(cls: type) -> None:
     - Assignment: ``name = String(max_length=50)``  → FieldSpec in ``vars(cls)``
     - Annotation: ``name: String(max_length=50)``   → FieldSpec in ``cls.__annotations__``
     """
-    own_annots = vars(cls).get("__annotations__", {})
+    own_annots = getattr(cls, "__annotations__", {})
     resolved_annots = dict(own_annots)
 
     # Track original FieldSpecs for downstream metadata access

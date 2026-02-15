@@ -233,7 +233,7 @@ class BaseEntity(BaseModel, OptionsMixin):
         if vars(cls).get("__auto_id_handled__"):
             return
 
-        own_annots = vars(cls).get("__annotations__", {})
+        own_annots = getattr(cls, "__annotations__", {})
 
         # Check if any class-level FieldInfo already declares an identifier
         for value in vars(cls).values():
