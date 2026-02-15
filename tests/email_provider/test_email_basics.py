@@ -256,3 +256,52 @@ class TestEmailRegistration:
     def test_register_welcome_email(self, test_domain):
         test_domain.register(WelcomeEmail)
         assert fully_qualified_name(WelcomeEmail) in test_domain.registry.emails
+
+
+# ---------------------------------------------------------------------------
+# Tests: Template Dict Pattern
+# ---------------------------------------------------------------------------
+class TestEmailTemplateDictPattern:
+    def test_positional_dict_merged_with_kwargs(self):
+        """Lines 94-104: Positional dict is merged with kwargs."""
+        template = {"subject": "Test", "to": ["a@b.com"]}
+        email = NotificationEmail(template, from_email="sender@b.com")
+        assert email.subject == "Test"
+        assert email.to == ["a@b.com"]
+        assert email.from_email == "sender@b.com"
+
+    def test_kwargs_override_template_dict(self):
+        """Kwargs take precedence over template values."""
+        template = {"subject": "Old", "to": ["a@b.com"]}
+        email = NotificationEmail(template, subject="New")
+        assert email.subject == "New"
+
+    def test_multiple_positional_dicts(self):
+        """Multiple dicts are merged in order."""
+        t1 = {"subject": "T1", "to": ["a@b.com"]}
+        t2 = {"from_email": "sender@b.com"}
+        email = NotificationEmail(t1, t2)
+        assert email.subject == "T1"
+        assert email.from_email == "sender@b.com"
+
+    def test_non_dict_positional_arg_raises(self):
+        """Lines 96-101: AssertionError for non-dict positional arg."""
+        with pytest.raises(AssertionError) as exc_info:
+            NotificationEmail("not a dict")
+        assert "must be a dict" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Tests: __hash__
+# ---------------------------------------------------------------------------
+class TestEmailHash:
+    def test_hash_is_id_based(self):
+        """Line 150: __hash__ returns id(self)."""
+        email = NotificationEmail(subject="Test")
+        assert hash(email) == id(email)
+
+    def test_email_usable_in_set(self):
+        e1 = NotificationEmail(subject="Test")
+        e2 = NotificationEmail(subject="Test")
+        s = {e1, e2}
+        assert len(s) == 2
