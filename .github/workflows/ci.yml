@@ -129,7 +129,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pipx install poetry
+          pip install poetry
           poetry config virtualenvs.create false
           poetry install --with dev,test,docs,types --all-extras
 
@@ -180,7 +180,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pipx install poetry
+          pip install poetry
           poetry config virtualenvs.create false
           poetry install --only docs
 
