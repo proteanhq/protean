@@ -13,10 +13,8 @@ from pydantic import PrivateAttr
 
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
-from protean.core.value_object import (
-    BaseValueObject,
-    _FieldShim,
-)
+from protean.core.value_object import BaseValueObject
+from protean.fields.resolved import ResolvedField
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -93,10 +91,8 @@ class BaseAggregate(BaseEntity):
         """
         super().__pydantic_init_subclass__(**kwargs)
 
-        from protean.core.value_object import _FieldShim
-
         fields_dict = getattr(cls, _FIELDS, {})
-        fields_dict["_version"] = _FieldShim("_version", None, int)
+        fields_dict["_version"] = ResolvedField("_version", None, int)
         setattr(cls, _FIELDS, fields_dict)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -293,7 +289,7 @@ def _pydantic_element_to_fact_event(element_cls):
             namespace[key] = None
             association_descriptors[key] = value
 
-        elif isinstance(value, _FieldShim):
+        elif isinstance(value, ResolvedField):
             # Regular Pydantic model field
             finfo = model_field_info.get(key)
             if finfo:
@@ -315,7 +311,7 @@ def _pydantic_element_to_fact_event(element_cls):
         container_fields = fields(element_cls)
         for key in list(annotations.keys()):
             field_obj = container_fields.get(key)
-            if isinstance(field_obj, _FieldShim) and (
+            if isinstance(field_obj, ResolvedField) and (
                 field_obj.identifier or field_obj.unique
             ):
                 annotations[key] = annotations[key] | None

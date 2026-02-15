@@ -61,8 +61,39 @@ If the target aggregate uses a custom identifier (e.g., `email` with
 | ValueObject | `{field_name}_{embedded_field_name}` | `billing_address_street` |
 | Reference | `{field_name}_{target_id_field}` | `order_id` |
 
-Both can be overridden with the `referenced_as` parameter on the embedded
-field.
+Both can be overridden with `referenced_as`.
+
+### Overriding with `referenced_as`
+
+Use `referenced_as` on a Reference field to control the shadow field name
+(i.e. the database column name):
+
+```python
+@domain.entity(part_of="Order")
+class LineItem:
+    description: String(max_length=200)
+    order = Reference("Order", referenced_as="order_number")
+```
+
+Without `referenced_as`, the shadow field would be `order_id`. With it,
+the shadow field becomes `order_number`.
+
+For ValueObject fields, apply `referenced_as` on the inner fields of the
+Value Object itself:
+
+```python
+class Address(BaseValueObject):
+    street: String(max_length=200, referenced_as="addr_street")
+    city: String(max_length=100, referenced_as="addr_city")
+
+@domain.aggregate
+class Customer:
+    name: String(max_length=100, required=True)
+    billing_address: ValueObject(Address)
+```
+
+Instead of the default `billing_address_street` and `billing_address_city`,
+the shadow fields become `addr_street` and `addr_city`.
 
 ---
 
@@ -158,11 +189,11 @@ from protean.utils.reflection import attributes
 
 attributes(Customer)
 # Returns: {
-#   "name": <_FieldShim for name>,
+#   "name": <ResolvedField for name>,
 #   "billing_address_street": <_ShadowField for street>,
 #   "billing_address_city": <_ShadowField for city>,
 #   "billing_address_zip_code": <_ShadowField for zip_code>,
-#   "id": <_FieldShim for id>,
+#   "id": <ResolvedField for id>,
 # }
 ```
 

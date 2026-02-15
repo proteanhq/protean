@@ -56,7 +56,7 @@ Out[3]:
     visible if you introspect the fields of the Child Entity.
 
     ```shell hl_lines="7 13"
-    In [1]: from protean.reflection import declared_fields, attributes
+    In [1]: from protean.utils.reflection import declared_fields, attributes
 
     In [2]: declared_fields(Author)
     Out[2]: 
@@ -160,7 +160,7 @@ class Comment:
 Reference fields automatically create shadow fields (foreign key attributes) that store the actual identifier values. These shadow fields follow the naming convention `<field_name>_<id_field>`:
 
 ```shell hl_lines="6"
-In [1]: from protean.reflection import attributes
+In [1]: from protean.utils.reflection import attributes
 In [2]: attributes(Comment)
 Out[2]: 
 {'content': String(max_length=500),

@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
 
-from protean.core.value_object import _FieldShim
+from protean.fields.resolved import ResolvedField
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -289,7 +289,7 @@ class BaseEntity(BaseModel, OptionsMixin):
         # Build __container_fields__ bridge from Pydantic model_fields
         fields_dict: dict[str, Any] = {}
         for fname, finfo in cls.model_fields.items():
-            fields_dict[fname] = _FieldShim(fname, finfo, finfo.annotation)
+            fields_dict[fname] = ResolvedField(fname, finfo, finfo.annotation)
 
         # Add association and VO descriptors from the full MRO
         for klass in cls.__mro__:
@@ -421,9 +421,9 @@ class BaseEntity(BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            from protean.core.value_object import _convert_pydantic_errors
+            from protean.fields.resolved import convert_pydantic_errors
 
-            collected_errors.update(_convert_pydantic_errors(e))
+            collected_errors.update(convert_pydantic_errors(e))
 
         # Check required descriptor fields (ValueObject, Reference, etc.)
         for field_name, field_obj in getattr(type(self), _FIELDS, {}).items():
@@ -671,9 +671,9 @@ class BaseEntity(BaseModel, OptionsMixin):
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
-                from protean.core.value_object import _convert_pydantic_errors
+                from protean.fields.resolved import convert_pydantic_errors
 
-                raise ValidationError(_convert_pydantic_errors(e))
+                raise ValidationError(convert_pydantic_errors(e))
 
             # Post-check invariants
             target._postcheck()

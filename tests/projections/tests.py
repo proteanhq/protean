@@ -10,7 +10,7 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.core.value_object import _FieldShim
+from protean.fields.resolved import ResolvedField
 from protean.fields import Auto, Identifier, Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.container import Options
@@ -219,10 +219,10 @@ class TestProjectionMeta:
         )
 
     def test_projection_declared_fields_hold_correct_field_types(self):
-        assert isinstance(declared_fields(Person)["first_name"], _FieldShim)
-        assert isinstance(declared_fields(Person)["last_name"], _FieldShim)
-        assert isinstance(declared_fields(Person)["age"], _FieldShim)
-        assert isinstance(declared_fields(Person)["person_id"], _FieldShim)
+        assert isinstance(declared_fields(Person)["first_name"], ResolvedField)
+        assert isinstance(declared_fields(Person)["last_name"], ResolvedField)
+        assert isinstance(declared_fields(Person)["age"], ResolvedField)
+        assert isinstance(declared_fields(Person)["person_id"], ResolvedField)
         assert declared_fields(Person)["person_id"].field_kind == "identifier"
 
     def test_default_and_overridden_abstract_flag_in_meta(self):
@@ -300,7 +300,7 @@ class TestIdentity:
         assert id_field(Person) is not None
         assert id_field(Person) == declared_fields(Person)["person_id"]
 
-        assert isinstance(id_field(Person), _FieldShim)
+        assert isinstance(id_field(Person), ResolvedField)
         assert id_field(Person).field_kind == "identifier"
         assert declared_fields(Person)["person_id"].identifier is True
 
@@ -308,7 +308,7 @@ class TestIdentity:
         assert "person_id" in declared_fields(Person)
         assert "person_id" in attributes(Person)
 
-        assert isinstance(declared_fields(Person)["person_id"], _FieldShim)
+        assert isinstance(declared_fields(Person)["person_id"], ResolvedField)
         assert declared_fields(Person)["person_id"].field_kind == "identifier"
         assert id_field(Person) == declared_fields(Person)["person_id"]
         assert declared_fields(Person)["person_id"].identifier is True
@@ -317,7 +317,7 @@ class TestIdentity:
         assert "id" not in declared_fields(PersonAutoSSN)
         assert "id" not in attributes(PersonAutoSSN)
 
-        assert isinstance(declared_fields(PersonAutoSSN)["ssn"], _FieldShim)
+        assert isinstance(declared_fields(PersonAutoSSN)["ssn"], ResolvedField)
         assert declared_fields(PersonAutoSSN)["ssn"].field_kind == "auto"
         assert id_field(PersonAutoSSN).field_name == "ssn"
         assert id_field(PersonAutoSSN) == declared_fields(PersonAutoSSN)["ssn"]
@@ -327,7 +327,7 @@ class TestIdentity:
         assert "id" not in declared_fields(PersonExplicitID)
         assert "id" not in attributes(PersonExplicitID)
 
-        assert isinstance(declared_fields(PersonExplicitID)["ssn"], _FieldShim)
+        assert isinstance(declared_fields(PersonExplicitID)["ssn"], ResolvedField)
         assert declared_fields(PersonExplicitID)["ssn"].identifier is True
         assert id_field(PersonExplicitID).field_name == "ssn"
         assert id_field(PersonExplicitID) == declared_fields(PersonExplicitID)["ssn"]

@@ -21,10 +21,8 @@ from sqlalchemy.types import CHAR, TypeDecorator
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
-from protean.core.value_object import (
-    BaseValueObject,
-    _FieldShim,
-)
+from protean.core.value_object import BaseValueObject
+from protean.fields.resolved import ResolvedField
 from protean.exceptions import (
     ConfigurationError,
     DatabaseError as ProteanDatabaseError,
@@ -152,8 +150,8 @@ def _custom_json_dumps(value):
     return json.dumps(value, default=_default)
 
 
-def _resolve_python_type(shim: _FieldShim) -> type:
-    """Extract the core Python type from a _FieldShim.
+def _resolve_python_type(shim: ResolvedField) -> type:
+    """Extract the core Python type from a ResolvedField.
 
     Unwraps Optional/Union, and normalises generic aliases
     (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``).
@@ -201,8 +199,8 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             """Return SQLAlchemy-equivalent type for Protean's field"""
             from protean.core.value_object import BaseValueObject
 
-            # Handle _FieldShim: resolve Python type → SA type
-            if isinstance(field_obj, _FieldShim):
+            # Handle ResolvedField: resolve Python type → SA type
+            if isinstance(field_obj, ResolvedField):
                 if field_obj.increment:
                     return sa_types.Integer
                 if field_obj.identifier:
@@ -238,7 +236,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         field_obj = field_obj.field_obj
 
                     # Resolve the Python type for Pydantic shims (used in dialect checks)
-                    if isinstance(field_obj, _FieldShim):
+                    if isinstance(field_obj, ResolvedField):
                         resolved_type = _resolve_python_type(field_obj)
                     elif isinstance(field_obj, ValueObjectList):
                         resolved_type = list
@@ -365,7 +363,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     key = attr_obj.attribute_name
 
                 # Serialize List-of-VOs to dicts for JSON/ARRAY(JSON) storage.
-                # Works for both legacy ValueObjectList and _FieldShim.
+                # Works for both legacy ValueObjectList and ResolvedField.
                 if isinstance(attr_obj, ValueObjectList) and value:
                     value = attr_obj.as_dict(value)
                 elif hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple)):

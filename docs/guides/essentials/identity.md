@@ -89,7 +89,7 @@ in its properties.
 ```
 
 ```shell hl_lines="4 9 15"
-In [1]: from protean.reflection import declared_fields, attributes
+In [1]: from protean.utils.reflection import declared_fields, attributes
 
 In [2]: declared_fields(User)
 Out[2]: {'user_id': Auto(identifier=True), 'name': String(required=True)}
@@ -116,7 +116,7 @@ automatically added to the entity.
 ```
 
 ```shell hl_lines="6"
-In [1]: from protean.reflection import declared_fields
+In [1]: from protean.utils.reflection import declared_fields
 
 In [2]: declared_fields(Person)
 Out[2]: 

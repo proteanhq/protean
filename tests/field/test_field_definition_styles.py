@@ -31,7 +31,8 @@ from protean.core.command import BaseCommand
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
-from protean.core.value_object import BaseValueObject, _FieldShim
+from protean.core.value_object import BaseValueObject
+from protean.fields.resolved import ResolvedField
 from protean.exceptions import ValidationError
 from protean.fields import (
     Boolean,
@@ -246,7 +247,9 @@ class TestAggregateFieldStyles:
     def test_declared_fields_are_field_shims(self, cls):
         df = declared_fields(cls)
         for name in ("name", "age", "active"):
-            assert isinstance(df[name], _FieldShim), f"{name} should be a _FieldShim"
+            assert isinstance(df[name], ResolvedField), (
+                f"{name} should be a ResolvedField"
+            )
 
     @pytest.mark.parametrize(
         "cls",

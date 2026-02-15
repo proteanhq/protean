@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from protean import BaseEvent, Domain
+from protean import Domain
 from protean.fields import DateTime, Identifier, String
 
 domain = Domain(__name__, name="Authentication")
@@ -23,7 +23,7 @@ class User:
 
 
 @domain.event(part_of="User")
-class UserLoggedIn(BaseEvent):
+class UserLoggedIn:
     user_id: Identifier(identifier=True)
 
 
