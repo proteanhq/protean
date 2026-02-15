@@ -422,8 +422,11 @@ class Domain:
                     )
                     module = importlib.util.module_from_spec(spec)
 
-                    # Do not load module again if it has already been loaded
+                    # Register in sys.modules before execution to prevent
+                    # duplicate loading if another module imports this one
+                    # during execution (e.g., circular or relative imports).
                     if module.__name__ not in sys.modules:
+                        sys.modules[module.__name__] = module
                         spec.loader.exec_module(module)
 
                     logger.debug(f"Loaded {filename}")

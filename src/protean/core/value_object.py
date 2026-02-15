@@ -117,6 +117,9 @@ class BaseValueObject(BaseModel, OptionsMixin):
 
         # Handle ValueObject() descriptors — convert to Pydantic annotations
         own_annots = getattr(cls, "__annotations__", {})
+        processed: set[str] = set()
+
+        # 1. Assignment style: descriptor in vars(cls)
         for name, value in list(vars(cls).items()):
             if isinstance(value, ValueObjectDescriptor):
                 vo_cls = value.value_object_cls
@@ -132,7 +135,20 @@ class BaseValueObject(BaseModel, OptionsMixin):
                 else:
                     pf = PydanticField(default=None)
                     own_annots[name] = Annotated[Optional[vo_cls], pf]
-                cls.__annotations__ = own_annots
+                processed.add(name)
+
+        # 2. Annotation style: descriptor in __annotations__
+        for name, value in list(own_annots.items()):
+            if name not in processed and isinstance(value, ValueObjectDescriptor):
+                vo_cls = value.value_object_cls
+                required = getattr(value, "required", False)
+                if required:
+                    own_annots[name] = vo_cls
+                else:
+                    pf = PydanticField(default=None)
+                    own_annots[name] = Annotated[Optional[vo_cls], pf]
+
+        cls.__annotations__ = own_annots
 
         resolve_fieldspecs(cls)
 

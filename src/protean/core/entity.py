@@ -209,6 +209,27 @@ class BaseEntity(BaseModel, OptionsMixin):
     def _resolve_fieldspecs(cls) -> None:
         from protean.fields.spec import resolve_fieldspecs
 
+        # Migrate annotation-style descriptors to the class namespace.
+        #
+        # Python puts ``field: Descriptor()`` values into ``__annotations__``
+        # (not ``vars(cls)``).  Pydantic and our ``__pydantic_init_subclass__``
+        # scan ``vars(cls)`` for descriptors, so they must live there.
+        # We also explicitly trigger ``__set_name__`` because ``setattr``
+        # does NOT invoke it (only class-body execution does).
+        own_annots = getattr(cls, "__annotations__", {})
+        to_remove: list[str] = []
+        for name, value in list(own_annots.items()):
+            if isinstance(value, _DESCRIPTOR_TYPES):
+                setattr(cls, name, value)
+                if hasattr(value, "__set_name__"):
+                    value.__set_name__(cls, name)
+                to_remove.append(name)
+        if to_remove:
+            annots = dict(own_annots)
+            for name in to_remove:
+                del annots[name]
+            cls.__annotations__ = annots
+
         resolve_fieldspecs(cls)
 
     @classmethod
