@@ -17,14 +17,10 @@ def test_identifier_in_repr():
 
 def test_required_in_repr():
     name = String(required=True)
-    email = String(required=True, default="John Doe")
+    email = String(default="John Doe")
 
     assert repr(name) == str(name) == "String(required=True, max_length=255)"
-    assert (
-        repr(email)
-        == str(email)
-        == "String(required=True, default='John Doe', max_length=255)"
-    )
+    assert repr(email) == str(email) == "String(default='John Doe', max_length=255)"
 
 
 def test_referenced_as_in_repr():
@@ -60,10 +56,8 @@ def test_string_repr_and_str():
     str_obj2 = String(min_length=50)
     str_obj3 = String(sanitize=False)
     str_obj4 = String(max_length=50, min_length=50, sanitize=False)
-    str_obj5 = String(required=True, default="John Doe")
-    str_obj6 = String(
-        required=True, default="John Doe", min_length=50, max_length=50, sanitize=False
-    )
+    str_obj5 = String(default="John Doe")
+    str_obj6 = String(default="John Doe", min_length=50, max_length=50, sanitize=False)
 
     assert repr(str_obj1) == str(str_obj1) == "String(max_length=50)"
     assert repr(str_obj2) == str(str_obj2) == "String(max_length=255, min_length=50)"
@@ -74,43 +68,37 @@ def test_string_repr_and_str():
         == "String(max_length=50, min_length=50, sanitize=False)"
     )
     assert (
-        repr(str_obj5)
-        == str(str_obj5)
-        == "String(required=True, default='John Doe', max_length=255)"
+        repr(str_obj5) == str(str_obj5) == "String(default='John Doe', max_length=255)"
     )
     assert (
         repr(str_obj6)
         == str(str_obj6)
-        == "String(required=True, default='John Doe', max_length=50, min_length=50, sanitize=False)"
+        == "String(default='John Doe', max_length=50, min_length=50, sanitize=False)"
     )
 
 
 def test_text_repr_and_str():
     text_obj1 = Text(sanitize=False)
-    text_obj2 = Text(required=True, default="John Doe")
+    text_obj2 = Text(default="John Doe")
     text_obj3 = Text(required=True, sanitize=False)
-    text_obj4 = Text(required=True, default="John Doe", sanitize=False)
+    text_obj4 = Text(default="John Doe", sanitize=False)
 
     assert repr(text_obj1) == str(text_obj1) == "Text(sanitize=False)"
-    assert (
-        repr(text_obj2) == str(text_obj2) == "Text(required=True, default='John Doe')"
-    )
+    assert repr(text_obj2) == str(text_obj2) == "Text(default='John Doe')"
     assert repr(text_obj3) == str(text_obj3) == "Text(required=True, sanitize=False)"
     assert (
-        repr(text_obj4)
-        == str(text_obj4)
-        == "Text(required=True, default='John Doe', sanitize=False)"
+        repr(text_obj4) == str(text_obj4) == "Text(default='John Doe', sanitize=False)"
     )
 
 
 def test_integer_repr_and_str():
     int_obj1 = Integer(required=True)
-    int_obj2 = Integer(required=True, default=100)
+    int_obj2 = Integer(default=100)
     int_obj3 = Integer(required=True, min_value=0, max_value=100)
-    int_obj4 = Integer(required=True, default=100, min_value=0, max_value=100)
+    int_obj4 = Integer(default=100, min_value=0, max_value=100)
 
     assert repr(int_obj1) == str(int_obj1) == "Integer(required=True)"
-    assert repr(int_obj2) == str(int_obj2) == "Integer(required=True, default=100)"
+    assert repr(int_obj2) == str(int_obj2) == "Integer(default=100)"
     assert (
         repr(int_obj3)
         == str(int_obj3)
@@ -119,18 +107,18 @@ def test_integer_repr_and_str():
     assert (
         repr(int_obj4)
         == str(int_obj4)
-        == "Integer(required=True, default=100, max_value=100, min_value=0)"
+        == "Integer(default=100, max_value=100, min_value=0)"
     )
 
 
 def test_float_repr_and_str():
     float_obj1 = Float(required=True)
-    float_obj2 = Float(required=True, default=100.0)
+    float_obj2 = Float(default=100.0)
     float_obj3 = Float(required=True, min_value=0.0, max_value=100.0)
-    float_obj4 = Float(required=True, default=100.0, min_value=0.0, max_value=100.0)
+    float_obj4 = Float(default=100.0, min_value=0.0, max_value=100.0)
 
     assert repr(float_obj1) == str(float_obj1) == "Float(required=True)"
-    assert repr(float_obj2) == str(float_obj2) == "Float(required=True, default=100.0)"
+    assert repr(float_obj2) == str(float_obj2) == "Float(default=100.0)"
     assert (
         repr(float_obj3)
         == str(float_obj3)
@@ -139,7 +127,7 @@ def test_float_repr_and_str():
     assert (
         repr(float_obj4)
         == str(float_obj4)
-        == "Float(required=True, default=100.0, max_value=100.0, min_value=0.0)"
+        == "Float(default=100.0, max_value=100.0, min_value=0.0)"
     )
 
 

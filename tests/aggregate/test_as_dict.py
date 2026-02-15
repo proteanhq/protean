@@ -38,7 +38,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             title: String(required=True, max_length=1000)
             slug: String(required=True, max_length=1024)
             content: Text(required=True)
-            posted_at: DateTime(required=True, default=utcnow_func)
+            posted_at: DateTime(default=utcnow_func)
 
         current_time = datetime.now(UTC)
         post = Post(

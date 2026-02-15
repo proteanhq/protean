@@ -53,7 +53,7 @@ class TestFieldSpecResolveFieldKwargs:
         # Calling the factory should return a copy of the list
         result = kwargs["default_factory"]()
         assert result == [1, 2, 3]
-        assert result != [1, 2, 3]
+        assert result is not spec.default
 
     def test_mutable_dict_default(self):
         """Line 201: Mutable dict default wrapped in default_factory."""
