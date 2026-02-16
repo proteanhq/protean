@@ -11,6 +11,7 @@ import pytest
 from protean.adapters.cache import Caches
 from protean.adapters.email import EmailProviders
 from protean.adapters.repository import Providers
+from protean.exceptions import ConfigurationError, DeserializationError
 from protean.utils.container import OptionsMixin
 
 
@@ -520,3 +521,284 @@ class TestElasticsearchModelAsserts:
 
             updated = dao.get(obj.id)
             assert updated.name == "Updated"
+
+
+class TestEventingVOAnnotationStyle:
+    """Tests for VO annotation style in _convert_vo_descriptors (eventing.py 260-265)."""
+
+    def test_command_with_vo_annotation_style_required(self, test_domain):
+        """Command with `email: ValueObject(Email)` annotation exercises lines 260-262."""
+        from protean.core.aggregate import BaseAggregate
+        from protean.core.command import BaseCommand
+        from protean.core.value_object import BaseValueObject
+        from protean.fields import String, ValueObject
+
+        class Email(BaseValueObject):
+            address: String(max_length=254, required=True)
+
+        class User(BaseAggregate):
+            name: String(max_length=50)
+
+        class RegisterUser(BaseCommand):
+            name: String(max_length=50)
+            email: ValueObject(Email, required=True)
+
+        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(Email)
+        test_domain.register(RegisterUser, part_of=User)
+        test_domain.init(traverse=False)
+
+        cmd = RegisterUser(name="Alice", email=Email(address="alice@example.com"))
+        assert cmd.email.address == "alice@example.com"
+
+    def test_command_with_vo_annotation_style_optional(self, test_domain):
+        """Command with optional `profile: ValueObject(Profile)` exercises lines 263-265."""
+        from protean.core.aggregate import BaseAggregate
+        from protean.core.command import BaseCommand
+        from protean.core.value_object import BaseValueObject
+        from protean.fields import String, ValueObject
+
+        class Profile(BaseValueObject):
+            bio: String(max_length=200)
+
+        class Account(BaseAggregate):
+            name: String(max_length=50)
+
+        class CreateAccount(BaseCommand):
+            name: String(max_length=50)
+            profile: ValueObject(Profile)  # optional (no required=True)
+
+        test_domain.register(Account, is_event_sourced=True)
+        test_domain.register(Profile)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.init(traverse=False)
+
+        # Without VO - should default to None
+        cmd = CreateAccount(name="Bob")
+        assert cmd.profile is None
+
+        # With VO
+        cmd2 = CreateAccount(name="Carol", profile=Profile(bio="Hello"))
+        assert cmd2.profile.bio == "Hello"
+
+    def test_event_with_vo_annotation_style(self, test_domain):
+        """Event with `email: ValueObject(Email)` annotation exercises the same path."""
+        from protean.core.aggregate import BaseAggregate
+        from protean.core.event import BaseEvent
+        from protean.core.value_object import BaseValueObject
+        from protean.fields import Identifier, String, ValueObject
+
+        class EmailAddr(BaseValueObject):
+            address: String(max_length=254, required=True)
+
+        class Customer(BaseAggregate):
+            name: String(max_length=50)
+
+        class CustomerCreated(BaseEvent):
+            id: Identifier(identifier=True)
+            name: String(max_length=50)
+            contact: ValueObject(EmailAddr, required=True)
+
+        test_domain.register(Customer, is_event_sourced=True)
+        test_domain.register(EmailAddr)
+        test_domain.register(CustomerCreated, part_of=Customer)
+        test_domain.init(traverse=False)
+
+        evt = CustomerCreated(
+            id="123", name="Dave", contact=EmailAddr(address="dave@example.com")
+        )
+        assert evt.contact.address == "dave@example.com"
+
+
+class TestMessageDeserializationFallbackId:
+    """Tests for to_domain_object fallback when headers.id is None (eventing.py 664)."""
+
+    def test_to_domain_object_with_no_header_id(self, test_domain):
+        """When headers.id is None, message_id falls back to context type."""
+        from protean.core.aggregate import BaseAggregate
+        from protean.core.event import BaseEvent
+        from protean.fields import Identifier, String
+        from protean.utils.eventing import (
+            DomainMeta,
+            Message,
+            MessageHeaders,
+            Metadata,
+        )
+
+        class FallbackUser(BaseAggregate):
+            name: String()
+
+        class FallbackRegistered(BaseEvent):
+            id: Identifier(identifier=True)
+            name: String()
+
+        test_domain.register(FallbackUser, is_event_sourced=True)
+        test_domain.register(FallbackRegistered, part_of=FallbackUser)
+        test_domain.init(traverse=False)
+
+        # Message with headers.id=None and unregistered type → hits line 664
+        message = Message(
+            data={"test": "data"},
+            metadata=Metadata(
+                headers=MessageHeaders(
+                    id=None,  # No id!
+                    type="unregistered.event",
+                    stream="test-stream",
+                ),
+                domain=DomainMeta(fqn="unregistered.Event", kind="EVENT"),
+            ),
+        )
+
+        with pytest.raises(DeserializationError) as exc_info:
+            message.to_domain_object()
+
+        error = exc_info.value
+        # message_id should be the type from context, not headers.id
+        assert error.message_id == "unregistered.event"
+
+    def test_to_domain_object_with_no_headers_at_all(self, test_domain):
+        """When headers is None entirely, message_id falls back to context type."""
+        from protean.core.aggregate import BaseAggregate
+        from protean.core.event import BaseEvent
+        from protean.fields import Identifier, String
+        from protean.utils.eventing import (
+            DomainMeta,
+            Message,
+            MessageHeaders,
+            Metadata,
+        )
+
+        class NoHeaderUser(BaseAggregate):
+            name: String()
+
+        class NoHeaderRegistered(BaseEvent):
+            id: Identifier(identifier=True)
+            name: String()
+
+        test_domain.register(NoHeaderUser, is_event_sourced=True)
+        test_domain.register(NoHeaderRegistered, part_of=NoHeaderUser)
+        test_domain.init(traverse=False)
+
+        # Build Metadata with headers that have no id
+        message = Message(
+            data={"test": "data"},
+            metadata=Metadata(
+                headers=MessageHeaders(
+                    id=None,
+                    type="unknown.type",
+                ),
+                domain=DomainMeta(fqn="unknown.Type", kind="INVALID_KIND"),
+            ),
+        )
+
+        with pytest.raises(DeserializationError) as exc_info:
+            message.to_domain_object()
+
+        error = exc_info.value
+        # Fallback to type from context
+        assert error.message_id == "unknown.type"
+
+
+class TestRepositoryLazyInit:
+    """Tests for Providers lazy initialization (repository/__init__.py 129-136, 141)."""
+
+    def test_get_connection_lazy_initializes_providers(self, test_domain):
+        """get_connection() triggers lazy init when _providers is None."""
+        with test_domain.domain_context():
+            # Reset providers to None to exercise lazy init path (lines 129-134)
+            test_domain.providers._providers = None
+            conn = test_domain.providers.get_connection()
+            assert conn is not None
+            assert test_domain.providers._providers is not None
+
+    def test_repository_for_lazy_initializes_providers(self, test_domain):
+        """repository_for() triggers lazy init when _providers is None."""
+        from protean.core.aggregate import BaseAggregate
+        from protean.fields import String
+
+        class LazyInitAgg(BaseAggregate):
+            name: String(max_length=50)
+
+        test_domain.register(LazyInitAgg)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            # Reset providers to None to exercise lazy init path (line 141)
+            test_domain.providers._providers = None
+            repo = test_domain.providers.repository_for(LazyInitAgg)
+            assert repo is not None
+            assert test_domain.providers._providers is not None
+
+    def test_get_connection_unknown_provider_raises(self, test_domain):
+        """get_connection with unknown provider name raises AssertionError."""
+        with test_domain.domain_context():
+            test_domain.init(traverse=False)
+            with pytest.raises(AssertionError, match="No Provider registered"):
+                test_domain.providers.get_connection("nonexistent_provider")
+
+
+class TestRepositoryMissingDefault:
+    """Tests for missing 'default' provider (repository/__init__.py line 103)."""
+
+    def test_missing_default_provider_raises_configuration_error(self):
+        """_initialize raises ConfigurationError when no 'default' provider."""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestNoDefault")
+        # Configure databases WITHOUT 'default' key
+        domain.config["databases"] = {
+            "custom_only": {
+                "provider": "memory",
+                "database_uri": "memory://",
+            }
+        }
+
+        with domain.domain_context():
+            with pytest.raises(
+                ConfigurationError, match="You must define a 'default' provider"
+            ):
+                domain.providers._initialize()
+
+
+class TestEmailSendEmail:
+    """Tests for EmailProviders.send_email assert path (email/__init__.py 51-56)."""
+
+    def test_send_email_exercises_assert_and_dispatch(self, test_domain):
+        """send_email initializes lazily and dispatches to provider."""
+        from protean.core.email import BaseEmail
+
+        class TestWelcome(BaseEmail):
+            pass
+
+        test_domain.register(TestWelcome)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            email = TestWelcome(
+                subject="Hello",
+                to=["test@example.com"],
+                text="Test body",
+            )
+            # send_email should exercise lazy init + assert + dispatch
+            test_domain.send_email(email)
+
+    def test_send_email_lazy_init(self, test_domain):
+        """send_email triggers lazy init when _email_providers is None."""
+        from protean.core.email import BaseEmail
+
+        class LazyTestEmail(BaseEmail):
+            pass
+
+        test_domain.register(LazyTestEmail)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            # Reset to None to exercise lazy init path
+            test_domain.email_providers._email_providers = None
+
+            email = LazyTestEmail(
+                subject="Lazy Hello",
+                to=["test@example.com"],
+                text="Lazy test body",
+            )
+            test_domain.send_email(email)

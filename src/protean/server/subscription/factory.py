@@ -119,7 +119,7 @@ class SubscriptionFactory:
             config=config,
         )
 
-        logger.info(
+        logger.debug(
             "Created %s for handler '%s' on stream '%s'",
             subscription.__class__.__name__,
             handler_name,

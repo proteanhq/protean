@@ -43,6 +43,7 @@ _DECORATOR_FIXTURE_FILES = [
     "decorator_event.py",
     "decorator_value_object.py",
     "decorator_cross_usage.py",
+    "decorator_non_domain.py",
 ]
 
 # Combined list for backwards compatibility
@@ -305,3 +306,51 @@ class TestDecoratorCrossUsage:
     def test_no_attribute_errors(self) -> None:
         notes, errors = _get_decorator_results("decorator_cross_usage.py")
         assert not errors
+
+
+# =====================================================================
+# Non-Domain decorator and debug print coverage tests
+# =====================================================================
+
+
+class TestDecoratorNonDomain:
+    """Non-Domain object with aggregate() method should not inject base classes.
+
+    Exercises lines 204-209 of mypy_plugin.py: when the decorator receiver
+    resolves to a non-Domain type, _extract_decorator_name_from_expr returns None.
+    """
+
+    def test_no_base_injection_for_non_domain(self) -> None:
+        notes, errors = _get_decorator_results("decorator_non_domain.py")
+        types = _extract_revealed_types(notes)
+        # Should reveal str for obj.name, NOT inject BaseAggregate methods
+        assert "builtins.str" in types
+
+    def test_no_attribute_errors_for_non_domain(self) -> None:
+        notes, errors = _get_decorator_results("decorator_non_domain.py")
+        # Should not have attribute errors (we're not accessing injected methods)
+        assert not errors
+
+
+class TestMypyDebugPrints:
+    """Running with PROTEAN_MYPY_DEBUG=1 covers debug print lines (295, 321, 329).
+
+    Exercises the _DEBUG gated print statements in:
+    - _customize_class_mro_callback (line 295)
+    - _inject_base_class (lines 321, 329)
+    """
+
+    def test_debug_output_on_stderr(self) -> None:
+        import os
+        import subprocess
+
+        fixture = str(FIXTURES_DIR / "decorator_aggregate.py")
+        env = {**os.environ, "PROTEAN_MYPY_DEBUG": "1"}
+        result = subprocess.run(
+            ["mypy", *_MYPY_FLAGS, fixture],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        # Debug output goes to stderr
+        assert "[protean-mypy-debug]" in result.stderr
