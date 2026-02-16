@@ -1,6 +1,6 @@
 import functools
 from collections import defaultdict
-from typing import Any, Callable, Type, Union
+from typing import Any, Callable, Union
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -12,7 +12,7 @@ from protean.utils.eventing import Message
 class handle:
     """Class decorator to mark handler methods in EventHandler and CommandHandler classes."""
 
-    def __init__(self, target_cls: Type[BaseEvent] | Type[BaseCommand]) -> None:
+    def __init__(self, target_cls: type) -> None:
         self._target_cls = target_cls
 
     def __call__(self, fn: Callable) -> Callable:

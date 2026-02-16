@@ -1,11 +1,9 @@
 import importlib
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, DefaultDict, Optional, Set
+from typing import TYPE_CHECKING, Any, DefaultDict, Optional, Set
 
-from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.event_sourced_repository import (
     BaseEventSourcedRepository,
@@ -98,7 +96,7 @@ class EventStore:
         )
         return repository_cls(self.domain)
 
-    def handlers_for(self, event: BaseEvent) -> set:
+    def handlers_for(self, event: Any) -> set:
         """Return all handlers configured to run on the given event."""
         # Gather handlers configured to run on all events
         all_stream_handlers = self._event_streams.get("$all", set())
@@ -125,7 +123,7 @@ class EventStore:
         """
         return self._projectors.get(fqn(projection_cls), set())
 
-    def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
+    def command_handler_for(self, command: Any) -> Optional[BaseCommandHandler]:
         if not command.meta_.part_of:
             raise ConfigurationError(
                 f"Command `{command.__name__}` needs to be associated with an aggregate"

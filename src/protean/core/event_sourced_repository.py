@@ -65,7 +65,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             if own_current_uow:
                 own_current_uow.commit()
 
-    def get(self, identifier: str) -> BaseAggregate:
+    def get(self, identifier: str) -> Any:
         """Retrieve a fully-formed Aggregate from a stream of Events.
 
         If the aggregate was already loaded in the current UnitOfWork,

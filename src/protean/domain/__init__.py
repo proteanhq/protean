@@ -1429,7 +1429,7 @@ class Domain:
 
     def process(
         self,
-        command: BaseCommand,
+        command: Any,
         asynchronous: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
         raise_on_duplicate: bool = False,
@@ -1441,7 +1441,7 @@ class Domain:
         ``asynchronous=False`` when calling the domain's ``handle`` method.
 
         Args:
-            command (BaseCommand): Command to process
+            command: Command to process (instance of a ``@domain.command``-decorated class)
             asynchronous (Boolean, optional): Specifies if the command should be processed asynchronously.
                 Defaults to True.
             idempotency_key (str, optional): Caller-provided key for command deduplication.
@@ -1509,11 +1509,11 @@ class Domain:
 
         return position
 
-    def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
+    def command_handler_for(self, command: Any) -> Optional[BaseCommandHandler]:
         """Return Command Handler for a specific command.
 
         Args:
-            command (BaseCommand): Command to process
+            command: Command to process (instance of a ``@domain.command``-decorated class)
 
         Returns:
             Optional[BaseCommandHandler]: Command Handler registered to process the command
@@ -1523,11 +1523,11 @@ class Domain:
     ###################
     # Handling Events #
     ###################
-    def handlers_for(self, event: BaseEvent) -> set:
+    def handlers_for(self, event: Any) -> set:
         """Return Event Handlers listening to a specific event
 
         Args:
-            event (BaseEvent): Event to be consumed
+            event: Event to be consumed (instance of a ``@domain.event``-decorated class)
 
         Returns:
             List[BaseEventHandler]: Event Handlers that have registered to consume the event
