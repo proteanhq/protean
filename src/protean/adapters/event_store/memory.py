@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from pydantic import Field
@@ -150,7 +150,7 @@ class MemoryEventStore(BaseEventStore):
         repo = self.domain.repository_for(MemoryMessage)
         return repo.read(stream_name, sql, position, no_of_messages)
 
-    def _read_last_message(self, stream_name) -> Dict[str, Any]:
+    def _read_last_message(self, stream_name) -> Optional[Dict[str, Any]]:
         repo = self.domain.repository_for(MemoryMessage)
 
         messages = repo.read(stream_name)

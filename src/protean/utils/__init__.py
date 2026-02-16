@@ -8,7 +8,7 @@ import importlib
 import logging
 import types
 from datetime import UTC, datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import TYPE_CHECKING, Any, Callable, Optional, Type, TypeVar
 from uuid import UUID, uuid4
 
@@ -89,7 +89,7 @@ def convert_str_values_to_list(value) -> list:
         return list(value)
 
 
-class DomainObjects(Enum):
+class DomainObjects(StrEnum):
     AGGREGATE = "AGGREGATE"
     APPLICATION_SERVICE = "APPLICATION_SERVICE"
     COMMAND = "COMMAND"
@@ -438,7 +438,7 @@ def derive_element_class(
     if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
         _track_id_field(element_cls)
 
-    return element_cls
+    return element_cls  # type: ignore[reportReturnType]
 
 
 def generate_identity(
@@ -586,7 +586,7 @@ def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
     # from the original cls to new_cls (PEP 3135).
     _rebind_class_cells(new_cls, cls)
 
-    return new_cls
+    return new_cls  # type: ignore[reportReturnType]
 
 
 __all__ = [

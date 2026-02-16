@@ -103,7 +103,7 @@ class FieldSpec:
     # ------------------------------------------------------------------
     # Resolution methods
     # ------------------------------------------------------------------
-    def resolve_type(self) -> type:
+    def resolve_type(self) -> Any:
         """Return the Python type annotation for Pydantic.
 
         Handles choices → Literal, and optional wrapping.
@@ -232,7 +232,7 @@ class FieldSpec:
 
         return kwargs
 
-    def resolve_annotated(self) -> type:
+    def resolve_annotated(self) -> Any:
         """Combine resolved type and field kwargs into ``Annotated[type, Field(...)]``.
 
         When ``sanitize=True`` or per-field ``validators`` are present, the

@@ -33,15 +33,15 @@ class InlineBroker(BaseBroker):
         conn_info["IS_ASYNC"] = False
 
         # Configuration for retry behavior and timeouts
-        self._max_retries = conn_info.get("max_retries", MAX_RETRIES)
-        self._retry_delay = conn_info.get("retry_delay", RETRY_DELAY)
-        self._backoff_multiplier = conn_info.get(
-            "backoff_multiplier", BACKOFF_MULTIPLIER
+        self._max_retries = int(conn_info.get("max_retries", MAX_RETRIES))
+        self._retry_delay = float(conn_info.get("retry_delay", RETRY_DELAY))
+        self._backoff_multiplier = float(
+            conn_info.get("backoff_multiplier", BACKOFF_MULTIPLIER)
         )
-        self._message_timeout = conn_info.get(
-            "message_timeout", MESSAGE_TIMEOUT
+        self._message_timeout = float(
+            conn_info.get("message_timeout", MESSAGE_TIMEOUT)
         )  # 5 minutes default
-        self._enable_dlq = conn_info.get("enable_dlq", ENABLE_DLQ)
+        self._enable_dlq = bool(conn_info.get("enable_dlq", ENABLE_DLQ))
         self._operation_state_ttl = max(
             int(self._message_timeout * 3), OPERATION_STATE_TTL_MAX
         )  # At least 1 minute

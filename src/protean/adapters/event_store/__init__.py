@@ -1,7 +1,7 @@
 import importlib
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, DefaultDict, List, Optional, Set
+from typing import TYPE_CHECKING, DefaultDict, Optional, Set
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -98,7 +98,7 @@ class EventStore:
         )
         return repository_cls(self.domain)
 
-    def handlers_for(self, event: BaseEvent) -> List[BaseEventHandler]:
+    def handlers_for(self, event: BaseEvent) -> set:
         """Return all handlers configured to run on the given event."""
         # Gather handlers configured to run on all events
         all_stream_handlers = self._event_streams.get("$all", set())
@@ -114,7 +114,7 @@ class EventStore:
 
         return set.union(configured_stream_handlers, all_stream_handlers)
 
-    def projectors_for(self, projection_cls) -> List[BaseProjector]:
+    def projectors_for(self, projection_cls) -> set:
         """Return Projectors listening to a specific projection
 
         Args:

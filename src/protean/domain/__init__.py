@@ -33,9 +33,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.event import BaseEvent
-from protean.core.event_handler import BaseEventHandler
 from protean.core.projection import BaseProjection
-from protean.core.projector import BaseProjector
 from protean.core.repository import BaseRepository
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
@@ -1525,7 +1523,7 @@ class Domain:
     ###################
     # Handling Events #
     ###################
-    def handlers_for(self, event: BaseEvent) -> List[BaseEventHandler]:
+    def handlers_for(self, event: BaseEvent) -> set:
         """Return Event Handlers listening to a specific event
 
         Args:
@@ -1539,7 +1537,7 @@ class Domain:
     ############################
     # Projector Functionality  #
     ############################
-    def projectors_for(self, projection_cls: BaseProjection) -> List[BaseProjector]:
+    def projectors_for(self, projection_cls: BaseProjection) -> set:
         """Return Projectors listening to a specific projection
 
         Args:

@@ -474,7 +474,7 @@ class RedisBroker(BaseBroker):
             consumers = self._extract_consumers_data(consumers_info)
 
             return (
-                group_name,
+                str(group_name),
                 {
                     "consumers": consumers,
                     "pending": pending_count,
@@ -553,7 +553,11 @@ class RedisBroker(BaseBroker):
                                 pending_count = self._get_field_value(
                                     group_info, "pending", convert_to_int=True
                                 )
-                                total_pending += pending_count or 0
+                                total_pending += (
+                                    int(pending_count)
+                                    if pending_count is not None
+                                    else 0
+                                )
                     except redis.ResponseError:
                         # Stream might not have consumer groups yet
                         pass

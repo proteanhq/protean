@@ -96,7 +96,7 @@ class BaseRepository(Element, OptionsMixin):
     def _dao(self) -> BaseDAO:
         """Retrieve a DAO registered for the Aggregate with a live connection"""
         # Fixate on Model class at the domain level because an explicit model may have been registered
-        return self._provider.get_dao(self.meta_.part_of, self._database_model)
+        return self._provider.get_dao(self.meta_.part_of, self._database_model)  # type: ignore[return-value]
 
     def add(
         self, item: Union[BaseAggregate, BaseProjection]

@@ -7,7 +7,7 @@ import uuid
 from abc import abstractmethod
 from datetime import date as _date, datetime as _datetime
 from enum import Enum
-from typing import Any
+from typing import Any  # type: ignore[reportAssignmentType]
 
 import sqlalchemy.dialects.postgresql as psql
 import sqlalchemy.dialects.mssql as mssql
@@ -150,7 +150,7 @@ def _custom_json_dumps(value):
     return json.dumps(value, default=_default)
 
 
-def _resolve_python_type(shim: ResolvedField) -> type:
+def _resolve_python_type(shim: ResolvedField) -> type | None:
     """Extract the core Python type from a ResolvedField.
 
     Unwraps Optional/Union, and normalises generic aliases

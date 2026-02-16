@@ -7,7 +7,7 @@ from datetime import date, datetime
 from itertools import count
 
 from threading import Lock
-from typing import Any
+from typing import Any  # type: ignore[reportAssignmentType]
 from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
@@ -67,7 +67,7 @@ class MemoryModel(BaseDatabaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
-    def from_entity(cls, entity) -> "MemoryModel":
+    def from_entity(cls, entity) -> dict[str, Any]:
         """Convert the entity to a dictionary record"""
         item_dict = {}
         for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
@@ -289,7 +289,7 @@ class MemoryProvider(BaseProvider):
             input_db = conn._db["data"][schema_name]
             try:
                 # Ensures that the string contains double quotes around keys and values
-                query = query.replace("'", '"')
+                query = query.replace("'", '"')  # type: ignore[reportAssignmentType]
                 criteria = json.loads(query)
 
                 for key, value in criteria.items():

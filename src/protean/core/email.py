@@ -125,9 +125,9 @@ class BaseEmail(BaseModel, OptionsMixin):
     @property
     def recipients(self) -> list[str]:
         """Return list of all recipients (to + cc + bcc)."""
-        to = self.to or []
-        cc = self.cc or []
-        bcc = self.bcc or []
+        to = convert_str_values_to_list(self.to)
+        cc = convert_str_values_to_list(self.cc)
+        bcc = convert_str_values_to_list(self.bcc)
         return [email for email in (to + cc + bcc) if email]
 
     # ------------------------------------------------------------------
