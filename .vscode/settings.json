@@ -8,7 +8,10 @@
     "python.analysis.extraPaths": [
         "./docs_src"
     ],
+    "python.analysis.typeCheckingMode": "off",
     "cursorpyright.analysis.extraPaths": [
         "./docs_src"
-    ]
+    ],
+    "mypy-type-checker.args": ["--config-file=pyproject.toml"],
+    "mypy-type-checker.importStrategy": "fromEnvironment"
 }

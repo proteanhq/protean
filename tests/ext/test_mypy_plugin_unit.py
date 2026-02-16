@@ -4,20 +4,27 @@ Tests the plugin helper functions directly to cover edge cases
 that are hard to trigger through full mypy runs.
 
 Covers:
-- Lines 108-114: Re-export path in get_function_hook
-- Lines 135-137: Type not available fallback in _field_factory_hook
-- Lines 173-175: _get_kwarg_bool returning False for explicit False
+- Re-export path in get_function_hook
+- Type not available fallback in _field_factory_hook
+- _get_kwarg_bool returning False for explicit False
+- _extract_decorator_name for all 15 decorators and prefix patterns
+- _extract_decorator_name_from_expr for AST node matching
+- DECORATOR_BASE_CLASS_MAP completeness and correctness
+- get_class_decorator_hook and get_customize_class_mro_hook
 """
 
 from unittest.mock import MagicMock
 
 from protean.ext.mypy_plugin import (
+    DECORATOR_BASE_CLASS_MAP,
     FIELD_TYPE_MAP,
     ProteanPlugin,
     _REEXPORT_MAP,
+    _extract_decorator_name,
+    _extract_decorator_name_from_expr,
+    _field_factory_hook,
     _get_kwarg_bool,
     _has_kwarg,
-    _field_factory_hook,
 )
 
 
@@ -182,3 +189,159 @@ class TestHasKwarg:
         ctx = MagicMock()
         ctx.arg_names = [["required"]]
         assert _has_kwarg(ctx, "default") is False
+
+
+class TestExtractDecoratorName:
+    """Tests for _extract_decorator_name (fullname-based matching)."""
+
+    def test_all_15_decorators_canonical_prefix(self):
+        """All 15 decorators are recognized with the canonical prefix."""
+        for name in DECORATOR_BASE_CLASS_MAP:
+            fullname = f"protean.domain.Domain.{name}"
+            assert _extract_decorator_name(fullname) == name
+
+    def test_all_15_decorators_init_prefix(self):
+        """All 15 decorators are recognized with the __init__ prefix."""
+        for name in DECORATOR_BASE_CLASS_MAP:
+            fullname = f"protean.domain.__init__.Domain.{name}"
+            assert _extract_decorator_name(fullname) == name
+
+    def test_unknown_method_returns_none(self):
+        """Unknown method name returns None."""
+        assert _extract_decorator_name("protean.domain.Domain.unknown_method") is None
+
+    def test_unknown_prefix_returns_none(self):
+        """Unrecognized prefix returns None even with valid method name."""
+        assert _extract_decorator_name("other.module.Domain.aggregate") is None
+
+    def test_empty_string_returns_none(self):
+        assert _extract_decorator_name("") is None
+
+    def test_partial_prefix_returns_none(self):
+        assert _extract_decorator_name("protean.domain.Domain") is None
+
+
+class TestExtractDecoratorNameFromExpr:
+    """Tests for _extract_decorator_name_from_expr (AST-based matching)."""
+
+    def test_member_expr_known_decorator(self):
+        """MemberExpr with a known decorator name is recognized."""
+        from mypy.nodes import MemberExpr, NameExpr
+
+        receiver = NameExpr("domain")
+        expr = MemberExpr(receiver, "aggregate")
+        assert _extract_decorator_name_from_expr(expr) == "aggregate"
+
+    def test_call_expr_wrapping_member_expr(self):
+        """CallExpr(@domain.aggregate()) is unwrapped to the MemberExpr."""
+        from mypy.nodes import CallExpr, MemberExpr, NameExpr
+
+        receiver = NameExpr("domain")
+        member = MemberExpr(receiver, "aggregate")
+        call = CallExpr(member, [], [], [])
+        assert _extract_decorator_name_from_expr(call) == "aggregate"
+
+    def test_unknown_method_name_returns_none(self):
+        """MemberExpr with unknown method name returns None."""
+        from mypy.nodes import MemberExpr, NameExpr
+
+        receiver = NameExpr("domain")
+        expr = MemberExpr(receiver, "not_a_decorator")
+        assert _extract_decorator_name_from_expr(expr) is None
+
+    def test_name_expr_returns_none(self):
+        """A plain NameExpr (not MemberExpr) returns None."""
+        from mypy.nodes import NameExpr
+
+        expr = NameExpr("aggregate")
+        assert _extract_decorator_name_from_expr(expr) is None
+
+    def test_all_15_decorators_via_member_expr(self):
+        """All 15 decorator names are recognized as MemberExpr."""
+        from mypy.nodes import MemberExpr, NameExpr
+
+        for name in DECORATOR_BASE_CLASS_MAP:
+            receiver = NameExpr("domain")
+            expr = MemberExpr(receiver, name)
+            assert _extract_decorator_name_from_expr(expr) == name
+
+
+class TestDecoratorBaseClassMap:
+    """Tests for DECORATOR_BASE_CLASS_MAP completeness and correctness."""
+
+    def test_has_15_entries(self):
+        assert len(DECORATOR_BASE_CLASS_MAP) == 15
+
+    def test_all_expected_decorators_present(self):
+        expected = {
+            "aggregate",
+            "entity",
+            "value_object",
+            "command",
+            "event",
+            "domain_service",
+            "command_handler",
+            "event_handler",
+            "application_service",
+            "subscriber",
+            "projection",
+            "projector",
+            "repository",
+            "database_model",
+            "email",
+        }
+        assert set(DECORATOR_BASE_CLASS_MAP.keys()) == expected
+
+    def test_base_class_fqns_follow_naming_convention(self):
+        """Each FQN should be protean.core.<module>.Base<ClassName>."""
+        for decorator_name, fqn in DECORATOR_BASE_CLASS_MAP.items():
+            assert fqn.startswith("protean.core."), (
+                f"{fqn} doesn't start with protean.core."
+            )
+            assert ".Base" in fqn, f"{fqn} doesn't contain '.Base'"
+
+    def test_aggregate_maps_correctly(self):
+        assert (
+            DECORATOR_BASE_CLASS_MAP["aggregate"]
+            == "protean.core.aggregate.BaseAggregate"
+        )
+
+    def test_entity_maps_correctly(self):
+        assert DECORATOR_BASE_CLASS_MAP["entity"] == "protean.core.entity.BaseEntity"
+
+
+class TestGetClassDecoratorHook:
+    """Tests for ProteanPlugin.get_class_decorator_hook."""
+
+    def _make_plugin(self):
+        from mypy.options import Options
+
+        options = Options()
+        return ProteanPlugin(options)
+
+    def test_known_decorator_returns_hook(self):
+        """A known Domain decorator fullname returns a hook callback."""
+        plugin = self._make_plugin()
+        hook = plugin.get_class_decorator_hook("protean.domain.Domain.aggregate")
+        assert hook is not None
+        assert callable(hook)
+
+    def test_all_15_decorators_return_hooks(self):
+        """All 15 decorators return hooks via canonical prefix."""
+        plugin = self._make_plugin()
+        for name in DECORATOR_BASE_CLASS_MAP:
+            hook = plugin.get_class_decorator_hook(f"protean.domain.Domain.{name}")
+            assert hook is not None, f"No hook returned for {name}"
+
+    def test_unknown_fullname_returns_none(self):
+        """Unknown fullname returns None."""
+        plugin = self._make_plugin()
+        hook = plugin.get_class_decorator_hook("unknown.module.SomeClass")
+        assert hook is None
+
+    def test_get_customize_class_mro_hook_returns_callback(self):
+        """get_customize_class_mro_hook always returns the MRO callback."""
+        plugin = self._make_plugin()
+        hook = plugin.get_customize_class_mro_hook("any.class.Name")
+        assert hook is not None
+        assert callable(hook)

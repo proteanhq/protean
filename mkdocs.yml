@@ -187,6 +187,7 @@ nav:
       - guides/essentials/identity.md
       - guides/essentials/stream-categories.md
       - guides/change-state/unit-of-work.md
+      - guides/type-checking.md
 
     - Testing:
       - guides/testing/index.md

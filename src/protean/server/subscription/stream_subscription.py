@@ -37,7 +37,7 @@ class StreamSubscription(BaseSubscription):
         messages_per_tick: Optional[int] = None,
         blocking_timeout_ms: Optional[int] = None,
         max_retries: Optional[int] = None,
-        retry_delay_seconds: Optional[int] = None,
+        retry_delay_seconds: Optional[float] = None,
         enable_dlq: Optional[bool] = None,
     ) -> None:
         """
@@ -53,7 +53,7 @@ class StreamSubscription(BaseSubscription):
                 Defaults to config value or 5000.
             max_retries (int, optional): Maximum number of retries before moving to DLQ.
                 Defaults to config value or 3.
-            retry_delay_seconds (int, optional): Delay between retries in seconds.
+            retry_delay_seconds (float, optional): Delay between retries in seconds.
                 Defaults to config value or 1.
             enable_dlq (bool, optional): Whether to use a dead letter queue.
                 Defaults to config value or True.
@@ -78,10 +78,10 @@ class StreamSubscription(BaseSubscription):
             if max_retries is not None
             else int(stream_config.get("max_retries", 3))
         )
-        resolved_retry_delay_seconds: int = (
+        resolved_retry_delay_seconds: float = (
             retry_delay_seconds
             if retry_delay_seconds is not None
-            else int(stream_config.get("retry_delay_seconds", 1))
+            else float(stream_config.get("retry_delay_seconds", 1))
         )
         resolved_enable_dlq: bool = (
             enable_dlq
@@ -104,7 +104,7 @@ class StreamSubscription(BaseSubscription):
         self.stream_category = stream_category
         self.blocking_timeout_ms: int = resolved_blocking_timeout_ms
         self.max_retries: int = resolved_max_retries
-        self.retry_delay_seconds: int = resolved_retry_delay_seconds
+        self.retry_delay_seconds: float = resolved_retry_delay_seconds
         self.enable_dlq: bool = resolved_enable_dlq
 
         # Consumer name for Redis Streams (unique per consumer instance)

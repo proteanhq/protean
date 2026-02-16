@@ -28,5 +28,8 @@ test-matrix-full: up
 test-coverage: up
 	protean test -c COVERAGE
 
+typecheck:
+	mypy src/protean --config-file pyproject.toml
+
 cov: up
 	pytest --slow --sqlite --postgresql --elasticsearch --redis --message_db --cov=protean --cov-config .coveragerc tests
