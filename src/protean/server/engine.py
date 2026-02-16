@@ -284,17 +284,21 @@ class Engine:
             #   carry the metadata forward.
             g.message_in_context = message
 
+            assert message.metadata is not None, "Message metadata cannot be None"
+
             try:
                 handler_cls._handle(message)
 
+                message_id = message.metadata.headers.id or "unknown"
                 logger.debug(
-                    f"Processed {message.metadata.headers.type} (ID: {message.metadata.headers.id[:8]}...)"
+                    f"Processed {message.metadata.headers.type} (ID: {message_id[:8]}...)"
                 )
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
+                message_id = message.metadata.headers.id or "unknown"
                 logger.exception(
                     f"Failed to process {message.metadata.headers.type} "
-                    f"(ID: {message.metadata.headers.id[:8]}...) in {handler_cls.__name__}: {exc}"
+                    f"(ID: {message_id[:8]}...) in {handler_cls.__name__}: {exc}"
                 )
                 try:
                     # Call the error handler if it exists

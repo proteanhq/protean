@@ -55,7 +55,9 @@ class UnitOfWork:
             self._reset()  # close sessions, clear state
 
     def _add_to_identity_map(self, aggregate) -> None:
-        identifier = getattr(aggregate, id_field(aggregate).field_name)
+        id_f = id_field(aggregate)
+        assert id_f is not None
+        identifier = getattr(aggregate, id_f.field_name)
         self._identity_map[aggregate.meta_.provider][identifier] = aggregate
 
     def _gather_events(self):
@@ -208,6 +210,7 @@ class UnitOfWork:
 
     def _get_session(self, provider_name):
         provider = self.domain.providers[provider_name]
+        assert provider is not None
         return provider.get_session()
 
     def _initialize_session(self, provider_name):

@@ -31,11 +31,12 @@ class Caches(collections.abc.MutableMapping):
 
     def __setitem__(self, key, value):
         if self._caches is None:
-            self.caches = {}
+            self._caches = {}
 
         self._caches[key] = value
 
     def __delitem__(self, key):
+        assert self._caches is not None
         if key in self._caches:
             del self._caches[key]
 
@@ -69,6 +70,7 @@ class Caches(collections.abc.MutableMapping):
             self._initialize()
 
         try:
+            assert self._caches is not None
             return self._caches[provider_name].get_connection()
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")

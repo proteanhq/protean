@@ -106,7 +106,7 @@ class BaseCommand(BaseMessageType):
         )
 
         headers = (
-            incoming.headers
+            incoming.headers  # type: ignore[union-attr]
             if has_meaningful_headers
             else MessageHeaders(
                 type=self.__class__.__type__, time=datetime.now(timezone.utc)

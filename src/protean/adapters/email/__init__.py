@@ -41,6 +41,7 @@ class EmailProviders:
             self._initialize_email_providers()
 
         try:
+            assert self._email_providers is not None
             return self._email_providers[provider_name]
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
@@ -51,4 +52,5 @@ class EmailProviders:
             self._initialize_email_providers()
 
         logger.debug(f"Pushing {email.__class__.__name__} with content {repr(email)}")
+        assert self._email_providers is not None
         self._email_providers[email.meta_.provider].send_email(email)

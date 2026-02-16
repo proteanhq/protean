@@ -441,6 +441,7 @@ class Domain:
                     # during execution (e.g., circular or relative imports).
                     if module.__name__ not in sys.modules:
                         sys.modules[module.__name__] = module
+                        assert spec is not None and spec.loader is not None
                         spec.loader.exec_module(module)
 
                     logger.debug(f"Loaded {filename}")

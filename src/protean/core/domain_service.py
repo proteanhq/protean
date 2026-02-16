@@ -32,11 +32,11 @@ class BaseDomainService(Element, OptionsMixin):
             ("part_of", None),
         ]
 
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
 
         # Record invariant methods
-        setattr(subclass, "_invariants", defaultdict(dict))
+        setattr(cls, "_invariants", defaultdict(dict))
 
     def __init__(self, *aggregates: Union[BaseAggregate, List[BaseAggregate]]):
         """

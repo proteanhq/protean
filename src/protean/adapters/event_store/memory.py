@@ -55,7 +55,10 @@ class MemoryMessageRepository(BaseRepository):
             repo._dao.query.filter(stream_name=stream_name).order_by("-position").all()
         )
 
-        return results.first.position if results.items else -1
+        if results.items:
+            assert results.first is not None
+            return results.first.position
+        return -1
 
     def write(
         self,

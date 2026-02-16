@@ -37,6 +37,10 @@ def docker_compose(
         logger.error(f"Error loading Protean domain: {exc.messages}")
         raise typer.Abort()
 
+    if domain_instance is None:
+        logger.error("Could not derive a Protean domain")
+        raise typer.Abort()
+
     print(f"Generating docker-compose.yml for domain at {domain}")
 
     with domain_instance.domain_context():

@@ -124,7 +124,9 @@ class MemoryCache(BaseCache):
             projection (BaseProjection): Projection Instance containing data
             ttl (int, float, optional): Timeout in seconds. Defaults to None.
         """
-        identifier = getattr(projection, id_field(projection).field_name)
+        id_f = id_field(projection)
+        assert id_f is not None
+        identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
         self._db[key] = projection.to_dict()
@@ -157,7 +159,9 @@ class MemoryCache(BaseCache):
         return len(list(filter(regex.match, key_list)))
 
     def remove(self, projection):
-        identifier = getattr(projection, id_field(projection).field_name)
+        id_f = id_field(projection)
+        assert id_f is not None
+        identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
         del self._db[key]
 

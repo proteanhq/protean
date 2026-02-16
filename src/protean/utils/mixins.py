@@ -39,8 +39,8 @@ class handle:
 class HandlerMixin:
     """Mixin to add common handler behavior to Event Handlers and Command Handlers"""
 
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
 
         # Associate a `_handlers` map with subclasses.
         # `_handlers` is a dictionary mapping the event/command to handler methods.
@@ -49,7 +49,7 @@ class HandlerMixin:
         #   were initialized in __init__, the same collection object
         #   would be made available across all subclasses,
         #   defeating its purpose.
-        setattr(subclass, "_handlers", defaultdict(set))
+        setattr(cls, "_handlers", defaultdict(set))
 
     @classmethod
     def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> Any:

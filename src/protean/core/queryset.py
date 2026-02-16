@@ -243,11 +243,15 @@ class QuerySet:
             #   ensure the same control is applied when aggregates are updated without events.
             if entity.element_type == DomainObjects.AGGREGATE:
                 # Fetch and sync events version
-                identifier = getattr(entity, id_field(entity).field_name)
+                id_f = id_field(entity)
+                assert id_f is not None
+                identifier = getattr(entity, id_f.field_name)
                 last_message = self._domain.event_store.store.read_last_message(
                     f"{entity.meta_.stream_category}-{identifier}"
                 )
                 if last_message:
+                    assert last_message.metadata is not None
+                    assert last_message.metadata.event_store is not None
                     entity._event_position = last_message.metadata.event_store.position
 
             entity_items.append(entity)

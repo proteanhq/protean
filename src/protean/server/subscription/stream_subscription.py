@@ -63,20 +63,35 @@ class StreamSubscription(BaseSubscription):
         stream_config = server_config.get("stream_subscription", {})
 
         # Use provided values or fall back to config, then to hardcoded defaults
-        if messages_per_tick is None:
-            messages_per_tick = server_config.get("messages_per_tick", 10)
-        if blocking_timeout_ms is None:
-            blocking_timeout_ms = stream_config.get("blocking_timeout_ms", 5000)
-        if max_retries is None:
-            max_retries = stream_config.get("max_retries", 3)
-        if retry_delay_seconds is None:
-            retry_delay_seconds = stream_config.get("retry_delay_seconds", 1)
-        if enable_dlq is None:
-            enable_dlq = stream_config.get("enable_dlq", True)
+        resolved_messages_per_tick: int = (
+            messages_per_tick
+            if messages_per_tick is not None
+            else int(server_config.get("messages_per_tick", 10))
+        )
+        resolved_blocking_timeout_ms: int = (
+            blocking_timeout_ms
+            if blocking_timeout_ms is not None
+            else int(stream_config.get("blocking_timeout_ms", 5000))
+        )
+        resolved_max_retries: int = (
+            max_retries
+            if max_retries is not None
+            else int(stream_config.get("max_retries", 3))
+        )
+        resolved_retry_delay_seconds: int = (
+            retry_delay_seconds
+            if retry_delay_seconds is not None
+            else int(stream_config.get("retry_delay_seconds", 1))
+        )
+        resolved_enable_dlq: bool = (
+            enable_dlq
+            if enable_dlq is not None
+            else bool(stream_config.get("enable_dlq", True))
+        )
 
         # Use zero tick interval for blocking reads
         # The blocking read timeout will control the actual pacing
-        super().__init__(engine, messages_per_tick, tick_interval=0)
+        super().__init__(engine, resolved_messages_per_tick, tick_interval=0)
 
         self.handler = handler
         self.subscriber_name = fqn(self.handler)
@@ -87,10 +102,10 @@ class StreamSubscription(BaseSubscription):
 
         # Stream-specific attributes
         self.stream_category = stream_category
-        self.blocking_timeout_ms = blocking_timeout_ms
-        self.max_retries = max_retries
-        self.retry_delay_seconds = retry_delay_seconds
-        self.enable_dlq = enable_dlq
+        self.blocking_timeout_ms: int = resolved_blocking_timeout_ms
+        self.max_retries: int = resolved_max_retries
+        self.retry_delay_seconds: int = resolved_retry_delay_seconds
+        self.enable_dlq: bool = resolved_enable_dlq
 
         # Consumer name for Redis Streams (unique per consumer instance)
         self.consumer_name = self.subscription_id
@@ -294,6 +309,7 @@ class StreamSubscription(BaseSubscription):
             if not message:
                 continue  # Message was moved to DLQ during deserialization
 
+            assert message.metadata is not None, "Message metadata cannot be None"
             logger.debug(
                 f"Processing {message.metadata.headers.type} (ID: {message.metadata.headers.id})"
             )
@@ -322,6 +338,7 @@ class StreamSubscription(BaseSubscription):
 
     async def _acknowledge_message(self, identifier: str) -> bool:
         """Acknowledge successful message processing."""
+        assert self.broker is not None, "Broker not initialized"
         ack_result = self.broker.ack(
             self.stream_category, identifier, self.consumer_group
         )
@@ -357,6 +374,7 @@ class StreamSubscription(BaseSubscription):
 
     async def _retry_message(self, identifier: str, retry_count: int) -> None:
         """Retry a failed message after delay."""
+        assert self.broker is not None, "Broker not initialized"
         logger.debug(
             f"Retrying message {identifier} (attempt {retry_count}/{self.max_retries}) "
             f"after {self.retry_delay_seconds}s delay"
@@ -368,6 +386,7 @@ class StreamSubscription(BaseSubscription):
 
     async def _exhaust_retries(self, identifier: str, payload: dict) -> None:
         """Handle a message that has exhausted all retries."""
+        assert self.broker is not None, "Broker not initialized"
         logger.warning(
             f"Message {identifier} exhausted retries ({self.max_retries} attempts), moving to DLQ"
         )
@@ -390,6 +409,7 @@ class StreamSubscription(BaseSubscription):
         if not self.enable_dlq:
             return
 
+        assert self.broker is not None, "Broker not initialized"
         try:
             dlq_message = self._create_dlq_message(identifier, payload)
             self.broker.publish(self.dlq_stream, dlq_message)

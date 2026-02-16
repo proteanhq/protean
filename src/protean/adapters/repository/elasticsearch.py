@@ -67,9 +67,12 @@ class ElasticsearchModel(Document):
 
         # Elasticsearch stores identity in a special field `meta.id`.
         # Set `meta.id` to the identifier set in entity
-        id_field_name = id_field(cls.meta_.part_of).field_name
+        id_field_obj = id_field(cls.meta_.part_of)
+        assert id_field_obj is not None
+        id_field_name = id_field_obj.field_name
 
         if id_field_name in item_dict:
+            assert model_obj.meta is not None
             model_obj.meta.id = item_dict[id_field_name]
 
         return model_obj
@@ -84,6 +87,7 @@ class ElasticsearchModel(Document):
         for field_name in attributes(cls.meta_.part_of):
             item_dict[field_name] = values.get(field_name, None)
 
+        assert item.meta is not None
         identifier = None
         if (
             current_domain.config["identity_strategy"] == IdentityStrategy.UUID.value
@@ -96,7 +100,9 @@ class ElasticsearchModel(Document):
 
         # Elasticsearch stores identity in a special field `meta.id`.
         # Extract identity from `meta.id` and set identifier
-        id_field_name = id_field(cls.meta_.part_of).field_name
+        id_field_obj = id_field(cls.meta_.part_of)
+        assert id_field_obj is not None
+        id_field_name = id_field_obj.field_name
         item_dict[id_field_name] = identifier
 
         # Set version from document fields, only if `_version` attr is present
@@ -388,7 +394,9 @@ class ElasticsearchDAO(BaseDAO):
             )
         except NotFoundError as exc:
             logger.error(f"Database Record not found: {exc}")
-            identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
+            id_field_obj = id_field(self.entity_cls)
+            assert id_field_obj is not None
+            identifier = getattr(model_obj, id_field_obj.attribute_name)
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
@@ -650,7 +658,9 @@ class ESProvider(BaseProvider):
 
             # Create Dynamic Mapping and associate with index
             # FIXME Expand to all types of fields
-            id_field_name = id_field(entity_cls).field_name
+            id_field_obj = id_field(entity_cls)
+            assert id_field_obj is not None
+            id_field_name = id_field_obj.field_name
             m = Mapping()
             m.field(id_field_name, Keyword())
 

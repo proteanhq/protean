@@ -233,8 +233,12 @@ class BaseDAO(metaclass=ABCMeta):
         )
 
         # Filter on the ID field of the entity
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None, (
+            f"`{self.entity_cls.__name__}` does not have an identity field"
+        )
         filters = {
-            id_field(self.entity_cls).field_name: identifier,
+            entity_id_field.field_name: identifier,
         }
 
         results = self.query.filter(**filters).all()
@@ -282,7 +286,9 @@ class BaseDAO(metaclass=ABCMeta):
             )
 
         # Return the first result, because `filter` would have returned an array
-        return results.first
+        result = results.first
+        assert result is not None
+        return result
 
     def exists(self, excludes_, **filters):
         """Returns `True` if objects matching the provided filters were found. Else, returns False.
@@ -351,7 +357,11 @@ class BaseDAO(metaclass=ABCMeta):
 
     def _validate_and_update_version(self, entity_obj) -> None:
         if entity_obj.state_.is_persisted:
-            identifier = getattr(entity_obj, id_field(self.entity_cls).field_name)
+            entity_id_field = id_field(self.entity_cls)
+            assert entity_id_field is not None, (
+                f"`{self.entity_cls.__name__}` does not have an identity field"
+            )
+            identifier = getattr(entity_obj, entity_id_field.field_name)
             persisted_entity = self.get(identifier)
 
             # The version of aggregate in the persistence store should be the same as

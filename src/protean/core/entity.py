@@ -348,16 +348,16 @@ class BaseEntity(BaseModel, OptionsMixin):
             setattr(cls, _ID_FIELD_NAME, id_fields[0].field_name)
 
     @staticmethod
-    def _get_class_descriptor(cls: type, name: str) -> Any:
+    def _get_class_descriptor(klass: type, name: str) -> Any:
         """Look up a descriptor on the class MRO without triggering __get__.
 
         ``getattr(cls, name)`` invokes the data descriptor protocol, which
         may return ``None`` or ``[]`` for association descriptors.  Scanning
         ``__dict__`` directly returns the raw descriptor object.
         """
-        for klass in cls.__mro__:
-            if name in vars(klass):
-                attr = vars(klass)[name]
+        for mro_cls in klass.__mro__:
+            if name in vars(mro_cls):
+                attr = vars(mro_cls)[name]
                 if isinstance(attr, _DESCRIPTOR_TYPES):
                     return attr
         return None

@@ -194,7 +194,7 @@ _PYTHON_TYPE_TO_SA: dict[type, type] = {
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
-    def __init_subclass__(subclass, **kwargs):  # noqa: C901
+    def __init_subclass__(cls, **kwargs):  # noqa: C901
         def field_mapping_for(field_obj):
             """Return SQLAlchemy-equivalent type for Protean's field"""
             from protean.core.value_object import BaseValueObject
@@ -224,13 +224,13 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             return sa_types.String
 
         # Update the class attrs with the entity attributes
-        if "meta_" in subclass.__dict__:
-            entity_cls = subclass.__dict__["meta_"].part_of
+        if "meta_" in cls.__dict__:
+            entity_cls = cls.__dict__["meta_"].part_of
             for _, field_obj in attributes(entity_cls).items():
                 attribute_name = field_obj.attribute_name
 
                 # Map the field if not in attributes
-                if attribute_name not in subclass.__dict__:
+                if attribute_name not in cls.__dict__:
                     # Derive field based on field enclosed within ShadowField
                     if isinstance(field_obj, _ShadowField):
                         field_obj = field_obj.field_obj
@@ -249,7 +249,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     sa_type_cls = field_mapping_for(field_obj)
 
                     # Upgrade to Database-specific Data Types
-                    dialect_name = subclass.__dict__["engine"].dialect.name
+                    dialect_name = cls.__dict__["engine"].dialect.name
                     pickled = getattr(field_obj, "pickled", False)
                     if dialect_name == "postgresql":
                         if resolved_type is dict and not pickled:
@@ -339,7 +339,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 
                     # Update the attributes of the class
                     column = Column(sa_type_cls(*type_args, **type_kwargs), **col_args)
-                    setattr(subclass, attribute_name, column)  # Set class attribute
+                    setattr(cls, attribute_name, column)  # Set class attribute
 
         super().__init_subclass__(**kwargs)
 
@@ -433,7 +433,9 @@ class SADAO(BaseDAO):
                 # Instantiate the lookup class and get the expression
                 lookup = lookup_class(stripped_key, child[1], self.database_model_cls)
                 if criteria.negated:
-                    params.append(~lookup.as_expression())
+                    expression = lookup.as_expression()
+                    assert expression is not None
+                    params.append(~expression)
                 else:
                     params.append(lookup.as_expression())
 
@@ -444,6 +446,7 @@ class SADAO(BaseDAO):
     ) -> ResultSet:
         """Filter objects from the sqlalchemy database"""
         conn = self._get_session()
+        assert conn is not None
         qs = conn.query(self.database_model_cls)
 
         # Build the filters from the criteria
@@ -464,10 +467,10 @@ class SADAO(BaseDAO):
         #   order is undefined. MSSQL does not support OFFSET/LIMIT without an ORDER BY clause.
         # So, we order by primary key ascending when there is no order specified.
         if not order_cols:
+            entity_id_field = id_field(self.entity_cls)
+            assert entity_id_field is not None
             order_cols.append(
-                getattr(
-                    self.database_model_cls, id_field(self.entity_cls).attribute_name
-                ).asc()
+                getattr(self.database_model_cls, entity_id_field.attribute_name).asc()
             )
 
         qs = qs.order_by(*order_cols)
@@ -493,6 +496,7 @@ class SADAO(BaseDAO):
     def _create(self, model_obj):
         """Add a new record to the sqlalchemy database"""
         conn = self._get_session()
+        assert conn is not None
 
         conn.add(model_obj)
 
@@ -514,10 +518,14 @@ class SADAO(BaseDAO):
     def _update(self, model_obj):
         """Update a record in the sqlalchemy database"""
         conn = self._get_session()
+        assert conn is not None
+
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None
 
         try:
             # Fetch the record from database
-            identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
+            identifier = getattr(model_obj, entity_id_field.attribute_name)
             db_item = conn.get(self.database_model_cls, identifier)
 
             if db_item is None:
@@ -529,7 +537,7 @@ class SADAO(BaseDAO):
 
             # Sync DB Record with current changes
             for attribute in attributes(self.entity_cls):
-                if attribute != id_field(self.entity_cls).attribute_name and getattr(
+                if attribute != entity_id_field.attribute_name and getattr(
                     model_obj, attribute
                 ) != getattr(db_item, attribute):
                     setattr(db_item, attribute, getattr(model_obj, attribute))
@@ -552,6 +560,7 @@ class SADAO(BaseDAO):
     def _update_all(self, criteria: Q, *args, **kwargs):
         """Update all objects satisfying the criteria"""
         conn = self._get_session()
+        assert conn is not None
         qs = conn.query(self.database_model_cls).filter(self._build_filters(criteria))
         try:
             values = {}
@@ -574,10 +583,14 @@ class SADAO(BaseDAO):
     def _delete(self, model_obj):
         """Delete the entity record in the dictionary"""
         conn = self._get_session()
+        assert conn is not None
+
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None
 
         try:
             # Fetch the record from database
-            identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
+            identifier = getattr(model_obj, entity_id_field.attribute_name)
             db_item = conn.get(self.database_model_cls, identifier)
 
             if db_item is None:
@@ -605,6 +618,7 @@ class SADAO(BaseDAO):
     def _delete_all(self, criteria: Q = None):
         """Delete a record from the sqlalchemy database"""
         conn = self._get_session()
+        assert conn is not None
 
         del_count = 0
         if criteria:
@@ -631,6 +645,7 @@ class SADAO(BaseDAO):
         assert isinstance(query, str)
 
         conn = self._get_session()
+        assert conn is not None
         try:
             results = conn.execute(text(query))
 

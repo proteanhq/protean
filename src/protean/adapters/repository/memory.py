@@ -322,6 +322,7 @@ class DictDAO(BaseDAO):
     def _set_auto_fields(self, model_obj):
         """Set the values of the auto field using counter"""
         conn = self._get_session()
+        assert conn is not None
 
         for field_name, field_obj in fields(self.entity_cls).items():
             is_auto_increment = getattr(field_obj, "increment", False)
@@ -340,12 +341,15 @@ class DictDAO(BaseDAO):
     def _create(self, model_obj):
         """Write a record to the dict repository"""
         conn = self._get_session()
+        assert conn is not None
 
         # Update the value of the counters
         model_obj = self._set_auto_fields(model_obj)
 
         # Add the entity to the repository
-        identifier = model_obj[id_field(self.entity_cls).field_name]
+        id_fld = id_field(self.entity_cls)
+        assert id_fld is not None
+        identifier = model_obj[id_fld.field_name]
         with conn._db["lock"]:
             conn._db["data"][self.schema_name][identifier] = model_obj
 
@@ -403,6 +407,7 @@ class DictDAO(BaseDAO):
     ):
         """Read the repository and return results as per the filer"""
         conn = self._get_session()
+        assert conn is not None
 
         if criteria.children:
             items = list(
@@ -468,8 +473,11 @@ class DictDAO(BaseDAO):
     def _update(self, model_obj):
         """Update the entity record in the dictionary"""
         conn = self._get_session()
+        assert conn is not None
 
-        identifier = model_obj[id_field(self.entity_cls).field_name]
+        id_fld = id_field(self.entity_cls)
+        assert id_fld is not None
+        identifier = model_obj[id_fld.field_name]
         with conn._db["lock"]:
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
@@ -496,6 +504,7 @@ class DictDAO(BaseDAO):
     def _update_all(self, criteria: Q, *args, **kwargs):
         """Update all objects satisfying the criteria"""
         conn = self._get_session()
+        assert conn is not None
 
         items = self._filter_items(criteria, conn._db["data"][self.schema_name])
 
@@ -525,8 +534,11 @@ class DictDAO(BaseDAO):
     def _delete(self, model_obj):
         """Delete the entity record in the dictionary"""
         conn = self._get_session()
+        assert conn is not None
 
-        identifier = model_obj[id_field(self.entity_cls).field_name]
+        id_fld = id_field(self.entity_cls)
+        assert id_fld is not None
+        identifier = model_obj[id_fld.field_name]
         with conn._db["lock"]:
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
@@ -554,6 +566,7 @@ class DictDAO(BaseDAO):
     def _delete_all(self, criteria: Q = None):
         """Delete the dictionary object by its criteria"""
         conn = self._get_session()
+        assert conn is not None
         items = []
 
         if criteria:
