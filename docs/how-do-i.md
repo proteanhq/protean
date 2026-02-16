@@ -70,6 +70,13 @@ need by what you're trying to accomplish.
 | Run the async background server                 | [`protean server`](./guides/cli/server.md) |
 | Use the CLI for development and operations      | [CLI](./guides/cli/index.md) |
 
+## Organize My Project
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| Structure my project folders by domain concept  | [Organize by Domain Concept](./patterns/organize-by-domain-concept.md) |
+| Scaffold a new project with the right structure | [`protean new`](./guides/cli/new.md) |
+
 ## Choose an Architecture
 
 | I want to...                                    | Guide |

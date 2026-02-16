@@ -78,18 +78,25 @@ The `scripts/` directory contains virtual environment activation scripts for dif
 
 ### Source Code Structure
 
+The generated structure follows the
+[Organize by Domain Concept](../../patterns/organize-by-domain-concept.md)
+pattern. The folder tree is organized around **what the system does**
+(domain concepts), not around technical layers. Protean's decorators carry
+architectural metadata (which layer, which side), so the folder structure
+doesn't need to repeat it.
+
 ```
 src/
 └── <package_name>/
     ├── __init__.py
     ├── domain.py          # Domain initialization
     ├── domain.toml        # Domain configuration
-    ├── shared/            # Shared utilities
+    ├── shared/            # Shared domain vocabulary and utilities
     │   ├── __init__.py
     │   ├── logging.py     # Structured logging setup
     │   ├── exceptions.py  # Domain exceptions
     │   └── value_objects.py
-    ├── example/           # Optional example code
+    ├── example/           # Optional example aggregate
     │   ├── __init__.py
     │   ├── aggregate.py
     │   ├── commands.py
@@ -98,11 +105,30 @@ src/
     │   ├── event_handlers.py
     │   ├── repository.py
     │   └── value_objects.py
-    └── projections/       # Read models
+    └── projections/       # Read models (at domain level, not per aggregate)
         ├── __init__.py
         ├── example_projector.py
         └── example_summary.py
 ```
+
+Key structural decisions:
+
+- **Aggregates are top-level folders** — each aggregate (`example/`) is a
+  chapter heading a business stakeholder would recognize.
+- **Projections live at the domain level** — in `projections/`, organized
+  by the business question they answer, not by which aggregate sources
+  their data. This scales naturally when projections span multiple
+  aggregates.
+- **Shared vocabulary has its own folder** — cross-aggregate value objects
+  and utilities live in `shared/`.
+- **`domain.py` and `domain.toml` are front matter** — a newcomer sees
+  what this bounded context is and how it's configured immediately.
+
+As your domain grows, add new aggregates as peer folders alongside
+`example/`. See the
+[Organize by Domain Concept](../../patterns/organize-by-domain-concept.md)
+pattern for guidance on evolving this structure, including colocating
+commands with their handlers in capability files.
 
 ### Test Structure
 

@@ -268,6 +268,7 @@ nav:
       - patterns/event-versioning-and-evolution.md
       - patterns/command-idempotency.md
     - Architecture & Quality:
+      - patterns/organize-by-domain-concept.md
       - patterns/validation-layering.md
       - patterns/thin-handlers-rich-domain.md
       - patterns/testing-domain-logic-in-isolation.md

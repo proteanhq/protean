@@ -9,16 +9,44 @@ These principles guide every design decision in Protean.
 
 ## Mirror the Domain in Code
 
-Your codebase should read like the business it serves. Protean's domain
-elements — aggregates, entities, value objects, commands, events — map
-directly to DDD tactical patterns, so business requirements translate
-naturally into code.
+Your codebase should read like the business it serves — not just at the
+class level, but at the folder level too. When a newcomer opens your
+project, the directory tree should read like the table of contents of a
+book about your business, not like the index of a framework manual.
+
+### In Classes
+
+Protean's domain elements — aggregates, entities, value objects, commands,
+events — map directly to DDD tactical patterns, so business requirements
+translate naturally into code.
 
 Python's readability is a deliberate advantage here. Domain experts and
 developers can look at the same aggregate class and have a shared
 conversation about what the system does. There is no ORM inheritance to
 decipher, no framework-specific base classes to learn. A `Post` aggregate
 with a `publish()` method reads exactly like what it is.
+
+### In Folder Structure
+
+The same principle extends to how you organize files. **The folder tree
+owns the "what" (domain concepts). The framework owns the "which kind"
+(layer, side, boundary).**
+
+Classic layered approaches split code into `domain/`, `application/`,
+`infrastructure/` — and completely destroy domain visibility. To
+understand a single feature, you fish through three separate subtrees.
+Protean's decorators (`@Aggregate`, `@CommandHandler`, `@Projection`,
+`@Repository`) already declare what layer each element belongs to. The
+framework carries this architectural metadata so your folder structure
+doesn't have to repeat it.
+
+This means you organize by **domain concept** — aggregates as top-level
+folders, capability files that colocate related commands and handlers,
+projections grouped by the business question they answer. Every folder
+and file should be something you'd explain to a product manager.
+
+See the [Organize by Domain Concept](../patterns/organize-by-domain-concept.md)
+pattern for detailed structural guidance and examples.
 
 ## Prototype Rapidly, Iterate Freely
 

@@ -56,6 +56,12 @@ terminology.
 
 ## Architecture & Quality
 
+- **[Organize by Domain Concept](organize-by-domain-concept.md)** -- The
+  folder tree owns the "what" (domain concepts); the framework owns the
+  "which kind" (layer, side, boundary). Organize by aggregate, colocate
+  capabilities, separate projections, and let Protean's decorators carry
+  architectural metadata.
+
 - **[Validation Layering](validation-layering.md)** -- Different kinds of
   validation belong at different layers: field constraints for types, value
   object invariants for concept rules, aggregate invariants for business rules,
