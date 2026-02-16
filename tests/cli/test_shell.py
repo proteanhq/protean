@@ -87,6 +87,15 @@ class TestShellCommand:
         assert isinstance(result.exception, SystemExit)
         assert "Aborted" in result.output
 
+    def test_shell_command_aborts_when_derive_domain_returns_none(self):
+        """Test that shell aborts when derive_domain returns None."""
+        from unittest.mock import patch
+
+        with patch("protean.cli.shell.derive_domain", return_value=None):
+            result = runner.invoke(app, ["shell", "--domain", "dummy"])
+            assert result.exit_code == 1
+            assert "Aborted" in result.output
+
     def test_shell_command_with_traverse_option(self):
         change_working_directory_to("test7")
 
