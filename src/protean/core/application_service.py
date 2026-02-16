@@ -5,6 +5,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,12 @@ class BaseApplicationService(Element, OptionsMixin):
         return [("part_of", None)]
 
 
-def application_service_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def application_service_factory(
+    element_cls: type[_T], domain: Any, **opts: Any
+) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseApplicationService, **opts)
 
     if not element_cls.meta_.part_of:

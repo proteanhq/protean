@@ -78,7 +78,7 @@ def server(
 
     # FIXME Accept MAX_WORKERS as command-line input as well
     try:
-        domain = derive_domain(domain)
+        derived_domain = derive_domain(domain)
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         print(msg)  # Required for tests to capture output
@@ -86,13 +86,15 @@ def server(
 
         raise typer.Abort()
 
+    assert derived_domain is not None
+
     # Traverse and initialize domain
     #   This will load all aggregates, entities, services, and other domain elements.
     #
     # By the time the handlers are invoked, the domain is fully initialized and ready to serve requests.
-    domain.init()
+    derived_domain.init()
 
-    engine = Engine(domain, test_mode=test_mode, debug=debug)
+    engine = Engine(derived_domain, test_mode=test_mode, debug=debug)
     engine.run()
 
     if engine.exit_code != 0:

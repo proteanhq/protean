@@ -1,7 +1,7 @@
 """Projection Functionality and Classes"""
 
 import logging
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
@@ -263,7 +263,10 @@ class BaseProjection(BaseModel, OptionsMixin):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-def projection_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def projection_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     """Factory method to create a projection class.
 
     This method is used to create a projection class. It is called during

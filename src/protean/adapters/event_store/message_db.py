@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import psycopg2
@@ -52,7 +52,7 @@ class MessageDBStore(BaseEventStore):
             stream_name, position=position, no_of_messages=no_of_messages
         )
 
-    def _read_last_message(self, stream_name) -> Dict[str, Any]:
+    def _read_last_message(self, stream_name) -> Optional[Dict[str, Any]]:
         """Read the last message from the event store."""
         return self.client.read_last_message(stream_name)
 

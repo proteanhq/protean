@@ -2,7 +2,7 @@ import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import List, Union
+from typing import Any, List, TypeVar, Union
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
@@ -32,11 +32,11 @@ class BaseDomainService(Element, OptionsMixin):
             ("part_of", None),
         ]
 
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
 
         # Record invariant methods
-        setattr(subclass, "_invariants", defaultdict(dict))
+        setattr(cls, "_invariants", defaultdict(dict))
 
     def __init__(self, *aggregates: Union[BaseAggregate, List[BaseAggregate]]):
         """
@@ -109,7 +109,10 @@ def wrap_methods_with_invariant_calls(cls):
     return cls
 
 
-def domain_service_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def domain_service_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseDomainService, **opts)
 
     if not element_cls.meta_.part_of or len(element_cls.meta_.part_of) < 2:

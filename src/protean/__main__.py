@@ -12,4 +12,4 @@ Why does this file exist, and why __main__? For more info, read:
 from protean.cli import main
 
 if __name__ == "__main__":
-    main()
+    main()  # type: ignore[reportCallIssue]

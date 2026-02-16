@@ -83,7 +83,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         return messages
 
-    def read_last_message(self, stream) -> Message:
+    def read_last_message(self, stream) -> Optional[Message]:
         # FIXME Rename to read_last_stream_message
         raw_message = self._read_last_message(stream)
         if raw_message:
@@ -93,6 +93,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def append(self, object: Union[BaseEvent, BaseCommand]) -> int:
         message = Message.from_domain_object(object)
+        assert message.metadata is not None, "Message metadata cannot be None"
 
         position = self._write(
             message.metadata.headers.stream,
@@ -130,6 +131,7 @@ class BaseEventStore(metaclass=ABCMeta):
             f"{part_of.meta_.stream_category}:snapshot-{identifier}"
         )
 
+        position_in_snapshot: int = 0
         if snapshot_message:
             # We have a snapshot, so initialize aggregate from snapshot
             #   and apply subsequent events
@@ -200,7 +202,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def _last_event_of_type(
         self, event_cls: Type[BaseEvent], stream_category: str = None
-    ) -> BaseEvent:
+    ) -> Optional[Union[BaseEvent, BaseCommand]]:
         stream_category = stream_category or "$all"
         events = [
             event
@@ -216,7 +218,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def _events_of_type(
         self, event_cls: Type[BaseEvent], stream_category: str = None
-    ) -> List[BaseEvent]:
+    ) -> List[Union[BaseEvent, BaseCommand]]:
         """Read events of a specific type in a given stream.
 
         This is a utility method, especially useful for testing purposes, that retrieves events of a

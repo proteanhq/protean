@@ -151,7 +151,8 @@ def locate_domain(module_name, domain_name, raise_if_not_found=True):
     except ImportError as exc:
         # Reraise the ImportError if it occurred within the imported module.
         # Determine this by checking whether the trace has a depth > 1.
-        if sys.exc_info()[2].tb_next:
+        tb = sys.exc_info()[2]
+        if tb is not None and tb.tb_next:
             raise NoDomainException(
                 f"While importing {module_name!r}, an ImportError was"
                 f" raised:\n\n{traceback.format_exc()}"

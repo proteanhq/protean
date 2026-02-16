@@ -187,6 +187,7 @@ nav:
       - guides/essentials/identity.md
       - guides/essentials/stream-categories.md
       - guides/change-state/unit-of-work.md
+      - guides/type-checking.md
 
     - Testing:
       - guides/testing/index.md
@@ -268,6 +269,7 @@ nav:
       - patterns/event-versioning-and-evolution.md
       - patterns/command-idempotency.md
     - Architecture & Quality:
+      - patterns/organize-by-domain-concept.md
       - patterns/validation-layering.md
       - patterns/thin-handlers-rich-domain.md
       - patterns/testing-domain-logic-in-isolation.md

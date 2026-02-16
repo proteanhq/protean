@@ -252,6 +252,7 @@ Protean supports but does not enforce.
 
 ### Architecture & Quality
 
+- [Organize by Domain Concept](./patterns/organize-by-domain-concept.md) -- The folder tree owns domain concepts; the framework carries layer metadata. Organize by aggregate, colocate capabilities, separate projections.
 - [Validation Layering](./patterns/validation-layering.md) -- Different validation belongs at different layers: fields, value objects, invariants, handlers.
 - [Thin Handlers, Rich Domain](./patterns/thin-handlers-rich-domain.md) -- Handlers orchestrate; aggregates and domain services contain all logic.
 - [Testing Domain Logic in Isolation](./patterns/testing-domain-logic-in-isolation.md) -- Test aggregates and value objects directly, without infrastructure.

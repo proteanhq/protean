@@ -225,7 +225,7 @@ class SubscriptionConfig:
         default_factory=lambda: DEFAULT_CONFIG["blocking_timeout_ms"]
     )
     max_retries: int = field(default_factory=lambda: DEFAULT_CONFIG["max_retries"])
-    retry_delay_seconds: int = field(
+    retry_delay_seconds: float = field(
         default_factory=lambda: DEFAULT_CONFIG["retry_delay_seconds"]
     )
     enable_dlq: bool = field(default_factory=lambda: DEFAULT_CONFIG["enable_dlq"])
@@ -328,7 +328,7 @@ class SubscriptionConfig:
         tick_interval: Optional[int] = None,
         blocking_timeout_ms: Optional[int] = None,
         max_retries: Optional[int] = None,
-        retry_delay_seconds: Optional[int] = None,
+        retry_delay_seconds: Optional[float] = None,
         enable_dlq: Optional[bool] = None,
         position_update_interval: Optional[int] = None,
         origin_stream: Optional[str] = None,
@@ -477,7 +477,7 @@ class SubscriptionConfig:
             ("tick_interval", int),
             ("blocking_timeout_ms", int),
             ("max_retries", int),
-            ("retry_delay_seconds", int),
+            ("retry_delay_seconds", float),
             ("enable_dlq", bool),
             ("position_update_interval", int),
             ("origin_stream", str),

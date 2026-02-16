@@ -2,6 +2,7 @@ from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.mixins import HandlerMixin, handle
+from typing import Any, TypeVar
 
 
 class BaseProjector(Element, HandlerMixin, OptionsMixin):
@@ -54,7 +55,10 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
         return super().__new__(cls)
 
 
-def projector_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def projector_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseProjector, **opts)
 
     if not element_cls.meta_.projector_for:

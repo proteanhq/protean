@@ -34,6 +34,10 @@ def shell(
         logger.error(f"Error loading Protean domain: {exc.args[0]}")
         raise typer.Abort()
 
+    if domain_instance is None:
+        logger.error("Could not derive a Protean domain")
+        raise typer.Abort()
+
     if traverse:
         print("Traversing directory to load all modules...")
     domain_instance.init(traverse=traverse)

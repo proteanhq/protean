@@ -133,6 +133,19 @@ class ConfigAttribute:
 class Config2(dict):
     ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
+    def from_object(self, obj: object) -> None:
+        """Update configuration from a Python object (module, class, or dict).
+
+        Only uppercase attributes are loaded from non-dict objects,
+        following the Flask configuration convention.
+        """
+        if isinstance(obj, dict):
+            self.update(self._normalize_config(obj))
+        else:
+            for key in dir(obj):
+                if key.isupper():
+                    self[key.lower()] = getattr(obj, key)
+
     @classmethod
     def load_from_dict(cls, config: dict = _default_config()):
         """Load configuration from a dictionary."""

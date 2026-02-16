@@ -29,9 +29,9 @@ domain = Domain(name="Publishing")
 
 @domain.aggregate
 class Post:
-    title = String(required=True, max_length=1000)
-    slug = String(required=True, max_length=1024)
-    content = Text(required=True)
+    title: String(required=True, max_length=1000)
+    slug: String(required=True, max_length=1024)
+    content: Text(required=True)
 
 domain.init()
 with domain.domain_context():

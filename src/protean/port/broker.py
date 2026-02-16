@@ -4,7 +4,7 @@ import time
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from enum import Enum, Flag, auto
-from typing import TYPE_CHECKING, Dict, Type
+from typing import TYPE_CHECKING, Dict, Optional, Type
 
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError, ValidationError
@@ -131,7 +131,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
         return bool(self.capabilities & capabilities)
 
-    def publish(self, stream: str, message: dict) -> str:
+    def publish(self, stream: str, message: dict) -> Optional[str]:
         """Publish a message to the broker.
 
         Args:

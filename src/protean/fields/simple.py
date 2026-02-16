@@ -11,7 +11,7 @@ during class creation.
 """
 
 import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from protean.fields.spec import FieldSpec
 
@@ -93,7 +93,7 @@ def Auto(
     increment: bool = False,
     identifier: bool = False,
     identity_strategy: str | None = None,
-    identity_function: str | None = None,
+    identity_function: str | Callable | None = None,
     identity_type: str | None = None,
     **kwargs: Any,
 ) -> FieldSpec:
@@ -115,3 +115,50 @@ def Auto(
     spec._identity_function = identity_function
     spec._identity_type = identity_type
     return spec
+
+
+# ---------------------------------------------------------------------------
+# TYPE_CHECKING overrides — static type checkers see resolved Python types
+# instead of FieldSpec, matching what the mypy plugin does at analysis time.
+# This enables Pylance's dataclass_transform (from Pydantic's BaseModel) to
+# generate correct __init__ parameters for domain elements.
+# ---------------------------------------------------------------------------
+if TYPE_CHECKING:
+
+    def String(  # type: ignore[misc]
+        max_length: int = 255,
+        min_length: int | None = None,
+        sanitize: bool = True,
+        **kwargs: Any,
+    ) -> str: ...
+
+    def Text(sanitize: bool = True, **kwargs: Any) -> str: ...  # type: ignore[misc]
+
+    def Integer(  # type: ignore[misc]
+        min_value: int | None = None,
+        max_value: int | None = None,
+        **kwargs: Any,
+    ) -> int: ...
+
+    def Float(  # type: ignore[misc]
+        min_value: float | None = None,
+        max_value: float | None = None,
+        **kwargs: Any,
+    ) -> float: ...
+
+    def Boolean(**kwargs: Any) -> bool: ...  # type: ignore[misc]
+
+    def Date(**kwargs: Any) -> datetime.date: ...  # type: ignore[misc]
+
+    def DateTime(**kwargs: Any) -> datetime.datetime: ...  # type: ignore[misc]
+
+    def Identifier(identifier: bool = False, **kwargs: Any) -> str: ...  # type: ignore[misc]
+
+    def Auto(  # type: ignore[misc]
+        increment: bool = False,
+        identifier: bool = False,
+        identity_strategy: str | None = None,
+        identity_function: str | Callable | None = None,
+        identity_type: str | None = None,
+        **kwargs: Any,
+    ) -> str: ...

@@ -5,7 +5,7 @@ import inspect
 import logging
 import typing
 from collections import defaultdict
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Optional, TypeVar, cast
 
 from pydantic import PrivateAttr
 
@@ -55,7 +55,7 @@ class BaseAggregate(BaseEntity):
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseAggregate":
         if cls is BaseAggregate:
             raise NotSupportedError("BaseAggregate cannot be instantiated")
-        return super().__new__(cls, *args, **kwargs)
+        return cast("BaseAggregate", super().__new__(cls, *args, **kwargs))
 
     @classmethod
     def _default_options(cls) -> list[tuple[str, Any]]:
@@ -262,7 +262,7 @@ def _pydantic_element_to_fact_event(element_cls):
                 else ValueObject(value_object_cls=result)
             )
             vo_cls = vo_descriptor.value_object_cls
-            annotations[key] = vo_cls | None
+            annotations[key] = Optional[vo_cls]
             namespace[key] = None
             association_descriptors[key] = vo_descriptor
 
@@ -283,7 +283,7 @@ def _pydantic_element_to_fact_event(element_cls):
         elif isinstance(value, ValueObject):
             # Legacy-style VO descriptor in a Pydantic element
             vo_cls = value.value_object_cls
-            annotations[key] = vo_cls | None
+            annotations[key] = Optional[vo_cls]
             namespace[key] = None
             association_descriptors[key] = value
 
@@ -349,7 +349,10 @@ def _pydantic_element_to_fact_event(element_cls):
     return event_cls
 
 
-def aggregate_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     """Factory method to create an aggregate class.
 
     This method is used to create an aggregate class. It is called during domain registration.

@@ -1,11 +1,48 @@
 import pytest
 
-from protean.domain.config import ConfigAttribute
+from protean.domain.config import Config2, ConfigAttribute
 
 
 class MockObject:
     def __init__(self):
         self.config = {}
+
+
+class TestConfig2FromObject:
+    """Tests for Config2.from_object() method."""
+
+    def test_from_object_with_dict(self):
+        """from_object with a dict normalizes and updates config."""
+        config = Config2.load_from_dict()
+        config.from_object({"debug": True, "secret_key": "test-secret"})
+        assert config["debug"] is True
+        assert config["secret_key"] == "test-secret"
+
+    def test_from_object_with_class(self):
+        """from_object with a class loads uppercase attributes."""
+
+        class MyConfig:
+            DEBUG = True
+            SECRET_KEY = "from-class"
+            lowercase_ignored = "should not appear"
+
+        config = Config2.load_from_dict()
+        config.from_object(MyConfig)
+        assert config["debug"] is True
+        assert config["secret_key"] == "from-class"
+        assert "lowercase_ignored" not in config
+
+    def test_from_object_with_module_like_object(self):
+        """from_object with an object having uppercase attrs."""
+
+        class FakeModule:
+            TESTING = True
+            ENV = "production"
+
+        config = Config2.load_from_dict()
+        config.from_object(FakeModule())
+        assert config["testing"] is True
+        assert config["env"] == "production"
 
 
 class TestConfigAttribute:

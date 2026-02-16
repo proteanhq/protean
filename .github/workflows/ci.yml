@@ -133,6 +133,9 @@ jobs:
           poetry config virtualenvs.create false
           poetry install --with dev,test,docs,types --all-extras
 
+      - name: Mypy Plugin Tests
+        run: pytest tests/ext/ -v
+
       - name: Tests
         run: protean test -c FULL
         env:

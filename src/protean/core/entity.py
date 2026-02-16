@@ -5,7 +5,7 @@ import logging
 import threading
 from collections import defaultdict
 from functools import partial
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
@@ -348,16 +348,16 @@ class BaseEntity(BaseModel, OptionsMixin):
             setattr(cls, _ID_FIELD_NAME, id_fields[0].field_name)
 
     @staticmethod
-    def _get_class_descriptor(cls: type, name: str) -> Any:
+    def _get_class_descriptor(klass: type, name: str) -> Any:
         """Look up a descriptor on the class MRO without triggering __get__.
 
         ``getattr(cls, name)`` invokes the data descriptor protocol, which
         may return ``None`` or ``[]`` for association descriptors.  Scanning
         ``__dict__`` directly returns the raw descriptor object.
         """
-        for klass in cls.__mro__:
-            if name in vars(klass):
-                attr = vars(klass)[name]
+        for mro_cls in klass.__mro__:
+            if name in vars(mro_cls):
+                attr = vars(mro_cls)[name]
                 if isinstance(attr, _DESCRIPTOR_TYPES):
                     return attr
         return None
@@ -498,7 +498,7 @@ class BaseEntity(BaseModel, OptionsMixin):
 
         # Restore shadow field values directly into __dict__ (they bypass Pydantic)
         for name, value in shadow_kwargs.items():
-            self.__dict__[name] = value
+            self.__dict__[name] = value  # type: ignore[reportIndexIssue]
 
         # Reconstruct ValueObjects from shadow kwargs when the VO itself
         # wasn't explicitly provided (e.g. during repository retrieval).
@@ -535,13 +535,13 @@ class BaseEntity(BaseModel, OptionsMixin):
             for _, shadow_field in field_obj.get_shadow_fields():
                 attr_name = shadow_field.attribute_name
                 if attr_name not in self.__dict__:
-                    self.__dict__[attr_name] = None
+                    self.__dict__[attr_name] = None  # type: ignore[reportIndexIssue]
 
         # Initialize Reference shadow fields to None when not already set
         for field_obj in reference_fields(self).values():
             shadow_name, shadow = field_obj.get_shadow_field()
             if shadow_name not in self.__dict__:
-                self.__dict__[shadow_name] = None
+                self.__dict__[shadow_name] = None  # type: ignore[reportIndexIssue]
 
         # Setup association pseudo-methods (add_*, remove_*, get_one_from_*, filter_*)
         for field_name, field_obj in association_fields(self).items():
@@ -718,7 +718,7 @@ class BaseEntity(BaseModel, OptionsMixin):
             # Shadow field (e.g., post_id for Reference descriptors) that was
             # previously initialised in model_post_init.  Write directly to
             # __dict__ to bypass Pydantic's validate_assignment.
-            self.__dict__[name] = value
+            self.__dict__[name] = value  # type: ignore[reportIndexIssue]
             if hasattr(self, "_state"):
                 self._state.mark_changed()
         else:
@@ -885,7 +885,10 @@ class BaseEntity(BaseModel, OptionsMixin):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-def entity_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     """Factory method to create an entity class.
 
     This method is used to create an entity class. It is called during domain registration.

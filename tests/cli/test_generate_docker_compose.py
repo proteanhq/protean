@@ -12,6 +12,17 @@ from tests.shared import change_working_directory_to
 runner = CliRunner()
 
 
+class TestGenerateDockerComposeNullGuard:
+    def test_aborts_when_derive_domain_returns_none(self):
+        """Test that docker_compose aborts when derive_domain returns None."""
+        from unittest.mock import patch
+
+        with patch("protean.cli.generate.derive_domain", return_value=None):
+            result = runner.invoke(app, ["docker-compose", "--domain", "dummy"])
+            assert result.exit_code == 1
+            assert "Aborted" in result.output
+
+
 class TestGenerateDockerCompose:
     @pytest.fixture(autouse=True)
     def reset_path(self):

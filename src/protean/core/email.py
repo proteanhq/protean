@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -125,9 +125,9 @@ class BaseEmail(BaseModel, OptionsMixin):
     @property
     def recipients(self) -> list[str]:
         """Return list of all recipients (to + cc + bcc)."""
-        to = self.to or []
-        cc = self.cc or []
-        bcc = self.bcc or []
+        to = convert_str_values_to_list(self.to)
+        cc = convert_str_values_to_list(self.cc)
+        bcc = convert_str_values_to_list(self.bcc)
         return [email for email in (to + cc + bcc) if email]
 
     # ------------------------------------------------------------------
@@ -167,7 +167,10 @@ class BaseEmail(BaseModel, OptionsMixin):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-def email_factory(element_cls: type, domain: Any, **opts: Any) -> type:
+_T = TypeVar("_T")
+
+
+def email_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     # Always route to Pydantic base
     base_cls = BaseEmail
 

@@ -232,6 +232,7 @@ class OutboxProcessor(BaseSubscription):
             bool: True if message was processed successfully, False otherwise.
         """
         # Start processing single message
+        assert self.outbox_repo is not None, "Outbox repository not initialized"
         try:
             # Use UnitOfWork for atomic transaction management
             # This ensures all operations (lock, publish, status update) are atomic
@@ -312,6 +313,8 @@ class OutboxProcessor(BaseSubscription):
         Returns:
             tuple[bool, Exception | None]: (success, error) - True and None if successful, False and exception if failed.
         """
+        assert self.broker is not None, "Broker not initialized"
+
         try:
             # Reconstruct the Message object from outbox record
             # The outbox already contains the proper data and metadata fields

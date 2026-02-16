@@ -135,7 +135,9 @@ class Reference(FieldCacheMixin, Field):
         if isinstance(self.to_cls, str):
             return "id"
         else:
-            return id_field(self.to_cls).attribute_name
+            id_fld = id_field(self.to_cls)
+            assert id_fld is not None
+            return id_fld.attribute_name
 
     def _resolve_to_cls(self, domain, to_cls, owner_cls):
         assert isinstance(self.to_cls, str)
@@ -198,7 +200,9 @@ class Reference(FieldCacheMixin, Field):
         if value:
             # Check if the reference object has been saved. Otherwise, throw ValueError
             # FIXME not a comprehensive check. Should refer to state
-            if getattr(value, id_field(value).field_name) is None:
+            id_fld = id_field(value)
+            assert id_fld is not None
+            if getattr(value, id_fld.field_name) is None:
                 raise ValueError(
                     "Target Object must be saved before being referenced",
                     self.field_name,
@@ -296,11 +300,9 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         if self.via:
             return self.via
 
-        return (
-            utils.inflection.underscore(owner.__name__)
-            + "_"
-            + id_field(owner).attribute_name
-        )
+        id_fld = id_field(owner)
+        assert id_fld is not None
+        return utils.inflection.underscore(owner.__name__) + "_" + id_fld.attribute_name
 
     def _linked_reference(self, owner):
         return utils.inflection.underscore(owner.__name__)
@@ -312,7 +314,9 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
             reference_obj = self.get_cached_value(instance)
         except KeyError:
             # Fetch target object by own Identifier
-            id_value = getattr(instance, id_field(instance).field_name)
+            id_fld = id_field(instance)
+            assert id_fld is not None
+            id_value = getattr(instance, id_fld.field_name)
             reference_obj = self._fetch_objects(
                 instance, self._linked_attribute(owner), id_value
             )
@@ -334,7 +338,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         """Placeholder method for customized Association query methods"""
 
     @abstractmethod
-    def as_dict(self):
+    def as_dict(self, value):
         """Return JSON-compatible value of field"""
 
     def __set__(self, instance, value):
@@ -416,7 +420,9 @@ class HasOne(Association):
         if value is not None:
             # This updates the parent's unique identifier in the child
             #   so that the foreign key relationship is preserved
-            id_value = getattr(instance, id_field(instance).field_name)
+            instance_id_fld = id_field(instance)
+            assert instance_id_fld is not None
+            id_value = getattr(instance, instance_id_fld.field_name)
             linked_attribute = self._linked_attribute(instance.__class__)
             if hasattr(value, linked_attribute):
                 setattr(
@@ -429,12 +435,18 @@ class HasOne(Association):
 
         # 2. Determine and store the change in the relationship
         current_value = getattr(instance, self.field_name)
-        current_value_id = (
-            getattr(current_value, id_field(current_value).field_name)
-            if current_value
-            else None
-        )
-        value_id = getattr(value, id_field(value).field_name) if value else None
+        if current_value:
+            current_value_id_fld = id_field(current_value)
+            assert current_value_id_fld is not None
+            current_value_id = getattr(current_value, current_value_id_fld.field_name)
+        else:
+            current_value_id = None
+        if value:
+            value_id_fld = id_field(value)
+            assert value_id_fld is not None
+            value_id = getattr(value, value_id_fld.field_name)
+        else:
+            value_id = None
         if current_value is None:
             # Entity was not associated earlier
             instance._temp_cache[self.field_name]["change"] = "ADDED"
@@ -566,9 +578,12 @@ class HasMany(Association):
                     }
                 )
 
-        current_value_ids = [
-            getattr(value, id_field(value).field_name) for value in data
-        ]
+        entity_id_fld = id_field(self.to_cls)
+        assert entity_id_fld is not None
+        instance_id_fld = id_field(instance)
+        assert instance_id_fld is not None
+
+        current_value_ids = [getattr(value, entity_id_fld.field_name) for value in data]
 
         # Remove items when set to empty
         if len(items) == 0 and len(current_value_ids) > 0:
@@ -576,7 +591,7 @@ class HasMany(Association):
 
         for item in items:
             # Items to add
-            identity = getattr(item, id_field(item).field_name)
+            identity = getattr(item, entity_id_fld.field_name)
             if identity not in current_value_ids:
                 # If the same item is added multiple times, the last item added will win
                 instance._temp_cache[self.field_name]["added"][identity] = item
@@ -584,7 +599,7 @@ class HasMany(Association):
                 setattr(
                     item,
                     self._linked_attribute(type(instance)),
-                    getattr(instance, id_field(instance).field_name),
+                    getattr(instance, instance_id_fld.field_name),
                 )
 
                 # Temporarily set linkage to parent in child entity
@@ -601,7 +616,7 @@ class HasMany(Association):
                 setattr(
                     item,
                     self._linked_attribute(type(instance)),
-                    getattr(instance, id_field(instance).field_name),
+                    getattr(instance, instance_id_fld.field_name),
                 )
 
                 # Temporarily set linkage to parent in child entity
@@ -643,12 +658,13 @@ class HasMany(Association):
                     }
                 )
 
-        current_value_ids = [
-            getattr(value, id_field(value).field_name) for value in data
-        ]
+        entity_id_fld = id_field(self.to_cls)
+        assert entity_id_fld is not None
+
+        current_value_ids = [getattr(value, entity_id_fld.field_name) for value in data]
 
         for item in items:
-            identity = getattr(item, id_field(item).field_name)
+            identity = getattr(item, entity_id_fld.field_name)
             if identity in current_value_ids:
                 if identity not in instance._temp_cache[self.field_name]["removed"]:
                     instance._temp_cache[self.field_name]["removed"][identity] = item
@@ -679,6 +695,9 @@ class HasMany(Association):
         Returns:
             list: A list of linked entity instances.
         """
+        entity_id_fld = id_field(self.to_cls)
+        assert entity_id_fld is not None
+
         children_repo = current_domain.repository_for(self.to_cls)
         data = children_repo._dao.query.filter(**{key: value}).all().items
 
@@ -693,7 +712,7 @@ class HasMany(Association):
         # Update objects from temporary cache if present
         updated_objects = []
         for value in data:
-            identity = getattr(value, id_field(value).field_name)
+            identity = getattr(value, entity_id_fld.field_name)
             if identity in instance._temp_cache[self.field_name]["updated"]:
                 updated_objects.append(
                     instance._temp_cache[self.field_name]["updated"][identity]
@@ -708,8 +727,8 @@ class HasMany(Association):
             data[:] = [
                 value
                 for value in data
-                if getattr(value, id_field(value).field_name)
-                != getattr(item, id_field(item).field_name)
+                if getattr(value, entity_id_fld.field_name)
+                != getattr(item, entity_id_fld.field_name)
             ]
 
         return data

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -106,7 +106,7 @@ class BaseCommand(BaseMessageType):
         )
 
         headers = (
-            incoming.headers
+            incoming.headers  # type: ignore[union-attr]
             if has_meaningful_headers
             else MessageHeaders(
                 type=self.__class__.__type__, time=datetime.now(timezone.utc)
@@ -161,7 +161,10 @@ class BaseCommand(BaseMessageType):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-def command_factory(element_cls: type, domain: Any, **opts: Any) -> type:
+_T = TypeVar("_T")
+
+
+def command_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     # Always route to Pydantic base
     base_cls = BaseCommand
 

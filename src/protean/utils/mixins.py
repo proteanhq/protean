@@ -1,6 +1,6 @@
 import functools
 from collections import defaultdict
-from typing import Any, Callable, Type, Union
+from typing import Any, Callable, Union
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -12,7 +12,7 @@ from protean.utils.eventing import Message
 class handle:
     """Class decorator to mark handler methods in EventHandler and CommandHandler classes."""
 
-    def __init__(self, target_cls: Type[BaseEvent] | Type[BaseCommand]) -> None:
+    def __init__(self, target_cls: type) -> None:
         self._target_cls = target_cls
 
     def __call__(self, fn: Callable) -> Callable:
@@ -39,8 +39,8 @@ class handle:
 class HandlerMixin:
     """Mixin to add common handler behavior to Event Handlers and Command Handlers"""
 
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
 
         # Associate a `_handlers` map with subclasses.
         # `_handlers` is a dictionary mapping the event/command to handler methods.
@@ -49,7 +49,7 @@ class HandlerMixin:
         #   were initialized in __init__, the same collection object
         #   would be made available across all subclasses,
         #   defeating its purpose.
-        setattr(subclass, "_handlers", defaultdict(set))
+        setattr(cls, "_handlers", defaultdict(set))
 
     @classmethod
     def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> Any:

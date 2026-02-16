@@ -9,7 +9,19 @@ import sys
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    dataclass_transform,
+    overload,
+)
 from uuid import uuid4
 
 from inflection import parameterize, titleize, transliterate, underscore, camelize
@@ -21,9 +33,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.event import BaseEvent
-from protean.core.event_handler import BaseEventHandler
 from protean.core.projection import BaseProjection
-from protean.core.projector import BaseProjector
 from protean.core.repository import BaseRepository
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
@@ -51,6 +61,8 @@ from .config import Config2, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
@@ -427,6 +439,7 @@ class Domain:
                     # during execution (e.g., circular or relative imports).
                     if module.__name__ not in sys.modules:
                         sys.modules[module.__name__] = module
+                        assert spec is not None and spec.loader is not None
                         spec.loader.exec_module(module)
 
                     logger.debug(f"Loaded {filename}")
@@ -576,8 +589,12 @@ class Domain:
         return factories[domain_object_type.value]
 
     def _register_element(
-        self, element_type, element_cls, internal: bool = False, **opts
-    ):  # noqa: C901
+        self,
+        element_type: DomainObjects,
+        element_cls: type[_T],
+        internal: bool = False,
+        **opts: Any,
+    ) -> type[_T]:  # noqa: C901
         """Register class into the domain"""
         # Check if `element_cls` is already a subclass of the Element Type
         #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
@@ -717,14 +734,14 @@ class Domain:
     # decorator is being called with parameters or not.
     def _domain_element(
         self,
-        element_type,
-        _cls=None,
+        element_type: DomainObjects,
+        _cls: type | None = None,
         internal: bool = False,
-        **kwargs,
-    ):
-        """Returns the registered class after decoarating it and recording its presence in the domain"""
+        **kwargs: Any,
+    ) -> Any:
+        """Returns the registered class after decorating it and recording its presence in the domain"""
 
-        def wrap(cls):
+        def wrap(cls: type) -> type:
             return self._register_element(element_type, cls, internal, **kwargs)
 
         # See if we're being called as @Entity or @Entity().
@@ -1122,85 +1139,220 @@ class Domain:
     # Element Decorators #
     ######################
 
-    def aggregate(self, _cls=None, **kwargs):
+    @overload
+    def aggregate(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def aggregate(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def aggregate(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.AGGREGATE,
             _cls=_cls,
             **kwargs,
         )
 
-    def application_service(self, _cls=None, **kwargs):
+    @overload
+    def application_service(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def application_service(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def application_service(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.APPLICATION_SERVICE,
             _cls=_cls,
             **kwargs,
         )
 
-    def command(self, _cls=None, **kwargs):
+    @overload
+    def command(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def command(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def command(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.COMMAND,
             _cls=_cls,
             **kwargs,
         )
 
-    def command_handler(self, _cls=None, **kwargs):
+    @overload
+    def command_handler(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def command_handler(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def command_handler(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(DomainObjects.COMMAND_HANDLER, _cls=_cls, **kwargs)
 
-    def event(self, _cls=None, **kwargs):
+    @overload
+    def event(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def event(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def event(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.EVENT,
             _cls=_cls,
             **kwargs,
         )
 
-    def event_handler(self, _cls=None, **kwargs):
+    @overload
+    def event_handler(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def event_handler(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def event_handler(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.EVENT_HANDLER,
             _cls=_cls,
             **kwargs,
         )
 
-    def domain_service(self, _cls=None, **kwargs):
+    @overload
+    def domain_service(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def domain_service(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def domain_service(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.DOMAIN_SERVICE,
             _cls=_cls,
             **kwargs,
         )
 
-    def entity(self, _cls=None, **kwargs):
+    @overload
+    def entity(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def entity(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def entity(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(DomainObjects.ENTITY, _cls=_cls, **kwargs)
 
-    def email(self, _cls=None, **kwargs):
+    @overload
+    def email(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def email(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def email(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(DomainObjects.EMAIL, _cls=_cls, **kwargs)
 
-    def database_model(self, _cls=None, **kwargs):
+    @overload
+    def database_model(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def database_model(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def database_model(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(DomainObjects.DATABASE_MODEL, _cls=_cls, **kwargs)
 
-    def repository(self, _cls=None, **kwargs):
+    @overload
+    def repository(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def repository(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def repository(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(DomainObjects.REPOSITORY, _cls=_cls, **kwargs)
 
-    def subscriber(self, _cls=None, **kwargs):
+    @overload
+    def subscriber(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def subscriber(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def subscriber(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.SUBSCRIBER,
             _cls=_cls,
             **kwargs,
         )
 
-    def value_object(self, _cls=None, **kwargs):
+    @overload
+    def value_object(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def value_object(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def value_object(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.VALUE_OBJECT,
             _cls=_cls,
             **kwargs,
         )
 
-    def projection(self, _cls=None, **kwargs):
+    @overload
+    def projection(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def projection(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def projection(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.PROJECTION,
             _cls=_cls,
             **kwargs,
         )
 
-    def projector(self, _cls=None, **kwargs):
+    @overload
+    def projector(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def projector(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def projector(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.PROJECTOR,
             _cls=_cls,
@@ -1277,7 +1429,7 @@ class Domain:
 
     def process(
         self,
-        command: BaseCommand,
+        command: Any,
         asynchronous: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
         raise_on_duplicate: bool = False,
@@ -1289,7 +1441,7 @@ class Domain:
         ``asynchronous=False`` when calling the domain's ``handle`` method.
 
         Args:
-            command (BaseCommand): Command to process
+            command: Command to process (instance of a ``@domain.command``-decorated class)
             asynchronous (Boolean, optional): Specifies if the command should be processed asynchronously.
                 Defaults to True.
             idempotency_key (str, optional): Caller-provided key for command deduplication.
@@ -1357,11 +1509,11 @@ class Domain:
 
         return position
 
-    def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
+    def command_handler_for(self, command: Any) -> Optional[BaseCommandHandler]:
         """Return Command Handler for a specific command.
 
         Args:
-            command (BaseCommand): Command to process
+            command: Command to process (instance of a ``@domain.command``-decorated class)
 
         Returns:
             Optional[BaseCommandHandler]: Command Handler registered to process the command
@@ -1371,11 +1523,11 @@ class Domain:
     ###################
     # Handling Events #
     ###################
-    def handlers_for(self, event: BaseEvent) -> List[BaseEventHandler]:
+    def handlers_for(self, event: Any) -> set:
         """Return Event Handlers listening to a specific event
 
         Args:
-            event (BaseEvent): Event to be consumed
+            event: Event to be consumed (instance of a ``@domain.event``-decorated class)
 
         Returns:
             List[BaseEventHandler]: Event Handlers that have registered to consume the event
@@ -1385,7 +1537,7 @@ class Domain:
     ############################
     # Projector Functionality  #
     ############################
-    def projectors_for(self, projection_cls: BaseProjection) -> List[BaseProjector]:
+    def projectors_for(self, projection_cls: BaseProjection) -> set:
         """Return Projectors listening to a specific projection
 
         Args:

@@ -269,7 +269,7 @@ class Outbox(BaseAggregate):
     # Private helper methods
     def _is_locked(self) -> bool:
         """Check if message is currently locked for processing."""
-        return (
+        return bool(
             self.locked_until
             and datetime.now(timezone.utc) < self.locked_until
             and self.status == OutboxStatus.PROCESSING.value

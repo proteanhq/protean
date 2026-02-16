@@ -1,13 +1,13 @@
 import logging
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Type
+from typing import Any, TYPE_CHECKING, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 
 if TYPE_CHECKING:
-    from protean.domain import Domain
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,10 @@ class BaseSubscriber(Element, OptionsMixin):
         """
 
 
-def subscriber_factory(element_cls: Type[Element], domain: "Domain", **opts):
+_T = TypeVar("_T")
+
+
+def subscriber_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseSubscriber, **opts)
 
     if not element_cls.meta_.stream:

@@ -37,7 +37,7 @@ class Providers(collections.abc.MutableMapping):
         #        'postgresql': UserPostgresRepository,
         #    }
         # }
-        self._repositories = defaultdict(lambda: defaultdict(str))
+        self._repositories: dict[str, dict[str, type]] = defaultdict(dict)
 
     def __getitem__(self, key):
         return self._providers[key] if self._providers else None
@@ -55,6 +55,7 @@ class Providers(collections.abc.MutableMapping):
         self._providers[key] = value
 
     def __delitem__(self, key):
+        assert self._providers is not None
         if key in self._providers:
             del self._providers[key]
 
@@ -129,6 +130,7 @@ class Providers(collections.abc.MutableMapping):
             self._initialize()
 
         try:
+            assert self._providers is not None
             return self._providers[provider_name].get_connection()
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
@@ -139,6 +141,7 @@ class Providers(collections.abc.MutableMapping):
             self._initialize()
 
         provider_name = part_of.meta_.provider
+        assert self._providers is not None
         provider = self._providers[provider_name]
         database = provider.__class__.__database__
 
