@@ -498,7 +498,7 @@ class BaseEntity(BaseModel, OptionsMixin):
 
         # Restore shadow field values directly into __dict__ (they bypass Pydantic)
         for name, value in shadow_kwargs.items():
-            self.__dict__[name] = value
+            self.__dict__[name] = value  # type: ignore[reportIndexIssue]
 
         # Reconstruct ValueObjects from shadow kwargs when the VO itself
         # wasn't explicitly provided (e.g. during repository retrieval).
@@ -535,13 +535,13 @@ class BaseEntity(BaseModel, OptionsMixin):
             for _, shadow_field in field_obj.get_shadow_fields():
                 attr_name = shadow_field.attribute_name
                 if attr_name not in self.__dict__:
-                    self.__dict__[attr_name] = None
+                    self.__dict__[attr_name] = None  # type: ignore[reportIndexIssue]
 
         # Initialize Reference shadow fields to None when not already set
         for field_obj in reference_fields(self).values():
             shadow_name, shadow = field_obj.get_shadow_field()
             if shadow_name not in self.__dict__:
-                self.__dict__[shadow_name] = None
+                self.__dict__[shadow_name] = None  # type: ignore[reportIndexIssue]
 
         # Setup association pseudo-methods (add_*, remove_*, get_one_from_*, filter_*)
         for field_name, field_obj in association_fields(self).items():
@@ -718,7 +718,7 @@ class BaseEntity(BaseModel, OptionsMixin):
             # Shadow field (e.g., post_id for Reference descriptors) that was
             # previously initialised in model_post_init.  Write directly to
             # __dict__ to bypass Pydantic's validate_assignment.
-            self.__dict__[name] = value
+            self.__dict__[name] = value  # type: ignore[reportIndexIssue]
             if hasattr(self, "_state"):
                 self._state.mark_changed()
         else:

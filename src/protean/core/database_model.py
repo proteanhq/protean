@@ -3,7 +3,10 @@ from abc import abstractmethod
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    from protean.core.entity import BaseEntity
 
 
 class BaseDatabaseModel(Element, OptionsMixin):
@@ -36,12 +39,12 @@ class BaseDatabaseModel(Element, OptionsMixin):
 
     @classmethod
     @abstractmethod
-    def from_entity(cls, entity):
+    def from_entity(cls, entity: Any) -> Any:
         """Initialize DatabaseModel object from Entity object"""
 
     @classmethod
     @abstractmethod
-    def to_entity(cls, *args, **kwargs):
+    def to_entity(cls, *args: Any, **kwargs: Any) -> "BaseEntity":
         """Convert Database Model Object to Entity Object"""
 
 

@@ -153,7 +153,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _delete(self):
+    def _delete(self, model_obj: Any):
         """Delete this entity from the persistence store. Concrete implementation will be provided by
         the database DAO class.
 
@@ -162,6 +162,8 @@ class BaseDAO(metaclass=ABCMeta):
         This method is invoked by DAO's `delete` wrapper method and should not be called directly.
 
         Returns the deleted model object.
+
+        :param model_obj: The model object supplied in an ORM/ODM/Python driver friendly/format
         """
 
     @abstractmethod
@@ -241,7 +243,7 @@ class BaseDAO(metaclass=ABCMeta):
             entity_id_field.field_name: identifier,
         }
 
-        results = self.query.filter(**filters).all()
+        results = self.query.filter(**filters).all()  # type: ignore[reportCallIssue]
         if not results:
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
@@ -323,7 +325,7 @@ class BaseDAO(metaclass=ABCMeta):
         try:
             # Build the entity from input arguments
             # Raises validation errors, if any, at this point
-            entity_obj = self.entity_cls(*args, **kwargs)
+            entity_obj = self.entity_cls(*args, **kwargs)  # type: ignore[reportCallIssue]
 
             # Perform unique checks. Raises validation errors if unique constraints are violated.
             self._validate_unique(entity_obj)

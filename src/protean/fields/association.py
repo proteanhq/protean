@@ -338,7 +338,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         """Placeholder method for customized Association query methods"""
 
     @abstractmethod
-    def as_dict(self):
+    def as_dict(self, value):
         """Return JSON-compatible value of field"""
 
     def __set__(self, instance, value):

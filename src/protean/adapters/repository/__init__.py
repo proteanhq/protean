@@ -37,7 +37,7 @@ class Providers(collections.abc.MutableMapping):
         #        'postgresql': UserPostgresRepository,
         #    }
         # }
-        self._repositories = defaultdict(lambda: defaultdict(str))
+        self._repositories: dict[str, dict[str, type]] = defaultdict(dict)
 
     def __getitem__(self, key):
         return self._providers[key] if self._providers else None

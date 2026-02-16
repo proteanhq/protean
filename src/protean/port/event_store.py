@@ -131,6 +131,7 @@ class BaseEventStore(metaclass=ABCMeta):
             f"{part_of.meta_.stream_category}:snapshot-{identifier}"
         )
 
+        position_in_snapshot: int = 0
         if snapshot_message:
             # We have a snapshot, so initialize aggregate from snapshot
             #   and apply subsequent events

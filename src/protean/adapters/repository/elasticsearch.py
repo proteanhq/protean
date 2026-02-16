@@ -163,10 +163,12 @@ class ElasticsearchDAO(BaseDAO):
                     lookup = lookup_class(stripped_key, child[1])
                     # Pass database model class to lookup for cached field type information
                     lookup.database_model_cls = self.database_model_cls
+                    expression = lookup.as_expression()
                     if criteria.negated:
-                        composed_query = composed_query & ~lookup.as_expression()
+                        assert expression is not None
+                        composed_query = composed_query & ~expression
                     else:
-                        composed_query = composed_query & lookup.as_expression()
+                        composed_query = composed_query & expression
         else:
             for child in criteria.children:
                 if isinstance(child, Q):
@@ -176,10 +178,12 @@ class ElasticsearchDAO(BaseDAO):
                     lookup = lookup_class(stripped_key, child[1])
                     # Pass database model class to lookup for cached field type information
                     lookup.database_model_cls = self.database_model_cls
+                    expression = lookup.as_expression()
                     if criteria.negated:
-                        composed_query = composed_query | ~lookup.as_expression()
+                        assert expression is not None
+                        composed_query = composed_query | ~expression
                     else:
-                        composed_query = composed_query | lookup.as_expression()
+                        composed_query = composed_query | expression
 
         return composed_query
 
@@ -222,7 +226,7 @@ class ElasticsearchDAO(BaseDAO):
             model_items = []
             for hit in response.hits:
                 # Create a model object from the hit data
-                model_obj = self.database_model_cls(**hit.to_dict())
+                model_obj = self.database_model_cls(**hit.to_dict())  # type: ignore[reportCallIssue]
                 model_obj.meta.id = hit.meta.id
                 if hasattr(hit.meta, "version"):
                     model_obj.meta.version = hit.meta.version
@@ -258,7 +262,7 @@ class ElasticsearchDAO(BaseDAO):
                     # Convert hits to ElasticsearchModel objects with proper metadata
                     model_items = []
                     for hit in response.hits:
-                        model_obj = self.database_model_cls(**hit.to_dict())
+                        model_obj = self.database_model_cls(**hit.to_dict())  # type: ignore[reportCallIssue]
                         model_obj.meta.id = hit.meta.id
                         if hasattr(hit.meta, "version"):
                             model_obj.meta.version = hit.meta.version

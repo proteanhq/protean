@@ -83,7 +83,7 @@ class MemoryModel(BaseDatabaseModel):
         return item_dict
 
     @classmethod
-    def to_entity(cls, item: "MemoryModel") -> BaseEntity:
+    def to_entity(cls, item: dict[str, Any]) -> BaseEntity:
         """Convert the dictionary record to an entity"""
         item_dict = {}
         for attr_name, attr_obj in attributes(cls.meta_.part_of).items():

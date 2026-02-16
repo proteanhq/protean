@@ -147,7 +147,7 @@ class ValueObject(Field):
     def _cast_to_type(self, value):
         # If the supplied value is a dict, reconstruct value object
         if isinstance(value, dict):
-            value = self._value_object_cls(**value)
+            value = self._value_object_cls(**value)  # type: ignore[reportCallIssue]
 
         if not isinstance(value, self._value_object_cls):
             self.fail("invalid", value=value)

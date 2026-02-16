@@ -211,6 +211,8 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     python_type, BaseValueObject
                 ):
                     return sa_types.PickleType
+                if python_type is None:
+                    return sa_types.String
                 return _PYTHON_TYPE_TO_SA.get(python_type, sa_types.String)
 
             # Association/embedded field descriptors
@@ -277,10 +279,14 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                                         field_mapping_type = psql.JSON
                                     else:
                                         field_mapping_type = sa_types.PickleType
-                                else:
+                                elif content_type is not None and isinstance(
+                                    content_type, type
+                                ):
                                     field_mapping_type = _PYTHON_TYPE_TO_SA.get(
                                         content_type, sa_types.String
                                     )
+                                else:
+                                    field_mapping_type = sa_types.String
                                 type_args.append(field_mapping_type)
                             else:
                                 type_args.append(sa_types.Text)
@@ -431,7 +437,7 @@ class SADAO(BaseDAO):
                 stripped_key, lookup_class = self.provider._extract_lookup(child[0])
 
                 # Instantiate the lookup class and get the expression
-                lookup = lookup_class(stripped_key, child[1], self.database_model_cls)
+                lookup = lookup_class(stripped_key, child[1], self.database_model_cls)  # type: ignore[reportCallIssue]
                 if criteria.negated:
                     expression = lookup.as_expression()
                     assert expression is not None
@@ -728,7 +734,7 @@ class SAProvider(BaseProvider):
         """Initialize and maintain Engine"""
         super().__init__(name, domain, conn_info)
 
-        self._engine = create_engine(
+        self._engine = create_engine(  # type: ignore[reportCallIssue]
             make_url(self.conn_info["database_uri"]),
             json_serializer=_custom_json_dumps,
             **self._additional_engine_args(),
@@ -750,7 +756,7 @@ class SAProvider(BaseProvider):
         # Cache the session factory and scoped session so they are created once
         # per provider, not on every get_session() call.
         kwargs = self._get_database_specific_session_args()
-        self._session_factory = orm.sessionmaker(
+        self._session_factory = orm.sessionmaker(  # type: ignore[reportCallIssue]
             bind=self._engine, expire_on_commit=False, **kwargs
         )
         self._scoped_session_cls = orm.scoped_session(self._session_factory)
