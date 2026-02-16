@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,8 @@ class Options(dict):
 
 
 class OptionsMixin:
+    meta_: ClassVar["Options"]
+
     def __init_subclass__(cls) -> None:
         """Setup Options metadata on elements
 
@@ -65,6 +67,10 @@ class OptionsMixin:
         cls._set_defaults()
 
         super().__init_subclass__()
+
+    @classmethod
+    def _default_options(cls) -> list[tuple[str, Any]]:
+        return []
 
     @classmethod
     def _set_defaults(cls):

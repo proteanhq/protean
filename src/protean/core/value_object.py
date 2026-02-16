@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -275,7 +275,10 @@ class BaseValueObject(BaseModel, OptionsMixin):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-def value_object_factory(element_cls: type, domain: Any, **opts: Any) -> type:
+_T = TypeVar("_T")
+
+
+def value_object_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     # Always route to Pydantic base
     base_cls = BaseValueObject
 

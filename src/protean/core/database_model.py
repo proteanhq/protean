@@ -3,6 +3,7 @@ from abc import abstractmethod
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
+from typing import Any, TypeVar
 
 
 class BaseDatabaseModel(Element, OptionsMixin):
@@ -44,7 +45,10 @@ class BaseDatabaseModel(Element, OptionsMixin):
         """Convert Database Model Object to Entity Object"""
 
 
-def database_model_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def database_model_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseDatabaseModel, **opts)
 
     if not element_cls.meta_.part_of:

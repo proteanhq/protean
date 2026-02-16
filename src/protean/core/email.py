@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -167,7 +167,10 @@ class BaseEmail(BaseModel, OptionsMixin):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-def email_factory(element_cls: type, domain: Any, **opts: Any) -> type:
+_T = TypeVar("_T")
+
+
+def email_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     # Always route to Pydantic base
     base_cls = BaseEmail
 

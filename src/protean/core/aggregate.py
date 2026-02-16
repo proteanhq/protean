@@ -5,7 +5,7 @@ import inspect
 import logging
 import typing
 from collections import defaultdict
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import PrivateAttr
 
@@ -349,7 +349,10 @@ def _pydantic_element_to_fact_event(element_cls):
     return event_cls
 
 
-def aggregate_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     """Factory method to create an aggregate class.
 
     This method is used to create an aggregate class. It is called during domain registration.

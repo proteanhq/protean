@@ -1,6 +1,6 @@
 import logging
 from functools import lru_cache
-from typing import TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING, TypeVar, Union
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
@@ -255,7 +255,10 @@ class BaseRepository(Element, OptionsMixin):
         return item
 
 
-def repository_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseRepository, **opts)
 
     if not element_cls.meta_.part_of:

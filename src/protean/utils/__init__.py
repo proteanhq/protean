@@ -9,7 +9,7 @@ import logging
 import types
 from datetime import UTC, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Optional, Type, TypeVar
 from uuid import UUID, uuid4
 
 from protean.exceptions import ConfigurationError
@@ -367,11 +367,14 @@ def _track_id_field(cls: type) -> None:
         setattr(cls, _ID_FIELD_NAME, id_fields[0].field_name)
 
 
+_T = TypeVar("_T")
+
+
 def derive_element_class(
-    element_cls: Type["Element"] | Type[Any],
-    base_cls: Type["Element"],
+    element_cls: type[_T],
+    base_cls: type,
     **opts: dict[str, str | bool],
-) -> Type["Element"]:
+) -> type[_T]:
     from pydantic import BaseModel
 
     from protean.utils.container import Options

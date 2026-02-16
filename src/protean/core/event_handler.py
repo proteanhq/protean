@@ -58,7 +58,7 @@ Example:
 """
 
 import logging
-from typing import Any, Optional, Union
+from typing import Any, Optional, TypeVar, Union
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
@@ -131,7 +131,10 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         ]
 
 
-def event_handler_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def event_handler_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseEventHandler, **opts)
 
     if not (element_cls.meta_.part_of or element_cls.meta_.stream_category):

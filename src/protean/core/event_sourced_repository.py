@@ -10,6 +10,7 @@ from protean.exceptions import (
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,12 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         return aggregate
 
 
-def event_sourced_repository_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def event_sourced_repository_factory(
+    element_cls: type[_T], domain: Any, **opts: Any
+) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseEventSourcedRepository, **opts)
 
     if not element_cls.meta_.part_of:

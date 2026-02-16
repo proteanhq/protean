@@ -44,7 +44,7 @@ Example:
             pass
 """
 
-from typing import Any, Optional, Union
+from typing import Any, Optional, TypeVar, Union
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
@@ -117,7 +117,12 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         return super().__new__(cls)
 
 
-def command_handler_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def command_handler_factory(
+    element_cls: type[_T], domain: Any, **opts: Any
+) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseCommandHandler, **opts)
 
     if not (element_cls.meta_.part_of):

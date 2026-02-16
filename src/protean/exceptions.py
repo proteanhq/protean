@@ -22,7 +22,10 @@ class ProteanException(Exception):
 
 class ProteanExceptionWithMessage(ProteanException):
     def __init__(
-        self, messages: dict[str, str], traceback: Optional[str] = None, **kwargs: Any
+        self,
+        messages: dict[str, list[str]],
+        traceback: Optional[str] = None,
+        **kwargs: Any,
     ) -> None:
         logger.debug(f"Exception:: {messages}")
 

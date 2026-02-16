@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -168,7 +168,10 @@ class BaseEvent(BaseMessageType):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-def domain_event_factory(element_cls: type, domain: Any, **opts: Any) -> type:
+_T = TypeVar("_T")
+
+
+def domain_event_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     # Always route to Pydantic base
     base_cls = BaseEvent
 

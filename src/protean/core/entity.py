@@ -5,7 +5,7 @@ import logging
 import threading
 from collections import defaultdict
 from functools import partial
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
@@ -885,7 +885,10 @@ class BaseEntity(BaseModel, OptionsMixin):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-def entity_factory(element_cls, domain, **opts):
+_T = TypeVar("_T")
+
+
+def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     """Factory method to create an entity class.
 
     This method is used to create an entity class. It is called during domain registration.

@@ -3,7 +3,7 @@
 These work alongside the simple field factories in ``simple.py``.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from protean.fields.spec import FieldSpec
 
@@ -76,3 +76,15 @@ def Dict(**kwargs: Any) -> FieldSpec:
         kwargs["default"] = dict  # Will become default_factory=dict
 
     return FieldSpec(dict | list, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# TYPE_CHECKING overrides
+# ---------------------------------------------------------------------------
+if TYPE_CHECKING:
+
+    def List(
+        content_type: Any = None, pickled: bool = False, **kwargs: Any
+    ) -> list: ...  # type: ignore[misc]
+
+    def Dict(**kwargs: Any) -> dict: ...  # type: ignore[misc]
