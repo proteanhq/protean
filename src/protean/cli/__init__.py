@@ -21,6 +21,7 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
+from protean.cli.database import app as db_app
 from protean.cli.docs import app as docs_app
 from protean.cli.generate import app as generate_app
 from protean.cli.new import new
@@ -39,6 +40,7 @@ app = typer.Typer(no_args_is_help=True)
 
 app.command()(new)
 app.command()(shell)
+app.add_typer(db_app, name="db")
 app.add_typer(generate_app, name="generate")
 app.add_typer(docs_app, name="docs")
 app.add_typer(test_app, name="test")
