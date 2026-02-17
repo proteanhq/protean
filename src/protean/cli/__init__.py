@@ -69,12 +69,16 @@ def server(
     domain: Annotated[str, typer.Option()] = ".",
     test_mode: Annotated[Optional[bool], typer.Option()] = False,
     debug: Annotated[Optional[bool], typer.Option()] = False,
+    workers: Annotated[int, typer.Option(help="Number of worker processes")] = 1,
 ):
     """Run Async Background Server"""
     # Configure logging based on debug flag
     configure_logging(level="DEBUG" if debug else "INFO")
 
-    # FIXME Accept MAX_WORKERS as command-line input as well
+    if workers < 1:
+        print("Error: --workers must be >= 1")
+        raise typer.Abort()
+
     try:
         derived_domain = derive_domain(domain)
     except NoDomainException as exc:
@@ -86,14 +90,29 @@ def server(
 
     assert derived_domain is not None
 
-    # Traverse and initialize domain
-    #   This will load all aggregates, entities, services, and other domain elements.
-    #
-    # By the time the handlers are invoked, the domain is fully initialized and ready to serve requests.
-    derived_domain.init()
+    if workers == 1:
+        # Single-worker path: identical to previous behavior, zero overhead.
+        # Traverse and initialize domain — loads all aggregates, entities,
+        # services, and other domain elements.
+        derived_domain.init()
 
-    engine = Engine(derived_domain, test_mode=test_mode, debug=debug)
-    engine.run()
+        engine = Engine(derived_domain, test_mode=test_mode, debug=debug)
+        engine.run()
 
-    if engine.exit_code != 0:
-        raise typer.Exit(code=engine.exit_code)
+        if engine.exit_code != 0:
+            raise typer.Exit(code=engine.exit_code)
+    else:
+        # Multi-worker path: Supervisor spawns N independent Engine processes.
+        # Each worker derives and initializes the domain independently.
+        from protean.server.supervisor import Supervisor
+
+        supervisor = Supervisor(
+            domain_path=domain,
+            num_workers=workers,
+            test_mode=test_mode,
+            debug=debug,
+        )
+        supervisor.run()
+
+        if supervisor.exit_code != 0:
+            raise typer.Exit(code=supervisor.exit_code)
