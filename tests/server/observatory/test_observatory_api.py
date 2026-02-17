@@ -53,7 +53,7 @@ class TestHealthEndpoint:
         """Health response includes broker details."""
         response = client.get("/api/health")
         data = response.json()
-        broker_info = data["infrastructure"]["broker"]
+        broker_info = data["infrastructure"]["redis"]
         assert "healthy" in broker_info
         assert "version" in broker_info
         assert "connected_clients" in broker_info
