@@ -42,6 +42,7 @@ def test_domain():
 
     domain = Domain(name="Test")
     domain.config["enable_outbox"] = True
+    domain.config["server"]["default_subscription_type"] = "stream"
 
     with domain.domain_context():
         yield domain

@@ -12,7 +12,7 @@ messages_per_tick = 5
 tick_interval = 0.001
 
 [server]
-subscription_type = "stream"
+default_subscription_type = "stream"
 messages_per_tick = 5
 tick_interval = 0.001
 

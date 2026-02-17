@@ -55,6 +55,7 @@ def outbox_test_domain(test_domain):
     """`test_domain` fixture recreated to enable outbox for testing."""
 
     test_domain.config["enable_outbox"] = True
+    test_domain.config["server"]["default_subscription_type"] = "stream"
 
     # Register test elements
     test_domain.register(DummyAggregate)
@@ -139,6 +140,7 @@ class TestOutboxProcessor:
 
         domain = Domain(name="TestInvalidDBProvider")
         domain.config["enable_outbox"] = True
+        domain.config["server"]["default_subscription_type"] = "stream"
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -917,6 +919,7 @@ class TestOutboxConfiguration:
 
         custom_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "broker": "custom_broker",
                 "messages_per_tick": 25,
@@ -941,6 +944,7 @@ class TestOutboxConfiguration:
 
         custom_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "broker": "custom_broker",
                 "messages_per_tick": 15,
@@ -972,6 +976,7 @@ class TestOutboxConfiguration:
 
         invalid_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "broker": "nonexistent_broker",
                 "messages_per_tick": 10,
@@ -1009,6 +1014,7 @@ class TestOutboxConfiguration:
 
         multi_broker_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "broker": "redis_broker",
                 "messages_per_tick": 20,
@@ -1038,6 +1044,7 @@ class TestOutboxConfiguration:
 
         domain = Domain(name="TestCustomWorkerID")
         domain.config["enable_outbox"] = True
+        domain.config["server"]["default_subscription_type"] = "stream"
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -1058,6 +1065,7 @@ class TestOutboxConfiguration:
 
         partial_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "messages_per_tick": 100,  # Only override one parameter
             },
@@ -1076,6 +1084,7 @@ class TestOutboxConfiguration:
 
         incomplete_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {},  # Empty outbox config - should use defaults
         }
 
@@ -1482,6 +1491,7 @@ class TestRetryConfiguration:
 
         custom_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "broker": "default",
                 "retry": {
@@ -1515,6 +1525,7 @@ class TestRetryConfiguration:
 
         partial_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "retry": {
                     "max_attempts": 7,  # Only override max_attempts
@@ -1729,6 +1740,7 @@ class TestRetryConfiguration:
 
         partial_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "retry": {
                     "jitter_factor": 0.15,  # Only override jitter factor
@@ -1816,6 +1828,7 @@ class TestRetryConfiguration:
 
         custom_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "broker": "default",
                 "retry": {
@@ -2022,6 +2035,7 @@ class TestOutboxPeriodicCleanup:
         """Test that cleanup configuration is loaded correctly from domain config"""
         custom_config = {
             "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
             "outbox": {
                 "cleanup": {
                     "published_retention_hours": 72,  # 3 days
