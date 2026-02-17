@@ -98,8 +98,9 @@ def server(
         # services, and other domain elements.
         derived_domain.init()
 
-        engine = Engine(derived_domain, test_mode=test_mode, debug=debug)
-        engine.run()
+        with derived_domain.domain_context():
+            engine = Engine(derived_domain, test_mode=test_mode, debug=debug)
+            engine.run()
 
         if engine.exit_code != 0:
             raise typer.Exit(code=engine.exit_code)

@@ -1734,6 +1734,28 @@ class Domain:
         for _, provider in self.providers.items():
             provider._create_database_artifacts()  # Idempotent
 
+    def truncate_database(self) -> None:
+        """Delete all rows from every table without dropping the tables.
+
+        Clears aggregate/projection tables in all providers and the event
+        store messages table.  Useful for resetting development data while
+        preserving the schema.
+
+        Broker state (Redis streams) is not cleared — streams are transient
+        and will drain naturally.  This allows truncation while engines are
+        still running.
+
+        Must be called after ``domain.init()`` and within
+        ``domain.domain_context()``.
+        """
+        # Ensure provider metadata is populated (idempotent — no-op if tables exist)
+        self.setup_database()
+
+        for _, provider in self.providers.items():
+            provider._data_reset()
+
+        self.event_store.store._data_reset()
+
     def drop_database(self) -> None:
         """Drop all database tables.
 

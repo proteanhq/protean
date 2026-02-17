@@ -152,3 +152,36 @@ class TestDomainContext:
 
         with bed.domain_context():
             assert current_domain.name == "testbed_domain"
+
+
+class TestSetupDelegatesToPublicAPI:
+    """Verify DomainFixture delegates to Domain's public lifecycle methods."""
+
+    def test_setup_calls_setup_database(self, domain):
+        """setup() delegates to domain.setup_database()."""
+        bed = DomainFixture(domain)
+
+        with mock.patch.object(domain, "init"):
+            with mock.patch.object(domain, "setup_database") as mock_setup:
+                domain.domain_context = mock.MagicMock()
+                domain.domain_context.return_value.__enter__ = mock.MagicMock()
+                domain.domain_context.return_value.__exit__ = mock.MagicMock(
+                    return_value=False
+                )
+
+                bed.setup()
+                mock_setup.assert_called_once()
+
+    def test_teardown_calls_drop_database(self, domain):
+        """teardown() delegates to domain.drop_database()."""
+        bed = DomainFixture(domain)
+
+        with mock.patch.object(domain, "drop_database") as mock_drop:
+            domain.domain_context = mock.MagicMock()
+            domain.domain_context.return_value.__enter__ = mock.MagicMock()
+            domain.domain_context.return_value.__exit__ = mock.MagicMock(
+                return_value=False
+            )
+
+            bed.teardown()
+            mock_drop.assert_called_once()
