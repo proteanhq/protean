@@ -126,6 +126,10 @@ specific area.
 - [Configuration](./guides/essentials/configuration.md) -- Configure Protean through domain.toml and environment variables.
 - [Unit of Work](./guides/change-state/unit-of-work.md) -- Automatic transaction management for aggregate changes.
 
+### FastAPI Integration
+
+- [FastAPI Integration](./guides/fastapi/index.md) -- Domain context middleware, exception handlers, and best practices for using Protean with FastAPI.
+
 ### Server
 
 - [Server Overview](./guides/server/index.md) -- Asynchronous message processing engine for events, commands, and external messages.

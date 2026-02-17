@@ -60,6 +60,15 @@ need by what you're trying to accomplish.
 | Understand identity and ID generation           | [Identity](./guides/essentials/identity.md) |
 | Understand stream categories                    | [Stream Categories](./guides/essentials/stream-categories.md) |
 
+## Integrate with FastAPI
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| Push domain context per HTTP request            | [FastAPI Integration](./guides/fastapi/index.md) |
+| Map URL prefixes to different domains           | [FastAPI Integration](./guides/fastapi/index.md#domain-context-middleware) |
+| Map Protean exceptions to HTTP error responses  | [FastAPI Integration](./guides/fastapi/index.md#exception-handlers) |
+| Use a custom resolver for domain routing        | [FastAPI Integration](./guides/fastapi/index.md#custom-resolver) |
+
 ## Run in Production
 
 | I want to...                                    | Guide |
@@ -67,6 +76,9 @@ need by what you're trying to accomplish.
 | Process events and commands asynchronously      | [Server](./guides/server/index.md) |
 | Understand subscriptions and event processing   | [Subscriptions](./guides/server/subscriptions.md) |
 | Use the outbox pattern for reliable messaging   | [Outbox](./guides/server/outbox.md) |
+| Set up structured logging                       | [Running the Server](./guides/server/running.md#logging) |
+| Add request-scoped context to logs              | [Running the Server](./guides/server/running.md#context-variables) |
+| Minimize logging noise in tests                 | [Running the Server](./guides/server/running.md#test-configuration) |
 | Monitor message flow in real time               | [Observability](./guides/server/observability.md) |
 | Expose Prometheus metrics for the message pipeline | [Observability](./guides/server/observability.md) |
 | Stream trace events via SSE                     | [Observability](./guides/server/observability.md) |
