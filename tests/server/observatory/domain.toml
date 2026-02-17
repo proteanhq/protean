@@ -1,0 +1,9 @@
+enable_outbox = true
+
+[brokers.default]
+provider = "redis"
+URI = "redis://127.0.0.1:6379/2"
+IS_ASYNC = true
+
+[outbox]
+broker = "default"

@@ -137,7 +137,7 @@ class TestEngineSubscriptionCreation:
         assert engine._subscriptions[handler_name].handler == UserEventHandler
 
     def test_creates_subscription_for_command_handler(self, test_domain):
-        """Engine should create subscription for registered command handler."""
+        """Engine should create a CommandDispatcher subscription for registered command handlers."""
         test_domain.register(User, is_event_sourced=True)
         test_domain.register(RegisterUser, part_of=User)
         test_domain.register(UserCommandHandler, part_of=User)
@@ -145,11 +145,13 @@ class TestEngineSubscriptionCreation:
 
         engine = Engine(test_domain, test_mode=True)
 
-        handler_name = (
-            f"{UserCommandHandler.__module__}.{UserCommandHandler.__qualname__}"
+        # CommandDispatcher groups by stream category
+        stream_category = User.meta_.stream_category + ":command"
+        subscription_key = f"commands:{stream_category}"
+        assert subscription_key in engine._subscriptions
+        assert (
+            engine._subscriptions[subscription_key].stream_category == stream_category
         )
-        assert handler_name in engine._subscriptions
-        assert engine._subscriptions[handler_name].handler == UserCommandHandler
 
     def test_creates_multiple_subscriptions(self, test_domain):
         """Engine should create subscriptions for multiple handlers."""

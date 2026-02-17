@@ -173,8 +173,11 @@ class TestEndToEndFlow:
         engine = Engine(test_domain, test_mode=True)
 
         # Verify handlers are registered
+        # Event handlers use FQN as key; command handlers are grouped by
+        # CommandDispatcher under "commands:{stream_category}" key
         assert fqn(WelcomeEmailHandler) in engine._subscriptions
-        assert fqn(NotificationCommandHandler) in engine._subscriptions
+        command_keys = [k for k in engine._subscriptions if k.startswith("commands:")]
+        assert len(command_keys) > 0
 
         # Create and save a user aggregate (this will emit UserRegistered event)
         user = User.register(

@@ -34,8 +34,10 @@ def test_handle_exception_with_exception(engine):
         raise Exception("Test exception")
 
     with (
-        mock.patch.object(engine, "shutdown") as mock_shutdown,
-        mock.patch("traceback.print_stack") as mock_print_stack,
+        mock.patch.object(
+            engine, "shutdown", new_callable=mock.AsyncMock
+        ) as mock_shutdown,
+        mock.patch("traceback.print_exception") as mock_print_exception,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
         # Start the engine in a separate coroutine
@@ -48,7 +50,7 @@ def test_handle_exception_with_exception(engine):
 
         # Ensure the logger captured the exception message
         mock_logger_error.assert_any_call("Caught exception: Test exception")
-        mock_print_stack.assert_called_once()
+        mock_print_exception.assert_called_once()
         mock_shutdown.assert_called_once_with(exit_code=1)
 
 
@@ -128,8 +130,10 @@ def test_handle_exception_while_running(engine):
         raise Exception("Test exception while running")
 
     with (
-        mock.patch.object(engine, "shutdown") as mock_shutdown,
-        mock.patch("traceback.print_stack") as mock_print_stack,
+        mock.patch.object(
+            engine, "shutdown", new_callable=mock.AsyncMock
+        ) as mock_shutdown,
+        mock.patch("traceback.print_exception") as mock_print_exception,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
         # Run the engine with a faulty task that raises an exception
@@ -143,7 +147,7 @@ def test_handle_exception_while_running(engine):
         mock_logger_error.assert_any_call(
             "Caught exception: Test exception while running"
         )
-        mock_print_stack.assert_called_once()
+        mock_print_exception.assert_called_once()
         mock_shutdown.assert_called_once_with(exit_code=1)
 
 
@@ -158,8 +162,10 @@ def test_exception_handler_skips_shutdown_when_already_shutting_down(engine):
     loop = engine.loop
 
     with (
-        mock.patch.object(engine, "shutdown") as mock_shutdown,
-        mock.patch("traceback.print_stack") as mock_print_stack,
+        mock.patch.object(
+            engine, "shutdown", new_callable=mock.AsyncMock
+        ) as mock_shutdown,
+        mock.patch("traceback.print_exception") as mock_print_exception,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
         # Create a faulty task that raises an exception
@@ -178,7 +184,7 @@ def test_exception_handler_skips_shutdown_when_already_shutting_down(engine):
         mock_logger_error.assert_any_call(
             "Caught exception: Test exception during shutdown"
         )
-        # print_stack should still be called
-        mock_print_stack.assert_called()
+        # print_exception should still be called
+        mock_print_exception.assert_called()
         # But shutdown should NOT be called since shutting_down was already True
         mock_shutdown.assert_not_called()

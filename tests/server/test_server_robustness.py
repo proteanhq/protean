@@ -141,9 +141,20 @@ class FailingCommandHandler(BaseCommandHandler):
         error_counter += 1
 
 
+class FailRegisterUser(BaseCommand):
+    """Separate command type for the failing-error-handler scenario.
+
+    With CommandDispatcher, each command type routes to exactly one handler.
+    """
+
+    email: String()
+    name: String()
+    password_hash: String()
+
+
 class FailingErrorHandlerCommandHandler(BaseCommandHandler):
-    @handle(RegisterUser)
-    def register_user(self, command: RegisterUser) -> None:
+    @handle(FailRegisterUser)
+    def register_user(self, command: FailRegisterUser) -> None:
         global error_handler_error_counter
         error_handler_error_counter += 1
         raise Exception("Intentional exception for testing")
@@ -207,6 +218,7 @@ def robust_test_domain(test_domain):
     # Register command-related classes
     test_domain.register(RegisterUser, part_of=User)
     test_domain.register(SendEmail, part_of=User)
+    test_domain.register(FailRegisterUser, part_of=User)
     test_domain.register(SuccessfulCommandHandler, part_of=User)
     test_domain.register(FailingCommandHandler, part_of=User)
     test_domain.register(FailingErrorHandlerCommandHandler, part_of=User)

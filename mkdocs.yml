@@ -172,6 +172,7 @@ nav:
         - guides/server/subscription-types.md
         - guides/server/configuration.md
         - guides/server/outbox.md
+        - guides/server/observability.md
         - guides/server/running.md
       - CLI:
         - guides/cli/index.md

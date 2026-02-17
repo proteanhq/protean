@@ -131,4 +131,6 @@ Learn more in [Outbox Pattern](outbox.md).
 - [Configuration](configuration.md) - Configuring subscriptions with profiles
   and options
 - [Outbox Pattern](outbox.md) - Reliable message publishing
+- [Observability](observability.md) - Real-time tracing and the Observatory
+  monitoring server
 - [Running the Server](running.md) - CLI options and deployment

@@ -377,44 +377,63 @@ structlog.configure(
 
 ## Monitoring
 
-### Key Metrics
+Protean includes a built-in monitoring server called the **Observatory** that
+provides real-time visibility into the message processing pipeline.
 
-Monitor these metrics in production:
+### Protean Observatory
+
+Start the Observatory alongside your engine to get a dashboard, REST API,
+SSE stream, and Prometheus metrics endpoint:
+
+```python
+from protean.server.observatory import Observatory
+
+observatory = Observatory(domains=[domain])
+observatory.run(port=9000)
+```
+
+The Observatory exposes:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Live HTML dashboard |
+| `GET /stream` | SSE real-time trace events (filterable) |
+| `GET /api/health` | Broker health, version, memory, ops/sec |
+| `GET /api/outbox` | Outbox message counts per domain |
+| `GET /api/streams` | Stream lengths and consumer groups |
+| `GET /api/stats` | Combined throughput statistics |
+| `GET /metrics` | Prometheus text exposition format |
+
+### Key metrics
+
+Monitor these metrics in production (available at `/metrics`):
 
 | Metric | Description |
 |--------|-------------|
-| Messages processed/sec | Throughput |
-| Message processing latency | P50, P95, P99 |
-| Error rate | Failed messages / total |
-| Queue depth | Pending messages |
-| Consumer lag | Position behind head |
+| `protean_broker_up` | Broker health (1=up, 0=down) |
+| `protean_outbox_messages` | Outbox messages by domain and status |
+| `protean_stream_messages_total` | Total messages across all streams |
+| `protean_stream_pending` | In-flight (unacknowledged) messages |
+| `protean_broker_ops_per_sec` | Broker operations per second |
+| `protean_broker_memory_bytes` | Broker memory usage |
 
-### Example Prometheus Metrics
+### Prometheus scrape configuration
 
-```python
-from prometheus_client import Counter, Histogram, Gauge
-
-messages_processed = Counter(
-    "protean_messages_processed_total",
-    "Total messages processed",
-    ["handler", "status"]
-)
-
-processing_latency = Histogram(
-    "protean_message_processing_seconds",
-    "Message processing latency",
-    ["handler"]
-)
-
-consumer_lag = Gauge(
-    "protean_consumer_lag",
-    "Messages behind head position",
-    ["subscription"]
-)
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: 'protean'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:9000']
 ```
+
+For the full observability guide including trace events, SSE filtering, and
+zero-overhead design, see [Observability](observability.md).
 
 ## Next Steps
 
 - [Engine Architecture](engine.md) - Understand engine internals
+- [Observability](observability.md) - Tracing, Observatory server, and Prometheus metrics
 - [Configuration](configuration.md) - Full configuration reference
 - [Subscription Types](subscription-types.md) - Choose the right subscription
