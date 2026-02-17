@@ -24,8 +24,8 @@ def _outbox_status(domain: Domain) -> dict:
             counts = outbox_repo.count_by_status()
             return {"status": "ok", "counts": counts}
     except Exception as e:
-        logger.error(f"Error querying outbox for {domain.name}: {e}")
-        return {"status": "error", "error": str(e)}
+        logger.error(f"Error querying outbox for {domain.name}: {e}", exc_info=True)
+        return {"status": "error", "error": "Failed to query outbox"}
 
 
 def _broker_health(domain: Domain) -> dict:
@@ -38,8 +38,8 @@ def _broker_health(domain: Domain) -> dict:
             stats = broker.health_stats()
             return {"status": "ok", **stats}
     except Exception as e:
-        logger.error(f"Error querying broker for {domain.name}: {e}")
-        return {"status": "error", "error": str(e)}
+        logger.error(f"Error querying broker for {domain.name}: {e}", exc_info=True)
+        return {"status": "error", "error": "Failed to query broker health"}
 
 
 def _broker_info(domain: Domain) -> dict:
@@ -52,8 +52,10 @@ def _broker_info(domain: Domain) -> dict:
             info = broker.info()
             return {"status": "ok", **info}
     except Exception as e:
-        logger.error(f"Error querying broker info for {domain.name}: {e}")
-        return {"status": "error", "error": str(e)}
+        logger.error(
+            f"Error querying broker info for {domain.name}: {e}", exc_info=True
+        )
+        return {"status": "error", "error": "Failed to query broker info"}
 
 
 def create_api_router(domains: List[Domain]) -> APIRouter:
