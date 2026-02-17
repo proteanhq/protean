@@ -144,6 +144,9 @@ inline = "protean.adapters.broker.inline:register"
 redis = "protean.adapters.broker.redis:register"
 redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
 
+[tool.poetry.plugins."pytest11"]
+protean = "protean.integrations.pytest.plugin"
+
 [tool.poetry.plugins."mypy.plugins"]
 protean = "protean.ext.mypy_plugin:plugin"
 
