@@ -1697,3 +1697,48 @@ class Domain:
             self._initialize_outbox()
 
         return self._outbox_repos[provider_name]
+
+    # ------------------------------------------------------------------
+    # Public database lifecycle API
+    # ------------------------------------------------------------------
+
+    def setup_database(self) -> None:
+        """Create all database tables (aggregates, entities, projections, outbox).
+
+        Must be called after ``domain.init()`` and within ``domain.domain_context()``.
+        Delegates to each provider's ``_create_database_artifacts()`` which is
+        idempotent — existing tables are left untouched.
+        """
+        for _, provider in self.providers.items():
+            provider._create_database_artifacts()
+
+    def setup_outbox(self) -> None:
+        """Create only outbox tables.
+
+        Useful when migrating from event-store to stream subscriptions where
+        aggregate tables already exist.  Must be called after ``domain.init()``
+        and within ``domain.domain_context()``.
+
+        Raises :class:`~protean.exceptions.ConfigurationError` if the outbox
+        is not enabled.
+        """
+        if not self.has_outbox:
+            raise ConfigurationError(
+                "Outbox is not enabled. Set "
+                "'server.default_subscription_type = \"stream\"' "
+                "in your domain configuration."
+            )
+        # Force DAO creation for outbox repos, then create pending tables
+        for _provider_name, outbox_repo in self._outbox_repos.items():
+            outbox_repo._dao  # noqa: B018
+        for _, provider in self.providers.items():
+            provider._create_database_artifacts()  # Idempotent
+
+    def drop_database(self) -> None:
+        """Drop all database tables.
+
+        Must be called after ``domain.init()`` and within
+        ``domain.domain_context()``.
+        """
+        for _, provider in self.providers.items():
+            provider._drop_database_artifacts()
