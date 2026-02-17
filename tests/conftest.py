@@ -189,6 +189,8 @@ def db_config(request):
             "POSTGRESQL": {
                 "provider": "postgresql",
                 "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+                "pool_size": 1,
+                "max_overflow": 2,
             },
             "ELASTICSEARCH": {
                 "provider": "elasticsearch",
@@ -202,6 +204,8 @@ def db_config(request):
             "MSSQL": {
                 "provider": "mssql",
                 "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
+                "pool_size": 1,
+                "max_overflow": 2,
             },
         }[request.config.getoption("--db", "MEMORY")]
     except KeyError as e:
@@ -296,9 +300,12 @@ def run_around_tests(test_domain):
         # FIXME Providers has to become a MutableMapping
         for provider_name in test_domain.providers:
             provider = test_domain.providers[provider_name]
-            provider._data_reset()
-            # Close provider connections to prevent connection leaks
-            provider.close()
+            try:
+                provider._data_reset()
+            finally:
+                # Always close provider connections to prevent connection leaks,
+                # even if _data_reset() fails (e.g., tables already dropped)
+                provider.close()
 
         for broker_name in test_domain.brokers:
             broker = test_domain.brokers[broker_name]

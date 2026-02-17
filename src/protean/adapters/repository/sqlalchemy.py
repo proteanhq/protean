@@ -833,20 +833,21 @@ class SAProvider(BaseProvider):
 
     def _data_reset(self):
         conn = self._engine.connect()
+        try:
+            transaction = conn.begin()
 
-        transaction = conn.begin()
+            if self.__database__ == self.databases.sqlite.value:
+                conn.execute(text("PRAGMA foreign_keys = OFF;"))
 
-        if self.__database__ == self.databases.sqlite.value:
-            conn.execute(text("PRAGMA foreign_keys = OFF;"))
+            for table in self._metadata.sorted_tables:
+                conn.execute(table.delete())
 
-        for table in self._metadata.sorted_tables:
-            conn.execute(table.delete())
+            if self.__database__ == self.databases.sqlite.value:
+                conn.execute(text("PRAGMA foreign_keys = ON;"))
 
-        if self.__database__ == self.databases.sqlite.value:
-            conn.execute(text("PRAGMA foreign_keys = ON;"))
-
-        transaction.commit()
-        conn.close()  # Explicitly close the connection to avoid connection leaks
+            transaction.commit()
+        finally:
+            conn.close()
 
         # Discard any active Unit of Work
         if current_uow and current_uow.in_progress:
