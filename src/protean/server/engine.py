@@ -2,7 +2,9 @@ import asyncio
 import logging
 import platform
 import signal
+import time
 import traceback
+from collections import defaultdict
 from typing import Type, Union
 
 from protean.core.command_handler import BaseCommandHandler
@@ -13,9 +15,85 @@ from protean.utils.eventing import Message
 
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.factory import SubscriptionFactory
+from .tracing import TraceEmitter
 from .outbox_processor import OutboxProcessor
 
 logger = logging.getLogger(__name__)
+
+
+class CommandDispatcher:
+    """Routes commands from a single stream to the correct command handler.
+
+    Instead of creating N separate subscriptions (one per command handler) on the
+    same stream category, the engine creates ONE subscription with a CommandDispatcher
+    that routes each command to its designated handler.
+    """
+
+    def __init__(self, stream_category, handler_map, source_handler_cls):
+        """
+        Args:
+            stream_category: The stream category this dispatcher covers.
+            handler_map: Dict mapping command __type__ string to handler class.
+            source_handler_cls: One of the handler classes, used to inherit
+                subscription configuration (meta_) for the factory.
+        """
+        self._stream_category = stream_category
+        self._handler_map = handler_map
+        self._last_resolved_handler = None
+        self._last_resolved_item = None
+
+        # Identity attributes for fqn() and logging
+        self.__name__ = f"Commands:{stream_category}"
+        self.__qualname__ = self.__name__
+        self.__module__ = "protean.server.engine"
+
+        # Copy meta_ from the source handler so ConfigResolver can resolve
+        # subscription settings (type, profile, tick interval, etc.)
+        self.meta_ = source_handler_cls.meta_
+
+    def _to_domain_object(self, message):
+        """Convert a message to its domain object, using cached result if available."""
+        if self._last_resolved_item is not None:
+            item = self._last_resolved_item
+            self._last_resolved_item = None
+            return item
+        return message.to_domain_object() if isinstance(message, Message) else message
+
+    def resolve_handler(self, message):
+        """Look up the specific handler class for a message.
+
+        Caches the deserialized domain object so that _handle() can reuse it
+        without deserializing the message twice.
+
+        Returns:
+            The handler class, or None if no handler is registered for this command type.
+        """
+        item = message.to_domain_object() if isinstance(message, Message) else message
+        self._last_resolved_item = item
+        command_type = item.__class__.__type__
+        return self._handler_map.get(command_type)
+
+    def _handle(self, message):
+        """Route the message to the correct command handler."""
+        item = self._to_domain_object(message)
+        command_type = item.__class__.__type__
+        handler_cls = self._handler_map.get(command_type)
+        self._last_resolved_handler = handler_cls
+
+        if handler_cls is None:
+            logger.warning(
+                f"No command handler registered for '{command_type}' "
+                f"in stream '{self._stream_category}'"
+            )
+            return None
+
+        return handler_cls._handle(item)
+
+    def handle_error(self, exc, message):
+        """Delegate error handling to the resolved handler."""
+        handler_cls = self._last_resolved_handler
+        if handler_cls and hasattr(handler_cls, "handle_error"):
+            handler_cls.handle_error(exc, message)
 
 
 class Engine:
@@ -49,6 +127,9 @@ class Engine:
 
         if self.debug:
             logger.setLevel(logging.DEBUG)
+
+        # Initialize trace emitter for real-time message tracing
+        self.emitter = TraceEmitter(domain)
 
         # Create a new event loop instead of getting the current one
         # This avoids fragility when the caller already has a running loop
@@ -143,23 +224,43 @@ class Engine:
                 f"on stream '{stream_category}'"
             )
 
-        # Register command handler subscriptions
+        # Register command handler subscriptions — one per stream category
+        # Group all command handlers by their stream category, then create a single
+        # CommandDispatcher subscription per group. This ensures each command message
+        # is read by exactly one subscription and routed to the correct handler.
+        handlers_by_stream = defaultdict(list)
         for (
             handler_name,
             handler_record,
         ) in self.domain.registry.command_handlers.items():
             handler_cls = handler_record.cls
             stream_category = self._infer_stream_category(handler_cls)
+            handlers_by_stream[stream_category].append(handler_cls)
 
-            self._subscriptions[handler_name] = (
+        for stream_category, handler_classes in handlers_by_stream.items():
+            # Build command_type -> handler_cls mapping
+            handler_map = {}
+            handler_names = []
+            for handler_cls in handler_classes:
+                handler_names.append(handler_cls.__name__)
+                for command_type in handler_cls._handlers:
+                    if command_type != "$any":
+                        handler_map[command_type] = handler_cls
+
+            dispatcher = CommandDispatcher(
+                stream_category, handler_map, handler_classes[0]
+            )
+
+            subscription_key = f"commands:{stream_category}"
+            self._subscriptions[subscription_key] = (
                 self._subscription_factory.create_subscription(
-                    handler=handler_cls,
+                    handler=dispatcher,
                     stream_category=stream_category,
                 )
             )
             logger.debug(
-                f"Registered subscription for command handler '{handler_name}' "
-                f"on stream '{stream_category}'"
+                f"Registered command subscription on stream '{stream_category}' "
+                f"with handlers: {', '.join(handler_names)}"
             )
 
         # Register projector subscriptions (one per stream category)
@@ -284,34 +385,84 @@ class Engine:
             #   carry the metadata forward.
             g.message_in_context = message
 
-            assert message.metadata is not None, "Message metadata cannot be None"
-
             try:
+                assert message.metadata is not None, "Message metadata cannot be None"
+
+                message_id = message.metadata.headers.id or "unknown"
+                message_type = message.metadata.headers.type or "unknown"
+                stream = (
+                    message.metadata.domain.stream_category
+                    if message.metadata.domain
+                    else "unknown"
+                )
+
+                # Resolve actual handler name (for CommandDispatcher, look up the specific handler)
+                if hasattr(handler_cls, "resolve_handler"):
+                    resolved = handler_cls.resolve_handler(message)
+                    handler_name = (
+                        resolved.__name__ if resolved else handler_cls.__name__
+                    )
+                else:
+                    handler_name = handler_cls.__name__
+
+                # Emit handler.started trace
+                self.emitter.emit(
+                    event="handler.started",
+                    stream=stream,
+                    message_id=message_id,
+                    message_type=message_type,
+                    handler=handler_name,
+                )
+
+                start_time = time.monotonic()
+
                 handler_cls._handle(message)
 
-                message_id = message.metadata.headers.id or "unknown"
+                duration_ms = (time.monotonic() - start_time) * 1000
                 logger.debug(
-                    f"Processed {message.metadata.headers.type} (ID: {message_id[:8]}...)"
+                    f"Processed {message_type} "
+                    f"(ID: {message_id[:8]}...) in {handler_name} [{duration_ms:.1f}ms]"
                 )
+
+                # Emit handler.completed trace
+                self.emitter.emit(
+                    event="handler.completed",
+                    stream=stream,
+                    message_id=message_id,
+                    message_type=message_type,
+                    handler=handler_name,
+                    duration_ms=round(duration_ms, 2),
+                )
+
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
-                message_id = message.metadata.headers.id or "unknown"
+                duration_ms = (time.monotonic() - start_time) * 1000
                 logger.exception(
-                    f"Failed to process {message.metadata.headers.type} "
-                    f"(ID: {message_id[:8]}...) in {handler_cls.__name__}: {exc}"
+                    f"Failed to process {message_type} "
+                    f"(ID: {message_id[:8]}...) in {handler_name}: {exc}"
                 )
+
+                # Emit handler.failed trace
+                self.emitter.emit(
+                    event="handler.failed",
+                    stream=stream,
+                    message_id=message_id,
+                    message_type=message_type,
+                    status="error",
+                    handler=handler_name,
+                    duration_ms=round(duration_ms, 2),
+                    error=str(exc),
+                )
+
                 try:
                     # Call the error handler if it exists
                     handler_cls.handle_error(exc, message)
                 except Exception as error_exc:
                     logger.exception(f"Error handler failed: {error_exc}")
                 # Continue processing instead of shutting down
-                # Reset message context
-                g.pop("message_in_context", None)
                 return False
-
-            # Reset message context
-            g.pop("message_in_context", None)
+            finally:
+                g.pop("message_in_context", None)
 
     def _setup_signal_handlers(self):
         """
@@ -482,7 +633,11 @@ class Engine:
 
             # Print the stack trace
             if "exception" in context and context["exception"]:
-                traceback.print_stack(context["exception"])
+                traceback.print_exception(
+                    type(context["exception"]),
+                    context["exception"],
+                    context["exception"].__traceback__,
+                )
                 logger.error(f"Caught exception: {msg}")
                 logger.info("Shutting down...")
                 if loop.is_running() and not self.shutting_down:

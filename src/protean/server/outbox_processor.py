@@ -267,6 +267,24 @@ class OutboxProcessor(BaseSubscription):
                     logger.debug(
                         f"Published to {message.stream_name}: {message.message_id[:8]}..."
                     )
+
+                    # Emit outbox.published trace
+                    stream_category = (
+                        message.metadata_.domain.stream_category
+                        if message.metadata_.domain
+                        else "unknown"
+                    )
+                    message_type = (
+                        message.metadata_.headers.type
+                        if message.metadata_.headers
+                        else "unknown"
+                    )
+                    self.engine.emitter.emit(
+                        event="outbox.published",
+                        stream=stream_category,
+                        message_id=message.message_id,
+                        message_type=message_type,
+                    )
                 else:
                     self._mark_message_failed(message, publish_error)
                     logger.warning(
@@ -371,6 +389,27 @@ class OutboxProcessor(BaseSubscription):
             error,
             base_delay_seconds=self.retry_config["base_delay_seconds"],
             max_retries=self.retry_config["max_attempts"],
+        )
+
+        # Emit outbox.failed trace
+        stream_category = (
+            message.metadata_.domain.stream_category
+            if message.metadata_ and message.metadata_.domain
+            else "unknown"
+        )
+        message_type = (
+            message.metadata_.headers.type
+            if message.metadata_ and message.metadata_.headers
+            else "unknown"
+        )
+        self.engine.emitter.emit(
+            event="outbox.failed",
+            stream=stream_category,
+            message_id=message.message_id,
+            message_type=message_type,
+            status="error",
+            error=str(error),
+            metadata={"retry_count": getattr(message, "retry_count", 0)},
         )
 
     def _should_retry_message(self, message: Outbox) -> bool:

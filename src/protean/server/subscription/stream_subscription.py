@@ -300,7 +300,7 @@ class StreamSubscription(BaseSubscription):
             int: The number of messages processed successfully.
         """
         logger.debug(
-            f"Processing batch of {len(messages)} messages for {self.subscriber_name}"
+            f"[{self.subscriber_class_name}] Received {len(messages)} message(s)"
         )
         successful_count = 0
 
@@ -310,17 +310,29 @@ class StreamSubscription(BaseSubscription):
                 continue  # Message was moved to DLQ during deserialization
 
             assert message.metadata is not None, "Message metadata cannot be None"
-            logger.debug(
-                f"Processing {message.metadata.headers.type} (ID: {message.metadata.headers.id})"
+            message_type = message.metadata.headers.type or "unknown"
+            short_id = (message.metadata.headers.id or identifier)[:8]
+
+            logger.info(
+                f"[{self.subscriber_class_name}] Processing {message_type} "
+                f"(ID: {short_id}...)"
             )
 
             # Process the message
             is_successful = await self.engine.handle_message(self.handler, message)
 
             if is_successful:
-                if await self._acknowledge_message(identifier):
+                if await self._acknowledge_message(identifier, message):
                     successful_count += 1
+                    logger.info(
+                        f"[{self.subscriber_class_name}] Completed {message_type} "
+                        f"(ID: {short_id}...) — acked"
+                    )
             else:
+                logger.warning(
+                    f"[{self.subscriber_class_name}] Failed {message_type} "
+                    f"(ID: {short_id}...) — retrying"
+                )
                 await self.handle_failed_message(identifier, payload)
 
         return successful_count
@@ -336,7 +348,9 @@ class StreamSubscription(BaseSubscription):
             await self.move_to_dlq(identifier, payload)
             return None
 
-    async def _acknowledge_message(self, identifier: str) -> bool:
+    async def _acknowledge_message(
+        self, identifier: str, message: Optional[Message] = None
+    ) -> bool:
         """Acknowledge successful message processing."""
         assert self.broker is not None, "Broker not initialized"
         ack_result = self.broker.ack(
@@ -345,6 +359,17 @@ class StreamSubscription(BaseSubscription):
         if ack_result:
             # Clear retry count if exists
             self.retry_counts.pop(identifier, None)
+
+            # Emit message.acked trace
+            if message and message.metadata:
+                self.engine.emitter.emit(
+                    event="message.acked",
+                    stream=self.stream_category,
+                    message_id=message.metadata.headers.id or identifier,
+                    message_type=message.metadata.headers.type or "unknown",
+                    handler=self.subscriber_class_name,
+                )
+
             return True
         else:
             logger.warning(f"Failed to acknowledge message {identifier}")
@@ -379,6 +404,18 @@ class StreamSubscription(BaseSubscription):
             f"Retrying message {identifier} (attempt {retry_count}/{self.max_retries}) "
             f"after {self.retry_delay_seconds}s delay"
         )
+
+        # Emit message.nacked trace
+        self.engine.emitter.emit(
+            event="message.nacked",
+            stream=self.stream_category,
+            message_id=identifier,
+            message_type="unknown",
+            status="retry",
+            handler=self.subscriber_class_name,
+            metadata={"retry_count": retry_count, "max_retries": self.max_retries},
+        )
+
         await asyncio.sleep(self.retry_delay_seconds)
 
         # NACK the message to make it available for reprocessing
@@ -414,6 +451,23 @@ class StreamSubscription(BaseSubscription):
             dlq_message = self._create_dlq_message(identifier, payload)
             self.broker.publish(self.dlq_stream, dlq_message)
             logger.info(f"Moved message {identifier} to DLQ stream {self.dlq_stream}")
+
+            # Emit message.dlq trace
+            message_type = (
+                payload.get("metadata", {}).get("headers", {}).get("type", "unknown")
+            )
+            self.engine.emitter.emit(
+                event="message.dlq",
+                stream=self.stream_category,
+                message_id=identifier,
+                message_type=message_type,
+                status="error",
+                handler=self.subscriber_class_name,
+                metadata={
+                    "dlq_stream": self.dlq_stream,
+                    "retry_count": self.retry_counts.get(identifier, self.max_retries),
+                },
+            )
         except Exception as e:
             logger.exception(f"Failed to move message {identifier} to DLQ: {e}")
 

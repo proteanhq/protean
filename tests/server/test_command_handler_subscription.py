@@ -5,7 +5,6 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.utils import fully_qualified_name
 from protean.utils.mixins import handle
 
 
@@ -53,10 +52,11 @@ def engine(test_domain):
 
 
 def test_command_handler_subscriptions(engine):
+    """CommandDispatcher groups handlers by stream into a single subscription."""
     assert len(engine._subscriptions) == 1
 
-    assert fully_qualified_name(UserCommandHandler) in engine._subscriptions
+    subscription_key = "commands:test::user:command"
+    assert subscription_key in engine._subscriptions
     assert (
-        engine._subscriptions[fully_qualified_name(UserCommandHandler)].stream_category
-        == "test::user:command"
+        engine._subscriptions[subscription_key].stream_category == "test::user:command"
     )

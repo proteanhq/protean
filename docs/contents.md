@@ -134,6 +134,7 @@ specific area.
 - [Subscription Types](./guides/server/subscription-types.md) -- Stream and EventStore subscriptions for different use cases.
 - [Subscription Configuration](./guides/server/configuration.md) -- Flexible configuration with priority hierarchy.
 - [Outbox Pattern](./guides/server/outbox.md) -- Reliable message delivery via same-transaction storage.
+- [Observability](./guides/server/observability.md) -- Real-time tracing, the Observatory monitoring server, SSE streaming, and Prometheus metrics.
 - [Running the Server](./guides/server/running.md) -- Start, configure, and operate the Protean server.
 
 ### CLI

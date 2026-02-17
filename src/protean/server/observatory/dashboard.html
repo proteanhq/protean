@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protean Observatory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;600;800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary: #1D3557;
+  --secondary: #457B9D;
+  --accent: #E76F51;
+  --success: #2A9D8F;
+  --warning: #E9C46A;
+  --bg: #F8F9FA;
+  --surface: #FFFFFF;
+  --text: #1D3557;
+  --text-muted: #6C757D;
+  --border: #DEE2E6;
+  --font-text: 'Lato', sans-serif;
+  --font-code: 'Roboto Mono', monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #A8DADC;
+    --secondary: #457B9D;
+    --accent: #E76F51;
+    --success: #2A9D8F;
+    --warning: #E9C46A;
+    --bg: #0D1B2A;
+    --surface: #1B2838;
+    --text: #E0E0E0;
+    --text-muted: #8899AA;
+    --border: #2A3A4A;
+  }
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-text);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* Header */
+.header {
+  background: #1D3557;
+  color: white;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-left .logo {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.header-left .subtitle {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header select {
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: var(--font-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.header select option { color: #333; background: white; }
+
+.btn {
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.3);
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-family: var(--font-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn:hover { background: rgba(255,255,255,0.25); }
+.btn.active { background: var(--accent); border-color: var(--accent); }
+
+/* Connection status */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.connected { background: var(--success); }
+.status-dot.disconnected { background: var(--accent); }
+
+/* Main layout */
+.main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-body { padding: 16px; }
+
+/* Pipeline */
+.pipeline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 16px;
+  flex-wrap: wrap;
+}
+
+.pipeline-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.pipeline-stage .label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.pipeline-stage .count-box {
+  width: 80px;
+  height: 48px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-code);
+  font-size: 20px;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.pipeline-stage .count-box.outbox { background: #E8F4FD; color: var(--secondary); border: 2px solid var(--secondary); }
+.pipeline-stage .count-box.published { background: #E8F4FD; color: var(--secondary); border: 2px solid var(--secondary); }
+.pipeline-stage .count-box.handling { background: #FFF3E0; color: #E65100; border: 2px solid var(--warning); }
+.pipeline-stage .count-box.done { background: #E8F5E9; color: var(--success); border: 2px solid var(--success); }
+.pipeline-stage .count-box.failed { background: #FFEBEE; color: var(--accent); border: 2px solid var(--accent); }
+
+.pipeline-stage .count-box.pulse {
+  animation: pulse 0.4s ease-out;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.pipeline-arrow {
+  color: var(--text-muted);
+  font-size: 20px;
+  margin-top: 14px;
+}
+
+/* Throughput sparkline */
+.sparkline-container {
+  padding: 12px 16px;
+}
+
+.sparkline-stats {
+  display: flex;
+  gap: 24px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.sparkline-stats .stat-label { color: var(--text-muted); }
+.sparkline-stats .stat-value { font-family: var(--font-code); font-weight: 500; }
+
+/* Live Feed */
+.feed-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.feed-controls select, .feed-controls input {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-text);
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.feed-controls input { width: 160px; }
+
+.feed {
+  max-height: 500px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.feed-item {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  transition: background 0.15s;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 90px 20px 140px 1fr auto;
+  align-items: start;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.feed-item:hover { background: var(--bg); }
+.feed-item.status-ok { border-left-color: var(--success); }
+.feed-item.status-error { border-left-color: var(--accent); }
+.feed-item.status-retry { border-left-color: var(--warning); }
+.feed-item.new { animation: fadeIn 0.3s ease-out; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.feed-item .timestamp {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.feed-item .icon { font-size: 14px; }
+.feed-item .event-type {
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.feed-item .message-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.feed-item .message-type {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feed-item .message-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feed-item .duration {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.feed-item .error-text {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.feed-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Infrastructure */
+.infra-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.infra-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.infra-item .label { color: var(--text-muted); }
+.infra-item .value { font-family: var(--font-code); font-weight: 500; }
+
+/* New events badge */
+.new-events-badge {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--primary);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <span class="logo">&#9670; Protean Observatory</span>
+    <span class="subtitle">Real-time message flow</span>
+  </div>
+  <div class="header-right">
+    <span class="status-dot disconnected" id="statusDot"></span>
+    <select id="filterDomain">
+      <option value="">All domains</option>
+    </select>
+    <button class="btn" id="pauseBtn" onclick="togglePause()">&#9208; Pause</button>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Pipeline -->
+  <div class="card">
+    <div class="pipeline">
+      <div class="pipeline-stage">
+        <span class="label">Outbox</span>
+        <div class="count-box outbox" id="pipeOutbox">0</div>
+      </div>
+      <span class="pipeline-arrow">&#9654;</span>
+      <div class="pipeline-stage">
+        <span class="label">Published</span>
+        <div class="count-box published" id="pipePublished">0</div>
+      </div>
+      <span class="pipeline-arrow">&#9654;</span>
+      <div class="pipeline-stage">
+        <span class="label">Handling</span>
+        <div class="count-box handling" id="pipeHandling">0</div>
+      </div>
+      <span class="pipeline-arrow">&#9654;</span>
+      <div class="pipeline-stage">
+        <span class="label">Done</span>
+        <div class="count-box done" id="pipeDone">0</div>
+      </div>
+      <span class="pipeline-arrow">&#9654;</span>
+      <div class="pipeline-stage">
+        <span class="label">Failed</span>
+        <div class="count-box failed" id="pipeFailed">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Throughput -->
+  <div class="card">
+    <div class="sparkline-container">
+      <canvas id="sparkline" width="1000" height="50"></canvas>
+      <div class="sparkline-stats">
+        <div><span class="stat-label">Published:</span> <span class="stat-value" id="ratePublished">0/s</span></div>
+        <div><span class="stat-label">Processed:</span> <span class="stat-value" id="rateProcessed">0/s</span></div>
+        <div><span class="stat-label">Errors:</span> <span class="stat-value" id="rateErrors">0/s</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Feed -->
+  <div class="card">
+    <div class="card-header">
+      <span>Live Feed</span>
+      <div class="feed-controls">
+        <select id="filterStream">
+          <option value="">All streams</option>
+        </select>
+        <select id="filterEvent">
+          <option value="">All events</option>
+          <option value="outbox.published">outbox.published</option>
+          <option value="outbox.failed">outbox.failed</option>
+          <option value="handler.started">handler.started</option>
+          <option value="handler.completed">handler.completed</option>
+          <option value="handler.failed">handler.failed</option>
+          <option value="message.acked">message.acked</option>
+          <option value="message.nacked">message.nacked</option>
+          <option value="message.dlq">message.dlq</option>
+        </select>
+        <input type="text" id="filterSearch" placeholder="Search messages..." oninput="applyFeedFilters()">
+      </div>
+    </div>
+    <div class="feed" id="feed">
+      <div class="feed-empty">Waiting for events... Connect engines to see real-time message flow.</div>
+    </div>
+  </div>
+
+  <!-- Infrastructure -->
+  <div class="card">
+    <div class="card-header">Infrastructure</div>
+    <div class="card-body">
+      <div class="infra-grid" id="infraGrid">
+        <div class="infra-item">
+          <span class="status-dot disconnected" id="redisStatus"></span>
+          <span class="label">Redis</span>
+          <span class="value" id="redisInfo">Checking...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="new-events-badge" id="newEventsBadge" onclick="scrollToBottom()">
+  &#8595; New events
+</div>
+
+<script>
+// --- State ---
+let paused = false;
+let connected = false;
+let eventSource = null;
+let feedItems = [];
+let pauseBuffer = [];
+const MAX_FEED_ITEMS = 500;
+
+// Pipeline counters
+const counters = {
+  outbox: 0,
+  published: 0,
+  handling: 0,
+  done: 0,
+  failed: 0,
+};
+
+// Throughput tracking (per-second buckets for last 60s)
+const throughput = {
+  published: new Array(60).fill(0),
+  processed: new Array(60).fill(0),
+  errors: new Array(60).fill(0),
+};
+let currentSecond = { published: 0, processed: 0, errors: 0 };
+
+// Known domains and streams for filter population
+const knownDomains = new Set();
+const knownStreams = new Set();
+
+// --- SSE Connection ---
+function connectSSE() {
+  const params = new URLSearchParams();
+  const domainFilter = document.getElementById('filterDomain').value;
+  if (domainFilter) params.set('domain', domainFilter);
+
+  const url = '/stream' + (params.toString() ? '?' + params.toString() : '');
+  eventSource = new EventSource(url);
+
+  eventSource.addEventListener('trace', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      handleTraceEvent(data);
+    } catch (err) {
+      console.error('Parse error:', err);
+    }
+  });
+
+  eventSource.addEventListener('error', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      console.error('Observatory error:', data.error);
+    } catch {}
+  });
+
+  eventSource.onopen = () => {
+    connected = true;
+    document.getElementById('statusDot').className = 'status-dot connected';
+  };
+
+  eventSource.onerror = () => {
+    connected = false;
+    document.getElementById('statusDot').className = 'status-dot disconnected';
+  };
+}
+
+function handleTraceEvent(data) {
+  // Track domains and streams for filters
+  if (data.domain && !knownDomains.has(data.domain)) {
+    knownDomains.add(data.domain);
+    updateDomainFilter();
+  }
+  if (data.stream && !knownStreams.has(data.stream)) {
+    knownStreams.add(data.stream);
+    updateStreamFilter();
+  }
+
+  // Update pipeline counters
+  updatePipelineCounters(data);
+
+  // Update throughput
+  updateThroughput(data);
+
+  // Add to feed
+  if (paused) {
+    pauseBuffer.push(data);
+  } else {
+    addFeedItem(data);
+  }
+}
+
+// --- Pipeline ---
+function updatePipelineCounters(data) {
+  const event = data.event;
+  let changed = null;
+
+  if (event === 'outbox.published') {
+    counters.published++;
+    changed = 'pipePublished';
+  } else if (event === 'outbox.failed') {
+    counters.failed++;
+    changed = 'pipeFailed';
+  } else if (event === 'handler.started') {
+    counters.handling++;
+    changed = 'pipeHandling';
+  } else if (event === 'handler.completed') {
+    counters.handling = Math.max(0, counters.handling - 1);
+    counters.done++;
+    changed = 'pipeDone';
+    pulseEl('pipeHandling');
+  } else if (event === 'handler.failed') {
+    counters.handling = Math.max(0, counters.handling - 1);
+    counters.failed++;
+    changed = 'pipeFailed';
+    pulseEl('pipeHandling');
+  } else if (event === 'message.dlq') {
+    counters.failed++;
+    changed = 'pipeFailed';
+  }
+
+  // Update DOM
+  document.getElementById('pipePublished').textContent = counters.published;
+  document.getElementById('pipeHandling').textContent = counters.handling;
+  document.getElementById('pipeDone').textContent = counters.done;
+  document.getElementById('pipeFailed').textContent = counters.failed;
+
+  if (changed) pulseEl(changed);
+}
+
+function pulseEl(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('pulse');
+  void el.offsetWidth; // Force reflow
+  el.classList.add('pulse');
+}
+
+// --- Throughput ---
+function updateThroughput(data) {
+  if (data.event === 'outbox.published') currentSecond.published++;
+  if (data.event === 'handler.completed') currentSecond.processed++;
+  if (data.event === 'handler.failed' || data.event === 'message.dlq') currentSecond.errors++;
+}
+
+function tickThroughput() {
+  throughput.published.push(currentSecond.published);
+  throughput.published.shift();
+  throughput.processed.push(currentSecond.processed);
+  throughput.processed.shift();
+  throughput.errors.push(currentSecond.errors);
+  throughput.errors.shift();
+
+  document.getElementById('ratePublished').textContent = currentSecond.published + '/s';
+  document.getElementById('rateProcessed').textContent = currentSecond.processed + '/s';
+  document.getElementById('rateErrors').textContent = currentSecond.errors + '/s';
+
+  currentSecond = { published: 0, processed: 0, errors: 0 };
+  drawSparkline();
+}
+
+function drawSparkline() {
+  const canvas = document.getElementById('sparkline');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const maxVal = Math.max(1, ...throughput.published, ...throughput.processed);
+  const barWidth = w / 60;
+
+  // Draw published bars
+  ctx.fillStyle = '#457B9D44';
+  for (let i = 0; i < 60; i++) {
+    const barH = (throughput.published[i] / maxVal) * h;
+    ctx.fillRect(i * barWidth, h - barH, barWidth - 1, barH);
+  }
+
+  // Draw processed line
+  ctx.strokeStyle = '#2A9D8F';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 60; i++) {
+    const x = i * barWidth + barWidth / 2;
+    const y = h - (throughput.processed[i] / maxVal) * h;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Draw error dots
+  ctx.fillStyle = '#E76F51';
+  for (let i = 0; i < 60; i++) {
+    if (throughput.errors[i] > 0) {
+      const x = i * barWidth + barWidth / 2;
+      const y = h - (throughput.errors[i] / maxVal) * h;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// --- Live Feed ---
+const EVENT_ICONS = {
+  'outbox.published': '&#8593;',
+  'outbox.failed': '&#10007;',
+  'handler.started': '&#9654;',
+  'handler.completed': '&#10003;',
+  'handler.failed': '&#10007;',
+  'message.acked': '&#10003;',
+  'message.nacked': '&#8635;',
+  'message.dlq': '&#9888;',
+};
+
+const EVENT_STATUS_CLASS = {
+  'outbox.published': 'status-ok',
+  'outbox.failed': 'status-error',
+  'handler.started': 'status-ok',
+  'handler.completed': 'status-ok',
+  'handler.failed': 'status-error',
+  'message.acked': 'status-ok',
+  'message.nacked': 'status-retry',
+  'message.dlq': 'status-error',
+};
+
+function addFeedItem(data) {
+  const feed = document.getElementById('feed');
+
+  // Remove empty message
+  const empty = feed.querySelector('.feed-empty');
+  if (empty) empty.remove();
+
+  // Check if user has scrolled up
+  const isAtBottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50;
+
+  // Build feed item
+  const item = document.createElement('div');
+  const statusClass = EVENT_STATUS_CLASS[data.event] || '';
+  item.className = `feed-item ${statusClass} new`;
+  item.setAttribute('data-event', data.event || '');
+  item.setAttribute('data-stream', data.stream || '');
+  item.setAttribute('data-type', data.message_type || '');
+
+  const ts = data.timestamp ? new Date(data.timestamp) : new Date();
+  const timeStr = ts.toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+
+  let detail = data.stream || '';
+  if (data.handler) detail += ' → ' + data.handler;
+
+  let rightCol = '';
+  if (data.duration_ms != null) {
+    rightCol = data.duration_ms.toFixed(1) + 'ms';
+  }
+  if (data.error) {
+    rightCol = '<span class="error-text">' + escapeHtml(data.error.substring(0, 80)) + '</span>';
+  }
+  if (data.metadata && data.metadata.retry_count) {
+    rightCol += ' <span style="color:var(--warning)">[retry ' + data.metadata.retry_count + ']</span>';
+  }
+
+  item.innerHTML = `
+    <span class="timestamp">${timeStr}</span>
+    <span class="icon">${EVENT_ICONS[data.event] || '?'}</span>
+    <span class="event-type">${escapeHtml(data.event || '')}</span>
+    <div class="message-info">
+      <span class="message-type">${escapeHtml(data.message_type || '')}</span>
+      <span class="message-detail">${escapeHtml(detail)}</span>
+    </div>
+    <span class="duration">${rightCol}</span>
+  `;
+
+  // Apply current filters
+  if (!matchesFilters(data)) {
+    item.style.display = 'none';
+  }
+
+  feed.insertBefore(item, feed.firstChild);
+
+  // Trim old items
+  while (feed.children.length > MAX_FEED_ITEMS) {
+    feed.removeChild(feed.lastChild);
+  }
+
+  // Auto-scroll or show badge
+  if (isAtBottom) {
+    feed.scrollTop = 0;
+  } else {
+    const badge = document.getElementById('newEventsBadge');
+    badge.style.display = 'block';
+  }
+
+  // Remove animation class after it plays
+  setTimeout(() => item.classList.remove('new'), 300);
+}
+
+function matchesFilters(data) {
+  const streamFilter = document.getElementById('filterStream').value;
+  const eventFilter = document.getElementById('filterEvent').value;
+  const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+
+  if (streamFilter && data.stream !== streamFilter) return false;
+  if (eventFilter && data.event !== eventFilter) return false;
+  if (searchFilter) {
+    const searchable = (data.message_type || '') + ' ' + (data.handler || '') + ' ' + (data.stream || '');
+    if (!searchable.toLowerCase().includes(searchFilter)) return false;
+  }
+  return true;
+}
+
+function applyFeedFilters() {
+  const feed = document.getElementById('feed');
+  const items = feed.querySelectorAll('.feed-item');
+  items.forEach(item => {
+    const data = {
+      stream: item.getAttribute('data-stream'),
+      event: item.getAttribute('data-event'),
+      message_type: item.getAttribute('data-type'),
+      handler: '',
+    };
+    item.style.display = matchesFilters(data) ? '' : 'none';
+  });
+}
+
+function scrollToBottom() {
+  document.getElementById('feed').scrollTop = 0;
+  document.getElementById('newEventsBadge').style.display = 'none';
+}
+
+// --- Filters ---
+function updateDomainFilter() {
+  const select = document.getElementById('filterDomain');
+  const current = select.value;
+  select.innerHTML = '<option value="">All domains</option>';
+  knownDomains.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = d;
+    select.appendChild(opt);
+  });
+  select.value = current;
+}
+
+function updateStreamFilter() {
+  const select = document.getElementById('filterStream');
+  const current = select.value;
+  select.innerHTML = '<option value="">All streams</option>';
+  knownStreams.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    select.appendChild(opt);
+  });
+  select.value = current;
+}
+
+// --- Pause ---
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('pauseBtn');
+  if (paused) {
+    btn.textContent = '▶ Resume';
+    btn.classList.add('active');
+  } else {
+    btn.textContent = '⏸ Pause';
+    btn.classList.remove('active');
+    // Flush buffer
+    pauseBuffer.forEach(data => addFeedItem(data));
+    pauseBuffer = [];
+  }
+}
+
+// --- Infrastructure polling ---
+async function pollInfrastructure() {
+  try {
+    const res = await fetch('/api/health');
+    const data = await res.json();
+    const redis = data.infrastructure?.redis || {};
+
+    const statusDot = document.getElementById('redisStatus');
+    statusDot.className = 'status-dot ' + (redis.healthy ? 'connected' : 'disconnected');
+
+    document.getElementById('infraGrid').innerHTML = `
+      <div class="infra-item">
+        <span class="status-dot ${redis.healthy ? 'connected' : 'disconnected'}"></span>
+        <span class="label">Redis</span>
+        <span class="value">${redis.healthy ? 'Healthy' : 'Down'}</span>
+      </div>
+      <div class="infra-item">
+        <span class="label">Memory:</span>
+        <span class="value">${redis.memory || '?'}</span>
+      </div>
+      <div class="infra-item">
+        <span class="label">Ops/s:</span>
+        <span class="value">${redis.ops_per_sec ?? '?'}</span>
+      </div>
+      <div class="infra-item">
+        <span class="label">Clients:</span>
+        <span class="value">${redis.connected_clients ?? '?'}</span>
+      </div>
+      <div class="infra-item">
+        <span class="label">Uptime:</span>
+        <span class="value">${formatUptime(redis.uptime_seconds)}</span>
+      </div>
+    `;
+
+    // Also fetch outbox status for pipeline counter
+    const outboxRes = await fetch('/api/outbox');
+    const outboxData = await outboxRes.json();
+    let totalPending = 0;
+    for (const domain of Object.values(outboxData)) {
+      const counts = domain.counts || {};
+      totalPending += counts.PENDING || counts.pending || 0;
+    }
+    counters.outbox = totalPending;
+    document.getElementById('pipeOutbox').textContent = totalPending;
+
+  } catch (e) {
+    console.error('Infrastructure poll failed:', e);
+  }
+}
+
+// --- Utils ---
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function formatUptime(seconds) {
+  if (!seconds) return '?';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+
+// --- Filter change handlers ---
+document.getElementById('filterDomain').addEventListener('change', () => {
+  // Reconnect SSE with new domain filter
+  if (eventSource) eventSource.close();
+  connectSSE();
+});
+
+document.getElementById('filterStream').addEventListener('change', applyFeedFilters);
+document.getElementById('filterEvent').addEventListener('change', applyFeedFilters);
+
+// --- Init ---
+connectSSE();
+pollInfrastructure();
+setInterval(tickThroughput, 1000);
+setInterval(pollInfrastructure, 5000);
+drawSparkline();
+</script>
+</body>
+</html>

@@ -28,6 +28,7 @@ class MockEngine:
     def __init__(self, domain):
         self.domain = domain
         self.loop = None
+        self.emitter = Mock()
 
 
 class DummyAggregate(BaseAggregate):

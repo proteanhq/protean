@@ -404,6 +404,12 @@ A dedicated stream where messages that have failed processing after exhausting a
 
 [Learn more →](guides/server/subscription-types.md) | **See also**: [Subscription](#subscription), [Idempotency](#idempotency)
 
+### CommandDispatcher
+
+An internal routing mechanism that consolidates multiple command handler subscriptions on the same stream category into a single subscription. Instead of creating N separate subscriptions that compete for the same messages, the engine creates one `CommandDispatcher` per stream category that reads each command once and routes it to the correct handler based on the command type.
+
+[Learn more →](guides/server/engine.md) | **See also**: [Command Handler](#command-handler), [Engine](#engine), [Subscription](#subscription)
+
 ### Engine
 
 The core async message processing system in Protean that manages the lifecycle of subscriptions, coordinates message handling, and provides graceful startup and shutdown. The engine polls for messages from event stores and brokers, delivers them to the appropriate handlers, and tracks processing state.
@@ -422,6 +428,18 @@ A piece of data transmitted between components in an event-driven system. In Pro
 
 [Learn more →](guides/essentials/stream-categories.md) | **See also**: [Command](#command), [Domain Event](#domain-event), [Stream Category](#stream-category)
 
+### MessageTrace
+
+A structured dataclass representing one stage of a message's journey through the processing pipeline. Each trace captures the event type, domain, stream, message identity, status, handler name, processing duration, and optional error and metadata. MessageTrace events are serialized to JSON and published to Redis Pub/Sub by the TraceEmitter.
+
+[Learn more →](guides/server/observability.md) | **See also**: [TraceEmitter](#traceemitter), [Observatory](#observatory)
+
+### Observatory
+
+A standalone FastAPI server (`Observatory`) that provides real-time monitoring of the Protean message processing pipeline. It subscribes to the trace event channel and exposes an HTML dashboard, Server-Sent Events stream, REST API for infrastructure health and statistics, and a Prometheus metrics endpoint. Runs on its own port (default 9000), separate from the application.
+
+[Learn more →](guides/server/observability.md) | **See also**: [TraceEmitter](#traceemitter), [MessageTrace](#messagetrace), [Engine](#engine)
+
 ### Position Tracking
 
 The mechanism by which subscriptions track which messages have been successfully processed. Position tracking ensures that after a restart, a subscription resumes from where it left off rather than reprocessing the entire stream. Different subscription types implement position tracking differently (cursor-based, consumer group ACKs, etc.).
@@ -433,6 +451,12 @@ The mechanism by which subscriptions track which messages have been successfully
 A long-running process that connects message sources (event stores or brokers) to handlers. Subscriptions manage the message flow lifecycle: polling for new messages, delivering them to handlers, tracking processed positions, and handling errors with retries. Protean provides `StreamSubscription`, `EventStoreSubscription`, and `BrokerSubscription` types.
 
 [Learn more →](guides/server/subscriptions.md) | **See also**: [Engine](#engine), [Stream Category](#stream-category), [Position Tracking](#position-tracking)
+
+### TraceEmitter
+
+A lightweight component attached to the Engine that publishes structured `MessageTrace` events to Redis Pub/Sub as messages flow through the processing pipeline. Designed for zero overhead when nobody is listening — it checks subscriber count via `PUBSUB NUMSUB` and short-circuits before any serialization when no subscribers are found. Tracing failures are silently swallowed and never affect message processing.
+
+[Learn more →](guides/server/observability.md) | **See also**: [MessageTrace](#messagetrace), [Observatory](#observatory), [Engine](#engine)
 
 ### Transaction Boundary
 

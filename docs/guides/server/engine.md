@@ -15,6 +15,8 @@ The Engine is responsible for:
    outbox
 4. **Coordinating lifecycle** - Starting, running, and gracefully shutting down
    all components
+5. **Emitting trace events** - Publishing structured `MessageTrace` events at
+   each stage of message processing for real-time observability
 
 ## Engine Initialization
 
@@ -41,7 +43,8 @@ The Engine associates subscriptions with each handler during initialization. The
 
 ### Handler Subscriptions
 
-For each event handler, command handler, and projector, the Engine:
+For each event handler and projector, the Engine creates one subscription per
+handler, inferring the stream category and resolving configuration:
 
 1. Infers the stream category from handler metadata or associated aggregate
 2. Resolves subscription configuration using the priority hierarchy
@@ -58,6 +61,34 @@ subscription = engine.subscription_factory.create_subscription(
     stream_category=stream_category,
 )
 ```
+
+### Command dispatch
+
+When multiple command handlers belong to the same aggregate (and therefore the
+same stream category), the Engine consolidates them into a single subscription
+using a `CommandDispatcher`. Instead of creating N separate subscriptions that
+would compete for the same messages, the dispatcher reads each command once and
+routes it to the correct handler based on the command type:
+
+```python
+# Two command handlers for the same aggregate
+@domain.command_handler(part_of=User)
+class RegisterUserHandler:
+    @handle(RegisterUser)
+    def register(self, command): ...
+
+@domain.command_handler(part_of=User)
+class DeactivateUserHandler:
+    @handle(DeactivateUser)
+    def deactivate(self, command): ...
+
+# The engine creates ONE subscription keyed as "commands:{stream_category}"
+# that routes RegisterUser → RegisterUserHandler
+# and DeactivateUser → DeactivateUserHandler
+```
+
+The `CommandDispatcher` caches the deserialized domain object between handler
+resolution and execution to avoid double deserialization.
 
 ### Broker Subscriptions
 
@@ -100,6 +131,24 @@ This means that explicit intent at the handler level takes priority, but system-
 
 For example, if a handler specifies a custom stream name, it will be used; otherwise, the engine will infer the relevant category from the handler’s associated aggregate or fall back to profile/domain defaults.
 
+## Tracing
+
+The Engine initializes a `TraceEmitter` at startup that publishes structured
+`MessageTrace` events to Redis Pub/Sub as messages flow through the pipeline.
+Trace events are emitted at three points during `handle_message`:
+
+- `handler.started` -- Before the handler processes the message
+- `handler.completed` -- After successful processing (includes `duration_ms`)
+- `handler.failed` -- When the handler raises an exception (includes `error`)
+
+Additional trace events are emitted by `StreamSubscription` (`message.acked`,
+`message.nacked`, `message.dlq`) and `OutboxProcessor` (`outbox.published`,
+`outbox.failed`).
+
+The emitter adds zero overhead when no monitoring tools are subscribed -- see
+[Observability](observability.md) for the full design and the Observatory
+monitoring server.
+
 ## Running the Engine
 
 For comprehensive information on how to start, configure, and operate the engine, including:
@@ -110,7 +159,7 @@ For comprehensive information on how to start, configure, and operate the engine
 - Programmatic usage
 - Production deployment strategies
 - Signal handling and graceful shutdown
-- Monitoring and health checks
+- Monitoring, health checks, and observability
 
 See the [Running the Server](running.md) guide.
 
@@ -120,4 +169,5 @@ See the [Running the Server](running.md) guide.
 - [Subscription Types](subscription-types.md): Compare StreamSubscription and EventStoreSubscription, and choose the right one for your workload.
 - [Configuration](configuration.md): Dive deeper into configuring engine profiles, subscriptions, and runtime options.
 - [Outbox Pattern](outbox.md): Understand reliable message publishing and transactional outbox processing.
+- [Observability](observability.md): Real-time tracing, the Observatory server, SSE streaming, and Prometheus metrics.
 - [Running the Server](running.md): Explore how to deploy, operate, and monitor the server in different environments.

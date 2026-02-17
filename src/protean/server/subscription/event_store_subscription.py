@@ -311,56 +311,71 @@ class EventStoreSubscription(BaseSubscription):
         Returns:
             int: The number of messages processed successfully.
         """
-        logging.debug(f"Processing {len(messages)} messages...")
         successful_count = 0
 
         # Get the idempotency store (may be inactive if Redis is not configured)
         idempotency_store = self.engine.domain.idempotency_store
 
         for message in messages:
-            logging.info(
-                f"{message.metadata.headers.type}-{message.metadata.headers.id} : {message.to_dict()}"
+            message_type = message.metadata.headers.type or "unknown"
+            message_id = message.metadata.headers.id or "unknown"
+            short_id = message_id[:8]
+            position = message.metadata.event_store.global_position
+
+            # Log the message being picked up, with payload
+            logger.info(
+                f"[{self.subscriber_class_name}] "
+                f"Received {message_type} (ID: {short_id}..., pos: {position})\n"
+                f"  Payload: {message.to_dict()}"
             )
 
-            # Handle only if the message is asynchronous
-            # Synchronous messages are handled by the domain as soon as they are received
-            if message.metadata.domain and message.metadata.domain.asynchronous:
-                # Check idempotency store for already-processed commands
-                idempotency_key = (
-                    message.metadata.headers.idempotency_key
-                    if message.metadata.headers
-                    else None
+            # Skip synchronous messages — they were already handled inline
+            if not (message.metadata.domain and message.metadata.domain.asynchronous):
+                logger.info(
+                    f"[{self.subscriber_class_name}] "
+                    f"{message_type} (pos: {position}) — already processed inline"
                 )
-                if idempotency_key and idempotency_store.is_active:
-                    existing = idempotency_store.check(idempotency_key)
-                    if existing and existing.get("status") == "success":
-                        logger.debug(
-                            "Skipping already-processed command with "
-                            "idempotency key %s",
-                            idempotency_key,
-                        )
-                        # Advance position without re-processing
-                        await self.update_read_position(
-                            message.metadata.event_store.global_position
-                        )
-                        successful_count += 1
-                        continue
+                await self.update_read_position(position)
+                continue
 
-                # Process the message and get a success/failure result
-                is_successful = await self.engine.handle_message(self.handler, message)
-
-                # Always update position to avoid reprocessing the message
-                await self.update_read_position(
-                    message.metadata.event_store.global_position
-                )
-
-                # Record success in idempotency store for future dedup
-                if is_successful and idempotency_key and idempotency_store.is_active:
-                    idempotency_store.record_success(idempotency_key, True)
-
-                # Increment counter only for successful messages
-                if is_successful:
+            # Check idempotency store for already-processed commands
+            idempotency_key = (
+                message.metadata.headers.idempotency_key
+                if message.metadata.headers
+                else None
+            )
+            if idempotency_key and idempotency_store.is_active:
+                existing = idempotency_store.check(idempotency_key)
+                if existing and existing.get("status") == "success":
+                    logger.info(
+                        f"[{self.subscriber_class_name}] "
+                        f"{message_type} (ID: {short_id}...) — already processed (idempotent)"
+                    )
+                    await self.update_read_position(position)
                     successful_count += 1
+                    continue
+
+            # Process the message and get a success/failure result
+            is_successful = await self.engine.handle_message(self.handler, message)
+
+            # Always update position to avoid reprocessing the message
+            await self.update_read_position(position)
+
+            # Record success in idempotency store for future dedup
+            if is_successful and idempotency_key and idempotency_store.is_active:
+                idempotency_store.record_success(idempotency_key, True)
+
+            if is_successful:
+                successful_count += 1
+                logger.info(
+                    f"[{self.subscriber_class_name}] "
+                    f"Completed {message_type} (ID: {short_id}..., pos: {position})"
+                )
+            else:
+                logger.warning(
+                    f"[{self.subscriber_class_name}] "
+                    f"Failed {message_type} (ID: {short_id}..., pos: {position})"
+                )
 
         return successful_count
 

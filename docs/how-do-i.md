@@ -67,6 +67,9 @@ need by what you're trying to accomplish.
 | Process events and commands asynchronously      | [Server](./guides/server/index.md) |
 | Understand subscriptions and event processing   | [Subscriptions](./guides/server/subscriptions.md) |
 | Use the outbox pattern for reliable messaging   | [Outbox](./guides/server/outbox.md) |
+| Monitor message flow in real time               | [Observability](./guides/server/observability.md) |
+| Expose Prometheus metrics for the message pipeline | [Observability](./guides/server/observability.md) |
+| Stream trace events via SSE                     | [Observability](./guides/server/observability.md) |
 | Run the async background server                 | [`protean server`](./guides/cli/server.md) |
 | Use the CLI for development and operations      | [CLI](./guides/cli/index.md) |
 
