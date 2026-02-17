@@ -17,33 +17,37 @@ Protean's testing approach follows a few principles:
 
 ## Setting Up Tests
 
-Protean's in-memory adapters make testing straightforward. No Docker, no
-database setup, no cleanup:
+Protean ships with a pytest plugin and `DomainFixture` that make testing
+straightforward. No Docker, no database setup, no manual cleanup:
 
 ```python
 import pytest
-from protean import Domain
+from protean.integrations.pytest import DomainFixture
 
-@pytest.fixture
-def domain():
-    domain = Domain()
+from myapp import domain
+
+
+@pytest.fixture(scope="session")
+def app_fixture():
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
 
-    # Register your elements
-    # (or import them, which triggers registration)
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
 
-    domain.init(traverse=False)
-    return domain
 
 @pytest.fixture(autouse=True)
-def ctx(domain):
-    with domain.domain_context():
+def _ctx(app_fixture):
+    with app_fixture.domain_context():
         yield
 ```
 
-The `domain_context` fixture ensures every test runs within an active
-domain context, and in-memory state is isolated between tests.
+`DomainFixture.setup()` calls `domain.init()` to discover and wire all
+your decorated domain elements, and creates database schema if needed.
+The `_ctx` fixture activates the domain context for each test and
+automatically resets all data (providers, brokers, event store) on exit.
 
 ## Testing Aggregates
 

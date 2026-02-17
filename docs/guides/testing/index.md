@@ -59,6 +59,19 @@ The goal is **100% test coverage** on all business logic:
   framework setup, adapter wiring, `__init__.py` files, and infrastructure
   bootstrapping code.
 
+## Pytest Plugin and `DomainFixture`
+
+Protean ships with a **pytest plugin** that is automatically activated when
+Protean is installed. It sets `PROTEAN_ENV` before test collection (so
+`domain.toml` environment overlays are applied) and registers standard
+test-category markers.
+
+Protean also provides `DomainFixture` — a test lifecycle manager that handles
+domain initialization, database schema setup/teardown, and per-test data
+cleanup across all adapters. See
+[Fixtures and Patterns](./fixtures-and-patterns.md) for full details and
+recipes.
+
 ## What's in This Section
 
 - **[Domain Model Tests](./domain-model-tests.md)** — unit testing aggregates,
@@ -68,4 +81,4 @@ The goal is **100% test coverage** on all business logic:
 - **[Integration Tests](./integration-tests.md)** — end-to-end flows
   with real infrastructure adapters.
 - **[Fixtures and Patterns](./fixtures-and-patterns.md)** — reusable pytest
-  fixtures and `conftest.py` recipes for Protean projects.
+  fixtures, `DomainFixture`, and `conftest.py` recipes for Protean projects.

@@ -70,46 +70,103 @@ The in-memory adapters implement these same methods as no-ops or simple dictiona
 
 ---
 
-## Applying the Pattern
+## `DomainFixture` — The Recommended Approach
 
-### Recipe 1: In-Memory Only
+Protean provides `DomainFixture` (from `protean.integrations.pytest`) that encapsulates the entire pattern described above. It handles domain initialization, schema creation, schema teardown, and per-test data cleanup across **all** adapters automatically.
 
-The simplest configuration. No schema management is needed because in-memory adapters have no persistent schema. Data resets happen automatically when the domain is re-initialized.
+```python
+from protean.integrations.pytest import DomainFixture
+```
+
+| Method | What It Does |
+|--------|-------------|
+| `setup()` | Calls `domain.init()` and creates database schema via `domain.setup_database()` |
+| `teardown()` | Drops database schema via `domain.drop_database()` |
+| `domain_context()` | Context manager that activates the domain context, yields the domain, and on exit resets all data in providers, brokers, and the event store |
+
+This gives you the session-scoped schema lifecycle and per-test data cleanup in two fixtures:
 
 ```python
 # tests/conftest.py
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True)
-def setup_domain():
+@pytest.fixture(scope="session")
+def app_fixture():
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
+    fixture = DomainFixture(domain)
+    fixture.setup()    # domain.init() + create schema
+    yield fixture
+    fixture.teardown()  # drop schema
+
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():  # resets all data on exit
         yield
 ```
 
-This is sufficient for most development workflows. Every test gets a fresh domain context, and in-memory adapters start empty.
+The recipes below show how to apply `DomainFixture` to various scenarios.
+
+---
+
+## Applying the Pattern
+
+### Recipe 1: In-Memory Only
+
+The simplest configuration. No schema management is needed because in-memory adapters have no persistent schema.
+
+```python
+# tests/conftest.py
+import pytest
+
+from protean.integrations.pytest import DomainFixture
+
+from myapp import domain
+
+
+@pytest.fixture(scope="session")
+def app_fixture():
+    domain.config["event_processing"] = "sync"
+    domain.config["command_processing"] = "sync"
+
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
+
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():
+        yield
+```
+
+This is sufficient for most development workflows. The domain is initialized once, and `domain_context()` resets all data between tests automatically.
 
 ---
 
 ### Recipe 2: Single Real Database
 
-When testing against PostgreSQL, SQLite, or Elasticsearch, you need explicit schema and data management.
+When testing against PostgreSQL, SQLite, or Elasticsearch, `DomainFixture` handles schema creation and teardown automatically.
 
 ```python
 # tests/conftest.py
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True, scope="session")
-def setup_database():
+@pytest.fixture(scope="session")
+def app_fixture():
     """Create schema once for the entire test session."""
     domain.config["databases"]["default"] = {
         "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
@@ -117,27 +174,21 @@ def setup_database():
     }
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
-        for provider in domain.providers.values():
-            provider._create_database_artifacts()
-
-        yield
-
-        for provider in domain.providers.values():
-            provider._drop_database_artifacts()
+    fixture = DomainFixture(domain)
+    fixture.setup()    # domain.init() + create schema
+    yield fixture
+    fixture.teardown()  # drop schema
 
 
 @pytest.fixture(autouse=True)
-def clean_data():
+def _ctx(app_fixture):
     """Reset data after every test."""
-    yield
-    for provider in domain.providers.values():
-        provider._data_reset()
+    with app_fixture.domain_context():  # resets all data on exit
+        yield
 ```
 
-The `session`-scoped fixture creates tables once. The `function`-scoped fixture (the default) resets data after each test. Schema creation happens once; data cleanup happens hundreds of times -- but it is fast because it only truncates.
+`DomainFixture.setup()` calls `domain.init()` and creates tables for every configured provider. `teardown()` drops them. `domain_context()` resets data after each test. Schema creation happens once; data cleanup happens hundreds of times -- but it is fast because it only truncates.
 
 ---
 
@@ -151,11 +202,13 @@ import os
 
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True, scope="session")
-def setup_database():
+@pytest.fixture(scope="session")
+def app_fixture():
     """Configure and initialize the domain for the test session."""
     db_provider = os.environ.get("TEST_DB", "memory")
 
@@ -173,26 +226,18 @@ def setup_database():
 
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
-        if db_provider != "memory":
-            for provider in domain.providers.values():
-                provider._create_database_artifacts()
-
-        yield
-
-        if db_provider != "memory":
-            for provider in domain.providers.values():
-                provider._drop_database_artifacts()
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
 
 
 @pytest.fixture(autouse=True)
-def clean_data():
+def _ctx(app_fixture):
     """Reset data after every test, regardless of adapter."""
-    yield
-    for provider in domain.providers.values():
-        provider._data_reset()
+    with app_fixture.domain_context():
+        yield
 ```
 
 Run from the command line:
@@ -212,7 +257,7 @@ TEST_DB=sqlite pytest tests/
 
 ### Recipe 4: Full Infrastructure (Database + Broker + Event Store)
 
-Production systems often use a real database, a message broker, and an event store. All three need lifecycle management in tests.
+Production systems often use a real database, a message broker, and an event store. `DomainFixture` manages all three automatically.
 
 ```python
 # tests/conftest.py
@@ -220,11 +265,13 @@ import os
 
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True, scope="session")
-def setup_infrastructure():
+@pytest.fixture(scope="session")
+def app_fixture():
     """Set up all infrastructure for the test session."""
     if os.environ.get("TEST_INFRA") == "full":
         domain.config["databases"]["default"] = {
@@ -242,36 +289,18 @@ def setup_infrastructure():
 
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
-        if os.environ.get("TEST_INFRA") == "full":
-            for provider in domain.providers.values():
-                provider._create_database_artifacts()
-
-        yield
-
-        if os.environ.get("TEST_INFRA") == "full":
-            for provider in domain.providers.values():
-                provider._drop_database_artifacts()
+    fixture = DomainFixture(domain)
+    fixture.setup()    # domain.init() + create schema
+    yield fixture
+    fixture.teardown()  # drop schema
 
 
 @pytest.fixture(autouse=True)
-def clean_all_data():
+def _ctx(app_fixture):
     """Reset data across all infrastructure after every test."""
-    yield
-
-    # Reset database data
-    for provider in domain.providers.values():
-        provider._data_reset()
-
-    # Reset broker data
-    for broker in domain.brokers.values():
-        broker._data_reset()
-
-    # Reset event store data
-    if hasattr(domain, "event_store") and domain.event_store:
-        domain.event_store._data_reset()
+    with app_fixture.domain_context():  # resets providers, brokers, event store
+        yield
 ```
 
 ```shell
@@ -297,7 +326,7 @@ tests/
 ├── unit/
 │   └── test_order.py        # Uses in-memory adapters from root conftest
 └── integration/
-    ├── conftest.py           # Override: real database + cleanup fixtures
+    ├── conftest.py           # Override: real database config
     └── test_order_persistence.py
 ```
 
@@ -307,16 +336,25 @@ Root conftest (in-memory):
 # tests/conftest.py
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True)
-def setup_domain():
+@pytest.fixture(scope="session")
+def app_fixture():
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
+
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():
         yield
 ```
 
@@ -326,11 +364,13 @@ Integration conftest (real database):
 # tests/integration/conftest.py
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True, scope="session")
-def setup_integration_database():
+@pytest.fixture(scope="session")
+def app_fixture():
     """Override root conftest for integration tests."""
     domain.config["databases"]["default"] = {
         "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
@@ -338,26 +378,18 @@ def setup_integration_database():
     }
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
-        for provider in domain.providers.values():
-            provider._create_database_artifacts()
-
-        yield
-
-        for provider in domain.providers.values():
-            provider._drop_database_artifacts()
+    fixture = DomainFixture(domain)
+    fixture.setup()    # domain.init() + create schema
+    yield fixture
+    fixture.teardown()  # drop schema
 
 
 @pytest.fixture(autouse=True)
-def clean_integration_data():
+def _ctx(app_fixture):
     """Reset data after each integration test."""
-    yield
-    for provider in domain.providers.values():
-        provider._data_reset()
-    for broker in domain.brokers.values():
-        broker._data_reset()
+    with app_fixture.domain_context():  # resets providers, brokers, event store
+        yield
 ```
 
 Run selectively:
@@ -402,7 +434,7 @@ def test_no_orders_exist():
     assert len(orders.items) == 0  # FAILS — order from previous test
 ```
 
-Fix: add a `function`-scoped `clean_data` fixture that calls `_data_reset()` on all providers and brokers.
+Fix: use `DomainFixture.domain_context()` which resets all data automatically, or add a `function`-scoped `clean_data` fixture that calls `_data_reset()` on all providers and brokers.
 
 ### Recreating Schema Per Test
 
@@ -419,7 +451,7 @@ def setup_database():
             provider._drop_database_artifacts()
 ```
 
-This is correct but slow. If you have 500 tests, you create and drop the entire schema 500 times. Move schema operations to `scope="session"` and use `_data_reset()` per test instead.
+This is correct but slow. If you have 500 tests, you create and drop the entire schema 500 times. Use `DomainFixture` (which is session-scoped) or move schema operations to `scope="session"` and use `_data_reset()` per test instead.
 
 ### Forgetting Broker and Event Store Cleanup
 
@@ -433,7 +465,7 @@ def clean_data():
     # Broker still has messages from the previous test!
 ```
 
-If your test raises domain events that are published to a broker, the broker accumulates messages across tests. Always reset all infrastructure:
+If your test raises domain events that are published to a broker, the broker accumulates messages across tests. Use `DomainFixture.domain_context()` which resets all infrastructure automatically, or reset everything manually:
 
 ```python
 # RIGHT: Reset everything
@@ -450,13 +482,23 @@ def clean_data():
 
 ## Summary
 
-| Concern | Strategy | Scope |
+The recommended approach is to use `DomainFixture` from `protean.integrations.pytest`, which handles all lifecycle management automatically:
+
+| Concern | `DomainFixture` Method | Scope |
+|---------|------------------------|-------|
+| Domain init + schema creation | `setup()` | Once per session |
+| Schema teardown | `teardown()` | Once per session |
+| Data cleanup (all adapters) | `domain_context()` exit | After every test |
+
+Under the hood, `DomainFixture` calls these adapter methods:
+
+| Concern | Adapter Method | Scope |
 |---------|----------|-------|
-| Schema creation | `provider._create_database_artifacts()` | Once per session |
-| Schema teardown | `provider._drop_database_artifacts()` | Once per session |
+| Schema creation | `domain.setup_database()` | Once per session |
+| Schema teardown | `domain.drop_database()` | Once per session |
 | Data cleanup (database) | `provider._data_reset()` | After every test |
 | Data cleanup (broker) | `broker._data_reset()` | After every test |
-| Data cleanup (event store) | `event_store._data_reset()` | After every test |
+| Data cleanup (event store) | `event_store.store._data_reset()` | After every test |
 
 **The key principle: create schema once, reset data often.** This gives you the correctness of full isolation with the performance of shared infrastructure.
 

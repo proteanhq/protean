@@ -66,6 +66,40 @@ Both types of tests are valuable. But domain unit tests should be the
 **majority** of your test suite because they test the most important code
 (business rules) with the least overhead (no infrastructure).
 
+### Test Setup
+
+The examples below assume a `conftest.py` that uses Protean's `DomainFixture`
+to initialize the domain and provide a per-test context:
+
+```python
+# tests/conftest.py
+import pytest
+
+from protean.integrations.pytest import DomainFixture
+
+from myapp import domain
+
+
+@pytest.fixture(scope="session")
+def app_fixture():
+    domain.config["event_processing"] = "sync"
+    domain.config["command_processing"] = "sync"
+
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
+
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():
+        yield
+```
+
+With this setup, every test runs within an active domain context and all
+data is reset between tests automatically.
+
 ---
 
 ## Testing Aggregates

@@ -89,37 +89,49 @@ class UserEventSubscriber:
 
 ### Testing with Inline Broker
 
-The Inline broker is ideal for testing as it provides deterministic, synchronous behavior:
+The Inline broker is ideal for testing as it provides deterministic, synchronous behavior. Use Protean's `DomainFixture` to manage the domain lifecycle:
 
 ```python
 import pytest
 from protean import Domain
+from protean.integrations.pytest import DomainFixture
 
-@pytest.fixture
-def domain():
-    domain = Domain(__name__)
-    domain.config['brokers'] = {
-        'default': {'provider': 'inline'}
-    }
-    domain.init()
-    return domain
+domain = Domain(__name__)
+domain.config['brokers'] = {
+    'default': {'provider': 'inline'}
+}
 
-def test_message_processing(domain):
+
+@pytest.fixture(scope="session")
+def app_fixture():
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
+
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():
+        yield
+
+
+def test_message_processing():
     # Track processed messages
     processed = []
-    
+
     @domain.subscriber(stream="test-stream")
     class TestSubscriber:
         @handle("test.event")
         def process(self, message):
             processed.append(message)
-    
+
     # Publish a message
     domain.brokers.publish(
         stream="test-stream",
         message={"type": "test.event", "data": "test"}
     )
-    
+
     # Message is processed synchronously
     assert len(processed) == 1
     assert processed[0]["data"] == "test"

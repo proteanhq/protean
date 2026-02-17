@@ -26,18 +26,21 @@ infrastructure instead of in-memory adapters.
 ## Configuring for Real Infrastructure
 
 The key difference from application tests is the domain configuration. Override
-your database, broker, or event store settings in a dedicated `conftest.py`:
+your database, broker, or event store settings in a dedicated `conftest.py`
+and use `DomainFixture` to manage the lifecycle:
 
 ```python
 # tests/integration/conftest.py
 import pytest
 from pytest_bdd import given
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True)
-def setup_domain():
+@pytest.fixture(scope="session")
+def app_fixture():
     domain.config["databases"]["default"] = {
         "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
         "database_uri": "postgresql://postgres:postgres@localhost:5432/myapp_test",
@@ -48,18 +51,17 @@ def setup_domain():
     }
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
-        # Create database artifacts before all tests
-        for provider in domain.providers.values():
-            provider._create_database_artifacts()
+    fixture = DomainFixture(domain)
+    fixture.setup()    # domain.init() + create schema
+    yield fixture
+    fixture.teardown()  # drop schema
 
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():  # resets all data on exit
         yield
-
-        # Clean up after all tests
-        for provider in domain.providers.values():
-            provider._drop_database_artifacts()
 
 
 @given("the domain is initialized")
@@ -68,9 +70,11 @@ def domain_initialized():
 ```
 
 !!!note
-    The `setup_domain` fixture overrides adapter configuration before
-    calling `domain.init()`. The same application code and domain elements
-    are used — only the infrastructure changes.
+    `DomainFixture.setup()` calls `domain.init()` and creates database
+    tables for all configured providers. `teardown()` drops them.
+    `domain_context()` resets all data (providers, brokers, event store)
+    after each test. The same application code and domain elements are
+    used — only the infrastructure changes.
 
 ## Full-Flow Feature Files
 
@@ -243,18 +247,21 @@ tests/
 ## Testing with Different Adapters
 
 To run the same integration tests against different databases or brokers,
-use environment variables or pytest CLI options to switch configuration:
+use environment variables to switch configuration:
 
 ```python
 # tests/integration/conftest.py
 import os
+
 import pytest
+
+from protean.integrations.pytest import DomainFixture
 
 from myapp import domain
 
 
-@pytest.fixture(autouse=True)
-def setup_domain():
+@pytest.fixture(scope="session")
+def app_fixture():
     db_provider = os.environ.get("TEST_DB", "memory")
 
     if db_provider == "postgresql":
@@ -271,16 +278,17 @@ def setup_domain():
 
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
-        for provider in domain.providers.values():
-            provider._create_database_artifacts()
+    fixture = DomainFixture(domain)
+    fixture.setup()    # domain.init() + create schema
+    yield fixture
+    fixture.teardown()  # drop schema
 
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():  # resets all data on exit
         yield
-
-        for provider in domain.providers.values():
-            provider._drop_database_artifacts()
 ```
 
 Then switch adapters from the command line:
@@ -301,19 +309,9 @@ adapter — the domain logic is identical, only the infrastructure changes.
 
 ## Per-Test Data Cleanup
 
-When running integration tests against a real database, data persists between
-tests unless you clean it up. Use a fixture that resets data after each test:
-
-```python
-@pytest.fixture(autouse=True)
-def clean_data():
-    yield
-    # Reset all adapter data after each test
-    for provider in domain.providers.values():
-        provider._data_reset()
-    for broker in domain.brokers.values():
-        broker._data_reset()
-```
+`DomainFixture.domain_context()` automatically resets data in all providers,
+brokers, and the event store after each test. If you use the recommended
+`_ctx` fixture pattern above, **no additional cleanup fixture is needed**.
 
 ## Coverage Reporting
 
