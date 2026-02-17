@@ -383,6 +383,23 @@ class UserActionNotificationHandler:
 
 Protean validates configuration and provides helpful error messages:
 
+### Outbox / Subscription Type Conflict
+
+Setting `enable_outbox = true` with `default_subscription_type = "event_store"`
+is a configuration error.  The outbox publishes events to Redis Streams, but
+event-store subscriptions never read from them, resulting in a broken pipeline.
+
+```
+ConfigurationError: Configuration conflict: 'enable_outbox' is True but
+'server.default_subscription_type' is 'event_store'. When outbox is enabled,
+subscription type must be 'stream' so that subscriptions read from the broker
+where the outbox publishes. Either set server.default_subscription_type = 'stream'
+or remove enable_outbox.
+```
+
+Setting `default_subscription_type = "stream"` automatically enables the outbox
+without needing to set `enable_outbox` at all.
+
 ### Invalid Subscription Type
 
 ```python

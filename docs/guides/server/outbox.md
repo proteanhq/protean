@@ -98,11 +98,13 @@ class InventoryEventHandler:
 
 ### Enabling the Outbox
 
-Enable the outbox pattern in your domain configuration:
+The outbox is automatically enabled when you set the subscription type to
+`"stream"`.  This is the **recommended** way to enable the outbox:
 
 ```toml
 # domain.toml
-enable_outbox = true
+[server]
+default_subscription_type = "stream"   # Enables outbox automatically
 
 [outbox]
 broker = "default"         # Which broker to publish to
@@ -123,6 +125,26 @@ jitter_factor = 0.25       # ±25% randomization
 published_retention_hours = 168   # Keep published messages for 7 days
 abandoned_retention_hours = 720   # Keep abandoned messages for 30 days
 cleanup_interval_ticks = 86400    # Cleanup every 86400 ticks
+```
+
+!!! note "Backward Compatibility"
+    The legacy `enable_outbox = true` flag still works and will activate the
+    outbox regardless of subscription type.  However, setting
+    `enable_outbox = true` with `default_subscription_type = "event_store"`
+    is a configuration error (the outbox publishes to Redis Streams, but
+    event-store subscriptions never read from them).
+
+### Setting Up the Outbox Table
+
+Before starting the server with outbox enabled, create the outbox database
+table:
+
+```bash
+# Create all tables (aggregates, entities, projections, outbox)
+protean db setup --domain my_domain
+
+# Or create only the outbox table (useful when migrating)
+protean db setup-outbox --domain my_domain
 ```
 
 ### Broker Configuration

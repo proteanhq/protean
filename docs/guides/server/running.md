@@ -20,6 +20,22 @@ protean server [OPTIONS]
 | `--debug` | Enable debug logging | `False` |
 | `--help` | Show help message | |
 
+## Database Setup
+
+Before starting the server, ensure your database tables are created:
+
+```bash
+# Create all tables (aggregates, entities, projections, outbox)
+protean db setup --domain=my_domain
+
+# Create only outbox tables (useful when migrating to stream subscriptions)
+protean db setup-outbox --domain=my_domain
+
+# Drop all tables (requires confirmation)
+protean db drop --domain=my_domain
+protean db drop --domain=my_domain --yes  # Skip confirmation
+```
+
 ## Basic Usage
 
 ### Starting the Server
