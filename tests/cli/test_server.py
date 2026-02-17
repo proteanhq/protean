@@ -52,9 +52,7 @@ class TestServerCommand:
 
         # Create a mock domain with proper configuration structure
         mock_domain = MagicMock()
-        mock_domain.config = {
-            "enable_outbox": False,  # Disable outbox to avoid initialization issues
-        }
+        mock_domain.has_outbox = False
         mock_domain.brokers = {"default": MagicMock()}
 
         with patch(

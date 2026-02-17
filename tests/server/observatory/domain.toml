@@ -1,5 +1,8 @@
 enable_outbox = true
 
+[server]
+default_subscription_type = "stream"
+
 [brokers.default]
 provider = "redis"
 URI = "redis://127.0.0.1:6379/2"
