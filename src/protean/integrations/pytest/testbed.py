@@ -41,14 +41,12 @@ class DomainFixture:
         """
         self.domain.init()
         with self.domain.domain_context():
-            for _, provider in self.domain.providers.items():
-                provider._create_database_artifacts()
+            self.domain.setup_database()
 
     def teardown(self) -> None:
         """Drop database schema for every configured provider."""
         with self.domain.domain_context():
-            for _, provider in self.domain.providers.items():
-                provider._drop_database_artifacts()
+            self.domain.drop_database()
 
     @contextmanager
     def domain_context(self):
