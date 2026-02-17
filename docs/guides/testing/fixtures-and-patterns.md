@@ -7,6 +7,37 @@ This guide covers reusable pytest fixtures and `conftest.py` recipes for
 Protean projects. A well-organized fixture hierarchy keeps your tests focused,
 fast, and free of boilerplate.
 
+## Protean's Pytest Plugin
+
+Protean ships with a pytest plugin that is **automatically activated** when
+Protean is installed — no configuration required. The plugin provides:
+
+- **`--protean-env` CLI option** — sets `PROTEAN_ENV` before test collection
+  (default: `test`), so `domain.toml` environment overlays are applied when
+  Domain instances are constructed at import time.
+- **Standard markers** — registers `domain`, `application`, `integration`, and
+  `slow` markers so `--strict-markers` doesn't complain.
+
+### `DomainFixture`
+
+Protean also provides `DomainFixture`, a test lifecycle manager that handles
+domain initialization, database schema management, per-test context activation,
+and data cleanup across **all** adapters (providers, brokers, and event store).
+
+Import it from `protean.integrations.pytest`:
+
+```python
+from protean.integrations.pytest import DomainFixture
+```
+
+`DomainFixture` provides three methods:
+
+| Method | What It Does |
+|--------|-------------|
+| `setup()` | Calls `domain.init()` and creates database schema via `domain.setup_database()` |
+| `teardown()` | Drops database schema via `domain.drop_database()` |
+| `domain_context()` | Context manager that activates the domain context, yields the domain, and on exit resets all data in providers, brokers, and the event store |
+
 ## The Root `conftest.py`
 
 Every Protean test suite starts with a root `conftest.py` that initializes your
@@ -21,23 +52,47 @@ For projects that use only in-memory adapters (the default):
 # tests/conftest.py
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True)
-def setup_domain():
+@pytest.fixture(scope="session")
+def app_fixture():
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
+
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():
         yield
 ```
 
-This gives every test a fresh domain initialization with synchronous
-processing, wrapped in a domain context. Since your domain elements are
-decorated in your application code, `domain.init()` discovers and wires
-them automatically.
+The session-scoped `app_fixture` initializes the domain **once** for the
+entire test run. The per-test `_ctx` fixture activates the domain context
+and automatically resets all data (providers, brokers, event store) after
+each test. Since your domain elements are decorated in your application
+code, `domain.init()` (called inside `setup()`) discovers and wires them
+automatically.
+
+!!!tip "Use `domain.toml` for test configuration"
+    Instead of setting `event_processing` and `command_processing` in code,
+    you can define a `[test]` section in your `domain.toml`:
+
+    ```toml
+    [test]
+    event_processing = "sync"
+    command_processing = "sync"
+    ```
+
+    The pytest plugin sets `PROTEAN_ENV=test` by default, so these overrides
+    are applied automatically when the domain is constructed.
 
 ### Integration-Ready conftest.py
 
@@ -49,11 +104,13 @@ import os
 
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True)
-def setup_domain():
+@pytest.fixture(scope="session")
+def app_fixture():
     db_provider = os.environ.get("TEST_DB", "memory")
 
     if db_provider == "postgresql":
@@ -70,19 +127,23 @@ def setup_domain():
 
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
-        if db_provider != "memory":
-            for provider in domain.providers.values():
-                provider._create_database_artifacts()
+    fixture = DomainFixture(domain)
+    fixture.setup()    # calls domain.init() + creates schema
+    yield fixture
+    fixture.teardown()  # drops schema
 
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():  # resets all data on exit
         yield
-
-        if db_provider != "memory":
-            for provider in domain.providers.values():
-                provider._drop_database_artifacts()
 ```
+
+`DomainFixture` handles everything: `setup()` calls `domain.init()` and
+creates database tables for all configured providers. `teardown()` drops
+them. `domain_context()` resets data in providers, brokers, and the event
+store after each test.
 
 Switch adapters from the command line:
 
@@ -101,8 +162,11 @@ TEST_DB=sqlite pytest tests/
 
 ### Per-Test Data Cleanup
 
-When running against a real database, data persists between tests unless you
-clean it up. Use a fixture that resets data after each test:
+`DomainFixture.domain_context()` automatically resets data in all providers,
+brokers, and the event store after each test. If you use the recommended
+`_ctx` fixture pattern above, **no additional cleanup fixture is needed**.
+
+If you are not using `DomainFixture` and need manual cleanup:
 
 ```python
 @pytest.fixture(autouse=True)
@@ -150,27 +214,17 @@ pytest-bdd discovers step definitions defined there automatically.
 
 ```python
 # tests/bdd/conftest.py
-import pytest
 from pytest_bdd import given
-
-from myapp import domain
-
-
-@pytest.fixture(autouse=True)
-def setup_domain():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-    domain.init()
-
-    with domain.domain_context():
-        yield
 
 
 @given("the domain is initialized")
 def domain_initialized():
-    """Background step -- domain is already initialized by the fixture."""
+    """Background step — domain is already initialized by the fixture."""
     pass
 ```
+
+The domain is already initialized by the root `conftest.py` via
+`DomainFixture`. BDD-level conftest files only need to define shared steps.
 
 Domain-specific shared steps go in that directory's `conftest.py`:
 
@@ -218,17 +272,20 @@ tests/bdd/registration/conftest.py -> steps available in registration/ tests
 
 ### Custom Domain Configuration
 
-Override specific configuration for a subset of tests:
+Override specific configuration for a subset of tests using a separate
+`DomainFixture` in that directory's `conftest.py`:
 
 ```python
 # tests/integration/conftest.py
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True)
-def setup_integration_domain():
+@pytest.fixture(scope="session")
+def app_fixture():
     domain.config["databases"]["default"] = {
         "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
         "database_uri": "postgresql://postgres:postgres@localhost:5432/myapp_test",
@@ -239,21 +296,23 @@ def setup_integration_domain():
     }
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
-        for provider in domain.providers.values():
-            provider._create_database_artifacts()
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
 
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():
         yield
-
-        for provider in domain.providers.values():
-            provider._drop_database_artifacts()
 ```
 
 This overrides the root-level domain fixture for all tests under
 `tests/integration/`, while the rest of the test suite continues to
-use in-memory adapters.
+use in-memory adapters. `DomainFixture` handles schema creation,
+teardown, and per-test data cleanup automatically.
 
 ### Per-Test Global State Reset
 

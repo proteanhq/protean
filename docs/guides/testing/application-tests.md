@@ -385,25 +385,14 @@ pytest-bdd discovers step definitions defined there automatically.
 
 ### Root-Level Shared Steps
 
-The top-level `conftest.py` imports your application's domain and provides
-the domain fixture and shared steps:
+The root `conftest.py` uses `DomainFixture` to initialize the domain and
+manage per-test cleanup (see [Fixtures and Patterns](./fixtures-and-patterns.md)
+for the full setup). The BDD-level `conftest.py` only needs to define
+shared steps:
 
 ```python
 # tests/bdd/conftest.py
-import pytest
 from pytest_bdd import given
-
-from myapp import domain
-
-
-@pytest.fixture(autouse=True)
-def setup_domain():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-    domain.init()
-
-    with domain.domain_context():
-        yield
 
 
 @given("the domain is initialized")
@@ -412,9 +401,10 @@ def domain_initialized():
     pass
 ```
 
-Since your domain elements are decorated in your application code (e.g.
-`@domain.aggregate`, `@domain.command_handler`), calling `domain.init()`
-discovers and wires them automatically. No manual registration is needed.
+Since the root `conftest.py` uses `DomainFixture` to call `domain.init()`,
+all decorated domain elements (e.g. `@domain.aggregate`,
+`@domain.command_handler`) are discovered and wired automatically. No manual
+registration is needed.
 
 ### Domain-Specific Shared Steps
 

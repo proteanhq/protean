@@ -28,30 +28,41 @@ test suite — fast, isolated, and focused on business rules.
 
 ## Test Setup
 
-Domain model tests import your application's domain and initialize it with
-in-memory adapters (the default). Override processing to `"sync"` so that
-events and commands are handled immediately within tests:
+Domain model tests use Protean's `DomainFixture` to initialize the domain
+with in-memory adapters (the default) and manage per-test cleanup. Set
+processing to `"sync"` so that events and commands are handled immediately
+within tests:
 
 ```python
 # tests/conftest.py
 import pytest
 
+from protean.integrations.pytest import DomainFixture
+
 from myapp import domain
 
 
-@pytest.fixture(autouse=True)
-def setup_domain():
+@pytest.fixture(scope="session")
+def app_fixture():
     domain.config["event_processing"] = "sync"
     domain.config["command_processing"] = "sync"
-    domain.init()
 
-    with domain.domain_context():
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
+
+
+@pytest.fixture(autouse=True)
+def _ctx(app_fixture):
+    with app_fixture.domain_context():
         yield
 ```
 
-Since your domain elements are already decorated and registered in your
-application code, you do not need to register them again in tests —
-`domain.init()` discovers and wires everything automatically.
+`DomainFixture.setup()` calls `domain.init()` to discover and wire all
+decorated domain elements, and creates database schema if needed.
+`domain_context()` activates the domain for each test and resets all
+data (providers, brokers, event store) on exit.
 
 !!!note
     You do not need Docker, databases, or message brokers for domain model
