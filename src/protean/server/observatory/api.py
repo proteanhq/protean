@@ -77,7 +77,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 "status": broker_stats.get("status", "unhealthy"),
                 "domains": [d.name for d in domains],
                 "infrastructure": {
-                    "broker": {
+                    "redis": {
                         "healthy": is_connected
                         and broker_details.get("healthy", False),
                         "version": broker_details.get("redis_version", "unknown"),
