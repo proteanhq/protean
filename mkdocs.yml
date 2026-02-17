@@ -165,6 +165,8 @@ nav:
     - Infrastructure:
       - guides/essentials/configuration.md
       # - guides/infrastructure/database-models.md
+      - FastAPI Integration:
+        - guides/fastapi/index.md
       - Server:
         - guides/server/index.md
         - guides/server/engine.md

@@ -388,6 +388,28 @@ A database adapter that provides persistence functionality for a specific storag
 
 [Learn more →](guides/essentials/configuration.md) | **See also**: [Adapter](#adapter), [Database Model](#database-model)
 
+### Structured Logging
+
+Protean's built-in logging system based on structlog. `configure_logging()` sets up environment-aware structured logging with JSON output in production and colored console output in development. Supports context variables that propagate across async boundaries, method call tracing, rotating file handlers, and automatic suppression of noisy third-party loggers.
+
+[Learn more →](guides/server/running.md#logging) | **See also**: [Engine](#engine), [Observatory](#observatory)
+
+---
+
+## Integrations
+
+### DomainContextMiddleware
+
+An ASGI middleware for FastAPI applications that automatically pushes the correct Protean domain context per HTTP request. Maps URL path prefixes to `Domain` instances using longest-prefix-first matching. Requests that don't match any prefix pass through without a domain context. Supports both static route-to-domain maps and custom resolver callables.
+
+[Learn more →](guides/fastapi/index.md) | **See also**: [Domain](#domain), [Bounded Context](#bounded-context)
+
+### Exception Handlers (FastAPI)
+
+A set of pre-built exception handlers (`register_exception_handlers`) that map Protean domain exceptions to standard HTTP responses. `ValidationError` and `InvalidDataError` become 400, `ObjectNotFoundError` becomes 404, `InvalidStateError` becomes 409, and `InvalidOperationError` becomes 422.
+
+[Learn more →](guides/fastapi/index.md#exception-handlers) | **See also**: [DomainContextMiddleware](#domaincontextmiddleware)
+
 ---
 
 ## Server & Messaging

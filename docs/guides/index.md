@@ -103,6 +103,15 @@ or your domain has complex state transitions where history matters.
     [:material-arrow-right-box: Server](./server/index.md) ·
     [:material-arrow-right-box: CLI](./cli/index.md)
 
+-   **:material-api: FastAPI Integration**
+
+    ---
+
+    Domain context middleware, exception handlers, and structured logging
+    for FastAPI applications.
+
+    [:material-arrow-right-box: FastAPI Integration](./fastapi/index.md)
+
 -   **:material-test-tube: Testing**
 
     ---
@@ -129,6 +138,7 @@ A quick reference for common tasks. See the
 | React to a domain event               | [Event Handlers](./consume-state/event-handlers.md)                   |
 | Build a read-optimized view           | [Projections](./consume-state/projections.md)                         |
 | Choose between CQRS and ES            | [Architecture Decision](../core-concepts/architecture-decision.md)    |
+| Use Protean with FastAPI              | [FastAPI Integration](./fastapi/index.md)                             |
 | Test my domain logic                  | [Testing](./testing/index.md)                                         |
 
 ## What Elements Do I Need?
