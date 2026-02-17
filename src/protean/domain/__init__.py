@@ -251,6 +251,20 @@ class Domain:
         self._idempotency_store = None
 
     @property
+    def has_outbox(self) -> bool:
+        """Whether the outbox pattern is active.
+
+        Derived from ``server.default_subscription_type``: outbox is enabled
+        when subscription type is ``"stream"``.  For backward compatibility,
+        an explicit ``enable_outbox = true`` also activates the outbox.
+        """
+        subscription_type = self.config.get("server", {}).get(
+            "default_subscription_type", "event_store"
+        )
+        explicit_outbox = self.config.get("enable_outbox", False)
+        return subscription_type == "stream" or explicit_outbox is True
+
+    @property
     def idempotency_store(self):
         """Lazily initialize and return the idempotency store.
 
@@ -354,9 +368,24 @@ class Domain:
         # Initialize adapters after loading domain
         self._initialize()
 
+        # Validate outbox / subscription-type consistency
+        subscription_type = self.config.get("server", {}).get(
+            "default_subscription_type", "event_store"
+        )
+        if (
+            self.config.get("enable_outbox", False)
+            and subscription_type == "event_store"
+        ):
+            raise ConfigurationError(
+                "Configuration conflict: 'enable_outbox' is True but "
+                "'server.default_subscription_type' is 'event_store'. "
+                "When outbox is enabled, subscription type must be 'stream' "
+                "so that subscriptions read from the broker where the outbox publishes. "
+                "Either set server.default_subscription_type = 'stream' or remove enable_outbox."
+            )
+
         # Initialize outbox DAOs for all providers
-        # FIXME Should this flag be set automatically based on Subscription Types?
-        if self.config.get("enable_outbox", False):
+        if self.has_outbox:
             self._initialize_outbox()
 
     def _traverse(self):
