@@ -1,12 +1,21 @@
 """Tests for Observatory SSE endpoint.
 
-Tests for the _format_sse helper (pure logic, no infra) and SSE
-filtering logic.
+Tests for the _format_sse helper (pure logic, no infra), SSE
+filtering logic, and the SSE endpoint error paths.
+
+Note: SSE error-path tests use mock domains because real Domain context
+managers interact poorly with Starlette's TestClient threading model,
+causing SSE streaming to deadlock.
 """
 
 import json
 from fnmatch import fnmatch
+from unittest.mock import MagicMock
 
+import pytest
+from fastapi.testclient import TestClient
+
+from protean.server.observatory import Observatory
 from protean.server.observatory.sse import _format_sse
 
 
@@ -112,3 +121,61 @@ class TestSSEFilteringLogic:
             passes = False
 
         assert passes is True
+
+
+def _make_mock_domain(name: str = "mock-domain") -> MagicMock:
+    """Create a mock Domain for SSE error-path tests.
+
+    SSE streaming tests require mocks because real Domain context managers
+    deadlock with Starlette's TestClient threading model.
+    """
+    mock = MagicMock()
+    mock.name = name
+    mock.domain_context.return_value.__enter__ = MagicMock(return_value=None)
+    mock.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+    return mock
+
+
+@pytest.mark.no_test_domain
+class TestSSEEndpointNoRedis:
+    """Test the SSE endpoint behavior when Redis is unavailable."""
+
+    def test_stream_returns_error_when_no_redis(self):
+        """SSE endpoint sends error event when no Redis broker is available."""
+        mock_domain = _make_mock_domain()
+        mock_broker = MagicMock(spec=[])  # empty spec = no redis_instance attr
+        mock_domain.brokers.get.return_value = mock_broker
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+
+        # Stream endpoint returns a streaming response; read the first chunk
+        with client.stream("GET", "/stream") as response:
+            assert response.status_code == 200
+            assert "text/event-stream" in response.headers["content-type"]
+            # Read the error event from the stream
+            for line in response.iter_lines():
+                if line.startswith("data: "):
+                    data = json.loads(line[len("data: ") :])
+                    assert "error" in data
+                    assert data["error"] == "Redis not available"
+                    break
+
+    def test_stream_returns_error_when_broker_raises(self):
+        """SSE endpoint sends error event when broker access raises."""
+        mock_domain = MagicMock()
+        mock_domain.name = "failing-domain"
+        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
+        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_domain.brokers.get.side_effect = RuntimeError("broker init failed")
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+
+        with client.stream("GET", "/stream") as response:
+            assert response.status_code == 200
+            for line in response.iter_lines():
+                if line.startswith("data: "):
+                    data = json.loads(line[len("data: ") :])
+                    assert "error" in data
+                    break

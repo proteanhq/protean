@@ -1,28 +1,20 @@
 """Tests for Observatory Prometheus metrics endpoint.
 
-These tests require a running Redis instance and are gated behind @pytest.mark.redis.
+Integration tests require a running Redis instance and are gated behind @pytest.mark.redis.
+Unit tests for error paths use mock domains and need no infrastructure.
 """
+
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
-from tests.shared import initialize_domain
 
 
 @pytest.fixture
-def redis_domain():
-    """Domain configured with Redis broker and outbox enabled."""
-    domain = initialize_domain(name="Observatory Metrics Tests", root_path=__file__)
-    domain.init(traverse=False)
-
-    with domain.domain_context():
-        yield domain
-
-
-@pytest.fixture
-def client(redis_domain):
-    observatory = Observatory(domains=[redis_domain])
+def client(test_domain):
+    observatory = Observatory(domains=[test_domain])
     return TestClient(observatory.app)
 
 
@@ -97,3 +89,75 @@ class TestPrometheusMetrics:
         response = client.get("/metrics")
         body = response.text
         assert "protean_consumer_groups_count" in body
+
+
+# --- Unit tests for error paths (no Redis needed) ---
+
+
+def _make_mock_domain(name: str = "mock-domain") -> MagicMock:
+    """Create a mock Domain for metrics error-path tests."""
+    mock = MagicMock()
+    mock.name = name
+    mock.domain_context.return_value.__enter__ = MagicMock(return_value=None)
+    mock.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+    return mock
+
+
+class TestMetricsErrorPaths:
+    def test_metrics_when_outbox_query_fails(self):
+        """Metrics endpoint handles outbox query exceptions gracefully."""
+        mock_domain = _make_mock_domain("failing-domain")
+        mock_domain._get_outbox_repo.side_effect = RuntimeError("outbox error")
+        # Broker works fine
+        mock_broker = MagicMock()
+        mock_broker.health_stats.return_value = {
+            "connected": True,
+            "details": {"healthy": True, "used_memory": 1024, "connected_clients": 2},
+        }
+        mock_domain.brokers.get.return_value = mock_broker
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+        response = client.get("/metrics")
+
+        assert response.status_code == 200
+        body = response.text
+        # Should still have broker metrics even though outbox failed
+        assert "protean_broker_up" in body
+
+    def test_metrics_when_broker_query_fails(self):
+        """Metrics endpoint handles broker query exceptions gracefully."""
+        mock_domain = _make_mock_domain("failing-domain")
+        # Outbox works fine
+        mock_outbox = MagicMock()
+        mock_outbox.count_by_status.return_value = {"PENDING": 5}
+        mock_domain._get_outbox_repo.return_value = mock_outbox
+        # Broker raises
+        mock_domain.brokers.get.side_effect = RuntimeError("broker down")
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+        response = client.get("/metrics")
+
+        assert response.status_code == 200
+        body = response.text
+        # Outbox metrics should still be present
+        assert "protean_outbox_messages" in body
+
+    def test_metrics_when_broker_is_none(self):
+        """Metrics endpoint handles missing broker gracefully."""
+        mock_domain = _make_mock_domain("no-broker")
+        mock_outbox = MagicMock()
+        mock_outbox.count_by_status.return_value = {}
+        mock_domain._get_outbox_repo.return_value = mock_outbox
+        mock_domain.brokers.get.return_value = None
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+        response = client.get("/metrics")
+
+        assert response.status_code == 200
+        body = response.text
+        # Should have outbox HELP/TYPE headers but no broker metrics
+        assert "protean_outbox_pending" in body
+        assert "protean_broker_up" not in body

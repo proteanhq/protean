@@ -1,10 +1,12 @@
 """Tests for the TraceEmitter class.
 
-These tests require a running Redis instance and are gated behind @pytest.mark.redis.
+Integration tests require a running Redis instance and are gated behind @pytest.mark.redis.
+Unit tests for edge cases use mock domains.
 """
 
 import json
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -58,28 +60,35 @@ class TestEmitterInitialization:
 
 @pytest.mark.redis
 class TestEmitterSubscriberCheck:
-    def test_check_subscribers_returns_false_when_no_subscribers(self, redis_domain):
-        """PUBSUB NUMSUB returns 0 when nobody is subscribed."""
-        emitter = TraceEmitter(redis_domain)
-        result = emitter._check_subscribers()
-        assert result is False
-
-    def test_check_subscribers_returns_true_with_subscriber(self, redis_domain):
-        """PUBSUB NUMSUB returns > 0 when someone is subscribed."""
+    def test_check_subscribers_detects_subscriber(self, redis_domain):
+        """_check_subscribers detects when a subscriber connects and disconnects."""
         emitter = TraceEmitter(redis_domain)
         emitter._ensure_initialized()
 
-        # Create a subscriber
+        # Record baseline count
+        baseline = emitter._redis.pubsub_numsub(TRACE_CHANNEL)
+        baseline_count = baseline[0][1] if baseline else 0
+
+        # Add a subscriber
         pubsub = emitter._redis.pubsub()
         pubsub.subscribe(TRACE_CHANNEL)
         try:
-            # Force cache expiry
+            # Force cache expiry and verify subscriber is detected
             emitter._last_subscriber_check = 0.0
-            result = emitter._check_subscribers()
-            assert result is True
+            assert emitter._check_subscribers() is True
+
+            # Verify count increased
+            after = emitter._redis.pubsub_numsub(TRACE_CHANNEL)
+            assert after[0][1] > baseline_count
         finally:
             pubsub.unsubscribe(TRACE_CHANNEL)
             pubsub.close()
+
+        # After unsubscribe, count should return to baseline
+        emitter._last_subscriber_check = 0.0
+        after_unsub = emitter._redis.pubsub_numsub(TRACE_CHANNEL)
+        unsub_count = after_unsub[0][1] if after_unsub else 0
+        assert unsub_count == baseline_count
 
     def test_check_subscribers_caches_result(self, redis_domain):
         """_check_subscribers caches result for _SUBSCRIBER_CHECK_TTL."""
@@ -228,3 +237,34 @@ class TestEmitterEmit:
         finally:
             pubsub.unsubscribe(TRACE_CHANNEL)
             pubsub.close()
+
+
+class TestEmitterInitializationEdgeCases:
+    """Unit tests for _ensure_initialized error paths (no Redis needed)."""
+
+    def test_ensure_initialized_handles_broker_exception(self):
+        """_ensure_initialized returns False when broker access raises."""
+        mock_domain = MagicMock()
+        mock_domain.name = "test-domain"
+        mock_domain.brokers.get.side_effect = RuntimeError("broker unavailable")
+
+        emitter = TraceEmitter(mock_domain)
+        result = emitter._ensure_initialized()
+
+        assert result is False
+        assert emitter._initialized is True  # Marked as attempted
+        assert emitter._redis is None
+
+    def test_ensure_initialized_handles_missing_redis_instance(self):
+        """_ensure_initialized returns False when broker has no redis_instance."""
+        mock_domain = MagicMock()
+        mock_domain.name = "test-domain"
+        mock_broker = MagicMock(spec=[])  # No redis_instance attribute
+        mock_domain.brokers.get.return_value = mock_broker
+
+        emitter = TraceEmitter(mock_domain)
+        result = emitter._ensure_initialized()
+
+        assert result is False
+        assert emitter._initialized is True
+        assert emitter._redis is None
