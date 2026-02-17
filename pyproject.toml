@@ -60,6 +60,7 @@ python-dateutil = ">=2.8.2"
 typer = ">=0.12.3"
 fastapi = ">=0.110.0"
 uvicorn = ">=0.27.1"
+structlog = ">=24.1.0"
 werkzeug = ">=2.0.0"
 
 cffi = ">=1.16.5"
