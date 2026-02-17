@@ -319,10 +319,13 @@ Read more in [Server → Configuration](../server/configuration.md) section.
 ### `outbox`
 
 This section configures the transactional outbox pattern for reliable message
-delivery.
+delivery. The outbox is automatically enabled when
+`server.default_subscription_type` is set to `"stream"`. The legacy
+`enable_outbox = true` flag still works for backward compatibility.
 
 ```toml
-enable_outbox = true  # Enable outbox processing
+[server]
+default_subscription_type = "stream"  # Enables outbox automatically
 
 [outbox]
 broker = "default"         # Target broker for publishing

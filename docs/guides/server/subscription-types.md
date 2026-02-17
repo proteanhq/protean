@@ -23,6 +23,12 @@ guarantees.
 scalable message processing. This is the **recommended subscription type for
 production workloads**.
 
+!!! note
+    Setting `default_subscription_type = "stream"` in your domain configuration
+    automatically enables the [transactional outbox](outbox.md). The outbox is
+    required so that domain events committed to your database are reliably
+    published to Redis Streams.
+
 ### How It Works {#stream-how-it-works}
 
 ```mermaid
