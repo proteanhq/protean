@@ -95,7 +95,7 @@ class UnitOfWork:
 
         # Store events in the outbox as part of the transaction
         for provider_name, session in self._sessions.items():
-            if self.domain.config.get("enable_outbox", False):
+            if self.domain.has_outbox:
                 # Get the provider's repository for outbox
                 outbox_repo = self.domain._get_outbox_repo(provider_name)
 

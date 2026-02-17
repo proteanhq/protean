@@ -10,6 +10,7 @@ from typing import Type, Union
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
+from protean.exceptions import ConfigurationError
 from protean.utils.globals import g
 from protean.utils.eventing import Message
 
@@ -165,7 +166,7 @@ class Engine:
 
         # Create an outbox processor for each database provider to each broker provider
         # Only if outbox is enabled in the domain
-        if self.domain.config.get("enable_outbox", False):
+        if self.domain.has_outbox:
             logger.debug("Outbox enabled, initializing processors")
             # Get the broker provider name from the config with validation
             outbox_config = self.domain.config.get("outbox", {})
@@ -193,6 +194,15 @@ class Engine:
                     messages_per_tick=messages_per_tick,
                     tick_interval=tick_interval,
                 )
+            # Verify outbox repos are initialised and DAO-accessible
+            for provider_name, outbox_repo in self.domain._outbox_repos.items():
+                try:
+                    outbox_repo._dao  # noqa: B018
+                except Exception:
+                    raise ConfigurationError(
+                        f"Outbox table not found for provider '{provider_name}'. "
+                        "Run 'protean db setup' or 'protean db setup-outbox' to create it."
+                    )
         else:
             logger.debug("Outbox disabled")
 
