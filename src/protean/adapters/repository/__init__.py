@@ -95,6 +95,13 @@ class Providers(collections.abc.MutableMapping):
 
     def _initialize(self):
         """Read config file and initialize providers"""
+        # Close existing providers to prevent connection leaks when
+        # re-initializing (e.g., when domain.init() is called after
+        # the initial domain._initialize())
+        if self._providers:
+            for provider in self._providers.values():
+                provider.close()
+
         configured_providers = self.domain.config["databases"]
         provider_objects = {}
 
