@@ -70,6 +70,38 @@ def drop(
     print("Database tables dropped successfully.")
 
 
+@app.command()
+def truncate(
+    domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip confirmation prompt")
+    ] = False,
+) -> None:
+    """Delete all rows from every table, preserving the schema."""
+    if not yes:
+        confirmed = typer.confirm(
+            "This will delete all data from every table. Are you sure?"
+        )
+        if not confirmed:
+            raise typer.Abort()
+
+    try:
+        derived_domain = derive_domain(domain)
+    except NoDomainException as exc:
+        msg = f"Error loading Protean domain: {exc.args[0]}"
+        print(msg)
+        logger.error(msg)
+        raise typer.Abort()
+
+    assert derived_domain is not None
+
+    derived_domain.init()
+    with derived_domain.domain_context():
+        derived_domain.truncate_database()
+
+    print("All table data deleted successfully.")
+
+
 @app.command(name="setup-outbox")
 def setup_outbox(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
