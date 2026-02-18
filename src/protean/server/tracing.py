@@ -1,11 +1,11 @@
 """Tracing instrumentation for the Protean Engine.
 
-Emits structured MessageTrace events to Redis Pub/Sub as messages flow through
-the outbox → Redis Streams → handler pipeline. The Observatory server subscribes
-to this channel to power the real-time dashboard, SSE endpoint, and Prometheus metrics.
+Emits structured MessageTrace events to Redis Pub/Sub and persists them to a
+capped Redis Stream. The Observatory server subscribes to the Pub/Sub channel
+for real-time SSE streaming, and reads the Stream for historical dashboard data.
 
-Zero overhead when nobody is listening — the emitter checks subscriber count
-and short-circuits before any serialization.
+Zero overhead when nobody is listening and persistence is disabled — the emitter
+checks subscriber count and short-circuits before any serialization.
 """
 
 import json
@@ -17,8 +17,14 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Redis Pub/Sub channel for trace events
+# Redis Pub/Sub channel for real-time trace events
 TRACE_CHANNEL = "protean:trace"
+
+# Redis Stream for persisted trace history
+TRACE_STREAM = "protean:traces"
+
+# Default number of trace entries to retain in the stream
+DEFAULT_TRACE_HISTORY_SIZE = 1000
 
 # How often (seconds) to check if anyone is subscribed
 _SUBSCRIBER_CHECK_TTL = 2.0
@@ -40,30 +46,42 @@ class MessageTrace:
     metadata: Optional[dict] = field(default_factory=dict)  # Extra context
     timestamp: str = ""  # ISO 8601, filled automatically
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.timestamp:
             self.timestamp = datetime.now(timezone.utc).isoformat()
 
     def to_json(self) -> str:
-        """Serialize to JSON for Redis Pub/Sub transport."""
+        """Serialize to JSON for transport."""
         return json.dumps(asdict(self), default=str)
 
 
 class TraceEmitter:
-    """Lightweight emitter that publishes MessageTrace events to Redis Pub/Sub.
+    """Lightweight emitter that publishes MessageTrace events to Redis.
 
     Attached to the Engine and passed to OutboxProcessor and StreamSubscription.
-    Uses conditional emission — checks PUBSUB NUMSUB periodically and skips
-    all work when nobody is listening.
+
+    Two output channels:
+    - **Pub/Sub** (`protean:trace`): Real-time fan-out for SSE clients.
+      Conditional — checks PUBSUB NUMSUB and skips when nobody is listening.
+    - **Stream** (`protean:traces`): Capped history for dashboard persistence.
+      Always writes when persistence is enabled (trace_history_size > 0).
+
+    Short-circuits all work when both channels are inactive.
     """
 
-    def __init__(self, domain) -> None:
+    def __init__(
+        self, domain: Any, trace_history_size: int = DEFAULT_TRACE_HISTORY_SIZE
+    ) -> None:
         self._domain = domain
         self._domain_name = domain.name
         self._redis = None
         self._has_subscribers = False
         self._last_subscriber_check = 0.0
         self._initialized = False
+
+        # Stream persistence settings
+        self._persist = trace_history_size > 0
+        self._max_len = trace_history_size
 
     def _ensure_initialized(self) -> bool:
         """Lazily initialize Redis connection from the domain's broker."""
@@ -116,8 +134,16 @@ class TraceEmitter:
         error: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> None:
-        """Emit a trace event. No-op when nobody is listening."""
-        if not self._check_subscribers():
+        """Emit a trace event. No-op when nobody is listening and persistence is off."""
+        has_subscribers = self._check_subscribers()
+
+        # Short-circuit: nothing to do if no subscribers AND persistence is off
+        if not has_subscribers and not self._persist:
+            return
+
+        # Ensure Redis is available (may not have been initialized yet
+        # if persistence is on but _check_subscribers was cached as False)
+        if not self._ensure_initialized():
             return
 
         try:
@@ -133,7 +159,20 @@ class TraceEmitter:
                 error=error,
                 metadata=metadata or {},
             )
-            self._redis.publish(TRACE_CHANNEL, trace.to_json())
+            json_str = trace.to_json()
+
+            # Persist to capped Redis Stream for dashboard history
+            if self._persist:
+                self._redis.xadd(
+                    TRACE_STREAM,
+                    {"data": json_str},
+                    maxlen=self._max_len,
+                    approximate=True,
+                )
+
+            # Broadcast to Pub/Sub for real-time SSE clients
+            if has_subscribers:
+                self._redis.publish(TRACE_CHANNEL, json_str)
         except Exception as e:
             # Never let tracing failures affect message processing
             logger.debug(f"TraceEmitter publish failed: {e}")

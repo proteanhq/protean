@@ -130,7 +130,12 @@ class Engine:
             logger.setLevel(logging.DEBUG)
 
         # Initialize trace emitter for real-time message tracing
-        self.emitter = TraceEmitter(domain)
+        try:
+            observatory_config = domain.config.get("observatory", {})
+            trace_history_size = int(observatory_config.get("trace_history_size", 1000))
+        except (AttributeError, TypeError, ValueError):
+            trace_history_size = 1000
+        self.emitter = TraceEmitter(domain, trace_history_size=trace_history_size)
 
         # Create a new event loop instead of getting the current one
         # This avoids fragility when the caller already has a running loop

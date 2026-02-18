@@ -1,19 +1,46 @@
 """REST API endpoints for the Protean Observatory.
 
 Provides JSON snapshot endpoints for infrastructure health, outbox status,
-stream information, and aggregated statistics. These power the dashboard's
-infrastructure panel and can be consumed by external monitoring tools.
+stream information, aggregated statistics, and trace history. These power the
+dashboard and can be consumed by external monitoring tools.
 """
 
+import json
 import logging
-from typing import List
+import time
+from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from protean.domain import Domain
 
+from ..tracing import TRACE_STREAM
+
 logger = logging.getLogger(__name__)
+
+# Window string → milliseconds mapping
+_WINDOW_MS = {
+    "5m": 5 * 60 * 1000,
+    "15m": 15 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+}
+
+# Error event types for error rate calculation
+_ERROR_EVENTS = {"handler.failed", "message.dlq"}
+
+
+def _get_redis(domains: List[Domain]):
+    """Get a Redis connection from the first domain's broker."""
+    for d in domains:
+        try:
+            with d.domain_context():
+                broker = d.brokers.get("default")
+                if broker and hasattr(broker, "redis_instance"):
+                    return broker.redis_instance
+        except Exception:
+            continue
+    return None
 
 
 def _outbox_status(domain: Domain) -> dict:
@@ -56,6 +83,13 @@ def _broker_info(domain: Domain) -> dict:
             f"Error querying broker info for {domain.name}: {e}", exc_info=True
         )
         return {"status": "error", "error": "Failed to query broker info"}
+
+
+def _decode_stream_id(stream_id) -> str:
+    """Decode a Redis stream ID that may be bytes or str."""
+    if isinstance(stream_id, bytes):
+        return stream_id.decode("utf-8")
+    return str(stream_id)
 
 
 def create_api_router(domains: List[Domain]) -> APIRouter:
@@ -135,5 +169,153 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 "streams": broker_details.get("streams", {}),
             }
         )
+
+    @router.get("/traces")
+    async def traces(
+        count: int = Query(200, ge=1, le=1000, description="Number of traces"),
+        domain: Optional[str] = Query(None, description="Filter by domain"),
+        stream: Optional[str] = Query(None, description="Filter by stream"),
+        event: Optional[str] = Query(None, description="Filter by event type"),
+    ):
+        """Recent trace history from the persisted Redis Stream."""
+        redis_conn = _get_redis(domains)
+        if not redis_conn:
+            return JSONResponse(
+                content={"traces": [], "count": 0, "error": "Redis not available"},
+                status_code=503,
+            )
+
+        try:
+            # XREVRANGE returns newest-first; fetch extra to account for filtering
+            fetch_count = count * 3 if (domain or stream or event) else count
+            raw_entries = redis_conn.xrevrange(
+                TRACE_STREAM, count=min(fetch_count, 3000)
+            )
+        except Exception as e:
+            logger.error(f"Error reading trace stream: {e}", exc_info=True)
+            return JSONResponse(
+                content={"traces": [], "count": 0, "error": "Failed to read traces"},
+                status_code=500,
+            )
+
+        result = []
+        for stream_id, fields in raw_entries:
+            try:
+                data_raw = fields.get(b"data") or fields.get("data")
+                if not data_raw:
+                    continue
+                if isinstance(data_raw, bytes):
+                    data_raw = data_raw.decode("utf-8")
+                trace = json.loads(data_raw)
+
+                # Apply filters
+                if domain and trace.get("domain") != domain:
+                    continue
+                if stream and trace.get("stream") != stream:
+                    continue
+                if event and trace.get("event") != event:
+                    continue
+
+                trace["_stream_id"] = _decode_stream_id(stream_id)
+                result.append(trace)
+
+                if len(result) >= count:
+                    break
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        return JSONResponse(content={"traces": result, "count": len(result)})
+
+    @router.get("/traces/stats")
+    async def traces_stats(
+        window: str = Query("5m", description="Time window: 5m, 15m, or 1h"),
+    ):
+        """Aggregated trace statistics for a time window."""
+        window_ms = _WINDOW_MS.get(window)
+        if window_ms is None:
+            return JSONResponse(
+                content={"error": f"Invalid window: {window}. Use 5m, 15m, or 1h."},
+                status_code=400,
+            )
+
+        redis_conn = _get_redis(domains)
+        if not redis_conn:
+            return JSONResponse(
+                content={"error": "Redis not available"}, status_code=503
+            )
+
+        # Redis stream IDs are timestamp-based: <ms>-<seq>
+        min_id = str(int(time.time() * 1000) - window_ms)
+
+        try:
+            raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
+        except Exception as e:
+            logger.error(f"Error reading trace stream for stats: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to read traces"}, status_code=500
+            )
+
+        counts: dict[str, int] = {}
+        error_count = 0
+        total = 0
+        latency_sum = 0.0
+        latency_count = 0
+
+        for _, fields in raw_entries:
+            try:
+                data_raw = fields.get(b"data") or fields.get("data")
+                if not data_raw:
+                    continue
+                if isinstance(data_raw, bytes):
+                    data_raw = data_raw.decode("utf-8")
+                trace = json.loads(data_raw)
+
+                event_type = trace.get("event", "unknown")
+                counts[event_type] = counts.get(event_type, 0) + 1
+                total += 1
+
+                if event_type in _ERROR_EVENTS:
+                    error_count += 1
+
+                duration = trace.get("duration_ms")
+                if event_type == "handler.completed" and duration is not None:
+                    latency_sum += float(duration)
+                    latency_count += 1
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+
+        error_rate = round((error_count / total * 100), 2) if total > 0 else 0.0
+        avg_latency_ms = (
+            round(latency_sum / latency_count, 2) if latency_count > 0 else 0.0
+        )
+
+        return JSONResponse(
+            content={
+                "window": window,
+                "counts": counts,
+                "error_count": error_count,
+                "error_rate": error_rate,
+                "avg_latency_ms": avg_latency_ms,
+                "total": total,
+            }
+        )
+
+    @router.delete("/traces")
+    async def delete_traces():
+        """Clear all persisted trace history."""
+        redis_conn = _get_redis(domains)
+        if not redis_conn:
+            return JSONResponse(
+                content={"error": "Redis not available"}, status_code=503
+            )
+
+        try:
+            deleted = redis_conn.delete(TRACE_STREAM)
+            return JSONResponse(content={"status": "ok", "deleted": bool(deleted)})
+        except Exception as e:
+            logger.error(f"Error deleting trace stream: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to delete traces"}, status_code=500
+            )
 
     return router
