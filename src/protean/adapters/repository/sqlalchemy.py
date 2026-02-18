@@ -878,7 +878,15 @@ class SAProvider(BaseProvider):
                 elements.update(self.domain.registry._elements[element_type])
 
         for _, element_record in elements.items():
-            self.domain.repository_for(element_record.cls)._dao
+            cls = element_record.cls
+            # Skip event-sourced aggregates — they use the event store, not SQL tables
+            if getattr(cls.meta_, "is_event_sourced", False):
+                continue
+            # Skip entities that belong to event-sourced aggregates
+            part_of = getattr(cls.meta_, "part_of", None)
+            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
+                continue
+            self.domain.repository_for(cls)._dao
 
         # Create all tables in a single transaction
         conn = self._engine.connect()
