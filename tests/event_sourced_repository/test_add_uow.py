@@ -1,9 +1,15 @@
 import mock
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
+
+
+class Registered(BaseEvent):
+    id: Identifier()
+    email: String()
+    name: String()
 
 
 class User(BaseAggregate):
@@ -11,11 +17,11 @@ class User(BaseAggregate):
     email: String()
     name: String()
 
-
-class Registered(BaseEvent):
-    id: Identifier()
-    email: String()
-    name: String()
+    @apply
+    def on_registered(self, event: Registered):
+        self.id = event.id
+        self.email = event.email
+        self.name = event.name
 
 
 @pytest.fixture(autouse=True)

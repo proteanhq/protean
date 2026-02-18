@@ -2,18 +2,22 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields.basic import Identifier
 from protean.utils.eventing import Message
 
 
+class UserLoggedIn(BaseEvent):
+    user_id = Identifier(identifier=True)
+
+
 class User(BaseAggregate):
     user_id = Identifier(identifier=True)
 
-
-class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    @apply
+    def on_logged_in(self, event: UserLoggedIn):
+        pass
 
 
 @pytest.mark.eventstore

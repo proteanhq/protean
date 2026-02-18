@@ -14,6 +14,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean import apply
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.engine import CommandDispatcher
@@ -23,12 +24,6 @@ from protean.utils.mixins import handle
 
 
 # Domain elements for testing
-class User(BaseAggregate):
-    id: Identifier(identifier=True)
-    email: String()
-    name: String()
-
-
 class Registered(BaseEvent):
     id: Identifier()
     email: String()
@@ -37,6 +32,16 @@ class Registered(BaseEvent):
 class Register(BaseCommand):
     user_id: Identifier()
     email: String()
+
+
+class User(BaseAggregate):
+    id: Identifier(identifier=True)
+    email: String()
+    name: String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.email = event.email
 
 
 handler_calls = []

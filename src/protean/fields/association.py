@@ -322,15 +322,23 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
                 reference_obj = list(added.values())
                 self.set_cached_value(instance, reference_obj)
             else:
-                # Fetch target object by own Identifier
-                id_fld = id_field(instance)
-                assert id_fld is not None
-                id_value = getattr(instance, id_fld.field_name)
-                reference_obj = self._fetch_objects(
-                    instance, self._linked_attribute(owner), id_value
-                )
+                # Event-sourced aggregates have no database tables.
+                # All state is in-memory or in the event store, so if
+                # the cache is empty there is nothing to fetch.
+                root = getattr(instance, "_root", None) or instance
+                if getattr(getattr(root, "meta_", None), "is_event_sourced", False):
+                    reference_obj = []
+                    self.set_cached_value(instance, reference_obj)
+                else:
+                    # Fetch target object by own Identifier
+                    id_fld = id_field(instance)
+                    assert id_fld is not None
+                    id_value = getattr(instance, id_fld.field_name)
+                    reference_obj = self._fetch_objects(
+                        instance, self._linked_attribute(owner), id_value
+                    )
 
-                self._set_own_value(instance, reference_obj)
+                    self._set_own_value(instance, reference_obj)
 
         return reference_obj
 

@@ -31,7 +31,7 @@ reconstruct the state of the system at any point in time.
 3. **Command Handler**: The Command Handler processes the Command, interacting with the Repository to retrieve the relevant Aggregate.
 4. **Hydrate**: The Repository hydrates the Aggregate by reconstructing its state from past events stored in the Event Store.
 5. **Aggregate**: The Command Handler invokes the appropriate method on the Aggregate to perform the required business operation.
-6. **Output**: The Aggregate processes the command, which results in a state change. Instead of directly updating the state in a persistence store, the Aggregate generates an Event that describes the change.
+6. **Output**: The business method calls `raise_()` to generate an Event that describes the change. `raise_()` automatically invokes the corresponding `@apply` handler to mutate the aggregate's state — the same handler that runs during event replay. This ensures the live path and the replay path always produce identical results.
 7. **Repository**: The generated Event is passed back to the Repository, which is responsible for persisting the Event.
 8. **Event Store**: The Repository saves the Event in the Event Store, ensuring that all changes in the domain are captured as a series of events.
 9. **Event Handler**: The Event is then processed by an Event Handler, which reacts to the event by performing additional business logic or updating projections.

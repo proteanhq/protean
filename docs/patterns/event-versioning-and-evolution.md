@@ -412,9 +412,9 @@ During a migration period, produce both old and new event types:
 
 ```python
 def place(self):
-    self.status = "placed"
-
-    # Raise both old and new events during transition
+    # Raise both old and new events during transition.
+    # For ES aggregates, each raise_() invokes its @apply handler —
+    # ensure only one handler performs the actual state mutation.
     self.raise_(OrderPlaced(
         order_id=self.order_id,
         customer_id=self.customer_id,
@@ -431,10 +431,23 @@ def place(self):
         total=self.total,
         currency=self.currency,
     ))
+
+@apply
+def on_order_placed(self, event: OrderPlaced):
+    """V1 handler — performs the actual state mutation."""
+    self.status = "placed"
+    self.customer_id = event.customer_id
+    self.total = event.total
+
+@apply
+def on_order_placed_v2(self, event: OrderPlacedV2):
+    """V2 handler — no-op during dual-write, since V1 already set state."""
+    pass
 ```
 
 Consumers migrate from `OrderPlaced` to `OrderPlacedV2` at their own pace.
-Once all consumers have migrated, stop raising the old event.
+Once all consumers have migrated, stop raising the old event and move the
+state mutation logic into `on_order_placed_v2`.
 
 **Trade-off:** The aggregate raises two events for every operation during
 the transition period. Events in the store contain duplicated information.

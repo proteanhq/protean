@@ -75,9 +75,26 @@ class University(BaseAggregate):
 
     @apply
     def on_university_created(self, event: UniversityCreated):
-        # We are not doing anything here, because Protean applies
-        #   the first event automatically, with from_events
-        pass
+        self.id = event.id
+        self.name = event.name
+        departments = []
+        for dept_vo in event.departments or []:
+            dean_vo = dept_vo.dean
+            office = None
+            dean = None
+            if dean_vo:
+                if dean_vo.office:
+                    office = Office(
+                        building=dean_vo.office.building,
+                        room=dean_vo.office.room,
+                    )
+                dean = Dean(
+                    name=dean_vo.name,
+                    age=dean_vo.age,
+                    office=office,
+                )
+            departments.append(Department(name=dept_vo.name, dean=dean))
+        self.departments = departments
 
     @apply
     def on_name_changed(self, event: NameChanged):

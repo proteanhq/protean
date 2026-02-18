@@ -8,6 +8,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
+from protean import apply
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
@@ -39,11 +40,34 @@ def reset_counters():
     error_handler_error_counter = 0
 
 
+# Event classes (defined before aggregate so @apply can resolve type hints)
+class Registered(BaseEvent):
+    id: Identifier()
+    email: String()
+    name: String()
+    password_hash: String()
+
+
+class EmailSent(BaseEvent):
+    id: Identifier()
+    email: String()
+
+
 # Event-based test classes
 class User(BaseAggregate):
     email: String()
     name: String()
     password_hash: String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
+
+    @apply
+    def on_email_sent(self, event: EmailSent) -> None:
+        pass
 
     def register(self):
         """Register user and raise event."""
@@ -59,18 +83,6 @@ class User(BaseAggregate):
     def send_email(self):
         """Send email and raise event."""
         self.raise_(EmailSent(id=self.id, email=self.email))
-
-
-class Registered(BaseEvent):
-    id: Identifier()
-    email: String()
-    name: String()
-    password_hash: String()
-
-
-class EmailSent(BaseEvent):
-    id: Identifier()
-    email: String()
 
 
 # Event handlers

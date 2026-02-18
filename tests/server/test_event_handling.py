@@ -5,6 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean import apply
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import Processing
@@ -14,17 +15,23 @@ from protean.utils.mixins import handle
 counter = 0
 
 
-class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
-
-
 class Registered(BaseEvent):
     id = Identifier()
     email = String()
     name = String()
     password_hash = String()
+
+
+class User(BaseAggregate):
+    email = String()
+    name = String()
+    password_hash = String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
 
 
 def count_up():

@@ -3,7 +3,7 @@ from uuid import uuid4
 import mock
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
@@ -36,6 +36,13 @@ class User(BaseAggregate):
         )
 
         return user
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.id = event.id
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
 
 
 def count_up():

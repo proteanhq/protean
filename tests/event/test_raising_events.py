@@ -2,10 +2,15 @@ from uuid import uuid4
 
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
+
+
+class UserLoggedIn(BaseEvent):
+    user_id: Identifier(identifier=True)
 
 
 class User(BaseAggregate):
@@ -13,9 +18,9 @@ class User(BaseAggregate):
     email: String()
     name: String()
 
-
-class UserLoggedIn(BaseEvent):
-    user_id: Identifier(identifier=True)
+    @apply
+    def on_logged_in(self, event: UserLoggedIn) -> None:
+        pass
 
 
 @pytest.mark.eventstore

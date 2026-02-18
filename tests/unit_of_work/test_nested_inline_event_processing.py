@@ -51,6 +51,7 @@ class Post(BaseAggregate):
 
     @apply
     def created(self, event: Created):
+        self.id = event.id
         self.topic = event.topic
         self.content = event.content
 

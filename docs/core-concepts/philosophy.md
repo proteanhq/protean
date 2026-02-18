@@ -151,7 +151,8 @@ This event-centric approach enables:
 - **Loose coupling** between bounded contexts that evolve independently
 - **State synchronization** without shared databases or direct API calls
 - **Event Sourcing** where aggregate state is derived entirely from
-  event replay
+  events — with `@apply` handlers as the single source of truth for
+  state mutations during both live operations and replay
 - **Async processing** via the Protean server engine for production
   workloads
 

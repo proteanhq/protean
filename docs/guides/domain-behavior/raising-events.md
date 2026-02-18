@@ -85,6 +85,62 @@ Out[3]:
 In [4]: domain.publish(order._events)
 ```
 
+## Event Sourced Aggregates: `raise_()` and `@apply` {#es-raise-apply}
+
+For **event-sourced aggregates** (`is_event_sourced=True`), `raise_()`
+does more than collect events — it automatically invokes the
+corresponding `@apply` handler to mutate the aggregate's state in-place.
+This makes `@apply` the **single source of truth** for all state
+mutations, whether the aggregate is processing live commands or being
+reconstructed from stored events.
+
+```python
+from protean import apply
+
+@domain.aggregate(is_event_sourced=True)
+class Order:
+    customer_name: String(max_length=150, required=True)
+    status: String(max_length=20, default="PENDING")
+
+    @classmethod
+    def place(cls, customer_name):
+        order = cls._create_new()
+        order.raise_(OrderPlaced(
+            order_id=str(order.id),
+            customer_name=customer_name,
+        ))
+        return order
+
+    def confirm(self):
+        self.raise_(OrderConfirmed(order_id=self.id))
+
+    @apply
+    def when_placed(self, event: OrderPlaced):
+        self.customer_name = event.customer_name
+        self.status = "PENDING"
+
+    @apply
+    def when_confirmed(self, event: OrderConfirmed):
+        self.status = "CONFIRMED"
+```
+
+Key points for ES aggregates:
+
+- Business methods **only raise events** — they never mutate state
+  directly. The `@apply` handler does the mutation.
+- `raise_()` wraps the `@apply` call inside `atomic_change()`, so
+  **invariants are checked** before and after the state change.
+- Every event raised **must** have a corresponding `@apply` handler.
+  Raising an event without one throws `NotImplementedError`.
+- Factory methods use `_create_new()` to create a blank aggregate
+  with identity. The creation event's `@apply` handler populates
+  all remaining state.
+
+!!! note
+    For standard (non-ES) aggregates, `raise_()` only collects
+    events — it does not call `@apply` handlers. State is mutated
+    directly in the business method, and `@apply` is not used.
+
 ## Fact Events
 
 [Fact events](../domain-definition/events.md#fact-events) are automatically

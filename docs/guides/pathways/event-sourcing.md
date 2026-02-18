@@ -53,7 +53,9 @@ sequenceDiagram
    Store
 4. It **replays** them through the aggregate's `@apply` methods to rebuild
    current state
-5. The handler invokes the **domain method**, which raises new events
+5. The handler invokes the **domain method**, which calls `raise_()` —
+   `raise_()` automatically invokes the corresponding `@apply` handler,
+   mutating state in-place
 6. The repository **appends** the new events to the Event Store
 7. Events flow to **Projectors** that update read-optimized **Projections**
 
@@ -74,7 +76,7 @@ Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 | Element | Purpose |
 |---------|---------|
 | Event Sourced Aggregates | Aggregates with `is_event_sourced=True` that derive state from events |
-| `@apply` decorator | Methods that define how each event type mutates aggregate state |
+| `@apply` decorator | Methods that define how each event type mutates aggregate state — called automatically by `raise_()` and during replay |
 | Event Sourced Repository | Persists events and reconstructs aggregates from event streams |
 | Fact Events | Auto-generated snapshot events capturing full aggregate state |
 | [Event Store adapter](../../adapters/eventstore/index.md) | Infrastructure for storing and retrieving events (e.g., Message DB) |
@@ -103,13 +105,18 @@ below. These guides cover the Event Sourcing-specific concepts:
 
 In event-sourced aggregates, state changes are expressed through events.
 The `@apply` decorator marks methods that define how each event type
-mutates the aggregate's state:
+mutates the aggregate's state. These handlers are invoked automatically
+by `raise_()` during live operations and during event replay —
+making them the **single source of truth** for all state mutations:
 
 ```python
 @domain.aggregate(is_event_sourced=True)
 class Order:
     status: String(default="draft")
     total: Float(default=0.0)
+
+    def place(self):
+        self.raise_(OrderPlaced(order_id=self.id, total=self.total))
 
     @apply
     def placed(self, event: OrderPlaced):
@@ -120,6 +127,12 @@ class Order:
     def cancelled(self, event: OrderCancelled):
         self.status = "cancelled"
 ```
+
+When `place()` calls `raise_()`, the framework automatically invokes
+`placed()` to apply the state change. The same `placed()` method runs
+during replay when the aggregate is loaded from the event store. Every
+event raised by an ES aggregate **must** have a corresponding `@apply`
+handler — raising an event without one will throw `NotImplementedError`.
 
 ### Fact Events
 

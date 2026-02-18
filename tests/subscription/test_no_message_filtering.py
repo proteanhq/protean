@@ -4,7 +4,7 @@ from uuid import uuid4
 import mock
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent, Metadata
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import DateTime, Identifier, String
@@ -12,17 +12,6 @@ from protean.server import Engine
 from protean.utils import fqn
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
-
-
-class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
-
-
-class Email(BaseAggregate):
-    email = String()
-    sent_at = DateTime()
 
 
 def dummy(*args):
@@ -44,6 +33,33 @@ class Activated(BaseEvent):
 class Sent(BaseEvent):
     email = String()
     sent_at = DateTime()
+
+
+class User(BaseAggregate):
+    email = String()
+    name = String()
+    password_hash = String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.id = event.id
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
+
+    @apply
+    def on_activated(self, event: Activated) -> None:
+        pass
+
+
+class Email(BaseAggregate):
+    email = String()
+    sent_at = DateTime()
+
+    @apply
+    def on_sent(self, event: Sent) -> None:
+        self.email = event.email
+        self.sent_at = event.sent_at
 
 
 class UserEventHandler(BaseEventHandler):

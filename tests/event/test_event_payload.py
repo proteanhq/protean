@@ -2,12 +2,17 @@ from uuid import uuid4
 
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.utils import fqn
 from protean.utils.eventing import MessageEnvelope
+
+
+class UserLoggedIn(BaseEvent):
+    user_id: Identifier(identifier=True)
 
 
 class User(BaseAggregate):
@@ -18,9 +23,9 @@ class User(BaseAggregate):
     def login(self):
         self.raise_(UserLoggedIn(user_id=self.id))
 
-
-class UserLoggedIn(BaseEvent):
-    user_id: Identifier(identifier=True)
+    @apply
+    def on_logged_in(self, event: UserLoggedIn) -> None:
+        pass
 
 
 @pytest.fixture(autouse=True)

@@ -20,3 +20,6 @@ shaped it.
 - [Query system](./query-system.md) -- How the Repository → DAO → QuerySet →
   Provider chain works, Q object expression trees, lookup resolution, lazy
   evaluation, and entity state tracking.
+- [Event sourcing](./event-sourcing.md) -- How `raise_()` invokes `@apply`
+  handlers, aggregate reconstitution via `_create_for_reconstitution()` and
+  `from_events()`, version tracking, and invariant checking during replay.

@@ -292,6 +292,7 @@ nav:
     - internals/field-system.md
     - internals/shadow-fields.md
     - internals/query-system.md
+    - internals/event-sourcing.md
 
   - Migration:
     - migration/v0-15.md

@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
@@ -19,13 +19,20 @@ class Register(BaseCommand):
     password_hash = String()
 
 
+class Registered(BaseEvent):
+    id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
+
+
 class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
 
     @classmethod
-    def register(cls, command: "Registered") -> "User":
+    def register(cls, command: Register) -> "User":
         user = cls(
             id=command.id,
             email=command.email,
@@ -45,12 +52,12 @@ class User(BaseAggregate):
 
         return user
 
-
-class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.id = event.id
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
 
 
 class UserCommandHandler(BaseCommandHandler):

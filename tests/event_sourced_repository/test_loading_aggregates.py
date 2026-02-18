@@ -72,6 +72,10 @@ class User(BaseAggregate):
 
     @apply
     def registered(self, event: Registered) -> None:
+        self.user_id = event.user_id
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
         self.is_registered = True
 
     @apply

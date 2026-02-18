@@ -2,17 +2,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.utils.eventing import Message
-
-
-class User(BaseAggregate):
-    email: String()
-    name: String()
 
 
 class Register(BaseCommand):
@@ -29,6 +25,16 @@ class Registered(BaseEvent):
     id: Identifier(identifier=True)
     email: String()
     name: String()
+
+
+class User(BaseAggregate):
+    email: String()
+    name: String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.email = event.email
+        self.name = event.name
 
 
 class SendEmail(BaseAggregate):
