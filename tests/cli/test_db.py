@@ -89,6 +89,21 @@ class TestDbDrop:
             assert result.exit_code != 0
             mock_domain.drop_database.assert_not_called()
 
+    def test_proceeds_with_interactive_confirmation(self):
+        """User types 'y' at the interactive prompt (no --yes flag)."""
+        change_working_directory_to("test7")
+
+        mock_domain = MagicMock()
+        mock_domain.has_outbox = False
+
+        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app, ["db", "drop", "--domain", "publishing7.py"], input="y\n"
+            )
+            assert result.exit_code == 0
+            assert "Database tables dropped successfully" in result.output
+            mock_domain.drop_database.assert_called_once()
+
     def test_with_invalid_domain(self):
         with patch(
             "protean.cli.database.derive_domain",
@@ -138,6 +153,20 @@ class TestDbTruncate:
             )
             assert result.exit_code != 0
             mock_domain.truncate_database.assert_not_called()
+
+    def test_proceeds_with_interactive_confirmation(self):
+        """User types 'y' at the interactive prompt (no --yes flag)."""
+        change_working_directory_to("test7")
+
+        mock_domain = MagicMock()
+
+        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app, ["db", "truncate", "--domain", "publishing7.py"], input="y\n"
+            )
+            assert result.exit_code == 0
+            assert "All table data deleted successfully" in result.output
+            mock_domain.truncate_database.assert_called_once()
 
     def test_with_invalid_domain(self):
         with patch(

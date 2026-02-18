@@ -136,3 +136,35 @@ class TestSetupOutbox:
         with domain.domain_context():
             domain.setup_outbox()
             domain.setup_outbox()  # Second call should also succeed
+
+
+# ---------------------------------------------------------------------------
+# Outbox initialization edge cases
+# ---------------------------------------------------------------------------
+class TestOutboxInitialization:
+    @pytest.mark.no_test_domain
+    def test_get_outbox_repo_lazy_initializes(self):
+        """_get_outbox_repo triggers _initialize_outbox when repos are empty."""
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.init(traverse=False)
+
+        # Clear outbox repos to force lazy init
+        domain._outbox_repos.clear()
+
+        with domain.domain_context():
+            repo = domain._get_outbox_repo("default")
+            assert repo is not None
+
+    @pytest.mark.no_test_domain
+    def test_initialize_outbox_without_providers(self):
+        """_initialize_outbox handles case when no providers are configured."""
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain._initialize()
+
+        # Simulate no providers initialized
+        domain.providers._providers = None
+
+        # Should not raise, just log debug message
+        domain._initialize_outbox()
