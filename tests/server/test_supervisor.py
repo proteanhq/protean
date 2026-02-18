@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from protean.server.supervisor import Supervisor
+from protean.server.supervisor import Supervisor, _worker_entry
 
 
 class TestSupervisorInit:
@@ -197,6 +197,89 @@ class TestSupervisorMonitor:
         supervisor._shutdown_workers.assert_called_once()
 
 
+class TestSupervisorMonitorEdgeCases:
+    def test_monitor_exits_when_shutting_down_flag_set(self):
+        """Monitor loop stops when _shutting_down is True."""
+        supervisor = Supervisor(domain_path="d", num_workers=1)
+        supervisor._shutting_down = True
+
+        mock_worker = MagicMock()
+        mock_worker.is_alive.return_value = True
+        mock_worker.name = "worker-0"
+        mock_worker.pid = 12345
+        supervisor.workers = [mock_worker]
+
+        # Monitor should exit immediately because _shutting_down is True
+        supervisor._monitor()
+
+        # Worker should be joined during final cleanup
+        mock_worker.join.assert_called_once_with(timeout=5)
+        assert len(supervisor.workers) == 0
+
+    def test_monitor_final_cleanup_joins_remaining_workers(self):
+        """After the main loop, monitor joins any remaining workers."""
+        supervisor = Supervisor(domain_path="d", num_workers=1)
+
+        call_count = [0]
+
+        def alive_then_dead():
+            call_count[0] += 1
+            if call_count[0] <= 1:
+                # First call in the loop: worker is alive
+                return True
+            # Subsequent calls: worker is dead
+            return False
+
+        mock_worker = MagicMock()
+        mock_worker.is_alive.side_effect = alive_then_dead
+        mock_worker.exitcode = 0
+        mock_worker.name = "worker-0"
+        mock_worker.pid = 12345
+
+        supervisor.workers = [mock_worker]
+
+        # Trigger shutdown after one iteration via sleep side-effect
+        def set_shutdown(*args):
+            supervisor._shutting_down = True
+
+        with patch("time.sleep", side_effect=set_shutdown):
+            supervisor._monitor()
+
+        assert len(supervisor.workers) == 0
+
+    def test_keyboard_interrupt_when_already_shutting_down(self):
+        """KeyboardInterrupt during shutdown does not call _shutdown_workers again."""
+        supervisor = Supervisor(domain_path="d", num_workers=1)
+        supervisor._shutting_down = True
+        supervisor._shutdown_workers = MagicMock()
+
+        mock_worker = MagicMock()
+        mock_worker.is_alive.side_effect = KeyboardInterrupt
+        mock_worker.name = "worker-0"
+        mock_worker.pid = 12345
+        supervisor.workers = [mock_worker]
+
+        supervisor._monitor()
+
+        # Should NOT call _shutdown_workers since already shutting down
+        supervisor._shutdown_workers.assert_not_called()
+
+
+class TestSupervisorSignalEdgeCases:
+    def test_sighup_handler_installed(self):
+        """SIGHUP handler is installed when available."""
+        supervisor = Supervisor(domain_path="d", num_workers=1)
+        original_sighup = signal.getsignal(signal.SIGHUP)
+
+        try:
+            supervisor._install_signal_handlers()
+            assert signal.getsignal(signal.SIGHUP) == supervisor._handle_signal
+        finally:
+            signal.signal(signal.SIGHUP, original_sighup)
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
+
 class TestSupervisorRun:
     def test_run_spawns_workers_and_monitors(self):
         """run() spawns workers and enters the monitor loop."""
@@ -216,3 +299,98 @@ class TestSupervisorRun:
             assert mock_process.start.call_count == 2
             assert len(supervisor.workers) == 2
             supervisor._monitor.assert_called_once()
+
+    def test_run_installs_signal_handlers(self):
+        """run() installs signal handlers before spawning workers."""
+        supervisor = Supervisor(domain_path="d", num_workers=1)
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+
+        mock_ctx = MagicMock()
+        mock_ctx.Process.return_value = mock_process
+
+        with patch("multiprocessing.get_context", return_value=mock_ctx):
+            supervisor._monitor = MagicMock()
+            supervisor._install_signal_handlers = MagicMock()
+            supervisor.run()
+
+            supervisor._install_signal_handlers.assert_called_once()
+
+    def test_run_passes_correct_args_to_worker_entry(self):
+        """run() passes correct arguments to _worker_entry."""
+        supervisor = Supervisor(
+            domain_path="my.domain", num_workers=1, test_mode=True, debug=True
+        )
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+
+        mock_ctx = MagicMock()
+        mock_ctx.Process.return_value = mock_process
+
+        with patch("multiprocessing.get_context", return_value=mock_ctx):
+            supervisor._monitor = MagicMock()
+            supervisor.run()
+
+            mock_ctx.Process.assert_called_once_with(
+                target=_worker_entry,
+                args=("my.domain", True, True, 0),
+                name="protean-worker-0",
+            )
+
+
+class TestWorkerEntry:
+    def test_worker_entry_success(self):
+        """_worker_entry derives domain, inits, and runs engine."""
+        mock_domain = MagicMock()
+        mock_domain.domain_context.return_value.__enter__ = MagicMock()
+        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_engine = MagicMock()
+        mock_engine.exit_code = 0
+
+        with (
+            patch(
+                "protean.utils.domain_discovery.derive_domain",
+                return_value=mock_domain,
+            ),
+            patch("protean.server.engine.Engine", return_value=mock_engine),
+            patch("protean.utils.logging.configure_logging"),
+            pytest.raises(SystemExit, match="0"),
+        ):
+            _worker_entry("my.domain", test_mode=True, debug=False, worker_id=0)
+
+        mock_domain.init.assert_called_once()
+        mock_engine.run.assert_called_once()
+
+    def test_worker_entry_domain_derivation_failure(self):
+        """_worker_entry exits with code 1 when domain derivation fails."""
+        with (
+            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
+            patch("protean.utils.logging.configure_logging"),
+            pytest.raises(SystemExit, match="1"),
+        ):
+            _worker_entry("bad.domain", test_mode=False, debug=False, worker_id=0)
+
+    def test_worker_entry_exception_exits_with_code_1(self):
+        """_worker_entry exits with code 1 on unexpected exception."""
+        with (
+            patch(
+                "protean.utils.domain_discovery.derive_domain",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch("protean.utils.logging.configure_logging"),
+            pytest.raises(SystemExit, match="1"),
+        ):
+            _worker_entry("my.domain", test_mode=False, debug=False, worker_id=0)
+
+    def test_worker_entry_debug_mode_configures_debug_logging(self):
+        """_worker_entry configures DEBUG logging when debug=True."""
+        with (
+            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
+            patch("protean.utils.logging.configure_logging") as mock_configure,
+            pytest.raises(SystemExit),
+        ):
+            _worker_entry("d", test_mode=False, debug=True, worker_id=0)
+
+        mock_configure.assert_called_once_with(level="DEBUG")
