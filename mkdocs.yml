@@ -183,6 +183,7 @@ nav:
         - guides/cli/new.md
         - guides/cli/shell.md
         - guides/cli/server.md
+        - guides/cli/observatory.md
         - guides/cli/database.md
         - guides/cli/docs.md
         - guides/cli/test.md

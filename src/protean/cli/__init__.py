@@ -25,6 +25,7 @@ from protean.cli.database import app as db_app
 from protean.cli.docs import app as docs_app
 from protean.cli.generate import app as generate_app
 from protean.cli.new import new
+from protean.cli.observatory import observatory
 from protean.cli.shell import shell
 from protean.cli.test import app as test_app
 from protean.exceptions import NoDomainException
@@ -39,6 +40,7 @@ logger = get_logger(__name__)
 app = typer.Typer(no_args_is_help=True)
 
 app.command()(new)
+app.command()(observatory)
 app.command()(shell)
 app.add_typer(db_app, name="db")
 app.add_typer(generate_app, name="generate")
