@@ -230,6 +230,46 @@ class TestHasMany:
         order.items = [OrderItem(product_name="Widget")]
         assert len(order.items) == 1
 
+    def test_get_recovers_from_temp_cache_when_field_cache_missing(self):
+        """When field cache is deleted but _temp_cache has added items,
+        __get__ should recover items from _temp_cache without a DB fetch."""
+        order = Order(order_number="ORD-055")
+        item = OrderItem(product_name="Widget")
+        order.add_items(item)
+
+        items_field = Order.__dict__["items"]
+
+        # Manually clear the field cache to simulate the cache being absent
+        items_field.delete_cached_value(order)
+
+        # Access should recover from _temp_cache["items"]["added"]
+        result = order.items
+        assert len(result) == 1
+        assert result[0].product_name == "Widget"
+
+        # Cache should now be re-populated
+        assert items_field.is_cached(order)
+
+    def test_add_to_empty_list_when_cache_missing(self):
+        """When add() re-reads cache after remove and cache is missing,
+        it should fall back to the original data reference."""
+        item1 = OrderItem(product_name="Widget")
+        item2 = OrderItem(product_name="Gadget")
+        order = Order(order_number="ORD-056", items=[item1, item2])
+
+        items_field = Order.__dict__["items"]
+
+        # Clear the cache and remove _temp_cache to simulate a state where
+        # the KeyError path in add() is triggered after remove
+        items_field.delete_cached_value(order)
+        order._temp_cache.pop("items", None)
+
+        # Re-assigning should work — add() re-reads from cache, gets
+        # KeyError, falls back to data
+        order.items = [OrderItem(product_name="Sprocket")]
+        assert len(order.items) == 1
+        assert order.items[0].product_name == "Sprocket"
+
 
 # ---------------------------------------------------------------------------
 # Tests: HasOne
