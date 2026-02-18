@@ -603,3 +603,115 @@ class TestOutboxRepositoryEdgeCases:
         # With zero threshold, should find all processing messages
         stale_messages = outbox_repo.find_stale_processing(stale_threshold_minutes=0)
         assert len(stale_messages) >= 1
+
+
+class TestClaimForProcessing:
+    """Test atomic claim_for_processing method."""
+
+    def test_claim_pending_message(self, outbox_repo, sample_metadata):
+        """Claiming a PENDING message should succeed and update DB state."""
+        msg = Outbox.create_message(
+            message_id="claim-test-1",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"test": True},
+            metadata=sample_metadata,
+        )
+        outbox_repo.add(msg)
+
+        claimed = outbox_repo.claim_for_processing(msg, "worker-A")
+        assert claimed is True
+
+        # Verify DB state was updated
+        refreshed = outbox_repo.get(msg.id)
+        assert refreshed.status == OutboxStatus.PROCESSING.value
+        assert refreshed.locked_by == "worker-A"
+        assert refreshed.locked_until is not None
+        assert refreshed.last_processed_at is not None
+
+    def test_claim_failed_message(self, outbox_repo, sample_metadata):
+        """Claiming a FAILED message should succeed (eligible for retry)."""
+        msg = Outbox.create_message(
+            message_id="claim-test-2",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"test": True},
+            metadata=sample_metadata,
+        )
+        msg.status = OutboxStatus.FAILED.value
+        msg.retry_count = 1
+        outbox_repo.add(msg)
+
+        claimed = outbox_repo.claim_for_processing(msg, "worker-B")
+        assert claimed is True
+
+        refreshed = outbox_repo.get(msg.id)
+        assert refreshed.status == OutboxStatus.PROCESSING.value
+        assert refreshed.locked_by == "worker-B"
+
+    def test_claim_already_processing_message(self, outbox_repo, sample_metadata):
+        """Claiming a message that is already PROCESSING should fail."""
+        msg = Outbox.create_message(
+            message_id="claim-test-3",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"test": True},
+            metadata=sample_metadata,
+        )
+        msg.status = OutboxStatus.PROCESSING.value
+        msg.locked_by = "worker-X"
+        msg.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        outbox_repo.add(msg)
+
+        claimed = outbox_repo.claim_for_processing(msg, "worker-Y")
+        assert claimed is False
+
+    def test_claim_already_published_message(self, outbox_repo, sample_metadata):
+        """Claiming a PUBLISHED message should fail."""
+        msg = Outbox.create_message(
+            message_id="claim-test-4",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"test": True},
+            metadata=sample_metadata,
+        )
+        msg.status = OutboxStatus.PUBLISHED.value
+        msg.published_at = datetime.now(timezone.utc)
+        outbox_repo.add(msg)
+
+        claimed = outbox_repo.claim_for_processing(msg, "worker-Z")
+        assert claimed is False
+
+    def test_claim_abandoned_message(self, outbox_repo, sample_metadata):
+        """Claiming an ABANDONED message should fail."""
+        msg = Outbox.create_message(
+            message_id="claim-test-5",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"test": True},
+            metadata=sample_metadata,
+        )
+        msg.status = OutboxStatus.ABANDONED.value
+        outbox_repo.add(msg)
+
+        claimed = outbox_repo.claim_for_processing(msg, "worker-Z")
+        assert claimed is False
+
+    def test_second_claim_fails_after_first_succeeds(
+        self, outbox_repo, sample_metadata
+    ):
+        """After one worker claims a message, a second claim should fail."""
+        msg = Outbox.create_message(
+            message_id="claim-test-6",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"test": True},
+            metadata=sample_metadata,
+        )
+        outbox_repo.add(msg)
+
+        # First claim succeeds
+        assert outbox_repo.claim_for_processing(msg, "worker-1") is True
+
+        # Second claim fails — status is now PROCESSING
+        assert outbox_repo.claim_for_processing(msg, "worker-2") is False

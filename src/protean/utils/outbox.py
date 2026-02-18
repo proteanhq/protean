@@ -355,6 +355,44 @@ class OutboxRepository(BaseRepository):
 
         return ready_messages
 
+    def claim_for_processing(
+        self,
+        message: Outbox,
+        worker_id: str,
+        lock_duration_minutes: int = 5,
+    ) -> bool:
+        """Atomically claim a message for processing using database-level locking.
+
+        Uses UPDATE...WHERE with a status check to prevent concurrent workers
+        from claiming the same message (TOCTOU race condition). Under READ
+        COMMITTED isolation (PostgreSQL, MSSQL), a concurrent UPDATE on the same
+        row blocks until the first transaction commits, then re-evaluates the
+        WHERE clause — so only one worker can succeed.
+
+        Args:
+            message: The outbox message to claim.
+            worker_id: Identifier of the worker claiming this message.
+            lock_duration_minutes: How long to hold the processing lock.
+
+        Returns:
+            True if this worker successfully claimed the message, False if
+            another worker already claimed it or the message is no longer eligible.
+        """
+        now = datetime.now(timezone.utc)
+        locked_until = now + timedelta(minutes=lock_duration_minutes)
+
+        claimed_count = self._dao.query.filter(
+            id=message.id,
+            status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value],
+        ).update_all(
+            status=OutboxStatus.PROCESSING.value,
+            locked_by=worker_id,
+            locked_until=locked_until,
+            last_processed_at=now,
+        )
+
+        return claimed_count > 0
+
     def find_failed(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
         """Find messages that have failed processing.
 
