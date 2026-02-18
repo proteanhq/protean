@@ -260,21 +260,10 @@ body {
   font-family: var(--font-code);
 }
 
-.pipeline-stage .count-box.outbox { background: #E8F4FD; color: var(--secondary); border: 2px solid var(--secondary); }
 .pipeline-stage .count-box.published { background: #E8F4FD; color: var(--secondary); border: 2px solid var(--secondary); }
 .pipeline-stage .count-box.handling { background: #FFF3E0; color: #E65100; border: 2px solid var(--warning); }
 .pipeline-stage .count-box.done { background: #E8F5E9; color: var(--success); border: 2px solid var(--success); }
 .pipeline-stage .count-box.failed { background: #FFEBEE; color: var(--accent); border: 2px solid var(--accent); }
-
-.pipeline-stage .count-box.pulse {
-  animation: pulse 0.4s ease-out;
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); }
-}
 
 .pipeline-arrow {
   color: var(--text-muted);
@@ -283,7 +272,6 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  .pipeline-stage .count-box.outbox { background: rgba(69,123,157,0.2); }
   .pipeline-stage .count-box.published { background: rgba(69,123,157,0.2); }
   .pipeline-stage .count-box.handling { background: rgba(233,196,106,0.15); }
   .pipeline-stage .count-box.done { background: rgba(42,157,143,0.15); }
@@ -329,17 +317,6 @@ body {
   padding: 2px 0 0;
 }
 
-/* Feed layout */
-.feed-layout {
-  display: grid;
-  grid-template-columns: 1fr 340px;
-  min-height: 400px;
-}
-
-.feed-layout.no-detail {
-  grid-template-columns: 1fr;
-}
-
 /* Feed controls */
 .feed-controls {
   display: flex;
@@ -357,7 +334,7 @@ body {
   color: var(--text);
 }
 
-.feed-controls input { width: 160px; }
+.feed-controls input { width: 180px; }
 
 .feed-tab {
   background: none;
@@ -388,18 +365,425 @@ body {
   font-weight: 600;
 }
 
-/* Feed */
-.feed {
-  max-height: 500px;
+/* Content area for both tabs */
+.tab-content {
+  max-height: 600px;
   overflow-y: auto;
   scroll-behavior: smooth;
-  border-right: 1px solid var(--border);
 }
 
-.feed-layout.no-detail .feed {
-  border-right: none;
+.feed-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
 }
 
+.feed-divider {
+  padding: 6px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  font-family: var(--font-code);
+  letter-spacing: 0.05em;
+}
+
+/* --- Messages Tab --- */
+.msg-row {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.msg-row:hover { background: var(--bg); }
+.msg-row.new { animation: fadeIn 0.3s ease-out; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-summary {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+}
+
+.msg-summary .msg-time {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.msg-summary .msg-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.msg-summary .msg-type {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-summary .msg-stream {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-summary .msg-id {
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Horizontal lifecycle bar */
+.lifecycle-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 2px 16px 10px;
+}
+
+.lbar-stage {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.lbar-marker {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.lbar-marker.published { background: var(--secondary); }
+.lbar-marker.started { background: var(--warning); color: #333; }
+.lbar-marker.completed { background: var(--success); }
+.lbar-marker.acked { background: var(--success); }
+.lbar-marker.failed { background: var(--accent); }
+.lbar-marker.nacked { background: var(--warning); color: #333; }
+.lbar-marker.dlq { background: var(--accent); }
+
+.lbar-line {
+  width: 24px;
+  height: 2px;
+  flex-shrink: 0;
+}
+
+.lbar-line.ok { background: var(--success); }
+.lbar-line.pending { background: var(--border); }
+.lbar-line.error { background: var(--accent); }
+.lbar-line.warn { background: var(--warning); }
+
+.lbar-label {
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.lbar-in-progress {
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 4px;
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Expanded message detail */
+.msg-detail {
+  display: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  padding: 16px;
+}
+
+.msg-row.expanded .msg-detail { display: block; }
+.msg-row.expanded { background: var(--bg); }
+
+.detail-columns {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.detail-col-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-col-right {
+  width: 340px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .detail-columns { flex-direction: column; }
+  .detail-col-right { width: 100%; }
+}
+
+.detail-section {
+  margin-bottom: 16px;
+}
+
+.detail-section:last-child { margin-bottom: 0; }
+
+.detail-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Detailed horizontal timeline */
+.detail-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.dtl-stage {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  min-width: 70px;
+  text-align: center;
+}
+
+.dtl-marker {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+}
+
+.dtl-marker.published { background: var(--secondary); }
+.dtl-marker.started { background: var(--warning); color: #333; }
+.dtl-marker.completed { background: var(--success); }
+.dtl-marker.acked { background: var(--success); }
+.dtl-marker.failed { background: var(--accent); }
+.dtl-marker.nacked { background: var(--warning); color: #333; }
+.dtl-marker.dlq { background: var(--accent); }
+
+.dtl-event-name {
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--text);
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.dtl-time {
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.dtl-handler {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dtl-line {
+  flex: 1;
+  height: 2px;
+  min-width: 20px;
+  margin: 0 4px;
+  margin-bottom: 26px;
+}
+
+.dtl-line.ok { background: var(--success); }
+.dtl-line.error { background: var(--accent); }
+.dtl-line.pending { background: var(--border); }
+
+.dtl-duration {
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 26px;
+  margin-left: 4px;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+/* Multi-handler expanded timeline */
+.dtl-published-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px 0;
+}
+
+.dtl-handler-group {
+  padding: 6px 0 4px;
+  border-top: 1px solid var(--border);
+}
+
+.dtl-handler-group:first-of-type {
+  border-top: none;
+}
+
+.dtl-handler-label {
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  padding-left: 2px;
+}
+
+.dtl-handler-stages {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding-left: 8px;
+}
+
+/* Summary bar handler segments */
+.lbar-handler-segment {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.lbar-handler-name {
+  font-family: var(--font-code);
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-right: 4px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* New messages banner */
+.new-messages-banner {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--secondary);
+  color: white;
+  text-align: center;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  transition: opacity 0.2s;
+}
+
+.new-messages-banner:hover {
+  opacity: 0.9;
+}
+
+/* Payload viewer */
+.payload-container {
+  position: relative;
+}
+
+.payload-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+  color: var(--text);
+}
+
+.copy-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.copy-btn:hover { border-color: var(--secondary); color: var(--text); }
+.copy-btn.copied { background: var(--success); color: white; border-color: var(--success); }
+
+.payload-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Error detail */
+.error-detail-box {
+  background: #FFF5F5;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--accent);
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .error-detail-box { background: rgba(231,111,81,0.1); }
+}
+
+/* Events tab - reuses old feed styles */
 .feed-item {
   padding: 8px 16px;
   border-bottom: 1px solid var(--border);
@@ -419,11 +803,6 @@ body {
 .feed-item.status-error { border-left-color: var(--accent); }
 .feed-item.status-retry { border-left-color: var(--warning); }
 .feed-item.new { animation: fadeIn 0.3s ease-out; }
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 
 .feed-item .timestamp {
   font-family: var(--font-code);
@@ -472,112 +851,6 @@ body {
 .feed-item .error-text {
   color: var(--accent);
   font-size: 12px;
-}
-
-.feed-empty {
-  padding: 40px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.feed-divider {
-  padding: 6px 16px;
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-  font-family: var(--font-code);
-  letter-spacing: 0.05em;
-}
-
-/* Lifecycle detail panel */
-.lifecycle-panel {
-  padding: 16px;
-  overflow-y: auto;
-  max-height: 500px;
-}
-
-.lifecycle-panel .lc-empty {
-  color: var(--text-muted);
-  font-size: 13px;
-  text-align: center;
-  padding: 40px 16px;
-}
-
-.lifecycle-panel .lc-header {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  word-break: break-all;
-}
-
-.lifecycle-panel .lc-message-id {
-  font-family: var(--font-code);
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 16px;
-  word-break: break-all;
-}
-
-.lifecycle-timeline {
-  position: relative;
-  padding-left: 24px;
-}
-
-.lifecycle-timeline::before {
-  content: '';
-  position: absolute;
-  left: 9px;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  background: var(--border);
-}
-
-.lc-event {
-  position: relative;
-  padding: 6px 0 12px 0;
-}
-
-.lc-event .lc-dot {
-  position: absolute;
-  left: -20px;
-  top: 8px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid var(--border);
-  background: var(--surface);
-}
-
-.lc-event.ok .lc-dot { border-color: var(--success); background: var(--success); }
-.lc-event.error .lc-dot { border-color: var(--accent); background: var(--accent); }
-.lc-event.retry .lc-dot { border-color: var(--warning); background: var(--warning); }
-.lc-event.started .lc-dot { border-color: var(--secondary); background: var(--secondary); }
-
-.lc-event .lc-time {
-  font-family: var(--font-code);
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.lc-event .lc-name {
-  font-family: var(--font-code);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.lc-event .lc-detail {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.lc-event .lc-error {
-  font-size: 12px;
-  color: var(--accent);
-  margin-top: 2px;
 }
 
 /* Infrastructure */
@@ -653,14 +926,16 @@ body {
           <span class="metric-value good" id="metricLatency">--</span>
         </div>
         <div class="summary-metric">
-          <span class="metric-label">Pending</span>
-          <span class="metric-value" id="metricPending">0</span>
+          <span class="metric-label">In Flight</span>
+          <span class="metric-value good" id="metricInFlight">0</span>
         </div>
       </div>
       <div class="window-selector">
         <button class="window-btn active" data-window="5m" onclick="setWindow('5m')">5m</button>
         <button class="window-btn" data-window="15m" onclick="setWindow('15m')">15m</button>
         <button class="window-btn" data-window="1h" onclick="setWindow('1h')">1h</button>
+        <button class="window-btn" data-window="24h" onclick="setWindow('24h')">24h</button>
+        <button class="window-btn" data-window="7d" onclick="setWindow('7d')">7d</button>
       </div>
     </div>
   </div>
@@ -668,12 +943,6 @@ body {
   <!-- Pipeline -->
   <div class="card">
     <div class="pipeline">
-      <div class="pipeline-stage">
-        <span class="label">Outbox</span>
-        <div class="count-box outbox" id="pipeOutbox">0</div>
-        <span class="rate-label" id="rateOutbox">&nbsp;</span>
-      </div>
-      <span class="pipeline-arrow">&#9654;</span>
       <div class="pipeline-stage">
         <span class="label">Published</span>
         <div class="count-box published" id="pipePublished">0</div>
@@ -723,38 +992,31 @@ body {
     </div>
   </div>
 
-  <!-- Live Feed + Lifecycle -->
+  <!-- Messages / Events -->
   <div class="card">
     <div class="card-header">
       <div style="display:flex; align-items:center; gap:8px;">
-        <button class="feed-tab active" id="tabAll" onclick="setFeedTab('all')">All</button>
-        <button class="feed-tab" id="tabErrors" onclick="setFeedTab('errors')">Errors <span class="error-badge" id="errorBadge" style="display:none">0</span></button>
+        <button class="feed-tab active" id="tabMessages" onclick="setViewTab('messages')">Messages</button>
+        <button class="feed-tab" id="tabEvents" onclick="setViewTab('events')">Events</button>
+        <button class="feed-tab" id="tabErrors" onclick="setViewTab('errors')">Errors <span class="error-badge" id="errorBadge" style="display:none">0</span></button>
       </div>
       <div class="feed-controls">
         <select id="filterStream">
           <option value="">All streams</option>
         </select>
-        <select id="filterEvent">
-          <option value="">All events</option>
-          <option value="outbox.published">outbox.published</option>
-          <option value="outbox.failed">outbox.failed</option>
-          <option value="handler.started">handler.started</option>
-          <option value="handler.completed">handler.completed</option>
-          <option value="handler.failed">handler.failed</option>
-          <option value="message.acked">message.acked</option>
-          <option value="message.nacked">message.nacked</option>
-          <option value="message.dlq">message.dlq</option>
-        </select>
-        <input type="text" id="filterSearch" placeholder="Search messages..." oninput="applyFeedFilters()">
+        <input type="text" id="filterSearch" placeholder="Search type, handler, or message ID..." oninput="applyFilters()">
       </div>
     </div>
-    <div class="feed-layout" id="feedLayout">
-      <div class="feed" id="feed">
-        <div class="feed-empty" id="feedEmpty">Loading history...</div>
+    <!-- Messages tab content -->
+    <div class="tab-content" id="messagesContent">
+      <div class="new-messages-banner" id="newMessagesBanner" onclick="scrollToTopMessages()" style="display:none">
+        &uarr; <span id="newMsgCount">0</span> new messages
       </div>
-      <div class="lifecycle-panel" id="lifecyclePanel">
-        <div class="lc-empty">Click an event to view message lifecycle</div>
-      </div>
+      <div class="feed-empty" id="messagesEmpty">Loading history...</div>
+    </div>
+    <!-- Events tab content (hidden by default) -->
+    <div class="tab-content" id="eventsContent" style="display:none">
+      <div class="feed-empty" id="eventsEmpty">Loading history...</div>
     </div>
   </div>
 
@@ -774,7 +1036,7 @@ body {
 
 </div>
 
-<div class="new-events-badge" id="newEventsBadge" onclick="scrollToBottom()">
+<div class="new-events-badge" id="newEventsBadge" onclick="scrollToTop()">
   &#8595; New events
 </div>
 
@@ -784,10 +1046,13 @@ let paused = false;
 let connected = false;
 let eventSource = null;
 let pauseBuffer = [];
-const MAX_FEED_ITEMS = 500;
+const MAX_ITEMS = 500;
 
 // Current window for stats
 let currentWindow = '5m';
+
+// Current view tab: 'messages', 'events', 'errors'
+let currentTab = 'messages';
 
 // History / dedup
 let historyLoaded = false;
@@ -798,11 +1063,28 @@ let sseConnectedAt = 0;
 const tracesByMessageId = new Map(); // message_id -> [{...}, ...]
 let errorCount = 0;
 
-// Currently selected message for lifecycle
-let selectedMessageId = null;
+// Message-centric data
+const messageById = new Map();   // message_id -> { message_id, message_type, stream, domain, first_ts, stages: [], payload: null, hasError: false }
+const messageOrder = [];         // message_ids in newest-first order
 
-// Feed tab state
-let feedTab = 'all'; // 'all' or 'errors'
+// Currently expanded message
+let expandedMessageId = null;
+
+// Batched rendering state
+let pendingMessageUpdates = new Set();  // message_ids needing DOM update
+let pendingEventItems = [];             // event data items to add to events tab
+let rafScheduled = false;
+
+// Scroll-aware state for messages tab
+let userScrolledMessages = false;
+let newMessageCount = 0;
+
+// Real-time metrics state (SSE delta + server poll base)
+let statsBase = null;           // Last /api/traces/stats response
+let statsDelta = {};            // event_type -> count (SSE increments since last poll)
+let latencyDeltaSum = 0;        // Sum of handler.completed duration_ms since last poll
+let latencyDeltaCount = 0;      // Count of handler.completed events since last poll
+let metricsRafScheduled = false;
 
 const ERROR_EVENTS = new Set(['handler.failed', 'outbox.failed', 'message.dlq', 'message.nacked']);
 
@@ -819,6 +1101,65 @@ const throughput = {
 };
 let currentSecond = { published: 0, processed: 0, errors: 0 };
 
+// Event icons for events tab
+const EVENT_ICONS = {
+  'outbox.published': '\u2191',
+  'outbox.failed': '\u2717',
+  'handler.started': '\u25b6',
+  'handler.completed': '\u2713',
+  'handler.failed': '\u2717',
+  'message.acked': '\u2713',
+  'message.nacked': '\u21bb',
+  'message.dlq': '\u26a0',
+};
+
+const EVENT_STATUS_CLASS = {
+  'outbox.published': 'status-ok',
+  'outbox.failed': 'status-error',
+  'handler.started': 'status-ok',
+  'handler.completed': 'status-ok',
+  'handler.failed': 'status-error',
+  'message.acked': 'status-ok',
+  'message.nacked': 'status-retry',
+  'message.dlq': 'status-error',
+};
+
+// Stage ordering for lifecycle bar
+const STAGE_ORDER = {
+  'outbox.published': 0,
+  'handler.started': 1,
+  'handler.completed': 2,
+  'handler.failed': 2,
+  'message.acked': 3,
+  'message.nacked': 3,
+  'message.dlq': 3,
+  'outbox.failed': 1,
+};
+
+// Marker CSS class for each event type
+const MARKER_CLASS = {
+  'outbox.published': 'published',
+  'handler.started': 'started',
+  'handler.completed': 'completed',
+  'handler.failed': 'failed',
+  'message.acked': 'acked',
+  'message.nacked': 'nacked',
+  'message.dlq': 'dlq',
+  'outbox.failed': 'failed',
+};
+
+// Short labels for lifecycle bar markers
+const MARKER_ICON = {
+  'outbox.published': '\u2191',
+  'handler.started': '\u25b6',
+  'handler.completed': '\u2713',
+  'handler.failed': '\u2717',
+  'message.acked': '\u2713',
+  'message.nacked': '\u21bb',
+  'message.dlq': '!',
+  'outbox.failed': '\u2717',
+};
+
 // --- History Loading ---
 async function loadHistory() {
   try {
@@ -828,40 +1169,58 @@ async function loadHistory() {
     const traces = data.traces || [];
 
     if (traces.length === 0) {
-      const empty = document.getElementById('feedEmpty');
-      if (empty) empty.textContent = 'No events in history. Connect engines to see message flow.';
+      setEmptyMessage('No events in history. Connect engines to see message flow.');
       return;
     }
 
-    // Remove empty message
-    const empty = document.getElementById('feedEmpty');
-    if (empty) empty.remove();
+    // Remove empty messages
+    clearEmptyMessages();
 
-    // Process oldest-first for correct counter reconstruction
+    // Process oldest-first for correct grouping
     const reversed = [...traces].reverse();
     for (const trace of reversed) {
       const key = trace.message_id + ':' + trace.event + ':' + (trace.handler || '');
       seenTraceKeys.add(key);
       trackTrace(trace);
       updateThroughputFromHistory(trace);
-      addFeedItem(trace, true);
     }
 
-    // Insert divider between history and live events
-    const feed = document.getElementById('feed');
+    renderAllMessages();
+
+    // Insert divider in events tab
+    const eventsDiv = document.getElementById('eventsContent');
     const divider = document.createElement('div');
     divider.className = 'feed-divider';
     divider.id = 'historyDivider';
     divider.textContent = '--- live ---';
-    feed.insertBefore(divider, feed.firstChild);
+    eventsDiv.insertBefore(divider, eventsDiv.firstChild);
+
+    // Render events tab
+    const allTraces = [...traces]; // newest-first from API
+    for (const trace of allTraces) {
+      addEventFeedItem(trace, true);
+    }
 
     historyLoaded = true;
     updateErrorBadge();
   } catch (e) {
     console.error('Failed to load history:', e);
-    const empty = document.getElementById('feedEmpty');
-    if (empty) empty.textContent = 'Failed to load history. Waiting for live events...';
+    setEmptyMessage('Failed to load history. Waiting for live events...');
   }
+}
+
+function setEmptyMessage(msg) {
+  const mEmpty = document.getElementById('messagesEmpty');
+  if (mEmpty) mEmpty.textContent = msg;
+  const eEmpty = document.getElementById('eventsEmpty');
+  if (eEmpty) eEmpty.textContent = msg;
+}
+
+function clearEmptyMessages() {
+  const mEmpty = document.getElementById('messagesEmpty');
+  if (mEmpty) mEmpty.remove();
+  const eEmpty = document.getElementById('eventsEmpty');
+  if (eEmpty) eEmpty.remove();
 }
 
 function updateThroughputFromHistory(trace) {
@@ -870,14 +1229,36 @@ function updateThroughputFromHistory(trace) {
 
   const now = Date.now();
   const ageSeconds = Math.floor((now - ts) / 1000);
-
-  // Place in the correct throughput bucket (0 = oldest, THROUGHPUT_SECONDS-1 = newest)
   const bucketIndex = THROUGHPUT_SECONDS - 1 - ageSeconds;
   if (bucketIndex < 0 || bucketIndex >= THROUGHPUT_SECONDS) return;
 
   if (trace.event === 'outbox.published') throughput.published[bucketIndex]++;
   if (trace.event === 'handler.completed') throughput.processed[bucketIndex]++;
   if (trace.event === 'handler.failed' || trace.event === 'message.dlq') throughput.errors[bucketIndex]++;
+}
+
+// --- In-Flight Computation ---
+function computeInFlight() {
+  let count = 0;
+  for (const [id, msg] of messageById) {
+    const stages = msg.stages;
+    const isPublished = stages.some(s => s.event === 'outbox.published');
+    if (!isPublished) continue;
+
+    const startedHandlers = new Set();
+    const doneHandlers = new Set();
+    for (const s of stages) {
+      if (s.event === 'handler.started') startedHandlers.add(s.handler);
+      if (s.event === 'handler.completed' || s.event === 'handler.failed')
+        doneHandlers.add(s.handler);
+    }
+
+    // In flight if: published and (no handlers started OR some started but not done)
+    if (startedHandlers.size === 0 || startedHandlers.size > doneHandlers.size) {
+      count++;
+    }
+  }
+  return count;
 }
 
 // --- Stats Loading ---
@@ -887,39 +1268,82 @@ async function loadStats() {
     if (!res.ok) return;
     const data = await res.json();
 
-    // Throughput: total / window in minutes
-    const windowMinutes = { '5m': 5, '15m': 15, '1h': 60 }[currentWindow] || 5;
-    const perMin = data.total > 0 ? Math.round(data.total / windowMinutes) : 0;
-    document.getElementById('metricThroughput').textContent = perMin + '/min';
+    // Store server response as base, reset SSE deltas
+    statsBase = data;
+    statsDelta = {};
+    latencyDeltaSum = 0;
+    latencyDeltaCount = 0;
 
-    // Error rate
-    const errorEl = document.getElementById('metricErrorRate');
-    errorEl.textContent = data.error_rate + '%';
-    errorEl.className = 'metric-value ' + (data.error_rate === 0 ? 'good' : data.error_rate < 5 ? 'warn' : 'bad');
-
-    // Avg latency
-    const latencyEl = document.getElementById('metricLatency');
-    latencyEl.textContent = data.avg_latency_ms > 0 ? data.avg_latency_ms + 'ms' : '--';
-
-    // Pipeline counts from stats (time-windowed)
-    const counts = data.counts || {};
-    const published = counts['outbox.published'] || 0;
-    const handling = (counts['handler.started'] || 0) - (counts['handler.completed'] || 0) - (counts['handler.failed'] || 0);
-    const done = counts['handler.completed'] || 0;
-    const failed = (counts['handler.failed'] || 0) + (counts['outbox.failed'] || 0) + (counts['message.dlq'] || 0);
-
-    document.getElementById('pipePublished').textContent = published;
-    document.getElementById('pipeHandling').textContent = Math.max(0, handling);
-    document.getElementById('pipeDone').textContent = done;
-    document.getElementById('pipeFailed').textContent = failed;
-
-    // Rate labels under pipeline
-    document.getElementById('ratePublishedPipe').textContent = published > 0 ? '~' + Math.round(published / windowMinutes) + '/min' : '';
-    document.getElementById('rateDone').textContent = done > 0 ? '~' + Math.round(done / windowMinutes) + '/min' : '';
-    document.getElementById('rateFailed').textContent = failed > 0 ? '~' + Math.round(failed / windowMinutes) + '/min' : '';
-
+    refreshMetrics();
   } catch (e) {
     console.error('Failed to load stats:', e);
+  }
+}
+
+// --- Unified Metrics Refresh (base + SSE deltas) ---
+function refreshMetrics() {
+  if (!statsBase) return;
+
+  // Merge base counts with SSE delta increments
+  const counts = { ...(statsBase.counts || {}) };
+  for (const [evt, n] of Object.entries(statsDelta)) {
+    counts[evt] = (counts[evt] || 0) + n;
+  }
+
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const windowMinutes = { '5m': 5, '15m': 15, '1h': 60, '24h': 1440, '7d': 10080 }[currentWindow] || 5;
+
+  // Throughput
+  const perMin = total > 0 ? Math.round(total / windowMinutes) : 0;
+  document.getElementById('metricThroughput').textContent = perMin + '/min';
+
+  // Error rate
+  const errCount = (counts['handler.failed'] || 0) + (counts['outbox.failed'] || 0) + (counts['message.dlq'] || 0);
+  const errorRate = total > 0 ? Math.round(errCount / total * 10000) / 100 : 0;
+  const errorEl = document.getElementById('metricErrorRate');
+  errorEl.textContent = errorRate + '%';
+  errorEl.className = 'metric-value ' + (errorRate === 0 ? 'good' : errorRate < 5 ? 'warn' : 'bad');
+
+  // Avg latency (blend base + SSE delta)
+  const baseCompleted = (statsBase.counts || {})['handler.completed'] || 0;
+  const baseLatencySum = (statsBase.avg_latency_ms || 0) * baseCompleted;
+  const totalLatencySum = baseLatencySum + latencyDeltaSum;
+  const totalLatencyCount = baseCompleted + latencyDeltaCount;
+  const avgLatency = totalLatencyCount > 0 ? Math.round(totalLatencySum / totalLatencyCount * 100) / 100 : 0;
+  const latencyEl = document.getElementById('metricLatency');
+  latencyEl.textContent = avgLatency > 0 ? avgLatency + 'ms' : '--';
+
+  // In Flight
+  const inFlight = computeInFlight();
+  const inFlightEl = document.getElementById('metricInFlight');
+  inFlightEl.textContent = inFlight;
+  inFlightEl.className = 'metric-value ' + (inFlight === 0 ? 'good' : inFlight <= 10 ? 'warn' : 'bad');
+
+  // Pipeline counts
+  const published = counts['outbox.published'] || 0;
+  const handling = Math.max(0, (counts['handler.started'] || 0) - (counts['handler.completed'] || 0) - (counts['handler.failed'] || 0));
+  const done = counts['handler.completed'] || 0;
+  const failed = errCount;
+
+  document.getElementById('pipePublished').textContent = published;
+  document.getElementById('pipeHandling').textContent = handling;
+  document.getElementById('pipeDone').textContent = done;
+  document.getElementById('pipeFailed').textContent = failed;
+
+  // Rate labels
+  document.getElementById('ratePublishedPipe').textContent = published > 0 ? '~' + Math.round(published / windowMinutes) + '/min' : '';
+  document.getElementById('rateHandling').textContent = handling > 0 ? '~' + Math.round(handling / windowMinutes) + '/min' : '';
+  document.getElementById('rateDone').textContent = done > 0 ? '~' + Math.round(done / windowMinutes) + '/min' : '';
+  document.getElementById('rateFailed').textContent = failed > 0 ? '~' + Math.round(failed / windowMinutes) + '/min' : '';
+}
+
+function scheduleMetricsRefresh() {
+  if (!metricsRafScheduled) {
+    metricsRafScheduled = true;
+    requestAnimationFrame(() => {
+      metricsRafScheduled = false;
+      refreshMetrics();
+    });
   }
 }
 
@@ -935,6 +1359,7 @@ function setWindow(w) {
 function trackTrace(data) {
   if (!data.message_id) return;
 
+  // Track in tracesByMessageId
   if (!tracesByMessageId.has(data.message_id)) {
     tracesByMessageId.set(data.message_id, []);
   }
@@ -942,6 +1367,32 @@ function trackTrace(data) {
 
   if (ERROR_EVENTS.has(data.event)) {
     errorCount++;
+  }
+
+  // Track in message-centric data
+  if (!messageById.has(data.message_id)) {
+    const entry = {
+      message_id: data.message_id,
+      message_type: data.message_type || 'Unknown',
+      stream: data.stream || '',
+      domain: data.domain || '',
+      first_ts: data.timestamp || new Date().toISOString(),
+      stages: [],
+      payload: null,
+      hasError: false,
+    };
+    messageById.set(data.message_id, entry);
+    messageOrder.unshift(data.message_id);
+  }
+
+  const msg = messageById.get(data.message_id);
+  msg.stages.push(data);
+
+  if (data.payload) {
+    msg.payload = data.payload;
+  }
+  if (ERROR_EVENTS.has(data.event)) {
+    msg.hasError = true;
   }
 
   // Track domains and streams for filters
@@ -984,8 +1435,6 @@ function connectSSE() {
     connected = true;
     sseConnectedAt = Date.now();
     document.getElementById('statusDot').className = 'status-dot connected';
-
-    // Clear dedup set after overlap window (5 seconds)
     setTimeout(() => seenTraceKeys.clear(), 5000);
   };
 
@@ -996,7 +1445,7 @@ function connectSSE() {
 }
 
 function handleTraceEvent(data) {
-  // Dedup: skip events already loaded from history
+  // Dedup
   if (seenTraceKeys.size > 0) {
     const key = data.message_id + ':' + data.event + ':' + (data.handler || '');
     if (seenTraceKeys.has(key)) return;
@@ -1006,17 +1455,87 @@ function handleTraceEvent(data) {
   updateThroughput(data);
   updateErrorBadge();
 
-  // Update lifecycle panel if this message is selected
-  if (data.message_id === selectedMessageId) {
-    renderLifecycle(data.message_id);
+  // Increment SSE counters for real-time metrics
+  statsDelta[data.event] = (statsDelta[data.event] || 0) + 1;
+  if (data.event === 'handler.completed' && data.duration_ms != null) {
+    latencyDeltaSum += parseFloat(data.duration_ms);
+    latencyDeltaCount++;
   }
+  scheduleMetricsRefresh();
 
-  // Add to feed
   if (paused) {
     pauseBuffer.push(data);
-  } else {
-    addFeedItem(data, false);
+    return;
   }
+
+  // Schedule batched DOM updates instead of immediate rendering
+  scheduleUpdate(data.message_id, data);
+}
+
+// --- Batched Rendering ---
+function scheduleUpdate(messageId, eventData) {
+  pendingMessageUpdates.add(messageId);
+  if (eventData) pendingEventItems.push(eventData);
+
+  if (!rafScheduled) {
+    rafScheduled = true;
+    requestAnimationFrame(flushUpdates);
+  }
+}
+
+function flushUpdates() {
+  rafScheduled = false;
+
+  // Flush message row updates
+  for (const msgId of pendingMessageUpdates) {
+    updateMessageRow(msgId, false);
+
+    // Update expanded detail if this message is expanded
+    if (msgId === expandedMessageId) {
+      renderExpandedDetail(msgId);
+    }
+  }
+  pendingMessageUpdates.clear();
+
+  // Flush event feed items
+  for (const data of pendingEventItems) {
+    addEventFeedItem(data, false);
+  }
+  pendingEventItems = [];
+}
+
+// --- Scroll-Aware Updates ---
+function initScrollListener() {
+  const container = document.getElementById('messagesContent');
+  container.addEventListener('scroll', () => {
+    const wasScrolled = userScrolledMessages;
+    userScrolledMessages = container.scrollTop > 60;
+    if (!userScrolledMessages && wasScrolled) {
+      hideNewMessagesBanner();
+    }
+  });
+}
+
+function showNewMessagesBanner() {
+  const banner = document.getElementById('newMessagesBanner');
+  const countEl = document.getElementById('newMsgCount');
+  if (banner && countEl) {
+    countEl.textContent = newMessageCount;
+    banner.style.display = '';
+  }
+}
+
+function hideNewMessagesBanner() {
+  const banner = document.getElementById('newMessagesBanner');
+  if (banner) banner.style.display = 'none';
+  newMessageCount = 0;
+}
+
+function scrollToTopMessages() {
+  const container = document.getElementById('messagesContent');
+  container.scrollTop = 0;
+  userScrolledMessages = false;
+  hideNewMessagesBanner();
 }
 
 // --- Throughput ---
@@ -1053,14 +1572,12 @@ function drawSparkline() {
   const maxVal = Math.max(1, ...throughput.published, ...throughput.processed);
   const barWidth = w / THROUGHPUT_SECONDS;
 
-  // Draw published bars
   ctx.fillStyle = '#457B9D44';
   for (let i = 0; i < THROUGHPUT_SECONDS; i++) {
     const barH = (throughput.published[i] / maxVal) * h;
     ctx.fillRect(i * barWidth, h - barH, barWidth - 0.5, barH);
   }
 
-  // Draw processed line
   ctx.strokeStyle = '#2A9D8F';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -1072,7 +1589,6 @@ function drawSparkline() {
   }
   ctx.stroke();
 
-  // Draw error dots
   ctx.fillStyle = '#E76F51';
   for (let i = 0; i < THROUGHPUT_SECONDS; i++) {
     if (throughput.errors[i] > 0) {
@@ -1085,40 +1601,426 @@ function drawSparkline() {
   }
 }
 
-// --- Live Feed ---
-const EVENT_ICONS = {
-  'outbox.published': '&#8593;',
-  'outbox.failed': '&#10007;',
-  'handler.started': '&#9654;',
-  'handler.completed': '&#10003;',
-  'handler.failed': '&#10007;',
-  'message.acked': '&#10003;',
-  'message.nacked': '&#8635;',
-  'message.dlq': '&#9888;',
-};
-
-const EVENT_STATUS_CLASS = {
-  'outbox.published': 'status-ok',
-  'outbox.failed': 'status-error',
-  'handler.started': 'status-ok',
-  'handler.completed': 'status-ok',
-  'handler.failed': 'status-error',
-  'message.acked': 'status-ok',
-  'message.nacked': 'status-retry',
-  'message.dlq': 'status-error',
-};
-
-function addFeedItem(data, isHistory) {
-  const feed = document.getElementById('feed');
-
-  // Remove empty message
-  const empty = feed.querySelector('.feed-empty');
+// --- Messages Tab ---
+function renderAllMessages() {
+  const container = document.getElementById('messagesContent');
+  const empty = container.querySelector('.feed-empty');
   if (empty) empty.remove();
 
-  // Check if user has scrolled up (only for live events)
-  const isAtBottom = !isHistory && (feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50);
+  // Clear and rebuild — preserve the banner
+  container.innerHTML = '<div class="new-messages-banner" id="newMessagesBanner" onclick="scrollToTopMessages()" style="display:none">&uarr; <span id="newMsgCount">0</span> new messages</div>';
 
-  // Build feed item
+  // Render newest-first
+  for (const msgId of messageOrder) {
+    const row = buildMessageRow(msgId);
+    if (row) container.appendChild(row);
+  }
+
+  // Trim excess rows
+  const rows = container.querySelectorAll('.msg-row');
+  for (let i = MAX_ITEMS; i < rows.length; i++) {
+    rows[i].remove();
+  }
+}
+
+function updateMessageRow(messageId, isHistory) {
+  const container = document.getElementById('messagesContent');
+  const empty = container.querySelector('.feed-empty');
+  if (empty) empty.remove();
+
+  // Determine the first real child (skip the sticky banner)
+  const banner = document.getElementById('newMessagesBanner');
+  const firstChild = banner ? banner.nextElementSibling : container.firstChild;
+
+  // Find existing row
+  const existing = container.querySelector(`[data-msg-id="${messageId}"]`);
+
+  if (existing) {
+    // Update lifecycle bar in place
+    const barEl = existing.querySelector('.lifecycle-bar');
+    if (barEl) {
+      barEl.innerHTML = buildLifecycleBarHTML(messageId);
+    }
+    // Move to top if live AND user hasn't scrolled away
+    if (!isHistory && !userScrolledMessages) {
+      if (firstChild) {
+        container.insertBefore(existing, firstChild);
+      } else {
+        container.appendChild(existing);
+      }
+    } else if (!isHistory && userScrolledMessages) {
+      // User is scrolled — don't reorder, just show banner
+      newMessageCount++;
+      showNewMessagesBanner();
+    }
+  } else {
+    const row = buildMessageRow(messageId);
+    if (row) {
+      if (!isHistory && !userScrolledMessages) {
+        row.classList.add('new');
+        if (firstChild) {
+          container.insertBefore(row, firstChild);
+        } else {
+          container.appendChild(row);
+        }
+        setTimeout(() => row.classList.remove('new'), 300);
+      } else if (!isHistory && userScrolledMessages) {
+        // User is scrolled — insert at top but don't scroll
+        if (firstChild) {
+          container.insertBefore(row, firstChild);
+        } else {
+          container.appendChild(row);
+        }
+        newMessageCount++;
+        showNewMessagesBanner();
+      } else {
+        // History — append
+        container.appendChild(row);
+      }
+    }
+  }
+
+  // Apply filter
+  applyFilters();
+
+  // Trim excess rows (keep banner)
+  const rows = container.querySelectorAll('.msg-row');
+  if (rows.length > MAX_ITEMS) {
+    for (let i = MAX_ITEMS; i < rows.length; i++) {
+      rows[i].remove();
+    }
+  }
+}
+
+function buildMessageRow(messageId) {
+  const msg = messageById.get(messageId);
+  if (!msg) return null;
+
+  const row = document.createElement('div');
+  row.className = 'msg-row';
+  row.setAttribute('data-msg-id', messageId);
+  row.setAttribute('data-stream', msg.stream);
+  row.setAttribute('data-type', msg.message_type);
+  row.setAttribute('data-has-error', msg.hasError ? '1' : '0');
+
+  const ts = msg.first_ts ? new Date(msg.first_ts) : new Date();
+  const timeStr = ts.toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+
+  // Summary line
+  const summary = document.createElement('div');
+  summary.className = 'msg-summary';
+
+  // Duration: find completed stage
+  let durationStr = '';
+  for (const s of msg.stages) {
+    if (s.duration_ms != null) {
+      durationStr = s.duration_ms.toFixed(1) + 'ms';
+      break;
+    }
+  }
+
+  summary.innerHTML = `
+    <span class="msg-time">${timeStr}</span>
+    <div class="msg-info">
+      <span class="msg-type">${escapeHtml(msg.message_type)}</span>
+      <span class="msg-stream">${escapeHtml(msg.stream)}</span>
+      <span class="msg-id">${escapeHtml(messageId)}</span>
+    </div>
+    <span style="font-family:var(--font-code);font-size:12px;color:var(--text-muted)">${durationStr}</span>
+  `;
+
+  row.appendChild(summary);
+
+  // Lifecycle bar
+  const bar = document.createElement('div');
+  bar.className = 'lifecycle-bar';
+  bar.innerHTML = buildLifecycleBarHTML(messageId);
+  row.appendChild(bar);
+
+  // Detail panel (hidden by default)
+  const detail = document.createElement('div');
+  detail.className = 'msg-detail';
+  row.appendChild(detail);
+
+  // Click handler
+  summary.addEventListener('click', () => toggleMessageExpand(messageId, row));
+  bar.addEventListener('click', () => toggleMessageExpand(messageId, row));
+
+  return row;
+}
+
+function buildLifecycleBarHTML(messageId) {
+  const msg = messageById.get(messageId);
+  if (!msg) return '';
+
+  // Sort stages chronologically
+  const sorted = [...msg.stages].sort((a, b) => {
+    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return ta - tb;
+  });
+
+  // Separate published (no handler) from handler stages
+  const publishedStages = sorted.filter(s => !s.handler || s.event === 'outbox.published');
+  const handlerStages = sorted.filter(s => s.handler && s.event !== 'outbox.published');
+
+  // Group handler stages by handler name (preserving order)
+  const handlerGroups = new Map();
+  for (const s of handlerStages) {
+    const h = s.handler;
+    if (!handlerGroups.has(h)) handlerGroups.set(h, []);
+    handlerGroups.get(h).push(s);
+  }
+
+  const isMultiHandler = handlerGroups.size > 1;
+  let html = '';
+
+  // Render published marker(s)
+  for (let i = 0; i < publishedStages.length; i++) {
+    const stage = publishedStages[i];
+    const cls = MARKER_CLASS[stage.event] || 'published';
+    const icon = MARKER_ICON[stage.event] || '?';
+    html += `<div class="lbar-marker ${cls}" title="${escapeHtml(stage.event)}">${icon}</div>`;
+  }
+
+  if (isMultiHandler) {
+    // Multi-handler: compact segments per handler
+    let first = true;
+    for (const [handlerName, stages] of handlerGroups) {
+      html += `<div class="lbar-line ok"></div>`;
+      html += `<div class="lbar-handler-segment">`;
+      // Truncated handler name
+      const shortName = handlerName.length > 18 ? handlerName.substring(0, 16) + '..' : handlerName;
+      html += `<span class="lbar-handler-name" title="${escapeHtml(handlerName)}">${escapeHtml(shortName)}</span>`;
+      for (let i = 0; i < stages.length; i++) {
+        const stage = stages[i];
+        const cls = MARKER_CLASS[stage.event] || 'published';
+        const icon = MARKER_ICON[stage.event] || '?';
+        html += `<div class="lbar-marker ${cls}" title="${escapeHtml(stage.event)}">${icon}</div>`;
+      }
+      // Duration after segment if handler.completed present
+      const completed = stages.find(s => s.event === 'handler.completed' && s.duration_ms != null);
+      if (completed) {
+        html += `<span class="lbar-label">${completed.duration_ms.toFixed(1)}ms</span>`;
+      }
+      // Error indicator
+      const failed = stages.find(s => s.event === 'handler.failed');
+      if (failed && failed.error) {
+        html += `<span class="lbar-label" style="color:var(--accent)">err</span>`;
+      }
+      // In-progress indicator
+      const lastStage = stages[stages.length - 1];
+      if (lastStage.event === 'handler.started') {
+        html += `<span class="lbar-in-progress">...</span>`;
+      }
+      html += `</div>`;
+    }
+  } else {
+    // Single handler (or no handler): flat layout as before
+    for (let i = 0; i < handlerStages.length; i++) {
+      const stage = handlerStages[i];
+      const cls = MARKER_CLASS[stage.event] || 'published';
+      const icon = MARKER_ICON[stage.event] || '?';
+
+      html += `<div class="lbar-line ${ERROR_EVENTS.has(stage.event) ? 'error' : 'ok'}"></div>`;
+      html += `<div class="lbar-marker ${cls}" title="${escapeHtml(stage.event)}">${icon}</div>`;
+
+      if (stage.event === 'handler.completed' && stage.duration_ms != null) {
+        html += `<span class="lbar-label">${stage.duration_ms.toFixed(1)}ms</span>`;
+      }
+      if (stage.event === 'handler.failed' && stage.error) {
+        html += `<span class="lbar-label" style="color:var(--accent)">${escapeHtml(stage.error.substring(0, 40))}</span>`;
+      }
+    }
+
+    // In-progress indicator for single handler
+    if (handlerStages.length > 0) {
+      const last = handlerStages[handlerStages.length - 1];
+      if (last.event === 'handler.started') {
+        html += `<div class="lbar-line pending"></div>`;
+        html += `<span class="lbar-in-progress">...</span>`;
+      }
+    }
+  }
+
+  return html;
+}
+
+function toggleMessageExpand(messageId, row) {
+  if (expandedMessageId === messageId) {
+    // Collapse
+    row.classList.remove('expanded');
+    expandedMessageId = null;
+    return;
+  }
+
+  // Collapse previous
+  const prev = document.querySelector('.msg-row.expanded');
+  if (prev) prev.classList.remove('expanded');
+
+  expandedMessageId = messageId;
+  row.classList.add('expanded');
+  renderExpandedDetail(messageId);
+}
+
+function renderExpandedDetail(messageId) {
+  const row = document.querySelector(`[data-msg-id="${messageId}"]`);
+  if (!row) return;
+  const detailEl = row.querySelector('.msg-detail');
+  if (!detailEl) return;
+
+  const msg = messageById.get(messageId);
+  if (!msg) return;
+
+  const sorted = [...msg.stages].sort((a, b) => {
+    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return ta - tb;
+  });
+
+  // Separate published (no handler) from handler stages
+  const publishedStages = sorted.filter(s => !s.handler || s.event === 'outbox.published');
+  const handlerStages = sorted.filter(s => s.handler && s.event !== 'outbox.published');
+
+  // Group handler stages by handler name (preserving chronological order)
+  const handlerGroups = new Map();
+  for (const s of handlerStages) {
+    const h = s.handler;
+    if (!handlerGroups.has(h)) handlerGroups.set(h, []);
+    handlerGroups.get(h).push(s);
+  }
+
+  const isMultiHandler = handlerGroups.size > 1;
+
+  let html = '';
+
+  // Two-column layout: timeline left, payload/meta right
+  html += '<div class="detail-columns">';
+
+  // === LEFT COLUMN: Timeline ===
+  html += '<div class="detail-col-left">';
+  html += '<div class="detail-section">';
+  html += '<div class="detail-section-title">Timeline</div>';
+  html += '<div class="detail-timeline">';
+
+  if (isMultiHandler) {
+    // Multi-handler: one section per handler
+    for (const [handlerName, stages] of handlerGroups) {
+      html += '<div class="dtl-handler-group">';
+      html += `<div class="dtl-handler-label">${escapeHtml(handlerName)}</div>`;
+      html += '<div class="dtl-handler-stages">';
+
+      for (let i = 0; i < stages.length; i++) {
+        const stage = stages[i];
+        const cls = MARKER_CLASS[stage.event] || 'published';
+        const icon = MARKER_ICON[stage.event] || '?';
+        const ts = stage.timestamp ? new Date(stage.timestamp) : new Date();
+        const timeStr = ts.toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+
+        if (i > 0) {
+          const lineClass = ERROR_EVENTS.has(stage.event) ? 'error' : 'ok';
+          if (stage.duration_ms != null) {
+            html += `<span class="dtl-duration">${stage.duration_ms.toFixed(1)}ms</span>`;
+          }
+          html += `<div class="dtl-line ${lineClass}"></div>`;
+        }
+
+        html += `<div class="dtl-stage">`;
+        html += `<div class="dtl-marker ${cls}">${icon}</div>`;
+        html += `<div class="dtl-event-name">${escapeHtml(stage.event.split('.')[1] || stage.event)}</div>`;
+        html += `<div class="dtl-time">${timeStr}</div>`;
+        html += `</div>`;
+      }
+
+      html += '</div></div>';
+    }
+  } else {
+    // Single handler or no handler: flat layout
+    if (handlerStages.length > 0) {
+      const handlerName = handlerStages[0].handler;
+      html += '<div class="dtl-handler-group">';
+      if (handlerName) {
+        html += `<div class="dtl-handler-label">${escapeHtml(handlerName)}</div>`;
+      }
+      html += '<div class="dtl-handler-stages">';
+
+      for (let i = 0; i < handlerStages.length; i++) {
+        const stage = handlerStages[i];
+        const cls = MARKER_CLASS[stage.event] || 'published';
+        const icon = MARKER_ICON[stage.event] || '?';
+        const ts = stage.timestamp ? new Date(stage.timestamp) : new Date();
+        const timeStr = ts.toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+
+        if (i > 0) {
+          const lineClass = ERROR_EVENTS.has(stage.event) ? 'error' : 'ok';
+          if (stage.duration_ms != null) {
+            html += `<span class="dtl-duration">${stage.duration_ms.toFixed(1)}ms</span>`;
+          }
+          html += `<div class="dtl-line ${lineClass}"></div>`;
+        }
+
+        html += `<div class="dtl-stage">`;
+        html += `<div class="dtl-marker ${cls}">${icon}</div>`;
+        html += `<div class="dtl-event-name">${escapeHtml(stage.event.split('.')[1] || stage.event)}</div>`;
+        html += `<div class="dtl-time">${timeStr}</div>`;
+        html += `</div>`;
+      }
+
+      html += '</div></div>';
+    }
+  }
+
+  html += '</div></div>';
+
+  // Error (if any) — shown below timeline in left column
+  const errorStages = sorted.filter(s => s.error);
+  if (errorStages.length > 0) {
+    html += '<div class="detail-section">';
+    html += '<div class="detail-section-title">Error</div>';
+    for (const es of errorStages) {
+      html += '<div class="error-detail-box">';
+      if (es.handler) html += '<strong>' + escapeHtml(es.handler) + '</strong>: ';
+      html += escapeHtml(es.error);
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '</div>'; // end detail-col-left
+
+  // === RIGHT COLUMN: Message ID + Payload ===
+  html += '<div class="detail-col-right">';
+
+  // Message ID
+  html += '<div class="detail-section">';
+  html += '<div class="detail-section-title">Message ID <button class="copy-btn" onclick="copyText(\'' + escapeHtml(messageId) + '\', this)">Copy</button></div>';
+  html += '<div style="font-family:var(--font-code);font-size:11px;color:var(--text-muted);word-break:break-all">' + escapeHtml(messageId) + '</div>';
+  html += '</div>';
+
+  // Payload
+  html += '<div class="detail-section">';
+  const payloadJson = msg.payload ? JSON.stringify(msg.payload, null, 2) : null;
+  if (payloadJson) {
+    html += '<div class="detail-section-title">Payload <button class="copy-btn" onclick="copyPayload(\'' + escapeHtml(messageId) + '\', this)">Copy</button></div>';
+    html += '<div class="payload-container"><div class="payload-block">' + escapeHtml(payloadJson) + '</div></div>';
+  } else {
+    html += '<div class="detail-section-title">Payload</div>';
+    html += '<div class="payload-empty">Payload not captured for this message</div>';
+  }
+  html += '</div>';
+
+  html += '</div>'; // end detail-col-right
+  html += '</div>'; // end detail-columns
+
+  detailEl.innerHTML = html;
+}
+
+// --- Events Tab ---
+function addEventFeedItem(data, isHistory) {
+  const container = document.getElementById('eventsContent');
+  const empty = container.querySelector('.feed-empty');
+  if (empty) empty.remove();
+
   const item = document.createElement('div');
   const statusClass = EVENT_STATUS_CLASS[data.event] || '';
   item.className = `feed-item ${statusClass}` + (isHistory ? '' : ' new');
@@ -1155,118 +2057,51 @@ function addFeedItem(data, isHistory) {
     <span class="duration">${rightCol}</span>
   `;
 
-  // Click to show lifecycle
+  // Click to expand in messages tab
   item.addEventListener('click', () => {
-    selectFeedItem(item, data.message_id);
+    setViewTab('messages');
+    // Find and expand the message
+    const msgRow = document.querySelector(`[data-msg-id="${data.message_id}"]`);
+    if (msgRow) {
+      toggleMessageExpand(data.message_id, msgRow);
+      msgRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   });
 
-  // Apply current filters
-  if (!matchesFilters(data)) {
-    item.style.display = 'none';
-  }
-
-  // Insert before divider (if exists) for history, or at top for live
   const divider = document.getElementById('historyDivider');
   if (isHistory && divider) {
-    feed.insertBefore(item, divider.nextSibling);
-  } else {
-    feed.insertBefore(item, feed.firstChild);
-  }
-
-  // Trim old items (skip divider)
-  const allItems = feed.querySelectorAll('.feed-item');
-  if (allItems.length > MAX_FEED_ITEMS) {
-    feed.removeChild(allItems[allItems.length - 1]);
-  }
-
-  // Auto-scroll or show badge (live events only)
-  if (!isHistory) {
-    if (isAtBottom) {
-      feed.scrollTop = 0;
+    // Insert after divider for history items
+    if (divider.nextSibling) {
+      container.insertBefore(item, divider.nextSibling);
     } else {
-      document.getElementById('newEventsBadge').style.display = 'block';
+      container.appendChild(item);
     }
+  } else {
+    container.insertBefore(item, container.firstChild);
+  }
 
-    // Remove animation class after it plays
+  // Trim
+  const allItems = container.querySelectorAll('.feed-item');
+  if (allItems.length > MAX_ITEMS) {
+    container.removeChild(allItems[allItems.length - 1]);
+  }
+
+  if (!isHistory) {
     setTimeout(() => item.classList.remove('new'), 300);
   }
 }
 
-function selectFeedItem(item, messageId) {
-  // Deselect previous
-  document.querySelectorAll('.feed-item.selected').forEach(el => el.classList.remove('selected'));
-
-  if (selectedMessageId === messageId) {
-    // Toggle off
-    selectedMessageId = null;
-    renderLifecycle(null);
-    return;
-  }
-
-  item.classList.add('selected');
-  selectedMessageId = messageId;
-  renderLifecycle(messageId);
-}
-
-// --- Lifecycle Panel ---
-function renderLifecycle(messageId) {
-  const panel = document.getElementById('lifecyclePanel');
-
-  if (!messageId || !tracesByMessageId.has(messageId)) {
-    panel.innerHTML = '<div class="lc-empty">Click an event to view message lifecycle</div>';
-    return;
-  }
-
-  const events = tracesByMessageId.get(messageId);
-  // Sort chronologically
-  const sorted = [...events].sort((a, b) => {
-    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-    return ta - tb;
-  });
-
-  const messageType = sorted[0]?.message_type || 'Unknown';
-
-  let html = `
-    <div class="lc-header">${escapeHtml(messageType)}</div>
-    <div class="lc-message-id">${escapeHtml(messageId)}</div>
-    <div class="lifecycle-timeline">
-  `;
-
-  for (const evt of sorted) {
-    const ts = evt.timestamp ? new Date(evt.timestamp) : new Date();
-    const timeStr = ts.toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
-
-    let statusClass = 'ok';
-    if (evt.event === 'handler.started') statusClass = 'started';
-    else if (ERROR_EVENTS.has(evt.event)) statusClass = 'error';
-    else if (evt.event === 'message.nacked') statusClass = 'retry';
-
-    let detail = '';
-    if (evt.handler) detail = evt.handler;
-    if (evt.duration_ms != null) detail += (detail ? ' ' : '') + '(' + evt.duration_ms.toFixed(1) + 'ms)';
-
-    html += `
-      <div class="lc-event ${statusClass}">
-        <div class="lc-dot"></div>
-        <div class="lc-time">${timeStr}</div>
-        <div class="lc-name">${escapeHtml(evt.event)}</div>
-        ${detail ? '<div class="lc-detail">' + escapeHtml(detail) + '</div>' : ''}
-        ${evt.error ? '<div class="lc-error">' + escapeHtml(evt.error) + '</div>' : ''}
-      </div>
-    `;
-  }
-
-  html += '</div>';
-  panel.innerHTML = html;
-}
-
-// --- Feed Tabs ---
-function setFeedTab(tab) {
-  feedTab = tab;
-  document.getElementById('tabAll').classList.toggle('active', tab === 'all');
+// --- View Tabs ---
+function setViewTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabMessages').classList.toggle('active', tab === 'messages');
+  document.getElementById('tabEvents').classList.toggle('active', tab === 'events');
   document.getElementById('tabErrors').classList.toggle('active', tab === 'errors');
-  applyFeedFilters();
+
+  document.getElementById('messagesContent').style.display = (tab === 'messages' || tab === 'errors') ? '' : 'none';
+  document.getElementById('eventsContent').style.display = tab === 'events' ? '' : 'none';
+
+  applyFilters();
 }
 
 function updateErrorBadge() {
@@ -1280,39 +2115,85 @@ function updateErrorBadge() {
 }
 
 // --- Filters ---
-function matchesFilters(data) {
+function matchesMessageFilters(msg) {
   const streamFilter = document.getElementById('filterStream').value;
-  const eventFilter = document.getElementById('filterEvent').value;
   const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
 
-  // Tab filter
-  if (feedTab === 'errors' && !ERROR_EVENTS.has(data.event)) return false;
-
-  if (streamFilter && data.stream !== streamFilter) return false;
-  if (eventFilter && data.event !== eventFilter) return false;
+  if (currentTab === 'errors' && !msg.hasError) return false;
+  if (streamFilter && msg.stream !== streamFilter) return false;
   if (searchFilter) {
-    const searchable = (data.message_type || '') + ' ' + (data.handler || '') + ' ' + (data.stream || '');
+    const searchable = (msg.message_type || '') + ' ' + (msg.stream || '') + ' ' + (msg.message_id || '') + ' ' +
+      msg.stages.map(s => s.handler || '').join(' ');
     if (!searchable.toLowerCase().includes(searchFilter)) return false;
   }
   return true;
 }
 
-function applyFeedFilters() {
-  const feed = document.getElementById('feed');
-  const items = feed.querySelectorAll('.feed-item');
-  items.forEach(item => {
+function applyFilters() {
+  // Messages tab
+  const msgContainer = document.getElementById('messagesContent');
+  msgContainer.querySelectorAll('.msg-row').forEach(row => {
+    const msgId = row.getAttribute('data-msg-id');
+    const msg = messageById.get(msgId);
+    if (msg) {
+      row.style.display = matchesMessageFilters(msg) ? '' : 'none';
+    }
+  });
+
+  // Events tab
+  const evtContainer = document.getElementById('eventsContent');
+  const streamFilter = document.getElementById('filterStream').value;
+  const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+  evtContainer.querySelectorAll('.feed-item').forEach(item => {
     const data = {
       stream: item.getAttribute('data-stream'),
       event: item.getAttribute('data-event'),
       message_type: item.getAttribute('data-type'),
-      handler: '',
+      message_id: item.getAttribute('data-message-id'),
     };
-    item.style.display = matchesFilters(data) ? '' : 'none';
+    let show = true;
+    if (streamFilter && data.stream !== streamFilter) show = false;
+    if (searchFilter) {
+      const searchable = (data.message_type || '') + ' ' + (data.stream || '') + ' ' + (data.message_id || '');
+      if (!searchable.toLowerCase().includes(searchFilter)) show = false;
+    }
+    item.style.display = show ? '' : 'none';
   });
 }
 
-function scrollToBottom() {
-  document.getElementById('feed').scrollTop = 0;
+// --- Search by message_id ---
+async function searchMessageById(query) {
+  if (query.length < 8) return; // Too short for a UUID fragment
+
+  // Check if it looks like a UUID pattern
+  if (!/^[0-9a-f-]{8,}$/i.test(query)) return;
+
+  // First check in-memory
+  if (messageById.has(query)) return;
+
+  // Fetch from server
+  try {
+    const res = await fetch('/api/traces?message_id=' + encodeURIComponent(query));
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.traces || data.traces.length === 0) return;
+
+    // Process traces
+    const reversed = [...data.traces].reverse();
+    for (const trace of reversed) {
+      trackTrace(trace);
+    }
+    updateMessageRow(query, true);
+  } catch (e) {
+    console.error('Search failed:', e);
+  }
+}
+
+function scrollToTop() {
+  const container = currentTab === 'events'
+    ? document.getElementById('eventsContent')
+    : document.getElementById('messagesContent');
+  container.scrollTop = 0;
   document.getElementById('newEventsBadge').style.display = 'none';
 }
 
@@ -1352,8 +2233,10 @@ function togglePause() {
   } else {
     btn.textContent = '\u23f8 Pause';
     btn.classList.remove('active');
-    // Flush buffer
-    pauseBuffer.forEach(data => addFeedItem(data, false));
+    // Batch resume: schedule all buffered updates
+    for (const data of pauseBuffer) {
+      scheduleUpdate(data.message_id, data);
+    }
     pauseBuffer = [];
   }
 }
@@ -1370,28 +2253,52 @@ async function resetDashboard() {
 
   // Clear client-side state
   tracesByMessageId.clear();
+  messageById.clear();
+  messageOrder.length = 0;
   errorCount = 0;
-  selectedMessageId = null;
+  expandedMessageId = null;
   seenTraceKeys.clear();
+  pendingMessageUpdates.clear();
+  pendingEventItems = [];
+  userScrolledMessages = false;
+  newMessageCount = 0;
+  statsBase = null;
+  statsDelta = {};
+  latencyDeltaSum = 0;
+  latencyDeltaCount = 0;
 
-  // Reset throughput buckets
   throughput.published.fill(0);
   throughput.processed.fill(0);
   throughput.errors.fill(0);
   currentSecond = { published: 0, processed: 0, errors: 0 };
 
-  // Reset feed
-  const feed = document.getElementById('feed');
-  feed.innerHTML = '<div class="feed-empty">History cleared. Waiting for new events...</div>';
+  document.getElementById('messagesContent').innerHTML = '<div class="new-messages-banner" id="newMessagesBanner" onclick="scrollToTopMessages()" style="display:none">&uarr; <span id="newMsgCount">0</span> new messages</div><div class="feed-empty">History cleared. Waiting for new events...</div>';
+  document.getElementById('eventsContent').innerHTML = '<div class="feed-empty">History cleared. Waiting for new events...</div>';
 
-  // Reset lifecycle panel
-  renderLifecycle(null);
-
-  // Refresh stats and UI
   updateErrorBadge();
   drawSparkline();
   await loadStats();
   await pollInfrastructure();
+}
+
+// --- Copy helpers ---
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '\u2713 Copied';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+}
+
+function copyPayload(messageId, btn) {
+  const msg = messageById.get(messageId);
+  if (msg && msg.payload) {
+    const text = JSON.stringify(msg.payload, null, 2);
+    copyText(text, btn);
+  }
 }
 
 // --- Infrastructure polling ---
@@ -1425,17 +2332,6 @@ async function pollInfrastructure() {
       </div>
     `;
 
-    // Also fetch outbox status for pending metric
-    const outboxRes = await fetch('/api/outbox');
-    const outboxData = await outboxRes.json();
-    let totalPending = 0;
-    for (const domain of Object.values(outboxData)) {
-      const counts = domain.counts || {};
-      totalPending += counts.PENDING || counts.pending || 0;
-    }
-    document.getElementById('pipeOutbox').textContent = totalPending;
-    document.getElementById('metricPending').textContent = totalPending;
-
   } catch (e) {
     console.error('Infrastructure poll failed:', e);
   }
@@ -1460,16 +2356,26 @@ function formatUptime(seconds) {
 
 // --- Filter change handlers ---
 document.getElementById('filterDomain').addEventListener('change', () => {
-  // Reconnect SSE with new domain filter
   if (eventSource) eventSource.close();
   connectSSE();
 });
 
-document.getElementById('filterStream').addEventListener('change', applyFeedFilters);
-document.getElementById('filterEvent').addEventListener('change', applyFeedFilters);
+document.getElementById('filterStream').addEventListener('change', applyFilters);
+
+// Search with debounced server lookup for message IDs
+let searchTimeout = null;
+document.getElementById('filterSearch').addEventListener('input', () => {
+  applyFilters();
+  clearTimeout(searchTimeout);
+  const q = document.getElementById('filterSearch').value.trim();
+  if (q.length >= 8) {
+    searchTimeout = setTimeout(() => searchMessageById(q), 500);
+  }
+});
 
 // --- Init ---
 async function init() {
+  initScrollListener();
   await loadHistory();
   await loadStats();
   connectSSE();

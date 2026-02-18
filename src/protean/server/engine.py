@@ -132,10 +132,12 @@ class Engine:
         # Initialize trace emitter for real-time message tracing
         try:
             observatory_config = domain.config.get("observatory", {})
-            trace_history_size = int(observatory_config.get("trace_history_size", 1000))
+            trace_retention_days = int(
+                observatory_config.get("trace_retention_days", 7)
+            )
         except (AttributeError, TypeError, ValueError):
-            trace_history_size = 1000
-        self.emitter = TraceEmitter(domain, trace_history_size=trace_history_size)
+            trace_retention_days = 7
+        self.emitter = TraceEmitter(domain, trace_retention_days=trace_retention_days)
 
         # Create a new event loop instead of getting the current one
         # This avoids fragility when the caller already has a running loop
@@ -420,13 +422,14 @@ class Engine:
                 else:
                     handler_name = handler_cls.__name__
 
-                # Emit handler.started trace
+                # Emit handler.started trace (includes payload for lifecycle view)
                 self.emitter.emit(
                     event="handler.started",
                     stream=stream,
                     message_id=message_id,
                     message_type=message_type,
                     handler=handler_name,
+                    payload=message.data,
                 )
 
                 start_time = time.monotonic()

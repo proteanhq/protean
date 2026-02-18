@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
 from protean.server.tracing import (
-    DEFAULT_TRACE_HISTORY_SIZE,
+    DEFAULT_TRACE_RETENTION_DAYS,
     TRACE_CHANNEL,
     TRACE_STREAM,
     MessageTrace,
@@ -81,9 +81,10 @@ def _make_trace(
     handler: str = "TestHandler",
     duration_ms: float | None = 10.0,
     error: str | None = None,
+    payload: dict | None = None,
 ) -> dict:
     """Build a trace dict matching MessageTrace structure."""
-    return {
+    trace = {
         "event": event,
         "domain": domain,
         "stream": stream,
@@ -94,8 +95,10 @@ def _make_trace(
         "duration_ms": duration_ms,
         "error": error,
         "metadata": {},
+        "payload": payload,
         "timestamp": "2026-01-15T10:00:00+00:00",
     }
+    return trace
 
 
 # ===== MessageTrace dataclass tests =====
@@ -138,19 +141,19 @@ class TestMessageTrace:
 @pytest.mark.redis
 class TestTraceEmitterPersistence:
     def test_emitter_defaults_to_persistence_enabled(self, test_domain):
-        """TraceEmitter enables persistence by default with DEFAULT_TRACE_HISTORY_SIZE."""
+        """TraceEmitter enables persistence by default with 7-day retention."""
         emitter = TraceEmitter(test_domain)
         assert emitter._persist is True
-        assert emitter._max_len == DEFAULT_TRACE_HISTORY_SIZE
+        assert emitter._retention_ms == DEFAULT_TRACE_RETENTION_DAYS * 86_400_000
 
     def test_emitter_persistence_disabled_when_zero(self, test_domain):
-        """TraceEmitter disables persistence when trace_history_size=0."""
-        emitter = TraceEmitter(test_domain, trace_history_size=0)
+        """TraceEmitter disables persistence when trace_retention_days=0."""
+        emitter = TraceEmitter(test_domain, trace_retention_days=0)
         assert emitter._persist is False
 
     def test_emit_writes_to_stream(self, test_domain, redis_conn):
         """emit() writes to the trace Redis Stream when persistence is enabled."""
-        emitter = TraceEmitter(test_domain, trace_history_size=100)
+        emitter = TraceEmitter(test_domain, trace_retention_days=1)
         emitter.emit(
             event="handler.completed",
             stream="test::entity",
@@ -175,14 +178,12 @@ class TestTraceEmitterPersistence:
         assert trace["handler"] == "TestHandler"
         assert trace["duration_ms"] == 15.0
 
-    def test_emit_respects_maxlen(self, test_domain, redis_conn):
-        """emit() caps the stream at approximately trace_history_size."""
-        # Use a larger maxlen to make approximate trimming more effective.
-        # Redis approximate trimming (MAXLEN ~) is imprecise for very small values.
-        emitter = TraceEmitter(test_domain, trace_history_size=50)
+    def test_emit_uses_minid_trimming(self, test_domain, redis_conn):
+        """emit() uses MINID-based time trimming instead of MAXLEN."""
+        emitter = TraceEmitter(test_domain, trace_retention_days=7)
 
-        # Write significantly more events than the cap
-        for i in range(120):
+        # Write several events
+        for i in range(10):
             emitter.emit(
                 event="handler.completed",
                 stream="test::entity",
@@ -190,16 +191,15 @@ class TestTraceEmitterPersistence:
                 message_type="TestEvent",
             )
 
-        # Stream should be roughly capped (approximate trimming allows some slack)
+        # All recent entries should be retained (they're all within the 7-day window)
         stream_len = redis_conn.xlen(TRACE_STREAM)
-        assert stream_len <= 80  # ~50 with approximate trimming
-        assert stream_len >= 30  # But not aggressively trimmed below target
+        assert stream_len == 10
 
     def test_emit_does_not_write_when_persistence_disabled(
         self, test_domain, redis_conn
     ):
         """emit() skips stream write when persistence is disabled and no subscribers."""
-        emitter = TraceEmitter(test_domain, trace_history_size=0)
+        emitter = TraceEmitter(test_domain, trace_retention_days=0)
         emitter.emit(
             event="handler.completed",
             stream="test::entity",
@@ -221,7 +221,7 @@ class TestTraceEmitterPersistence:
         pubsub.get_message(timeout=1)
 
         try:
-            emitter = TraceEmitter(test_domain, trace_history_size=100)
+            emitter = TraceEmitter(test_domain, trace_retention_days=1)
             # Force refresh of subscriber check
             emitter._last_subscriber_check = 0.0
 
@@ -241,6 +241,50 @@ class TestTraceEmitterPersistence:
         finally:
             pubsub.unsubscribe(TRACE_CHANNEL)
             pubsub.close()
+
+    def test_emit_writes_payload_to_stream(self, test_domain, redis_conn):
+        """emit() includes payload in the persisted trace when provided."""
+        emitter = TraceEmitter(test_domain, trace_retention_days=1)
+        test_payload = {"order_id": "abc-123", "items": [{"sku": "X1", "qty": 2}]}
+
+        emitter.emit(
+            event="outbox.published",
+            stream="test::order",
+            message_id="msg-payload",
+            message_type="OrderPlaced",
+            payload=test_payload,
+        )
+
+        entries = redis_conn.xrange(TRACE_STREAM)
+        assert len(entries) >= 1
+
+        _, fields = entries[-1]
+        data_raw = fields.get(b"data") or fields.get("data")
+        if isinstance(data_raw, bytes):
+            data_raw = data_raw.decode("utf-8")
+        trace = json.loads(data_raw)
+        assert trace["payload"] == test_payload
+
+    def test_emit_writes_null_payload_when_not_provided(self, test_domain, redis_conn):
+        """emit() writes null payload when no payload is provided."""
+        emitter = TraceEmitter(test_domain, trace_retention_days=1)
+
+        emitter.emit(
+            event="handler.completed",
+            stream="test::entity",
+            message_id="msg-no-payload",
+            message_type="TestEvent",
+        )
+
+        entries = redis_conn.xrange(TRACE_STREAM)
+        assert len(entries) >= 1
+
+        _, fields = entries[-1]
+        data_raw = fields.get(b"data") or fields.get("data")
+        if isinstance(data_raw, bytes):
+            data_raw = data_raw.decode("utf-8")
+        trace = json.loads(data_raw)
+        assert trace["payload"] is None
 
 
 # ===== /api/traces endpoint tests =====
@@ -438,11 +482,135 @@ class TestTracesStatsEndpoint:
         assert "Invalid window" in response.json()["error"]
 
     def test_stats_supports_all_windows(self, client, redis_conn):
-        """All valid windows (5m, 15m, 1h) return 200."""
-        for window in ["5m", "15m", "1h"]:
+        """All valid windows (5m, 15m, 1h, 24h, 7d) return 200."""
+        for window in ["5m", "15m", "1h", "24h", "7d"]:
             response = client.get(f"/api/traces/stats?window={window}")
             assert response.status_code == 200
             assert response.json()["window"] == window
+
+
+# ===== MessageTrace payload serialization tests =====
+
+
+class TestMessageTracePayload:
+    def test_payload_included_when_set(self):
+        """MessageTrace serialization includes payload field when provided."""
+        trace = MessageTrace(
+            event="outbox.published",
+            domain="test",
+            stream="test::order",
+            message_id="msg-001",
+            message_type="OrderPlaced",
+            status="ok",
+            payload={"order_id": "abc-123", "total": 99.99},
+        )
+        data = json.loads(trace.to_json())
+        assert data["payload"] == {"order_id": "abc-123", "total": 99.99}
+
+    def test_payload_none_when_not_set(self):
+        """MessageTrace serialization has null payload when not provided."""
+        trace = MessageTrace(
+            event="handler.completed",
+            domain="test",
+            stream="test::entity",
+            message_id="msg-001",
+            message_type="TestEvent",
+            status="ok",
+        )
+        data = json.loads(trace.to_json())
+        assert data["payload"] is None
+
+
+# ===== /api/traces message_id filter tests =====
+
+
+@pytest.mark.redis
+class TestTracesMessageIdFilter:
+    def test_filter_by_message_id_returns_matching_traces(self, client, redis_conn):
+        """GET /api/traces?message_id=xxx returns only traces for that message."""
+        traces = [
+            _make_trace(
+                event="outbox.published", message_id="target-msg", stream="test::order"
+            ),
+            _make_trace(
+                event="handler.completed", message_id="other-msg", stream="test::order"
+            ),
+            _make_trace(
+                event="handler.started", message_id="target-msg", stream="test::order"
+            ),
+            _make_trace(
+                event="handler.completed",
+                message_id="target-msg",
+                stream="test::order",
+                duration_ms=22.0,
+            ),
+        ]
+        _seed_traces(redis_conn, traces)
+
+        response = client.get("/api/traces?message_id=target-msg")
+        data = response.json()
+        assert data["count"] == 3
+        for t in data["traces"]:
+            assert t["message_id"] == "target-msg"
+
+    def test_filter_by_message_id_no_match_returns_empty(self, client, redis_conn):
+        """GET /api/traces?message_id=xxx returns empty when no match found."""
+        _seed_traces(redis_conn, [_make_trace(message_id="existing-msg")])
+
+        response = client.get("/api/traces?message_id=nonexistent-msg")
+        data = response.json()
+        assert data["count"] == 0
+        assert data["traces"] == []
+
+    def test_filter_by_message_id_returns_all_lifecycle_events(
+        self, client, redis_conn
+    ):
+        """message_id filter returns all lifecycle events without count limit."""
+        # Seed more lifecycle events than the default count limit
+        traces = [
+            _make_trace(event="outbox.published", message_id="lifecycle-msg"),
+            _make_trace(event="handler.started", message_id="lifecycle-msg"),
+            _make_trace(event="handler.completed", message_id="lifecycle-msg"),
+            _make_trace(event="message.acked", message_id="lifecycle-msg"),
+        ]
+        _seed_traces(redis_conn, traces)
+
+        response = client.get("/api/traces?message_id=lifecycle-msg")
+        data = response.json()
+        assert data["count"] == 4
+
+
+# ===== /api/traces payload in response tests =====
+
+
+@pytest.mark.redis
+class TestTracesPayloadInResponse:
+    def test_traces_response_includes_payload(self, client, redis_conn):
+        """GET /api/traces returns payload data when present in traces."""
+        payload_data = {"user_id": "u-123", "email": "test@example.com"}
+        traces = [
+            _make_trace(
+                event="outbox.published",
+                message_id="msg-with-payload",
+                payload=payload_data,
+            ),
+        ]
+        _seed_traces(redis_conn, traces)
+
+        response = client.get("/api/traces")
+        data = response.json()
+        assert data["count"] == 1
+        assert data["traces"][0]["payload"] == payload_data
+
+    def test_traces_response_handles_null_payload(self, client, redis_conn):
+        """GET /api/traces returns null payload when not captured."""
+        traces = [_make_trace(event="handler.completed", message_id="msg-no-payload")]
+        _seed_traces(redis_conn, traces)
+
+        response = client.get("/api/traces")
+        data = response.json()
+        assert data["count"] == 1
+        assert data["traces"][0]["payload"] is None
 
 
 # ===== Error path tests (no Redis needed) =====

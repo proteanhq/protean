@@ -276,6 +276,7 @@ class OutboxProcessor(BaseSubscription):
                         stream=stream_category,
                         message_id=message.message_id,
                         message_type=message_type,
+                        payload=message.data,
                     )
                 else:
                     self._mark_message_failed(message, publish_error)

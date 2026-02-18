@@ -1,8 +1,9 @@
 """Tracing instrumentation for the Protean Engine.
 
 Emits structured MessageTrace events to Redis Pub/Sub and persists them to a
-capped Redis Stream. The Observatory server subscribes to the Pub/Sub channel
-for real-time SSE streaming, and reads the Stream for historical dashboard data.
+time-bounded Redis Stream. The Observatory server subscribes to the Pub/Sub
+channel for real-time SSE streaming, and reads the Stream for historical
+dashboard data.
 
 Zero overhead when nobody is listening and persistence is disabled — the emitter
 checks subscriber count and short-circuits before any serialization.
@@ -23,8 +24,8 @@ TRACE_CHANNEL = "protean:trace"
 # Redis Stream for persisted trace history
 TRACE_STREAM = "protean:traces"
 
-# Default number of trace entries to retain in the stream
-DEFAULT_TRACE_HISTORY_SIZE = 1000
+# Default number of days to retain trace entries in the stream
+DEFAULT_TRACE_RETENTION_DAYS = 7
 
 # How often (seconds) to check if anyone is subscribed
 _SUBSCRIBER_CHECK_TTL = 2.0
@@ -44,6 +45,7 @@ class MessageTrace:
     duration_ms: Optional[float] = None  # Processing time (handler stages)
     error: Optional[str] = None  # Error message for failures
     metadata: Optional[dict] = field(default_factory=dict)  # Extra context
+    payload: Optional[dict] = None  # Message payload (event/command data)
     timestamp: str = ""  # ISO 8601, filled automatically
 
     def __post_init__(self) -> None:
@@ -63,14 +65,15 @@ class TraceEmitter:
     Two output channels:
     - **Pub/Sub** (`protean:trace`): Real-time fan-out for SSE clients.
       Conditional — checks PUBSUB NUMSUB and skips when nobody is listening.
-    - **Stream** (`protean:traces`): Capped history for dashboard persistence.
-      Always writes when persistence is enabled (trace_history_size > 0).
+    - **Stream** (`protean:traces`): Time-bounded history for dashboard persistence.
+      Always writes when persistence is enabled (trace_retention_days > 0).
+      Uses MINID trimming to retain entries for the configured number of days.
 
     Short-circuits all work when both channels are inactive.
     """
 
     def __init__(
-        self, domain: Any, trace_history_size: int = DEFAULT_TRACE_HISTORY_SIZE
+        self, domain: Any, trace_retention_days: int = DEFAULT_TRACE_RETENTION_DAYS
     ) -> None:
         self._domain = domain
         self._domain_name = domain.name
@@ -80,8 +83,8 @@ class TraceEmitter:
         self._initialized = False
 
         # Stream persistence settings
-        self._persist = trace_history_size > 0
-        self._max_len = trace_history_size
+        self._persist = trace_retention_days > 0
+        self._retention_ms = trace_retention_days * 86_400_000
 
     def _ensure_initialized(self) -> bool:
         """Lazily initialize Redis connection from the domain's broker."""
@@ -133,6 +136,7 @@ class TraceEmitter:
         duration_ms: Optional[float] = None,
         error: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
+        payload: Optional[dict[str, Any]] = None,
     ) -> None:
         """Emit a trace event. No-op when nobody is listening and persistence is off."""
         has_subscribers = self._check_subscribers()
@@ -158,15 +162,17 @@ class TraceEmitter:
                 duration_ms=duration_ms,
                 error=error,
                 metadata=metadata or {},
+                payload=payload,
             )
             json_str = trace.to_json()
 
-            # Persist to capped Redis Stream for dashboard history
+            # Persist to time-bounded Redis Stream for dashboard history
             if self._persist:
+                min_id = str(int(time.time() * 1000) - self._retention_ms)
                 self._redis.xadd(
                     TRACE_STREAM,
                     {"data": json_str},
-                    maxlen=self._max_len,
+                    minid=min_id,
                     approximate=True,
                 )
 
