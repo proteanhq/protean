@@ -22,13 +22,25 @@ graph LR
     SS -- "message.*" --> TE
     HM -- "handler.*" --> TE
 
-    TE -- "Redis Pub/Sub" --> OB[Observatory]
+    TE -- "Redis Pub/Sub<br/>protean:trace" --> SSE[SSE Stream<br/>:9000/stream]
+    TE -- "Redis Stream<br/>protean:traces" --> API[REST API<br/>:9000/api/traces]
 
-    OB --> DASH[Dashboard<br/>:9000/]
-    OB --> SSE[SSE Stream<br/>:9000/stream]
-    OB --> API[REST API<br/>:9000/api/]
-    OB --> PROM[Prometheus<br/>:9000/metrics]
+    subgraph "Observatory :9000"
+        DASH[Dashboard<br/>GET /]
+        SSE
+        API
+        PROM[Prometheus<br/>GET /metrics]
+    end
 ```
+
+The TraceEmitter writes to two Redis channels:
+
+- **Pub/Sub** (`protean:trace`) -- Real-time fan-out for live SSE clients. The
+  emitter checks `PUBSUB NUMSUB` and skips publishing when nobody is listening.
+- **Stream** (`protean:traces`) -- Time-bounded history for the dashboard and
+  REST API. Always writes when persistence is enabled (the default). Old entries
+  are automatically trimmed using Redis `MINID` based on the configured
+  retention period.
 
 ## Trace events
 
@@ -62,21 +74,49 @@ the message processing pipeline. Each trace event captures:
 | `outbox.published` | OutboxProcessor | After a message is published to the broker |
 | `outbox.failed` | OutboxProcessor | When outbox publishing fails |
 
+## Trace persistence and retention
+
+By default, the TraceEmitter persists trace events to a Redis Stream
+(`protean:traces`) for 7 days. This allows the dashboard and REST API to serve
+historical data even after SSE clients disconnect.
+
+### Configuration
+
+Set `trace_retention_days` in your domain configuration:
+
+```toml
+# domain.toml
+[observatory]
+trace_retention_days = 7   # Default: 7 days. Set to 0 to disable persistence.
+```
+
+When `trace_retention_days` is set to `0`, persistence is disabled and only
+real-time Pub/Sub streaming is available. The REST API trace endpoints will
+return empty results.
+
+Old entries are automatically trimmed using Redis `MINID`-based trimming on
+every write, so no separate cleanup process is needed.
+
 ## Zero-overhead design
 
 The TraceEmitter is designed to add no measurable overhead when nobody is
-listening:
+listening and persistence is disabled:
 
 1. **Lazy initialization** -- The Redis connection is not established until the
    first emit call.
 2. **Subscriber check** -- Before serializing any trace, the emitter runs
    `PUBSUB NUMSUB` to check if anyone is subscribed to the trace channel. This
    result is cached for 2 seconds.
-3. **Short-circuit** -- If no subscribers are found, `emit()` returns
-   immediately without constructing or serializing the `MessageTrace`.
+3. **Short-circuit** -- If no Pub/Sub subscribers are found *and* persistence is
+   disabled (`trace_retention_days = 0`), `emit()` returns immediately without
+   constructing or serializing the `MessageTrace`.
 4. **Silent failure** -- If Redis is unavailable or publishing fails, the error
    is logged at DEBUG level and swallowed. Tracing never affects message
    processing.
+
+When persistence is enabled (the default), the Stream write always occurs
+regardless of whether any SSE clients are connected. The Pub/Sub broadcast
+is still conditional on subscriber count.
 
 ## Protean Observatory
 
@@ -191,6 +231,104 @@ Redis stream lengths, message counts, and consumer group information:
 #### Stats -- `GET /api/stats`
 
 Combined outbox and stream statistics for dashboard consumption.
+
+#### Trace history -- `GET /api/traces`
+
+Query persisted trace history from the Redis Stream. Returns traces in
+reverse chronological order (newest first).
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `count` | Number of traces to return (1--1000) | `200` |
+| `domain` | Filter by domain name | all |
+| `stream` | Filter by stream category | all |
+| `event` | Filter by event type | all |
+| `message_id` | Filter by message ID (lifecycle lookup) | all |
+
+```bash
+# Recent 200 traces
+curl http://localhost:9000/api/traces
+
+# Last 50 traces for a specific domain
+curl "http://localhost:9000/api/traces?count=50&domain=identity"
+
+# Trace the lifecycle of a specific message
+curl "http://localhost:9000/api/traces?message_id=abc-123-def"
+```
+
+The `message_id` filter returns all trace events for a single message across
+its entire lifecycle (handler.started, handler.completed, message.acked, etc.),
+making it useful for debugging individual message flows.
+
+```json
+{
+  "traces": [
+    {
+      "event": "handler.completed",
+      "domain": "identity",
+      "stream": "identity::customer",
+      "message_id": "abc-123",
+      "message_type": "CustomerRegistered",
+      "status": "ok",
+      "handler": "CustomerProjector",
+      "duration_ms": 12.5,
+      "timestamp": "2025-01-15T10:30:00Z",
+      "_stream_id": "1705312200000-0"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### Trace statistics -- `GET /api/traces/stats`
+
+Aggregated statistics over a time window, including event type breakdown,
+error rate, and average handler latency.
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `window` | Time window: `5m`, `15m`, `1h`, `24h`, or `7d` | `5m` |
+
+```bash
+# Stats for the last 5 minutes
+curl http://localhost:9000/api/traces/stats
+
+# Stats for the last 24 hours
+curl "http://localhost:9000/api/traces/stats?window=24h"
+```
+
+```json
+{
+  "window": "5m",
+  "counts": {
+    "handler.started": 42,
+    "handler.completed": 40,
+    "handler.failed": 2,
+    "message.acked": 40,
+    "outbox.published": 15
+  },
+  "error_count": 2,
+  "error_rate": 1.44,
+  "avg_latency_ms": 8.75,
+  "total": 139
+}
+```
+
+The `error_rate` is the percentage of trace events that are error types
+(`handler.failed` or `message.dlq`). The `avg_latency_ms` is calculated from
+`handler.completed` events only.
+
+#### Delete traces -- `DELETE /api/traces`
+
+Clear all persisted trace history from the Redis Stream.
+
+```bash
+curl -X DELETE http://localhost:9000/api/traces
+```
+
+```json
+{"status": "ok", "deleted": true}
+```
 
 #### Prometheus metrics -- `GET /metrics`
 

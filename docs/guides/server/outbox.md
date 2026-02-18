@@ -247,25 +247,63 @@ Cleanup removes:
 
 ## Multi-Worker Support
 
-The outbox processor supports multiple workers processing messages concurrently.
-Each message is locked by a worker during processing to prevent duplicate
-delivery:
+When running with `--workers N` (see [Multi-Worker Mode](supervisor.md)), each
+worker runs its own `OutboxProcessor`. Messages are claimed atomically at the
+database level to prevent duplicate publishing.
+
+### Database-Level Locking
+
+The processor uses an atomic `UPDATE...WHERE` to claim messages. Under READ
+COMMITTED isolation (PostgreSQL, MSSQL), concurrent updates on the same row
+block until the first transaction commits, then re-evaluate the WHERE clause --
+so only one worker succeeds:
 
 ```python
-# Worker 1 claims message
-success, result = message.start_processing("worker-1")
-# success=True, message is locked
-
-# Worker 2 tries to claim same message
-success, result = message.start_processing("worker-2")
-# success=False, result=ProcessingResult.ALREADY_LOCKED
+# Simplified view of claim_for_processing():
+claimed_count = dao.query.filter(
+    id=message.id,
+    status__in=["pending", "failed"],   # Only eligible messages
+).update_all(
+    status="processing",
+    locked_by=worker_id,
+    locked_until=now + timedelta(minutes=5),
+)
+# claimed_count > 0 only for the winning worker
 ```
 
-### Lock Behavior
+This prevents the TOCTOU (Time-Of-Check-Time-Of-Use) race condition where two
+workers could both read a message as `PENDING` and both attempt to publish it.
 
-- Messages are locked when processing starts
-- Lock is released when processing completes (success or failure)
-- Stale locks (from crashed workers) are automatically released
+### Lock Fields
+
+Each outbox message carries lock metadata:
+
+| Field | Description |
+|-------|-------------|
+| `locked_by` | Worker identifier that holds the lock |
+| `locked_until` | When the lock expires (default 5 minutes) |
+| `status` | Current processing state (`PROCESSING` while locked) |
+
+### Lock Lifecycle
+
+1. Worker fetches a batch of `PENDING` messages.
+2. For each message, the worker calls `claim_for_processing()` -- an atomic
+   database operation that sets the status to `PROCESSING` and records the
+   worker ID and lock expiry.
+3. If the claim succeeds, the worker publishes the message to the broker and
+   marks it as `PUBLISHED`. If publishing fails, the message is marked as
+   `FAILED` for retry.
+4. If the claim fails (another worker already claimed it), the worker skips
+   that message and moves on.
+5. All operations happen within a `UnitOfWork`, so the claim, publish, and
+   status update are atomic.
+
+### Stale Lock Recovery
+
+If a worker crashes while holding a lock, the lock expires after the configured
+duration (default 5 minutes). The message remains in `PROCESSING` status with
+an expired `locked_until` timestamp. Another worker detects the expired lock
+and the message becomes eligible for reprocessing.
 
 ## Monitoring
 

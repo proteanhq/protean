@@ -174,6 +174,7 @@ nav:
         - guides/server/subscription-types.md
         - guides/server/configuration.md
         - guides/server/outbox.md
+        - guides/server/supervisor.md
         - guides/server/observability.md
         - guides/server/running.md
       - CLI:
@@ -182,6 +183,7 @@ nav:
         - guides/cli/new.md
         - guides/cli/shell.md
         - guides/cli/server.md
+        - guides/cli/database.md
         - guides/cli/docs.md
         - guides/cli/test.md
 

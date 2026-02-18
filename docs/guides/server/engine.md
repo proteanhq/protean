@@ -105,12 +105,14 @@ class ExternalEventSubscriber:
 
 ### Outbox Processors
 
-When `enable_outbox = true`, the Engine creates an `OutboxProcessor` for each
-database provider to publish messages to the configured broker:
+When the outbox is enabled (via `default_subscription_type = "stream"`), the
+Engine creates an `OutboxProcessor` for each database provider to publish
+messages to the configured broker:
 
-```python
+```toml
 # Configuration in domain.toml
-enable_outbox = true
+[server]
+default_subscription_type = "stream"   # Enables outbox
 
 [outbox]
 broker = "default"
@@ -134,8 +136,8 @@ For example, if a handler specifies a custom stream name, it will be used; other
 ## Tracing
 
 The Engine initializes a `TraceEmitter` at startup that publishes structured
-`MessageTrace` events to Redis Pub/Sub as messages flow through the pipeline.
-Trace events are emitted at three points during `handle_message`:
+`MessageTrace` events as messages flow through the pipeline. Trace events are
+emitted at three points during `handle_message`:
 
 - `handler.started` -- Before the handler processes the message
 - `handler.completed` -- After successful processing (includes `duration_ms`)
@@ -145,9 +147,26 @@ Additional trace events are emitted by `StreamSubscription` (`message.acked`,
 `message.nacked`, `message.dlq`) and `OutboxProcessor` (`outbox.published`,
 `outbox.failed`).
 
-The emitter adds zero overhead when no monitoring tools are subscribed -- see
-[Observability](observability.md) for the full design and the Observatory
-monitoring server.
+### Dual-channel output
+
+The TraceEmitter writes to two Redis channels:
+
+- **Pub/Sub** (`protean:trace`) -- Real-time fan-out for SSE clients. The
+  emitter checks subscriber count and skips when nobody is listening.
+- **Stream** (`protean:traces`) -- Time-bounded history for the Observatory
+  dashboard and REST API. Old entries are automatically trimmed based on the
+  configured retention period.
+
+### Trace retention
+
+The Engine reads `trace_retention_days` from the domain's `[observatory]`
+configuration (default: 7 days). When set to `0`, Stream persistence is
+disabled and only Pub/Sub broadcasting is available. If the configuration value
+is missing or invalid, the Engine falls back to the 7-day default.
+
+The emitter adds zero overhead when no monitoring tools are subscribed and
+persistence is disabled -- see [Observability](observability.md) for the full
+design, the Observatory monitoring server, and trace API endpoints.
 
 ## Running the Engine
 

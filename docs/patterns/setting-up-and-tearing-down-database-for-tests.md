@@ -496,9 +496,15 @@ Under the hood, `DomainFixture` calls these adapter methods:
 |---------|----------|-------|
 | Schema creation | `domain.setup_database()` | Once per session |
 | Schema teardown | `domain.drop_database()` | Once per session |
+| Data truncation | `domain.truncate_database()` | On demand |
 | Data cleanup (database) | `provider._data_reset()` | After every test |
 | Data cleanup (broker) | `broker._data_reset()` | After every test |
 | Data cleanup (event store) | `event_store.store._data_reset()` | After every test |
+
+`domain.truncate_database()` deletes all rows from every table while preserving
+the schema. It is also available as a CLI command (`protean db truncate`) for
+use outside of tests -- for example, to reset a development database without
+dropping and recreating tables.
 
 **The key principle: create schema once, reset data often.** This gives you the correctness of full isolation with the performance of shared infrastructure.
 
