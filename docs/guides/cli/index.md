@@ -11,9 +11,10 @@ load the domain.
 | [`protean new`](new.md)        | Creating a domain                  |
 | [`protean shell`](shell.md)    | Working with the shell             |
 | [`protean server`](server.md)  | Running an async background server |
-| `protean db setup`             | Create all database tables         |
-| `protean db drop`              | Drop all database tables           |
-| `protean db setup-outbox`      | Create only outbox tables          |
+| [`protean db setup`](database.md)       | Create all database tables         |
+| [`protean db drop`](database.md)        | Drop all database tables           |
+| [`protean db truncate`](database.md)    | Delete all data, preserve schema   |
+| [`protean db setup-outbox`](database.md)| Create only outbox tables          |
 
 !!! note
 

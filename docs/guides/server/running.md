@@ -18,6 +18,7 @@ protean server [OPTIONS]
 | `--domain` | Path to domain module | `.` (current directory) |
 | `--test-mode` | Run in test mode | `False` |
 | `--debug` | Enable debug logging | `False` |
+| `--workers` | Number of worker processes | `1` |
 | `--help` | Show help message | |
 
 ## Database Setup
@@ -34,7 +35,13 @@ protean db setup-outbox --domain=my_domain
 # Drop all tables (requires confirmation)
 protean db drop --domain=my_domain
 protean db drop --domain=my_domain --yes  # Skip confirmation
+
+# Delete all data, preserving schema (requires confirmation)
+protean db truncate --domain=my_domain
+protean db truncate --domain=my_domain --yes  # Skip confirmation
 ```
+
+See [Database Commands](../cli/database.md) for the full reference.
 
 ## Basic Usage
 
@@ -53,6 +60,22 @@ protean server --domain=my_package.my_domain
 # Start with specific instance
 protean server --domain=my_domain:custom_domain
 ```
+
+### Multiple Workers
+
+Run multiple Engine processes from a single command using `--workers`:
+
+```bash
+# Start 4 worker processes
+protean server --domain=my_domain --workers 4
+```
+
+Workers coordinate through Redis consumer groups (for stream message
+distribution) and database-level locking (for outbox processing). No IPC or
+shared memory is needed between workers.
+
+For the full multi-worker guide including architecture, coordination details,
+and deployment patterns, see [Multi-Worker Mode](supervisor.md).
 
 ### Domain Discovery
 
@@ -500,6 +523,7 @@ zero-overhead design, see [Observability](observability.md).
 
 ## Next Steps
 
+- [Multi-Worker Mode](supervisor.md) - Run multiple Engine processes for higher throughput
 - [Engine Architecture](engine.md) - Understand engine internals
 - [Observability](observability.md) - Tracing, Observatory server, and Prometheus metrics
 - [Configuration](configuration.md) - Full configuration reference
