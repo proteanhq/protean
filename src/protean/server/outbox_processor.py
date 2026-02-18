@@ -5,7 +5,7 @@ from typing import List, Optional
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
 from protean.utils.eventing import Message
-from protean.utils.outbox import Outbox, OutboxRepository, ProcessingResult
+from protean.utils.outbox import Outbox, OutboxRepository
 
 from .subscription import BaseSubscription
 
@@ -237,26 +237,18 @@ class OutboxProcessor(BaseSubscription):
             # Use UnitOfWork for atomic transaction management
             # This ensures all operations (lock, publish, status update) are atomic
             with UnitOfWork():
-                # Attempt to acquire lock and start processing
-                success, result = message.start_processing(self.worker_id)
-                if not success:
-                    # Log the specific reason why message was skipped
-                    if result != ProcessingResult.NOT_ELIGIBLE:
-                        reason_messages = {
-                            ProcessingResult.ALREADY_LOCKED: f"Message {message.message_id} already locked",
-                            ProcessingResult.MAX_RETRIES_EXCEEDED: f"Message {message.message_id} exceeded max retries",
-                            ProcessingResult.RETRY_NOT_DUE: f"Message {message.message_id} retry not due yet",
-                        }
-                        logger.debug(
-                            reason_messages.get(
-                                result,
-                                f"Message {message.message_id[:8]}... skipped: {result}",
-                            )
-                        )
+                # Atomically claim the message at the database level.
+                # Under READ COMMITTED isolation, concurrent UPDATEs on the same
+                # row block until the first transaction commits, then re-evaluate
+                # the WHERE clause — so only one worker can succeed.
+                if not self.outbox_repo.claim_for_processing(message, self.worker_id):
+                    logger.debug(
+                        f"Message {message.message_id[:8]}... already claimed by another worker"
+                    )
                     return False
 
-                # Save the lock acquisition (PROCESSING status)
-                self.outbox_repo.add(message)
+                # Re-fetch the message to get the updated state
+                message = self.outbox_repo.get(message.id)
 
                 # Publish message to broker
                 publish_success, publish_error = await self._publish_message(message)
