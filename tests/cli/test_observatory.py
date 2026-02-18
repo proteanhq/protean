@@ -1,6 +1,7 @@
 """Tests for CLI observatory command (protean observatory ...)."""
 
 import os
+import re
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,8 @@ from typer.testing import CliRunner
 from protean.cli import app
 from protean.exceptions import NoDomainException
 from tests.shared import change_working_directory_to
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 runner = CliRunner()
 
@@ -305,9 +308,11 @@ class TestObservatoryCommand:
         """Test that the observatory --help output shows the correct description."""
         result = runner.invoke(app, ["observatory", "--help"])
         assert result.exit_code == 0
-        assert "Observatory" in result.output
-        assert "--domain" in result.output
-        assert "--host" in result.output
-        assert "--port" in result.output
-        assert "--title" in result.output
-        assert "--debug" in result.output
+        # Strip ANSI escape codes so assertions work in CI (Rich/Typer output)
+        output = _ANSI_RE.sub("", result.output)
+        assert "Observatory" in output
+        assert "--domain" in output
+        assert "--host" in output
+        assert "--port" in output
+        assert "--title" in output
+        assert "--debug" in output
