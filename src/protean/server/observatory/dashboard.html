@@ -152,6 +152,71 @@ body {
 
 .card-body { padding: 16px; }
 
+/* Summary Metrics Bar */
+.summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.summary-metrics {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.summary-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-metric .metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.summary-metric .metric-value {
+  font-family: var(--font-code);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.summary-metric .metric-value.good { color: var(--success); }
+.summary-metric .metric-value.warn { color: #E65100; }
+.summary-metric .metric-value.bad { color: var(--accent); }
+
+.window-selector {
+  display: flex;
+  gap: 4px;
+}
+
+.window-btn {
+  background: var(--bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.window-btn:hover { border-color: var(--secondary); color: var(--text); }
+.window-btn.active {
+  background: var(--secondary);
+  color: white;
+  border-color: var(--secondary);
+}
+
 /* Pipeline */
 .pipeline {
   display: flex;
@@ -189,6 +254,12 @@ body {
   transition: all 0.3s;
 }
 
+.pipeline-stage .rate-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+}
+
 .pipeline-stage .count-box.outbox { background: #E8F4FD; color: var(--secondary); border: 2px solid var(--secondary); }
 .pipeline-stage .count-box.published { background: #E8F4FD; color: var(--secondary); border: 2px solid var(--secondary); }
 .pipeline-stage .count-box.handling { background: #FFF3E0; color: #E65100; border: 2px solid var(--warning); }
@@ -211,9 +282,32 @@ body {
   margin-top: 14px;
 }
 
-/* Throughput sparkline */
+@media (prefers-color-scheme: dark) {
+  .pipeline-stage .count-box.outbox { background: rgba(69,123,157,0.2); }
+  .pipeline-stage .count-box.published { background: rgba(69,123,157,0.2); }
+  .pipeline-stage .count-box.handling { background: rgba(233,196,106,0.15); }
+  .pipeline-stage .count-box.done { background: rgba(42,157,143,0.15); }
+  .pipeline-stage .count-box.failed { background: rgba(231,111,81,0.15); }
+}
+
+/* Throughput chart */
 .sparkline-container {
   padding: 12px 16px;
+}
+
+.sparkline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sparkline-header .chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .sparkline-stats {
@@ -226,7 +320,27 @@ body {
 .sparkline-stats .stat-label { color: var(--text-muted); }
 .sparkline-stats .stat-value { font-family: var(--font-code); font-weight: 500; }
 
-/* Live Feed */
+.time-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+  padding: 2px 0 0;
+}
+
+/* Feed layout */
+.feed-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  min-height: 400px;
+}
+
+.feed-layout.no-detail {
+  grid-template-columns: 1fr;
+}
+
+/* Feed controls */
 .feed-controls {
   display: flex;
   gap: 8px;
@@ -245,10 +359,45 @@ body {
 
 .feed-controls input { width: 160px; }
 
+.feed-tab {
+  background: none;
+  border: none;
+  padding: 3px 10px;
+  font-family: var(--font-text);
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.feed-tab:hover { color: var(--text); }
+.feed-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--secondary);
+  font-weight: 600;
+}
+
+.feed-tab .error-badge {
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+/* Feed */
 .feed {
   max-height: 500px;
   overflow-y: auto;
   scroll-behavior: smooth;
+  border-right: 1px solid var(--border);
+}
+
+.feed-layout.no-detail .feed {
+  border-right: none;
 }
 
 .feed-item {
@@ -265,6 +414,7 @@ body {
 }
 
 .feed-item:hover { background: var(--bg); }
+.feed-item.selected { background: var(--bg); }
 .feed-item.status-ok { border-left-color: var(--success); }
 .feed-item.status-error { border-left-color: var(--accent); }
 .feed-item.status-retry { border-left-color: var(--warning); }
@@ -331,6 +481,105 @@ body {
   font-size: 14px;
 }
 
+.feed-divider {
+  padding: 6px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  font-family: var(--font-code);
+  letter-spacing: 0.05em;
+}
+
+/* Lifecycle detail panel */
+.lifecycle-panel {
+  padding: 16px;
+  overflow-y: auto;
+  max-height: 500px;
+}
+
+.lifecycle-panel .lc-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 16px;
+}
+
+.lifecycle-panel .lc-header {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.lifecycle-panel .lc-message-id {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  word-break: break-all;
+}
+
+.lifecycle-timeline {
+  position: relative;
+  padding-left: 24px;
+}
+
+.lifecycle-timeline::before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--border);
+}
+
+.lc-event {
+  position: relative;
+  padding: 6px 0 12px 0;
+}
+
+.lc-event .lc-dot {
+  position: absolute;
+  left: -20px;
+  top: 8px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface);
+}
+
+.lc-event.ok .lc-dot { border-color: var(--success); background: var(--success); }
+.lc-event.error .lc-dot { border-color: var(--accent); background: var(--accent); }
+.lc-event.retry .lc-dot { border-color: var(--warning); background: var(--warning); }
+.lc-event.started .lc-dot { border-color: var(--secondary); background: var(--secondary); }
+
+.lc-event .lc-time {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.lc-event .lc-name {
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lc-event .lc-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lc-event .lc-error {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
 /* Infrastructure */
 .infra-grid {
   display: flex;
@@ -380,11 +629,41 @@ body {
       <option value="">All domains</option>
     </select>
     <button class="btn" id="pauseBtn" onclick="togglePause()">&#9208; Pause</button>
+    <button class="btn" id="resetBtn" onclick="resetDashboard()">&#8634; Reset</button>
   </div>
 </div>
 
 <!-- Main -->
 <div class="main">
+
+  <!-- Summary Metrics Bar -->
+  <div class="card">
+    <div class="summary-bar">
+      <div class="summary-metrics">
+        <div class="summary-metric">
+          <span class="metric-label">Throughput</span>
+          <span class="metric-value good" id="metricThroughput">--</span>
+        </div>
+        <div class="summary-metric">
+          <span class="metric-label">Error Rate</span>
+          <span class="metric-value good" id="metricErrorRate">--</span>
+        </div>
+        <div class="summary-metric">
+          <span class="metric-label">Avg Latency</span>
+          <span class="metric-value good" id="metricLatency">--</span>
+        </div>
+        <div class="summary-metric">
+          <span class="metric-label">Pending</span>
+          <span class="metric-value" id="metricPending">0</span>
+        </div>
+      </div>
+      <div class="window-selector">
+        <button class="window-btn active" data-window="5m" onclick="setWindow('5m')">5m</button>
+        <button class="window-btn" data-window="15m" onclick="setWindow('15m')">15m</button>
+        <button class="window-btn" data-window="1h" onclick="setWindow('1h')">1h</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Pipeline -->
   <div class="card">
@@ -392,46 +671,65 @@ body {
       <div class="pipeline-stage">
         <span class="label">Outbox</span>
         <div class="count-box outbox" id="pipeOutbox">0</div>
+        <span class="rate-label" id="rateOutbox">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
       <div class="pipeline-stage">
         <span class="label">Published</span>
         <div class="count-box published" id="pipePublished">0</div>
+        <span class="rate-label" id="ratePublishedPipe">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
       <div class="pipeline-stage">
         <span class="label">Handling</span>
         <div class="count-box handling" id="pipeHandling">0</div>
+        <span class="rate-label" id="rateHandling">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
       <div class="pipeline-stage">
         <span class="label">Done</span>
         <div class="count-box done" id="pipeDone">0</div>
+        <span class="rate-label" id="rateDone">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
       <div class="pipeline-stage">
         <span class="label">Failed</span>
         <div class="count-box failed" id="pipeFailed">0</div>
+        <span class="rate-label" id="rateFailed">&nbsp;</span>
       </div>
     </div>
   </div>
 
-  <!-- Throughput -->
+  <!-- Throughput Chart -->
   <div class="card">
     <div class="sparkline-container">
-      <canvas id="sparkline" width="1000" height="50"></canvas>
-      <div class="sparkline-stats">
-        <div><span class="stat-label">Published:</span> <span class="stat-value" id="ratePublished">0/s</span></div>
-        <div><span class="stat-label">Processed:</span> <span class="stat-value" id="rateProcessed">0/s</span></div>
-        <div><span class="stat-label">Errors:</span> <span class="stat-value" id="rateErrors">0/s</span></div>
+      <div class="sparkline-header">
+        <span class="chart-title">Throughput (5 min)</span>
+        <div class="sparkline-stats">
+          <div><span class="stat-label">Published:</span> <span class="stat-value" id="ratePublished">0/s</span></div>
+          <div><span class="stat-label">Processed:</span> <span class="stat-value" id="rateProcessed">0/s</span></div>
+          <div><span class="stat-label">Errors:</span> <span class="stat-value" id="rateErrors">0/s</span></div>
+        </div>
+      </div>
+      <canvas id="sparkline" width="1000" height="80"></canvas>
+      <div class="time-labels">
+        <span>5m ago</span>
+        <span>4m</span>
+        <span>3m</span>
+        <span>2m</span>
+        <span>1m</span>
+        <span>now</span>
       </div>
     </div>
   </div>
 
-  <!-- Live Feed -->
+  <!-- Live Feed + Lifecycle -->
   <div class="card">
     <div class="card-header">
-      <span>Live Feed</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="feed-tab active" id="tabAll" onclick="setFeedTab('all')">All</button>
+        <button class="feed-tab" id="tabErrors" onclick="setFeedTab('errors')">Errors <span class="error-badge" id="errorBadge" style="display:none">0</span></button>
+      </div>
       <div class="feed-controls">
         <select id="filterStream">
           <option value="">All streams</option>
@@ -450,8 +748,13 @@ body {
         <input type="text" id="filterSearch" placeholder="Search messages..." oninput="applyFeedFilters()">
       </div>
     </div>
-    <div class="feed" id="feed">
-      <div class="feed-empty">Waiting for events... Connect engines to see real-time message flow.</div>
+    <div class="feed-layout" id="feedLayout">
+      <div class="feed" id="feed">
+        <div class="feed-empty" id="feedEmpty">Loading history...</div>
+      </div>
+      <div class="lifecycle-panel" id="lifecyclePanel">
+        <div class="lc-empty">Click an event to view message lifecycle</div>
+      </div>
     </div>
   </div>
 
@@ -480,30 +783,177 @@ body {
 let paused = false;
 let connected = false;
 let eventSource = null;
-let feedItems = [];
 let pauseBuffer = [];
 const MAX_FEED_ITEMS = 500;
 
-// Pipeline counters
-const counters = {
-  outbox: 0,
-  published: 0,
-  handling: 0,
-  done: 0,
-  failed: 0,
-};
+// Current window for stats
+let currentWindow = '5m';
 
-// Throughput tracking (per-second buckets for last 60s)
-const throughput = {
-  published: new Array(60).fill(0),
-  processed: new Array(60).fill(0),
-  errors: new Array(60).fill(0),
-};
-let currentSecond = { published: 0, processed: 0, errors: 0 };
+// History / dedup
+let historyLoaded = false;
+const seenTraceKeys = new Set();
+let sseConnectedAt = 0;
+
+// All traces in memory for lifecycle lookup
+const tracesByMessageId = new Map(); // message_id -> [{...}, ...]
+let errorCount = 0;
+
+// Currently selected message for lifecycle
+let selectedMessageId = null;
+
+// Feed tab state
+let feedTab = 'all'; // 'all' or 'errors'
+
+const ERROR_EVENTS = new Set(['handler.failed', 'outbox.failed', 'message.dlq', 'message.nacked']);
 
 // Known domains and streams for filter population
 const knownDomains = new Set();
 const knownStreams = new Set();
+
+// Throughput tracking (per-second buckets for last 300s = 5 min)
+const THROUGHPUT_SECONDS = 300;
+const throughput = {
+  published: new Array(THROUGHPUT_SECONDS).fill(0),
+  processed: new Array(THROUGHPUT_SECONDS).fill(0),
+  errors: new Array(THROUGHPUT_SECONDS).fill(0),
+};
+let currentSecond = { published: 0, processed: 0, errors: 0 };
+
+// --- History Loading ---
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/traces?count=500');
+    if (!res.ok) return;
+    const data = await res.json();
+    const traces = data.traces || [];
+
+    if (traces.length === 0) {
+      const empty = document.getElementById('feedEmpty');
+      if (empty) empty.textContent = 'No events in history. Connect engines to see message flow.';
+      return;
+    }
+
+    // Remove empty message
+    const empty = document.getElementById('feedEmpty');
+    if (empty) empty.remove();
+
+    // Process oldest-first for correct counter reconstruction
+    const reversed = [...traces].reverse();
+    for (const trace of reversed) {
+      const key = trace.message_id + ':' + trace.event + ':' + (trace.handler || '');
+      seenTraceKeys.add(key);
+      trackTrace(trace);
+      updateThroughputFromHistory(trace);
+      addFeedItem(trace, true);
+    }
+
+    // Insert divider between history and live events
+    const feed = document.getElementById('feed');
+    const divider = document.createElement('div');
+    divider.className = 'feed-divider';
+    divider.id = 'historyDivider';
+    divider.textContent = '--- live ---';
+    feed.insertBefore(divider, feed.firstChild);
+
+    historyLoaded = true;
+    updateErrorBadge();
+  } catch (e) {
+    console.error('Failed to load history:', e);
+    const empty = document.getElementById('feedEmpty');
+    if (empty) empty.textContent = 'Failed to load history. Waiting for live events...';
+  }
+}
+
+function updateThroughputFromHistory(trace) {
+  const ts = trace.timestamp ? new Date(trace.timestamp).getTime() : 0;
+  if (!ts) return;
+
+  const now = Date.now();
+  const ageSeconds = Math.floor((now - ts) / 1000);
+
+  // Place in the correct throughput bucket (0 = oldest, THROUGHPUT_SECONDS-1 = newest)
+  const bucketIndex = THROUGHPUT_SECONDS - 1 - ageSeconds;
+  if (bucketIndex < 0 || bucketIndex >= THROUGHPUT_SECONDS) return;
+
+  if (trace.event === 'outbox.published') throughput.published[bucketIndex]++;
+  if (trace.event === 'handler.completed') throughput.processed[bucketIndex]++;
+  if (trace.event === 'handler.failed' || trace.event === 'message.dlq') throughput.errors[bucketIndex]++;
+}
+
+// --- Stats Loading ---
+async function loadStats() {
+  try {
+    const res = await fetch('/api/traces/stats?window=' + currentWindow);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Throughput: total / window in minutes
+    const windowMinutes = { '5m': 5, '15m': 15, '1h': 60 }[currentWindow] || 5;
+    const perMin = data.total > 0 ? Math.round(data.total / windowMinutes) : 0;
+    document.getElementById('metricThroughput').textContent = perMin + '/min';
+
+    // Error rate
+    const errorEl = document.getElementById('metricErrorRate');
+    errorEl.textContent = data.error_rate + '%';
+    errorEl.className = 'metric-value ' + (data.error_rate === 0 ? 'good' : data.error_rate < 5 ? 'warn' : 'bad');
+
+    // Avg latency
+    const latencyEl = document.getElementById('metricLatency');
+    latencyEl.textContent = data.avg_latency_ms > 0 ? data.avg_latency_ms + 'ms' : '--';
+
+    // Pipeline counts from stats (time-windowed)
+    const counts = data.counts || {};
+    const published = counts['outbox.published'] || 0;
+    const handling = (counts['handler.started'] || 0) - (counts['handler.completed'] || 0) - (counts['handler.failed'] || 0);
+    const done = counts['handler.completed'] || 0;
+    const failed = (counts['handler.failed'] || 0) + (counts['outbox.failed'] || 0) + (counts['message.dlq'] || 0);
+
+    document.getElementById('pipePublished').textContent = published;
+    document.getElementById('pipeHandling').textContent = Math.max(0, handling);
+    document.getElementById('pipeDone').textContent = done;
+    document.getElementById('pipeFailed').textContent = failed;
+
+    // Rate labels under pipeline
+    document.getElementById('ratePublishedPipe').textContent = published > 0 ? '~' + Math.round(published / windowMinutes) + '/min' : '';
+    document.getElementById('rateDone').textContent = done > 0 ? '~' + Math.round(done / windowMinutes) + '/min' : '';
+    document.getElementById('rateFailed').textContent = failed > 0 ? '~' + Math.round(failed / windowMinutes) + '/min' : '';
+
+  } catch (e) {
+    console.error('Failed to load stats:', e);
+  }
+}
+
+function setWindow(w) {
+  currentWindow = w;
+  document.querySelectorAll('.window-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.window === w);
+  });
+  loadStats();
+}
+
+// --- Trace Tracking ---
+function trackTrace(data) {
+  if (!data.message_id) return;
+
+  if (!tracesByMessageId.has(data.message_id)) {
+    tracesByMessageId.set(data.message_id, []);
+  }
+  tracesByMessageId.get(data.message_id).push(data);
+
+  if (ERROR_EVENTS.has(data.event)) {
+    errorCount++;
+  }
+
+  // Track domains and streams for filters
+  if (data.domain && !knownDomains.has(data.domain)) {
+    knownDomains.add(data.domain);
+    updateDomainFilter();
+  }
+  if (data.stream && !knownStreams.has(data.stream)) {
+    knownStreams.add(data.stream);
+    updateStreamFilter();
+  }
+}
 
 // --- SSE Connection ---
 function connectSSE() {
@@ -532,7 +982,11 @@ function connectSSE() {
 
   eventSource.onopen = () => {
     connected = true;
+    sseConnectedAt = Date.now();
     document.getElementById('statusDot').className = 'status-dot connected';
+
+    // Clear dedup set after overlap window (5 seconds)
+    setTimeout(() => seenTraceKeys.clear(), 5000);
   };
 
   eventSource.onerror = () => {
@@ -542,73 +996,27 @@ function connectSSE() {
 }
 
 function handleTraceEvent(data) {
-  // Track domains and streams for filters
-  if (data.domain && !knownDomains.has(data.domain)) {
-    knownDomains.add(data.domain);
-    updateDomainFilter();
-  }
-  if (data.stream && !knownStreams.has(data.stream)) {
-    knownStreams.add(data.stream);
-    updateStreamFilter();
+  // Dedup: skip events already loaded from history
+  if (seenTraceKeys.size > 0) {
+    const key = data.message_id + ':' + data.event + ':' + (data.handler || '');
+    if (seenTraceKeys.has(key)) return;
   }
 
-  // Update pipeline counters
-  updatePipelineCounters(data);
-
-  // Update throughput
+  trackTrace(data);
   updateThroughput(data);
+  updateErrorBadge();
+
+  // Update lifecycle panel if this message is selected
+  if (data.message_id === selectedMessageId) {
+    renderLifecycle(data.message_id);
+  }
 
   // Add to feed
   if (paused) {
     pauseBuffer.push(data);
   } else {
-    addFeedItem(data);
+    addFeedItem(data, false);
   }
-}
-
-// --- Pipeline ---
-function updatePipelineCounters(data) {
-  const event = data.event;
-  let changed = null;
-
-  if (event === 'outbox.published') {
-    counters.published++;
-    changed = 'pipePublished';
-  } else if (event === 'outbox.failed') {
-    counters.failed++;
-    changed = 'pipeFailed';
-  } else if (event === 'handler.started') {
-    counters.handling++;
-    changed = 'pipeHandling';
-  } else if (event === 'handler.completed') {
-    counters.handling = Math.max(0, counters.handling - 1);
-    counters.done++;
-    changed = 'pipeDone';
-    pulseEl('pipeHandling');
-  } else if (event === 'handler.failed') {
-    counters.handling = Math.max(0, counters.handling - 1);
-    counters.failed++;
-    changed = 'pipeFailed';
-    pulseEl('pipeHandling');
-  } else if (event === 'message.dlq') {
-    counters.failed++;
-    changed = 'pipeFailed';
-  }
-
-  // Update DOM
-  document.getElementById('pipePublished').textContent = counters.published;
-  document.getElementById('pipeHandling').textContent = counters.handling;
-  document.getElementById('pipeDone').textContent = counters.done;
-  document.getElementById('pipeFailed').textContent = counters.failed;
-
-  if (changed) pulseEl(changed);
-}
-
-function pulseEl(id) {
-  const el = document.getElementById(id);
-  el.classList.remove('pulse');
-  void el.offsetWidth; // Force reflow
-  el.classList.add('pulse');
 }
 
 // --- Throughput ---
@@ -643,20 +1051,20 @@ function drawSparkline() {
   ctx.clearRect(0, 0, w, h);
 
   const maxVal = Math.max(1, ...throughput.published, ...throughput.processed);
-  const barWidth = w / 60;
+  const barWidth = w / THROUGHPUT_SECONDS;
 
   // Draw published bars
   ctx.fillStyle = '#457B9D44';
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < THROUGHPUT_SECONDS; i++) {
     const barH = (throughput.published[i] / maxVal) * h;
-    ctx.fillRect(i * barWidth, h - barH, barWidth - 1, barH);
+    ctx.fillRect(i * barWidth, h - barH, barWidth - 0.5, barH);
   }
 
   // Draw processed line
   ctx.strokeStyle = '#2A9D8F';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < THROUGHPUT_SECONDS; i++) {
     const x = i * barWidth + barWidth / 2;
     const y = h - (throughput.processed[i] / maxVal) * h;
     if (i === 0) ctx.moveTo(x, y);
@@ -666,12 +1074,12 @@ function drawSparkline() {
 
   // Draw error dots
   ctx.fillStyle = '#E76F51';
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < THROUGHPUT_SECONDS; i++) {
     if (throughput.errors[i] > 0) {
       const x = i * barWidth + barWidth / 2;
       const y = h - (throughput.errors[i] / maxVal) * h;
       ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -700,29 +1108,30 @@ const EVENT_STATUS_CLASS = {
   'message.dlq': 'status-error',
 };
 
-function addFeedItem(data) {
+function addFeedItem(data, isHistory) {
   const feed = document.getElementById('feed');
 
   // Remove empty message
   const empty = feed.querySelector('.feed-empty');
   if (empty) empty.remove();
 
-  // Check if user has scrolled up
-  const isAtBottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50;
+  // Check if user has scrolled up (only for live events)
+  const isAtBottom = !isHistory && (feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 50);
 
   // Build feed item
   const item = document.createElement('div');
   const statusClass = EVENT_STATUS_CLASS[data.event] || '';
-  item.className = `feed-item ${statusClass} new`;
+  item.className = `feed-item ${statusClass}` + (isHistory ? '' : ' new');
   item.setAttribute('data-event', data.event || '');
   item.setAttribute('data-stream', data.stream || '');
   item.setAttribute('data-type', data.message_type || '');
+  item.setAttribute('data-message-id', data.message_id || '');
 
   const ts = data.timestamp ? new Date(data.timestamp) : new Date();
   const timeStr = ts.toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
 
   let detail = data.stream || '';
-  if (data.handler) detail += ' → ' + data.handler;
+  if (data.handler) detail += ' \u2192 ' + data.handler;
 
   let rightCol = '';
   if (data.duration_ms != null) {
@@ -746,34 +1155,138 @@ function addFeedItem(data) {
     <span class="duration">${rightCol}</span>
   `;
 
+  // Click to show lifecycle
+  item.addEventListener('click', () => {
+    selectFeedItem(item, data.message_id);
+  });
+
   // Apply current filters
   if (!matchesFilters(data)) {
     item.style.display = 'none';
   }
 
-  feed.insertBefore(item, feed.firstChild);
-
-  // Trim old items
-  while (feed.children.length > MAX_FEED_ITEMS) {
-    feed.removeChild(feed.lastChild);
-  }
-
-  // Auto-scroll or show badge
-  if (isAtBottom) {
-    feed.scrollTop = 0;
+  // Insert before divider (if exists) for history, or at top for live
+  const divider = document.getElementById('historyDivider');
+  if (isHistory && divider) {
+    feed.insertBefore(item, divider.nextSibling);
   } else {
-    const badge = document.getElementById('newEventsBadge');
-    badge.style.display = 'block';
+    feed.insertBefore(item, feed.firstChild);
   }
 
-  // Remove animation class after it plays
-  setTimeout(() => item.classList.remove('new'), 300);
+  // Trim old items (skip divider)
+  const allItems = feed.querySelectorAll('.feed-item');
+  if (allItems.length > MAX_FEED_ITEMS) {
+    feed.removeChild(allItems[allItems.length - 1]);
+  }
+
+  // Auto-scroll or show badge (live events only)
+  if (!isHistory) {
+    if (isAtBottom) {
+      feed.scrollTop = 0;
+    } else {
+      document.getElementById('newEventsBadge').style.display = 'block';
+    }
+
+    // Remove animation class after it plays
+    setTimeout(() => item.classList.remove('new'), 300);
+  }
 }
 
+function selectFeedItem(item, messageId) {
+  // Deselect previous
+  document.querySelectorAll('.feed-item.selected').forEach(el => el.classList.remove('selected'));
+
+  if (selectedMessageId === messageId) {
+    // Toggle off
+    selectedMessageId = null;
+    renderLifecycle(null);
+    return;
+  }
+
+  item.classList.add('selected');
+  selectedMessageId = messageId;
+  renderLifecycle(messageId);
+}
+
+// --- Lifecycle Panel ---
+function renderLifecycle(messageId) {
+  const panel = document.getElementById('lifecyclePanel');
+
+  if (!messageId || !tracesByMessageId.has(messageId)) {
+    panel.innerHTML = '<div class="lc-empty">Click an event to view message lifecycle</div>';
+    return;
+  }
+
+  const events = tracesByMessageId.get(messageId);
+  // Sort chronologically
+  const sorted = [...events].sort((a, b) => {
+    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return ta - tb;
+  });
+
+  const messageType = sorted[0]?.message_type || 'Unknown';
+
+  let html = `
+    <div class="lc-header">${escapeHtml(messageType)}</div>
+    <div class="lc-message-id">${escapeHtml(messageId)}</div>
+    <div class="lifecycle-timeline">
+  `;
+
+  for (const evt of sorted) {
+    const ts = evt.timestamp ? new Date(evt.timestamp) : new Date();
+    const timeStr = ts.toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+
+    let statusClass = 'ok';
+    if (evt.event === 'handler.started') statusClass = 'started';
+    else if (ERROR_EVENTS.has(evt.event)) statusClass = 'error';
+    else if (evt.event === 'message.nacked') statusClass = 'retry';
+
+    let detail = '';
+    if (evt.handler) detail = evt.handler;
+    if (evt.duration_ms != null) detail += (detail ? ' ' : '') + '(' + evt.duration_ms.toFixed(1) + 'ms)';
+
+    html += `
+      <div class="lc-event ${statusClass}">
+        <div class="lc-dot"></div>
+        <div class="lc-time">${timeStr}</div>
+        <div class="lc-name">${escapeHtml(evt.event)}</div>
+        ${detail ? '<div class="lc-detail">' + escapeHtml(detail) + '</div>' : ''}
+        ${evt.error ? '<div class="lc-error">' + escapeHtml(evt.error) + '</div>' : ''}
+      </div>
+    `;
+  }
+
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+// --- Feed Tabs ---
+function setFeedTab(tab) {
+  feedTab = tab;
+  document.getElementById('tabAll').classList.toggle('active', tab === 'all');
+  document.getElementById('tabErrors').classList.toggle('active', tab === 'errors');
+  applyFeedFilters();
+}
+
+function updateErrorBadge() {
+  const badge = document.getElementById('errorBadge');
+  if (errorCount > 0) {
+    badge.textContent = errorCount > 99 ? '99+' : errorCount;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// --- Filters ---
 function matchesFilters(data) {
   const streamFilter = document.getElementById('filterStream').value;
   const eventFilter = document.getElementById('filterEvent').value;
   const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+
+  // Tab filter
+  if (feedTab === 'errors' && !ERROR_EVENTS.has(data.event)) return false;
 
   if (streamFilter && data.stream !== streamFilter) return false;
   if (eventFilter && data.event !== eventFilter) return false;
@@ -803,7 +1316,6 @@ function scrollToBottom() {
   document.getElementById('newEventsBadge').style.display = 'none';
 }
 
-// --- Filters ---
 function updateDomainFilter() {
   const select = document.getElementById('filterDomain');
   const current = select.value;
@@ -835,15 +1347,51 @@ function togglePause() {
   paused = !paused;
   const btn = document.getElementById('pauseBtn');
   if (paused) {
-    btn.textContent = '▶ Resume';
+    btn.textContent = '\u25b6 Resume';
     btn.classList.add('active');
   } else {
-    btn.textContent = '⏸ Pause';
+    btn.textContent = '\u23f8 Pause';
     btn.classList.remove('active');
     // Flush buffer
-    pauseBuffer.forEach(data => addFeedItem(data));
+    pauseBuffer.forEach(data => addFeedItem(data, false));
     pauseBuffer = [];
   }
+}
+
+// --- Reset ---
+async function resetDashboard() {
+  if (!confirm('Clear all trace history and reset counters?')) return;
+
+  try {
+    await fetch('/api/traces', { method: 'DELETE' });
+  } catch (e) {
+    console.error('Failed to clear trace stream:', e);
+  }
+
+  // Clear client-side state
+  tracesByMessageId.clear();
+  errorCount = 0;
+  selectedMessageId = null;
+  seenTraceKeys.clear();
+
+  // Reset throughput buckets
+  throughput.published.fill(0);
+  throughput.processed.fill(0);
+  throughput.errors.fill(0);
+  currentSecond = { published: 0, processed: 0, errors: 0 };
+
+  // Reset feed
+  const feed = document.getElementById('feed');
+  feed.innerHTML = '<div class="feed-empty">History cleared. Waiting for new events...</div>';
+
+  // Reset lifecycle panel
+  renderLifecycle(null);
+
+  // Refresh stats and UI
+  updateErrorBadge();
+  drawSparkline();
+  await loadStats();
+  await pollInfrastructure();
 }
 
 // --- Infrastructure polling ---
@@ -852,9 +1400,6 @@ async function pollInfrastructure() {
     const res = await fetch('/api/health');
     const data = await res.json();
     const redis = data.infrastructure?.redis || {};
-
-    const statusDot = document.getElementById('redisStatus');
-    statusDot.className = 'status-dot ' + (redis.healthy ? 'connected' : 'disconnected');
 
     document.getElementById('infraGrid').innerHTML = `
       <div class="infra-item">
@@ -880,7 +1425,7 @@ async function pollInfrastructure() {
       </div>
     `;
 
-    // Also fetch outbox status for pipeline counter
+    // Also fetch outbox status for pending metric
     const outboxRes = await fetch('/api/outbox');
     const outboxData = await outboxRes.json();
     let totalPending = 0;
@@ -888,8 +1433,8 @@ async function pollInfrastructure() {
       const counts = domain.counts || {};
       totalPending += counts.PENDING || counts.pending || 0;
     }
-    counters.outbox = totalPending;
     document.getElementById('pipeOutbox').textContent = totalPending;
+    document.getElementById('metricPending').textContent = totalPending;
 
   } catch (e) {
     console.error('Infrastructure poll failed:', e);
@@ -924,11 +1469,16 @@ document.getElementById('filterStream').addEventListener('change', applyFeedFilt
 document.getElementById('filterEvent').addEventListener('change', applyFeedFilters);
 
 // --- Init ---
-connectSSE();
-pollInfrastructure();
-setInterval(tickThroughput, 1000);
-setInterval(pollInfrastructure, 5000);
-drawSparkline();
+async function init() {
+  await loadHistory();
+  await loadStats();
+  connectSSE();
+  pollInfrastructure();
+  setInterval(tickThroughput, 1000);
+  setInterval(() => { loadStats(); pollInfrastructure(); }, 5000);
+  drawSparkline();
+}
+init();
 </script>
 </body>
 </html>
