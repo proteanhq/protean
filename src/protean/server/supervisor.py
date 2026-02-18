@@ -229,8 +229,9 @@ def _worker_entry(
 
         domain.init()
 
-        engine = Engine(domain, test_mode=test_mode, debug=debug)
-        engine.run()
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=test_mode, debug=debug)
+            engine.run()
 
         sys.exit(engine.exit_code)
     except Exception as exc:
