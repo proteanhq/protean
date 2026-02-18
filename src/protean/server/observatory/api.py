@@ -24,6 +24,8 @@ _WINDOW_MS = {
     "5m": 5 * 60 * 1000,
     "15m": 15 * 60 * 1000,
     "1h": 60 * 60 * 1000,
+    "24h": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000,
 }
 
 # Error event types for error rate calculation
@@ -176,6 +178,9 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         domain: Optional[str] = Query(None, description="Filter by domain"),
         stream: Optional[str] = Query(None, description="Filter by stream"),
         event: Optional[str] = Query(None, description="Filter by event type"),
+        message_id: Optional[str] = Query(
+            None, description="Filter by message ID (lifecycle lookup)"
+        ),
     ):
         """Recent trace history from the persisted Redis Stream."""
         redis_conn = _get_redis(domains)
@@ -185,11 +190,19 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 status_code=503,
             )
 
+        has_filters = domain or stream or event or message_id
+
         try:
             # XREVRANGE returns newest-first; fetch extra to account for filtering
-            fetch_count = count * 3 if (domain or stream or event) else count
+            # message_id lookups scan wider since lifecycle events may be sparse
+            if message_id:
+                fetch_count = 5000
+            elif has_filters:
+                fetch_count = count * 3
+            else:
+                fetch_count = count
             raw_entries = redis_conn.xrevrange(
-                TRACE_STREAM, count=min(fetch_count, 3000)
+                TRACE_STREAM, count=min(fetch_count, 5000)
             )
         except Exception as e:
             logger.error(f"Error reading trace stream: {e}", exc_info=True)
@@ -215,11 +228,14 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                     continue
                 if event and trace.get("event") != event:
                     continue
+                if message_id and trace.get("message_id") != message_id:
+                    continue
 
                 trace["_stream_id"] = _decode_stream_id(stream_id)
                 result.append(trace)
 
-                if len(result) >= count:
+                # message_id lookups return all matching events (no count limit)
+                if not message_id and len(result) >= count:
                     break
             except (json.JSONDecodeError, TypeError):
                 continue
@@ -228,13 +244,14 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
     @router.get("/traces/stats")
     async def traces_stats(
-        window: str = Query("5m", description="Time window: 5m, 15m, or 1h"),
+        window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
     ):
         """Aggregated trace statistics for a time window."""
         window_ms = _WINDOW_MS.get(window)
         if window_ms is None:
+            valid = ", ".join(_WINDOW_MS.keys())
             return JSONResponse(
-                content={"error": f"Invalid window: {window}. Use 5m, 15m, or 1h."},
+                content={"error": f"Invalid window: {window}. Use {valid}."},
                 status_code=400,
             )
 
