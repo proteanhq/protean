@@ -159,7 +159,49 @@ class TestServerCommand:
         # Manually shutdown with `asyncio.create_task(engine.shutdown())`
         pass
 
-    def test_server_with_max_workers(self):
-        """Test that the server command handles the MAX_WORKERS input (future implementation)"""
-        # This is a placeholder for when MAX_WORKERS is implemented as a command-line input
-        pass
+    def test_server_aborts_with_zero_workers(self):
+        """Test that the server command aborts when --workers is 0."""
+        args = ["server", "--domain", "publishing7.py", "--workers", "0"]
+        result = runner.invoke(app, args)
+        assert result.exit_code != 0
+        assert "Error: --workers must be >= 1" in result.output
+
+    def test_server_aborts_with_negative_workers(self):
+        """Test that the server command aborts when --workers is negative."""
+        args = ["server", "--domain", "publishing7.py", "--workers", "-1"]
+        result = runner.invoke(app, args)
+        assert result.exit_code != 0
+        assert "Error: --workers must be >= 1" in result.output
+
+    def test_server_multi_worker_invokes_supervisor(self):
+        """Test that the server command uses Supervisor when --workers > 1."""
+        change_working_directory_to("test7")
+
+        with patch("protean.server.supervisor.Supervisor") as MockSupervisor:
+            mock_supervisor = MockSupervisor.return_value
+            mock_supervisor.exit_code = 0
+
+            args = ["server", "--domain", "publishing7.py", "--workers", "2"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 0
+            MockSupervisor.assert_called_once_with(
+                domain_path="publishing7.py",
+                num_workers=2,
+                test_mode=False,
+                debug=False,
+            )
+            mock_supervisor.run.assert_called_once()
+
+    def test_server_multi_worker_exit_code_propagated(self):
+        """Test that the server command propagates Supervisor exit code."""
+        change_working_directory_to("test7")
+
+        with patch("protean.server.supervisor.Supervisor") as MockSupervisor:
+            mock_supervisor = MockSupervisor.return_value
+            mock_supervisor.exit_code = 3
+
+            args = ["server", "--domain", "publishing7.py", "--workers", "2"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 3
