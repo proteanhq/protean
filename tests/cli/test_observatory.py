@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from protean.cli import app
@@ -100,6 +101,14 @@ class TestObservatoryCommand:
         result = runner.invoke(app, args)
         # Typer requires --domain since it has no default
         assert result.exit_code != 0
+
+    def test_observatory_aborts_with_empty_domain_list(self):
+        """Test the empty-domain guard inside the function body."""
+        from protean.cli.observatory import observatory as obs_fn
+
+        with patch(OBSERVATORY_CLS):
+            with pytest.raises(typer.Abort):
+                obs_fn(domain=[], host="0.0.0.0", port=9000, title="T", debug=False)
 
     def test_observatory_custom_host(self):
         """Test that observatory accepts a custom host."""
