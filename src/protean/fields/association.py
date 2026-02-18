@@ -313,15 +313,24 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         try:
             reference_obj = self.get_cached_value(instance)
         except KeyError:
-            # Fetch target object by own Identifier
-            id_fld = id_field(instance)
-            assert id_fld is not None
-            id_value = getattr(instance, id_fld.field_name)
-            reference_obj = self._fetch_objects(
-                instance, self._linked_attribute(owner), id_value
-            )
+            # Check _temp_cache first for items added during init via
+            # __set__/add().  This avoids a DB round-trip for items that
+            # were just added but whose cache was cleared by add().
+            temp = instance._temp_cache.get(self.field_name)
+            added = temp.get("added", {}) if temp else {}
+            if added:
+                reference_obj = list(added.values())
+                self.set_cached_value(instance, reference_obj)
+            else:
+                # Fetch target object by own Identifier
+                id_fld = id_field(instance)
+                assert id_fld is not None
+                id_value = getattr(instance, id_fld.field_name)
+                reference_obj = self._fetch_objects(
+                    instance, self._linked_attribute(owner), id_value
+                )
 
-            self._set_own_value(instance, reference_obj)
+                self._set_own_value(instance, reference_obj)
 
         return reference_obj
 
@@ -529,6 +538,13 @@ class HasMany(Association):
         super().__set__(instance, values)
 
         if value is not None:
+            # Ensure cache is initialized before add() tries to read via getattr().
+            # Without this, getattr triggers __get__ which falls back to a DB query,
+            # failing for event-sourced aggregates that have no database tables.
+            try:
+                self.get_cached_value(instance)
+            except KeyError:
+                self.set_cached_value(instance, [])
             self.add(instance, values)
 
     def add(self, instance, items) -> None:
@@ -589,6 +605,14 @@ class HasMany(Association):
         if len(items) == 0 and len(current_value_ids) > 0:
             self.remove(instance, data)
 
+        # Re-read from cache after potential removal so new_data reflects
+        # the post-remove state instead of the stale `data` reference.
+        try:
+            cached = self.get_cached_value(instance)
+            new_data = list(cached) if isinstance(cached, list) else [cached]
+        except KeyError:
+            new_data = list(data)
+
         for item in items:
             # Items to add
             identity = getattr(item, entity_id_fld.field_name)
@@ -605,8 +629,7 @@ class HasMany(Association):
                 # Temporarily set linkage to parent in child entity
                 setattr(item, self._linked_reference(type(instance)), instance)
 
-                # Reset Cache
-                self.delete_cached_value(instance)
+                new_data.append(item)
             # Items to update
             elif (
                 identity in current_value_ids
@@ -624,8 +647,17 @@ class HasMany(Association):
 
                 instance._temp_cache[self.field_name]["updated"][identity] = item
 
-                # Reset Cache
-                self.delete_cached_value(instance)
+                # Replace updated item in the working copy
+                for i, existing in enumerate(new_data):
+                    if getattr(existing, entity_id_fld.field_name) == identity:
+                        new_data[i] = item
+                        break
+
+        # Update cache with complete item list instead of deleting it.
+        # This ensures items are immediately visible via __get__ without
+        # requiring a DB round-trip, which is essential for event-sourced
+        # aggregates that have no database tables.
+        self.set_cached_value(instance, new_data)
 
         if instance._initialized and instance._root is not None:
             instance._root._postcheck()  # Trigger validations from the top
@@ -663,14 +695,13 @@ class HasMany(Association):
 
         current_value_ids = [getattr(value, entity_id_fld.field_name) for value in data]
 
+        removed_ids = set()
         for item in items:
             identity = getattr(item, entity_id_fld.field_name)
             if identity in current_value_ids:
                 if identity not in instance._temp_cache[self.field_name]["removed"]:
                     instance._temp_cache[self.field_name]["removed"][identity] = item
-
-                    # Reset Cache
-                    self.delete_cached_value(instance)
+                    removed_ids.add(identity)
 
             # Remove child entities
             if has_association_fields(item):
@@ -679,6 +710,15 @@ class HasMany(Association):
                         field_obj.remove(item, getattr(item, field_name))
                     elif isinstance(field_obj, HasOne):
                         setattr(item, field_name, None)
+
+        # Update cache with items remaining after removal instead of deleting it.
+        if removed_ids:
+            new_data = [
+                item
+                for item in data
+                if getattr(item, entity_id_fld.field_name) not in removed_ids
+            ]
+            self.set_cached_value(instance, new_data)
 
         if instance._initialized and instance._root is not None:
             instance._root._postcheck()  # Trigger validations from the top

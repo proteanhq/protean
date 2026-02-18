@@ -156,6 +156,80 @@ class TestHasMany:
         assert "items" in order._temp_cache
         assert "added" in order._temp_cache["items"]
 
+    def test_add_updates_cache_instead_of_deleting(self):
+        """Adding items should update the field cache in-place rather than
+        deleting it, so subsequent reads don't require a DB round-trip."""
+        order = Order(order_number="ORD-050")
+        item = OrderItem(product_name="Widget")
+        order.add_items(item)
+
+        # Cache should contain the added item
+        items_field = Order.__dict__["items"]
+        assert items_field.is_cached(order)
+        cached = items_field.get_cached_value(order)
+        assert len(cached) == 1
+        assert cached[0].product_name == "Widget"
+
+    def test_remove_updates_cache_instead_of_deleting(self):
+        """Removing items should update the field cache with the remaining items
+        rather than deleting it, so subsequent reads don't require a DB round-trip."""
+        item1 = OrderItem(product_name="Widget")
+        item2 = OrderItem(product_name="Gadget")
+        order = Order(order_number="ORD-051", items=[item1, item2])
+
+        order.remove_items(item1)
+
+        items_field = Order.__dict__["items"]
+        assert items_field.is_cached(order)
+        cached = items_field.get_cached_value(order)
+        assert len(cached) == 1
+        assert cached[0].product_name == "Gadget"
+
+    def test_cache_reflects_items_after_sequential_adds(self):
+        """Cache should always reflect the full item list after multiple
+        sequential add_* calls."""
+        order = Order(order_number="ORD-052")
+        item1 = OrderItem(product_name="Widget")
+        item2 = OrderItem(product_name="Gadget")
+
+        order.add_items(item1)
+        order.add_items(item2)
+
+        items_field = Order.__dict__["items"]
+        cached = items_field.get_cached_value(order)
+        assert len(cached) == 2
+        names = {c.product_name for c in cached}
+        assert names == {"Widget", "Gadget"}
+
+    def test_assign_empty_list_clears_has_many(self):
+        """Assigning an empty list via `order.items = []` should remove
+        all items and leave the cache empty."""
+        item = OrderItem(product_name="Widget")
+        order = Order(order_number="ORD-053", items=[item])
+        assert len(order.items) == 1
+
+        order.items = []
+        assert len(order.items) == 0
+
+        # Cache should be present and empty
+        items_field = Order.__dict__["items"]
+        assert items_field.is_cached(order)
+        cached = items_field.get_cached_value(order)
+        assert cached == []
+
+    def test_set_initializes_cache_before_add(self):
+        """HasMany.__set__ should initialize cache to [] when not already
+        cached, so add() doesn't trigger a DB fetch."""
+        order = Order(order_number="ORD-054")
+        items_field = Order.__dict__["items"]
+
+        # Delete cache to simulate a fresh state
+        items_field.delete_cached_value(order)
+
+        # Assigning should not raise even though cache was missing
+        order.items = [OrderItem(product_name="Widget")]
+        assert len(order.items) == 1
+
 
 # ---------------------------------------------------------------------------
 # Tests: HasOne
