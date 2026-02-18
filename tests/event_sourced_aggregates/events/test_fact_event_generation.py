@@ -22,6 +22,7 @@ class User(BaseAggregate):
 
     @apply
     def registered(self, event: Registered) -> None:
+        self.id = event.id
         self.email = event.email
         self.name = event.name
 

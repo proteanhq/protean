@@ -1,5 +1,6 @@
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError
@@ -43,9 +44,24 @@ class User(BaseAggregate):
     def change_name(self, name):
         self.raise_(UserRenamed(user_id=self.user_id, name=name))
 
+    @apply
+    def on_registered(self, event: UserRegistered) -> None:
+        self.user_id = event.user_id
+        self.name = event.name
+        self.email = event.email
 
-class User2(User):
-    pass
+    @apply
+    def on_activated(self, event: UserActivated) -> None:
+        self.status = "ACTIVE"
+
+    @apply
+    def on_renamed(self, event: UserRenamed) -> None:
+        self.name = event.name
+
+
+class User2(BaseAggregate):
+    user_id: Identifier(identifier=True)
+    name: String(max_length=50)
 
 
 class UserUnknownEvent(BaseEvent):

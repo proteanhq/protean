@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
@@ -24,6 +24,12 @@ class User(BaseAggregate):
         user = cls(id=id, name=name, email=email)
         user.raise_(UserRegistered(id=id, name=name, email=email))
         return user
+
+    @apply
+    def on_registered(self, event: UserRegistered):
+        self.id = event.id
+        self.email = event.email
+        self.name = event.name
 
 
 @pytest.fixture(autouse=True)

@@ -5,6 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean import apply
 from protean.fields import Identifier, String, Text
 from protean.server import Engine
 from protean.utils.eventing import Message
@@ -18,12 +19,6 @@ def count_up():
     counter += 1
 
 
-class User(BaseAggregate):
-    email: String()
-    name: String()
-    password_hash: String()
-
-
 class Registered(BaseEvent):
     id: Identifier()
     email: String()
@@ -31,15 +26,32 @@ class Registered(BaseEvent):
     password_hash: String()
 
 
-class Post(BaseAggregate):
-    topic: String()
-    content: Text()
+class User(BaseAggregate):
+    email: String()
+    name: String()
+    password_hash: String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
 
 
 class Created(BaseEvent):
     id: Identifier(identifier=True)
     topic: String()
     content: Text()
+
+
+class Post(BaseAggregate):
+    topic: String()
+    content: Text()
+
+    @apply
+    def on_created(self, event: Created) -> None:
+        self.topic = event.topic
+        self.content = event.content
 
 
 class SystemMetrics(BaseEventHandler):

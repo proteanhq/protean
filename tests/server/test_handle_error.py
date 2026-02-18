@@ -8,6 +8,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
+from protean import apply
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import Processing
@@ -35,12 +36,6 @@ def reset_counters():
     broker_error_handler_counter = 0
 
 
-class User(BaseAggregate):
-    email: String()
-    name: String()
-    password_hash: String()
-
-
 class Registered(BaseEvent):
     id: Identifier()
     email: String()
@@ -52,6 +47,18 @@ class Register(BaseCommand):
     email: String()
     name: String()
     password_hash: String()
+
+
+class User(BaseAggregate):
+    email: String()
+    name: String()
+    password_hash: String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
 
 
 class NormalEventHandler(BaseEventHandler):

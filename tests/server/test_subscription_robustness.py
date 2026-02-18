@@ -7,6 +7,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
+from protean import apply
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription
@@ -23,29 +24,7 @@ error_handler_counter = 0
 broker_counter = 0
 
 
-# Event-based test classes
-class User(BaseAggregate):
-    email: String()
-    name: String()
-    password_hash: String()
-
-    def register(self, event_cls=None):
-        """Register user and raise appropriate event."""
-        if event_cls == SyncRegistered:
-            self.raise_(SyncRegistered(id=self.id, email=self.email, name=self.name))
-        elif event_cls == EmailSent:
-            self.raise_(EmailSent(id=self.id, email=self.email))
-        else:
-            self.raise_(
-                Registered(
-                    id=self.id,
-                    email=self.email,
-                    name=self.name,
-                    password_hash=self.password_hash,
-                )
-            )
-
-
+# Event classes (defined before aggregate so @apply can resolve type hints)
 class Registered(BaseEvent):
     id: Identifier()
     email: String()
@@ -64,6 +43,44 @@ class SyncRegistered(BaseEvent):
 class EmailSent(BaseEvent):
     id: Identifier()
     email: String()
+
+
+# Event-based test classes
+class User(BaseAggregate):
+    email: String()
+    name: String()
+    password_hash: String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.email = event.email
+        self.name = event.name
+        self.password_hash = event.password_hash
+
+    @apply
+    def on_sync_registered(self, event: SyncRegistered) -> None:
+        self.email = event.email
+        self.name = event.name
+
+    @apply
+    def on_email_sent(self, event: EmailSent) -> None:
+        pass
+
+    def register(self, event_cls=None):
+        """Register user and raise appropriate event."""
+        if event_cls == SyncRegistered:
+            self.raise_(SyncRegistered(id=self.id, email=self.email, name=self.name))
+        elif event_cls == EmailSent:
+            self.raise_(EmailSent(id=self.id, email=self.email))
+        else:
+            self.raise_(
+                Registered(
+                    id=self.id,
+                    email=self.email,
+                    name=self.name,
+                    password_hash=self.password_hash,
+                )
+            )
 
 
 # Event handlers

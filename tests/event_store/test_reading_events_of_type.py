@@ -2,10 +2,25 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
+
+
+class Registered(BaseEvent):
+    id = Identifier()
+    email = String()
+    name = String()
+
+
+class Activated(BaseEvent):
+    id = Identifier(required=True)
+
+
+class Renamed(BaseEvent):
+    id = Identifier(required=True)
+    name = String(required=True, max_length=50)
 
 
 class User(BaseAggregate):
@@ -23,23 +38,21 @@ class User(BaseAggregate):
         self.raise_(Activated(id=self.id))
 
     def rename(self, name):
-        self.name = name
         self.raise_(Renamed(id=self.id, name=name))
 
+    @apply
+    def on_registered(self, event: Registered):
+        self.id = event.id
+        self.email = event.email
+        self.name = event.name
 
-class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    @apply
+    def on_activated(self, event: Activated):
+        pass
 
-
-class Activated(BaseEvent):
-    id = Identifier(required=True)
-
-
-class Renamed(BaseEvent):
-    id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    @apply
+    def on_renamed(self, event: Renamed):
+        self.name = event.name
 
 
 @pytest.fixture(autouse=True)

@@ -50,6 +50,9 @@ class User(BaseAggregate):
 
     @apply
     def registered(self, event: UserRegistered):
+        self.user_id = event.user_id
+        self.name = event.name
+        self.email = event.email
         self.status = UserStatus.INACTIVE.value
 
     @apply

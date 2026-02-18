@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -15,11 +16,6 @@ from protean.utils.eventing import (
 )
 
 
-class User(BaseAggregate):
-    email: String()
-    name: String()
-
-
 class Register(BaseCommand):
     id: Identifier(identifier=True)
     email: String()
@@ -30,6 +26,16 @@ class Registered(BaseEvent):
     id: Identifier(identifier=True)
     email: String()
     name: String()
+
+
+class User(BaseAggregate):
+    email: String()
+    name: String()
+
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.email = event.email
+        self.name = event.name
 
 
 @pytest.fixture(autouse=True)

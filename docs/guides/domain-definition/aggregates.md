@@ -74,6 +74,40 @@ This would output something like:
 You see an `id` attribute appear in the results. We discuss **identity**
 deeply in the [identity](../essentials/identity.md) section.
 
+### Event-Sourced Aggregates
+
+For **event-sourced aggregates**, the standard constructor is typically not
+used in business methods. Instead, factory methods use `_create_new()` to
+create a blank aggregate with auto-generated identity, then raise a
+creation event whose `@apply` handler populates the remaining state:
+
+```python
+@domain.aggregate(is_event_sourced=True)
+class Order:
+    customer_name: String(max_length=150, required=True)
+    status: String(max_length=20, default="PENDING")
+
+    @classmethod
+    def place(cls, customer_name):
+        order = cls._create_new()
+        order.raise_(OrderPlaced(
+            order_id=str(order.id),
+            customer_name=customer_name,
+        ))
+        return order
+
+    @apply
+    def when_placed(self, event: OrderPlaced):
+        self.customer_name = event.customer_name
+        self.status = "PENDING"
+```
+
+This ensures the creation event's `@apply` handler is the single source
+of truth for setting initial state — the same handler runs during both
+live creation and event replay. See the
+[Event Sourcing tutorial](../getting-started/tutorial/14-event-sourcing.md)
+for a complete walkthrough.
+
 ## Inheritance
 
 Often, you may want to have common attributes across aggregates in your domain.

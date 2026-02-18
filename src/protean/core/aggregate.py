@@ -188,28 +188,176 @@ class BaseAggregate(BaseEntity):
         self._event_position = self._event_position + 1
         self._events.append(event_with_metadata)
 
-    def _apply(self, event: Any) -> None:
-        """Event-Sourcing: apply an event by calling the appropriate projection."""
+        # For ES aggregates, apply the event handler to mutate state in-place.
+        # This makes @apply the single source of truth for state changes —
+        # the same code path used during live processing and event replay.
+        # We use atomic_change so that invariants are checked before and
+        # after the handler runs, preserving the "always valid" guarantee.
+        if self.meta_.is_event_sourced:
+            is_fact_event = event.__class__.__name__.endswith("FactEvent")
+            if not is_fact_event:
+                with atomic_change(self):
+                    self._apply_handler(event_with_metadata)
+
+    def _apply_handler(self, event: Any) -> None:
+        """Invoke @apply handler(s) for an event without version management.
+
+        Extracted from ``_apply()`` so that ``raise_()`` can call handlers
+        during the live path without double-incrementing ``_version``.
+
+        Every event raised by an ES aggregate MUST have a corresponding
+        ``@apply`` handler — there is no silent fallback.
+        """
         event_name = fqn(event.__class__)
 
         if event_name not in self._projections:
             raise NotImplementedError(
-                f"No handler registered for event `{event_name}` in `{self.__class__.__name__}`"
+                f"No handler registered for event `{event_name}` "
+                f"in `{self.__class__.__name__}`"
             )
 
         for fn in self._projections[event_name]:
             fn(self, event)
-            self._version += 1
+
+    def _apply(self, event: Any) -> None:
+        """Event-Sourcing: apply an event during replay.
+
+        Calls the handler then increments ``_version`` once per event.
+        """
+        self._apply_handler(event)
+        self._version += 1
+
+    @classmethod
+    def _create_for_reconstitution(cls) -> "BaseAggregate":
+        """Create a blank aggregate for event replay, bypassing field validation.
+
+        Uses ``__new__`` to skip ``__init__`` entirely (no Pydantic validation,
+        no required field checks).  Sets up internal plumbing so that
+        ``@apply`` handlers can mutate fields via normal ``__setattr__``.
+
+        Follows the same pattern as ``BaseEntity.__deepcopy__`` (entity.py).
+        """
+        from functools import partial
+
+        from protean.core.entity import _EntityState
+        from protean.utils.reflection import (
+            association_fields,
+            reference_fields,
+            value_object_fields,
+        )
+
+        aggregate = cls.__new__(cls)
+
+        # --- Pydantic internals (same pattern as __deepcopy__) ---
+        object.__setattr__(aggregate, "__dict__", {})
+        object.__setattr__(aggregate, "__pydantic_extra__", None)
+        object.__setattr__(aggregate, "__pydantic_fields_set__", set())
+
+        # --- Private attributes with defaults ---
+        private = {
+            "_version": -1,
+            "_next_version": 0,
+            "_event_position": -1,
+            "_initialized": False,
+            "_state": _EntityState(),
+            "_root": None,
+            "_owner": None,
+            "_temp_cache": defaultdict(lambda: defaultdict(dict)),
+            "_events": [],
+            "_disable_invariant_checks": True,  # Suppress during replay
+            "_invariants": defaultdict(dict),
+        }
+        object.__setattr__(aggregate, "__pydantic_private__", private)
+
+        aggregate._root = aggregate
+        aggregate._owner = aggregate
+
+        # --- Initialize all model fields to None ---
+        for fname in cls.model_fields:
+            aggregate.__dict__[fname] = None
+
+        # --- Initialize VO shadow fields ---
+        for field_obj in value_object_fields(cls).values():
+            for _, shadow_field in field_obj.get_shadow_fields():
+                aggregate.__dict__[shadow_field.attribute_name] = None
+
+        # --- Initialize Reference shadow fields ---
+        for field_obj in reference_fields(cls).values():
+            shadow_name, _ = field_obj.get_shadow_field()
+            aggregate.__dict__[shadow_name] = None
+
+        # --- Setup association pseudo-methods (add_*, remove_*, etc.) ---
+        for field_name, field_obj in association_fields(cls).items():
+            if isinstance(field_obj, HasMany):
+                setattr(
+                    aggregate,
+                    f"add_{field_name}",
+                    partial(field_obj.add, aggregate),
+                )
+                setattr(
+                    aggregate,
+                    f"remove_{field_name}",
+                    partial(field_obj.remove, aggregate),
+                )
+                setattr(
+                    aggregate,
+                    f"get_one_from_{field_name}",
+                    partial(field_obj.get, aggregate),
+                )
+                setattr(
+                    aggregate,
+                    f"filter_{field_name}",
+                    partial(field_obj.filter, aggregate),
+                )
+
+        # --- Discover invariants from MRO ---
+        aggregate._discover_invariants()
+
+        aggregate._initialized = True
+        return aggregate
+
+    @classmethod
+    def _create_new(cls, **identity_kwargs: Any) -> "BaseAggregate":
+        """Create a new ES aggregate with auto-generated identity.
+
+        Used by factory methods.  All state beyond identity will be
+        established by the creation event's ``@apply`` handler via
+        ``raise_()``.
+
+        This avoids the need to pass every required field to the constructor
+        just to satisfy Pydantic validation — only identity is needed::
+
+            order = Order._create_new()
+            order.raise_(OrderCreated(order_id=str(order.id), ...))
+        """
+        from protean.utils import generate_identity
+
+        aggregate = cls._create_for_reconstitution()
+        aggregate._disable_invariant_checks = False  # Enable for live path
+
+        # Set identity — either from kwargs or auto-generate
+        id_field_name = getattr(cls, _ID_FIELD_NAME)
+        if id_field_name in identity_kwargs:
+            aggregate.__dict__[id_field_name] = identity_kwargs[id_field_name]
+        else:
+            aggregate.__dict__[id_field_name] = generate_identity()
+
+        return aggregate
 
     @classmethod
     def from_events(cls, events: list) -> "BaseAggregate":
-        """Event-Sourcing: reconstruct an aggregate from a list of events."""
-        aggregate = cls(**events[0].payload)
-        aggregate._apply(events[0])
+        """Event-Sourcing: reconstruct an aggregate from a list of events.
 
-        for event in events[1:]:
+        Creates a blank aggregate via ``_create_for_reconstitution()`` and
+        applies all events uniformly through ``_apply()``.  The first event's
+        ``@apply`` handler must set ALL fields including identity.
+        """
+        aggregate = cls._create_for_reconstitution()
+
+        for event in events:
             aggregate._apply(event)
 
+        aggregate._disable_invariant_checks = False
         return aggregate
 
 

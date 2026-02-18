@@ -2,10 +2,25 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields import DateTime, Identifier, String, Text
 from protean.utils import utcnow_func
+
+
+class Registered(BaseEvent):
+    id = Identifier()
+    email = String()
+    name = String()
+
+
+class Activated(BaseEvent):
+    id = Identifier(required=True)
+
+
+class Renamed(BaseEvent):
+    id = Identifier(required=True)
+    name = String(required=True, max_length=50)
 
 
 class User(BaseAggregate):
@@ -26,20 +41,30 @@ class User(BaseAggregate):
         self.name = name
         self.raise_(Renamed(id=self.id, name=name))
 
+    @apply
+    def on_registered(self, event: Registered):
+        self.id = event.id
+        self.email = event.email
+        self.name = event.name
 
-class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    @apply
+    def on_activated(self, event: Activated):
+        pass
+
+    @apply
+    def on_renamed(self, event: Renamed):
+        self.name = event.name
 
 
-class Activated(BaseEvent):
+class Created(BaseEvent):
+    id = Identifier(identifier=True)
+    topic = String()
+    content = Text()
+
+
+class Published(BaseEvent):
     id = Identifier(required=True)
-
-
-class Renamed(BaseEvent):
-    id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    published_time = DateTime(default=utcnow_func)
 
 
 class Post(BaseAggregate):
@@ -56,16 +81,15 @@ class Post(BaseAggregate):
     def publish(self):
         self.raise_(Published(id=self.id))
 
+    @apply
+    def on_created(self, event: Created):
+        self.id = event.id
+        self.topic = event.topic
+        self.content = event.content
 
-class Created(BaseEvent):
-    id = Identifier(identifier=True)
-    topic = String()
-    content = Text()
-
-
-class Published(BaseEvent):
-    id = Identifier(required=True)
-    published_time = DateTime(default=utcnow_func)
+    @apply
+    def on_published(self, event: Published):
+        pass
 
 
 @pytest.fixture(autouse=True)

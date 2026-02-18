@@ -68,9 +68,9 @@ class Order:
 
     @classmethod
     def place(cls, customer_name, items):
-        order = cls(customer_name=customer_name)
+        order = cls._create_new()
         order.raise_(OrderPlaced(
-            order_id=order.id,
+            order_id=str(order.id),
             customer_name=customer_name,
         ))
         return order
@@ -83,6 +83,7 @@ class Order:
 
     @apply
     def when_placed(self, event: OrderPlaced):
+        self.customer_name = event.customer_name
         self.status = "PENDING"
 
     @apply
@@ -96,16 +97,23 @@ class Order:
 
 Key points:
 
-- **`@apply`** methods are called when events are replayed. Each method
-  handles one event type based on the type annotation.
+- **`@apply` handlers are called automatically** by `raise_()` for
+  event-sourced aggregates. The same handlers are also called during
+  event replay. This makes `@apply` the **single source of truth** for
+  all state mutations.
 - Business methods (`confirm`, `ship`) only **raise events** — they do
-  not modify state directly.
-- The `@apply` methods modify state — they are the *only* place where
-  state changes happen.
+  not modify state directly. State is always changed by the `@apply`
+  handler that `raise_()` invokes.
+- Every event raised by an ES aggregate **must** have a corresponding
+  `@apply` handler. Raising an event without a handler will throw a
+  `NotImplementedError`.
+- Factory methods use `_create_new()` instead of the regular constructor
+  to create a blank aggregate with identity. State is then populated
+  by the creation event's `@apply` handler.
 
 This creates a clear separation:
 
-- `confirm()` → raises `OrderConfirmed` → `when_confirmed()` sets status
+- `confirm()` → raises `OrderConfirmed` → `raise_()` calls `when_confirmed()` → sets status
 
 ## Event Application in Practice
 
@@ -113,17 +121,23 @@ This creates a clear separation:
 
 ```python
 order = Order.place("Alice", [...])
-# 1. Creates the Order instance
-# 2. Raises OrderPlaced event
-# 3. @apply when_placed runs, sets status = "PENDING"
+# 1. _create_new() creates a blank aggregate with auto-generated identity
+# 2. raise_(OrderPlaced) appends the event and calls when_placed()
+# 3. when_placed() sets customer_name and status = "PENDING"
 ```
+
+The factory method (`place`) uses `_create_new()` to create a blank
+aggregate with only an identity assigned. The creation event's `@apply`
+handler (`when_placed`) then populates all remaining fields. This
+ensures the same code path runs whether the aggregate is being created
+for the first time or being reconstructed from events.
 
 ### Loading an Aggregate
 
 When you load an event-sourced aggregate from the repository, Protean:
 
 1. Reads all events for that aggregate from the event store
-2. Creates a blank aggregate instance
+2. Creates a blank aggregate instance (via `_create_for_reconstitution()`)
 3. Replays each event through the `@apply` methods in order
 4. Returns the aggregate with its current state
 
@@ -131,20 +145,25 @@ When you load an event-sourced aggregate from the repository, Protean:
 order = repo.get(order_id)
 # Internally:
 # 1. Read events: [OrderPlaced, OrderConfirmed]
-# 2. Apply OrderPlaced → status = "PENDING"
+# 2. Apply OrderPlaced → customer_name = "Alice", status = "PENDING"
 # 3. Apply OrderConfirmed → status = "CONFIRMED"
 # 4. Return order with status "CONFIRMED"
 ```
+
+Because `raise_()` calls the same `@apply` handlers during live
+operations, the aggregate's state after creation is identical to its
+state after replaying the same events. This **symmetry** eliminates
+an entire class of bugs where live behavior diverges from replay
+behavior.
 
 ### Version Tracking
 
 Each event increments the aggregate's version:
 
 ```python
-order._version  # 0 after creation
-# After OrderPlaced: version 1
-# After OrderConfirmed: version 2
-# After OrderShipped: version 3
+order._version  # 0 after creation (from OrderPlaced)
+# After OrderConfirmed: version 1
+# After OrderShipped: version 2
 ```
 
 Versions prevent concurrent modification — if two processes try to
@@ -228,7 +247,13 @@ In this chapter you learned:
 - **Event sourcing** stores events instead of state — current state is
   rebuilt by replaying events.
 - **`is_event_sourced=True`** converts an aggregate to event-sourced.
-- **`@apply`** methods define how each event type modifies state.
+- **`@apply`** methods define how each event type modifies state. They
+  are called automatically by `raise_()` during live operations, and
+  during event replay — making them the **single source of truth** for
+  state mutations.
+- **`_create_new()`** creates a blank aggregate with identity for
+  factory methods. All other state is set by the creation event's
+  `@apply` handler.
 - The **event store** (MessageDB) persists events in streams organized
   by category.
 - **Snapshots** optimize performance for long event histories.

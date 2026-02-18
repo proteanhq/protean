@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
@@ -9,16 +10,22 @@ from protean.fields import Identifier, String
 from protean.utils.reflection import id_field
 
 
+class Registered(BaseEvent):
+    user_id: Identifier(identifier=True)
+    email: String()
+    name: String()
+
+
 class User(BaseAggregate):
     user_id: Identifier(identifier=True)
     email: String()
     name: String()
 
-
-class Registered(BaseEvent):
-    user_id: Identifier(identifier=True)
-    email: String()
-    name: String()
+    @apply
+    def on_registered(self, event: Registered) -> None:
+        self.user_id = event.user_id
+        self.email = event.email
+        self.name = event.name
 
 
 @pytest.fixture(autouse=True)

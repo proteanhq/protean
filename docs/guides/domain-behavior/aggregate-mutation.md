@@ -73,3 +73,35 @@ InsufficientFundsException                Traceback (most recent call last)
 ...
 InsufficientFundsException: Balance cannot be below overdraft limit
 ```
+
+## Event-Sourced Aggregates
+
+For **event-sourced aggregates**, state is never mutated directly in
+business methods. Instead, business methods raise events via `raise_()`,
+and the framework automatically invokes the corresponding `@apply`
+handler to perform the state change:
+
+```python
+@domain.aggregate(is_event_sourced=True)
+class Order:
+    status: String(max_length=20, default="PENDING")
+
+    def confirm(self):
+        # Don't set self.status here — raise an event instead
+        self.raise_(OrderConfirmed(order_id=self.id))
+
+    @apply
+    def when_confirmed(self, event: OrderConfirmed):
+        # State mutation happens here, triggered by raise_()
+        self.status = "CONFIRMED"
+```
+
+This ensures the **same code path** runs whether the aggregate is
+processing a live command or being reconstructed from stored events.
+
+The `raise_()` method wraps the `@apply` call inside `atomic_change()`,
+so invariants are checked before and after the state change — the
+"always valid" guarantee is preserved.
+
+See [Raising Events](raising-events.md#es-raise-apply) for full
+details on the `raise_()` + `@apply` integration.
