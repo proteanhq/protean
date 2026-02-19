@@ -36,3 +36,4 @@ def pytest_configure(config):
         "markers", "integration: cross-domain event/projection tests"
     )
     config.addinivalue_line("markers", "slow: slow-running tests")
+    config.addinivalue_line("markers", "bdd: behavior-driven tests")

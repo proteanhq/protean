@@ -156,6 +156,7 @@ specific area.
 - [Testing Strategy](./guides/testing/index.md) -- Layered testing approach with fast in-memory adapters.
 - [Domain Model Tests](./guides/testing/domain-model-tests.md) -- Unit tests for aggregates, entities, value objects, and invariants.
 - [Application Tests](./guides/testing/application-tests.md) -- Validate commands, handlers, and services.
+- [Event Sourcing Tests](./guides/testing/event-sourcing-tests.md) -- Fluent test DSL for event-sourced aggregates using `protean.testing.given`.
 - [Integration Tests](./guides/testing/integration-tests.md) -- Verify behavior with real infrastructure.
 - [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md) -- Reusable pytest fixtures and conftest recipes.
 
