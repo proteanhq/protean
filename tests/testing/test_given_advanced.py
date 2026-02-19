@@ -363,6 +363,26 @@ class TestEventHandlerDuringSeed:
         # 1 for opened + 1 for deposit = 2
         assert transaction_counter.get(aid) == 2
 
+    @pytest.mark.eventstore
+    def test_event_handlers_skipped_when_not_sync(self, test_domain):
+        """When event_processing is not 'sync', seeded events
+        do NOT trigger event handlers."""
+        original = test_domain.config["event_processing"]
+        test_domain.config["event_processing"] = "async"
+        try:
+            aid = str(uuid4())
+            opened = AccountOpened(account_id=aid, holder="Bob", balance=200.0)
+
+            result = given(Account, opened).process(
+                MakeDeposit(account_id=aid, amount=10.0)
+            )
+
+            assert result.accepted
+            # Event handler should NOT have been called
+            assert transaction_counter.get(aid) is None
+        finally:
+            test_domain.config["event_processing"] = original
+
 
 # ---------------------------------------------------------------------------
 # Tests: Aggregates with ValueObject fields

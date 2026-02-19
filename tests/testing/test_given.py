@@ -348,6 +348,18 @@ class TestCommandRejection:
         assert result.customer == "Alice"
 
     @pytest.mark.eventstore
+    def test_rejected_create_command_no_history(self):
+        """Rejection with no given events leaves aggregate as None."""
+        # ConfirmOrder requires the aggregate to exist; with no history
+        # events, the repository can't find it → exception
+        result = given(Order).process(ConfirmOrder(order_id="nonexistent-id"))
+
+        assert result.rejected
+        assert result.rejection is not None
+        assert len(result.events) == 0
+        assert result.aggregate is None
+
+    @pytest.mark.eventstore
     def test_rejection_message(self, order_id, order_created):
         """The rejection exception carries the expected message."""
         result = given(Order, order_created).process(
@@ -395,6 +407,13 @@ class TestAggregateResultProperties:
 
         with pytest.raises(AttributeError, match="Did you call .process"):
             _ = result.status
+
+    def test_getattr_private_attribute_raises(self):
+        """Accessing a private attribute raises AttributeError directly."""
+        result = given(Order)
+
+        with pytest.raises(AttributeError):
+            _ = result._some_private_attr
 
     def test_repr_pending(self):
         """Repr shows 'pending' before process()."""
