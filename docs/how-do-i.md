@@ -108,6 +108,7 @@ need by what you're trying to accomplish.
 |-------------------------------------------------|-------|
 | Test domain model logic                         | [Domain Model Tests](./guides/testing/domain-model-tests.md) |
 | Test application workflows (BDD-style)          | [Application Tests](./guides/testing/application-tests.md) |
+| Test event-sourced aggregates with a fluent DSL | [Event Sourcing Tests](./guides/testing/event-sourcing-tests.md) |
 | Test with real databases and brokers             | [Integration Tests](./guides/testing/integration-tests.md) |
 | Set up test fixtures and patterns               | [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md) |
 | Set up databases for integration tests          | [Database Setup/Teardown](./patterns/setting-up-and-tearing-down-database-for-tests.md) |

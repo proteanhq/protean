@@ -78,6 +78,8 @@ recipes.
   entities, value objects, invariants, and domain services.
 - **[Application Tests](./application-tests.md)** — BDD-style testing of
   commands, handlers, and application services.
+- **[Event Sourcing Tests](./event-sourcing-tests.md)** — fluent test DSL
+  for event-sourced aggregates using `protean.testing.given`.
 - **[Integration Tests](./integration-tests.md)** — end-to-end flows
   with real infrastructure adapters.
 - **[Fixtures and Patterns](./fixtures-and-patterns.md)** — reusable pytest
