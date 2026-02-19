@@ -54,6 +54,11 @@ terminology.
   once. Covers Protean's three-layer idempotency model, idempotency keys,
   and handler-level strategies for different operation types.
 
+- **[Coordinating Long-Running Processes](coordinating-long-running-processes.md)**
+  -- Use a process manager to coordinate multi-step workflows that span
+  multiple aggregates. Declarative correlation, lifecycle management, and
+  compensation handling replace ad-hoc event handler chains.
+
 ## Architecture & Quality
 
 - **[Organize by Domain Concept](organize-by-domain-concept.md)** -- The

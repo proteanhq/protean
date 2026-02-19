@@ -10,20 +10,41 @@ from protean.utils.eventing import Message
 
 
 class handle:
-    """Class decorator to mark handler methods in EventHandler and CommandHandler classes."""
+    """Class decorator to mark handler methods in EventHandler, CommandHandler,
+    and ProcessManager classes.
 
-    def __init__(self, target_cls: type) -> None:
+    For EventHandler and CommandHandler, only ``target_cls`` is needed::
+
+        @handle(OrderPlaced)
+        def on_order_placed(self, event): ...
+
+    For ProcessManager handlers, ``correlate`` is required and ``start`` / ``end``
+    control the process manager lifecycle::
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_order_placed(self, event): ...
+    """
+
+    def __init__(
+        self,
+        target_cls: type,
+        start: bool = False,
+        correlate: Union[str, dict[str, str], None] = None,
+        end: bool = False,
+    ) -> None:
         self._target_cls = target_cls
+        self._start = start
+        self._correlate = correlate
+        self._end = end
 
     def __call__(self, fn: Callable) -> Callable:
-        """Marks the method with a special `_target_cls` attribute to be able to
-        construct a map of handlers later.
+        """Marks the method with special attributes to construct a handler map later.
 
         Args:
             fn (Callable): Handler method
 
         Returns:
-            Callable: Handler method with `_target_cls` attribute
+            Callable: Handler method with handler metadata attributes
         """
 
         @functools.wraps(fn)
@@ -33,6 +54,9 @@ class handle:
                 return fn(instance, target_obj)
 
         setattr(wrapper, "_target_cls", self._target_cls)
+        setattr(wrapper, "_start", self._start)
+        setattr(wrapper, "_correlate", self._correlate)
+        setattr(wrapper, "_end", self._end)
         return wrapper
 
 

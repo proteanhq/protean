@@ -31,6 +31,7 @@ graph TB
     subgraph REACT["Reactive Layer"]
         Evt["Event"]
         EH["Event Handler"]
+        PM["Process Manager"]
         Proj["Projection"]
         Pjr["Projector"]
         Sub["Subscriber"]
@@ -54,6 +55,7 @@ graph TB
 
     Agg -->|"raises"| Evt
     Evt -->|"consumed by"| EH
+    Evt -->|"consumed by"| PM
     Evt -->|"consumed by"| Pjr
     Pjr -->|"maintains"| Proj
 
@@ -63,6 +65,7 @@ graph TB
     Repo -->|"persists"| Agg
 
     EH -->|"modifies"| Agg
+    PM -->|"issues"| Cmd
 
     style EXT fill:#f5f5f5,stroke:#9e9e9e
     style APP fill:#e3f2fd,stroke:#1e88e5
@@ -107,6 +110,7 @@ change.
 |---------|---------|
 | [Event](./events.md) | Immutable fact recording a state change in the domain |
 | [Event Handler](./event-handlers.md) | Reacts to domain events with side effects and cross-aggregate coordination |
+| [Process Manager](./process-managers.md) | Stateful coordinator for multi-step processes spanning multiple aggregates |
 | [Projection](./projections.md) | Read-optimized, denormalized view of domain data |
 | [Projector](./projectors.md) | Specialized handler that keeps a projection in sync with domain events |
 | [Subscriber](./subscribers.md) | Consumes messages from an external message broker |

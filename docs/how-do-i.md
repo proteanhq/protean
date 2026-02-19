@@ -47,6 +47,8 @@ need by what you're trying to accomplish.
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
 | Run side effects when an event fires            | [Event Handlers](./guides/consume-state/event-handlers.md) |
+| Coordinate a multi-step process across aggregates | [Process Managers](./guides/consume-state/process-managers.md) |
+| Correlate events to a running process           | [Process Managers](./guides/consume-state/process-managers.md) |
 | Build a read-optimized view from events         | [Projections](./guides/consume-state/projections.md) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
 

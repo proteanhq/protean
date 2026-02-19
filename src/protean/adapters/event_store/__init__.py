@@ -81,6 +81,10 @@ class EventStore:
                 self._event_streams[stream_category].add(record.cls)
                 self._projectors[fqn(record.cls.meta_.projector_for)].add(record.cls)
 
+        for _, record in self.domain.registry.process_managers.items():
+            for stream_category in record.cls.meta_.stream_categories:
+                self._event_streams[stream_category].add(record.cls)
+
     def _initialize_command_streams(self):
         for _, record in self.domain.registry.command_handlers.items():
             self._command_streams[record.cls.meta_.part_of.meta_.stream_category].add(

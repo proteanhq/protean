@@ -92,9 +92,10 @@ Otherwise, start from the beginning:
 | 7 | [Events](../domain-definition/events.md) | Define domain events |
 | 8 | [Event Handlers](../consume-state/event-handlers.md) | React to events for side effects and cross-aggregate sync |
 | 9 | [Projections](../consume-state/projections.md) | Build read-optimized views from events |
-| 10 | [Server](../server/index.md) | Run the async processing engine |
-| 11 | [Configuration](../essentials/configuration.md) | Configure databases, brokers, and event stores |
-| 12 | [Testing](../testing/index.md) | Test commands, handlers, and projections |
+| 10 | [Process Managers](../consume-state/process-managers.md) | Coordinate multi-step processes across aggregates |
+| 11 | [Server](../server/index.md) | Run the async processing engine |
+| 12 | [Configuration](../essentials/configuration.md) | Configure databases, brokers, and event stores |
+| 13 | [Testing](../testing/index.md) | Test commands, handlers, and projections |
 
 ## When to Evolve to Event Sourcing
 

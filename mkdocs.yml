@@ -159,6 +159,7 @@ nav:
     - Reactive Layer:
       - guides/consume-state/index.md
       - guides/consume-state/event-handlers.md
+      - guides/consume-state/process-managers.md
       - guides/consume-state/projections.md
       - guides/consume-state/subscribers.md
 
@@ -242,6 +243,7 @@ nav:
       - core-concepts/domain-elements/subscribers.md
       - core-concepts/domain-elements/projections.md
       - core-concepts/domain-elements/projectors.md
+      - core-concepts/domain-elements/process-managers.md
 
   - Adapters:
     - adapters/index.md
@@ -275,6 +277,7 @@ nav:
       - patterns/idempotent-event-handlers.md
       - patterns/event-versioning-and-evolution.md
       - patterns/command-idempotency.md
+      - patterns/coordinating-long-running-processes.md
     - Architecture & Quality:
       - patterns/organize-by-domain-concept.md
       - patterns/validation-layering.md
