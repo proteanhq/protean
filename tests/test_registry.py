@@ -100,6 +100,7 @@ def test_properties_method_returns_a_dictionary_of_all_protean_elements():
         "event_sourced_repositories": DomainObjects.EVENT_SOURCED_REPOSITORY.value,
         "events": DomainObjects.EVENT.value,
         "database_models": DomainObjects.DATABASE_MODEL.value,
+        "process_managers": DomainObjects.PROCESS_MANAGER.value,
         "repositories": DomainObjects.REPOSITORY.value,
         "subscribers": DomainObjects.SUBSCRIBER.value,
         "value_objects": DomainObjects.VALUE_OBJECT.value,

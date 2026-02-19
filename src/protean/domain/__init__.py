@@ -362,6 +362,9 @@ class Domain:
         # Parse and setup handler methods in Projectors
         self._setup_projectors()
 
+        # Parse and setup handler methods in Process Managers
+        self._setup_process_managers()
+
         # Run Validations
         self._validate_domain()
 
@@ -591,6 +594,8 @@ class Domain:
         from protean.core.subscriber import subscriber_factory
         from protean.core.value_object import value_object_factory
 
+        from protean.core.process_manager import process_manager_factory
+
         factories = {
             DomainObjects.AGGREGATE.value: aggregate_factory,
             DomainObjects.APPLICATION_SERVICE.value: application_service_factory,
@@ -603,6 +608,7 @@ class Domain:
             DomainObjects.EMAIL.value: email_factory,
             DomainObjects.ENTITY.value: entity_factory,
             DomainObjects.DATABASE_MODEL.value: database_model_factory,
+            DomainObjects.PROCESS_MANAGER.value: process_manager_factory,
             DomainObjects.REPOSITORY.value: repository_factory,
             DomainObjects.SUBSCRIBER.value: subscriber_factory,
             DomainObjects.VALUE_OBJECT.value: value_object_factory,
@@ -975,9 +981,10 @@ class Domain:
         """Assign Aggregate Clusters to all relevant elements"""
         from protean.core.aggregate import BaseAggregate
 
-        # Assign Aggregates and EventSourcedAggregates to their own cluster
+        # Assign Aggregates, EventSourcedAggregates, and Process Managers to their own cluster
         for element_type in [
             DomainObjects.AGGREGATE,
+            DomainObjects.PROCESS_MANAGER,
         ]:
             for _, element in self.registry._elements[element_type.value].items():
                 element.cls.meta_.aggregate_cluster = element.cls
@@ -1154,6 +1161,96 @@ class Domain:
 
                             # `_handlers` maps the command to its handler method
                             element.cls._handlers[event_type].add(method)
+
+    def _setup_process_managers(self):
+        from protean.core.process_manager import _generate_pm_transition_event
+
+        for _, element in self.registry._elements[
+            DomainObjects.PROCESS_MANAGER.value
+        ].items():
+            pm_cls = element.cls
+
+            # Iterate through methods marked as `@handle` and construct a handler map
+            if not pm_cls._handlers:  # Protect against re-registration
+                has_start = False
+
+                methods = inspect.getmembers(pm_cls, predicate=inspect.isroutine)
+                for method_name, method in methods:
+                    if not (
+                        method_name.startswith("__") and method_name.endswith("__")
+                    ) and hasattr(method, "_target_cls"):
+                        # Validate target is an Event
+                        if not inspect.isclass(method._target_cls) or not issubclass(
+                            method._target_cls, BaseEvent
+                        ):
+                            raise IncorrectUsageError(
+                                f"Process Manager method `{method_name}` in `{pm_cls.__name__}` "
+                                "is not associated with an event"
+                            )
+
+                        # Validate correlate is specified
+                        if not getattr(method, "_correlate", None):
+                            raise IncorrectUsageError(
+                                f"Handler `{method_name}` in Process Manager "
+                                f"`{pm_cls.__name__}` must specify a `correlate` parameter"
+                            )
+
+                        if getattr(method, "_start", False):
+                            has_start = True
+
+                        event_type = (
+                            method._target_cls.__type__
+                            if issubclass(method._target_cls, BaseEvent)
+                            else method._target_cls
+                        )
+
+                        pm_cls._handlers[event_type].add(method)
+
+                if not has_start:
+                    raise IncorrectUsageError(
+                        f"Process Manager `{pm_cls.__name__}` must have at least "
+                        f"one handler with `start=True`"
+                    )
+
+            # Generate transition event class
+            transition_cls = _generate_pm_transition_event(pm_cls)
+
+            # Register transition event with domain
+            self._register_element(
+                DomainObjects.EVENT,
+                transition_cls,
+                internal=True,
+                part_of=pm_cls,
+            )
+
+            # Set __type__ on the transition event
+            type_string = (
+                f"{self.camel_case_name}."
+                f"{transition_cls.__name__}."
+                f"{getattr(transition_cls, '__version__', 'v1')}"
+            )
+            setattr(transition_cls, "__type__", type_string)
+            self._events_and_commands[type_string] = transition_cls
+
+            # Store transition event class on PM
+            pm_cls._transition_event_cls = transition_cls
+
+            # If stream_categories is empty, infer from handled events' aggregates
+            if not pm_cls.meta_.stream_categories:
+                inferred_categories = set()
+                for method_name, method in methods:
+                    if hasattr(method, "_target_cls") and inspect.isclass(
+                        method._target_cls
+                    ):
+                        target = method._target_cls
+                        if hasattr(target, "meta_") and hasattr(
+                            target.meta_, "part_of"
+                        ):
+                            part_of = target.meta_.part_of
+                            if part_of and hasattr(part_of, "meta_"):
+                                inferred_categories.add(part_of.meta_.stream_category)
+
+                pm_cls.meta_.stream_categories = list(inferred_categories)
 
     def _generate_fact_event_classes(self):
         """Generate FactEvent classes for all aggregates with `fact_events` enabled"""
@@ -1384,6 +1481,22 @@ class Domain:
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.PROJECTOR,
+            _cls=_cls,
+            **kwargs,
+        )
+
+    @overload
+    def process_manager(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def process_manager(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def process_manager(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
+        return self._domain_element(
+            DomainObjects.PROCESS_MANAGER,
             _cls=_cls,
             **kwargs,
         )

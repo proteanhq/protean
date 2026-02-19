@@ -299,6 +299,24 @@ class Engine:
                     f"on stream '{stream_category}'"
                 )
 
+        # Register process manager subscriptions (one per stream category)
+        for pm_name, pm_record in self.domain.registry.process_managers.items():
+            pm_cls = pm_record.cls
+
+            for stream_category in pm_cls.meta_.stream_categories:
+                subscription_key = f"{pm_name}-{stream_category}"
+
+                self._subscriptions[subscription_key] = (
+                    self._subscription_factory.create_subscription(
+                        handler=pm_cls,
+                        stream_category=stream_category,
+                    )
+                )
+                logger.debug(
+                    f"Registered subscription for process manager '{pm_name}' "
+                    f"on stream '{stream_category}'"
+                )
+
     def _infer_stream_category(
         self, handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]]
     ) -> str:

@@ -129,6 +129,7 @@ DECORATOR_BASE_CLASS_MAP: dict[str, str] = {
     "subscriber": "protean.core.subscriber.BaseSubscriber",
     "projection": "protean.core.projection.BaseProjection",
     "projector": "protean.core.projector.BaseProjector",
+    "process_manager": "protean.core.process_manager.BaseProcessManager",
     "repository": "protean.core.repository.BaseRepository",
     "database_model": "protean.core.database_model.BaseDatabaseModel",
     "email": "protean.core.email.BaseEmail",

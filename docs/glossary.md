@@ -210,6 +210,12 @@ A business rule or constraint that must always hold true within a domain concept
 
 [Learn more →](guides/domain-behavior/invariants.md) | **See also**: [Aggregate](#aggregate), [Validation](#validation)
 
+### Process Manager
+
+A stateful, event-driven coordinator that manages multi-step business processes spanning multiple aggregates. Process managers correlate events from different streams to the same running instance, maintain their own event-sourced state, and issue commands to drive other aggregates forward. They have a defined lifecycle — starting with an initiating event and completing when the process reaches a terminal state. In Protean, process managers are defined with the `@domain.process_manager` decorator.
+
+[Learn more →](guides/consume-state/process-managers.md) | **See also**: [Event Handler](#event-handler), [Command](#command), [Domain Event](#domain-event)
+
 ### Projection
 
 A read-optimized, denormalized view of data constructed by processing one or more event streams. Projections are the primary mechanism for building read models in CQRS, tailored to specific query needs. In Protean, projections are defined with the `@domain.projection` decorator.

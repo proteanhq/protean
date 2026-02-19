@@ -115,6 +115,7 @@ specific area.
 
 - [Consuming State Changes](./guides/consume-state/index.md) -- React to state changes through handlers, projections, and subscribers.
 - [Event Handlers](./guides/consume-state/event-handlers.md) -- Consume events to sync state or trigger side effects.
+- [Process Managers](./guides/consume-state/process-managers.md) -- Coordinate multi-step processes across aggregates with stateful, event-sourced coordination.
 - [Projections](./guides/consume-state/projections.md) -- Create read-optimized views built from events.
 - [Subscribers](./guides/consume-state/subscribers.md) -- Consume messages from external brokers.
 
@@ -199,6 +200,7 @@ Architectural theory and the building blocks of domain-driven systems.
 - [Subscribers](./core-concepts/domain-elements/subscribers.md) -- Consume messages from external brokers.
 - [Projections](./core-concepts/domain-elements/projections.md) -- Read-optimized denormalized views.
 - [Projectors](./core-concepts/domain-elements/projectors.md) -- Specialized event handlers that maintain projections.
+- [Process Managers](./core-concepts/domain-elements/process-managers.md) -- Stateful coordinators for multi-step processes across aggregates.
 
 ---
 
@@ -255,6 +257,7 @@ Protean supports but does not enforce.
 - [Idempotent Event Handlers](./patterns/idempotent-event-handlers.md) -- Produce the same result whether an event is processed once or many times.
 - [Event Versioning and Evolution](./patterns/event-versioning-and-evolution.md) -- Evolve event schemas without breaking consumers or the event store.
 - [Command Idempotency](./patterns/command-idempotency.md) -- Ensure processing the same command twice produces the same effect.
+- [Coordinating Long-Running Processes](./patterns/coordinating-long-running-processes.md) -- Use a process manager to coordinate multi-step workflows across aggregates.
 
 ### Architecture & Quality
 
