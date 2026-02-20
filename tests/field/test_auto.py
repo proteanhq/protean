@@ -7,7 +7,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.projection import BaseProjection
-from protean.fields import Auto
+from protean.fields import Auto, String
 from tests.shared import assert_int_is_uuid, assert_str_is_uuid
 
 
@@ -161,8 +161,11 @@ class TestCustomIdentityType:
         with test_domain.domain_context():
             auto = AutoTest()
 
-            assert isinstance(auto.auto_field, int)
-            assert_int_is_uuid(auto.auto_field)
+            # identity_type="integer" generates uuid4().int but the field's
+            # python_type is str, so validate_default coerces it to a
+            # string representation — consistent with DB-loaded values.
+            assert isinstance(auto.auto_field, str)
+            assert_int_is_uuid(int(auto.auto_field))
 
     def test_uuid_identity_type(self, test_domain):
         class AutoTest(BaseAggregate):
@@ -174,8 +177,11 @@ class TestCustomIdentityType:
         with test_domain.domain_context():
             auto = AutoTest()
 
-            assert isinstance(auto.auto_field, UUID)
-            assert auto.auto_field.version == 4
+            # identity_type="uuid" generates a UUID but the field's
+            # python_type is str, so validate_default coerces it to
+            # a string representation — consistent with DB-loaded values.
+            assert isinstance(auto.auto_field, str)
+            assert UUID(auto.auto_field).version == 4
 
 
 class TestCustomIdentityStrategy:
@@ -245,4 +251,136 @@ class TestCustomIdentityStrategy:
         with customized_domain.domain_context():
             auto = AutoTest()
 
-            assert isinstance(auto.auto_field, int)
+            # The custom function returns int, but the field's python_type
+            # is str, so validate_default coerces it to str.
+            assert isinstance(auto.auto_field, str)
+            assert int(auto.auto_field) > 0
+
+
+class TestIdentityCoercionConsistency:
+    """Tests that identity fields are consistently typed (str) whether
+    created in-memory or loaded from the database.  Covers the
+    validate_default=True fix on FieldSpec."""
+
+    def test_default_identity_type_is_str(self, test_domain):
+        """Default identity type (string) should produce str id."""
+
+        class DefaultIdAggregate(BaseAggregate):
+            name: String()
+
+        test_domain.register(DefaultIdAggregate)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            agg = DefaultIdAggregate(name="test")
+            assert isinstance(agg.id, str)
+
+    def test_uuid_identity_type_coerced_to_str(self, test_domain):
+        """identity_type='uuid' should generate UUID but coerce to str."""
+
+        class UuidAggregate(BaseAggregate):
+            auto_id: Auto(identifier=True, identity_type="uuid")
+
+        test_domain.register(UuidAggregate)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            agg = UuidAggregate()
+            assert isinstance(agg.auto_id, str)
+            parsed = UUID(agg.auto_id)
+            assert parsed.version == 4
+
+    def test_string_identity_type_is_str(self, test_domain):
+        """identity_type='string' should produce str id."""
+
+        class StrAggregate(BaseAggregate):
+            auto_id: Auto(identifier=True, identity_type="string")
+
+        test_domain.register(StrAggregate)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            agg = StrAggregate()
+            assert isinstance(agg.auto_id, str)
+
+    def test_explicit_uuid_value_coerced_to_str(self, test_domain):
+        """Passing a UUID object explicitly should also be coerced to str."""
+        from uuid import uuid4
+
+        class CoerceAggregate(BaseAggregate):
+            auto_id: Auto(identifier=True)
+
+        test_domain.register(CoerceAggregate)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            uuid_val = uuid4()
+            agg = CoerceAggregate(auto_id=uuid_val)
+            assert isinstance(agg.auto_id, str)
+            assert agg.auto_id == str(uuid_val)
+
+
+class TestIdentityConsistencyAcrossPersistence:
+    """Tests that identity is consistently str both in-memory and from DB
+    (uses the default memory provider, no external DB needed)."""
+
+    def test_identity_type_consistent_after_round_trip(self, test_domain):
+        """id should have the same type whether created in-memory or loaded
+        from the database."""
+
+        class RoundTripAggregate(BaseAggregate):
+            name: String()
+
+        test_domain.register(RoundTripAggregate)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            agg = RoundTripAggregate(name="test")
+            original_id = agg.id
+            assert isinstance(original_id, str)
+
+            test_domain.repository_for(RoundTripAggregate).add(agg)
+
+            loaded = test_domain.repository_for(RoundTripAggregate).get(original_id)
+            assert loaded.id == original_id
+            assert type(loaded.id) is type(original_id)
+
+    def test_uuid_identity_consistent_after_round_trip(self, test_domain):
+        """identity_type='uuid' should be str both in-memory and from DB."""
+
+        class UuidRoundTrip(BaseAggregate):
+            auto_id: Auto(identifier=True, identity_type="uuid")
+
+        test_domain.register(UuidRoundTrip)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            agg = UuidRoundTrip()
+            original_id = agg.auto_id
+            assert isinstance(original_id, str)
+
+            test_domain.repository_for(UuidRoundTrip).add(agg)
+
+            loaded = test_domain.repository_for(UuidRoundTrip).get(original_id)
+            assert loaded.auto_id == original_id
+            assert isinstance(loaded.auto_id, str)
+
+    def test_identity_equality_after_round_trip(self, test_domain):
+        """Verify that == comparison between in-memory id and DB-loaded id
+        works correctly (both are str, no UUID vs str mismatch)."""
+
+        class EqualityAggregate(BaseAggregate):
+            name: String()
+
+        test_domain.register(EqualityAggregate)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            agg = EqualityAggregate(name="test")
+            in_memory_id = agg.id
+
+            test_domain.repository_for(EqualityAggregate).add(agg)
+            loaded = test_domain.repository_for(EqualityAggregate).get(in_memory_id)
+
+            assert loaded.id == in_memory_id
+            assert type(loaded.id) is type(in_memory_id) is str

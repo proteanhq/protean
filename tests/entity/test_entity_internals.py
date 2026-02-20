@@ -266,3 +266,319 @@ class TestEntityPartOfRequired:
         with pytest.raises(IncorrectUsageError, match="needs to be associated"):
             test_domain.register(StandaloneEntity)
             test_domain.init(traverse=False)
+
+
+# ---------------------------------------------------------------------------
+# Domain elements for shadow field / descriptor kwargs separation tests
+# ---------------------------------------------------------------------------
+class Region(BaseAggregate):
+    name: String(required=True, max_length=100)
+
+
+class Store(BaseAggregate):
+    name: String(required=True, max_length=100)
+    region = Reference(Region, required=True)
+
+
+class Warehouse(BaseAggregate):
+    name: String(required=True, max_length=100)
+    region = Reference(Region, required=False)
+
+
+class Country(BaseAggregate):
+    name: String(required=True, max_length=50)
+
+
+class City(BaseEntity):
+    name: String(required=True, max_length=100)
+    country = Reference(Country, required=True)
+
+
+class Province(BaseEntity):
+    name: String(required=True, max_length=100)
+    country = Reference(Country, required=False)
+
+
+class BillingAddress(BaseValueObject):
+    street: String(max_length=200)
+    city: String(max_length=100)
+
+
+class BillingCustomer(BaseAggregate):
+    name: String(required=True, max_length=100)
+    billing = ValueObject(BillingAddress, required=True)
+
+
+class Employee(BaseAggregate):
+    name: String(required=True, max_length=100)
+    home = ValueObject(BillingAddress, required=False)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Shadow field / descriptor kwargs separation in __init__
+# ---------------------------------------------------------------------------
+class TestShadowFieldPriorityOnAggregates:
+    @pytest.fixture(autouse=True)
+    def register(self, test_domain):
+        test_domain.register(Region)
+        test_domain.register(Store)
+        test_domain.register(Warehouse)
+        test_domain.register(Country)
+        test_domain.register(City, part_of=Country)
+        test_domain.register(Province, part_of=Country)
+        test_domain.register(BillingAddress)
+        test_domain.register(BillingCustomer)
+        test_domain.register(Employee)
+        test_domain.init(traverse=False)
+
+    def test_construct_aggregate_with_shadow_field_kwarg(self, test_domain):
+        """Passing region_id directly should not raise ValidationError."""
+        store = Store(name="Main Store", region_id="region-1")
+        assert store.name == "Main Store"
+        assert store.region_id == "region-1"
+
+    def test_construct_aggregate_with_descriptor_kwarg(self, test_domain):
+        """Passing region as a Reference descriptor should work too."""
+        region = Region(name="Northeast")
+        store = Store(name="Main Store", region=region)
+        assert store.name == "Main Store"
+        assert store.region == region
+        assert store.region_id == region.id
+
+    def test_shadow_field_satisfies_required_reference(self, test_domain):
+        """When region_id is provided, region Reference is satisfied (required)."""
+        store = Store(name="Main Store", region_id="region-abc")
+        assert store.region_id == "region-abc"
+
+    def test_missing_required_reference_and_shadow_raises(self, test_domain):
+        """Omitting both region and region_id should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            Store(name="Store without region")
+        assert "region" in exc_info.value.messages
+
+    def test_optional_reference_without_shadow_or_descriptor(self, test_domain):
+        """Optional Reference — omitting both region and region_id is fine."""
+        warehouse = Warehouse(name="Warehouse A")
+        assert warehouse.region_id is None
+
+
+class TestShadowFieldPriorityOnEntities:
+    @pytest.fixture(autouse=True)
+    def register(self, test_domain):
+        test_domain.register(Region)
+        test_domain.register(Store)
+        test_domain.register(Warehouse)
+        test_domain.register(Country)
+        test_domain.register(City, part_of=Country)
+        test_domain.register(Province, part_of=Country)
+        test_domain.register(BillingAddress)
+        test_domain.register(BillingCustomer)
+        test_domain.register(Employee)
+        test_domain.init(traverse=False)
+
+    def test_construct_entity_with_shadow_field_kwarg(self, test_domain):
+        """Passing country_id directly to a child entity should work."""
+        city = City(name="Boston", country_id="country-1")
+        assert city.name == "Boston"
+        assert city.country_id == "country-1"
+
+    def test_construct_entity_with_descriptor_kwarg(self, test_domain):
+        """Passing country as Reference descriptor should work."""
+        country = Country(name="USA")
+        city = City(name="Boston", country=country)
+        assert city.country == country
+        assert city.country_id == country.id
+
+    def test_shadow_field_satisfies_required_reference_on_entity(self, test_domain):
+        """country_id in kwargs should satisfy required Reference."""
+        city = City(name="Boston", country_id="country-xyz")
+        assert city.country_id == "country-xyz"
+
+    def test_missing_required_reference_on_entity_raises(self, test_domain):
+        """Omitting both country and country_id on required Reference raises."""
+        with pytest.raises(ValidationError) as exc_info:
+            City(name="Orphan City")
+        assert "country" in exc_info.value.messages
+
+    def test_optional_reference_on_entity_without_value(self, test_domain):
+        """Optional Reference on entity — omitting is fine."""
+        province = Province(name="Manitoba", country_id=None)
+        assert province.country_id is None
+
+
+class TestShadowFieldInTemplateDicts:
+    @pytest.fixture(autouse=True)
+    def register(self, test_domain):
+        test_domain.register(Region)
+        test_domain.register(Store)
+        test_domain.register(BillingAddress)
+        test_domain.register(BillingCustomer)
+        test_domain.init(traverse=False)
+
+    def test_shadow_kwarg_via_template_dict(self, test_domain):
+        """Shadow field passed via positional template dict should be popped."""
+        store = Store({"name": "Branch", "region_id": "region-tmpl"})
+        assert store.name == "Branch"
+        assert store.region_id == "region-tmpl"
+
+    def test_descriptor_kwarg_via_template_dict(self, test_domain):
+        """Descriptor kwarg passed via template dict should be popped."""
+        region = Region(name="South")
+        store = Store({"name": "Branch", "region": region})
+        assert store.region == region
+
+    def test_regular_kwarg_overrides_template(self, test_domain):
+        """For regular (non-shadow, non-descriptor) kwargs, keyword args
+        take precedence over template dict via merged.update(kwargs)."""
+        store = Store(
+            {"name": "Template Name", "region_id": "r1"},
+            name="Kwarg Name",
+        )
+        assert store.name == "Kwarg Name"
+
+
+class TestValueObjectShadowFieldsSatisfyRequired:
+    @pytest.fixture(autouse=True)
+    def register(self, test_domain):
+        test_domain.register(BillingAddress)
+        test_domain.register(BillingCustomer)
+        test_domain.register(Employee)
+        test_domain.init(traverse=False)
+
+    def test_vo_shadow_fields_satisfy_required_vo(self, test_domain):
+        """Providing VO shadow fields should satisfy a required VO descriptor."""
+        customer = BillingCustomer(
+            name="Alice",
+            billing_street="123 Main St",
+            billing_city="Boston",
+        )
+        assert customer.name == "Alice"
+        assert customer.billing.street == "123 Main St"
+        assert customer.billing.city == "Boston"
+
+    def test_vo_descriptor_directly(self, test_domain):
+        """Passing VO descriptor directly should work."""
+        addr = BillingAddress(street="456 Oak Ave", city="Cambridge")
+        customer = BillingCustomer(name="Bob", billing=addr)
+        assert customer.billing.street == "456 Oak Ave"
+
+    def test_missing_required_vo_raises(self, test_domain):
+        """Omitting both VO descriptor and its shadow fields raises."""
+        with pytest.raises(ValidationError) as exc_info:
+            BillingCustomer(name="Charlie")
+        assert "billing" in exc_info.value.messages
+
+    def test_optional_vo_without_value(self, test_domain):
+        """Optional ValueObject — omitting is fine."""
+        emp = Employee(name="Dave")
+        assert emp.home is None
+
+
+# ---------------------------------------------------------------------------
+# Domain elements for mixed required VO + Reference tests
+# ---------------------------------------------------------------------------
+class ShippingAddress(BaseValueObject):
+    line1: String(max_length=200)
+    zip_code: String(max_length=10)
+
+
+class Vendor(BaseAggregate):
+    name: String(required=True, max_length=100)
+
+
+class PurchaseOrder(BaseAggregate):
+    description: String(max_length=200)
+    vendor = Reference(Vendor, required=True)
+    shipping = ValueObject(ShippingAddress, required=True)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Mixed required VO + Reference satisfied by shadow kwargs
+# ---------------------------------------------------------------------------
+class TestMixedRequiredVoAndReference:
+    """Both a required ValueObject and a required Reference on the same
+    aggregate, both satisfied exclusively by shadow kwargs."""
+
+    @pytest.fixture(autouse=True)
+    def register(self, test_domain):
+        test_domain.register(ShippingAddress)
+        test_domain.register(Vendor)
+        test_domain.register(PurchaseOrder)
+        test_domain.init(traverse=False)
+
+    def test_both_satisfied_by_shadow_kwargs(self, test_domain):
+        """Providing shadow kwargs for both VO and Reference should succeed."""
+        po = PurchaseOrder(
+            description="Office Supplies",
+            vendor_id="vendor-1",
+            shipping_line1="100 Warehouse Rd",
+            shipping_zip_code="02139",
+        )
+        assert po.vendor_id == "vendor-1"
+        assert po.shipping.line1 == "100 Warehouse Rd"
+
+    def test_missing_reference_raises_even_when_vo_present(self, test_domain):
+        """Missing required Reference should raise even if VO is satisfied."""
+        with pytest.raises(ValidationError) as exc_info:
+            PurchaseOrder(
+                description="Partial",
+                shipping_line1="100 Warehouse Rd",
+                shipping_zip_code="02139",
+            )
+        assert "vendor" in exc_info.value.messages
+
+    def test_missing_vo_raises_even_when_reference_present(self, test_domain):
+        """Missing required VO should raise even if Reference is satisfied."""
+        with pytest.raises(ValidationError) as exc_info:
+            PurchaseOrder(
+                description="Partial",
+                vendor_id="vendor-1",
+            )
+        assert "shipping" in exc_info.value.messages
+
+
+# ---------------------------------------------------------------------------
+# Tests: model_post_init internal kwargs (_owner, _root, _version)
+# ---------------------------------------------------------------------------
+class TestModelPostInitContextKwargs:
+    """Tests that _owner, _root, and _version kwargs passed to __init__
+    are correctly restored in model_post_init.  These are internal kwargs
+    used during repository hydration and child entity construction."""
+
+    @pytest.fixture(autouse=True)
+    def register(self, test_domain):
+        test_domain.register(Order)
+        test_domain.register(OrderItem, part_of=Order)
+        test_domain.init(traverse=False)
+
+    def test_version_kwarg_restored_in_model_post_init(self, test_domain):
+        """_version passed as kwarg should be set on the entity."""
+        order = Order(name="Versioned Order", _version=5)
+        assert order._version == 5
+
+    def test_owner_kwarg_restored_in_model_post_init(self, test_domain):
+        """_owner passed as kwarg should be set on the entity."""
+        parent = Order(name="Parent Order")
+        item = OrderItem(product_name="Widget", quantity=1, _owner=parent)
+        assert item._owner is parent
+
+    def test_root_kwarg_restored_in_model_post_init(self, test_domain):
+        """_root passed as kwarg should be set on the entity."""
+        root = Order(name="Root Order")
+        item = OrderItem(product_name="Widget", quantity=1, _root=root)
+        assert item._root is root
+
+    def test_all_context_kwargs_together(self, test_domain):
+        """All three internal kwargs together should be correctly restored."""
+        root = Order(name="Root")
+        parent = Order(name="Parent")
+        item = OrderItem(
+            product_name="Widget",
+            quantity=1,
+            _owner=parent,
+            _root=root,
+            _version=3,
+        )
+        assert item._owner is parent
+        assert item._root is root
+        assert item._version == 3

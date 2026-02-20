@@ -301,3 +301,62 @@ class TestFieldSpecWarning:
             FieldSpec(str, required=True, default="hello")
             assert len(w) == 1
             assert "required=True" in str(w[0].message)
+
+
+# ---------------------------------------------------------------------------
+# Tests: validate_default for identity fields
+# ---------------------------------------------------------------------------
+class TestFieldSpecValidateDefault:
+    def test_identifier_field_has_validate_default(self):
+        """FieldSpec for an identifier Auto field should include
+        validate_default=True in resolved kwargs."""
+        spec = FieldSpec(str, field_kind="auto", identifier=True)
+        spec._increment = False
+        spec._identity_strategy = None
+        spec._identity_function = None
+        spec._identity_type = None
+
+        kwargs = spec.resolve_field_kwargs()
+        assert kwargs.get("validate_default") is True
+
+    def test_non_identifier_field_no_validate_default(self):
+        """Non-identifier fields should NOT have validate_default."""
+        spec = FieldSpec(str, field_kind="auto", identifier=False)
+        spec._increment = False
+        spec._identity_strategy = None
+        spec._identity_function = None
+        spec._identity_type = None
+
+        kwargs = spec.resolve_field_kwargs()
+        assert "validate_default" not in kwargs
+
+    def test_increment_field_no_validate_default(self):
+        """Auto-increment identifier fields should NOT have validate_default
+        (they use default=None, not default_factory)."""
+        spec = FieldSpec(int, field_kind="auto", identifier=True)
+        spec._increment = True
+        spec._identity_strategy = None
+        spec._identity_function = None
+        spec._identity_type = None
+
+        kwargs = spec.resolve_field_kwargs()
+        assert "validate_default" not in kwargs
+
+    def test_identifier_field_with_explicit_default_no_validate_default(self):
+        """When an explicit default is provided, validate_default should not
+        be added (the default_factory path is not taken)."""
+        spec = FieldSpec(str, field_kind="auto", identifier=True, default="fixed-id")
+        spec._increment = False
+        spec._identity_strategy = None
+        spec._identity_function = None
+        spec._identity_type = None
+
+        kwargs = spec.resolve_field_kwargs()
+        assert "validate_default" not in kwargs
+
+    def test_identifier_spec_with_kind_identifier(self):
+        """FieldSpec with field_kind='identifier' also gets validate_default."""
+        spec = FieldSpec(str, field_kind="identifier", identifier=True)
+
+        kwargs = spec.resolve_field_kwargs()
+        assert kwargs.get("validate_default") is True

@@ -391,10 +391,10 @@ class BaseEntity(BaseModel, OptionsMixin):
                     _shadow_field_names.add(sf.attribute_name)
 
         for name in list(kwargs):
-            if self._get_class_descriptor(type(self), name) is not None:
-                descriptor_kwargs[name] = kwargs.pop(name)
-            elif name in _shadow_field_names:
+            if name in _shadow_field_names:
                 shadow_kwargs[name] = kwargs.pop(name)
+            elif self._get_class_descriptor(type(self), name) is not None:
+                descriptor_kwargs[name] = kwargs.pop(name)
 
         # Support template dict pattern: Entity({"key": "val"}, key2="val2")
         # Keyword args take precedence over template dict values.
@@ -409,10 +409,10 @@ class BaseEntity(BaseModel, OptionsMixin):
                     )
                 # Also separate descriptor and shadow kwargs from template dicts
                 for tname in list(template):
-                    if self._get_class_descriptor(type(self), tname) is not None:
-                        descriptor_kwargs[tname] = template.pop(tname)
-                    elif tname in _shadow_field_names:
+                    if tname in _shadow_field_names:
                         shadow_kwargs[tname] = template.pop(tname)
+                    elif self._get_class_descriptor(type(self), tname) is not None:
+                        descriptor_kwargs[tname] = template.pop(tname)
                 merged.update(template)
             merged.update(kwargs)
             kwargs = merged
@@ -449,17 +449,20 @@ class BaseEntity(BaseModel, OptionsMixin):
                 isinstance(field_obj, (ValueObject, Reference))
                 and getattr(field_obj, "required", False)
                 and field_name not in descriptor_kwargs
-                and not any(
-                    sk in shadow_kwargs
-                    for sf in (
-                        field_obj.embedded_fields.values()
-                        if isinstance(field_obj, ValueObject)
-                        else []
-                    )
-                    for sk in [sf.attribute_name]
-                )
             ):
-                collected_errors.setdefault(field_name, []).append("is required")
+                # Check if shadow fields are present (e.g. region_id for region Reference)
+                has_shadow = False
+                if isinstance(field_obj, ValueObject):
+                    has_shadow = any(
+                        sf.attribute_name in shadow_kwargs
+                        for sf in field_obj.embedded_fields.values()
+                    )
+                elif isinstance(field_obj, Reference):
+                    shadow_name = field_obj.get_attribute_name()
+                    has_shadow = shadow_name in shadow_kwargs
+
+                if not has_shadow:
+                    collected_errors.setdefault(field_name, []).append("is required")
 
         if collected_errors:
             raise ValidationError(collected_errors)

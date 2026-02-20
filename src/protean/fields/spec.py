@@ -181,6 +181,10 @@ class FieldSpec:
                             )
                         )
                     )
+                    # Ensure the default_factory result is validated so
+                    # that BeforeValidator(_coerce_to_str) can coerce
+                    # UUID objects to str for identity fields.
+                    kwargs["validate_default"] = True
 
         # For non-identifier Auto fields, auto-generate UUIDs unless increment
         if (

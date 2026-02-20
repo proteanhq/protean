@@ -12,6 +12,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.process_manager import BaseProcessManager
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
@@ -574,3 +575,106 @@ class TestEngineConfigPriority:
 
         # Handler Meta config (50) > Handler Meta profile (100) > Server handler (300) > Server profile (500)
         assert subscription.messages_per_tick == 50
+
+
+# -----------------------------------------------------------------------
+# Process Manager subscription registration
+# -----------------------------------------------------------------------
+
+
+class Order(BaseAggregate):
+    customer_id: Identifier()
+
+
+class OrderPlaced(BaseEvent):
+    order_id: Identifier()
+
+
+class Payment(BaseAggregate):
+    order_id: Identifier()
+
+
+class PaymentConfirmed(BaseEvent):
+    order_id: Identifier()
+
+
+class OrderFulfillmentPM(BaseProcessManager):
+    order_id: Identifier()
+    status: String(default="new")
+
+    @handle(OrderPlaced, start=True, correlate="order_id")
+    def on_order_placed(self, event: OrderPlaced) -> None:
+        self.order_id = event.order_id
+
+    @handle(PaymentConfirmed, correlate="order_id")
+    def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
+        self.status = "paid"
+
+
+class TestEngineProcessManagerSubscriptions:
+    """Tests for Engine subscription creation for Process Managers."""
+
+    def test_creates_subscription_for_process_manager(self, test_domain):
+        """Engine should create subscriptions for each PM stream category."""
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(Payment)
+        test_domain.register(PaymentConfirmed, part_of=Payment)
+        test_domain.register(
+            OrderFulfillmentPM,
+            stream_categories=["test::order", "test::payment"],
+        )
+        test_domain.init(traverse=False)
+
+        engine = Engine(test_domain, test_mode=True)
+
+        # PM name in registry
+        pm_name = f"{OrderFulfillmentPM.__module__}.{OrderFulfillmentPM.__qualname__}"
+
+        # Should have one subscription per stream category
+        key_order = f"{pm_name}-test::order"
+        key_payment = f"{pm_name}-test::payment"
+
+        assert key_order in engine._subscriptions
+        assert key_payment in engine._subscriptions
+
+    def test_pm_subscription_has_correct_handler(self, test_domain):
+        """PM subscription should reference the PM class as handler."""
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(Payment)
+        test_domain.register(PaymentConfirmed, part_of=Payment)
+        test_domain.register(
+            OrderFulfillmentPM,
+            stream_categories=["test::order", "test::payment"],
+        )
+        test_domain.init(traverse=False)
+
+        engine = Engine(test_domain, test_mode=True)
+
+        pm_name = f"{OrderFulfillmentPM.__module__}.{OrderFulfillmentPM.__qualname__}"
+        subscription = engine._subscriptions[f"{pm_name}-test::order"]
+
+        assert subscription.handler == OrderFulfillmentPM
+
+    def test_pm_subscription_has_correct_stream_category(self, test_domain):
+        """PM subscription should use the correct stream category."""
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(Payment)
+        test_domain.register(PaymentConfirmed, part_of=Payment)
+        test_domain.register(
+            OrderFulfillmentPM,
+            stream_categories=["test::order", "test::payment"],
+        )
+        test_domain.init(traverse=False)
+
+        engine = Engine(test_domain, test_mode=True)
+
+        pm_name = f"{OrderFulfillmentPM.__module__}.{OrderFulfillmentPM.__qualname__}"
+
+        sub_order = engine._subscriptions[f"{pm_name}-test::order"]
+        sub_payment = engine._subscriptions[f"{pm_name}-test::payment"]
+
+        assert sub_order.stream_category == "test::order"
+        assert sub_payment.stream_category == "test::payment"
