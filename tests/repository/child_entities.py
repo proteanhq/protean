@@ -26,3 +26,15 @@ class Comment(BaseEntity):
     commented_at: DateTime(default=datetime.now)
 
     post = Reference(Post)
+
+
+class Team(BaseAggregate):
+    name: String(required=True, max_length=100)
+    members = HasMany("tests.repository.child_entities.Member")
+
+
+class Member(BaseEntity):
+    name: String(required=True, max_length=100)
+    score: Integer(default=0)
+
+    team = Reference(Team)

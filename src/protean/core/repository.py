@@ -144,6 +144,16 @@ class BaseRepository(Element, OptionsMixin):
                 # Construct and raise the Fact Event
                 fact_event = item._fact_event_cls(**payload)
                 item.raise_(fact_event)
+        elif (
+            item.element_type == DomainObjects.AGGREGATE
+            and item._events
+            and current_uow
+            and current_uow.in_progress
+        ):
+            # Aggregate has pending events but no own-field changes (e.g., only child
+            # entities were added/removed via HasMany).  We still need to track it in
+            # the identity map so that _gather_events picks up these events on commit.
+            current_uow._add_to_identity_map(item)
 
         # If we started a UnitOfWork, commit it now
         if own_current_uow:

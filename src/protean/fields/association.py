@@ -749,9 +749,12 @@ class HasMany(Association):
         children_repo = current_domain.repository_for(self.to_cls)
         data = children_repo._dao.query.filter(**{key: value}).all().items
 
-        # Set up linkage with owner element
+        # Set up linkage with owner element.
+        # Write directly to __dict__ to avoid triggering entity's __setattr__
+        # which would call mark_changed() and make freshly-loaded children
+        # appear dirty (they were just loaded with this exact FK value).
         for item in data:
-            setattr(item, key, value)
+            item.__dict__[key] = value
 
         # Add objects in temporary cache
         for _, item in instance._temp_cache[self.field_name]["added"].items():
