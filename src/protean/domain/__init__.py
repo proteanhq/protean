@@ -1048,6 +1048,10 @@ class Domain:
 
         self._events_and_commands[type_string] = event_cls
 
+        # Set __type__ on the event class so ProcessManagers and other
+        # infrastructure can resolve the type string from the class itself.
+        setattr(event_cls, "__type__", type_string)
+
     def _setup_command_handlers(self):
         for element_type in [DomainObjects.COMMAND_HANDLER]:
             for _, element in self.registry._elements[element_type.value].items():

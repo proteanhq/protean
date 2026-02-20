@@ -25,9 +25,11 @@ Example::
 """
 
 import logging
+from datetime import date, datetime
 from typing import Any, ClassVar, Optional, TypeVar, Union
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic_core import PydanticUndefined
 
 from protean.core.event import BaseEvent
 from protean.exceptions import (
@@ -402,7 +404,7 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
 
             # Initialize all model fields to defaults
             for fname, finfo in cls.model_fields.items():
-                if finfo.default is not None:
+                if finfo.default is not PydanticUndefined:
                     pm.__dict__[fname] = finfo.default
                 elif finfo.default_factory is not None:
                     pm.__dict__[fname] = finfo.default_factory()
@@ -476,10 +478,15 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
             pm_instance: The PM instance whose state should be persisted.
             handler_name: The name of the handler method that triggered this transition.
         """
-        # Capture current state
+        # Capture current state, serializing non-JSON-safe types
         state: dict[str, Any] = {}
         for fname in cls.model_fields:
-            state[fname] = getattr(pm_instance, fname, None)
+            value = getattr(pm_instance, fname, None)
+            if isinstance(value, datetime):
+                value = value.isoformat()
+            elif isinstance(value, date):
+                value = value.isoformat()
+            state[fname] = value
 
         transition_cls = cls._transition_event_cls
         if transition_cls is None:
