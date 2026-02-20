@@ -77,6 +77,12 @@ class OutboxProcessor(BaseSubscription):
             ),
         }
 
+        # Load priority lanes configuration
+        lanes_config = engine.domain.config.get("server", {}).get("priority_lanes", {})
+        self._lanes_enabled = lanes_config.get("enabled", False)
+        self._lane_threshold = lanes_config.get("threshold", 0)
+        self._backfill_suffix = lanes_config.get("backfill_suffix", "backfill")
+
         self.tick_count = 0
 
         # Will be initialized in initialize() method
@@ -344,6 +350,15 @@ class OutboxProcessor(BaseSubscription):
                 if message.metadata_.domain
                 else None
             )
+
+            # Route to backfill lane if priority is below threshold and lanes are enabled
+            if (
+                self._lanes_enabled
+                and stream_category
+                and message.priority < self._lane_threshold
+            ):
+                stream_category = f"{stream_category}:{self._backfill_suffix}"
+
             broker_message_id = self.broker.publish(stream_category, message_dict)
 
             logger.debug(

@@ -27,6 +27,13 @@ class StreamSubscription(BaseSubscription):
     A stream subscription allows a handler to receive and process messages from a specific stream
     using Redis Streams' blocking read capability. This provides efficient, low-latency message
     consumption without CPU-intensive polling.
+
+    When priority lanes are enabled, the subscription reads from two streams:
+    - Primary stream (e.g., ``customer``): Production traffic, always drained first.
+    - Backfill stream (e.g., ``customer:backfill``): Migration/bulk traffic, read only
+      when the primary stream is empty.
+
+    This ensures production events are always processed before backfill events.
     """
 
     def __init__(
@@ -122,6 +129,19 @@ class StreamSubscription(BaseSubscription):
         # Get broker from domain
         self.broker: Optional[BaseBroker] = None
 
+        # Priority lanes configuration
+        lanes_config = server_config.get("priority_lanes", {})
+        self._lanes_enabled = lanes_config.get("enabled", False)
+        self._backfill_suffix = lanes_config.get("backfill_suffix", "backfill")
+        self.backfill_stream = f"{self.stream_category}:{self._backfill_suffix}"
+        self.backfill_dlq_stream = f"{self.backfill_stream}:dlq"
+
+        # Tracks which stream the current batch of messages came from.
+        # This is used by ACK/NACK/DLQ methods to target the correct stream.
+        # Set to the primary stream by default; overridden when processing
+        # backfill messages.
+        self._active_stream = self.stream_category
+
     @classmethod
     def from_config(
         cls,
@@ -188,6 +208,8 @@ class StreamSubscription(BaseSubscription):
         Perform stream-specific initialization.
 
         This method gets the broker and ensures the consumer group exists.
+        When priority lanes are enabled, also creates a consumer group for
+        the backfill stream.
 
         Raises:
             RuntimeError: If no default broker is configured
@@ -203,12 +225,28 @@ class StreamSubscription(BaseSubscription):
                 f"No default broker configured for StreamSubscription {self.subscriber_name}"
             )
 
-        # Ensure consumer group exists
+        # Ensure consumer group exists for primary stream
         try:
             self.broker._ensure_group(self.consumer_group, self.stream_category)
         except Exception as e:
             logger.error(f"Failed to ensure consumer group {self.consumer_group}: {e}")
             raise
+
+        # If priority lanes are enabled, also ensure consumer group for backfill stream
+        if self._lanes_enabled:
+            try:
+                self.broker._ensure_group(self.consumer_group, self.backfill_stream)
+            except Exception as e:
+                logger.error(
+                    f"Failed to ensure backfill consumer group "
+                    f"{self.consumer_group} on {self.backfill_stream}: {e}"
+                )
+                raise
+
+            logger.debug(
+                f"Initialized priority lanes for {self.subscriber_name}: "
+                f"primary='{self.stream_category}', backfill='{self.backfill_stream}'"
+            )
 
         logger.debug(
             f"Initialized subscription for {self.subscriber_name} "
@@ -219,29 +257,64 @@ class StreamSubscription(BaseSubscription):
         """
         High-performance continuous message processing loop.
 
-        Uses blocking reads with no polling overhead for maximum efficiency.
-        Implements backpressure by processing messages as fast as possible
-        while yielding control periodically for other tasks.
+        When priority lanes are disabled (default), uses standard blocking reads
+        on the single stream.
+
+        When priority lanes are enabled, implements a two-lane priority system:
+        1. Non-blocking read on primary stream (production traffic)
+        2. If messages found → process them, loop back to step 1
+        3. If primary is empty → blocking read on backfill stream (short timeout)
+        4. Process backfill messages, loop back to step 1
+
+        This ensures production events are always processed before backfill events.
+        The backfill blocking timeout is capped at 1 second so we re-check the
+        primary stream frequently.
         """
         batches_processed = 0
 
         while self.keep_going and not self.engine.shutting_down:
             try:
-                # Blocking read - no CPU spinning
-                messages = await self.get_next_batch_of_messages()
+                if self._lanes_enabled:
+                    # PRIORITY LANES MODE
+                    # Step 1: Non-blocking read on primary (production) stream
+                    self._active_stream = self.stream_category
+                    messages = await self._read_primary_nonblocking()
 
-                if messages:
-                    await self.process_batch(messages)
-                    batches_processed += 1
+                    if messages:
+                        await self.process_batch(messages)
+                        batches_processed += 1
+                        # Loop back immediately to check primary again
+                        if batches_processed % 10 == 0:
+                            await asyncio.sleep(0)
+                        continue
 
-                    # Yield control only after processing a batch
-                    # This maximizes throughput while maintaining responsiveness
-                    if batches_processed % 10 == 0:  # Yield every 10 batches
-                        await asyncio.sleep(0)
-                else:
-                    # No messages available, the blocking read timed out
-                    # This is normal, just yield control
+                    # Step 2: Primary empty → blocking read on backfill stream
+                    self._active_stream = self.backfill_stream
+                    messages = await self._read_backfill_blocking()
+
+                    if messages:
+                        await self.process_batch(messages)
+                        batches_processed += 1
+
+                    # Yield control before re-checking primary
                     await asyncio.sleep(0)
+                else:
+                    # STANDARD MODE: unchanged behavior
+                    self._active_stream = self.stream_category
+                    messages = await self.get_next_batch_of_messages()
+
+                    if messages:
+                        await self.process_batch(messages)
+                        batches_processed += 1
+
+                        # Yield control only after processing a batch
+                        # This maximizes throughput while maintaining responsiveness
+                        if batches_processed % 10 == 0:  # Yield every 10 batches
+                            await asyncio.sleep(0)
+                    else:
+                        # No messages available, the blocking read timed out
+                        # This is normal, just yield control
+                        await asyncio.sleep(0)
 
             except asyncio.CancelledError:
                 logger.info(f"Subscription cancelled: {self.subscriber_name}")
@@ -254,6 +327,60 @@ class StreamSubscription(BaseSubscription):
                 await asyncio.sleep(
                     min(0.1 * (2 ** min(batches_processed % 5, 4)), 1.0)
                 )
+
+    async def _read_primary_nonblocking(self) -> List[tuple[str, dict]]:
+        """Non-blocking read from primary (production) stream.
+
+        Uses ``timeout_ms=0`` so the call returns immediately if no messages
+        are available. This ensures we never block on the primary stream when
+        there might be backfill work to do.
+
+        Returns:
+            List of ``(id, payload)`` tuples from the primary stream.
+        """
+        if not self.broker:
+            return []
+
+        try:
+            return await asyncio.to_thread(
+                self.broker.read_blocking,
+                stream=self.stream_category,
+                consumer_group=self.consumer_group,
+                consumer_name=self.consumer_name,
+                timeout_ms=0,  # Non-blocking
+                count=self.messages_per_tick,
+            )
+        except Exception as e:
+            logger.error(f"Error reading primary stream {self.stream_category}: {e}")
+            return []
+
+    async def _read_backfill_blocking(self) -> List[tuple[str, dict]]:
+        """Blocking read from backfill stream with capped timeout.
+
+        Uses a short timeout (capped at 1 second) so we frequently re-check
+        the primary stream for new production messages. If a production request
+        arrives while we're blocking on backfill, we'll notice within 1 second.
+
+        Returns:
+            List of ``(id, payload)`` tuples from the backfill stream.
+        """
+        if not self.broker:
+            return []
+
+        try:
+            # Cap at 1 second to ensure responsive primary lane re-checks
+            backfill_timeout = min(self.blocking_timeout_ms, 1000)
+            return await asyncio.to_thread(
+                self.broker.read_blocking,
+                stream=self.backfill_stream,
+                consumer_group=self.consumer_group,
+                consumer_name=self.consumer_name,
+                timeout_ms=backfill_timeout,
+                count=self.messages_per_tick,
+            )
+        except Exception as e:
+            logger.error(f"Error reading backfill stream {self.backfill_stream}: {e}")
+            return []
 
     async def get_next_batch_of_messages(self) -> List[tuple[str, dict]]:
         """
@@ -351,10 +478,13 @@ class StreamSubscription(BaseSubscription):
     async def _acknowledge_message(
         self, identifier: str, message: Optional[Message] = None
     ) -> bool:
-        """Acknowledge successful message processing."""
+        """Acknowledge successful message processing.
+
+        Uses ``_active_stream`` to ACK on the correct stream (primary or backfill).
+        """
         assert self.broker is not None, "Broker not initialized"
         ack_result = self.broker.ack(
-            self.stream_category, identifier, self.consumer_group
+            self._active_stream, identifier, self.consumer_group
         )
         if ack_result:
             # Clear retry count if exists
@@ -364,7 +494,7 @@ class StreamSubscription(BaseSubscription):
             if message and message.metadata:
                 self.engine.emitter.emit(
                     event="message.acked",
-                    stream=self.stream_category,
+                    stream=self._active_stream,
                     message_id=message.metadata.headers.id or identifier,
                     message_type=message.metadata.headers.type or "unknown",
                     handler=self.subscriber_class_name,
@@ -398,7 +528,10 @@ class StreamSubscription(BaseSubscription):
         return self.retry_counts[identifier]
 
     async def _retry_message(self, identifier: str, retry_count: int) -> None:
-        """Retry a failed message after delay."""
+        """Retry a failed message after delay.
+
+        Uses ``_active_stream`` for NACK on the correct stream.
+        """
         assert self.broker is not None, "Broker not initialized"
         logger.debug(
             f"Retrying message {identifier} (attempt {retry_count}/{self.max_retries}) "
@@ -408,7 +541,7 @@ class StreamSubscription(BaseSubscription):
         # Emit message.nacked trace
         self.engine.emitter.emit(
             event="message.nacked",
-            stream=self.stream_category,
+            stream=self._active_stream,
             message_id=identifier,
             message_type="unknown",
             status="retry",
@@ -419,10 +552,13 @@ class StreamSubscription(BaseSubscription):
         await asyncio.sleep(self.retry_delay_seconds)
 
         # NACK the message to make it available for reprocessing
-        self.broker.nack(self.stream_category, identifier, self.consumer_group)
+        self.broker.nack(self._active_stream, identifier, self.consumer_group)
 
     async def _exhaust_retries(self, identifier: str, payload: dict) -> None:
-        """Handle a message that has exhausted all retries."""
+        """Handle a message that has exhausted all retries.
+
+        Uses ``_active_stream`` for ACK on the correct stream.
+        """
         assert self.broker is not None, "Broker not initialized"
         logger.warning(
             f"Message {identifier} exhausted retries ({self.max_retries} attempts), moving to DLQ"
@@ -430,7 +566,7 @@ class StreamSubscription(BaseSubscription):
         await self.move_to_dlq(identifier, payload)
 
         # ACK the message to remove it from the pending list
-        self.broker.ack(self.stream_category, identifier, self.consumer_group)
+        self.broker.ack(self._active_stream, identifier, self.consumer_group)
 
         # Clear retry count
         self.retry_counts.pop(identifier, None)
@@ -438,6 +574,10 @@ class StreamSubscription(BaseSubscription):
     async def move_to_dlq(self, identifier: str, payload: dict) -> None:
         """
         Move a failed message to the dead letter queue.
+
+        Uses the appropriate DLQ stream based on ``_active_stream``:
+        primary messages go to ``stream:dlq``, backfill messages go to
+        ``stream:backfill:dlq``.
 
         Args:
             identifier (str): The original message identifier
@@ -447,10 +587,17 @@ class StreamSubscription(BaseSubscription):
             return
 
         assert self.broker is not None, "Broker not initialized"
+
+        # Use the correct DLQ stream based on active stream
+        if self._active_stream == self.backfill_stream:
+            dlq_target = self.backfill_dlq_stream
+        else:
+            dlq_target = self.dlq_stream
+
         try:
             dlq_message = self._create_dlq_message(identifier, payload)
-            self.broker.publish(self.dlq_stream, dlq_message)
-            logger.info(f"Moved message {identifier} to DLQ stream {self.dlq_stream}")
+            self.broker.publish(dlq_target, dlq_message)
+            logger.info(f"Moved message {identifier} to DLQ stream {dlq_target}")
 
             # Emit message.dlq trace
             message_type = (
@@ -458,13 +605,13 @@ class StreamSubscription(BaseSubscription):
             )
             self.engine.emitter.emit(
                 event="message.dlq",
-                stream=self.stream_category,
+                stream=self._active_stream,
                 message_id=identifier,
                 message_type=message_type,
                 status="error",
                 handler=self.subscriber_class_name,
                 metadata={
-                    "dlq_stream": self.dlq_stream,
+                    "dlq_stream": dlq_target,
                     "retry_count": self.retry_counts.get(identifier, self.max_retries),
                 },
             )
@@ -476,7 +623,7 @@ class StreamSubscription(BaseSubscription):
         return {
             **payload,
             "_dlq_metadata": {
-                "original_stream": self.stream_category,
+                "original_stream": self._active_stream,
                 "original_id": identifier,
                 "consumer_group": self.consumer_group,
                 "consumer": self.consumer_name,

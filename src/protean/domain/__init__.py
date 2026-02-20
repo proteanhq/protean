@@ -396,6 +396,30 @@ class Domain:
                 "Either set server.default_subscription_type = 'stream' or remove enable_outbox."
             )
 
+        # Validate priority lanes configuration
+        lanes_config = self.config.get("server", {}).get("priority_lanes", {})
+        if lanes_config:
+            enabled = lanes_config.get("enabled", False)
+            if not isinstance(enabled, bool):
+                raise ConfigurationError(
+                    f"server.priority_lanes.enabled must be a bool, "
+                    f"got {type(enabled).__name__}: {enabled!r}"
+                )
+
+            threshold = lanes_config.get("threshold", 0)
+            if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
+                raise ConfigurationError(
+                    f"server.priority_lanes.threshold must be an integer, "
+                    f"got {type(threshold).__name__}: {threshold!r}"
+                )
+
+            suffix = lanes_config.get("backfill_suffix", "backfill")
+            if not isinstance(suffix, str) or not suffix.strip():
+                raise ConfigurationError(
+                    f"server.priority_lanes.backfill_suffix must be a non-empty string, "
+                    f"got {type(suffix).__name__}: {suffix!r}"
+                )
+
         # Initialize outbox DAOs for all providers
         if self.has_outbox:
             self._initialize_outbox()
@@ -1581,6 +1605,7 @@ class Domain:
         command: BaseCommand,
         asynchronous: bool,
         idempotency_key: Optional[str] = None,
+        priority: int = 0,
     ) -> BaseCommand:
         # Enrich Command
         identifier = None
@@ -1626,6 +1651,7 @@ class Domain:
             else None,
             sequence_id=None,
             asynchronous=asynchronous,
+            priority=priority,
         )
 
         metadata = Metadata(
@@ -1647,6 +1673,7 @@ class Domain:
         asynchronous: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
         raise_on_duplicate: bool = False,
+        priority: Optional[int] = None,
     ) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
@@ -1663,10 +1690,18 @@ class Domain:
             raise_on_duplicate (bool): If ``True``, raises :class:`DuplicateCommandError`
                 when a duplicate idempotency key is detected. If ``False`` (default),
                 silently returns the cached result.
+            priority (int, optional): Processing priority for events produced by this command.
+                When priority lanes are enabled, events with priority below the configured
+                threshold are routed to a backfill stream and processed only when the
+                primary stream is empty. Use ``Priority`` enum values from
+                ``protean.utils.processing``. If not specified, uses the value from
+                the current ``processing_priority()`` context, or ``Priority.NORMAL`` (0).
 
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
+        from protean.utils.processing import current_priority, processing_priority
+
         # If asynchronous is not specified, use the command_processing setting from config
         if asynchronous is None:
             asynchronous = self.config["command_processing"] == Processing.ASYNC.value
@@ -1693,8 +1728,14 @@ class Domain:
                     )
                 return cached_result
 
+        # Resolve priority: explicit param > context var > default (0)
+        resolved_priority = priority if priority is not None else current_priority()
+
         command_with_metadata = self._enrich_command(
-            command, asynchronous, idempotency_key=idempotency_key
+            command,
+            asynchronous,
+            idempotency_key=idempotency_key,
+            priority=resolved_priority,
         )
         position = self.event_store.store.append(command_with_metadata)
 
@@ -1705,7 +1746,10 @@ class Domain:
             handler_class = self.command_handler_for(command)
             if handler_class:
                 try:
-                    result = handler_class._handle(command_with_metadata)
+                    # Set the processing priority context so that UoW.commit()
+                    # can read it when creating outbox records
+                    with processing_priority(resolved_priority):
+                        result = handler_class._handle(command_with_metadata)
                 except Exception:
                     # Record failure with short TTL to allow retry
                     if idempotency_key and store.is_active:

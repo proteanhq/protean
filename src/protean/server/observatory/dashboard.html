@@ -232,6 +232,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  min-width: 90px;
 }
 
 .pipeline-stage .label {
@@ -239,6 +240,13 @@ body {
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
+}
+
+.pipeline-stage .rate-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+  min-height: 15px;
 }
 
 .pipeline-stage .count-box {
@@ -252,12 +260,6 @@ body {
   font-size: 20px;
   font-weight: 500;
   transition: all 0.3s;
-}
-
-.pipeline-stage .rate-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-family: var(--font-code);
 }
 
 .pipeline-stage .count-box.published { background: #E8F4FD; color: var(--secondary); border: 2px solid var(--secondary); }
@@ -870,6 +872,141 @@ body {
 .infra-item .label { color: var(--text-muted); }
 .infra-item .value { font-family: var(--font-code); font-weight: 500; }
 
+/* Backpressure Section */
+.backpressure-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+
+@media (max-width: 900px) {
+  .backpressure-grid { grid-template-columns: 1fr; }
+}
+
+.bp-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  transition: border-color 0.3s;
+}
+
+.bp-gauge.warn { border-color: var(--warning); }
+.bp-gauge.critical { border-color: var(--accent); }
+
+.bp-gauge .bp-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.bp-gauge .bp-value {
+  font-family: var(--font-code);
+  font-size: 28px;
+  font-weight: 500;
+  transition: color 0.3s;
+}
+
+.bp-gauge .bp-value.ok { color: var(--success); }
+.bp-gauge .bp-value.warn { color: #E65100; }
+.bp-gauge .bp-value.critical { color: var(--accent); }
+
+.bp-gauge .bp-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+}
+
+/* Queue depth chart */
+.queue-chart-container {
+  padding: 12px 16px;
+}
+
+.queue-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.queue-chart-header .chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.queue-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.queue-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.queue-legend-swatch {
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* Consumer lag table */
+.lag-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.lag-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lag-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-code);
+  font-size: 12px;
+}
+
+.lag-table tr:last-child td { border-bottom: none; }
+
+.lag-bar-bg {
+  background: var(--bg);
+  border-radius: 3px;
+  height: 6px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.lag-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease, background 0.3s;
+}
+
+.lag-bar-fill.ok { background: var(--success); }
+.lag-bar-fill.warn { background: var(--warning); }
+.lag-bar-fill.critical { background: var(--accent); }
+
 /* New events badge */
 .new-events-badge {
   display: none;
@@ -913,24 +1050,24 @@ body {
   <div class="card">
     <div class="summary-bar">
       <div class="summary-metrics">
-        <div class="summary-metric">
+        <div class="summary-metric" title="Total trace events per minute in the selected time window. Includes all event types (published, handler completions, failures).">
           <span class="metric-label">Throughput</span>
           <span class="metric-value good" id="metricThroughput">--</span>
         </div>
-        <div class="summary-metric">
+        <div class="summary-metric" title="Percentage of events that are errors (handler failures, DLQ) out of all events in the selected window.">
           <span class="metric-label">Error Rate</span>
           <span class="metric-value good" id="metricErrorRate">--</span>
         </div>
-        <div class="summary-metric">
+        <div class="summary-metric" title="Average time handlers take to process a message, measured from handler.started to handler.completed.">
           <span class="metric-label">Avg Latency</span>
           <span class="metric-value good" id="metricLatency">--</span>
         </div>
-        <div class="summary-metric">
+        <div class="summary-metric" title="Messages that have been published but not yet fully processed by all their handlers. Based on trace events — may include stale entries if engines were restarted.">
           <span class="metric-label">In Flight</span>
           <span class="metric-value good" id="metricInFlight">0</span>
         </div>
       </div>
-      <div class="window-selector">
+      <div class="window-selector" title="Time window for summary metrics and pipeline counts. Controls how far back trace events are aggregated.">
         <button class="window-btn active" data-window="5m" onclick="setWindow('5m')">5m</button>
         <button class="window-btn" data-window="15m" onclick="setWindow('15m')">15m</button>
         <button class="window-btn" data-window="1h" onclick="setWindow('1h')">1h</button>
@@ -943,25 +1080,25 @@ body {
   <!-- Pipeline -->
   <div class="card">
     <div class="pipeline">
-      <div class="pipeline-stage">
+      <div class="pipeline-stage" title="Count of outbox.published trace events — messages that the OutboxProcessor has successfully pushed from the database outbox to Redis Streams.">
         <span class="label">Published</span>
         <div class="count-box published" id="pipePublished">0</div>
         <span class="rate-label" id="ratePublishedPipe">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage">
+      <div class="pipeline-stage" title="Messages currently being processed by event handlers (handler.started minus handler.completed/failed). Shows 0 when no handlers are actively running.">
         <span class="label">Handling</span>
         <div class="count-box handling" id="pipeHandling">0</div>
         <span class="rate-label" id="rateHandling">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage">
+      <div class="pipeline-stage" title="Count of handler.completed trace events — successful handler executions. Higher than Published when each message is processed by multiple handlers (projectors).">
         <span class="label">Done</span>
         <div class="count-box done" id="pipeDone">0</div>
         <span class="rate-label" id="rateDone">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage">
+      <div class="pipeline-stage" title="Count of handler failures, outbox publish failures, and messages sent to the dead-letter queue.">
         <span class="label">Failed</span>
         <div class="count-box failed" id="pipeFailed">0</div>
         <span class="rate-label" id="rateFailed">&nbsp;</span>
@@ -969,15 +1106,95 @@ body {
     </div>
   </div>
 
+  <!-- Backpressure -->
+  <div class="card" id="backpressureCard">
+    <div class="card-header">
+      <span>Backpressure</span>
+      <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-code)" id="bpLastUpdated"></span>
+    </div>
+    <div class="backpressure-grid">
+      <div class="bp-gauge" id="bpOutbox" title="Messages in the PostgreSQL outbox table with PENDING or PROCESSING status, waiting for the OutboxProcessor (engine) to publish them to Redis. If this stays high, the engine may not be running or is falling behind.">
+        <span class="bp-label">Outbox Pending</span>
+        <span class="bp-value ok" id="bpOutboxValue">0</span>
+        <span class="bp-subtitle" id="bpOutboxDetail">waiting to publish</span>
+      </div>
+      <div class="bp-gauge" id="bpStream" title="Total messages sitting in Redis Streams (XLEN) across all streams. These have been published but not yet read by consumer groups. Grows when the outbox publishes faster than handlers can consume.">
+        <span class="bp-label">Stream Depth</span>
+        <span class="bp-value ok" id="bpStreamValue">0</span>
+        <span class="bp-subtitle" id="bpStreamDetail">in Redis Streams</span>
+      </div>
+      <div class="bp-gauge" id="bpConsumer" title="Messages delivered to consumer groups but not yet acknowledged (XPENDING). These are actively being processed or waiting for retry. High values indicate slow handlers or a downstream bottleneck.">
+        <span class="bp-label">Consumer Lag</span>
+        <span class="bp-value ok" id="bpConsumerValue">0</span>
+        <span class="bp-subtitle" id="bpConsumerDetail">unacknowledged</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Queue Depth Chart -->
+  <div class="card" id="queueDepthCard">
+    <div class="queue-chart-container">
+      <div class="queue-chart-header">
+        <span class="chart-title" title="Time-series view of queue depth at each stage. During a burst or migration, you'll see a mountain shape — steep rise as events accumulate, gradual decline as handlers drain the backlog.">Queue Depth (5 min)</span>
+        <div class="queue-legend">
+          <div class="queue-legend-item" title="Messages waiting in the PostgreSQL outbox (PENDING + PROCESSING).">
+            <div class="queue-legend-swatch" style="background:#E76F51"></div>
+            <span>Outbox</span>
+          </div>
+          <div class="queue-legend-item" title="Messages sitting in Redis Streams waiting to be consumed (XLEN).">
+            <div class="queue-legend-swatch" style="background:#457B9D"></div>
+            <span>Stream</span>
+          </div>
+          <div class="queue-legend-item" title="Messages delivered to consumers but not yet acknowledged (XPENDING).">
+            <div class="queue-legend-swatch" style="background:#E9C46A"></div>
+            <span>Consumer Lag</span>
+          </div>
+        </div>
+      </div>
+      <canvas id="queueSparkline" width="1000" height="80"></canvas>
+      <div class="time-labels">
+        <span>5m ago</span>
+        <span>4m</span>
+        <span>3m</span>
+        <span>2m</span>
+        <span>1m</span>
+        <span>now</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Consumer Lag Detail -->
+  <div class="card" id="consumerLagCard">
+    <div class="card-header">
+      <span title="Per-stream, per-consumer-group breakdown of queue depth. Shows exactly which handler is the bottleneck.">Consumer Lag by Stream</span>
+    </div>
+    <div class="card-body" id="consumerLagBody">
+      <table class="lag-table" id="lagTable">
+        <thead>
+          <tr>
+            <th title="Redis Stream name in the format domain::aggregate.">Stream</th>
+            <th title="Total messages in this Redis Stream (XLEN). Includes both consumed and unconsumed messages.">Length</th>
+            <th title="Handler subscribed to this stream via a consumer group. Each handler gets its own independent read position.">Consumer Group</th>
+            <th title="Messages delivered to this consumer group but not yet acknowledged (XPENDING). High values indicate a slow handler.">Pending</th>
+            <th style="width:120px" title="Visual representation of pending count relative to the largest stream length.">Lag</th>
+          </tr>
+        </thead>
+        <tbody id="lagTableBody">
+          <tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Throughput Chart -->
   <div class="card">
     <div class="sparkline-container">
       <div class="sparkline-header">
-        <span class="chart-title">Throughput (5 min)</span>
+        <span class="chart-title" title="Real-time event throughput over the last 5 minutes. The blue bars show outbox publishing rate, the green line shows handler completion rate, and red dots mark errors.">Throughput (5 min)</span>
         <div class="sparkline-stats">
-          <div><span class="stat-label">Published:</span> <span class="stat-value" id="ratePublished">0/s</span></div>
-          <div><span class="stat-label">Processed:</span> <span class="stat-value" id="rateProcessed">0/s</span></div>
-          <div><span class="stat-label">Errors:</span> <span class="stat-value" id="rateErrors">0/s</span></div>
+          <div title="Events published from outbox to Redis per second (outbox.published events)."><span class="stat-label">Published:</span> <span class="stat-value" id="ratePublished">0/s</span></div>
+          <div title="Handler completions per second (handler.completed events)."><span class="stat-label">Processed:</span> <span class="stat-value" id="rateProcessed">0/s</span></div>
+          <div title="Handler failures and DLQ events per second."><span class="stat-label">Errors:</span> <span class="stat-value" id="rateErrors">0/s</span></div>
         </div>
       </div>
       <canvas id="sparkline" width="1000" height="80"></canvas>
@@ -996,9 +1213,9 @@ body {
   <div class="card">
     <div class="card-header">
       <div style="display:flex; align-items:center; gap:8px;">
-        <button class="feed-tab active" id="tabMessages" onclick="setViewTab('messages')">Messages</button>
-        <button class="feed-tab" id="tabEvents" onclick="setViewTab('events')">Events</button>
-        <button class="feed-tab" id="tabErrors" onclick="setViewTab('errors')">Errors <span class="error-badge" id="errorBadge" style="display:none">0</span></button>
+        <button class="feed-tab active" id="tabMessages" onclick="setViewTab('messages')" title="Messages grouped by message ID, showing the full lifecycle of each event across all handlers.">Messages</button>
+        <button class="feed-tab" id="tabEvents" onclick="setViewTab('events')" title="Chronological stream of individual trace events (published, started, completed, failed, acked).">Events</button>
+        <button class="feed-tab" id="tabErrors" onclick="setViewTab('errors')" title="Messages that have at least one error event (handler failure, DLQ, nack).">Errors <span class="error-badge" id="errorBadge" style="display:none">0</span></button>
       </div>
       <div class="feed-controls">
         <select id="filterStream">
@@ -1100,6 +1317,16 @@ const throughput = {
   errors: new Array(THROUGHPUT_SECONDS).fill(0),
 };
 let currentSecond = { published: 0, processed: 0, errors: 0 };
+
+// Queue depth tracking (per-second buckets for last 300s = 5 min, like throughput)
+const QUEUE_DEPTH_SECONDS = 300;
+const queueDepth = {
+  outbox: new Array(QUEUE_DEPTH_SECONDS).fill(0),
+  stream: new Array(QUEUE_DEPTH_SECONDS).fill(0),
+  consumer: new Array(QUEUE_DEPTH_SECONDS).fill(0),
+};
+let latestQueueDepth = { outbox: 0, stream: 0, consumer: 0 };
+let queueDepthDetail = { outbox: {}, streams: {} };
 
 // Event icons for events tab
 const EVENT_ICONS = {
@@ -1318,8 +1545,20 @@ function refreshMetrics() {
   const inFlightEl = document.getElementById('metricInFlight');
   inFlightEl.textContent = inFlight;
   inFlightEl.className = 'metric-value ' + (inFlight === 0 ? 'good' : inFlight <= 10 ? 'warn' : 'bad');
+}
 
-  // Pipeline counts
+// Pipeline counts — updated on 1-second tick (not on every SSE event) to avoid jitter
+function refreshPipeline() {
+  if (!statsBase) return;
+
+  const counts = { ...(statsBase.counts || {}) };
+  for (const [evt, n] of Object.entries(statsDelta)) {
+    counts[evt] = (counts[evt] || 0) + n;
+  }
+
+  const windowMinutes = { '5m': 5, '15m': 15, '1h': 60, '24h': 1440, '7d': 10080 }[currentWindow] || 5;
+  const errCount = (counts['handler.failed'] || 0) + (counts['outbox.failed'] || 0) + (counts['message.dlq'] || 0);
+
   const published = counts['outbox.published'] || 0;
   const handling = Math.max(0, (counts['handler.started'] || 0) - (counts['handler.completed'] || 0) - (counts['handler.failed'] || 0));
   const done = counts['handler.completed'] || 0;
@@ -1330,7 +1569,6 @@ function refreshMetrics() {
   document.getElementById('pipeDone').textContent = done;
   document.getElementById('pipeFailed').textContent = failed;
 
-  // Rate labels
   document.getElementById('ratePublishedPipe').textContent = published > 0 ? '~' + Math.round(published / windowMinutes) + '/min' : '';
   document.getElementById('rateHandling').textContent = handling > 0 ? '~' + Math.round(handling / windowMinutes) + '/min' : '';
   document.getElementById('rateDone').textContent = done > 0 ? '~' + Math.round(done / windowMinutes) + '/min' : '';
@@ -1559,6 +1797,7 @@ function tickThroughput() {
 
   currentSecond = { published: 0, processed: 0, errors: 0 };
   drawSparkline();
+  refreshPipeline();
 }
 
 function drawSparkline() {
@@ -2272,13 +2511,21 @@ async function resetDashboard() {
   throughput.errors.fill(0);
   currentSecond = { published: 0, processed: 0, errors: 0 };
 
+  queueDepth.outbox.fill(0);
+  queueDepth.stream.fill(0);
+  queueDepth.consumer.fill(0);
+  latestQueueDepth = { outbox: 0, stream: 0, consumer: 0 };
+  queueDepthDetail = { outbox: {}, streams: {} };
+
   document.getElementById('messagesContent').innerHTML = '<div class="new-messages-banner" id="newMessagesBanner" onclick="scrollToTopMessages()" style="display:none">&uarr; <span id="newMsgCount">0</span> new messages</div><div class="feed-empty">History cleared. Waiting for new events...</div>';
   document.getElementById('eventsContent').innerHTML = '<div class="feed-empty">History cleared. Waiting for new events...</div>';
 
   updateErrorBadge();
   drawSparkline();
+  drawQueueSparkline();
   await loadStats();
   await pollInfrastructure();
+  await pollQueueDepth();
 }
 
 // --- Copy helpers ---
@@ -2337,6 +2584,226 @@ async function pollInfrastructure() {
   }
 }
 
+// --- Queue Depth Polling ---
+async function pollQueueDepth() {
+  try {
+    const res = await fetch('/api/queue-depth');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Apply domain filter to outbox counts
+    const domainFilter = document.getElementById('filterDomain').value;
+    let outboxPending = 0;
+    if (domainFilter) {
+      const domainCounts = (data.outbox || {})[domainFilter];
+      if (domainCounts) {
+        outboxPending = (domainCounts.pending || 0) + (domainCounts.processing || 0);
+      }
+    } else {
+      outboxPending = data.totals?.outbox_pending || 0;
+    }
+
+    const streamDepth = data.totals?.stream_depth || 0;
+    const consumerPending = data.totals?.consumer_pending || 0;
+
+    latestQueueDepth = {
+      outbox: outboxPending,
+      stream: streamDepth,
+      consumer: consumerPending,
+    };
+    queueDepthDetail = {
+      outbox: data.outbox || {},
+      streams: data.streams || {},
+    };
+
+    updateBackpressureGauges();
+    updateConsumerLagTable();
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+    const el = document.getElementById('bpLastUpdated');
+    if (el) el.textContent = 'updated ' + timeStr;
+
+  } catch (e) {
+    console.error('Queue depth poll failed:', e);
+  }
+}
+
+function tickQueueDepth() {
+  queueDepth.outbox.push(latestQueueDepth.outbox);
+  queueDepth.outbox.shift();
+  queueDepth.stream.push(latestQueueDepth.stream);
+  queueDepth.stream.shift();
+  queueDepth.consumer.push(latestQueueDepth.consumer);
+  queueDepth.consumer.shift();
+  drawQueueSparkline();
+}
+
+function updateBackpressureGauges() {
+  const WARN_THRESHOLD = 100;
+  const CRITICAL_THRESHOLD = 1000;
+
+  function setGauge(valueId, gaugeId, value) {
+    const el = document.getElementById(valueId);
+    const gauge = document.getElementById(gaugeId);
+    if (!el) return;
+
+    el.textContent = value.toLocaleString();
+
+    let severity = 'ok';
+    if (value >= CRITICAL_THRESHOLD) severity = 'critical';
+    else if (value >= WARN_THRESHOLD) severity = 'warn';
+
+    el.className = 'bp-value ' + severity;
+    if (gauge) {
+      gauge.className = 'bp-gauge' + (severity !== 'ok' ? ' ' + severity : '');
+    }
+  }
+
+  setGauge('bpOutboxValue', 'bpOutbox', latestQueueDepth.outbox);
+  setGauge('bpStreamValue', 'bpStream', latestQueueDepth.stream);
+  setGauge('bpConsumerValue', 'bpConsumer', latestQueueDepth.consumer);
+
+  // Per-domain detail in subtitle
+  const outboxDetail = document.getElementById('bpOutboxDetail');
+  if (outboxDetail) {
+    const parts = Object.entries(queueDepthDetail.outbox)
+      .filter(([_, v]) => (v.pending || 0) + (v.processing || 0) > 0)
+      .map(([domain, v]) => domain + ': ' + ((v.pending || 0) + (v.processing || 0)));
+    outboxDetail.textContent = parts.length > 0 ? parts.join(', ') : 'waiting to publish';
+  }
+}
+
+function drawQueueSparkline() {
+  const canvas = document.getElementById('queueSparkline');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const maxVal = Math.max(
+    1,
+    ...queueDepth.outbox,
+    ...queueDepth.stream,
+    ...queueDepth.consumer
+  );
+  const barWidth = w / QUEUE_DEPTH_SECONDS;
+
+  // Outbox pending (orange area)
+  ctx.fillStyle = 'rgba(231, 111, 81, 0.3)';
+  ctx.strokeStyle = '#E76F51';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  for (let i = 0; i < QUEUE_DEPTH_SECONDS; i++) {
+    const x = i * barWidth + barWidth / 2;
+    const y = h - (queueDepth.outbox[i] / maxVal) * h;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fill();
+  // Stroke the top edge only
+  ctx.beginPath();
+  for (let i = 0; i < QUEUE_DEPTH_SECONDS; i++) {
+    const x = i * barWidth + barWidth / 2;
+    const y = h - (queueDepth.outbox[i] / maxVal) * h;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Stream depth (blue area)
+  ctx.fillStyle = 'rgba(69, 123, 157, 0.3)';
+  ctx.strokeStyle = '#457B9D';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  for (let i = 0; i < QUEUE_DEPTH_SECONDS; i++) {
+    const x = i * barWidth + barWidth / 2;
+    const y = h - (queueDepth.stream[i] / maxVal) * h;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  for (let i = 0; i < QUEUE_DEPTH_SECONDS; i++) {
+    const x = i * barWidth + barWidth / 2;
+    const y = h - (queueDepth.stream[i] / maxVal) * h;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Consumer lag (yellow line)
+  ctx.strokeStyle = '#E9C46A';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < QUEUE_DEPTH_SECONDS; i++) {
+    const x = i * barWidth + barWidth / 2;
+    const y = h - (queueDepth.consumer[i] / maxVal) * h;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function updateConsumerLagTable() {
+  const tbody = document.getElementById('lagTableBody');
+  if (!tbody) return;
+
+  const streams = queueDepthDetail.streams;
+  const streamNames = Object.keys(streams).sort();
+
+  if (streamNames.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No active streams</td></tr>';
+    return;
+  }
+
+  // Find max XLEN for lag bar proportions
+  let maxLen = 1;
+  for (const name of streamNames) {
+    maxLen = Math.max(maxLen, streams[name].length || 0);
+  }
+
+  let html = '';
+  for (const name of streamNames) {
+    const s = streams[name];
+    const groups = Object.entries(s.consumer_groups || {});
+
+    if (groups.length === 0) {
+      html += '<tr>';
+      html += '<td>' + escapeHtml(name) + '</td>';
+      html += '<td>' + (s.length || 0).toLocaleString() + '</td>';
+      html += '<td style="color:var(--text-muted)">--</td>';
+      html += '<td>--</td>';
+      html += '<td><div class="lag-bar-bg"><div class="lag-bar-fill ok" style="width:0%"></div></div></td>';
+      html += '</tr>';
+    } else {
+      for (let i = 0; i < groups.length; i++) {
+        const [gname, gdata] = groups[i];
+        const pending = gdata.pending || 0;
+        const pct = Math.min(100, (pending / maxLen) * 100);
+        const severity = pending >= 1000 ? 'critical' : pending >= 100 ? 'warn' : 'ok';
+        const color = severity === 'critical' ? 'var(--accent)' : severity === 'warn' ? '#E65100' : 'var(--text)';
+
+        html += '<tr>';
+        html += '<td>' + (i === 0 ? escapeHtml(name) : '') + '</td>';
+        html += '<td>' + (i === 0 ? (s.length || 0).toLocaleString() : '') + '</td>';
+        html += '<td>' + escapeHtml(gname) + '</td>';
+        html += '<td style="color:' + color + '">' + pending.toLocaleString() + '</td>';
+        html += '<td><div class="lag-bar-bg"><div class="lag-bar-fill ' + severity + '" style="width:' + pct.toFixed(1) + '%"></div></div></td>';
+        html += '</tr>';
+      }
+    }
+  }
+
+  tbody.innerHTML = html;
+}
+
 // --- Utils ---
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -2358,6 +2825,7 @@ function formatUptime(seconds) {
 document.getElementById('filterDomain').addEventListener('change', () => {
   if (eventSource) eventSource.close();
   connectSSE();
+  pollQueueDepth();
 });
 
 document.getElementById('filterStream').addEventListener('change', applyFilters);
@@ -2380,9 +2848,13 @@ async function init() {
   await loadStats();
   connectSSE();
   pollInfrastructure();
+  pollQueueDepth();
   setInterval(tickThroughput, 1000);
+  setInterval(tickQueueDepth, 1000);
   setInterval(() => { loadStats(); pollInfrastructure(); }, 5000);
+  setInterval(pollQueueDepth, 2000);
   drawSparkline();
+  drawQueueSparkline();
 }
 init();
 </script>
