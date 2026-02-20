@@ -291,6 +291,13 @@ class UserActivated:
     activated_at: DateTime(required=True)
 ```
 
+When event schemas evolve (fields renamed, new required fields, changed
+structure), you can register **upcasters** that transform old event payloads
+to the current schema during deserialization. See the
+[Event Upcasting guide](../event-upcasting.md) for details, and the
+[Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
+pattern for broader versioning strategies.
+
 The configured version is reflected in `version` and `type` attributes of the
 generated event's metadata:
 

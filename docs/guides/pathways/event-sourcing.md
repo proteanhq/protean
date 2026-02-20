@@ -98,7 +98,8 @@ below. These guides cover the Event Sourcing-specific concepts:
 | 8 | [Event Store adapters](../../adapters/eventstore/index.md) | Configure Message DB or other event stores |
 | 9 | [Process Managers](../consume-state/process-managers.md) | Coordinate multi-step processes across aggregates |
 | 10 | [Architecture Decision](../../core-concepts/architecture-decision.md) | When to use ES vs. CQRS per aggregate |
-| 11 | [Testing](../testing/index.md) | Test event-sourced aggregates and projections |
+| 11 | [Event Upcasting](../event-upcasting.md) | Transform old event schemas during replay |
+| 12 | [Testing](../testing/index.md) | Test event-sourced aggregates and projections |
 
 ## Key Concepts
 

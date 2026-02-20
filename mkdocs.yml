@@ -196,6 +196,9 @@ nav:
       - guides/change-state/unit-of-work.md
       - guides/type-checking.md
 
+    - Event Schema Evolution:
+      - guides/event-upcasting.md
+
     - Testing:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md
@@ -297,6 +300,7 @@ nav:
     - internals/shadow-fields.md
     - internals/query-system.md
     - internals/event-sourcing.md
+    - internals/event-upcasting.md
 
   - Migration:
     - migration/v0-15.md
