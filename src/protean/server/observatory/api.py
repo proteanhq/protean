@@ -153,6 +153,83 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             }
         )
 
+    @router.get("/queue-depth")
+    async def queue_depth():
+        """Queue depth snapshot for backpressure visualization.
+
+        Returns outbox pending counts per domain, per-stream XLEN,
+        and per-consumer-group XPENDING in a single response optimized
+        for dashboard polling.
+        """
+        result = {
+            "timestamp": time.time() * 1000,
+            "outbox": {},
+            "streams": {},
+            "totals": {
+                "outbox_pending": 0,
+                "stream_depth": 0,
+                "consumer_pending": 0,
+            },
+        }
+
+        # 1. Outbox counts per domain
+        for domain in domains:
+            outbox_data = _outbox_status(domain)
+            if outbox_data.get("status") == "ok":
+                counts = outbox_data["counts"]
+                result["outbox"][domain.name] = counts
+                result["totals"]["outbox_pending"] += counts.get("pending", 0)
+                result["totals"]["outbox_pending"] += counts.get("processing", 0)
+
+        # 2. Per-stream XLEN + per-consumer-group XPENDING
+        for d in domains:
+            try:
+                with d.domain_context():
+                    broker = d.brokers.get("default")
+                    if broker and hasattr(broker, "redis_instance"):
+                        redis_conn = broker.redis_instance
+                        streams_to_check = broker._get_streams_to_check()
+
+                        for stream_name in streams_to_check:
+                            try:
+                                xlen = redis_conn.xlen(stream_name)
+                                stream_entry = {
+                                    "length": xlen,
+                                    "consumer_groups": {},
+                                }
+                                result["totals"]["stream_depth"] += xlen
+
+                                try:
+                                    groups = redis_conn.xinfo_groups(stream_name)
+                                    for g in groups:
+                                        if isinstance(g, dict):
+                                            gname = broker._get_field_value(g, "name")
+                                            gpending = (
+                                                broker._get_field_value(
+                                                    g,
+                                                    "pending",
+                                                    convert_to_int=True,
+                                                )
+                                                or 0
+                                            )
+                                            stream_entry["consumer_groups"][
+                                                str(gname)
+                                            ] = {"pending": int(gpending)}
+                                            result["totals"]["consumer_pending"] += int(
+                                                gpending
+                                            )
+                                except Exception:
+                                    pass
+
+                                result["streams"][stream_name] = stream_entry
+                            except Exception:
+                                pass
+                        break  # Only need one broker connection
+            except Exception:
+                continue
+
+        return JSONResponse(content=result)
+
     @router.get("/stats")
     async def stats():
         """Aggregated throughput and error rate statistics."""

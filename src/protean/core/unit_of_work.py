@@ -84,6 +84,7 @@ class UnitOfWork:
 
     def commit(self):  # noqa: C901
         from protean.utils.outbox import Outbox
+        from protean.utils.processing import current_priority
 
         # Raise error if there the Unit Of Work is not active
         logger.debug(f"Committing {self}...")
@@ -92,6 +93,10 @@ class UnitOfWork:
 
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
+
+        # Read the processing priority from the current context.
+        # This is set by domain.process() or by a processing_priority() context manager.
+        priority = current_priority()
 
         # Store events in the outbox as part of the transaction
         for provider_name, session in self._sessions.items():
@@ -106,6 +111,7 @@ class UnitOfWork:
                         message_type=event._metadata.headers.type,
                         data=event.payload,
                         metadata=event._metadata,
+                        priority=priority,
                     )
                     outbox_repo._dao.save(outbox_message)
 

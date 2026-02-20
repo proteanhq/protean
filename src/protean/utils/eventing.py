@@ -154,6 +154,11 @@ class DomainMeta(BaseValueObject):
     # Version that the stream is expected to be when the message is written
     expected_version: int | None = None
 
+    # Processing priority for event routing through priority lanes.
+    # Stored so the Engine can reconstruct the processing_priority() context
+    # when handling commands asynchronously.
+    priority: int = 0
+
 
 class EventStoreMeta(BaseValueObject):
     # The ordinal position of the message in the entire message store (may have gaps)

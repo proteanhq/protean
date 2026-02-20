@@ -13,6 +13,7 @@ from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.utils.globals import g
 from protean.utils.eventing import Message
+from protean.utils.processing import processing_priority
 
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.factory import SubscriptionFactory
@@ -452,7 +453,15 @@ class Engine:
 
                 start_time = time.monotonic()
 
-                handler_cls._handle(message)
+                # Reconstruct the processing priority context from the
+                # message metadata so that UoW.commit() tags outbox records
+                # with the correct priority (important for async commands
+                # where the original processing_priority() context is gone).
+                msg_priority = 0
+                if message.metadata.domain:
+                    msg_priority = getattr(message.metadata.domain, "priority", 0)
+                with processing_priority(msg_priority):
+                    handler_cls._handle(message)
 
                 duration_ms = (time.monotonic() - start_time) * 1000
                 logger.debug(
