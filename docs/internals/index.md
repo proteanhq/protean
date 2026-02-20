@@ -23,3 +23,7 @@ shaped it.
 - [Event sourcing](./event-sourcing.md) -- How `raise_()` invokes `@apply`
   handlers, aggregate reconstitution via `_create_for_reconstitution()` and
   `from_events()`, version tracking, and invariant checking during replay.
+- [Event upcasting](./event-upcasting.md) -- How old event payloads are
+  transparently transformed to the current schema during deserialization,
+  chain building algorithm, validation, and integration with
+  `Message.to_domain_object()`.

@@ -220,23 +220,49 @@ Transform old events to the new schema when they're read from the event store,
 before they reach the handler. This keeps handlers simple -- they only see the
 latest schema.
 
+Protean provides built-in upcasting via the `@domain.upcaster` decorator. Each
+upcaster transforms raw event data from one version to the next. The framework
+chains upcasters automatically so that a v1 event passes through v1→v2 and
+v2→v3 before reaching handlers.
+
 ```python
-# Define an upcaster that transforms old events to new schema
-def upcast_order_placed(old_event_data: dict) -> dict:
-    """Transform OrderPlaced v1 data to v2 schema."""
-    return {
-        "order_id": old_event_data["order_id"],
-        "customer_id": old_event_data["customer_id"],
-        "line_items": old_event_data.get("items", []),  # Renamed field
-        "subtotal": old_event_data["total"],             # Same value
-        "tax": 0.0,                                       # Default for old events
-        "total": old_event_data["total"],
-        "currency": "USD",                                # Default for old events
-    }
+from protean.core.upcaster import BaseUpcaster
+
+# Current event definition (v3)
+@domain.event(part_of=Order)
+class OrderPlaced(BaseEvent):
+    __version__ = "v3"
+    order_id = Identifier(required=True)
+    customer_id = Identifier(required=True)
+    line_items = List(required=True)
+    subtotal = Float(required=True)
+    tax = Float(required=True)
+    total = Float(required=True)
+    currency = String(required=True)
+
+
+# v1 → v2: added currency field
+@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+class UpcastOrderPlacedV1ToV2(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["currency"] = "USD"
+        return data
+
+
+# v2 → v3: renamed 'items' to 'line_items', split total into subtotal + tax
+@domain.upcaster(event_type=OrderPlaced, from_version="v2", to_version="v3")
+class UpcastOrderPlacedV2ToV3(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["line_items"] = data.pop("items", [])
+        data["subtotal"] = data["total"]
+        data["tax"] = 0.0
+        return data
 ```
 
-Upcasting happens between deserialization and handler dispatch. The handler
-always receives the latest schema, regardless of which version was stored.
+Upcasting happens transparently during deserialization -- between reading the
+raw message from the event store and constructing the typed event object. All
+handlers (`@apply`, `@handle`, projectors) always receive the current schema,
+regardless of which version was originally stored.
 
 **When to use:** Field renames, type changes, or calculated new fields where
 a reasonable transformation exists. Useful when you don't want handlers to
@@ -244,6 +270,9 @@ know about historical schemas.
 
 **Trade-off:** Upcasting adds a processing layer and must be maintained as
 schemas evolve further. Each version needs an upcaster to the next.
+
+See the [Event Upcasting guide](../guides/event-upcasting.md) for a complete
+walkthrough with real-world examples.
 
 ### Strategy 3: Tolerant Reader
 
@@ -365,8 +394,11 @@ and new schemas. Consumers must handle both.
 ### Replaying from the Beginning
 
 If you replay an event-sourced aggregate from the beginning of its stream,
-it will encounter every historical event version. The aggregate's `@apply`
-handlers must handle all versions:
+it will encounter every historical event version.
+
+**With upcasting (recommended):** Register upcasters and keep a single
+`@apply` handler per event type. The framework transforms old events before
+they reach the handler:
 
 ```python
 @domain.aggregate(is_event_sourced=True)
@@ -375,7 +407,22 @@ class Order(BaseAggregate):
 
     @apply
     def on_order_placed(self, event: OrderPlaced):
-        """Handle v1 OrderPlaced events."""
+        """Always receives current schema — upcasters handle old versions."""
+        self.customer_id = event.customer_id
+        self.items = event.line_items
+        self.total = event.total
+        self.currency = event.currency
+```
+
+**Without upcasting:** The `@apply` handlers must handle all versions
+manually, either with separate handlers for each version or tolerant-reader
+patterns:
+
+```python
+@domain.aggregate(is_event_sourced=True)
+class Order(BaseAggregate):
+    @apply
+    def on_order_placed(self, event: OrderPlaced):
         self.customer_id = event.customer_id
         self.items = event.items
         self.total = event.total
@@ -383,7 +430,6 @@ class Order(BaseAggregate):
 
     @apply
     def on_order_placed_v2(self, event: OrderPlacedV2):
-        """Handle v2 OrderPlaced events."""
         self.customer_id = event.customer_id
         self.items = event.line_items
         self.total = event.total

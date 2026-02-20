@@ -179,3 +179,13 @@ if getattr(getattr(root, "meta_", None), "is_event_sourced", False):
 
 State for associated entities in ES aggregates is managed entirely through
 events and `@apply` handlers using the `add_*` pseudo-methods.
+
+## Event Upcasting
+
+When the event store contains events from older schema versions, the upcasting
+system transparently transforms them to the current schema before they reach
+`@apply` handlers. This happens during `Message.to_domain_object()`, which is
+called by `load_aggregate()` for every event in the stream.
+
+See [Event Upcasting Internals](./event-upcasting.md) for the full
+architecture, chain building algorithm, and integration details.

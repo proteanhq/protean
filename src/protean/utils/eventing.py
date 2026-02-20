@@ -648,12 +648,38 @@ class Message(BaseModel, OptionsMixin):
             return default
 
     def to_domain_object(self) -> Union["BaseEvent", "BaseCommand"]:
-        """Convert this message back to its original domain object."""
+        """Convert this message back to its original domain object.
+
+        If the stored type string doesn't match any registered event/command
+        (e.g. an old version), the domain's upcaster chain is consulted to
+        transform the payload to the current schema before construction.
+        """
         assert self.metadata is not None
         try:
             self._validate_message_kind()
-            element_cls = self._get_element_class()
-            return element_cls(_metadata=self.metadata, **self.data)
+
+            type_string = self.metadata.headers.type
+            element_cls = current_domain._events_and_commands.get(
+                type_string,
+                None,  # type: ignore[arg-type]
+            )
+            data = self.data
+
+            if element_cls is None:
+                # Direct lookup failed — try upcasting from an older version.
+                upcaster_chain = current_domain._upcaster_chain
+                element_cls = upcaster_chain.resolve_event_class(type_string)
+
+                if element_cls is None:
+                    raise ConfigurationError(
+                        f"Message type {type_string} is not registered with the domain."
+                    )
+
+                # Parse "DomainName.EventName.version" → base + version
+                base_type, _, from_version = type_string.rpartition(".")
+                data = upcaster_chain.upcast(base_type, from_version, data)
+
+            return element_cls(_metadata=self.metadata, **data)
 
         except Exception as e:
             context = self._build_error_context(e)

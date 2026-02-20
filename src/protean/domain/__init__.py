@@ -235,6 +235,12 @@ class Domain:
         # Cache for holding events and commands by their types
         self._events_and_commands: Dict[str, Union[BaseCommand, BaseEvent]] = {}
 
+        # Upcaster infrastructure (lightweight, not full domain elements)
+        from protean.utils.upcasting import UpcasterChain
+
+        self._upcasters: list[type] = []
+        self._upcaster_chain: UpcasterChain = UpcasterChain()
+
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
@@ -352,6 +358,9 @@ class Domain:
 
         # Generate and set event/command `__type__` value
         self._set_and_record_event_and_command_type()
+
+        # Build upcaster chains for event schema evolution
+        self._build_upcaster_chains()
 
         # Parse and setup handler methods in Command Handlers
         self._setup_command_handlers()
@@ -1030,6 +1039,27 @@ class Domain:
 
                 self._events_and_commands[type_string] = element.cls
 
+    def _build_upcaster_chains(self) -> None:
+        """Build upcaster chains from registered upcasters.
+
+        Called during ``init()`` after ``_set_and_record_event_and_command_type``
+        so that event type strings are available for chain validation.
+        """
+        for upcaster_cls in self._upcasters:
+            event_type = upcaster_cls.meta_.event_type
+
+            # Compute event_base_type: "DomainName.EventName"
+            event_base_type = f"{self.camel_case_name}.{event_type.__name__}"
+
+            self._upcaster_chain.register_upcaster(
+                event_base_type=event_base_type,
+                from_version=upcaster_cls.meta_.from_version,
+                to_version=upcaster_cls.meta_.to_version,
+                upcaster_cls=upcaster_cls,
+            )
+
+        self._upcaster_chain.build_chains(self._events_and_commands)
+
     def register_external_event(self, event_cls: Type[BaseEvent], type_string: str):
         """Register an external event with the domain.
 
@@ -1504,6 +1534,44 @@ class Domain:
             _cls=_cls,
             **kwargs,
         )
+
+    ##############
+    # Upcasters  #
+    ##############
+    def upcaster(
+        self,
+        _cls: type[_T] | None = None,
+        **kwargs: Any,
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
+        """Register an event upcaster with the domain.
+
+        Upcasters transform raw event payloads from an old schema version to
+        a newer one.  They are applied lazily during deserialization so that
+        ``@apply`` handlers and event handlers always see the current schema.
+
+        Args:
+            event_type: The event class this upcaster targets (current version).
+            from_version: Source version string (e.g. ``"v1"``).
+            to_version: Target version string (e.g. ``"v2"``).
+
+        Example::
+
+            @domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+            class UpcastOrderPlacedV1ToV2(BaseUpcaster):
+                def upcast(self, data: dict) -> dict:
+                    data["currency"] = "USD"
+                    return data
+        """
+        from protean.core.upcaster import upcaster_factory
+
+        def wrap(cls: type) -> type:
+            new_cls = upcaster_factory(cls, self, **kwargs)
+            self._upcasters.append(new_cls)
+            return new_cls
+
+        if _cls is None:
+            return wrap
+        return wrap(_cls)
 
     #####################
     # Handling Commands #
