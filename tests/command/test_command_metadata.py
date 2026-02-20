@@ -121,6 +121,7 @@ def test_command_metadata(test_domain):
                     "sequence_id": None,
                     "asynchronous": True,
                     "expected_version": None,
+                    "priority": 0,
                 },
                 "envelope": {
                     "specversion": "1.0",

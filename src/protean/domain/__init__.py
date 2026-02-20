@@ -1013,6 +1013,7 @@ class Domain:
     def _assign_aggregate_clusters(self):
         """Assign Aggregate Clusters to all relevant elements"""
         from protean.core.aggregate import BaseAggregate
+        from protean.core.process_manager import BaseProcessManager
 
         # Assign Aggregates, EventSourcedAggregates, and Process Managers to their own cluster
         for element_type in [
@@ -1032,7 +1033,10 @@ class Domain:
                 part_of = element.cls.meta_.part_of
                 if part_of:
                     # Traverse up the graph tree to find the root aggregate
-                    while not issubclass(part_of, BaseAggregate):
+                    # (or process manager, for transition events)
+                    while not issubclass(part_of, BaseAggregate) and not issubclass(
+                        part_of, BaseProcessManager
+                    ):
                         part_of = part_of.meta_.part_of
 
                 element.cls.meta_.aggregate_cluster = part_of

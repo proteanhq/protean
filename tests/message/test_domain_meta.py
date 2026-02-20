@@ -211,6 +211,7 @@ class TestDomainMetaFields:
             "sequence_id": "1.0",
             "asynchronous": False,
             "expected_version": 7,
+            "priority": 0,
         }
 
     def test_domain_meta_from_dict(self):
