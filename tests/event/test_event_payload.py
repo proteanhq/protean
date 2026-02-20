@@ -68,6 +68,7 @@ def test_event_payload():
                 "sequence_id": "0",
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
                 "expected_version": None,
+                "priority": 0,
             },
             "event_store": None,
         },
