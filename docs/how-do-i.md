@@ -50,6 +50,7 @@ need by what you're trying to accomplish.
 | Coordinate a multi-step process across aggregates | [Process Managers](./guides/consume-state/process-managers.md) |
 | Correlate events to a running process           | [Process Managers](./guides/consume-state/process-managers.md) |
 | Build a read-optimized view from events         | [Projections](./guides/consume-state/projections.md) |
+| Rebuild a projection from historical events     | [`protean projection rebuild`](./guides/cli/projection.md) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
 
 ## Set Up and Configure

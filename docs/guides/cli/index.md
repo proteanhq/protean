@@ -17,6 +17,7 @@ load the domain.
 | [`protean db truncate`](database.md)    | Delete all data, preserve schema   |
 | [`protean db setup-outbox`](database.md)| Create only outbox tables          |
 | [`protean snapshot create`](snapshot.md)| Create snapshots for ES aggregates |
+| [`protean projection rebuild`](projection.md) | Rebuild projections from events |
 
 !!! note
 

@@ -195,6 +195,7 @@ nav:
         - guides/cli/docs.md
         - guides/cli/test.md
         - guides/cli/snapshot.md
+        - guides/cli/projection.md
 
     - Essentials:
       - guides/essentials/object-model.md

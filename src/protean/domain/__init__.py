@@ -10,6 +10,7 @@ from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -22,6 +23,9 @@ from typing import (
     dataclass_transform,
     overload,
 )
+
+if TYPE_CHECKING:
+    from protean.utils.projection_rebuilder import RebuildResult
 from uuid import uuid4
 
 from inflection import parameterize, titleize, transliterate, underscore, camelize
@@ -1908,6 +1912,51 @@ class Domain:
                 results[record.cls.__name__] = count
 
         return results
+
+    ####################################
+    # Projection Rebuild Functionality #
+    ####################################
+
+    def rebuild_projection(
+        self, projection_cls: type, batch_size: int = 500
+    ) -> "RebuildResult":
+        """Rebuild a projection by replaying events through its projectors.
+
+        Truncates existing projection data, then replays all events from the
+        event store through each projector that targets this projection.
+        Upcasters are applied automatically during replay.
+
+        Must be called after ``domain.init()`` and within
+        ``domain.domain_context()``.
+
+        Args:
+            projection_cls: The projection class to rebuild.
+            batch_size: Number of events to read per batch from the event store.
+
+        Returns:
+            RebuildResult with counts and any errors.
+        """
+        from protean.utils.projection_rebuilder import rebuild_projection
+
+        return rebuild_projection(self, projection_cls, batch_size)
+
+    def rebuild_all_projections(
+        self, batch_size: int = 500
+    ) -> dict[str, "RebuildResult"]:
+        """Rebuild all projections registered in the domain.
+
+        Must be called after ``domain.init()`` and within
+        ``domain.domain_context()``.
+
+        Args:
+            batch_size: Number of events to read per batch from the event store.
+
+        Returns:
+            Dictionary mapping projection class names to their RebuildResult.
+        """
+        from protean.utils.projection_rebuilder import rebuild_all_projections
+
+        return rebuild_all_projections(self, batch_size)
 
     #######################
     # Email Functionality #
