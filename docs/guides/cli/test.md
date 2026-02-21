@@ -49,3 +49,25 @@ protean test --category EVENTSTORE
 ```shell
 protean test --category FULL
 ```
+
+## Using `--protean-env` with pytest
+
+When running tests directly with `pytest` (instead of `protean test`),
+Protean's pytest plugin provides the `--protean-env` option to control which
+`domain.toml` environment overlay is active:
+
+```shell
+# Default: uses [test] overlay (PROTEAN_ENV=test)
+pytest
+
+# Use [memory] overlay — in-memory adapters, no Docker needed
+pytest --protean-env memory
+```
+
+This enables **dual-mode testing**: run the same test suite against in-memory
+adapters for fast feedback during development, and against real infrastructure
+for final validation in CI. No test code or fixture changes are needed — only
+the adapter configuration changes.
+
+See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md) pattern for
+the full setup.

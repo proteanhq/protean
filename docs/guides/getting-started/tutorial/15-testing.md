@@ -212,7 +212,46 @@ def test_price_update_reflects_in_catalog(domain):
 
 ## Testing with Different Adapters
 
-Protean's test runner supports testing against different infrastructure:
+### Dual-Mode Testing
+
+Protean's memory adapters are complete implementations -- not stubs -- so your
+tests work identically whether data is stored in a Python dictionary or a
+PostgreSQL table. This lets you run the **same test suite** in two modes:
+
+```shell
+# Fast — no Docker, no databases
+pytest --protean-env memory
+
+# Thorough — real PostgreSQL, Redis, Message DB
+pytest
+```
+
+Add a `[memory]` overlay to your `domain.toml` to enable this:
+
+```toml
+[memory]
+testing = true
+event_processing = "sync"
+
+[memory.databases.default]
+provider = "memory"
+
+[memory.event_store]
+provider = "memory"
+
+[memory.brokers.default]
+provider = "inline"
+```
+
+Use in-memory mode during development for instant feedback, and real adapters
+in CI for full confidence. See the
+[Dual-Mode Testing](../../../patterns/dual-mode-testing.md) pattern for
+CI setup and multi-domain guidance.
+
+### Protean Test Runner
+
+Protean's `protean test` command also supports testing against different
+infrastructure:
 
 ```shell
 # Default: in-memory adapters

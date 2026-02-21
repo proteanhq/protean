@@ -72,6 +72,29 @@ cleanup across all adapters. See
 [Fixtures and Patterns](./fixtures-and-patterns.md) for full details and
 recipes.
 
+## Dual-Mode Testing
+
+Protean's memory adapters are complete implementations — not stubs — that
+behave identically to real adapters for domain logic. This enables
+**dual-mode testing**: run the same test suite with in-memory adapters for
+fast feedback and with real infrastructure for final validation.
+
+```shell
+# Fast — no Docker, no databases
+pytest --protean-env memory
+
+# Thorough — real PostgreSQL, Redis, Message DB
+pytest
+```
+
+Switch modes with a single CLI flag and **zero test code changes**. Add a
+`[memory]` overlay to your `domain.toml` and every test, fixture, and BDD
+scenario works in both modes automatically.
+
+See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md)
+pattern for the full setup, CI configuration, and guidance on when modes
+may diverge.
+
 ## What's in This Section
 
 - **[Domain Model Tests](./domain-model-tests.md)** — unit testing aggregates,

@@ -124,6 +124,7 @@ httpx = ">=0.27.0"  # For testing FastAPI
 optional = true
 
 [tool.poetry.group.docs.dependencies]
+mkdocs = ">=1.6,<2"
 mkdocs-material = "^9.5.15"
 mdx-include = "^1.4.2"
 

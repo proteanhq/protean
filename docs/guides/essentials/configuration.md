@@ -428,3 +428,53 @@ by configurations in the `toml` file, which can further be over-ridden by an
 environment-specific configuration, as seen above. There are two environment
 specific settings above for databases - an `sqlite` db configuration for
 `staging` and a `postgresql` db configuration for `prod`.
+
+### Testing Overlays
+
+A common use of environment overlays is **dual-mode testing** -- running the
+same test suite against in-memory adapters for speed and real infrastructure
+for confidence. Define a `[test]` overlay (the default for `pytest`) and a
+`[memory]` overlay, then switch from the command line:
+
+```toml
+# Base configuration (development)
+[databases.default]
+provider = "postgresql"
+database_uri = "postgresql://localhost/myapp_local"
+
+[brokers.default]
+provider = "redis"
+URI = "redis://localhost:6379/0"
+
+# Test overlay: separate database, sync processing
+[test]
+testing = true
+event_processing = "sync"
+
+[test.databases.default]
+database_uri = "postgresql://localhost/myapp_test"
+
+# Memory overlay: all in-memory adapters, no Docker needed
+[memory]
+testing = true
+event_processing = "sync"
+
+[memory.databases.default]
+provider = "memory"
+
+[memory.event_store]
+provider = "memory"
+
+[memory.brokers.default]
+provider = "inline"
+```
+
+```shell
+pytest --protean-env memory   # Fast — in-memory, no infrastructure
+pytest                        # Thorough — real adapters (PROTEAN_ENV=test)
+```
+
+Protean's pytest plugin sets `PROTEAN_ENV` before test collection via the
+`--protean-env` option (default: `test`). See the
+[Dual-Mode Testing](../../patterns/dual-mode-testing.md) pattern for the
+full approach.

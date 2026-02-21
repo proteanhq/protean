@@ -194,7 +194,16 @@ def _ctx(app_fixture):
 
 ### Recipe 3: Switch Between In-Memory and Real Database
 
-Use an environment variable to control which adapter runs. This lets developers run fast in-memory tests locally and full integration tests in CI.
+!!!tip "Prefer `--protean-env` for whole-suite switching"
+    If you want to switch **all** adapters between in-memory and real
+    infrastructure at once, Protean's `--protean-env` flag is simpler than
+    manual environment variables. Define a `[memory]` overlay in `domain.toml`
+    and run `pytest --protean-env memory`. See
+    [Dual-Mode Testing](dual-mode-testing.md) for the full setup.
+
+The recipe below is useful when you need to switch individual adapters
+independently or control adapter selection per-directory. Use an environment
+variable to control which adapter runs:
 
 ```python
 # tests/conftest.py
@@ -509,3 +518,6 @@ dropping and recreating tables.
 **The key principle: create schema once, reset data often.** This gives you the correctness of full isolation with the performance of shared infrastructure.
 
 For fixture organization patterns, test layout conventions, and additional recipes, see [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md).
+
+To run the same test suite against both in-memory and real adapters with zero
+code changes, see [Dual-Mode Testing](dual-mode-testing.md).

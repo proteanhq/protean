@@ -108,6 +108,12 @@ terminology.
 
 ## Testing & Infrastructure
 
+- **[Dual-Mode Testing with Memory and Real Adapters](dual-mode-testing.md)**
+  -- Run the same test suite against in-memory adapters (fast, no Docker) and
+  real infrastructure (thorough, with PostgreSQL/Redis/Message DB). Uses
+  `domain.toml` environment overlays and `--protean-env` to switch modes with
+  zero test code changes.
+
 - **[Setting Up and Tearing Down Databases for Tests](setting-up-and-tearing-down-database-for-tests.md)**
   -- Manage database schema and test data lifecycles separately. Create schema
   once per session, reset data after every test, and clean up all infrastructure

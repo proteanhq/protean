@@ -55,6 +55,10 @@ extra_javascript:
   - https://unpkg.com/mermaid@10/dist/mermaid.min.js
   - javascripts/mermaid-init.js
 
+validation:
+  nav:
+    not_in_nav: info  # CLAUDE.md is intentionally excluded from nav
+
 plugins:
   - privacy
 markdown_extensions:
@@ -175,6 +179,8 @@ nav:
         - guides/server/subscription-types.md
         - guides/server/configuration.md
         - guides/server/outbox.md
+        - guides/priority-lanes.md
+        - guides/running-migration-with-priority-lanes.md
         - guides/server/supervisor.md
         - guides/server/observability.md
         - guides/server/running.md
@@ -188,6 +194,7 @@ nav:
         - guides/cli/database.md
         - guides/cli/docs.md
         - guides/cli/test.md
+        - guides/cli/snapshot.md
 
     - Essentials:
       - guides/essentials/object-model.md
@@ -292,6 +299,7 @@ nav:
       - patterns/consuming-events-from-other-domains.md
       - patterns/sharing-event-classes-across-domains.md
     - Testing & Infrastructure:
+      - patterns/dual-mode-testing.md
       - patterns/setting-up-and-tearing-down-database-for-tests.md
 
   - Internals:

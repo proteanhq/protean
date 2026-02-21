@@ -246,8 +246,22 @@ tests/
 
 ## Testing with Different Adapters
 
-To run the same integration tests against different databases or brokers,
-use environment variables to switch configuration:
+!!!tip "Prefer `--protean-env` for adapter switching"
+    Instead of writing per-directory `conftest.py` overrides, consider using
+    Protean's built-in **dual-mode testing** support. Define a `[memory]`
+    overlay in `domain.toml` and switch modes from the command line:
+
+    ```shell
+    pytest --protean-env memory   # In-memory — fast, no Docker
+    pytest                        # Real adapters — default (test) overlay
+    ```
+
+    No test code or fixture changes needed. See the
+    [Dual-Mode Testing](../../patterns/dual-mode-testing.md) pattern for the
+    complete setup.
+
+For projects that need finer-grained control or want to switch individual
+adapters independently, use environment variables to switch configuration:
 
 ```python
 # tests/integration/conftest.py

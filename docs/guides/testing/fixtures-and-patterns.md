@@ -388,6 +388,48 @@ consistency:
 | Shared steps in parent `conftest.py` | Steps reused across multiple test modules |
 | Steps in test module | Steps used only by that module's scenarios |
 
+## Dual-Mode Testing
+
+Protean's recommended approach for switching between in-memory and real
+infrastructure is `--protean-env`, which swaps all adapters at the
+configuration level with **zero changes** to test code or fixtures:
+
+```shell
+# Memory mode — fast, no Docker needed
+pytest --protean-env memory
+
+# Real mode — default (test), requires infrastructure
+pytest
+```
+
+This works by activating different `domain.toml` environment overlays. Add a
+`[memory]` section to your `domain.toml` that overrides all adapter providers
+to their in-memory equivalents:
+
+```toml
+# In your domain.toml
+[memory]
+testing = true
+event_processing = "sync"
+
+[memory.databases.default]
+provider = "memory"
+
+[memory.event_store]
+provider = "memory"
+
+[memory.brokers.default]
+provider = "inline"
+```
+
+Because `--protean-env` applies before test collection, a single `conftest.py`
+works for both modes -- no per-directory overrides needed. The "Integration-Ready
+conftest" recipe above still works, but `--protean-env` is the cleaner approach
+for most projects.
+
+See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md) pattern for
+the complete setup, CI configuration, and multi-domain guidance.
+
 ## Running Tests Selectively
 
 ### By Directory

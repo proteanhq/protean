@@ -21,6 +21,28 @@ represent the requirements of the inside of the application.
 Protean exposes several ports with an array of built-in adapters for
 each port.
 
+## In-Memory Adapters
+
+Every port ships with a **complete in-memory implementation** that is active
+by default. These are not stubs or mocks -- they implement the full provider
+interface (CRUD, filtering, sorting, stream reads, consumer groups, data
+reset) using Python data structures instead of external services. This means
+you can develop and test your entire domain model without any infrastructure
+running.
+
+Because memory adapters and real adapters share the same interface, you can
+run the **same test suite** in both modes: in-memory for fast development
+feedback, and real infrastructure for final validation. Switch with a single
+flag: `pytest --protean-env memory`. See
+[Dual-Mode Testing](../patterns/dual-mode-testing.md) for the full pattern.
+
+| Port | In-Memory Adapter | Default |
+|------|-------------------|---------|
+| Database | `memory` | Yes |
+| Broker | `inline` | Yes |
+| Event Store | `memory` | Yes |
+| Cache | `memory` | Yes |
+
 ## Database
 
 The [Database port](./database/index.md) defines the interface for interacting
