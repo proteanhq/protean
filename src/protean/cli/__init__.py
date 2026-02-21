@@ -27,6 +27,7 @@ from protean.cli.generate import app as generate_app
 from protean.cli.new import new
 from protean.cli.observatory import observatory
 from protean.cli.shell import shell
+from protean.cli.snapshot import app as snapshot_app
 from protean.cli.test import app as test_app
 from protean.exceptions import NoDomainException
 from protean.server.engine import Engine
@@ -45,6 +46,7 @@ app.command()(shell)
 app.add_typer(db_app, name="db")
 app.add_typer(generate_app, name="generate")
 app.add_typer(docs_app, name="docs")
+app.add_typer(snapshot_app, name="snapshot")
 app.add_typer(test_app, name="test")
 
 

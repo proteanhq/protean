@@ -156,6 +156,16 @@ class MemoryEventStore(BaseEventStore):
         messages = repo.read(stream_name)
         return messages[-1] if messages else None
 
+    def _stream_identifiers(self, stream_category: str) -> List[str]:
+        messages = self._read(stream_category, no_of_messages=1_000_000)
+        identifiers: set[str] = set()
+        for msg in messages:
+            stream_name = msg.get("stream_name", "")
+            _, sep, ident = stream_name.partition("-")
+            if sep and ident:
+                identifiers.add(ident)
+        return sorted(identifiers)
+
     def _data_reset(self) -> None:
         """Flush all events.
 

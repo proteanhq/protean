@@ -56,6 +56,14 @@ class MessageDBStore(BaseEventStore):
         """Read the last message from the event store."""
         return self.client.read_last_message(stream_name)
 
+    def _stream_identifiers(self, stream_category: str) -> List[str]:
+        """Return unique aggregate identifiers for a stream category.
+
+        Delegates to the MessageDB client which uses an efficient SQL
+        DISTINCT query, avoiding loading all messages into memory.
+        """
+        return self.client.stream_identifiers(stream_category)
+
     def _data_reset(self):
         """Utility function to empty messages, to be used only by test harness.
 
