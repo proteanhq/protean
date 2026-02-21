@@ -232,3 +232,66 @@ protean snapshot create --domain=my_domain
 ```
 
 See [CLI Snapshot Commands](../guides/cli/snapshot.md) for full documentation.
+
+## Projection rebuilding
+
+Projections are read-optimized views maintained by projectors in response to
+domain events. When a projector has a bug, or a new projection is added to an
+existing system, the projection data must be rebuilt from scratch by replaying
+all historical events through the projector handlers.
+
+### Rebuild process
+
+The rebuild performs three steps:
+
+1. **Discover projectors** -- `domain.projectors_for(projection_cls)` finds all
+   projectors that target the given projection.
+2. **Truncate projection data** -- All existing data is cleared. Database-backed
+   projections use `_dao._delete_all()`; cache-backed projections use
+   `remove_by_key_pattern()` with the projection's key prefix.
+3. **Replay events** -- For each projector, events are read from all stream
+   categories and merged by `global_position` to maintain cross-aggregate
+   ordering. Each event is dispatched through `_handle()`, which converts the
+   stored `Message` to a domain object (applying upcasters), looks up the `@on`
+   handler, and executes it within a `UnitOfWork`.
+
+### Cross-aggregate ordering
+
+When a projector listens to multiple stream categories (e.g., both `user` and
+`transaction`), events must be processed in the order they were originally
+stored -- not grouped by category. The rebuild reads all events from each
+category, then sorts the combined list by `global_position` before dispatching.
+This ensures that a `Registered` event from the `user` category is processed
+before a subsequent `Transacted` event from the `transaction` category.
+
+### Error handling during replay
+
+- **Unhandled event types**: Events whose type has no `@on` handler in the
+  projector are silently skipped (the `_handlers` defaultdict returns an empty
+  set).
+- **Unresolvable event types**: Events that cannot be converted to a domain
+  object (deprecated types without upcaster chains) raise `ConfigurationError`,
+  which is caught, logged as a warning, and counted as `events_skipped`.
+- **Handler exceptions**: Other exceptions during handler execution are caught,
+  logged, and skipped -- the rebuild continues with the remaining events.
+
+### Programmatic API
+
+```python
+# Rebuild a single projection
+result = domain.rebuild_projection(Balances)
+assert result.success
+print(f"{result.events_dispatched} events, {result.events_skipped} skipped")
+
+# Rebuild all projections
+results = domain.rebuild_all_projections()  # {"Balances": RebuildResult, ...}
+```
+
+The same functionality is available via the CLI:
+
+```bash
+protean projection rebuild --domain=my_domain --projection=Balances
+protean projection rebuild --domain=my_domain
+```
+
+See [CLI Projection Commands](../guides/cli/projection.md) for full documentation.

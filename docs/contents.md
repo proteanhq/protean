@@ -151,6 +151,8 @@ specific area.
 - [`protean server`](./guides/cli/server.md) -- Run the async background message processing server.
 - [`protean docs`](./guides/cli/docs.md) -- Live preview server for documentation.
 - [`protean test`](./guides/cli/test.md) -- Run tests with category and technology options.
+- [`protean snapshot`](./guides/cli/snapshot.md) -- Create snapshots for event-sourced aggregates.
+- [`protean projection`](./guides/cli/projection.md) -- Rebuild projections by replaying events from the event store.
 
 ### Testing
 
