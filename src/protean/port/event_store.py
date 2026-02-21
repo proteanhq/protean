@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Type, Union
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
+from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
 from protean.utils.eventing import Message
 
 
@@ -192,6 +193,97 @@ class BaseEventStore(metaclass=ABCMeta):
             )
 
         return aggregate
+
+    def create_snapshot(self, part_of: Type[BaseAggregate], identifier: str) -> bool:
+        """Create a snapshot for a specific event-sourced aggregate instance.
+
+        Reads the full event stream for the aggregate, reconstructs it via
+        ``from_events()``, and writes a snapshot to the snapshot stream.
+        This bypasses the snapshot threshold -- manual triggers always create
+        a snapshot regardless of event count.
+
+        Args:
+            part_of: The EventSourced Aggregate class
+            identifier: Unique aggregate identifier
+
+        Returns:
+            True if a snapshot was created.
+
+        Raises:
+            IncorrectUsageError: If the aggregate is not event-sourced.
+            ObjectNotFoundError: If no events exist for the given identifier.
+        """
+        if not part_of.meta_.is_event_sourced:
+            raise IncorrectUsageError(
+                f"`{part_of.__name__}` is not an event-sourced aggregate"
+            )
+
+        # Read ALL events (fresh reconstruction, not from existing snapshot)
+        event_stream = deque(
+            self._read(f"{part_of.meta_.stream_category}-{identifier}")
+        )
+
+        if not event_stream:
+            raise ObjectNotFoundError(
+                f"`{part_of.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
+
+        events = [Message.deserialize(msg).to_domain_object() for msg in event_stream]
+        aggregate = part_of.from_events(events)
+
+        self._write(
+            f"{part_of.meta_.stream_category}:snapshot-{identifier}",
+            "SNAPSHOT",
+            aggregate.to_dict(),
+        )
+
+        return True
+
+    @abstractmethod
+    def _stream_identifiers(self, stream_category: str) -> List[str]:
+        """Return all unique aggregate identifiers for a given stream category.
+
+        Stream names follow the pattern ``{category}-{identifier}``.
+        Snapshot streams (``{category}:snapshot-{identifier}``) must be
+        excluded.
+
+        Implemented by the concrete event store adapter.
+
+        Args:
+            stream_category: The stream category to scan (e.g. ``test::user``)
+
+        Returns:
+            Sorted list of unique aggregate identifiers.
+        """
+
+    def create_snapshots(self, part_of: Type[BaseAggregate]) -> int:
+        """Create snapshots for all instances of an event-sourced aggregate.
+
+        Discovers all unique aggregate identifiers in the stream category,
+        then creates a snapshot for each.
+
+        Args:
+            part_of: The EventSourced Aggregate class
+
+        Returns:
+            Number of snapshots created.
+
+        Raises:
+            IncorrectUsageError: If the aggregate is not event-sourced.
+        """
+        if not part_of.meta_.is_event_sourced:
+            raise IncorrectUsageError(
+                f"`{part_of.__name__}` is not an event-sourced aggregate"
+            )
+
+        identifiers = self._stream_identifiers(part_of.meta_.stream_category)
+        count = 0
+        for identifier in identifiers:
+            self.create_snapshot(part_of, identifier)
+            count += 1
+
+        return count
 
     @abstractmethod
     def _data_reset(self) -> None:

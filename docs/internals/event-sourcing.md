@@ -189,3 +189,46 @@ called by `load_aggregate()` for every event in the stream.
 
 See [Event Upcasting Internals](./event-upcasting.md) for the full
 architecture, chain building algorithm, and integration details.
+
+## Snapshots
+
+### Automatic Snapshots
+
+During `load_aggregate()`, Protean checks whether the number of events since
+the last snapshot (or total events if no snapshot exists) exceeds the
+`snapshot_threshold` configuration (default: 10). If so, a new snapshot is
+written to the snapshot stream (`{category}:snapshot-{identifier}`).
+
+Snapshots contain the aggregate's full state via `to_dict()` and are stored
+with type `"SNAPSHOT"`. When loading an aggregate, the event store first
+checks for a snapshot, initializes the aggregate from it, then replays only
+events that occurred after the snapshot.
+
+### Manual Snapshots
+
+Manual snapshot creation bypasses the threshold and always produces a fresh
+snapshot by replaying the entire event stream:
+
+```python
+# Single aggregate instance
+domain.create_snapshot(UserAggregate, "user-id-123")
+
+# All instances of one aggregate
+count = domain.create_snapshots(UserAggregate)
+
+# All event-sourced aggregates in the domain
+results = domain.create_all_snapshots()  # {"User": 42, "Order": 15}
+```
+
+Manual snapshots are useful after data migrations, bulk event imports, or
+to pre-warm snapshots for performance-critical aggregates.
+
+The same functionality is available via the CLI:
+
+```bash
+protean snapshot create --domain=my_domain --aggregate=User --identifier=abc-123
+protean snapshot create --domain=my_domain --aggregate=User
+protean snapshot create --domain=my_domain
+```
+
+See [CLI Snapshot Commands](../guides/cli/snapshot.md) for full documentation.

@@ -1838,6 +1838,77 @@ class Domain:
     def cache_for(self, projection_cls):
         return self.caches.cache_for(projection_cls)
 
+    ##########################
+    # Snapshot Functionality #
+    ##########################
+
+    def create_snapshot(self, aggregate_cls: type, identifier: str) -> bool:
+        """Create a snapshot for a specific event-sourced aggregate instance.
+
+        Must be called after ``domain.init()`` and within ``domain.domain_context()``.
+
+        Args:
+            aggregate_cls: The event-sourced aggregate class
+            identifier: Unique aggregate identifier
+
+        Returns:
+            True if a snapshot was created.
+
+        Raises:
+            IncorrectUsageError: If the aggregate is not event-sourced or not registered.
+            ObjectNotFoundError: If the aggregate instance does not exist.
+        """
+        if (
+            fqn(aggregate_cls)
+            not in self.registry._elements[DomainObjects.AGGREGATE.value]
+        ):
+            raise IncorrectUsageError(
+                f"`{aggregate_cls.__name__}` is not registered in domain {self.name}"
+            )
+
+        return self.event_store.store.create_snapshot(aggregate_cls, identifier)
+
+    def create_snapshots(self, aggregate_cls: type) -> int:
+        """Create snapshots for all instances of an event-sourced aggregate.
+
+        Must be called after ``domain.init()`` and within ``domain.domain_context()``.
+
+        Args:
+            aggregate_cls: The event-sourced aggregate class
+
+        Returns:
+            Number of snapshots created.
+
+        Raises:
+            IncorrectUsageError: If the aggregate is not event-sourced or not registered.
+        """
+        if (
+            fqn(aggregate_cls)
+            not in self.registry._elements[DomainObjects.AGGREGATE.value]
+        ):
+            raise IncorrectUsageError(
+                f"`{aggregate_cls.__name__}` is not registered in domain {self.name}"
+            )
+
+        return self.event_store.store.create_snapshots(aggregate_cls)
+
+    def create_all_snapshots(self) -> dict[str, int]:
+        """Create snapshots for all event-sourced aggregates in the domain.
+
+        Must be called after ``domain.init()`` and within ``domain.domain_context()``.
+
+        Returns:
+            Dictionary mapping aggregate class names to the number of
+            snapshots created.
+        """
+        results: dict[str, int] = {}
+        for _, record in self.registry._elements[DomainObjects.AGGREGATE.value].items():
+            if record.cls.meta_.is_event_sourced and not record.internal:
+                count = self.event_store.store.create_snapshots(record.cls)
+                results[record.cls.__name__] = count
+
+        return results
+
     #######################
     # Email Functionality #
     #######################
