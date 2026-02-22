@@ -17,6 +17,18 @@ After ``.process()``, assert with plain Python::
     assert order.events[PaymentPending].payment_id == "pay-001"
     assert order.status == "Payment_Pending"
 
+Multi-command chaining::
+
+    order = (
+        given(Order)
+        .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+        .process(ConfirmOrder(order_id=oid))
+        .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+    )
+
+    assert order.accepted
+    assert order.status == "Payment_Pending"
+
 Usage::
 
     from protean.testing import given
@@ -44,6 +56,11 @@ Usage::
         assert order.status == "Created"
 """
 
+from __future__ import annotations
+
+from typing import Any
+
+from protean.exceptions import ProteanExceptionWithMessage
 from protean.utils import fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -77,7 +94,8 @@ class EventLog:
     """A collection of domain events with Pythonic access.
 
     Supports ``in`` (contains by type), ``[]`` (getitem by type or index),
-    ``len``, iteration, ``.get()``, ``.of_type()``, and ``.types``.
+    ``len``, ``bool``, iteration, ``.get()``, ``.of_type()``, ``.types``,
+    ``.first``, and ``.last``.
 
     Examples::
 
@@ -86,16 +104,18 @@ class EventLog:
         assert log.get(PaymentFailed) is None
         assert log.types == [PaymentPending]
         assert len(log) == 1
+        assert log.first is placed_event
+        assert log                          # truthy when non-empty
     """
 
-    def __init__(self, events):
+    def __init__(self, events: list[Any]) -> None:
         self._events = list(events)
 
-    def __contains__(self, event_cls):
+    def __contains__(self, event_cls: type) -> bool:
         """Check if an event of this type exists."""
         return any(isinstance(e, event_cls) for e in self._events)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: type | int) -> Any:
         """Access by event class (first match) or by index.
 
         Raises ``KeyError`` if an event class is not found.
@@ -107,29 +127,42 @@ class EventLog:
             raise KeyError(f"No {key.__name__} event found")
         return self._events[key]
 
-    def get(self, event_cls, default=None):
+    def get(self, event_cls: type, default: Any = None) -> Any:
         """Safe access by event class. Returns *default* if not found."""
         for e in self._events:
             if isinstance(e, event_cls):
                 return e
         return default
 
-    def of_type(self, event_cls):
+    def of_type(self, event_cls: type) -> list[Any]:
         """Return all events of the given type."""
         return [e for e in self._events if isinstance(e, event_cls)]
 
     @property
-    def types(self):
+    def types(self) -> list[type]:
         """Ordered list of event types."""
         return [type(e) for e in self._events]
 
-    def __len__(self):
+    @property
+    def first(self) -> Any | None:
+        """First event, or ``None`` if empty."""
+        return self._events[0] if self._events else None
+
+    @property
+    def last(self) -> Any | None:
+        """Last event, or ``None`` if empty."""
+        return self._events[-1] if self._events else None
+
+    def __len__(self) -> int:
         return len(self._events)
+
+    def __bool__(self) -> bool:
+        return len(self._events) > 0
 
     def __iter__(self):
         return iter(self._events)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         type_names = [type(e).__name__ for e in self._events]
         return f"EventLog({type_names})"
 
@@ -140,38 +173,65 @@ class AggregateResult:
     Proxies attribute access to the underlying aggregate, so
     ``order.status`` works directly.
 
+    Supports multi-command chaining — call ``.process()`` repeatedly
+    to build up aggregate state through the real pipeline::
+
+        order = (
+            given(Order)
+            .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+            .process(ConfirmOrder(order_id=oid))
+            .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+        )
+
     Created by :func:`given`, not directly.
     """
 
-    def __init__(self, aggregate_cls, given_events=None):
+    def __init__(
+        self, aggregate_cls: type, given_events: list[Any] | None = None
+    ) -> None:
         self._aggregate_cls = aggregate_cls
         self._given_events = list(given_events or [])
         self._aggregate = None
-        self._new_events = EventLog([])
-        self._rejection = None
-        self._processed = False
+        self._new_events: EventLog = EventLog([])
+        self._all_events: list[Any] = []
+        self._rejection: Exception | None = None
+        self._processed: bool = False
+        self._aggregate_id: Any = None
+        self._event_count: int = 0
+        self._seeded: bool = False
 
-    def after(self, *events):
+    def after(self, *events) -> AggregateResult:
         """Accumulate more history events (for BDD "And given" steps).
 
         Returns self for chaining::
 
-            order = given_(Order, order_created)
+            order = given(Order, order_created)
             order = order.after(order_confirmed)
             order = order.after(payment_pending)
         """
         self._given_events.extend(events)
         return self
 
-    def process(self, command):
+    def process(self, command) -> AggregateResult:
         """Dispatch a command through the domain's full processing pipeline.
 
-        Seeds the event store with given events, then calls
-        ``domain.process(command)`` which routes through the real
-        command handler, repository, and unit of work.
+        Seeds the event store with given events (on first call only),
+        then calls ``domain.process(command)`` which routes through the
+        real command handler, repository, and unit of work.
 
-        After processing, captures the resulting aggregate state
-        and any new events raised.
+        Can be called multiple times to chain commands::
+
+            result = (
+                given(Order)
+                .process(CreateOrder(...))
+                .process(ConfirmOrder(...))
+            )
+
+        After each call:
+
+        - ``.events`` contains events from the **last** command only.
+        - ``.all_events`` contains events from **all** commands.
+        - ``.accepted`` / ``.rejected`` reflects the **last** command.
 
         Returns self for chaining.
         """
@@ -179,40 +239,46 @@ class AggregateResult:
 
         domain = current_domain
         self._processed = True
-        aggregate_id = None
+        self._rejection = None  # Reset for this command
 
-        # Seed event store with given events
-        if self._given_events:
-            aggregate_id = self._seed_events(domain)
+        # Seed event store with given events (first call only)
+        if self._given_events and not self._seeded:
+            self._aggregate_id = self._seed_events(domain)
+            self._event_count = len(self._given_events)
+            self._seeded = True
 
         # Process command through the domain
         try:
             result = domain.process(command, asynchronous=False)
         except Exception as exc:
             self._rejection = exc
-            # On rejection, reconstitute aggregate from given events
-            if self._given_events:
-                self._aggregate = self._aggregate_cls.from_events(self._given_events)
+            # On rejection, load aggregate from event store to reflect
+            # the state before the failed command
+            if self._aggregate_id is not None:
+                self._aggregate = domain.event_store.store.load_aggregate(
+                    self._aggregate_cls, str(self._aggregate_id)
+                )
             self._new_events = EventLog([])
             return self
 
         # Determine aggregate_id if not known (e.g. create commands)
-        if aggregate_id is None:
-            aggregate_id = result
+        if self._aggregate_id is None:
+            self._aggregate_id = result
 
-        aggregate_id_str = str(aggregate_id)
+        aggregate_id_str = str(self._aggregate_id)
 
         # Load aggregate from event store
         self._aggregate = domain.event_store.store.load_aggregate(
             self._aggregate_cls, aggregate_id_str
         )
 
-        # Read new events (those beyond given events)
+        # Read new events (those beyond previously seen events)
         stream = f"{self._aggregate_cls.meta_.stream_category}-{aggregate_id_str}"
         all_messages = domain.event_store.store.read(stream)
-        given_count = len(self._given_events)
-        new_events = [m.to_domain_object() for m in all_messages[given_count:]]
+        new_events = [m.to_domain_object() for m in all_messages[self._event_count :]]
         self._new_events = EventLog(new_events)
+        self._all_events.extend(new_events)
+        self._event_count = len(all_messages)
 
         return self
 
@@ -221,31 +287,58 @@ class AggregateResult:
     # ------------------------------------------------------------------
 
     @property
-    def events(self):
-        """New events raised by the command (``EventLog``)."""
+    def events(self) -> EventLog:
+        """New events raised by the last command (``EventLog``)."""
         return self._new_events
 
     @property
-    def rejection(self):
+    def all_events(self) -> EventLog:
+        """All events raised across all ``.process()`` calls (``EventLog``)."""
+        return EventLog(self._all_events)
+
+    @property
+    def rejection(self) -> Exception | None:
         """The exception if the command was rejected, or ``None``."""
         return self._rejection
 
     @property
-    def accepted(self):
-        """``True`` if the command was processed without exception."""
+    def accepted(self) -> bool:
+        """``True`` if the last command was processed without exception."""
         return self._processed and self._rejection is None
 
     @property
-    def rejected(self):
-        """``True`` if the command raised an exception."""
+    def rejected(self) -> bool:
+        """``True`` if the last command raised an exception."""
         return self._processed and self._rejection is not None
+
+    @property
+    def rejection_messages(self) -> list[str]:
+        """Flat list of error messages from the rejection.
+
+        For ``ValidationError``, flattens the ``messages`` dict values.
+        For other exceptions, returns ``[str(exc)]``.
+        Returns ``[]`` if no rejection.
+
+        Examples::
+
+            assert "Order must be confirmed" in result.rejection_messages
+        """
+        if self._rejection is None:
+            return []
+        if isinstance(self._rejection, ProteanExceptionWithMessage):
+            return [
+                msg
+                for messages in self._rejection.messages.values()
+                for msg in messages
+            ]
+        return [str(self._rejection)]
 
     @property
     def aggregate(self):
         """The raw aggregate instance, if needed directly."""
         return self._aggregate
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str):
         """Proxy attribute access to the underlying aggregate.
 
         This makes ``order.status``, ``order.items``, ``order.pricing``
@@ -261,7 +354,7 @@ class AggregateResult:
             f"Did you call .process() first?"
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         status = (
             "accepted" if self.accepted else "rejected" if self.rejected else "pending"
         )
@@ -272,7 +365,7 @@ class AggregateResult:
     # Internal
     # ------------------------------------------------------------------
 
-    def _seed_events(self, domain):
+    def _seed_events(self, domain) -> Any:
         """Write given events to the event store and process handlers.
 
         Reconstitutes the aggregate from events to determine its identity,

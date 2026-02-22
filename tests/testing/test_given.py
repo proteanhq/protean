@@ -507,3 +507,184 @@ class TestMethodChaining:
         assert result.accepted
         assert result.payment_id == "pay-chain"
         assert PaymentInitiated in result.events
+
+
+# ---------------------------------------------------------------------------
+# Tests: Multi-command chaining
+# ---------------------------------------------------------------------------
+class TestMultiCommandChaining:
+    @pytest.mark.eventstore
+    def test_two_commands(self):
+        """Chaining two .process() calls builds state through the pipeline."""
+        oid = str(uuid4())
+        result = (
+            given(Order)
+            .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+            .process(ConfirmOrder(order_id=oid))
+        )
+
+        assert result.accepted
+        assert result.status == OrderStatus.CONFIRMED.value
+        assert result.customer == "Alice"
+
+    @pytest.mark.eventstore
+    def test_three_commands(self):
+        """Chaining three .process() calls works end-to-end."""
+        oid = str(uuid4())
+        result = (
+            given(Order)
+            .process(CreateOrder(order_id=oid, customer="Bob", amount=50.0))
+            .process(ConfirmOrder(order_id=oid))
+            .process(InitiatePayment(order_id=oid, payment_id="pay-chain"))
+        )
+
+        assert result.accepted
+        assert result.status == OrderStatus.PAYMENT_PENDING.value
+        assert result.payment_id == "pay-chain"
+
+    @pytest.mark.eventstore
+    def test_events_contains_only_last_command(self):
+        """.events contains events from the last .process() only."""
+        oid = str(uuid4())
+        result = (
+            given(Order)
+            .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+            .process(ConfirmOrder(order_id=oid))
+        )
+
+        assert len(result.events) == 1
+        assert OrderConfirmed in result.events
+        assert OrderCreated not in result.events
+
+    @pytest.mark.eventstore
+    def test_all_events_contains_all_commands(self):
+        """.all_events contains events from all .process() calls."""
+        oid = str(uuid4())
+        result = (
+            given(Order)
+            .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+            .process(ConfirmOrder(order_id=oid))
+            .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+        )
+
+        assert len(result.all_events) == 3
+        assert OrderCreated in result.all_events
+        assert OrderConfirmed in result.all_events
+        assert PaymentInitiated in result.all_events
+
+    @pytest.mark.eventstore
+    def test_all_events_preserves_order(self):
+        """.all_events maintains chronological order."""
+        oid = str(uuid4())
+        result = (
+            given(Order)
+            .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+            .process(ConfirmOrder(order_id=oid))
+        )
+
+        assert result.all_events.types == [OrderCreated, OrderConfirmed]
+
+    @pytest.mark.eventstore
+    def test_chaining_with_given_events(self):
+        """Chaining works when given events seed the initial state."""
+        oid = str(uuid4())
+        order_created = OrderCreated(order_id=oid, customer="Alice", amount=99.99)
+        result = (
+            given(Order, order_created)
+            .process(ConfirmOrder(order_id=oid))
+            .process(InitiatePayment(order_id=oid, payment_id="pay-x"))
+        )
+
+        assert result.accepted
+        assert result.status == OrderStatus.PAYMENT_PENDING.value
+        # .events is from the last command only
+        assert len(result.events) == 1
+        assert PaymentInitiated in result.events
+        # .all_events has both commands' events (not given events)
+        assert len(result.all_events) == 2
+        assert OrderConfirmed in result.all_events
+        assert PaymentInitiated in result.all_events
+
+    @pytest.mark.eventstore
+    def test_rejection_mid_chain(self):
+        """Rejection in a chained command captures the error."""
+        oid = str(uuid4())
+        result = (
+            given(Order)
+            .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+            .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+        )
+
+        assert result.rejected
+        assert isinstance(result.rejection, ValidationError)
+        assert "must be confirmed" in str(result.rejection)
+        # Aggregate reflects state before the failed command
+        assert result.status == OrderStatus.CREATED.value
+
+    @pytest.mark.eventstore
+    def test_rejection_mid_chain_no_new_events(self):
+        """A rejected chained command produces no new events."""
+        oid = str(uuid4())
+        result = (
+            given(Order)
+            .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+            .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+        )
+
+        assert len(result.events) == 0
+
+    @pytest.mark.eventstore
+    def test_process_returns_self_on_chain(self):
+        """.process() returns self for identity-based chaining."""
+        oid = str(uuid4())
+        result = given(Order)
+        r1 = result.process(CreateOrder(order_id=oid, customer="A", amount=1.0))
+        r2 = r1.process(ConfirmOrder(order_id=oid))
+
+        assert r1 is result
+        assert r2 is result
+
+    @pytest.mark.eventstore
+    def test_accepted_rejected_reflects_last_command(self):
+        """.accepted/.rejected reflects only the last .process() call."""
+        oid = str(uuid4())
+        result = given(Order).process(
+            CreateOrder(order_id=oid, customer="Alice", amount=99.99)
+        )
+        assert result.accepted
+
+        # Second command fails
+        result.process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+        assert result.rejected
+        assert not result.accepted
+
+
+# ---------------------------------------------------------------------------
+# Tests: rejection_messages
+# ---------------------------------------------------------------------------
+class TestRejectionMessages:
+    @pytest.mark.eventstore
+    def test_rejection_messages_on_validation_error(self, order_id, order_created):
+        """rejection_messages flattens ValidationError messages."""
+        result = given(Order, order_created).process(
+            InitiatePayment(order_id=order_id, payment_id="pay-001")
+        )
+
+        assert result.rejected
+        assert "Order must be confirmed before payment" in result.rejection_messages
+
+    @pytest.mark.eventstore
+    def test_rejection_messages_when_accepted(self, order_id, order_created):
+        """rejection_messages is empty when accepted."""
+        result = given(Order, order_created).process(ConfirmOrder(order_id=order_id))
+
+        assert result.rejection_messages == []
+
+    @pytest.mark.eventstore
+    def test_rejection_messages_on_non_validation_error(self):
+        """rejection_messages wraps non-ValidationError as [str(exc)]."""
+        result = given(Order).process(ConfirmOrder(order_id="nonexistent"))
+
+        assert result.rejected
+        assert len(result.rejection_messages) == 1
+        assert isinstance(result.rejection_messages[0], str)
