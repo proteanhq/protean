@@ -158,6 +158,7 @@ nav:
       - guides/consume-state/event-upcasting.md
     - Expose Your Domain:
       - guides/fastapi/index.md
+      - guides/fastapi/testing-endpoints.md
     - Run the Server:
       - guides/server/index.md
     - Test Your Application:

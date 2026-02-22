@@ -178,6 +178,8 @@ async def place_order(payload: dict):
 
 ## Next steps
 
+- [Endpoint Tests](./testing-endpoints.md) -- Test your FastAPI endpoints
+  with full domain context
 - [Compose a Domain](../compose-a-domain/index.md) -- How the `Domain`
   object and domain contexts work
 - [Commands](../change-state/commands.md) -- Define commands for state changes
