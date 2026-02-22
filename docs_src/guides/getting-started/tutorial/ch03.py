@@ -1,20 +1,24 @@
+from enum import Enum
+
 from protean import Domain
-from protean.fields import Float, String, Text, ValueObject
+from protean.fields import (
+    Float,
+    HasMany,
+    Integer,
+    String,
+    Text,
+    ValueObject,
+)
 
 domain = Domain()
 
 
-# --8<-- [start:money_vo]
 @domain.value_object
 class Money:
     currency: String(max_length=3, default="USD")
     amount: Float(required=True)
 
 
-# --8<-- [end:money_vo]
-
-
-# --8<-- [start:address_vo]
 @domain.value_object
 class Address:
     street: String(max_length=200, required=True)
@@ -24,10 +28,6 @@ class Address:
     country: String(max_length=50, default="US")
 
 
-# --8<-- [end:address_vo]
-
-
-# --8<-- [start:aggregate]
 @domain.aggregate
 class Book:
     title: String(max_length=200, required=True)
@@ -37,7 +37,37 @@ class Book:
     description: Text()
 
 
-# --8<-- [end:aggregate]
+class OrderStatus(Enum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    SHIPPED = "SHIPPED"
+    DELIVERED = "DELIVERED"
+
+
+# --8<-- [start:order_aggregate]
+@domain.aggregate
+class Order:
+    customer_name: String(max_length=150, required=True)
+    customer_email: String(max_length=254, required=True)
+    shipping_address = ValueObject(Address)
+    status: String(
+        max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
+    )
+    items = HasMany("OrderItem")
+
+
+# --8<-- [end:order_aggregate]
+
+
+# --8<-- [start:order_item_entity]
+@domain.entity(part_of=Order)
+class OrderItem:
+    book_title: String(max_length=200, required=True)
+    quantity: Integer(required=True)
+    unit_price = ValueObject(Money)
+
+
+# --8<-- [end:order_item_entity]
 
 
 domain.init(traverse=False)
@@ -46,46 +76,65 @@ domain.init(traverse=False)
 # --8<-- [start:usage]
 if __name__ == "__main__":
     with domain.domain_context():
-        # Create a book with a Money value object
-        book = Book(
-            title="The Great Gatsby",
-            author="F. Scott Fitzgerald",
-            isbn="9780743273565",
-            price=Money(amount=12.99),
-            description="A story of the mysteriously wealthy Jay Gatsby.",
+        repo = domain.repository_for(Order)
+
+        # Create an order with items
+        order = Order(
+            customer_name="Alice Johnson",
+            customer_email="alice@example.com",
+            shipping_address=Address(
+                street="456 Oak Ave",
+                city="Portland",
+                state="OR",
+                zip_code="97201",
+            ),
+            items=[
+                OrderItem(
+                    book_title="The Great Gatsby",
+                    quantity=1,
+                    unit_price=Money(amount=12.99),
+                ),
+                OrderItem(
+                    book_title="Brave New World",
+                    quantity=2,
+                    unit_price=Money(amount=14.99),
+                ),
+            ],
         )
 
-        print(f"Book: {book.title}")
-        print(f"Price: {book.price.amount} {book.price.currency}")
+        print(f"Order for: {order.customer_name}")
+        print(f"Status: {order.status}")
+        print(f"Ship to: {order.shipping_address.city}, {order.shipping_address.state}")
+        print(f"Items ({len(order.items)}):")
+        for item in order.items:
+            print(f"  - {item.book_title} x{item.quantity} @ ${item.unit_price.amount}")
+            print(f"    Item ID: {item.id}")
 
-        # Value objects are equal by value, not identity
-        price1 = Money(amount=12.99, currency="USD")
-        price2 = Money(amount=12.99, currency="USD")
-        price3 = Money(amount=14.99, currency="USD")
+        # Persist the entire aggregate (order + items together)
+        repo.add(order)
 
-        assert price1 == price2, "Same values means equal"
-        assert price1 != price3, "Different values means not equal"
-        print(f"\nMoney(12.99, USD) == Money(12.99, USD)? {price1 == price2}")
-        print(f"Money(12.99, USD) == Money(14.99, USD)? {price1 == price3}")
+        # Retrieve and verify
+        saved_order = repo.get(order.id)
+        print(f"\nRetrieved order: {saved_order.customer_name}")
+        print(f"Items: {len(saved_order.items)}")
 
-        # Persist and retrieve
-        repo = domain.repository_for(Book)
-        repo.add(book)
-        saved = repo.get(book.id)
-        print(f"\nRetrieved: {saved.title}, ${saved.price.amount}")
-
-        # Address value object
-        shipping = Address(
-            street="123 Main St",
-            city="Springfield",
-            state="IL",
-            zip_code="62704",
+        # Add another item to the order
+        saved_order.add_items(
+            OrderItem(
+                book_title="Sapiens",
+                quantity=1,
+                unit_price=Money(amount=18.99),
+            )
         )
-        print(f"\nAddress: {shipping.street}, {shipping.city}, {shipping.state}")
+        repo.add(saved_order)
+
+        # Verify the update
+        updated = repo.get(order.id)
+        print(f"After adding item: {len(updated.items)} items")
 
         # Verify
-        assert saved.price.amount == 12.99
-        assert saved.price.currency == "USD"
-        assert shipping.country == "US"  # default
+        assert updated.customer_name == "Alice Johnson"
+        assert len(updated.items) == 3
+        assert updated.shipping_address.city == "Portland"
         print("\nAll checks passed!")
 # --8<-- [end:usage]

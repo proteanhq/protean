@@ -1,62 +1,30 @@
 # Tutorial: Building Bookshelf
 
-A guided, end-to-end walkthrough of building a complete online bookstore
-with Protean. By the end, you will have modeled a rich domain, processed
-commands and events, built read-optimized projections, connected real
-databases and message brokers, and explored event sourcing.
+In this tutorial we will build **Bookshelf**, a small but complete online
+bookstore with Protean. By the end, we will have a working application with
+aggregates, value objects, commands, events, projections, a real database,
+and tests.
 
-## What You'll Build
+## What We Will Build
 
-**Bookshelf** is a small but complete online bookstore that demonstrates
-every major Protean concept:
-
-- A **Book** catalog with rich fields, value objects, and business rules
-- An **Order** system with child entities, associations, and invariants
-- An **Inventory** tracker coordinated across aggregate boundaries
+- A **Book** catalog with rich fields and value objects
+- An **Order** system with child entities and business rules
+- An **Inventory** tracker that reacts to events automatically
 - **Commands** that express intent and **events** that record what happened
-- **Projections** for fast, read-optimized queries
-- Real **database persistence**, **async message processing**, and
-  **event sourcing**
-
-```mermaid
-graph LR
-    subgraph "Write Side"
-        B[Book Aggregate]
-        O[Order Aggregate]
-        I[Inventory Aggregate]
-    end
-
-    subgraph "Processing"
-        CH[Command Handlers]
-        EH[Event Handlers]
-        DS[Domain Services]
-    end
-
-    subgraph "Read Side"
-        BC[BookCatalog Projection]
-        OS[OrderSummary Projection]
-    end
-
-    CH --> B & O
-    B & O --> EH
-    DS --> O & I
-    EH --> BC & OS
-```
+- A **BookCatalog** projection for fast browsing queries
+- Real **database persistence** with PostgreSQL
 
 ## How the Tutorial Is Organized
 
-The tutorial is divided into six parts that progressively build on each
-other. Each chapter introduces new concepts while extending the Bookshelf
-application.
+The tutorial is divided into four parts. Each chapter builds on the
+previous one, growing the Bookshelf application step by step.
 
-| Part | Chapters | What You'll Learn |
-|------|----------|-------------------|
-| **I. Getting Started** | 1–2 | Create your first aggregate, explore fields, identity, and basic persistence |
-| **II. The Domain Model** | 3–5 | Value objects, entities, associations, invariants, and business rules |
-| **III. Commands & Events** | 6–8 | Commands, command handlers, domain events, and event handlers |
-| **IV. Services & Read Models** | 9–11 | Application services, domain services, projections, and projectors |
-| **V. Infrastructure** | 12–14 | Configuration, databases, async processing, server, and event sourcing |
-| **VI. Quality** | 15 | Testing strategies for every layer |
+| Part | Chapters | What We Build |
+|------|----------|---------------|
+| **I. Building the Domain** | 1–4 | Aggregates, fields, value objects, entities, and business rules |
+| **II. Making It Event-Driven** | 5–6 | Commands, command handlers, domain events, and event handlers |
+| **III. Read Models & Persistence** | 7–8 | Projections, projectors, and a real PostgreSQL database |
+| **IV. Testing** | 9–10 | Testing strategies and next steps |
 
 !!! tip "Cumulative Codebase"
     Each chapter builds on the previous one. The code you write in Chapter 1

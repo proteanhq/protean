@@ -12,40 +12,29 @@ browser's search (`Ctrl+F` / `Cmd+F`) to find any topic.
 
 ### Tutorial: Building Bookshelf
 
-A guided, end-to-end walkthrough of building a complete online bookstore.
+A guided, hands-on tutorial building a complete online bookstore.
 
-**Part I -- Getting Started**
+**Part I -- Building the Domain**
 
 - [1. Your First Aggregate](./guides/getting-started/tutorial/01-your-first-aggregate.md) -- Create the foundation with a working Book aggregate.
-- [2. Fields and Identity](./guides/getting-started/tutorial/02-fields-and-identity.md) -- Explore field types, options, and how identity works.
+- [2. Rich Fields and Value Objects](./guides/getting-started/tutorial/02-fields-and-value-objects.md) -- Add rich field types and create Money and Address value objects.
+- [3. Entities and Associations](./guides/getting-started/tutorial/03-entities-and-associations.md) -- Build the Order aggregate with child entities.
+- [4. Business Rules](./guides/getting-started/tutorial/04-business-rules.md) -- Add invariants and encapsulate behavior in aggregate methods.
 
-**Part II -- The Domain Model**
+**Part II -- Making It Event-Driven**
 
-- [3. Value Objects](./guides/getting-started/tutorial/03-value-objects.md) -- Model rich, descriptive concepts instead of primitives.
-- [4. Entities and Associations](./guides/getting-started/tutorial/04-entities-and-associations.md) -- Build the Order aggregate with entities and relationships.
-- [5. Business Rules](./guides/getting-started/tutorial/05-business-rules.md) -- Add invariants and encapsulate behavior in aggregate methods.
+- [5. Commands and Handlers](./guides/getting-started/tutorial/05-commands.md) -- Formalize state changes with commands and command handlers.
+- [6. Events and Reactions](./guides/getting-started/tutorial/06-events-and-reactions.md) -- Define events, raise them from aggregates, and react with handlers.
 
-**Part III -- Commands and Events**
+**Part III -- Read Models and Persistence**
 
-- [6. Commands](./guides/getting-started/tutorial/06-commands.md) -- Formalize state changes with commands and command handlers.
-- [7. Domain Events](./guides/getting-started/tutorial/07-events.md) -- Define domain events and raise them from aggregates.
-- [8. Event Handlers](./guides/getting-started/tutorial/08-event-handlers.md) -- Process events and trigger side effects.
+- [7. Projections](./guides/getting-started/tutorial/07-projections.md) -- Build read-optimized views from events.
+- [8. Connecting a Real Database](./guides/getting-started/tutorial/08-persistence.md) -- Switch to PostgreSQL with a configuration change.
 
-**Part IV -- Services and Read Models**
+**Part IV -- Testing**
 
-- [9. Application Services](./guides/getting-started/tutorial/09-application-services.md) -- Create a synchronous coordination layer.
-- [10. Domain Services](./guides/getting-started/tutorial/10-domain-services.md) -- Encapsulate business logic spanning multiple aggregates.
-- [11. Projections](./guides/getting-started/tutorial/11-projections.md) -- Build read-optimized views from events.
-
-**Part V -- Infrastructure**
-
-- [12. Persistence](./guides/getting-started/tutorial/12-persistence.md) -- Connect to real databases using configuration.
-- [13. Async Processing](./guides/getting-started/tutorial/13-async-processing.md) -- Switch to asynchronous processing for scalability.
-- [14. Event Sourcing](./guides/getting-started/tutorial/14-event-sourcing.md) -- Store events instead of current state.
-
-**Part VI -- Quality**
-
-- [15. Testing](./guides/getting-started/tutorial/15-testing.md) -- Testing strategies for every layer of the application.
+- [9. Testing Your Domain](./guides/getting-started/tutorial/09-testing.md) -- Testing strategies for every layer of the application.
+- [10. What Comes Next](./guides/getting-started/tutorial/10-whats-next.md) -- Where to go from here.
 
 ---
 

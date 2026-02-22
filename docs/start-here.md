@@ -21,16 +21,14 @@ in-memory with zero infrastructure.
 ## Tutorial
 
 For a guided, end-to-end learning experience, work through
-[Building Bookshelf](./guides/getting-started/tutorial/index.md) — a 15-part
-tutorial that takes you from your first aggregate to event sourcing and
-testing. It covers the full breadth of Protean:
+[Building Bookshelf](./guides/getting-started/tutorial/index.md) — a 10-part
+tutorial that takes you from your first aggregate to a fully tested
+application with a real database. It covers:
 
-- **Part I** — Your first aggregate, fields, and identity
-- **Part II** — Value objects, entities, associations, and business rules
-- **Part III** — Commands, domain events, and event handlers
-- **Part IV** — Application services, domain services, and projections
-- **Part V** — Persistence, async processing, and event sourcing
-- **Part VI** — Testing strategies
+- **Part I** — Aggregates, fields, value objects, entities, and business rules
+- **Part II** — Commands, domain events, and event handlers
+- **Part III** — Projections and real database persistence
+- **Part IV** — Testing strategies and next steps
 
 ## Core concepts
 

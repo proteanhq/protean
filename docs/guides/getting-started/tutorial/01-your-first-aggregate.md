@@ -1,44 +1,12 @@
 # Chapter 1: Your First Aggregate
 
-In this chapter you will create the foundation of our online bookstore,
-**Bookshelf**. By the end, you will have a working `Book` aggregate that
-you can create, persist, and retrieve — all running in-memory with zero
+In this chapter we will create the foundation of our online bookstore,
+**Bookshelf**. By the end, we will have a working `Book` aggregate that
+we can create, persist, and retrieve — all running in-memory with zero
 infrastructure setup.
 
-## What We're Building
-
-Over the course of this tutorial we will build a complete online bookstore
-that manages books, orders, and inventory. Here is a preview of the domain
-model we are working toward:
-
-```mermaid
-graph TB
-    subgraph "Book Aggregate"
-        B[Book]
-        M[Money VO]
-        B --> M
-    end
-
-    subgraph "Order Aggregate"
-        O[Order]
-        OI[OrderItem Entity]
-        A[Address VO]
-        O --> OI
-        O --> A
-    end
-
-    subgraph "Inventory Aggregate"
-        I[Inventory]
-    end
-
-    subgraph "Projections"
-        BC[BookCatalog]
-        OS[OrderSummary]
-    end
-```
-
-We will start simple — just a `Book` aggregate with a few fields — and
-layer on complexity chapter by chapter.
+Over the course of this tutorial we will build a complete bookstore that
+manages books, orders, and inventory. We start with just a `Book`.
 
 ## Setting Up
 
@@ -65,17 +33,18 @@ any infrastructure.
 
 ## Defining the Book Aggregate
 
-Aggregates are the core building blocks of a Protean domain. They hold
-state, enforce business rules, and act as consistency boundaries — every
-change to the data within an aggregate is persisted as a single unit.
+An aggregate is a cluster of related objects treated as a single unit —
+the core building block of a Protean domain
+(see [Aggregates](../../../core-concepts/domain-elements/aggregates.md)
+for more).
 
-Let's model a `Book`:
+Let's define a `Book`:
 
 ```python
 {! docs_src/guides/getting-started/tutorial/ch01.py [ln:1-15] !}
 ```
 
-A few things to note:
+Notice that:
 
 - The `@domain.aggregate` decorator registers `Book` with the domain.
 - **Fields** define the aggregate's data. `String` and `Float` are two of
@@ -84,16 +53,6 @@ A few things to note:
   `max_length` constrains the string length.
 - Every aggregate automatically gets an `id` field — a unique identifier
   generated for you.
-
-!!! info "What Is an Aggregate?"
-    In Domain-Driven Design, an **aggregate** is a cluster of related
-    objects treated as a single unit. The aggregate's root entity (here,
-    `Book`) is the only entry point for modifications. This ensures that
-    business rules are always enforced consistently.
-
-    For now, our `Book` aggregate is simple — just the root entity with
-    a few fields. In later chapters we will add child entities, value
-    objects, and invariants to make it richer.
 
 ## Creating a Book
 
@@ -135,8 +94,8 @@ Created: The Great Gatsby by F. Scott Fitzgerald
 ID: 5eb04301-f191-4bca-9e49-8e5a948f07f6
 ```
 
-The ID is a UUID generated automatically. Every aggregate instance gets a
-unique identity the moment it is created.
+Notice that the ID is a UUID generated automatically. Every aggregate
+instance gets a unique identity the moment it is created.
 
 ## Persisting and Retrieving
 
@@ -155,11 +114,17 @@ persisted yet. To save and retrieve books, use a **repository**:
   this would insert a row.
 - **`repo.get(book.id)`** retrieves the book by its identifier.
 
-!!! tip "No Database Required"
-    Everything runs in-memory right now. When you are ready for a real
-    database, you will swap in a different adapter through configuration
-    — your domain code stays exactly the same. We will do this in
-    [Chapter 12](12-persistence.md).
+The output should look like:
+
+```
+Retrieved: The Great Gatsby ($12.99)
+All checks passed!
+```
+
+Everything runs in-memory right now. When we are ready for a real
+database, we will swap in a different adapter through configuration
+— domain code stays exactly the same. We will do this in
+[Chapter 8](08-persistence.md).
 
 ## Exploring in the Shell
 
@@ -183,33 +148,15 @@ can create books, persist them, and query — all interactively:
 
 The shell is a great way to experiment as you build out the domain.
 
-## What Just Happened?
+## What We Built
 
-Let's recap the pieces and how they fit together:
-
-```mermaid
-sequenceDiagram
-    participant You
-    participant Domain
-    participant Book as Book Aggregate
-    participant Repo as Repository
-
-    You->>Domain: domain.init()
-    You->>Book: Book(title="...", author="...")
-    Book-->>You: book instance (with auto ID)
-    You->>Repo: repo.add(book)
-    Repo-->>Repo: Store in memory
-    You->>Repo: repo.get(book.id)
-    Repo-->>You: saved book
-```
-
-1. You defined a **Domain** — the container for your business logic.
-2. You defined a **Book aggregate** with fields that describe its data.
-3. You **created** a Book instance, which got an auto-generated ID.
-4. You **persisted** it through a repository and **retrieved** it back.
+- A **Domain** — the container for our business logic.
+- A **Book aggregate** with fields that describe its data.
+- **Created** a Book instance, which got an auto-generated ID.
+- **Persisted** it through a repository and **retrieved** it back.
 
 All of this ran in-memory with no infrastructure. In the next chapter,
-we will explore the full field system and learn how identity works.
+we will add richer fields and create value objects for price and address.
 
 ## Full Source
 
@@ -219,4 +166,4 @@ we will explore the full field system and learn how identity works.
 
 ## Next
 
-[Chapter 2: Fields and Identity →](02-fields-and-identity.md)
+[Chapter 2: Rich Fields and Value Objects →](02-fields-and-value-objects.md)

@@ -1,10 +1,10 @@
-from enum import Enum
-
-from protean import Domain, invariant
-from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Integer, String, ValueObject
+from protean import Domain, handle
+from protean.fields import Float, Identifier, String, Text, ValueObject
+from protean.utils.globals import current_domain
 
 domain = Domain()
+
+domain.config["command_processing"] = "sync"
 
 
 @domain.value_object
@@ -13,72 +13,49 @@ class Money:
     amount: Float(required=True)
 
 
-class OrderStatus(Enum):
-    PENDING = "PENDING"
-    CONFIRMED = "CONFIRMED"
-    SHIPPED = "SHIPPED"
-    DELIVERED = "DELIVERED"
-
-
-# --8<-- [start:aggregate]
 @domain.aggregate
-class Order:
-    customer_name: String(max_length=150, required=True)
-    status: String(
-        max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
-    )
-    items = HasMany("OrderItem")
+class Book:
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
+    price = ValueObject(Money)
+    description: Text()
 
-    def add_item(self, book_title: str, quantity: int, unit_price: Money):
-        """Add an item to this order."""
-        self.add_items(
-            OrderItem(
-                book_title=book_title,
-                quantity=quantity,
-                unit_price=unit_price,
-            )
+
+# --8<-- [start:command]
+@domain.command(part_of=Book)
+class AddBook:
+    title: String(max_length=200, required=True)
+    author: String(max_length=150, required=True)
+    isbn: String(max_length=13)
+    price_amount: Float(required=True)
+    price_currency: String(max_length=3, default="USD")
+    description: Text()
+
+
+# --8<-- [end:command]
+
+
+# --8<-- [start:handler]
+@domain.command_handler(part_of=Book)
+class BookCommandHandler:
+    @handle(AddBook)
+    def add_book(self, command: AddBook) -> Identifier:
+        book = Book(
+            title=command.title,
+            author=command.author,
+            isbn=command.isbn,
+            price=Money(
+                amount=command.price_amount,
+                currency=command.price_currency,
+            ),
+            description=command.description,
         )
-
-    def confirm(self):
-        """Confirm the order for processing."""
-        self.status = OrderStatus.CONFIRMED.value
-
-    def ship(self):
-        """Mark the order as shipped."""
-        self.status = OrderStatus.SHIPPED.value
-
-    @invariant.post
-    def order_must_have_items(self):
-        if not self.items or len(self.items) == 0:
-            raise ValidationError(
-                {"_entity": ["An order must contain at least one item"]}
-            )
-
-    @invariant.post
-    def confirmed_order_must_have_multiple_items_or_quantity(self):
-        if self.status == OrderStatus.CONFIRMED.value:
-            total_quantity = sum(item.quantity for item in self.items)
-            if total_quantity < 1:
-                raise ValidationError(
-                    {"_entity": ["A confirmed order must have at least 1 item"]}
-                )
-
-    @invariant.pre
-    def cannot_modify_shipped_order(self):
-        if self.status == OrderStatus.SHIPPED.value:
-            raise ValidationError(
-                {"_entity": ["Cannot modify an order that has been shipped"]}
-            )
+        current_domain.repository_for(Book).add(book)
+        return book.id
 
 
-# --8<-- [end:aggregate]
-
-
-@domain.entity(part_of=Order)
-class OrderItem:
-    book_title: String(max_length=200, required=True)
-    quantity: Integer(required=True)
-    unit_price = ValueObject(Money)
+# --8<-- [end:handler]
 
 
 domain.init(traverse=False)
@@ -87,59 +64,41 @@ domain.init(traverse=False)
 # --8<-- [start:usage]
 if __name__ == "__main__":
     with domain.domain_context():
-        repo = domain.repository_for(Order)
-
-        # --- Field-level validation ---
-        print("=== Field Validation ===")
-        try:
-            Order(customer_name="")  # required field is empty
-        except ValidationError as e:
-            print(f"Caught: {e.messages}")
-
-        try:
-            Order(customer_name="Alice", status="INVALID_STATUS")
-        except ValidationError as e:
-            print(f"Caught: {e.messages}")
-
-        # --- Invariant: order must have items ---
-        print("\n=== Post-Invariant: Must Have Items ===")
-        try:
-            Order(customer_name="Alice")
-        except ValidationError as e:
-            print(f"Caught: {e.messages}")
-
-        # --- Using aggregate methods ---
-        print("\n=== Aggregate Methods ===")
-        order = Order(
-            customer_name="Alice",
-            items=[
-                OrderItem(
-                    book_title="The Great Gatsby",
-                    quantity=1,
-                    unit_price=Money(amount=12.99),
-                ),
-            ],
+        # Process a command to add a book
+        book_id = domain.process(
+            AddBook(
+                title="The Great Gatsby",
+                author="F. Scott Fitzgerald",
+                isbn="9780743273565",
+                price_amount=12.99,
+                description="A story of the mysteriously wealthy Jay Gatsby.",
+            )
         )
-        # Add more items using the aggregate method
-        order.add_item("Brave New World", 2, Money(amount=14.99))
+        print(f"Book added with ID: {book_id}")
 
-        print(f"Order: {order.customer_name}, {len(order.items)} items")
-        print(f"Status: {order.status}")
+        # The book is now in the repository
+        book = current_domain.repository_for(Book).get(book_id)
+        print(f"Retrieved: {book.title} by {book.author}")
+        print(f"Price: ${book.price.amount} {book.price.currency}")
 
-        # Confirm the order
-        order.confirm()
-        print(f"After confirm: {order.status}")
+        # Add another book
+        book_id_2 = domain.process(
+            AddBook(
+                title="Brave New World",
+                author="Aldous Huxley",
+                isbn="9780060850524",
+                price_amount=14.99,
+                description="A dystopian novel set in a futuristic World State.",
+            )
+        )
 
-        # Ship the order
-        order.ship()
-        print(f"After ship: {order.status}")
+        # Verify both books exist
+        all_books = current_domain.repository_for(Book)._dao.query.all()
+        print(f"\nTotal books: {all_books.total}")
+        for b in all_books.items:
+            print(f"  - {b.title}")
 
-        # --- Pre-Invariant: cannot modify shipped order ---
-        print("\n=== Pre-Invariant: Cannot Modify Shipped ===")
-        try:
-            order.customer_name = "Bob"  # Any mutation triggers pre-check
-        except ValidationError as e:
-            print(f"Caught: {e.messages}")
-
+        # Verify
+        assert all_books.total == 2
         print("\nAll checks passed!")
 # --8<-- [end:usage]

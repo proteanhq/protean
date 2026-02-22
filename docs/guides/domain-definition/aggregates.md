@@ -111,7 +111,7 @@ class Order:
 This ensures the creation event's `@apply` handler is the single source
 of truth for setting initial state — the same handler runs during both
 live creation and event replay. See the
-[Event Sourcing tutorial](../getting-started/tutorial/14-event-sourcing.md)
+[Event Sourcing pathway](../pathways/event-sourcing.md)
 for a complete walkthrough.
 
 ## Inheritance

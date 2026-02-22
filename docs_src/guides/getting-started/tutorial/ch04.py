@@ -1,14 +1,8 @@
 from enum import Enum
 
-from protean import Domain
-from protean.fields import (
-    Float,
-    HasMany,
-    Integer,
-    String,
-    Text,
-    ValueObject,
-)
+from protean import Domain, invariant
+from protean.exceptions import ValidationError
+from protean.fields import Float, HasMany, Integer, String, ValueObject
 
 domain = Domain()
 
@@ -19,24 +13,6 @@ class Money:
     amount: Float(required=True)
 
 
-@domain.value_object
-class Address:
-    street: String(max_length=200, required=True)
-    city: String(max_length=100, required=True)
-    state: String(max_length=50)
-    zip_code: String(max_length=20, required=True)
-    country: String(max_length=50, default="US")
-
-
-@domain.aggregate
-class Book:
-    title: String(max_length=200, required=True)
-    author: String(max_length=150, required=True)
-    isbn: String(max_length=13)
-    price = ValueObject(Money)
-    description: Text()
-
-
 class OrderStatus(Enum):
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
@@ -44,30 +20,65 @@ class OrderStatus(Enum):
     DELIVERED = "DELIVERED"
 
 
-# --8<-- [start:order_aggregate]
+# --8<-- [start:aggregate]
 @domain.aggregate
 class Order:
     customer_name: String(max_length=150, required=True)
-    customer_email: String(max_length=254, required=True)
-    shipping_address = ValueObject(Address)
     status: String(
         max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
     )
     items = HasMany("OrderItem")
 
+    def add_item(self, book_title: str, quantity: int, unit_price: Money):
+        """Add an item to this order."""
+        self.add_items(
+            OrderItem(
+                book_title=book_title,
+                quantity=quantity,
+                unit_price=unit_price,
+            )
+        )
 
-# --8<-- [end:order_aggregate]
+    def confirm(self):
+        """Confirm the order for processing."""
+        self.status = OrderStatus.CONFIRMED.value
+
+    def ship(self):
+        """Mark the order as shipped."""
+        self.status = OrderStatus.SHIPPED.value
+
+    @invariant.post
+    def order_must_have_items(self):
+        if not self.items or len(self.items) == 0:
+            raise ValidationError(
+                {"_entity": ["An order must contain at least one item"]}
+            )
+
+    @invariant.post
+    def confirmed_order_must_have_multiple_items_or_quantity(self):
+        if self.status == OrderStatus.CONFIRMED.value:
+            total_quantity = sum(item.quantity for item in self.items)
+            if total_quantity < 1:
+                raise ValidationError(
+                    {"_entity": ["A confirmed order must have at least 1 item"]}
+                )
+
+    @invariant.pre
+    def cannot_modify_shipped_order(self):
+        if self.status == OrderStatus.SHIPPED.value:
+            raise ValidationError(
+                {"_entity": ["Cannot modify an order that has been shipped"]}
+            )
 
 
-# --8<-- [start:order_item_entity]
+# --8<-- [end:aggregate]
+
+
 @domain.entity(part_of=Order)
 class OrderItem:
     book_title: String(max_length=200, required=True)
     quantity: Integer(required=True)
     unit_price = ValueObject(Money)
-
-
-# --8<-- [end:order_item_entity]
 
 
 domain.init(traverse=False)
@@ -78,63 +89,57 @@ if __name__ == "__main__":
     with domain.domain_context():
         repo = domain.repository_for(Order)
 
-        # Create an order with items
+        # --- Field-level validation ---
+        print("=== Field Validation ===")
+        try:
+            Order(customer_name="")  # required field is empty
+        except ValidationError as e:
+            print(f"Caught: {e.messages}")
+
+        try:
+            Order(customer_name="Alice", status="INVALID_STATUS")
+        except ValidationError as e:
+            print(f"Caught: {e.messages}")
+
+        # --- Invariant: order must have items ---
+        print("\n=== Post-Invariant: Must Have Items ===")
+        try:
+            Order(customer_name="Alice")
+        except ValidationError as e:
+            print(f"Caught: {e.messages}")
+
+        # --- Using aggregate methods ---
+        print("\n=== Aggregate Methods ===")
         order = Order(
-            customer_name="Alice Johnson",
-            customer_email="alice@example.com",
-            shipping_address=Address(
-                street="456 Oak Ave",
-                city="Portland",
-                state="OR",
-                zip_code="97201",
-            ),
+            customer_name="Alice",
             items=[
                 OrderItem(
                     book_title="The Great Gatsby",
                     quantity=1,
                     unit_price=Money(amount=12.99),
                 ),
-                OrderItem(
-                    book_title="Brave New World",
-                    quantity=2,
-                    unit_price=Money(amount=14.99),
-                ),
             ],
         )
+        # Add more items using the aggregate method
+        order.add_item("Brave New World", 2, Money(amount=14.99))
 
-        print(f"Order for: {order.customer_name}")
+        print(f"Order: {order.customer_name}, {len(order.items)} items")
         print(f"Status: {order.status}")
-        print(f"Ship to: {order.shipping_address.city}, {order.shipping_address.state}")
-        print(f"Items ({len(order.items)}):")
-        for item in order.items:
-            print(f"  - {item.book_title} x{item.quantity} @ ${item.unit_price.amount}")
-            print(f"    Item ID: {item.id}")
 
-        # Persist the entire aggregate (order + items together)
-        repo.add(order)
+        # Confirm the order
+        order.confirm()
+        print(f"After confirm: {order.status}")
 
-        # Retrieve and verify
-        saved_order = repo.get(order.id)
-        print(f"\nRetrieved order: {saved_order.customer_name}")
-        print(f"Items: {len(saved_order.items)}")
+        # Ship the order
+        order.ship()
+        print(f"After ship: {order.status}")
 
-        # Add another item to the order
-        saved_order.add_items(
-            OrderItem(
-                book_title="Sapiens",
-                quantity=1,
-                unit_price=Money(amount=18.99),
-            )
-        )
-        repo.add(saved_order)
+        # --- Pre-Invariant: cannot modify shipped order ---
+        print("\n=== Pre-Invariant: Cannot Modify Shipped ===")
+        try:
+            order.customer_name = "Bob"  # Any mutation triggers pre-check
+        except ValidationError as e:
+            print(f"Caught: {e.messages}")
 
-        # Verify the update
-        updated = repo.get(order.id)
-        print(f"After adding item: {len(updated.items)} items")
-
-        # Verify
-        assert updated.customer_name == "Alice Johnson"
-        assert len(updated.items) == 3
-        assert updated.shipping_address.city == "Portland"
         print("\nAll checks passed!")
 # --8<-- [end:usage]

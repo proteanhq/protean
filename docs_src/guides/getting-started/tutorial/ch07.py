@@ -1,165 +1,110 @@
-from enum import Enum
-
-from protean import Domain, handle
-from protean.fields import (
-    Float,
-    HasMany,
-    Identifier,
-    Integer,
-    String,
-    Text,
-    ValueObject,
-)
+from protean import Domain
+from protean.core.projector import on
+from protean.fields import Float, Identifier, String, Text
 from protean.utils.globals import current_domain
 
 domain = Domain()
 
-domain.config["command_processing"] = "sync"
 domain.config["event_processing"] = "sync"
 
 
-@domain.value_object
-class Money:
-    currency: String(max_length=3, default="USD")
-    amount: Float(required=True)
-
-
-# --8<-- [start:book_aggregate]
 @domain.aggregate
 class Book:
     title: String(max_length=200, required=True)
     author: String(max_length=150, required=True)
     isbn: String(max_length=13)
-    price = ValueObject(Money)
+    price: Float(default=0.0)
     description: Text()
 
-    def add_to_catalog(self):
-        """Mark this book as added to the catalog and raise an event."""
-        self.raise_(
+    @classmethod
+    def add_to_catalog(cls, title, author, isbn=None, price=0.0, description=""):
+        book = cls(
+            title=title,
+            author=author,
+            isbn=isbn,
+            price=price,
+            description=description,
+        )
+        book.raise_(
             BookAdded(
+                book_id=book.id,
+                title=book.title,
+                author=book.author,
+                price=price,
+                isbn=isbn or "",
+            )
+        )
+        return book
+
+    def update_price(self, new_price: float):
+        self.price = new_price
+        self.raise_(
+            BookPriceUpdated(
                 book_id=self.id,
-                title=self.title,
-                author=self.author,
-                price_amount=self.price.amount if self.price else 0,
-                price_currency=self.price.currency if self.price else "USD",
+                new_price=new_price,
             )
         )
 
 
-# --8<-- [end:book_aggregate]
-
-
-# --8<-- [start:book_event]
+# --8<-- [start:events]
 @domain.event(part_of=Book)
 class BookAdded:
     book_id: Identifier(required=True)
     title: String(max_length=200, required=True)
     author: String(max_length=150, required=True)
-    price_amount: Float()
-    price_currency: String(max_length=3, default="USD")
+    price: Float()
+    isbn: String(max_length=13)
 
 
-# --8<-- [end:book_event]
+@domain.event(part_of=Book)
+class BookPriceUpdated:
+    book_id: Identifier(required=True)
+    new_price: Float(required=True)
 
 
-class OrderStatus(Enum):
-    PENDING = "PENDING"
-    CONFIRMED = "CONFIRMED"
-    SHIPPED = "SHIPPED"
+# --8<-- [end:events]
 
 
-# --8<-- [start:order_aggregate]
-@domain.aggregate
-class Order:
-    customer_name: String(max_length=150, required=True)
-    status: String(
-        max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
-    )
-    items = HasMany("OrderItem")
+# --8<-- [start:projection]
+@domain.projection
+class BookCatalog:
+    """A read-optimized view of the book catalog for browsing."""
 
-    def confirm(self):
-        self.status = OrderStatus.CONFIRMED.value
-        self.raise_(
-            OrderConfirmed(
-                order_id=self.id,
-                customer_name=self.customer_name,
-            )
-        )
-
-    def ship(self):
-        self.status = OrderStatus.SHIPPED.value
-        self.raise_(
-            OrderShipped(
-                order_id=self.id,
-                customer_name=self.customer_name,
-            )
-        )
-
-
-# --8<-- [end:order_aggregate]
-
-
-@domain.entity(part_of=Order)
-class OrderItem:
-    book_title: String(max_length=200, required=True)
-    quantity: Integer(required=True)
-    unit_price = ValueObject(Money)
-
-
-# --8<-- [start:order_events]
-@domain.event(part_of=Order)
-class OrderPlaced:
-    order_id: Identifier(required=True)
-    customer_name: String(max_length=150, required=True)
-    total_items: Integer(required=True)
-
-
-@domain.event(part_of=Order)
-class OrderConfirmed:
-    order_id: Identifier(required=True)
-    customer_name: String(max_length=150, required=True)
-
-
-@domain.event(part_of=Order)
-class OrderShipped:
-    order_id: Identifier(required=True)
-    customer_name: String(max_length=150, required=True)
-
-
-# --8<-- [end:order_events]
-
-
-@domain.command(part_of=Book)
-class AddBook:
+    book_id: Identifier(identifier=True, required=True)
     title: String(max_length=200, required=True)
     author: String(max_length=150, required=True)
+    price: Float()
     isbn: String(max_length=13)
-    price_amount: Float(required=True)
-    price_currency: String(max_length=3, default="USD")
-    description: Text()
 
 
-# --8<-- [start:book_handler]
-@domain.command_handler(part_of=Book)
-class BookCommandHandler:
-    @handle(AddBook)
-    def add_book(self, command: AddBook) -> Identifier:
-        book = Book(
-            title=command.title,
-            author=command.author,
-            isbn=command.isbn,
-            price=Money(
-                amount=command.price_amount,
-                currency=command.price_currency,
-            ),
-            description=command.description,
+# --8<-- [end:projection]
+
+
+# --8<-- [start:projector]
+@domain.projector(projector_for=BookCatalog, aggregates=[Book])
+class BookCatalogProjector:
+    """Maintains the BookCatalog projection from Book events."""
+
+    @on(BookAdded)
+    def on_book_added(self, event: BookAdded):
+        catalog_entry = BookCatalog(
+            book_id=event.book_id,
+            title=event.title,
+            author=event.author,
+            price=event.price,
+            isbn=event.isbn,
         )
-        book.add_to_catalog()  # Raises BookAdded event
-        current_domain.repository_for(Book).add(book)
-        return book.id
+        current_domain.repository_for(BookCatalog).add(catalog_entry)
+
+    @on(BookPriceUpdated)
+    def on_price_updated(self, event: BookPriceUpdated):
+        repo = current_domain.repository_for(BookCatalog)
+        entry = repo.get(event.book_id)
+        entry.price = event.new_price
+        repo.add(entry)
 
 
-# --8<-- [end:book_handler]
+# --8<-- [end:projector]
 
 
 domain.init(traverse=False)
@@ -168,44 +113,52 @@ domain.init(traverse=False)
 # --8<-- [start:usage]
 if __name__ == "__main__":
     with domain.domain_context():
-        # Add a book — triggers BookAdded event
-        book_id = domain.process(
-            AddBook(
-                title="The Great Gatsby",
-                author="F. Scott Fitzgerald",
-                isbn="9780743273565",
-                price_amount=12.99,
-                description="A story of the mysteriously wealthy Jay Gatsby.",
-            )
+        book_repo = domain.repository_for(Book)
+        catalog_repo = domain.repository_for(BookCatalog)
+
+        # Add books — events trigger the projector
+        print("=== Adding Books ===")
+        gatsby = Book.add_to_catalog(
+            title="The Great Gatsby",
+            author="F. Scott Fitzgerald",
+            isbn="9780743273565",
+            price=12.99,
         )
-        print(f"Book added: {book_id}")
+        book_repo.add(gatsby)
 
-        # Create and confirm an order — triggers OrderConfirmed event
-        repo = current_domain.repository_for(Order)
-        order = Order(
-            customer_name="Alice Johnson",
-            items=[
-                OrderItem(
-                    book_title="The Great Gatsby",
-                    quantity=1,
-                    unit_price=Money(amount=12.99),
-                ),
-            ],
+        brave = Book.add_to_catalog(
+            title="Brave New World",
+            author="Aldous Huxley",
+            isbn="9780060850524",
+            price=14.99,
         )
-        repo.add(order)
+        book_repo.add(brave)
 
-        # Confirm the order
-        order.confirm()
-        repo.add(order)
-        print(f"Order confirmed: {order.id}")
+        orwell = Book.add_to_catalog(
+            title="1984",
+            author="George Orwell",
+            isbn="9780451524935",
+            price=11.99,
+        )
+        book_repo.add(orwell)
 
-        # Ship the order
-        order.ship()
-        repo.add(order)
-        print(f"Order shipped: {order.id}")
+        # Query the projection — optimized for browsing
+        print("\n=== Book Catalog (Projection) ===")
+        all_entries = catalog_repo._dao.query.all()
+        print(f"Total entries: {all_entries.total}")
+        for entry in all_entries.items:
+            print(f"  {entry.title} by {entry.author} — ${entry.price}")
+
+        # Update a price — projector updates the catalog
+        print("\n=== Updating Price ===")
+        gatsby.update_price(15.99)
+        book_repo.add(gatsby)
+
+        updated_entry = catalog_repo.get(gatsby.id)
+        print(f"Updated: {updated_entry.title} — ${updated_entry.price}")
 
         # Verify
-        saved_order = repo.get(order.id)
-        assert saved_order.status == OrderStatus.SHIPPED.value
+        assert all_entries.total == 3
+        assert updated_entry.price == 15.99
         print("\nAll checks passed!")
 # --8<-- [end:usage]
