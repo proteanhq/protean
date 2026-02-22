@@ -10,7 +10,12 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.cli.events import _data_keys_summary, _format_time
+from protean.cli.events import (
+    _data_keys_summary,
+    _extract_trace_ids,
+    _format_time,
+    _truncate_id,
+)
 from protean.exceptions import NoDomainException
 from tests.shared import change_working_directory_to
 
@@ -782,3 +787,473 @@ class TestEventsSearchData:
             )
             assert result.exit_code == 0
             assert "test@example.com" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Helper: raw event with trace metadata
+# ---------------------------------------------------------------------------
+
+
+def _make_raw_event_with_trace(
+    position: int = 0,
+    global_position: int = 0,
+    event_type: str = "Test.UserRegistered.v1",
+    stream_name: str = "test::user-abc123",
+    data: dict | None = None,
+    correlation_id: str | None = None,
+    causation_id: str | None = None,
+) -> dict:
+    """Create a raw event dict with trace metadata populated."""
+    event = _make_raw_event(
+        position=position,
+        global_position=global_position,
+        event_type=event_type,
+        stream_name=stream_name,
+        data=data,
+    )
+    event["metadata"] = {
+        "domain": {
+            "correlation_id": correlation_id,
+            "causation_id": causation_id,
+            "kind": "EVENT",
+            "fqn": f"tests.{event_type}",
+        }
+    }
+    return event
+
+
+# ---------------------------------------------------------------------------
+# Helper unit tests: _extract_trace_ids, _truncate_id
+# ---------------------------------------------------------------------------
+
+
+class TestExtractTraceIds:
+    def test_with_valid_metadata(self):
+        msg = _make_raw_event_with_trace(
+            correlation_id="corr-abc", causation_id="cause-xyz"
+        )
+        corr, cause = _extract_trace_ids(msg)
+        assert corr == "corr-abc"
+        assert cause == "cause-xyz"
+
+    def test_with_none_values(self):
+        msg = _make_raw_event_with_trace(correlation_id=None, causation_id=None)
+        corr, cause = _extract_trace_ids(msg)
+        assert corr == ""
+        assert cause == ""
+
+    def test_with_no_metadata_key(self):
+        msg = _make_raw_event()
+        # _make_raw_event doesn't add metadata key
+        corr, cause = _extract_trace_ids(msg)
+        assert corr == ""
+        assert cause == ""
+
+    def test_with_metadata_not_dict(self):
+        msg = _make_raw_event()
+        msg["metadata"] = "not-a-dict"
+        corr, cause = _extract_trace_ids(msg)
+        assert corr == ""
+        assert cause == ""
+
+    def test_with_no_domain_in_metadata(self):
+        msg = _make_raw_event()
+        msg["metadata"] = {"headers": {"id": "test"}}
+        corr, cause = _extract_trace_ids(msg)
+        assert corr == ""
+        assert cause == ""
+
+    def test_with_domain_not_dict(self):
+        msg = _make_raw_event()
+        msg["metadata"] = {"domain": "not-a-dict"}
+        corr, cause = _extract_trace_ids(msg)
+        assert corr == ""
+        assert cause == ""
+
+
+class TestTruncateId:
+    def test_short_id_not_truncated(self):
+        assert _truncate_id("abc") == "abc"
+
+    def test_exact_length_not_truncated(self):
+        assert _truncate_id("12345678") == "12345678"
+
+    def test_long_id_truncated(self):
+        assert _truncate_id("abcdefghijklmnop") == "abcdefgh..."
+
+    def test_custom_length(self):
+        assert _truncate_id("abcdefghij", length=4) == "abcd..."
+
+    def test_empty_string(self):
+        assert _truncate_id("") == ""
+
+
+# ---------------------------------------------------------------------------
+# protean events read --trace
+# ---------------------------------------------------------------------------
+
+
+class TestEventsReadTrace:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_read_with_trace_flag(self):
+        change_working_directory_to("test7")
+
+        events = [
+            _make_raw_event_with_trace(
+                0, 1, correlation_id="corr-111", causation_id="cause-222"
+            ),
+            _make_raw_event_with_trace(
+                1,
+                3,
+                event_type="Test.UserEmailChanged.v1",
+                correlation_id="corr-111",
+                causation_id="cause-333",
+            ),
+        ]
+        mock_domain = _mock_domain_with_store(read_return=events)
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "read",
+                    "test::user-abc123",
+                    "--domain",
+                    "publishing7.py",
+                    "--trace",
+                ],
+            )
+            assert result.exit_code == 0
+            # Rich may truncate column headers; check for partial match
+            assert "Correlat" in result.output
+            assert "Causat" in result.output
+            assert "corr-111" in result.output
+
+    def test_read_without_trace_flag_no_trace_columns(self):
+        change_working_directory_to("test7")
+
+        events = [
+            _make_raw_event_with_trace(
+                0, 1, correlation_id="corr-111", causation_id="cause-222"
+            )
+        ]
+        mock_domain = _mock_domain_with_store(read_return=events)
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "read",
+                    "test::user-abc123",
+                    "--domain",
+                    "publishing7.py",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Correlation ID" not in result.output
+            assert "Causation ID" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# protean events search --trace
+# ---------------------------------------------------------------------------
+
+
+class TestEventsSearchTrace:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_search_with_trace_flag(self):
+        change_working_directory_to("test7")
+
+        events = [
+            _make_raw_event_with_trace(
+                0, 1, correlation_id="search-corr", causation_id="search-cause"
+            ),
+        ]
+        mock_domain = _mock_domain_with_store(read_return=events)
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "search",
+                    "--type",
+                    "UserRegistered",
+                    "--domain",
+                    "publishing7.py",
+                    "--trace",
+                ],
+            )
+            assert result.exit_code == 0
+            # Rich may truncate column headers; check for partial match
+            assert "Correlat" in result.output or "Correl" in result.output
+            assert "Causat" in result.output or "Causa" in result.output
+
+
+# ---------------------------------------------------------------------------
+# protean events history --trace
+# ---------------------------------------------------------------------------
+
+
+class TestEventsHistoryTrace:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_history_with_trace_flag(self):
+        change_working_directory_to("test7")
+
+        user_record = _make_aggregate_record("User", "test::user")
+        aggregates = {"test.User": user_record}
+        events = [
+            _make_raw_event_with_trace(
+                0,
+                1,
+                event_type="Test.UserRegistered.v1",
+                correlation_id="hist-corr-123",
+                causation_id="hist-cause-456",
+            ),
+            _make_raw_event_with_trace(
+                1,
+                3,
+                event_type="Test.UserEmailChanged.v1",
+                correlation_id="hist-corr-123",
+                causation_id="hist-cause-789",
+            ),
+        ]
+
+        mock_domain = _mock_domain_with_store(
+            read_return=events,
+            aggregates=aggregates,
+        )
+        mock_domain.event_store.store._read_last_message.return_value = None
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "history",
+                    "--aggregate",
+                    "User",
+                    "--id",
+                    "abc123",
+                    "--domain",
+                    "publishing7.py",
+                    "--trace",
+                ],
+            )
+            assert result.exit_code == 0
+            # Rich may truncate column headers; check for partial match
+            assert "Correlation" in result.output or "Correlat" in result.output
+            assert "Causation" in result.output or "Causat" in result.output
+            assert "hist-cor" in result.output
+
+    def test_history_without_trace_flag_no_trace_columns(self):
+        change_working_directory_to("test7")
+
+        user_record = _make_aggregate_record("User", "test::user")
+        aggregates = {"test.User": user_record}
+        events = [
+            _make_raw_event_with_trace(
+                0,
+                1,
+                event_type="Test.UserRegistered.v1",
+                correlation_id="hist-corr-123",
+                causation_id="hist-cause-456",
+            ),
+        ]
+
+        mock_domain = _mock_domain_with_store(
+            read_return=events,
+            aggregates=aggregates,
+        )
+        mock_domain.event_store.store._read_last_message.return_value = None
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "history",
+                    "--aggregate",
+                    "User",
+                    "--id",
+                    "abc123",
+                    "--domain",
+                    "publishing7.py",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Correlation ID" not in result.output
+            assert "Causation ID" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# protean events trace
+# ---------------------------------------------------------------------------
+
+
+class TestEventsTrace:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_trace_finds_matching_events(self):
+        change_working_directory_to("test7")
+
+        events = [
+            _make_raw_event_with_trace(
+                0,
+                1,
+                event_type="Test.PlaceOrder.v1",
+                stream_name="test::order:command-abc123",
+                correlation_id="trace-corr-abc",
+                causation_id=None,
+            ),
+            _make_raw_event_with_trace(
+                0,
+                2,
+                event_type="Test.OrderPlaced.v1",
+                stream_name="test::order-abc123",
+                correlation_id="trace-corr-abc",
+                causation_id="test::order:command-abc123-0",
+            ),
+            _make_raw_event_with_trace(
+                0,
+                3,
+                event_type="Test.UserRegistered.v1",
+                stream_name="test::user-xyz",
+                correlation_id="other-corr-id",
+                causation_id=None,
+            ),
+        ]
+        mock_domain = _mock_domain_with_store(read_return=events)
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "trace",
+                    "trace-corr-abc",
+                    "--domain",
+                    "publishing7.py",
+                ],
+            )
+            assert result.exit_code == 0
+            assert (
+                "Found 2 event(s) for correlation ID 'trace-corr-abc'" in result.output
+            )
+
+    def test_trace_no_matching_events(self):
+        change_working_directory_to("test7")
+
+        events = [
+            _make_raw_event_with_trace(
+                0, 1, correlation_id="other-corr", causation_id=None
+            ),
+        ]
+        mock_domain = _mock_domain_with_store(read_return=events)
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "trace",
+                    "nonexistent-corr-id",
+                    "--domain",
+                    "publishing7.py",
+                ],
+            )
+            assert result.exit_code == 0
+            assert (
+                "No events found for correlation ID 'nonexistent-corr-id'"
+                in result.output
+            )
+
+    def test_trace_with_data_flag(self):
+        change_working_directory_to("test7")
+
+        events = [
+            _make_raw_event_with_trace(
+                0,
+                1,
+                correlation_id="trace-data-corr",
+                causation_id=None,
+                data={"customer": "Alice", "amount": 100.0},
+            ),
+        ]
+        mock_domain = _mock_domain_with_store(read_return=events)
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "trace",
+                    "trace-data-corr",
+                    "--domain",
+                    "publishing7.py",
+                    "--data",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Alice" in result.output
+            assert "100.0" in result.output
+
+    def test_trace_with_empty_event_store(self):
+        change_working_directory_to("test7")
+
+        mock_domain = _mock_domain_with_store(read_return=[])
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "trace",
+                    "any-corr-id",
+                    "--domain",
+                    "publishing7.py",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "No events found for correlation ID 'any-corr-id'" in result.output
+
+    def test_trace_invalid_domain(self):
+        with patch(
+            "protean.cli.events.derive_domain",
+            side_effect=NoDomainException("Not found"),
+        ):
+            result = runner.invoke(
+                app,
+                ["events", "trace", "any-corr-id", "--domain", "invalid.py"],
+            )
+            assert result.exit_code != 0
+            assert "Error loading Protean domain" in result.output
