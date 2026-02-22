@@ -246,3 +246,48 @@ class TestEventAttributeAccess:
         log = EventLog([event])
 
         assert log[0].customer == "Charlie"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Truthiness (__bool__)
+# ---------------------------------------------------------------------------
+class TestEventLogBool:
+    def test_empty_log_is_falsy(self, empty_log):
+        assert not empty_log
+        assert bool(empty_log) is False
+
+    def test_non_empty_log_is_truthy(self, single_log):
+        assert single_log
+        assert bool(single_log) is True
+
+    def test_multi_log_is_truthy(self, multi_log):
+        assert multi_log
+        assert bool(multi_log) is True
+
+
+# ---------------------------------------------------------------------------
+# Tests: .first and .last properties
+# ---------------------------------------------------------------------------
+class TestEventLogFirstLast:
+    def test_first_on_empty_log(self, empty_log):
+        assert empty_log.first is None
+
+    def test_last_on_empty_log(self, empty_log):
+        assert empty_log.last is None
+
+    def test_first_on_single_log(self, single_log, placed_event):
+        assert single_log.first is placed_event
+
+    def test_last_on_single_log(self, single_log, placed_event):
+        assert single_log.last is placed_event
+
+    def test_first_on_multi_log(self, multi_log, placed_event):
+        assert multi_log.first is placed_event
+
+    def test_last_on_multi_log(self, multi_log, payment_event):
+        assert multi_log.last is payment_event
+
+    def test_first_and_last_differ(self, multi_log, placed_event, payment_event):
+        assert multi_log.first is placed_event
+        assert multi_log.last is payment_event
+        assert multi_log.first is not multi_log.last

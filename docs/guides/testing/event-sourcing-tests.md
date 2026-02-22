@@ -26,6 +26,8 @@ initiate_payment."*
   No custom assertion methods.
 - Attribute access is **proxied** to the aggregate — `order.status` works
   directly on the result object.
+- `.process()` can be **chained** — call it multiple times to build up
+  aggregate state through the real pipeline.
 - Designed for event-sourced aggregates (`is_event_sourced=True`). For
   non-event-sourced aggregates, see
   [Application Tests](./application-tests.md).
@@ -62,6 +64,58 @@ self:
 order = given(Order, order_created, order_confirmed).process(initiate_payment)
 ```
 
+## Multi-Command Chaining
+
+Call `.process()` multiple times to build up aggregate state through the real
+pipeline — no hand-crafted event fixtures needed:
+
+```python
+order = (
+    given(Order)
+    .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+    .process(ConfirmOrder(order_id=oid))
+    .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+)
+
+assert order.accepted
+assert order.status == "PAYMENT_PENDING"
+```
+
+Each `.process()` runs the command through the real pipeline. The event store
+accumulates naturally, just like production.
+
+After chaining:
+
+- `.events` contains events from the **last** `.process()` call only.
+- `.all_events` contains events from **all** `.process()` calls.
+- `.accepted` / `.rejected` reflects the **last** `.process()` call.
+
+```python
+order = (
+    given(Order)
+    .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+    .process(ConfirmOrder(order_id=oid))
+)
+
+# .events has only the last command's events
+assert OrderConfirmed in order.events
+assert OrderCreated not in order.events
+
+# .all_events has everything
+assert order.all_events.types == [OrderCreated, OrderConfirmed]
+```
+
+### When to Use Which Pattern
+
+| Pattern | Use when |
+|---------|----------|
+| `given(Order, e1, e2).process(cmd)` | You need precise control over history — specific event field values, edge-case states, or states that can't easily be reached through commands. |
+| `given(Order).process(cmd1).process(cmd2)` | You're testing a lifecycle or user journey. The setup steps aren't the focus — the final command is. |
+| `Order.from_events([e1, e2])` | Unit testing aggregate logic directly, without the command pipeline. |
+
+Both patterns coexist. Event-based `given()` gives surgical precision.
+Command chaining gives lifecycle-level testing.
+
 ## Asserting Outcomes
 
 After `.process()`, the result object provides:
@@ -84,6 +138,20 @@ assert order.rejected          # command raised an exception
 assert order.rejection is None # the exception object, or None
 ```
 
+### Rejection Messages
+
+For cleaner error assertions, use `.rejection_messages` — a flat list of
+error strings extracted from the exception:
+
+```python
+assert order.rejected
+assert "Order must be confirmed before payment" in order.rejection_messages
+```
+
+This works with `ValidationError` (flattens the `messages` dict) and other
+exception types (wraps as `[str(exc)]`). Returns `[]` when the command
+was accepted.
+
 ### Events (EventLog)
 
 New events raised by the command are available via `.events`. The `EventLog`
@@ -93,11 +161,19 @@ class uses Python's own vocabulary:
 # Presence check
 assert PaymentPending in order.events
 
+# Truthiness
+assert order.events          # truthy when non-empty
+assert not order.events      # falsy when empty
+
 # Access by type (first match; raises KeyError if missing)
 assert order.events[PaymentPending].payment_id == "pay-001"
 
 # Safe access (returns None if missing)
 assert order.events.get(PaymentFailed) is None
+
+# First and last event
+assert order.events.first is order.events[0]
+assert order.events.last is order.events[-1]
 
 # Ordered type list
 assert order.events.types == [PaymentPending]
@@ -173,9 +249,8 @@ def test_cannot_pay_unconfirmed_order(order_created, initiate_payment):
     order = given(Order, order_created).process(initiate_payment)
 
     assert order.rejected
-    assert isinstance(order.rejection, ValidationError)
-    assert "must be confirmed" in str(order.rejection)
-    assert len(order.events) == 0
+    assert "Order must be confirmed" in order.rejection_messages
+    assert not order.events
     assert order.status == "CREATED"  # unchanged
 ```
 
@@ -211,6 +286,46 @@ def test_payment_event_carries_payment_id(order_created, order_confirmed):
     event = order.events[PaymentPending]
     assert event.payment_id == "pay-42"
     assert event.order_id == order_created.order_id
+```
+
+### Testing a Full Lifecycle
+
+Use multi-command chaining to test a complete user journey:
+
+```python
+def test_order_lifecycle():
+    oid = str(uuid4())
+    order = (
+        given(Order)
+        .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+        .process(ConfirmOrder(order_id=oid))
+        .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+    )
+
+    assert order.accepted
+    assert order.status == "PAYMENT_PENDING"
+    assert order.all_events.types == [
+        OrderCreated, OrderConfirmed, PaymentPending
+    ]
+```
+
+### Testing Rejection Mid-Chain
+
+When a chained command fails, the aggregate reflects the state from
+prior successful commands:
+
+```python
+def test_cannot_pay_without_confirming():
+    oid = str(uuid4())
+    order = (
+        given(Order)
+        .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
+        .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
+    )
+
+    assert order.rejected
+    assert "must be confirmed" in order.rejection_messages
+    assert order.status == "CREATED"  # reflects state after CreateOrder
 ```
 
 ## Test Setup
@@ -301,9 +416,19 @@ rather than test infrastructure.
 
 ### Why EventLog Uses Python Operators
 
-`in` for presence, `[]` for access, `len` for count, `for` for iteration.
-No `.has_event()`, no `.event_count()`, no custom assertion methods. Python's
-built-in operators carry the meaning.
+`in` for presence, `[]` for access, `len` for count, `bool` for truthiness,
+`for` for iteration. No `.has_event()`, no `.event_count()`, no custom
+assertion methods. Python's built-in operators carry the meaning.
+
+### Why Multi-Command Chaining
+
+Event-based `given(Order, e1, e2)` requires hand-crafting events that
+encode knowledge of the aggregate's internal event structure. If the
+aggregate changes which events a command produces, all fixtures break.
+
+Multi-command chaining uses the real pipeline to build up state, so tests
+describe the user journey in terms of commands (the public API). If
+aggregate internals change, chained tests survive untouched.
 
 ### Location at `protean.testing`
 
@@ -323,11 +448,13 @@ Start an event-sourcing test sentence.
 | Property/Method | Description |
 |-----------------|-------------|
 | `.after(*events)` | Accumulate more history events. Returns self. |
-| `.process(command)` | Dispatch command through `domain.process()`. Returns self. |
-| `.events` | `EventLog` of new events raised by the command. |
+| `.process(command)` | Dispatch command through `domain.process()`. Can be called multiple times. Returns self. |
+| `.events` | `EventLog` of new events raised by the last command. |
+| `.all_events` | `EventLog` of all events raised across all `.process()` calls. |
 | `.rejection` | The exception if rejected, or `None`. |
-| `.accepted` | `True` if the command succeeded. |
-| `.rejected` | `True` if the command raised an exception. |
+| `.accepted` | `True` if the last command succeeded. |
+| `.rejected` | `True` if the last command raised an exception. |
+| `.rejection_messages` | Flat list of error strings from the rejection, or `[]`. |
 | `.aggregate` | The raw aggregate instance. |
 | `.<attr>` | Proxied to the underlying aggregate. |
 
@@ -341,5 +468,8 @@ Start an event-sourcing test sentence.
 | `log.get(EventCls)` | Safe access — returns `None` if not found. |
 | `log.of_type(EventCls)` | All events of the given type. |
 | `log.types` | Ordered list of event classes. |
+| `log.first` | First event, or `None` if empty. |
+| `log.last` | Last event, or `None` if empty. |
 | `len(log)` | Number of events. |
+| `bool(log)` | `True` if non-empty, `False` if empty. |
 | `for e in log` | Iterate over events. |
