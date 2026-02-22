@@ -18,15 +18,15 @@ simple and add sophistication as your needs evolve.
 
 ```mermaid
 graph LR
-    DDD["<strong>Domain-Driven Design</strong><br/>Application Services<br/>Repositories<br/>Events"]
-    CQRS["<strong>CQRS</strong><br/>Commands & Handlers<br/>Projections<br/>Read/Write Separation"]
-    ES["<strong>Event Sourcing</strong><br/>Event Replay<br/>Temporal Queries<br/>Full Audit Trail"]
+    DDD["<strong>Domain-Driven Design</strong><br/>Aggregates · Repositories · Events"]
+    CQRS["<strong>CQRS</strong><br/>Commands · Projections · Read/Write"]
+    ES["<strong>Event Sourcing</strong><br/>Replay · Temporal Queries · Audit"]
 
     DDD --> CQRS --> ES
 
-    style DDD fill:#e8f5e9,stroke:#43a047
-    style CQRS fill:#e3f2fd,stroke:#1e88e5
-    style ES fill:#fce4ec,stroke:#e53935
+    style DDD fill:#f0faf9,stroke:#5EEAD4,stroke-width:1px,color:#0F4C5C
+    style CQRS fill:#e8f6f5,stroke:#2DD4BF,stroke-width:1px,color:#0F4C5C
+    style ES fill:#e0f2f0,stroke:#14B8A6,stroke-width:1px,color:#0F4C5C
 ```
 
 ### :material-shield-outline: Domain-Driven Design
