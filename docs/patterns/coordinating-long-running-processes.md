@@ -237,3 +237,14 @@ map different field names: `correlate={"order_id": "payment_order_id"}`.
 | Lifecycle | No concept of "done" | `start`, `end`, `mark_as_complete()` |
 | Compensation | Scattered across handlers | Centralized in PM handlers |
 | Multi-stream | Multiple independent handlers | Single PM subscribes to all |
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Process Managers](../core-concepts/domain-elements/process-managers.md) — Coordinating multi-step processes across aggregates.
+
+    **Guides:**
+
+    - [Process Managers](../guides/consume-state/process-managers.md) — Defining process managers, correlation, lifecycle, and configuration.

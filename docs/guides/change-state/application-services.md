@@ -258,3 +258,12 @@ are raised by the aggregate, not the service.
 HTTP status mapping.
 - Use the API layer for cross-cutting concerns like logging failed operations,
 not the application service itself.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Application Services](../../core-concepts/domain-elements/application-services.md) — Orchestrating use cases between external callers and the domain model.
+
+    **Patterns:**
+
+    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping application services thin by delegating to domain logic.

@@ -58,3 +58,15 @@ structures to avoid excessive complexity. To ensure performance and
 manageability, entities should be part of aggregates that are appropriately
 sized. If an aggregate becomes too large, consider splitting it into smaller,
 more manageable aggregates.
+
+---
+
+## Next steps
+
+For practical details on defining and using entities in Protean, see the guide:
+
+- [Entities](../../guides/domain-definition/entities.md) — Defining entities, configuration options, and associations within aggregates.
+
+For design guidance:
+
+- [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Drawing the right boundaries between aggregates and entities.

@@ -105,3 +105,15 @@ When a step fails (e.g., payment declined), the process manager should issue
 compensating commands to undo earlier steps rather than leaving the process
 in an inconsistent intermediate state. Use `end=True` or
 `mark_as_complete()` to close out failed processes cleanly.
+
+---
+
+## Next steps
+
+For practical details on defining and using process managers in Protean, see the guide:
+
+- [Process Managers](../../guides/consume-state/process-managers.md) — Defining process managers, correlation, lifecycle management, and configuration.
+
+For design guidance:
+
+- [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Patterns for orchestrating multi-step workflows across aggregates.

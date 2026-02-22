@@ -255,3 +255,13 @@ In [2]: bal1.currency = "CAD"
 ...
 IncorrectUsageError: "Value Objects are immutable and cannot be modified once created"
 ```
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Value Objects](../../core-concepts/domain-elements/value-objects.md) — Immutable objects defined by their attributes, not identity.
+
+    **Patterns:**
+
+    - [Replace Primitives with Value Objects](../../patterns/replace-primitives-with-value-objects.md) — When and why to wrap raw types in domain-specific value objects.
+    - [Validation Layering](../../patterns/validation-layering.md) — Where value object validation fits in the overall validation strategy.

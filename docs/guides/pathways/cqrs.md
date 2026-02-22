@@ -81,21 +81,67 @@ Everything from the [DDD pathway](./ddd.md), **plus**:
 If you've already worked through the DDD pathway, pick up from step 4.
 Otherwise, start from the beginning:
 
+### Start with DDD foundations
+
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
-| 1 | [Compose a Domain](../compose-a-domain/index.md) | Register elements, initialize and activate your domain |
-| 2 | [Define Concepts](../domain-definition/index.md) | Aggregates, entities, value objects, fields |
-| 3 | [Add Behavior](../domain-behavior/index.md) | Validations, invariants, mutations, raising events |
+| 1 | [Set Up the Domain](../compose-a-domain/index.md) | Register elements, initialize and activate your domain |
+| 2 | [Define Domain Elements](../domain-definition/index.md) | Aggregates, entities, value objects, fields |
+| 3 | [Add Rules and Behavior](../domain-behavior/index.md) | Validations, invariants, mutations, raising events |
+
+### Add the command side
+
+With the domain model in place, replace direct method calls with explicit
+commands that capture user intent:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 4 | [Commands](../change-state/commands.md) | Define commands that capture user intent |
 | 5 | [Command Handlers](../change-state/command-handlers.md) | Process commands and coordinate aggregates |
 | 6 | [Persist Aggregates](../change-state/persist-aggregates.md) | Save and load aggregates via repositories |
+
+### Build the read side
+
+With commands flowing through the write path, you can define events and
+build query-optimized read models:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 7 | [Events](../domain-definition/events.md) | Define domain events |
 | 8 | [Event Handlers](../consume-state/event-handlers.md) | React to events for side effects and cross-aggregate sync |
 | 9 | [Projections](../consume-state/projections.md) | Build read-optimized views from events |
+
+### React and coordinate
+
+To manage multi-step workflows, run asynchronous processing, and configure
+infrastructure:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 10 | [Process Managers](../consume-state/process-managers.md) | Coordinate multi-step processes across aggregates |
 | 11 | [Server](../server/index.md) | Run the async processing engine |
 | 12 | [Configuration](../essentials/configuration.md) | Configure databases, brokers, and event stores |
 | 13 | [Testing](../testing/index.md) | Test commands, handlers, and projections |
+
+## Relevant Patterns
+
+These patterns complement the CQRS approach. The first group applies to any
+DDD project; the second group addresses concerns specific to CQRS:
+
+| Pattern | What It Covers |
+|---------|---------------|
+| [Design Small Aggregates](../../patterns/design-small-aggregates.md) | Keep aggregates focused and performant |
+| [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) | Protect aggregate internals with controlled mutation |
+| [Replace Primitives with Value Objects](../../patterns/replace-primitives-with-value-objects.md) | Use rich types instead of raw strings and numbers |
+| [Validation Layering](../../patterns/validation-layering.md) | Apply validation at the right layer |
+| [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) | Keep handlers lean, push logic into the domain model |
+| [Testing Domain Logic in Isolation](../../patterns/testing-domain-logic-in-isolation.md) | Test domain rules without infrastructure |
+| [Organize by Domain Concept](../../patterns/organize-by-domain-concept.md) | Structure your project around business concepts |
+| [Creating Identities Early](../../patterns/creating-identities-early.md) | Generate aggregate IDs before persistence |
+| [Command Idempotency](../../patterns/command-idempotency.md) | Ensure commands can be safely retried |
+| [Design Events for Consumers](../../patterns/design-events-for-consumers.md) | Shape events around downstream needs |
+| [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) | Handle duplicate events gracefully |
+| [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) | Manage multi-step workflows with process managers |
 
 ## When to Evolve to Event Sourcing
 

@@ -58,3 +58,15 @@ Event handlers subscribe to domain event streams managed by the framework's
 event store. Subscribers subscribe to external broker streams managed by
 infrastructure outside the domain. The two elements serve different
 integration boundaries and should not be confused.
+
+---
+
+## Next steps
+
+For practical details on defining and using subscribers in Protean, see the guide:
+
+- [Subscribers](../../guides/consume-state/subscribers.md) — Defining subscribers, configuration, processing modes, and error handling.
+
+For design guidance:
+
+- [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md) — Patterns for integrating with external bounded contexts.

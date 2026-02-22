@@ -72,3 +72,15 @@ Resist the temptation to build a general-purpose projection that serves every
 possible query. Each projection should be tailored to a specific read
 use-case. Multiple small, focused projections are easier to maintain and
 perform better than a single monolithic one.
+
+---
+
+## Next steps
+
+For practical details on defining and using projectors in Protean, see the guide:
+
+- [Projections](../../guides/consume-state/projections.md) — Projector definition, the @on decorator, error handling, multi-aggregate projectors, and testing.
+
+For design guidance:
+
+- [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring projectors produce correct results even when events are replayed.

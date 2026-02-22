@@ -76,3 +76,17 @@ under an aggregate is limited to 500. If you expect the number of entities to
 exceed this limit, rethink your aggregate boundary. One way would be to split
 the aggregate into multiple aggregates. Another would be to make the underlying
 entity an aggregate by itself.
+
+---
+
+## Next steps
+
+For practical details on defining and using aggregates in Protean, see the guide:
+
+- [Aggregates](../../guides/domain-definition/aggregates.md) — Defining aggregates, fields, initialization, configuration options, and associations.
+
+For design guidance:
+
+- [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Why smaller aggregates lead to better systems.
+- [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting aggregate internals with controlled mutation.
+- [One Aggregate Per Transaction](../../patterns/one-aggregate-per-transaction.md) — Keeping transaction boundaries clean.

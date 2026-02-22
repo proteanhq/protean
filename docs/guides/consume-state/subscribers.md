@@ -283,3 +283,13 @@ from different external systems -- a payment gateway and a shipping provider:
 4. `ShippingUpdateSubscriber` listens to a different stream
    (`"shipping_updates"`), demonstrating that multiple subscribers can coexist,
    each consuming from their own stream.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Subscribers](../../core-concepts/domain-elements/subscribers.md) — Anti-corruption layer for external message consumption.
+
+    **Patterns:**
+
+    - [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md) — Patterns for integrating with external bounded contexts.
+    - [Connecting Concepts Across Domains](../../patterns/connect-concepts-across-domains.md) — Bridging domain boundaries with shared concepts.

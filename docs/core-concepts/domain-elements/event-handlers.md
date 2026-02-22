@@ -85,3 +85,16 @@ A single handler method should concern itself with one aggregate's state. If
 you find a handler method loading and modifying two different aggregates,
 split the work into separate handlers or let the second aggregate react to
 its own event.
+
+---
+
+## Next steps
+
+For practical details on defining and using event handlers in Protean, see the guide:
+
+- [Event Handlers](../../guides/consume-state/event-handlers.md) — Defining handlers, configuration options, error handling, and subscription setup.
+
+For design guidance:
+
+- [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring handlers produce correct results even when events are delivered more than once.
+- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by delegating to domain logic.

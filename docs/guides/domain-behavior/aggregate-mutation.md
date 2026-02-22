@@ -105,3 +105,12 @@ so invariants are checked before and after the state change — the
 
 See [Raising Events](raising-events.md#es-raise-apply) for full
 details on the `raise_()` + `@apply` integration.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Aggregates](../../core-concepts/domain-elements/aggregates.md) — Aggregate consistency, invariants, and state management.
+
+    **Patterns:**
+
+    - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting aggregate internals with controlled mutation methods.

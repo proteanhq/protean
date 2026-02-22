@@ -623,3 +623,14 @@ The principle: **every event handler must produce the same result whether it
 processes an event once or multiple times. Prefer naturally idempotent
 operations. When that's not possible, deduplicate explicitly. The handler,
 not the framework, is the primary defense against duplicate events.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Event Handlers](../core-concepts/domain-elements/event-handlers.md) — How event handlers consume and process events.
+
+    **Guides:**
+
+    - [Event Handlers](../guides/consume-state/event-handlers.md) — Defining handlers, configuration, and error handling.

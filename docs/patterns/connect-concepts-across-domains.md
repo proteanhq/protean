@@ -574,3 +574,16 @@ The pattern is rooted in a core DDD principle: **bounded contexts are
 autonomous**. They own their models, their data, and their rules. The only thing
 they share is identity and events. This keeps contexts loosely coupled while
 ensuring they stay synchronized on the real-world concepts they all model.
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Events](../core-concepts/domain-elements/events.md) — Events as the communication mechanism between domains.
+    - [Subscribers](../core-concepts/domain-elements/subscribers.md) — Consuming messages from external bounded contexts.
+
+    **Guides:**
+
+    - [Subscribers](../guides/consume-state/subscribers.md) — Defining subscribers for external message consumption.
+    - [Events](../guides/domain-definition/events.md) — Event definition and structure.

@@ -93,7 +93,20 @@ separate validation layer or within the command handler itself.
 
 ### Return values only when necessary. { data-toc-label="Return Values" }
 
-Only return values from command handlers when they are genuinely needed by the caller. 
-For example, return authentication tokens or newly created resource IDs, but not entire 
-entity representations. Return values should be small and relevant to the immediate needs 
+Only return values from command handlers when they are genuinely needed by the caller.
+For example, return authentication tokens or newly created resource IDs, but not entire
+entity representations. Return values should be small and relevant to the immediate needs
 of the caller.
+
+---
+
+## Next steps
+
+For practical details on defining and using command handlers in Protean, see the guide:
+
+- [Command Handlers](../../guides/change-state/command-handlers.md) — Defining handlers, workflow, return values, idempotency, and error handling.
+
+For design guidance:
+
+- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by pushing logic into the domain model.
+- [Command Idempotency](../../patterns/command-idempotency.md) — Handling duplicate commands safely.

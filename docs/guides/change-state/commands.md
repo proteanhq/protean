@@ -48,6 +48,11 @@ In [1]: command = PublishArticle(article_id="1")
 In [2]: publishing.process(command)
 ```
 
+---
+
+!!! note "Advanced"
+    The following sections cover idempotency and advanced command patterns.
+
 ## Idempotency
 
 In distributed systems, the same command can arrive more than once due to
@@ -279,3 +284,8 @@ aggregate.raise_(event, asynchronous=True)    # Override domain setting for a sp
 ```
 
 This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Workflow-driven architectures within your Protean applications.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Commands](../../core-concepts/domain-elements/commands.md) — Commands as immutable intent to change system state.

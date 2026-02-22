@@ -67,24 +67,64 @@ sequenceDiagram
 Work through these guides in order to build a complete understanding of the
 DDD approach:
 
+### Define your domain model
+
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
-| 1 | [Compose a Domain](../compose-a-domain/index.md) | Register elements, initialize and activate your domain |
+| 1 | [Set Up the Domain](../compose-a-domain/index.md) | Register elements, initialize and activate your domain |
 | 2 | [Aggregates](../domain-definition/aggregates.md) | Define your root entities and aggregate boundaries |
 | 3 | [Entities](../domain-definition/entities.md) | Add child objects with identity |
 | 4 | [Value Objects](../domain-definition/value-objects.md) | Model immutable descriptive concepts |
 | 5 | [Fields](../domain-definition/fields/index.md) | Understand the field system and data types |
 | 6 | [Relationships](../domain-definition/relationships.md) | Connect entities with HasOne, HasMany, Reference |
+
+### Add business rules and behavior
+
+With your domain model defined, you need to protect it with business rules
+and give it the ability to communicate what happened:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 7 | [Validations & Invariants](../domain-behavior/invariants.md) | Enforce business rules |
 | 8 | [Aggregate Mutation](../domain-behavior/aggregate-mutation.md) | Change aggregate state safely |
 | 9 | [Raising Events](../domain-behavior/raising-events.md) | Emit domain events from aggregates |
+
+### Wire the application layer
+
+With a rich domain model in place, you can orchestrate use cases and persist
+state:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 10 | [Application Services](../change-state/application-services.md) | Orchestrate use cases with `@use_case` |
 | 11 | [Persist Aggregates](../change-state/persist-aggregates.md) | Save aggregates through repositories |
 | 12 | [Retrieve Aggregates](../change-state/retrieve-aggregates.md) | Load aggregates by ID or query |
+
+### React to state changes
+
+To handle side effects and coordinate across aggregates:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 13 | [Event Handlers](../consume-state/event-handlers.md) | React to domain events |
 | 14 | [Subscribers](../consume-state/subscribers.md) | Consume messages from external brokers |
 | 15 | [Domain Services](../domain-behavior/domain-services.md) | Coordinate cross-aggregate logic |
 | 16 | [Testing](../testing/index.md) | Test your domain model and application layer |
+
+## Relevant Patterns
+
+These patterns complement the DDD approach:
+
+| Pattern | What It Covers |
+|---------|---------------|
+| [Design Small Aggregates](../../patterns/design-small-aggregates.md) | Keep aggregates focused and performant |
+| [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) | Protect aggregate internals with controlled mutation |
+| [Replace Primitives with Value Objects](../../patterns/replace-primitives-with-value-objects.md) | Use rich types instead of raw strings and numbers |
+| [Validation Layering](../../patterns/validation-layering.md) | Apply validation at the right layer |
+| [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) | Keep handlers lean, push logic into the domain model |
+| [Testing Domain Logic in Isolation](../../patterns/testing-domain-logic-in-isolation.md) | Test domain rules without infrastructure |
+| [Organize by Domain Concept](../../patterns/organize-by-domain-concept.md) | Structure your project around business concepts |
+| [Creating Identities Early](../../patterns/creating-identities-early.md) | Generate aggregate IDs before persistence |
 
 ## When to Evolve to CQRS
 

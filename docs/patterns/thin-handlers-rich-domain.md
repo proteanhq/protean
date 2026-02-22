@@ -685,3 +685,18 @@ Authorization checks are the handler's responsibility (see
 
 The principle: **handlers orchestrate. Aggregates think. Load, call, save.
 If your handler knows business rules, the rules are in the wrong place.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Command Handlers](../core-concepts/domain-elements/command-handlers.md) — Command handler responsibilities.
+    - [Application Services](../core-concepts/domain-elements/application-services.md) — Orchestrating use cases.
+    - [Domain Services](../core-concepts/domain-elements/domain-services.md) — Cross-aggregate business logic.
+
+    **Guides:**
+
+    - [Command Handlers](../guides/change-state/command-handlers.md) — Defining and implementing command handlers.
+    - [Application Services](../guides/change-state/application-services.md) — The @use_case decorator and service workflow.
+    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md) — Pushing state changes into aggregates.

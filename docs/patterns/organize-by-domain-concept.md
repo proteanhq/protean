@@ -382,3 +382,15 @@ Use these to validate structure decisions as the domain grows:
 | **Shared vocabulary** | Own folder for cross-aggregate value objects |
 | **API / external** | Top-level file at domain level, not inside aggregates |
 | **Infrastructure** | Emerges as a folder only when needed, not created preemptively |
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Aggregates as conceptual wholes.
+
+    **Guides:**
+
+    - [Compose a Domain](../guides/compose-a-domain/index.md) — Registering and organizing domain elements.
+    - [CLI: new](../guides/cli/new.md) — Scaffolding a new project with domain-oriented structure.

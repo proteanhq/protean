@@ -639,3 +639,17 @@ criterion -- the consistency requirement is.
 The principle: **draw aggregate boundaries around consistency requirements, not
 data relationships. Reference other aggregates by identity. Use domain events
 for cross-aggregate communication.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — What aggregates are and their core properties.
+    - [Entities](../core-concepts/domain-elements/entities.md) — Objects with identity within aggregates.
+
+    **Guides:**
+
+    - [Aggregates](../guides/domain-definition/aggregates.md) — Defining aggregates, fields, and configuration.
+    - [Relationships](../guides/domain-definition/relationships.md) — Connecting entities within aggregate boundaries.
+    - [Deciding Between Elements](../guides/domain-definition/deciding-between-elements.md) — Choosing between aggregates, entities, and value objects.

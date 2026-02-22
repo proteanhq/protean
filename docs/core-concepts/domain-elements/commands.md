@@ -86,3 +86,15 @@ multiple times should result in the same state without unintended side effects.
 Be mindful of sensitive data within commands, especially when they are
 transmitted over a network. Ensure that appropriate security measures are in
 place to protect this data.
+
+---
+
+## Next steps
+
+For practical details on defining and processing commands in Protean, see the guide:
+
+- [Commands](../../guides/change-state/commands.md) — Defining commands, submitting them, idempotency, and processing modes.
+
+For design guidance:
+
+- [Command Idempotency](../../patterns/command-idempotency.md) — Ensuring commands can be safely retried without side effects.

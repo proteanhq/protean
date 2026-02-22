@@ -524,3 +524,17 @@ def close_expired(self, command: CloseExpiredOrders):
 
 The principle: **one aggregate, one transaction, one commit. Everything else
 flows through events.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Transaction boundaries and consistency guarantees.
+    - [Event Handlers](../core-concepts/domain-elements/event-handlers.md) — Reacting to events for cross-aggregate coordination.
+
+    **Guides:**
+
+    - [Command Handlers](../guides/change-state/command-handlers.md) — Processing commands within a single aggregate.
+    - [Event Handlers](../guides/consume-state/event-handlers.md) — Syncing state across aggregates asynchronously.
+    - [Unit of Work](../guides/change-state/unit-of-work.md) — Transaction management in Protean.

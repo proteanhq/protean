@@ -1,4 +1,4 @@
-# Define Domain Concepts
+# Define Domain Elements
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -70,3 +70,9 @@ Key characteristics of Events include:
 - **Structure**: Events contain metadata, timestamps, version information, and relevant data about the change
 
 Events can be processed either synchronously or asynchronously, depending on your application's needs. See the [Events](./events.md) guide and [Events Core Concepts](../../core-concepts/domain-elements/events.md) for more details.
+
+### Identity
+
+Identity is a fundamental property of aggregates and entities. Protean provides configurable identity generation strategies, types (UUID, integer, string), and the ability to supply custom identity functions.
+
+[Learn more about identity →](../essentials/identity.md)

@@ -2,6 +2,8 @@
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
+This guide covers how to persist aggregates through repositories -- from basic
+save operations and transactions to event publishing and updates.
 
 Aggregates are saved into the configured database using `add` method of the
 repository.

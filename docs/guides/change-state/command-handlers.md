@@ -274,3 +274,12 @@ def handle_error(cls, exc: Exception, message):
 2. Use error handlers for logging, notification, and simple recovery.
 3. Don't throw exceptions from error handlers unless absolutely necessary.
 4. Consider implementing retry logic for transient failures.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Command Handlers](../../core-concepts/domain-elements/command-handlers.md) — The role of command handlers in processing commands and persisting state.
+
+    **Patterns:**
+
+    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by pushing logic into the domain model.

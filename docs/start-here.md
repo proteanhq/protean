@@ -65,6 +65,15 @@ Within the guides, you'll find everything from crafting rich
 [commands and handlers](./guides/change-state/index.md), and reacting to
 state changes with [event handlers and projections](./guides/consume-state/index.md).
 
+## Finding your way around
+
+If you know what you want to do but aren't sure where to look, start here:
+
+- **[How Do I...?](./how-do-i.md)** — A task-oriented index. Look up what
+  you're trying to accomplish and jump straight to the right guide.
+- **[Contents](./contents.md)** — A flat, searchable listing of every page in
+  the documentation.
+
 ## Configuration and infrastructure
 
 Protean uses a simple configuration file (`domain.toml`) to wire in databases,
@@ -100,15 +109,6 @@ Looking for architectural guidance? The
 [Patterns](./patterns/index.md) section covers recurring design patterns —
 aggregate sizing, idempotent handlers, validation layering, event versioning,
 and more.
-
-## Finding your way around
-
-Two navigation aids help you find the right page quickly:
-
-- **[How Do I...?](./how-do-i.md)** — A task-oriented index. Look up what
-  you're trying to accomplish and jump straight to the right guide.
-- **[Contents](./contents.md)** — A flat, searchable listing of every page in
-  the documentation.
 
 ## Glossary
 

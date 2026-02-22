@@ -82,3 +82,15 @@ transaction boundaries unclear.
 Validation and invariant enforcement belong in the aggregate, not the
 application service. The application service trusts the domain model to reject
 invalid state.
+
+---
+
+## Next steps
+
+For practical details on defining and using application services in Protean, see the guide:
+
+- [Application Services](../../guides/change-state/application-services.md) — Defining services, the @use_case decorator, workflow, return values, and error handling.
+
+For design guidance:
+
+- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping orchestration layers thin by pushing logic into the domain model.

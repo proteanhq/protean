@@ -45,3 +45,15 @@ Services in the application layer, like
 [command handlers](./command-handlers.md), or
 [event handlers](./event-handlers.md), invoke domain services to perform
 domain operations.
+
+---
+
+## Next steps
+
+For practical details on defining and using domain services in Protean, see the guide:
+
+- [Domain Services](../../guides/domain-behavior/domain-services.md) — Defining domain services, three implementation flavors, invariants, and a full example.
+
+For design guidance:
+
+- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Balancing logic between domain services, aggregates, and handlers.

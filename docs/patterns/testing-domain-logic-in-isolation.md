@@ -653,3 +653,16 @@ methods, assert results. Save integration tests for verifying the plumbing.**
     `pytest --protean-env memory` flag switches every adapter to its in-memory
     equivalent. Run fast during development, then validate against real
     infrastructure in CI.
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Aggregate structure and invariants.
+    - [Value Objects](../core-concepts/domain-elements/value-objects.md) — Testing immutable domain concepts.
+
+    **Guides:**
+
+    - [Domain Model Tests](../guides/testing/domain-model-tests.md) — Unit testing aggregates, entities, and value objects.
+    - [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md) — Reusable pytest fixtures and test recipes.

@@ -30,6 +30,8 @@ Events are always connected to an Aggregate class, specified with the
 `part_of` param in the decorator. An exception to this rule is when the
 Event class has been marked _Abstract_.
 
+---
+
 ## Synchronous vs Asynchronous Processing
 
 Events in Protean can be processed either synchronously or asynchronously:
@@ -136,6 +138,8 @@ domain.config["command_processing"] = "sync"  # or "async"
 ```
 
 This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Event-Driven Architecture within your Protean applications.
+
+---
 
 ## Event Structure
 
@@ -342,3 +346,12 @@ In [3]: renamed.name = "John Doe Sr."
 ...
 IncorrectUsageError: 'Event/Command Objects are immutable and cannot be modified once created'
 ```
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Events](../../core-concepts/domain-elements/events.md) — Domain events and their role in system communication.
+
+    **Patterns:**
+
+    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.

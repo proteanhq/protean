@@ -9,12 +9,53 @@
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 Build domain-driven Python applications with clean architecture.
-Protean gives you DDD, CQRS, and Event Sourcing — with pluggable
+Start with DDD, evolve to CQRS or Event Sourcing — with pluggable
 infrastructure and zero boilerplate.
 
 [Get Started](./guides/getting-started/quickstart.md){ .md-button .md-button--primary }
 [Tutorial](./guides/getting-started/tutorial/index.md){ .md-button }
-[All Content](./contents.md){ .md-button }
+[How Do I...?](./how-do-i.md){ .md-button }
+
+---
+
+## Why Protean?
+
+<div class="grid cards" markdown>
+
+-   __:material-domain: Domain-First__
+
+    ---
+
+    Model your business in pure Python. No ORM inheritance, no framework
+    lock-in. Your domain code reads like the business, enabling
+    collaboration between developers and domain experts.
+
+-   __:material-power-plug-battery-outline: Plug In Infrastructure Later__
+
+    ---
+
+    Start with in-memory adapters — no database, no broker, no setup.
+    When you're ready, swap in PostgreSQL, Redis, Elasticsearch, or
+    MessageDB through configuration. No code changes.
+
+-   __:material-call-split: Three Architectural Paths__
+
+    ---
+
+    Begin with DDD, evolve to CQRS, adopt Event Sourcing — all within
+    the same framework. Mix patterns per aggregate. Pragmatism over
+    purity.
+
+-   __:material-test-tube: Test Everything__
+
+    ---
+
+    3,826 tests with a 3.5:1 test-to-code ratio. Run your full domain
+    test suite in-memory in seconds. Every commit is tested against
+    PostgreSQL, Redis, Elasticsearch, MessageDB, and MSSQL across
+    Python 3.11-3.14.
+
+</div>
 
 ---
 
@@ -67,47 +108,6 @@ class PostCommandHandler:
 Aggregates, commands, events, and handlers — all in pure Python, with
 decorators that wire everything together. No infrastructure required
 to get started.
-
----
-
-## Why Protean?
-
-<div class="grid cards" markdown>
-
--   __:material-domain: Domain-First__
-
-    ---
-
-    Model your business in pure Python. No ORM inheritance, no framework
-    lock-in. Your domain code reads like the business, enabling
-    collaboration between developers and domain experts.
-
--   __:material-power-plug-battery-outline: Plug In Infrastructure Later__
-
-    ---
-
-    Start with in-memory adapters — no database, no broker, no setup.
-    When you're ready, swap in PostgreSQL, Redis, Elasticsearch, or
-    MessageDB through configuration. No code changes.
-
--   __:material-call-split: Three Architectural Paths__
-
-    ---
-
-    Begin with DDD, evolve to CQRS, adopt Event Sourcing — all within
-    the same framework. Mix patterns per aggregate. Pragmatism over
-    purity.
-
--   __:material-test-tube: Test Everything__
-
-    ---
-
-    3,826 tests with a 3.5:1 test-to-code ratio. Run your full domain
-    test suite in-memory in seconds. Every commit is tested against
-    PostgreSQL, Redis, Elasticsearch, MessageDB, and MSSQL across
-    Python 3.11-3.14.
-
-</div>
 
 ---
 
@@ -223,6 +223,15 @@ Not sure which to pick? Start with DDD — you can evolve later. See
 
     [:material-arrow-right-box: Tutorial](./guides/getting-started/tutorial/index.md)
 
+-   __:material-magnify: How Do I...?__
+
+    ---
+
+    Task-oriented index — look up what you're trying to do and jump
+    straight to the right guide.
+
+    [:material-arrow-right-box: How Do I...?](./how-do-i.md)
+
 -   __:material-book-open-page-variant-outline: Guides__
 
     ---
@@ -254,13 +263,5 @@ Not sure which to pick? Start with DDD — you can evolve later. See
     Battle-tested solutions for common challenges.
 
     [:material-arrow-right-box: Patterns](./patterns/index.md)
-
--   __:material-magnify: How Do I...?__
-
-    ---
-
-    Find the right guide by what you're trying to accomplish.
-
-    [:material-arrow-right-box: How Do I...?](./how-do-i.md)
 
 </div>

@@ -67,3 +67,15 @@ query against the write-side models.
 A projection's field structure does not need to mirror the aggregate that
 produced the data. Fields can be renamed, combined, filtered, or derived to
 suit the specific query use-case the projection serves.
+
+---
+
+## Next steps
+
+For practical details on defining and using projections in Protean, see the guide:
+
+- [Projections](../../guides/consume-state/projections.md) — Defining projections, configuration options, querying, projector setup, and testing.
+
+For design guidance:
+
+- [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so projectors can build reliable read models.

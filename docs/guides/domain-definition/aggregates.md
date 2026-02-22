@@ -74,6 +74,12 @@ This would output something like:
 You see an `id` attribute appear in the results. We discuss **identity**
 deeply in the [identity](../essentials/identity.md) section.
 
+---
+
+!!! note "Advanced"
+    The following section covers event-sourced aggregate initialization,
+    relevant when using the [Event Sourcing](../pathways/event-sourcing.md) pathway.
+
 ### Event-Sourced Aggregates
 
 For **event-sourced aggregates**, the standard constructor is typically not
@@ -127,7 +133,7 @@ class for other aggregates.
     You will see further on that it is possible to generate database schema
     definitions automatically from `Aggregate` and `Entity` elements. Marking
     a class as `abstract` also has the benefit that database schema definitions
-    will be generated accidentally.
+    will not be generated accidentally.
 
 The `User` aggregate will inherit the two fields from the parent `TimeStamped`
 class:
@@ -141,6 +147,8 @@ class:
  'name': String(max_length=30),
  'timezone': String(max_length=30)}
 ```
+
+---
 
 ## Configuration
 
@@ -328,3 +336,14 @@ Out[12]: 'e288ee30-e1d5-4fb3-94d8-d8083a6dc9db'
 ```
 
 The `Reference` field (`comment.post`) provides access to the full parent object, while the shadow field (`comment.post_id`) contains the foreign key value.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Aggregates](../../core-concepts/domain-elements/aggregates.md) — What aggregates are, their core properties, and why they matter.
+
+    **Patterns:**
+
+    - [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Why smaller aggregates lead to better systems.
+    - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting aggregate internals with controlled mutation.
+    - [One Aggregate Per Transaction](../../patterns/one-aggregate-per-transaction.md) — Keeping transaction boundaries clean.

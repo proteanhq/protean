@@ -15,6 +15,10 @@ need by what you're trying to accomplish.
 | Add typed attributes to domain objects          | [Fields](./guides/domain-definition/fields/index.md) |
 | Choose between field definition styles          | [Defining Fields](./guides/domain-definition/fields/defining-fields.md) |
 | Define a domain event                           | [Events](./guides/domain-definition/events.md) |
+| Understand field arguments and options          | [Arguments](./guides/domain-definition/fields/arguments.md) |
+| Use simple scalar fields (String, Integer...)   | [Simple Fields](./guides/domain-definition/fields/simple-fields.md) |
+| Use container fields (List, Dict, Nested)       | [Container Fields](./guides/domain-definition/fields/container-fields.md) |
+| Use association fields (HasOne, HasMany, Reference) | [Association Fields](./guides/domain-definition/fields/association-fields.md) |
 
 ## Add Business Rules
 
@@ -62,6 +66,10 @@ need by what you're trying to accomplish.
 | Configure databases, brokers, and caches        | [Configuration](./guides/essentials/configuration.md) |
 | Understand identity and ID generation           | [Identity](./guides/essentials/identity.md) |
 | Understand stream categories                    | [Stream Categories](./guides/essentials/stream-categories.md) |
+| Activate a domain for use                       | [Activate Domain](./guides/compose-a-domain/activate-domain.md) |
+| Understand element decorators                   | [Element Decorators](./guides/compose-a-domain/element-decorators.md) |
+| Decide when to compose vs. initialize           | [When to Compose](./guides/compose-a-domain/when-to-compose.md) |
+| Understand the object model and Meta options    | [Object Model](./guides/essentials/object-model.md) |
 
 ## Integrate with FastAPI
 
@@ -87,6 +95,32 @@ need by what you're trying to accomplish.
 | Stream trace events via SSE                     | [Observability](./guides/server/observability.md) |
 | Run the async background server                 | [`protean server`](./guides/cli/server.md) |
 | Use the CLI for development and operations      | [CLI](./guides/cli/index.md) |
+| Understand the server engine architecture       | [Engine](./guides/server/engine.md) |
+| Learn about subscription types                  | [Subscription Types](./guides/server/subscription-types.md) |
+| Configure subscriptions                         | [Server Configuration](./guides/server/configuration.md) |
+| Run multiple workers with the supervisor        | [Supervisor](./guides/server/supervisor.md) |
+| Use priority lanes for event processing         | [Priority Lanes](./guides/priority-lanes.md) |
+| Run a bulk migration with priority lanes        | [Migration with Priority Lanes](./guides/running-migration-with-priority-lanes.md) |
+
+## Use the CLI
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| Scaffold a new Protean project                  | [`protean new`](./guides/cli/new.md) |
+| Understand domain and element discovery         | [`protean` discovery](./guides/cli/discovery.md) |
+| Open an interactive shell                       | [`protean shell`](./guides/cli/shell.md) |
+| Run the async background server                 | [`protean server`](./guides/cli/server.md) |
+| Run the observability dashboard                 | [`protean observatory`](./guides/cli/observatory.md) |
+| Manage database schemas                         | [`protean db`](./guides/cli/database.md) |
+| Create and manage snapshots                     | [`protean snapshot`](./guides/cli/snapshot.md) |
+| Rebuild projections from events                 | [`protean projection`](./guides/cli/projection.md) |
+
+## Evolve and Maintain
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| Transform old event schemas during replay       | [Event Upcasting](./guides/event-upcasting.md) |
+| Add type checking to my domain code             | [Type Checking](./guides/type-checking.md) |
 
 ## Organize My Project
 

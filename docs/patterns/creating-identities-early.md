@@ -462,3 +462,15 @@ The pattern is simple: **generate identities at the origin of intent, not at the
 point of storage**. Protean's `Auto` field with UUID generation makes this the
 default behavior. Commands carry the identity. Events reference it. Handlers use
 it. The entire flow is simpler, more resilient, and naturally idempotent.
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Aggregate identity and versioning.
+
+    **Guides:**
+
+    - [Identity](../guides/essentials/identity.md) — Identity strategies, types, and configuration.
+    - [Fields](../guides/domain-definition/fields/index.md) — The Auto and Identifier field types.

@@ -49,3 +49,15 @@ independent identity and are always part of entities or aggregates.
 ### Value Objects do not reference entities. { data-toc-label="No References" }
 Value objects should not hold references to entities. They are self-contained
 and defined solely by their attributes.
+
+---
+
+## Next steps
+
+For practical details on defining and using value objects in Protean, see the guide:
+
+- [Value Objects](../../guides/domain-definition/value-objects.md) — Defining value objects, embedding them in aggregates, invariants, and equality semantics.
+
+For design guidance:
+
+- [Replace Primitives with Value Objects](../../patterns/replace-primitives-with-value-objects.md) — When and why to wrap raw types in domain-specific value objects.

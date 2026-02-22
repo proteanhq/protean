@@ -388,3 +388,14 @@ The principle: **subscribers are anti-corruption layers. They receive external
 events, translate them into your domain's language, and dispatch internal
 commands or events. Nothing downstream knows or cares that the stimulus came
 from outside.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Subscribers](../core-concepts/domain-elements/subscribers.md) — Anti-corruption layer at the domain boundary.
+
+    **Guides:**
+
+    - [Subscribers](../guides/consume-state/subscribers.md) — Subscriber definition, broker configuration, and error handling.

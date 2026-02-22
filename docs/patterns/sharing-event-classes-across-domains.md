@@ -372,3 +372,14 @@ The principle: **domains communicate through messages, not through shared code.
 Each domain defines its own classes that conform to the agreed-upon schema.
 Share the contract (schema), not the implementation (classes). Use contract
 tests to verify compatibility without code dependencies.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Events](../core-concepts/domain-elements/events.md) — Event structure and cross-domain communication.
+
+    **Guides:**
+
+    - [Events](../guides/domain-definition/events.md) — Defining events, metadata, and versioning.

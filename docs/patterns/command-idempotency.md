@@ -713,3 +713,16 @@ ttl = 86400
 # Default: 60
 error_ttl = 60
 ```
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Commands](../core-concepts/domain-elements/commands.md) — Commands as intent to change state.
+    - [Command Handlers](../core-concepts/domain-elements/command-handlers.md) — Processing commands and persisting state.
+
+    **Guides:**
+
+    - [Commands](../guides/change-state/commands.md) — Defining commands, idempotency keys, and processing modes.
+    - [Command Handlers](../guides/change-state/command-handlers.md) — Handler definition, workflow, and idempotency handling.

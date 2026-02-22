@@ -1,4 +1,4 @@
-# Testing
+# Test Your Application
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 

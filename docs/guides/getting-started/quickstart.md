@@ -150,11 +150,11 @@ Here is the complete example in a single file:
 
 ## Next Steps
 
-- [Compose a Domain](../compose-a-domain/index.md) — learn about domain
+- [Set Up the Domain](../compose-a-domain/index.md) — learn about domain
   registration, initialization, and activation in depth.
-- [Define Concepts](../domain-definition/index.md) — explore aggregates,
+- [Define Domain Elements](../domain-definition/index.md) — explore aggregates,
   entities, value objects, and fields.
-- [Add Behavior](../domain-behavior/index.md) — add validations, invariants,
+- [Add Rules and Behavior](../domain-behavior/index.md) — add validations, invariants,
   and domain services.
 - [Configuration](../essentials/configuration.md) — connect real databases,
   brokers, and event stores.

@@ -580,3 +580,17 @@ The principle: **design events so that every consumer can process them
 independently. Include enough context for consumers to act without querying
 back to the source aggregate. Work backward from the projection to determine
 what data each event must carry.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Events](../core-concepts/domain-elements/events.md) — Domain events and their role in the system.
+    - [Projections](../core-concepts/domain-elements/projections.md) — Read-optimized views built from events.
+
+    **Guides:**
+
+    - [Events](../guides/domain-definition/events.md) — Defining events, structure, and metadata.
+    - [Raising Events](../guides/domain-behavior/raising-events.md) — Raising and dispatching events from aggregates.
+    - [Projections](../guides/consume-state/projections.md) — Building read models with projectors.

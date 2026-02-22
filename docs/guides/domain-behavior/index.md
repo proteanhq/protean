@@ -1,4 +1,4 @@
-# Adding Rules and Behavior
+# Add Rules and Behavior
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 

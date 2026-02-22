@@ -656,3 +656,16 @@ def update_shipping_address(self, new_address: ShippingAddress) -> None:
 
 The principle: **aggregates express behavior through named methods. Handlers
 orchestrate. The aggregate is the authority on its own state transitions.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Black-box design and invariant enforcement.
+
+    **Guides:**
+
+    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md) — Changing aggregate state safely.
+    - [Invariants](../guides/domain-behavior/invariants.md) — Enforcing business rules with pre and post invariants.
+    - [Raising Events](../guides/domain-behavior/raising-events.md) — Broadcasting state changes as domain events.

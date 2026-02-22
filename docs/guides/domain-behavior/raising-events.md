@@ -156,3 +156,12 @@ The event name is of the format
 
 The fact event for `User` aggregate in the above example is `UserFactEvent`
 and the output stream is `user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff`
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Events](../../core-concepts/domain-elements/events.md) — Domain events and their role in system communication.
+
+    **Patterns:**
+
+    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.

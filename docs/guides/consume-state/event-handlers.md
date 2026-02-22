@@ -213,3 +213,13 @@ def handle_error(cls, exc: Exception, message):
         logger.error(f"Error handler failed: {error_exc}")
         # Processing continues regardless
 ```
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Event Handlers](../../core-concepts/domain-elements/event-handlers.md) — How event handlers consume and react to domain events.
+
+    **Patterns:**
+
+    - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring handlers produce correct results even with duplicate delivery.
+    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by delegating to domain logic.

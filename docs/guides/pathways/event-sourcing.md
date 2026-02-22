@@ -86,20 +86,67 @@ Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 If you've already worked through the CQRS pathway, pick up from step 1
 below. These guides cover the Event Sourcing-specific concepts:
 
+### Understand the foundations
+
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
 | 1 | [Event Sourcing Concepts](../../core-concepts/event-sourcing.md) | Theory and workflow of event sourcing |
 | 2 | [Events](../domain-definition/events.md) | Delta events vs. fact events |
 | 3 | [Raising Events](../domain-behavior/raising-events.md) | How aggregates raise events and the `@apply` decorator |
+
+### Persist and organize events
+
+With the event model understood, learn how events are stored, streamed, and
+replayed:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 4 | [Persist Aggregates](../change-state/persist-aggregates.md) | Event sourced repositories |
 | 5 | [Stream Categories](../essentials/stream-categories.md) | How events are organized into streams |
+
+### Build read models and process events
+
+Events are your single source of truth. Use them to power read-optimized
+views and asynchronous processing:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 6 | [Projections](../consume-state/projections.md) | Build read models from event streams |
 | 7 | [Server](../server/index.md) | Process events asynchronously |
 | 8 | [Event Store adapters](../../adapters/eventstore/index.md) | Configure Message DB or other event stores |
+
+### Coordinate, evolve, and test
+
+To manage cross-aggregate workflows, evolve event schemas over time, and
+verify everything works:
+
+| Step | Guide | What You'll Learn |
+|------|-------|-------------------|
 | 9 | [Process Managers](../consume-state/process-managers.md) | Coordinate multi-step processes across aggregates |
 | 10 | [Architecture Decision](../../core-concepts/architecture-decision.md) | When to use ES vs. CQRS per aggregate |
 | 11 | [Event Upcasting](../event-upcasting.md) | Transform old event schemas during replay |
 | 12 | [Testing](../testing/index.md) | Test event-sourced aggregates and projections |
+
+## Relevant Patterns
+
+These patterns complement the Event Sourcing approach. They span aggregate
+design, command and event handling, and event schema evolution:
+
+| Pattern | What It Covers |
+|---------|---------------|
+| [Design Small Aggregates](../../patterns/design-small-aggregates.md) | Keep aggregates focused and performant |
+| [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) | Protect aggregate internals with controlled mutation |
+| [Replace Primitives with Value Objects](../../patterns/replace-primitives-with-value-objects.md) | Use rich types instead of raw strings and numbers |
+| [Validation Layering](../../patterns/validation-layering.md) | Apply validation at the right layer |
+| [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) | Keep handlers lean, push logic into the domain model |
+| [Testing Domain Logic in Isolation](../../patterns/testing-domain-logic-in-isolation.md) | Test domain rules without infrastructure |
+| [Organize by Domain Concept](../../patterns/organize-by-domain-concept.md) | Structure your project around business concepts |
+| [Creating Identities Early](../../patterns/creating-identities-early.md) | Generate aggregate IDs before persistence |
+| [Command Idempotency](../../patterns/command-idempotency.md) | Ensure commands can be safely retried |
+| [Design Events for Consumers](../../patterns/design-events-for-consumers.md) | Shape events around downstream needs |
+| [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) | Handle duplicate events gracefully |
+| [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) | Manage multi-step workflows with process managers |
+| [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) | Evolve event schemas over time |
 
 ## Key Concepts
 

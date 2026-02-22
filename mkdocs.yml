@@ -121,15 +121,16 @@ nav:
       - guides/pathways/ddd.md
       - guides/pathways/cqrs.md
       - guides/pathways/event-sourcing.md
-    - Domain Model:
-      - Compose a Domain:
+    - Define Your Domain:
+      - Set Up the Domain:
         - guides/compose-a-domain/index.md
         - guides/compose-a-domain/register-elements.md
         - guides/compose-a-domain/initialize-domain.md
         - guides/compose-a-domain/activate-domain.md
         - guides/compose-a-domain/when-to-compose.md
         - guides/compose-a-domain/element-decorators.md
-      - Define Concepts:
+        - guides/essentials/object-model.md
+      - Define Domain Elements:
         - guides/domain-definition/index.md
         - Fields:
           - guides/domain-definition/fields/index.md
@@ -144,7 +145,8 @@ nav:
         - guides/domain-definition/value-objects.md
         - guides/domain-definition/deciding-between-elements.md
         - guides/domain-definition/events.md
-      - Add Behavior:
+        - guides/essentials/identity.md
+      - Add Rules and Behavior:
         - guides/domain-behavior/index.md
         - guides/domain-behavior/validations.md
         - guides/domain-behavior/invariants.md
@@ -152,24 +154,29 @@ nav:
         - guides/domain-behavior/raising-events.md
         - guides/domain-behavior/domain-services.md
 
-    - Application Layer:
+    - Change State:
       - guides/change-state/index.md
-      - guides/change-state/application-services.md
-      - guides/change-state/commands.md
-      - guides/change-state/command-handlers.md
-      - guides/change-state/repositories.md
-      - guides/change-state/persist-aggregates.md
-      - guides/change-state/retrieve-aggregates.md
-    - Reactive Layer:
+      - Process Requests:
+        - guides/change-state/application-services.md
+        - guides/change-state/commands.md
+        - guides/change-state/command-handlers.md
+      - Persist Data:
+        - guides/change-state/repositories.md
+        - guides/change-state/persist-aggregates.md
+        - guides/change-state/retrieve-aggregates.md
+        - guides/change-state/unit-of-work.md
+
+    - React to Changes:
       - guides/consume-state/index.md
       - guides/consume-state/event-handlers.md
       - guides/consume-state/process-managers.md
       - guides/consume-state/projections.md
       - guides/consume-state/subscribers.md
+      - guides/essentials/stream-categories.md
+      - guides/event-upcasting.md
 
-    - Infrastructure:
+    - Run in Production:
       - guides/essentials/configuration.md
-      # - guides/infrastructure/database-models.md
       - FastAPI Integration:
         - guides/fastapi/index.md
       - Server:
@@ -196,18 +203,9 @@ nav:
         - guides/cli/test.md
         - guides/cli/snapshot.md
         - guides/cli/projection.md
-
-    - Essentials:
-      - guides/essentials/object-model.md
-      - guides/essentials/identity.md
-      - guides/essentials/stream-categories.md
-      - guides/change-state/unit-of-work.md
       - guides/type-checking.md
 
-    - Event Schema Evolution:
-      - guides/event-upcasting.md
-
-    - Testing:
+    - Test Your Application:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md
       - guides/testing/application-tests.md

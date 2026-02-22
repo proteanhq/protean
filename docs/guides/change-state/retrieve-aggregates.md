@@ -1,4 +1,4 @@
-# Retrieving aggregates
+# Retrieve Aggregates
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -110,6 +110,8 @@ def email_taken(self, person_id: str, email: str) -> bool:
     return self._dao.exists({"id": person_id}, email=email)
 ```
 
+---
+
 ## QuerySet
 
 A QuerySet represents a collection of objects from your database that can be
@@ -212,6 +214,8 @@ Out[3]: 2
 !!!note
     These lookups have database-specific implementations. Refer to your chosen
     adapter's documentation for supported filtering criteria.
+
+---
 
 ## Complex queries with Q objects
 

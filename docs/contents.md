@@ -64,7 +64,7 @@ specific area.
 - [CQRS Pathway](./guides/pathways/cqrs.md) -- Separate reads from writes with commands and projections.
 - [Event Sourcing Pathway](./guides/pathways/event-sourcing.md) -- Derive state from event replay.
 
-### Compose a Domain
+### Set Up the Domain
 
 - [The Domain Object](./guides/compose-a-domain/index.md) -- The composition root that manages elements, configuration, and adapters.
 - [Register Elements](./guides/compose-a-domain/register-elements.md) -- How elements register themselves with the domain.
@@ -72,8 +72,9 @@ specific area.
 - [Activate the Domain](./guides/compose-a-domain/activate-domain.md) -- Bind the domain to a context for use.
 - [When to Compose](./guides/compose-a-domain/when-to-compose.md) -- Lifecycle and timing of domain composition.
 - [Element Decorators](./guides/compose-a-domain/element-decorators.md) -- Decorators that construct and register domain elements.
+- [Object Model](./guides/essentials/object-model.md) -- Common structure and traits shared by all domain elements.
 
-### Define Concepts
+### Define Domain Elements
 
 - [Defining Concepts](./guides/domain-definition/index.md) -- Foundational domain concepts using DDD tactical patterns.
 - [Aggregates](./guides/domain-definition/aggregates.md) -- Model domain concepts with unique identity.
@@ -91,8 +92,9 @@ specific area.
 - [Container Fields](./guides/domain-definition/fields/container-fields.md) -- Fields that hold and embed value objects.
 - [Association Fields](./guides/domain-definition/fields/association-fields.md) -- HasOne, HasMany, and Reference fields for relationships.
 - [Common Arguments](./guides/domain-definition/fields/arguments.md) -- Shared field arguments like `required`, `default`, and `description`.
+- [Identity](./guides/essentials/identity.md) -- Identity generation strategies, types, and configuration.
 
-### Add Behavior
+### Add Rules and Behavior
 
 - [Domain Behavior](./guides/domain-behavior/index.md) -- Enforcing business rules through validations, invariants, and methods.
 - [Validations](./guides/domain-behavior/validations.md) -- Field-level validation using types, options, and custom validators.
@@ -101,7 +103,7 @@ specific area.
 - [Raising Events](./guides/domain-behavior/raising-events.md) -- Notify other parts of the system through domain events.
 - [Domain Services](./guides/domain-behavior/domain-services.md) -- Complex domain logic that spans multiple aggregates.
 
-### Application Layer
+### Change State
 
 - [Changing State](./guides/change-state/index.md) -- Mechanisms for state changes: services, commands, and handlers.
 - [Application Services](./guides/change-state/application-services.md) -- Bridge between the API layer and the domain model.
@@ -110,28 +112,24 @@ specific area.
 - [Repositories](./guides/change-state/repositories.md) -- Define custom repositories, the DAO layer, and database-specific persistence.
 - [Persist Aggregates](./guides/change-state/persist-aggregates.md) -- Save aggregates using a repository's `add` method.
 - [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) -- QuerySets, filtering, Q objects, bulk operations, and result navigation.
+- [Unit of Work](./guides/change-state/unit-of-work.md) -- Automatic transaction management for aggregate changes.
 
-### Reactive Layer
+### React to Changes
 
 - [Consuming State Changes](./guides/consume-state/index.md) -- React to state changes through handlers, projections, and subscribers.
 - [Event Handlers](./guides/consume-state/event-handlers.md) -- Consume events to sync state or trigger side effects.
 - [Process Managers](./guides/consume-state/process-managers.md) -- Coordinate multi-step processes across aggregates with stateful, event-sourced coordination.
 - [Projections](./guides/consume-state/projections.md) -- Create read-optimized views built from events.
 - [Subscribers](./guides/consume-state/subscribers.md) -- Consume messages from external brokers.
-
-### Essentials
-
-- [Object Model](./guides/essentials/object-model.md) -- Common structure and traits shared by all domain elements.
-- [Identity](./guides/essentials/identity.md) -- Identity generation strategies, types, and configuration.
 - [Stream Categories](./guides/essentials/stream-categories.md) -- How messages are organized and routed.
+- [Event Upcasting](./guides/event-upcasting.md) -- Transforming old event schemas to match the current version during replay.
+
+### Run in Production
+
 - [Configuration](./guides/essentials/configuration.md) -- Configure Protean through domain.toml and environment variables.
-- [Unit of Work](./guides/change-state/unit-of-work.md) -- Automatic transaction management for aggregate changes.
-
-### FastAPI Integration
-
 - [FastAPI Integration](./guides/fastapi/index.md) -- Domain context middleware, exception handlers, and best practices for using Protean with FastAPI.
 
-### Server
+**Server**
 
 - [Server Overview](./guides/server/index.md) -- Asynchronous message processing engine for events, commands, and external messages.
 - [Engine Architecture](./guides/server/engine.md) -- Core async processing, managing subscriptions and lifecycle.
@@ -142,7 +140,7 @@ specific area.
 - [Observability](./guides/server/observability.md) -- Real-time tracing, the Observatory monitoring server, SSE streaming, and Prometheus metrics.
 - [Running the Server](./guides/server/running.md) -- Start, configure, and operate the Protean server.
 
-### CLI
+**CLI**
 
 - [CLI Overview](./guides/cli/index.md) -- The `protean` command-line interface for scaffolding and management.
 - [Domain Discovery](./guides/cli/discovery.md) -- Use `--domain` to load and initialize domains.
@@ -153,8 +151,9 @@ specific area.
 - [`protean test`](./guides/cli/test.md) -- Run tests with category and technology options.
 - [`protean snapshot`](./guides/cli/snapshot.md) -- Create snapshots for event-sourced aggregates.
 - [`protean projection`](./guides/cli/projection.md) -- Rebuild projections by replaying events from the event store.
+- [Type Checking](./guides/type-checking.md) -- Static type checking with the Protean mypy plugin.
 
-### Testing
+### Test Your Application
 
 - [Testing Strategy](./guides/testing/index.md) -- Layered testing approach with fast in-memory adapters.
 - [Domain Model Tests](./guides/testing/domain-model-tests.md) -- Unit tests for aggregates, entities, value objects, and invariants.

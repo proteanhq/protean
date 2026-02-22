@@ -148,3 +148,17 @@ Other bounded contexts should be listen to interested events and construct
 read-only structures within themselves to take decisions later. A receiver
 should not query the current state from the sender because the sender's state
 could have already mutated.
+
+---
+
+## Next steps
+
+For practical details on defining and working with events in Protean, see the guides:
+
+- [Events](../../guides/domain-definition/events.md) — Defining events, event structure, metadata, versioning, and fact events.
+- [Raising Events](../../guides/domain-behavior/raising-events.md) — Raising events from aggregates and entities, dispatching, and event sourcing patterns.
+
+For design guidance:
+
+- [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.
+- [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) — Managing event schema changes over time.

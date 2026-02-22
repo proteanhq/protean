@@ -582,3 +582,14 @@ The principle: **events are permanent contracts. Evolve them the way you
 evolve APIs -- additive changes are safe, breaking changes require versioning.
 New fields get defaults. Old fields are never removed. Semantics never change.
 When in doubt, create a new event type.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Events](../core-concepts/domain-elements/events.md) — Event fundamentals, versioning, and immutability.
+
+    **Guides:**
+
+    - [Events](../guides/domain-definition/events.md) — Event structure, metadata, and versioning reference.

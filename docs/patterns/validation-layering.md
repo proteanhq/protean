@@ -552,3 +552,17 @@ The principle: **each validation layer has a specific scope. Field constraints
 catch data errors. Value objects enforce concept rules. Aggregate invariants
 guard business rules. Handlers check contextual and cross-aggregate conditions.
 Each layer trusts the layers below it and adds what they don't cover.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Aggregate invariants and consistency.
+    - [Value Objects](../core-concepts/domain-elements/value-objects.md) — Value-level validation through invariants.
+
+    **Guides:**
+
+    - [Validations](../guides/domain-behavior/validations.md) — Field restrictions, built-in validations, and custom validators.
+    - [Invariants](../guides/domain-behavior/invariants.md) — Pre and post invariants for business rules.
+    - [Value Objects](../guides/domain-definition/value-objects.md) — Embedding validation within value objects.

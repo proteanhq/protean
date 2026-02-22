@@ -95,6 +95,8 @@ low_stock_items = repository._dao.filter(
 <!-- FIXME Add note that one can use anything to query projections, and that
 repositories are essentially write-side artifacts. -->
 
+---
+
 ## Projectors
 
 Projectors are specialized event handlers responsible for maintaining projections by listening to domain events and updating projection data accordingly. They provide the bridge between your domain events and read models, ensuring projections stay synchronized with changes in your domain.
@@ -354,6 +356,8 @@ class OrderStatusProjector:
             repository.add(status)
 ```
 
+---
+
 ## Advanced Usage
 
 ### Cross-Aggregate Projections
@@ -513,3 +517,16 @@ def test_projector_handles_missing_projection():
         with pytest.raises(NotFoundError):
             projector.on_stock_adjusted(event)
 ```
+
+---
+
+!!! tip "See also"
+    **Concept overviews:**
+
+    - [Projections](../../core-concepts/domain-elements/projections.md) — Read-optimized views in CQRS.
+    - [Projectors](../../core-concepts/domain-elements/projectors.md) — Specialized handlers that maintain projections.
+
+    **Patterns:**
+
+    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so projectors can build reliable read models.
+    - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring projectors handle replayed events correctly.

@@ -670,3 +670,15 @@ have different identities. Use an entity or aggregate instead.
 The principle: **if a primitive value has format rules, composition, or
 operations, it's a value object. Extract it, validate it once, and let the
 type system enforce your domain rules.**
+
+---
+
+!!! tip "Related reading"
+    **Concepts:**
+
+    - [Value Objects](../core-concepts/domain-elements/value-objects.md) — Immutable descriptive objects without identity.
+
+    **Guides:**
+
+    - [Value Objects](../guides/domain-definition/value-objects.md) — Defining, embedding, and validating value objects.
+    - [Fields](../guides/domain-definition/fields/index.md) — Field types and configuration options.

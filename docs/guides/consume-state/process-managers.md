@@ -196,3 +196,12 @@ captures:
 These transition events are stored in the PM's own stream
 (`<pm_stream_category>-<correlation_value>`) and are used to reconstitute the
 PM's state when loading.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Process Managers](../../core-concepts/domain-elements/process-managers.md) — Coordinating multi-step business processes across aggregates.
+
+    **Patterns:**
+
+    - [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Patterns for orchestrating multi-step workflows.

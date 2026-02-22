@@ -64,36 +64,36 @@ or your domain has complex state transitions where history matters.
 
 <div class="grid cards" markdown>
 
--   **:material-shape-outline: Domain Model**
+-   **:material-shape-outline: Define Your Domain**
 
     ---
 
     Model your business concepts with aggregates, entities, value objects,
     and rich behavior.
 
-    [:material-arrow-right-box: Compose a Domain](./compose-a-domain/index.md) ·
-    [:material-arrow-right-box: Define Concepts](./domain-definition/index.md) ·
-    [:material-arrow-right-box: Add Behavior](./domain-behavior/index.md)
+    [:material-arrow-right-box: Set Up the Domain](./compose-a-domain/index.md) ·
+    [:material-arrow-right-box: Define Domain Elements](./domain-definition/index.md) ·
+    [:material-arrow-right-box: Add Rules and Behavior](./domain-behavior/index.md)
 
--   **:material-cog-outline: Application Layer**
+-   **:material-cog-outline: Change State**
 
     ---
 
     Process state changes through application services, commands, and
-    command handlers.
+    command handlers. Persist and retrieve aggregates.
 
     [:material-arrow-right-box: Change State](./change-state/index.md)
 
--   **:material-broadcast: Reactive Layer**
+-   **:material-broadcast: React to Changes**
 
     ---
 
-    Respond to state changes with event handlers, projections, and
-    subscribers.
+    Respond to state changes with event handlers, projections, process
+    managers, and subscribers.
 
-    [:material-arrow-right-box: Consume State](./consume-state/index.md)
+    [:material-arrow-right-box: React to Changes](./consume-state/index.md)
 
--   **:material-server-outline: Infrastructure**
+-   **:material-server-outline: Run in Production**
 
     ---
 
@@ -101,18 +101,10 @@ or your domain has complex state transitions where history matters.
 
     [:material-arrow-right-box: Configuration](./essentials/configuration.md) ·
     [:material-arrow-right-box: Server](./server/index.md) ·
-    [:material-arrow-right-box: CLI](./cli/index.md)
+    [:material-arrow-right-box: CLI](./cli/index.md) ·
+    [:material-arrow-right-box: FastAPI](./fastapi/index.md)
 
--   **:material-api: FastAPI Integration**
-
-    ---
-
-    Domain context middleware, exception handlers, and structured logging
-    for FastAPI applications.
-
-    [:material-arrow-right-box: FastAPI Integration](./fastapi/index.md)
-
--   **:material-test-tube: Testing**
+-   **:material-test-tube: Test Your Application**
 
     ---
 

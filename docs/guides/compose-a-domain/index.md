@@ -1,4 +1,4 @@
-# Compose a Domain
+# Set Up the Domain
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -137,3 +137,4 @@ domain = Domain(
 - [Element Decorators](./element-decorators.md) - Learn about using decorators to automatically register domain elements
 - [Activate Domain](./activate-domain.md) - Understand how to activate a domain and its components
 - [When to Compose a Domain](./when-to-compose.md) - Learn about the appropriate timing and scenarios for composing a domain
+- [Object Model](../essentials/object-model.md) - Understand the common structure and traits shared by all domain elements

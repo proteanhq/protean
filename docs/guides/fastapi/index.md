@@ -1,4 +1,4 @@
-# FastAPI integration
+# FastAPI Integration
 
 Protean provides first-class integration utilities for
 [FastAPI](https://fastapi.tiangolo.com/) applications. These live in the
