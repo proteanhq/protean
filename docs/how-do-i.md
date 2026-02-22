@@ -115,6 +115,8 @@ need by what you're trying to accomplish.
 | Manage database schemas                         | [`protean db`](./guides/cli/database.md) |
 | Create and manage snapshots                     | [`protean snapshot`](./guides/cli/snapshot.md) |
 | Rebuild projections from events                 | [`protean projection`](./guides/cli/projection.md) |
+| Inspect events in the event store               | [`protean events`](./guides/cli/events.md) |
+| View the event history of an aggregate          | [`protean events history`](./guides/cli/events.md) |
 
 ## Evolve and Maintain
 

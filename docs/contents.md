@@ -152,6 +152,7 @@ specific area.
 - [`protean test`](./guides/cli/test.md) -- Run tests with category and technology options.
 - [`protean snapshot`](./guides/cli/snapshot.md) -- Create snapshots for event-sourced aggregates.
 - [`protean projection`](./guides/cli/projection.md) -- Rebuild projections by replaying events from the event store.
+- [`protean events`](./guides/cli/events.md) -- Inspect the event store: read streams, view stats, search events, and trace aggregate history.
 - [Type Checking](./guides/type-checking.md) -- Static type checking with the Protean mypy plugin.
 
 ### Test Your Application

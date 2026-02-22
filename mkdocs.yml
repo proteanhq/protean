@@ -208,6 +208,7 @@ nav:
         - guides/cli/test.md
         - guides/cli/snapshot.md
         - guides/cli/projection.md
+        - guides/cli/events.md
       - guides/type-checking.md
 
     - Test Your Application:

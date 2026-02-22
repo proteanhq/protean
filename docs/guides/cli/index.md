@@ -18,6 +18,10 @@ load the domain.
 | [`protean db setup-outbox`](database.md)| Create only outbox tables          |
 | [`protean snapshot create`](snapshot.md)| Create snapshots for ES aggregates |
 | [`protean projection rebuild`](projection.md) | Rebuild projections from events |
+| [`protean events read`](events.md)     | Read and display events from a stream |
+| [`protean events stats`](events.md)    | Show stream statistics across the domain |
+| [`protean events search`](events.md)   | Search for events by type |
+| [`protean events history`](events.md)  | Display aggregate event timeline |
 
 !!! note
 
