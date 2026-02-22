@@ -49,6 +49,12 @@ Load and query aggregates using QuerySets, filters, Q objects, and lookup expres
 
 [Learn more about retrieving aggregates →](./retrieve-aggregates.md)
 
+### Temporal Queries
+
+Reconstitute event-sourced aggregates at a specific version or point in time, enabling time-travel over the full event history.
+
+[Learn more about temporal queries →](./temporal-queries.md)
+
 ### Unit of Work
 
 The Unit of Work pattern provides automatic transaction management, ensuring that all changes within a single operation are committed or rolled back together.

@@ -233,6 +233,28 @@ protean snapshot create --domain=my_domain
 
 See [CLI Snapshot Commands](../guides/cli/snapshot.md) for full documentation.
 
+## Temporal queries
+
+Because all state changes are stored as events, event-sourced aggregates can
+be reconstituted at any historical point. The repository's `get()` method
+accepts two optional keyword arguments for this purpose:
+
+- **`at_version=N`** -- Replay events up to version `N` (0-indexed). Snapshots
+  are leveraged when the snapshot version is at or before the requested version;
+  otherwise events are replayed from the beginning.
+- **`as_of=datetime`** -- Replay only events whose write timestamp is on or
+  before the given datetime. Snapshots are skipped entirely for timestamp-based
+  queries since a snapshot's creation time does not correspond to a specific
+  aggregate state timestamp.
+
+Temporal aggregates are marked as read-only: they have `_is_temporal = True`
+and `raise_()` will refuse to accept new events with an `IncorrectUsageError`.
+Temporal queries also bypass the Unit of Work's identity map to ensure
+historical accuracy.
+
+See [Temporal Queries](../guides/change-state/temporal-queries.md) for the
+practical guide with examples.
+
 ## Projection rebuilding
 
 Projections are read-optimized views maintained by projectors in response to

@@ -316,7 +316,12 @@ def run_around_tests(test_domain):
             cache.flush_all()
 
         if test_domain.event_store.store:
-            test_domain.event_store.store._data_reset()
+            try:
+                test_domain.event_store.store._data_reset()
+            finally:
+                # Always close event store connections to prevent pool exhaustion,
+                # even if _data_reset() fails
+                test_domain.event_store.store.close()
 
 
 @pytest.fixture(autouse=True)

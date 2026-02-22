@@ -64,6 +64,12 @@ class MessageDBStore(BaseEventStore):
         """
         return self.client.stream_identifiers(stream_category)
 
+    def close(self) -> None:
+        """Close the event store and release all pooled connections."""
+        if self._client is not None:
+            self._client.connection_pool.closeall()
+            self._client = None
+
     def _data_reset(self):
         """Utility function to empty messages, to be used only by test harness.
 

@@ -39,6 +39,7 @@ need by what you're trying to accomplish.
 | Process a command and update an aggregate       | [Command Handlers](./guides/change-state/command-handlers.md) | CQRS, ES |
 | Save an aggregate to the database               | [Persist Aggregates](./guides/change-state/persist-aggregates.md) | All |
 | Load an aggregate by ID or query                | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
+| Load an aggregate at a specific version or time | [Temporal Queries](./guides/change-state/temporal-queries.md) | ES |
 | Define a custom repository with domain queries  | [Repositories](./guides/change-state/repositories.md) | All |
 | Query aggregates with complex filters            | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Paginate query results                           | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |

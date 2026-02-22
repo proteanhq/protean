@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime
+from typing import Any, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -10,7 +12,6 @@ from protean.exceptions import (
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
-from typing import Any, TypeVar, cast
 
 logger = logging.getLogger(__name__)
 
@@ -65,29 +66,60 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             if own_current_uow:
                 own_current_uow.commit()
 
-    def get(self, identifier: str) -> Any:
+    def get(
+        self,
+        identifier: str,
+        *,
+        at_version: int | None = None,
+        as_of: datetime | None = None,
+    ) -> Any:
         """Retrieve a fully-formed Aggregate from a stream of Events.
 
+        By default, returns the aggregate at its latest version. Pass
+        ``at_version`` or ``as_of`` to perform a *temporal query* and
+        reconstitute the aggregate at a historical point.
+
+        Temporal aggregates are **read-only** — calling ``raise_()`` on them
+        will raise ``IncorrectUsageError``.
+
         If the aggregate was already loaded in the current UnitOfWork,
-        `get` will return the aggregate object instead of loading it again
-        from events.
+        ``get`` will return the cached aggregate object (identity-map
+        optimisation).  Temporal queries always bypass the identity map.
 
         Args:
-            identifier (Identifier): Aggregate identifier
+            identifier: Aggregate identifier.
+            at_version: Reconstitute to this exact version (0-indexed).
+                Version 0 is the state after the first event.
+            as_of: Reconstitute the aggregate as of this timestamp.
+                Only events written on or before ``as_of`` are applied.
 
         Raises:
-            ObjectNotFoundError: When no stream with identifier is found
+            IncorrectUsageError: When both ``at_version`` and ``as_of`` are
+                provided (they are mutually exclusive).
+            ObjectNotFoundError: When no stream with *identifier* is found,
+                or the requested version/time predates all events.
 
         Returns:
-            BaseEventSourcedAggregate: The fully-loaded aggregate object
+            The fully-loaded aggregate object.
         """
-        # Return aggregate if it was already loaded and is present in current
-        #   UnitOfWork's identity map.
-        if current_uow and identifier in current_uow._identity_map:
-            return cast(BaseAggregate, current_uow._identity_map[identifier])
+        if at_version is not None and as_of is not None:
+            raise IncorrectUsageError(
+                "Cannot specify both `at_version` and `as_of`; "
+                "they are mutually exclusive."
+            )
+
+        is_temporal = at_version is not None or as_of is not None
+
+        # Temporal queries always bypass the identity map.
+        if not is_temporal:
+            if current_uow and identifier in current_uow._identity_map:
+                return cast(BaseAggregate, current_uow._identity_map[identifier])
 
         aggregate = self._domain.event_store.store.load_aggregate(
-            self.meta_.part_of, identifier
+            self.meta_.part_of,
+            identifier,
+            at_version=at_version,
+            as_of=as_of,
         )
 
         if not aggregate:
@@ -97,6 +129,9 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             )
 
         aggregate._event_position = aggregate._version
+
+        if is_temporal:
+            aggregate._is_temporal = True
 
         return aggregate
 

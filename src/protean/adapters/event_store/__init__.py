@@ -59,6 +59,12 @@ class EventStore:
     def _initialize(self) -> None:
         logger.debug("Initializing Event Store...")
 
+        # Close any previously-initialized event store to release connections
+        # before creating a new one (prevents connection pool exhaustion on
+        # repeated domain.init() calls).
+        if self._event_store is not None:
+            self._event_store.close()
+
         # Initialize the Event Store
         #
         # An event store is always present by default. If not configured explicitly,

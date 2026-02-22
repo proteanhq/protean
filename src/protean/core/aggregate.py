@@ -48,6 +48,11 @@ class BaseAggregate(BaseEntity):
     _next_version: int = PrivateAttr(default=0)
     _event_position: int = PrivateAttr(default=-1)
 
+    # Temporal query marker — set when aggregate is loaded via
+    # ``repo.get(id, at_version=...)`` or ``repo.get(id, as_of=...)``.
+    # Temporal aggregates are read-only: ``raise_()`` will refuse new events.
+    _is_temporal: bool = PrivateAttr(default=False)
+
     # Event sourcing maps (ClassVar — populated by factory)
     _projections: ClassVar[dict] = defaultdict(set)
     _events_cls_map: ClassVar[dict] = {}
@@ -123,6 +128,13 @@ class BaseAggregate(BaseEntity):
         Enriches the event with metadata (identity, stream, sequence,
         checksum) and appends it to ``self._events``.
         """
+        # Guard: temporal aggregates are read-only
+        if self._is_temporal:
+            raise IncorrectUsageError(
+                "Cannot raise events on a temporally-loaded aggregate. "
+                "Temporal aggregates are read-only."
+            )
+
         # Verify that event is associated with this aggregate
         if event.meta_.part_of != self.__class__:
             raise ConfigurationError(
@@ -258,6 +270,7 @@ class BaseAggregate(BaseEntity):
             "_version": -1,
             "_next_version": 0,
             "_event_position": -1,
+            "_is_temporal": False,
             "_initialized": False,
             "_state": _EntityState(),
             "_root": None,
