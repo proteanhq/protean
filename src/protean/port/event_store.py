@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from collections import deque
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Type, Union
 
 from protean.core.aggregate import BaseAggregate
@@ -23,6 +24,15 @@ class BaseEventStore(metaclass=ABCMeta):
         self.name = name
         self.domain = domain
         self.conn_info = conn_info
+
+    def close(self) -> None:
+        """Close the event store and release all connections.
+
+        Subclasses that hold external resources (connection pools, sockets,
+        etc.) should override this to perform cleanup.  The default
+        implementation is a no-op so that adapters without external
+        resources (e.g. the in-memory store) work without changes.
+        """
 
     @abstractmethod
     def _write(
@@ -109,25 +119,45 @@ class BaseEventStore(metaclass=ABCMeta):
         return position
 
     def load_aggregate(
-        self, part_of: Type[BaseAggregate], identifier: str
+        self,
+        part_of: Type[BaseAggregate],
+        identifier: str,
+        *,
+        at_version: int | None = None,
+        as_of: datetime | None = None,
     ) -> Optional[BaseAggregate]:
         """Load an aggregate from underlying events.
 
-        The first event is used to initialize the aggregate, after which each event is
-        applied in sequence until the end.
-
-        A snapshot, if one exists, is loaded first and subsequent events are
-        applied on it. If there are more than SNAPSHOT_THRESHOLD events since snapshot,
-        a new snapshot is written to the store.
+        By default, reconstitutes the aggregate to its current (latest) state.
+        When ``at_version`` or ``as_of`` is provided, reconstitutes a historical
+        snapshot of the aggregate — a *temporal query*.
 
         Args:
-            part_of (Type[BaseEventSourcedAggregate]): The EventSourced Aggregate's class
-            identifier (Identifier): Unique aggregate identifier
+            part_of: The EventSourced Aggregate's class.
+            identifier: Unique aggregate identifier.
+            at_version: Reconstitute to this exact version (0-indexed).
+                Version 0 is the state after the first event.
+            as_of: Reconstitute the aggregate as of this timestamp.
+                Only events written on or before ``as_of`` are applied.
 
         Returns:
-            Optional[BaseEventSourcedAggregate]: Return fully-formed aggregate when events exist,
-                or None.
+            The fully-formed aggregate, or ``None`` when no events exist
+            (and no temporal param was given that would raise instead).
         """
+        if as_of is not None:
+            return self._load_aggregate_as_of(part_of, identifier, as_of)
+        if at_version is not None:
+            return self._load_aggregate_at_version(part_of, identifier, at_version)
+        return self._load_aggregate_current(part_of, identifier)
+
+    # ------------------------------------------------------------------
+    # Private helpers for load_aggregate
+    # ------------------------------------------------------------------
+
+    def _load_aggregate_current(
+        self, part_of: Type[BaseAggregate], identifier: str
+    ) -> Optional[BaseAggregate]:
+        """Load the aggregate at its latest version (existing behaviour)."""
         snapshot_message = self._read_last_message(
             f"{part_of.meta_.stream_category}:snapshot-{identifier}"
         )
@@ -191,6 +221,143 @@ class BaseEventStore(metaclass=ABCMeta):
                 "SNAPSHOT",
                 aggregate.to_dict(),
             )
+
+        return aggregate
+
+    def _load_aggregate_at_version(
+        self,
+        part_of: Type[BaseAggregate],
+        identifier: str,
+        at_version: int,
+    ) -> Optional[BaseAggregate]:
+        """Load an aggregate at a specific version.
+
+        Version is 0-indexed: version 0 = state after the first event.
+        Snapshots are leveraged when the snapshot version <= ``at_version``.
+        No new snapshots are created for temporal queries.
+        """
+        stream = f"{part_of.meta_.stream_category}-{identifier}"
+        snapshot_message = self._read_last_message(
+            f"{part_of.meta_.stream_category}:snapshot-{identifier}"
+        )
+
+        aggregate: Optional[BaseAggregate] = None
+
+        if snapshot_message:
+            snapshot_version: int = snapshot_message["data"].get("_version", -1)
+            if snapshot_version <= at_version:
+                # Snapshot is usable — initialize from it
+                aggregate = part_of(**snapshot_message["data"])
+                remaining = at_version - aggregate._version
+                if remaining > 0:
+                    event_stream = self._read(
+                        stream,
+                        position=aggregate._version + 1,
+                        no_of_messages=remaining,
+                    )
+                    for event_message in event_stream:
+                        event = Message.deserialize(event_message).to_domain_object()
+                        aggregate._apply(event)
+                # else: snapshot is exactly at the requested version
+
+        if aggregate is None:
+            # No usable snapshot — replay from the beginning
+            event_stream = self._read(
+                stream,
+                no_of_messages=at_version + 1,
+            )
+
+            if not event_stream:
+                return None
+
+            events = [
+                Message.deserialize(msg).to_domain_object() for msg in event_stream
+            ]
+            aggregate = part_of.from_events(events)
+
+        # Validate we reached the requested version
+        if aggregate._version < at_version:
+            raise ObjectNotFoundError(
+                f"`{part_of.__name__}` object with identifier {identifier} "
+                f"does not have version {at_version}. "
+                f"Latest version is {aggregate._version}."
+            )
+
+        return aggregate
+
+    @staticmethod
+    def _parse_event_time(raw_time: Any) -> datetime | None:
+        """Normalise a raw ``time`` value from an event message to ``datetime``.
+
+        Adapters may return the ``time`` field as either a ``datetime`` object
+        (e.g. MessageDB via psycopg2) or as an ISO-8601 string (e.g. the
+        memory adapter's ``to_dict()``).
+        """
+        if raw_time is None:
+            return None
+        if isinstance(raw_time, datetime):
+            return raw_time
+        if isinstance(raw_time, str):
+            return datetime.fromisoformat(raw_time)
+        return None
+
+    @staticmethod
+    def _make_comparable(
+        event_time: datetime, cutoff: datetime
+    ) -> tuple[datetime, datetime]:
+        """Ensure both datetimes are comparable (both naive or both aware).
+
+        MessageDB (PostgreSQL) returns timezone-naive timestamps stored as UTC,
+        while the memory adapter stores ``datetime.now(UTC)`` which is
+        timezone-aware.  When they differ, strip tzinfo from both sides so the
+        comparison proceeds — all event store timestamps are treated as UTC.
+        """
+        event_aware = event_time.tzinfo is not None
+        cutoff_aware = cutoff.tzinfo is not None
+
+        if event_aware == cutoff_aware:
+            return event_time, cutoff
+
+        # Mixed: strip tzinfo from both (both are in UTC by convention)
+        return event_time.replace(tzinfo=None), cutoff.replace(tzinfo=None)
+
+    def _load_aggregate_as_of(
+        self,
+        part_of: Type[BaseAggregate],
+        identifier: str,
+        as_of: datetime,
+    ) -> Optional[BaseAggregate]:
+        """Load an aggregate as of a specific timestamp.
+
+        Snapshots are skipped entirely — events are read from position 0 and
+        filtered by their write timestamp.  Only events with
+        ``time <= as_of`` are applied.
+        """
+        stream = f"{part_of.meta_.stream_category}-{identifier}"
+        event_stream = self._read(stream)
+
+        if not event_stream:
+            return None
+
+        # Filter events by write timestamp
+        filtered_messages = []
+        for msg in event_stream:
+            event_time = self._parse_event_time(msg.get("time"))
+            if event_time is not None:
+                et, co = self._make_comparable(event_time, as_of)
+                if et <= co:
+                    filtered_messages.append(msg)
+
+        if not filtered_messages:
+            raise ObjectNotFoundError(
+                f"`{part_of.__name__}` object with identifier {identifier} "
+                f"has no events on or before {as_of}."
+            )
+
+        events = [
+            Message.deserialize(msg).to_domain_object() for msg in filtered_messages
+        ]
+        aggregate = part_of.from_events(events)
 
         return aggregate
 

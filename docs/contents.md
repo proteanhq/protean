@@ -112,6 +112,7 @@ specific area.
 - [Repositories](./guides/change-state/repositories.md) -- Define custom repositories, the DAO layer, and database-specific persistence.
 - [Persist Aggregates](./guides/change-state/persist-aggregates.md) -- Save aggregates using a repository's `add` method.
 - [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) -- QuerySets, filtering, Q objects, bulk operations, and result navigation.
+- [Temporal Queries](./guides/change-state/temporal-queries.md) -- Reconstitute event-sourced aggregates at a specific version or point in time.
 - [Unit of Work](./guides/change-state/unit-of-work.md) -- Automatic transaction management for aggregate changes.
 
 ### React to Changes

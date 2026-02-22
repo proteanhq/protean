@@ -164,6 +164,7 @@ nav:
         - guides/change-state/repositories.md
         - guides/change-state/persist-aggregates.md
         - guides/change-state/retrieve-aggregates.md
+        - guides/change-state/temporal-queries.md
         - guides/change-state/unit-of-work.md
 
     - React to Changes:
