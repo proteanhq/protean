@@ -7,7 +7,7 @@ An aggregate can be retrieved with the repository's `get` method, if you know
 its identity:
 
 ```python hl_lines="16 20"
-{! docs_src/guides/change_state_001.py !}
+{! docs_src/guides/change-state/001.py !}
 ```
 
 1.  Identity is explicitly set to **1**.
@@ -50,7 +50,7 @@ For the purposes of this guide, assume that the following `Person` aggregates
 exist in the database:
 
 ```python hl_lines="7-11"
-{! docs_src/guides/change_state_005.py !}
+{! docs_src/guides/change-state/005.py !}
 ```
 
 ```shell

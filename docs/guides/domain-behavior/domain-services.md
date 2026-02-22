@@ -148,7 +148,7 @@ while `post` invariants check the state after the mutation.
 
 ## A full-blown example
 
-```python hl_lines="142-149"
+```python hl_lines="105-149"
 {! docs_src/guides/domain-behavior/006.py !}
 ```
 
@@ -168,3 +168,8 @@ transaction.
 all invariants are satisified, the Command Handler method invoking the Domain
 Service should only persist the `Order` aggregate. The `Inventory` aggregate
 will eventually be updated through the domain event `OrderConfirmed`.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Domain Services](../../concepts/building-blocks/domain-services.md) — When and why to use domain services for cross-aggregate business logic.

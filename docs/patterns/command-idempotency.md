@@ -719,8 +719,8 @@ error_ttl = 60
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Commands](../core-concepts/domain-elements/commands.md) — Commands as intent to change state.
-    - [Command Handlers](../core-concepts/domain-elements/command-handlers.md) — Processing commands and persisting state.
+    - [Commands](../concepts/building-blocks/commands.md) — Commands as intent to change state.
+    - [Command Handlers](../concepts/building-blocks/command-handlers.md) — Processing commands and persisting state.
 
     **Guides:**
 

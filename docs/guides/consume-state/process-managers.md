@@ -2,6 +2,12 @@
 
 !!! abstract "Applies to: CQRS · Event Sourcing"
 
+Some business processes span multiple aggregates and take multiple steps to
+complete — an order fulfillment flow that moves through payment, inventory
+reservation, and shipping, for example. Event handlers work for simple
+one-step reactions, but when you need to track where you are in a multi-step
+workflow and decide what to do next, you need a process manager.
+
 Process managers coordinate multi-step business processes that span multiple
 aggregates. They react to domain events from different streams, maintain their
 own state, and issue commands to drive other aggregates forward.
@@ -13,7 +19,7 @@ handler method uses the `@handle` decorator with additional parameters for
 lifecycle management and event correlation.
 
 ```python hl_lines="12-13 18 23 28"
-{! docs_src/guides/consume-state/process_managers/001.py !}
+{! docs_src/guides/consume-state/process-managers/001.py !}
 ```
 
 1. `start=True` marks this handler as the entry point — it creates a new PM
@@ -126,7 +132,7 @@ are silently skipped. No new transition is persisted and no handler runs.
 Process managers drive other aggregates forward by issuing commands:
 
 ```python
-{! docs_src/guides/consume-state/process_managers/003.py !}
+{! docs_src/guides/consume-state/process-managers/003.py !}
 ```
 
 Commands issued inside a handler are committed atomically as part of the same
@@ -166,7 +172,7 @@ Process managers support the same subscription configuration as
   `"projection"`
 - **`subscription_config`**: Dictionary of specific configuration options
 
-See [Server → Configuration](../server/configuration.md) for details.
+See [Server → Configuration](../../reference/server/configuration.md) for details.
 
 ## Error Handling
 
@@ -200,7 +206,7 @@ PM's state when loading.
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Process Managers](../../core-concepts/domain-elements/process-managers.md) — Coordinating multi-step business processes across aggregates.
+    **Concept overview:** [Process Managers](../../concepts/building-blocks/process-managers.md) — Coordinating multi-step business processes across aggregates.
 
     **Patterns:**
 

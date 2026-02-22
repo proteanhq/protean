@@ -1,136 +1,535 @@
-# Async Message Processing
+# Run the Server
 
-The Protean Server is an asynchronous message processing engine that handles
-events, commands, and external messages in your domain. It provides reliable,
-scalable message consumption with support for multiple subscription types,
-configuration profiles, and the transactional outbox pattern.
+This guide covers how to start, configure, and operate Protean's async
+processing server — the background process that runs event handlers, command
+handlers, and projectors.
 
-## Overview
+For the conceptual architecture behind the server, see
+[Async Processing](../../concepts/async-processing/index.md).
 
-When you run `protean server`, Protean starts the **Engine**, an async runtime
-that:
+## CLI Command
 
-- **Processes domain events** through event handlers
-- **Processes commands** through command handlers
-- **Builds projections** through projectors
-- **Consumes external messages** through broker subscribers
-- **Publishes outbox messages** to message brokers
-
-```mermaid
-graph TB
-    subgraph "Protean Engine"
-        SS[Stream<br/>Subscription]
-        BS[Broker<br/>Subscription]
-        OP[Outbox<br/>Processor]
-        BR[(Message Broker)]
-    end
-
-    subgraph "Handlers"
-        EH[Event Handlers]
-        CH[Command Handlers]
-        PR[Projectors]
-        SUB[Subscribers]
-    end
-
-    BR --> SS
-    BR --> BS
-    OP --> BR
-
-    SS --> EH
-    SS --> CH
-    SS --> PR
-    BS --> SUB
-```
-
-## Configuration to Use the Server
-
-Protean supports three processing flags that control how work is dispatched and handled:
-
-- `event_processing`: Controls how domain events are processed.
-- `command_processing`: Controls how commands are processed.
-- `message_processing`: Controls how standalone messages from brokers (such as Redis Streams or Pub/Sub) are handled.
-
-Set any of these to `"async"` in your domain configuration to process the respective tasks asynchronously using the server. When set to `"async"`, the Protean server will run the corresponding background workers to handle these tasks outside of the main request flow.
-
-### Example Configuration
-
-```toml
-# domain.toml
-event_processing = "async"
-command_processing = "async"
-
-[event_store]
-provider = "message_db"
-database_uri = "postgresql://message_store@localhost:5433/message_store"
-
-[brokers.default]
-provider = "redis"
-URI = "redis://localhost:6379/0"
-```
-
-With this configuration, events, commands, and broker messages are all processed asynchronously by the server, enabling scalable, out-of-band handling of all message types.
-
-## Quick Start
+Start the server using the `protean server` command:
 
 ```bash
-# Start the server with your domain
-protean server --domain=your_domain
-
-# Start with debug logging
-protean server --domain=your_domain --debug
-
-# Run in test mode (processes pending events/commands/messages and exits)
-protean server --domain=your_domain --test-mode
+protean server [OPTIONS]
 ```
 
-## Key Concepts
+### Options
 
-### Subscriptions
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--domain` | Path to domain module | `.` (current directory) |
+| `--test-mode` | Run in test mode | `False` |
+| `--debug` | Enable debug logging | `False` |
+| `--workers` | Number of worker processes | `1` |
+| `--help` | Show help message | |
 
-Subscriptions use the Observer pattern to connect your handlers (observers) to message sources (subjects or publishers). This allows your handlers to automatically receive and react to new messages as they arrive. Protean supports two
-subscription types:
+## Database Setup
 
-- **StreamSubscription**: Uses Redis Streams for production workloads with
-  consumer groups, retries, and dead letter queues
-- **EventStoreSubscription**: Reads directly from the event store, suitable for
-  projections and event replay
+Before starting the server, ensure your database tables are created:
 
-Learn more in [Subscription Types](subscription-types.md).
+```bash
+# Create all tables (aggregates, entities, projections, outbox)
+protean db setup --domain=my_domain
 
-### Configuration Profiles
+# Create only outbox tables (useful when migrating to stream subscriptions)
+protean db setup-outbox --domain=my_domain
 
-Profiles provide pre-configured settings optimized for common use cases:
+# Drop all tables (requires confirmation)
+protean db drop --domain=my_domain
+protean db drop --domain=my_domain --yes  # Skip confirmation
 
-| Profile | Subscription Type | Use Case |
-| ------- | ----------------- | -------- |
-| `production` | Stream | High throughput with reliability guarantees |
-| `fast` | Stream | Low-latency processing |
-| `batch` | Stream | High-volume batch processing |
-| `debug` | Stream | Development and debugging |
-| `projection` | Event Store | Building read models |
+# Delete all data, preserving schema (requires confirmation)
+protean db truncate --domain=my_domain
+protean db truncate --domain=my_domain --yes  # Skip confirmation
+```
 
-Learn more in [Configuration](configuration.md).
+See [Database Commands](../../reference/cli/data/database.md) for the full reference.
 
-### Outbox Pattern
+## Basic Usage
 
-The outbox pattern ensures reliable message delivery by:
+### Starting the Server
 
-1. Storing messages and business data in the database as part of a single transaction
-2. Publishing messages to the broker in a separate process
-3. Guaranteeing at-least-once delivery
+```bash
+# Start with domain in current directory
+protean server
 
-Learn more in [Outbox Pattern](outbox.md).
+# Start with specific domain path
+protean server --domain=src/my_domain
 
-## In This Section
+# Start with module path
+protean server --domain=my_package.my_domain
 
-- [Engine Architecture](engine.md) - How the engine manages subscriptions and
-  lifecycle
-- [Subscriptions](subscriptions.md) - How handlers connect to message sources
-- [Subscription Types](subscription-types.md) - StreamSubscription vs
-  EventStoreSubscription
-- [Configuration](configuration.md) - Configuring subscriptions with profiles
-  and options
-- [Outbox Pattern](outbox.md) - Reliable message publishing
-- [Observability](observability.md) - Real-time tracing and the Observatory
-  monitoring server
-- [Running the Server](running.md) - CLI options and deployment
+# Start with specific instance
+protean server --domain=my_domain:custom_domain
+```
+
+### Multiple Workers
+
+Run multiple Engine processes from a single command using `--workers`:
+
+```bash
+# Start 4 worker processes
+protean server --domain=my_domain --workers 4
+```
+
+Workers coordinate through Redis consumer groups (for stream message
+distribution) and database-level locking (for outbox processing). No IPC or
+shared memory is needed between workers.
+
+For the full multi-worker guide including architecture, coordination details,
+and deployment patterns, see [Multi-Worker Mode](../../reference/server/supervisor.md).
+
+### Domain Discovery
+
+The server discovers your domain in this order:
+
+1. **Environment variable**: `PROTEAN_DOMAIN` if set
+2. **--domain parameter**: Path or module specified
+3. **Current directory**: Looks for `domain.py` or `subdomain.py`
+
+Within a module, it looks for:
+
+1. Variable named `domain` or `subdomain`
+2. Any variable that is a `Domain` instance
+3. Raises error if multiple instances found
+
+### Debug Mode
+
+Enable verbose logging for troubleshooting:
+
+```bash
+protean server --domain=my_domain --debug
+```
+
+Debug mode logs:
+
+- Subscription registration details
+- Message processing events
+- Position updates
+- Configuration resolution
+
+### Test Mode
+
+Test mode processes available messages and exits, useful for integration tests:
+
+```bash
+protean server --domain=my_domain --test-mode
+```
+
+In test mode, the server:
+
+1. Starts all subscriptions and processors
+2. Runs multiple processing cycles
+3. Allows message chain propagation
+4. Shuts down after processing completes
+
+## Using Test Mode in Tests
+
+Test mode enables deterministic testing of async message flows:
+
+```python
+import pytest
+from protean.server import Engine
+
+def test_order_creates_inventory_reservation():
+    """Test that creating an order reserves inventory."""
+    # Arrange: Create order (raises events)
+    with domain.domain_context():
+        order = Order.create(
+            customer_id="123",
+            items=[OrderItem(product_id="ABC", quantity=5)]
+        )
+        domain.repository_for(Order).add(order)
+
+    # Act: Process events in test mode
+    engine = Engine(domain, test_mode=True)
+    engine.run()
+
+    # Assert: Verify inventory was reserved
+    with domain.domain_context():
+        reservation = domain.repository_for(Reservation).get_by_order(order.id)
+        assert reservation is not None
+        assert reservation.quantity == 5
+```
+
+### Testing Multi-Step Flows
+
+Test mode handles cascading events automatically:
+
+```python
+def test_order_fulfillment_flow():
+    """Test complete order fulfillment flow."""
+    # Order created -> Inventory reserved -> Payment processed -> Order shipped
+
+    with domain.domain_context():
+        order = Order.create(...)
+        domain.repository_for(Order).add(order)
+
+    # Process all cascading events
+    engine = Engine(domain, test_mode=True)
+    engine.run()
+
+    with domain.domain_context():
+        order = domain.repository_for(Order).get(order.id)
+        assert order.status == "shipped"
+```
+
+## Programmatic Usage
+
+You can also start the engine programmatically:
+
+```python
+from protean.server import Engine
+from my_domain import domain
+
+# Create and run the engine
+engine = Engine(domain)
+engine.run()  # Blocking call
+```
+
+### With Custom Options
+
+```python
+engine = Engine(
+    domain,
+    test_mode=False,
+    debug=True,
+)
+engine.run()
+```
+
+### Accessing Engine State
+
+```python
+engine = Engine(domain)
+
+# Check subscriptions
+print(f"Handler subscriptions: {len(engine._subscriptions)}")
+print(f"Broker subscriptions: {len(engine._broker_subscriptions)}")
+print(f"Outbox processors: {len(engine._outbox_processors)}")
+
+# Access subscription factory
+factory = engine.subscription_factory
+```
+
+## Signal Handling
+
+The server handles shutdown signals gracefully:
+
+| Signal | Behavior |
+|--------|----------|
+| `SIGINT` (Ctrl+C) | Graceful shutdown |
+| `SIGTERM` | Graceful shutdown |
+| `SIGHUP` | Graceful shutdown |
+
+During graceful shutdown:
+
+1. Stop accepting new messages
+2. Complete processing of current batch
+3. Persist subscription positions
+4. Clean up resources
+5. Exit with appropriate code
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Normal shutdown (signal or test mode completion) |
+| 1 | Error during processing |
+
+## Production Deployment
+
+### Process Management
+
+Use a process manager like systemd, supervisord, or Docker:
+
+```ini
+# /etc/systemd/system/protean-server.service
+[Unit]
+Description=Protean Message Server
+After=network.target
+
+[Service]
+Type=simple
+User=app
+WorkingDirectory=/app
+Environment=PROTEAN_ENV=production
+ExecStart=/app/.venv/bin/protean server --domain=my_domain
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Docker
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY . .
+RUN pip install poetry && poetry install
+
+ENV PROTEAN_ENV=production
+CMD ["poetry", "run", "protean", "server", "--domain=my_domain"]
+```
+
+### Kubernetes
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: protean-server
+spec:
+  replicas: 3  # Multiple workers for scaling
+  selector:
+    matchLabels:
+      app: protean-server
+  template:
+    metadata:
+      labels:
+        app: protean-server
+    spec:
+      containers:
+      - name: server
+        image: my-app:latest
+        command: ["protean", "server", "--domain=my_domain"]
+        env:
+        - name: PROTEAN_ENV
+          value: "production"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+```
+
+### Scaling Considerations
+
+**StreamSubscription** supports horizontal scaling:
+
+- Multiple server instances can run concurrently
+- Messages are distributed across consumers via Redis consumer groups
+- Each message is processed by exactly one consumer
+
+**EventStoreSubscription** has limited scaling:
+
+- Multiple instances will process the same messages
+- Use for projections where idempotency is guaranteed
+- Consider using StreamSubscription for scalable workloads
+
+### Health Checks
+
+Add health checks for production deployments:
+
+```python
+# health_check.py
+import sys
+from my_domain import domain
+
+def check_health():
+    try:
+        # Verify domain can activate
+        with domain.domain_context():
+            # Check broker connectivity
+            broker = domain.brokers.get("default")
+            if broker:
+                broker.ping()  # If supported
+
+            # Check event store connectivity
+            if domain.event_store:
+                domain.event_store.store.ping()  # If supported
+
+        return 0
+    except Exception as e:
+        print(f"Health check failed: {e}")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(check_health())
+```
+
+## Logging
+
+Protean ships with structured logging built on
+[structlog](https://www.structlog.org/). A single call to `configure_logging()`
+sets up environment-aware defaults so you get the right output format and log
+level without manual configuration.
+
+### Quick start
+
+```python
+from protean.utils.logging import configure_logging, get_logger
+
+configure_logging()  # Auto-detects environment
+
+logger = get_logger(__name__)
+logger.info("order_placed", order_id="ord-123", total=99.95)
+```
+
+### Environment-aware defaults
+
+`configure_logging()` reads `PROTEAN_ENV` (or `ENV` / `ENVIRONMENT`) to pick
+sensible defaults:
+
+| Environment   | Log level | Output format           |
+|---------------|-----------|-------------------------|
+| `development` | DEBUG     | Colored console         |
+| `production`  | INFO      | JSON                    |
+| `staging`     | INFO      | JSON                    |
+| `test`        | WARNING   | Colored console         |
+
+Override the level with `PROTEAN_LOG_LEVEL` env var or the `level` parameter:
+
+```python
+configure_logging(level="DEBUG")  # Force DEBUG regardless of environment
+```
+
+Force a specific output format with the `format` parameter:
+
+```python
+configure_logging(format="json")     # JSON even in development
+configure_logging(format="console")  # Colored console even in production
+```
+
+### Log levels
+
+| Level | What's logged |
+|-------|---------------|
+| ERROR | Exceptions, failed processing |
+| WARNING | Retries, DLQ moves, deprecation warnings |
+| INFO | Startup, shutdown, batch summaries |
+| DEBUG | Message details, position updates, config resolution |
+
+### Rotating file handlers
+
+For non-containerized deployments, enable rotating file handlers by passing
+`log_dir`:
+
+```python
+configure_logging(
+    log_dir="logs",
+    log_file_prefix="myapp",  # Creates myapp.log and myapp_error.log
+    max_bytes=10 * 1024 * 1024,  # 10 MB per file
+    backup_count=5,
+)
+```
+
+Containerized deployments typically log to stdout only (the default).
+
+### Context variables
+
+Enrich logs with request-scoped context that propagates across `await`
+boundaries:
+
+```python
+from protean.utils.logging import add_context, clear_context
+
+add_context(request_id="abc-123", customer_id="cust-001")
+logger.info("processing")  # Includes request_id and customer_id
+
+clear_context()  # Clean up at request end
+```
+
+### Method call tracing
+
+The `@log_method_call` decorator logs entry, exit, and exceptions for handler
+methods at DEBUG level:
+
+```python
+from protean.utils.logging import log_method_call
+
+class PlaceOrderHandler:
+    @log_method_call
+    def handle(self, command):
+        ...
+```
+
+### Noise suppression
+
+`configure_logging()` automatically suppresses noisy third-party loggers
+(urllib3, sqlalchemy, redis, elasticsearch, asyncio) and sets Protean framework
+loggers to sensible levels. At DEBUG level, all Protean loggers are set to
+DEBUG; at INFO and above, framework internals are set to WARNING.
+
+### Test configuration
+
+Minimize logging noise in test runs:
+
+```python
+# conftest.py
+from protean.utils.logging import configure_for_testing
+
+configure_for_testing()  # WARNING level, removes file handlers
+```
+
+## Monitoring
+
+Protean includes a built-in monitoring server called the **Observatory** that
+provides real-time visibility into the message processing pipeline.
+
+### Protean Observatory
+
+Start the Observatory alongside your engine to get a dashboard, REST API,
+SSE stream, and Prometheus metrics endpoint:
+
+```python
+from protean.server.observatory import Observatory
+
+observatory = Observatory(domains=[domain])
+observatory.run(port=9000)
+```
+
+The Observatory exposes:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Live HTML dashboard |
+| `GET /stream` | SSE real-time trace events (filterable) |
+| `GET /api/health` | Broker health, version, memory, ops/sec |
+| `GET /api/outbox` | Outbox message counts per domain |
+| `GET /api/streams` | Stream lengths and consumer groups |
+| `GET /api/stats` | Combined throughput statistics |
+| `GET /metrics` | Prometheus text exposition format |
+
+### Key metrics
+
+Monitor these metrics in production (available at `/metrics`):
+
+| Metric | Description |
+|--------|-------------|
+| `protean_broker_up` | Broker health (1=up, 0=down) |
+| `protean_outbox_messages` | Outbox messages by domain and status |
+| `protean_stream_messages_total` | Total messages across all streams |
+| `protean_stream_pending` | In-flight (unacknowledged) messages |
+| `protean_broker_ops_per_sec` | Broker operations per second |
+| `protean_broker_memory_bytes` | Broker memory usage |
+
+### Prometheus scrape configuration
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: 'protean'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:9000']
+```
+
+For the full observability guide including trace events, SSE filtering, and
+zero-overhead design, see [Observability](../../reference/server/observability.md).
+
+## Next Steps
+
+- [Multi-Worker Mode](../../reference/server/supervisor.md) - Run multiple Engine processes for higher throughput
+- [Engine Architecture](../../concepts/async-processing/engine.md) - Understand engine internals
+- [Observability](../../reference/server/observability.md) - Tracing, Observatory server, and Prometheus metrics
+- [Configuration](../../reference/server/configuration.md) - Full configuration reference
+- [Subscription Types](../../reference/server/subscription-types.md) - Choose the right subscription
+- [Priority Lane Migrations](../../patterns/running-migration-with-priority-lanes.md) - Run large data migrations without blocking production

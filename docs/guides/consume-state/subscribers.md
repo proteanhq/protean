@@ -31,7 +31,7 @@ integration at the messaging level.
   **stream** (required).
 - In synchronous mode (`message_processing = "sync"`), subscribers are invoked
   immediately when a message is published. In asynchronous mode (the default),
-  they are processed by the [Protean Engine](../server/index.md).
+  they are processed by the [Protean Engine](../../concepts/async-processing/index.md).
 - Subscribers support error recovery through an optional `handle_error`
   classmethod.
 - Unlike event handlers, subscribers do not use the `@handle` decorator for
@@ -137,7 +137,7 @@ class AnalyticsSubscriber:
     configuration. If the specified broker has not been configured, Protean
     will raise a `ConfigurationError` during domain initialization.
 
-    See [Brokers](../../adapters/broker/index.md) for details on configuring
+    See [Brokers](../../reference/adapters/broker/index.md) for details on configuring
     brokers.
 
 ## Processing Modes
@@ -177,8 +177,8 @@ protean server
 The engine creates a broker subscription for each registered subscriber,
 managing consumer groups, message batching, and acknowledgment automatically.
 
-Learn more in [Server](../server/index.md) and
-[Subscriptions](../server/subscriptions.md).
+Learn more in [Server](../../concepts/async-processing/index.md) and
+[Subscriptions](../../concepts/async-processing/subscriptions.md).
 
 ## Error Handling
 
@@ -287,7 +287,7 @@ from different external systems -- a payment gateway and a shipping provider:
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Subscribers](../../core-concepts/domain-elements/subscribers.md) — Anti-corruption layer for external message consumption.
+    **Concept overview:** [Subscribers](../../concepts/building-blocks/subscribers.md) — Anti-corruption layer for external message consumption.
 
     **Patterns:**
 

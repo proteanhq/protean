@@ -388,9 +388,9 @@ Use these to validate structure decisions as the domain grows:
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Aggregates as conceptual wholes.
+    - [Aggregates](../concepts/building-blocks/aggregates.md) — Aggregates as conceptual wholes.
 
     **Guides:**
 
     - [Compose a Domain](../guides/compose-a-domain/index.md) — Registering and organizing domain elements.
-    - [CLI: new](../guides/cli/new.md) — Scaffolding a new project with domain-oriented structure.
+    - [CLI: new](../reference/cli/project/new.md) — Scaffolding a new project with domain-oriented structure.

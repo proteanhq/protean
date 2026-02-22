@@ -580,8 +580,8 @@ ensuring they stay synchronized on the real-world concepts they all model.
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Events](../core-concepts/domain-elements/events.md) — Events as the communication mechanism between domains.
-    - [Subscribers](../core-concepts/domain-elements/subscribers.md) — Consuming messages from external bounded contexts.
+    - [Events](../concepts/building-blocks/events.md) — Events as the communication mechanism between domains.
+    - [Subscribers](../concepts/building-blocks/subscribers.md) — Consuming messages from external bounded contexts.
 
     **Guides:**
 

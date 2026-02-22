@@ -20,5 +20,5 @@ up the context) before processing a request.
 
 
 ```python hl_lines="29 33 35 38"
-{! docs_src/guides/composing-a-domain/019.py !}
+{! docs_src/guides/compose-a-domain/019.py !}
 ```

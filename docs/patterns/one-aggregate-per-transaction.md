@@ -530,8 +530,8 @@ flows through events.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Transaction boundaries and consistency guarantees.
-    - [Event Handlers](../core-concepts/domain-elements/event-handlers.md) — Reacting to events for cross-aggregate coordination.
+    - [Aggregates](../concepts/building-blocks/aggregates.md) — Transaction boundaries and consistency guarantees.
+    - [Event Handlers](../concepts/building-blocks/event-handlers.md) — Reacting to events for cross-aggregate coordination.
 
     **Guides:**
 

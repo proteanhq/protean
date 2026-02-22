@@ -691,9 +691,9 @@ If your handler knows business rules, the rules are in the wrong place.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Command Handlers](../core-concepts/domain-elements/command-handlers.md) — Command handler responsibilities.
-    - [Application Services](../core-concepts/domain-elements/application-services.md) — Orchestrating use cases.
-    - [Domain Services](../core-concepts/domain-elements/domain-services.md) — Cross-aggregate business logic.
+    - [Command Handlers](../concepts/building-blocks/command-handlers.md) — Command handler responsibilities.
+    - [Application Services](../concepts/building-blocks/application-services.md) — Orchestrating use cases.
+    - [Domain Services](../concepts/building-blocks/domain-services.md) — Cross-aggregate business logic.
 
     **Guides:**
 

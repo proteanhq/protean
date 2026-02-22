@@ -34,7 +34,7 @@ rules.
 Let's model a `Post`:
 
 ```python hl_lines="4-5 8-18"
-{! docs_src/guides/getting-started/quickstart_001.py [ln:1-26] !}
+{! docs_src/guides/getting-started/quickstart.py [ln:1-26] !}
 ```
 
 A few things to note:
@@ -54,7 +54,7 @@ Events represent things that *happened*. They are named in past tense and
 are raised from within aggregates:
 
 ```python
-{! docs_src/guides/getting-started/quickstart_001.py [ln:30-34] !}
+{! docs_src/guides/getting-started/quickstart.py [ln:30-34] !}
 ```
 
 The `part_of` option connects the event to its aggregate. Events are immutable
@@ -66,7 +66,7 @@ Commands represent *intent to change state*. They are named as imperative
 verbs. A command handler receives the command and orchestrates the change:
 
 ```python
-{! docs_src/guides/getting-started/quickstart_001.py [ln:38-53] !}
+{! docs_src/guides/getting-started/quickstart.py [ln:38-53] !}
 ```
 
 The command handler follows a simple pattern: receive a command, create or
@@ -79,12 +79,12 @@ Event handlers process events after they occur — for side effects like
 sending notifications, syncing other aggregates, or logging:
 
 ```python
-{! docs_src/guides/getting-started/quickstart_001.py [ln:57-62] !}
+{! docs_src/guides/getting-started/quickstart.py [ln:57-62] !}
 ```
 
 Event handlers are decoupled from the aggregate that raised the event. In
 production, they run asynchronously via the
-[Protean server](../server/index.md).
+[Protean server](../../concepts/async-processing/index.md).
 
 ## Put It All Together
 
@@ -92,7 +92,7 @@ Initialize the domain and run the full cycle — create a post via a command,
 then publish it:
 
 ```python
-{! docs_src/guides/getting-started/quickstart_001.py [ln:65-89] !}
+{! docs_src/guides/getting-started/quickstart.py [ln:65-89] !}
 ```
 
 Run it:
@@ -138,14 +138,14 @@ sequenceDiagram
 
 All of this runs in-memory — no database, no message broker, no event store.
 When you're ready for production, swap in real adapters with
-[configuration](../essentials/configuration.md).
+[configuration](../../reference/configuration/index.md).
 
 ## Full Source
 
 Here is the complete example in a single file:
 
 ```python
-{! docs_src/guides/getting-started/quickstart_001.py !}
+{! docs_src/guides/getting-started/quickstart.py !}
 ```
 
 ## Next Steps
@@ -156,7 +156,7 @@ Here is the complete example in a single file:
   entities, value objects, and fields.
 - [Add Rules and Behavior](../domain-behavior/index.md) — add validations, invariants,
   and domain services.
-- [Configuration](../essentials/configuration.md) — connect real databases,
+- [Configuration](../../reference/configuration/index.md) — connect real databases,
   brokers, and event stores.
 
 <!-- test -->

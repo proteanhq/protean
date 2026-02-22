@@ -12,13 +12,13 @@ need by what you're trying to accomplish.
 | Create an immutable descriptive value (Money, Email, Address) | [Value Objects](./guides/domain-definition/value-objects.md) |
 | Choose between an entity and a value object     | [Deciding Between Elements](./guides/domain-definition/deciding-between-elements.md) |
 | Connect entities with relationships             | [Relationships](./guides/domain-definition/relationships.md) |
-| Add typed attributes to domain objects          | [Fields](./guides/domain-definition/fields/index.md) |
-| Choose between field definition styles          | [Defining Fields](./guides/domain-definition/fields/defining-fields.md) |
+| Add typed attributes to domain objects          | [Fields](./reference/fields/index.md) |
+| Choose between field definition styles          | [Defining Fields](./reference/fields/defining-fields.md) |
 | Define a domain event                           | [Events](./guides/domain-definition/events.md) |
-| Understand field arguments and options          | [Arguments](./guides/domain-definition/fields/arguments.md) |
-| Use simple scalar fields (String, Integer...)   | [Simple Fields](./guides/domain-definition/fields/simple-fields.md) |
-| Use container fields (List, Dict, Nested)       | [Container Fields](./guides/domain-definition/fields/container-fields.md) |
-| Use association fields (HasOne, HasMany, Reference) | [Association Fields](./guides/domain-definition/fields/association-fields.md) |
+| Understand field arguments and options          | [Arguments](./reference/fields/arguments.md) |
+| Use simple scalar fields (String, Integer...)   | [Simple Fields](./reference/fields/simple-fields.md) |
+| Use container fields (List, Dict, Nested)       | [Container Fields](./reference/fields/container-fields.md) |
+| Use association fields (HasOne, HasMany, Reference) | [Association Fields](./reference/fields/association-fields.md) |
 
 ## Add Business Rules
 
@@ -55,7 +55,7 @@ need by what you're trying to accomplish.
 | Coordinate a multi-step process across aggregates | [Process Managers](./guides/consume-state/process-managers.md) |
 | Correlate events to a running process           | [Process Managers](./guides/consume-state/process-managers.md) |
 | Build a read-optimized view from events         | [Projections](./guides/consume-state/projections.md) |
-| Rebuild a projection from historical events     | [`protean projection rebuild`](./guides/cli/projection.md) |
+| Rebuild a projection from historical events     | [`protean projection rebuild`](./reference/cli/data/projection.md) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
 
 ## Set Up and Configure
@@ -64,13 +64,13 @@ need by what you're trying to accomplish.
 |-------------------------------------------------|-------|
 | Register domain elements                        | [Register Elements](./guides/compose-a-domain/register-elements.md) |
 | Initialize and activate a domain                | [Initialize Domain](./guides/compose-a-domain/initialize-domain.md) |
-| Configure databases, brokers, and caches        | [Configuration](./guides/essentials/configuration.md) |
-| Understand identity and ID generation           | [Identity](./guides/essentials/identity.md) |
-| Understand stream categories                    | [Stream Categories](./guides/essentials/stream-categories.md) |
+| Configure databases, brokers, and caches        | [Configuration](./reference/configuration/index.md) |
+| Understand identity and ID generation           | [Identity](./reference/domain-elements/identity.md) |
+| Understand stream categories                    | [Stream Categories](./concepts/async-processing/stream-categories.md) |
 | Activate a domain for use                       | [Activate Domain](./guides/compose-a-domain/activate-domain.md) |
-| Understand element decorators                   | [Element Decorators](./guides/compose-a-domain/element-decorators.md) |
+| Understand element decorators                   | [Element Decorators](./reference/domain-elements/element-decorators.md) |
 | Decide when to compose vs. initialize           | [When to Compose](./guides/compose-a-domain/when-to-compose.md) |
-| Understand the object model and Meta options    | [Object Model](./guides/essentials/object-model.md) |
+| Understand the object model and Meta options    | [Object Model](./reference/domain-elements/object-model.md) |
 
 ## Integrate with FastAPI
 
@@ -85,52 +85,52 @@ need by what you're trying to accomplish.
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
-| Process events and commands asynchronously      | [Server](./guides/server/index.md) |
-| Understand subscriptions and event processing   | [Subscriptions](./guides/server/subscriptions.md) |
-| Use the outbox pattern for reliable messaging   | [Outbox](./guides/server/outbox.md) |
-| Set up structured logging                       | [Running the Server](./guides/server/running.md#logging) |
-| Add request-scoped context to logs              | [Running the Server](./guides/server/running.md#context-variables) |
-| Minimize logging noise in tests                 | [Running the Server](./guides/server/running.md#test-configuration) |
-| Monitor message flow in real time               | [Observability](./guides/server/observability.md) |
-| Expose Prometheus metrics for the message pipeline | [Observability](./guides/server/observability.md) |
-| Stream trace events via SSE                     | [Observability](./guides/server/observability.md) |
-| Run the async background server                 | [`protean server`](./guides/cli/server.md) |
-| Use the CLI for development and operations      | [CLI](./guides/cli/index.md) |
-| Understand the server engine architecture       | [Engine](./guides/server/engine.md) |
-| Learn about subscription types                  | [Subscription Types](./guides/server/subscription-types.md) |
-| Configure subscriptions                         | [Server Configuration](./guides/server/configuration.md) |
-| Run multiple workers with the supervisor        | [Supervisor](./guides/server/supervisor.md) |
-| Use priority lanes for event processing         | [Priority Lanes](./guides/priority-lanes.md) |
-| Run a bulk migration with priority lanes        | [Migration with Priority Lanes](./guides/running-migration-with-priority-lanes.md) |
+| Process events and commands asynchronously      | [Server](./concepts/async-processing/index.md) |
+| Understand subscriptions and event processing   | [Subscriptions](./concepts/async-processing/subscriptions.md) |
+| Use the outbox pattern for reliable messaging   | [Outbox](./concepts/async-processing/outbox.md) |
+| Set up structured logging                       | [Running the Server](./guides/server/index.md#logging) |
+| Add request-scoped context to logs              | [Running the Server](./guides/server/index.md#context-variables) |
+| Minimize logging noise in tests                 | [Running the Server](./guides/server/index.md#test-configuration) |
+| Monitor message flow in real time               | [Observability](./reference/server/observability.md) |
+| Expose Prometheus metrics for the message pipeline | [Observability](./reference/server/observability.md) |
+| Stream trace events via SSE                     | [Observability](./reference/server/observability.md) |
+| Run the async background server                 | [`protean server`](./reference/cli/runtime/server.md) |
+| Use the CLI for development and operations      | [CLI](./reference/cli/index.md) |
+| Understand the server engine architecture       | [Engine](./concepts/async-processing/engine.md) |
+| Learn about subscription types                  | [Subscription Types](./reference/server/subscription-types.md) |
+| Configure subscriptions                         | [Server Configuration](./reference/server/configuration.md) |
+| Run multiple workers with the supervisor        | [Supervisor](./reference/server/supervisor.md) |
+| Use priority lanes for event processing         | [Priority Lanes](./concepts/async-processing/priority-lanes.md) |
+| Run a bulk migration with priority lanes        | [Migration with Priority Lanes](./patterns/running-migration-with-priority-lanes.md) |
 
 ## Use the CLI
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
-| Scaffold a new Protean project                  | [`protean new`](./guides/cli/new.md) |
-| Understand domain and element discovery         | [`protean` discovery](./guides/cli/discovery.md) |
-| Open an interactive shell                       | [`protean shell`](./guides/cli/shell.md) |
-| Run the async background server                 | [`protean server`](./guides/cli/server.md) |
-| Run the observability dashboard                 | [`protean observatory`](./guides/cli/observatory.md) |
-| Manage database schemas                         | [`protean db`](./guides/cli/database.md) |
-| Create and manage snapshots                     | [`protean snapshot`](./guides/cli/snapshot.md) |
-| Rebuild projections from events                 | [`protean projection`](./guides/cli/projection.md) |
-| Inspect events in the event store               | [`protean events`](./guides/cli/events.md) |
-| View the event history of an aggregate          | [`protean events history`](./guides/cli/events.md) |
+| Scaffold a new Protean project                  | [`protean new`](./reference/cli/project/new.md) |
+| Understand domain and element discovery         | [`protean` discovery](./reference/cli/project/discovery.md) |
+| Open an interactive shell                       | [`protean shell`](./reference/cli/project/shell.md) |
+| Run the async background server                 | [`protean server`](./reference/cli/runtime/server.md) |
+| Run the observability dashboard                 | [`protean observatory`](./reference/cli/runtime/observatory.md) |
+| Manage database schemas                         | [`protean db`](./reference/cli/data/database.md) |
+| Create and manage snapshots                     | [`protean snapshot`](./reference/cli/data/snapshot.md) |
+| Rebuild projections from events                 | [`protean projection`](./reference/cli/data/projection.md) |
+| Inspect events in the event store               | [`protean events`](./reference/cli/data/events.md) |
+| View the event history of an aggregate          | [`protean events history`](./reference/cli/data/events.md) |
 
 ## Evolve and Maintain
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
-| Transform old event schemas during replay       | [Event Upcasting](./guides/event-upcasting.md) |
-| Add type checking to my domain code             | [Type Checking](./guides/type-checking.md) |
+| Transform old event schemas during replay       | [Event Upcasting](./guides/consume-state/event-upcasting.md) |
+| Add type checking to my domain code             | [Type Checking](./reference/type-checking/index.md) |
 
 ## Organize My Project
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
 | Structure my project folders by domain concept  | [Organize by Domain Concept](./patterns/organize-by-domain-concept.md) |
-| Scaffold a new project with the right structure | [`protean new`](./guides/cli/new.md) |
+| Scaffold a new project with the right structure | [`protean new`](./reference/cli/project/new.md) |
 
 ## Choose an Architecture
 
@@ -140,7 +140,7 @@ need by what you're trying to accomplish.
 | Use pure DDD with application services          | [DDD Pathway](./guides/pathways/ddd.md) |
 | Separate reads and writes with CQRS             | [CQRS Pathway](./guides/pathways/cqrs.md) |
 | Use event sourcing for full audit trails        | [Event Sourcing Pathway](./guides/pathways/event-sourcing.md) |
-| Decide between CQRS and Event Sourcing          | [Architecture Decision](./core-concepts/architecture-decision.md) |
+| Decide between CQRS and Event Sourcing          | [Architecture Decision](./concepts/architecture/architecture-decision.md) |
 
 ## Test My Code
 
@@ -157,17 +157,17 @@ need by what you're trying to accomplish.
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
-| Use PostgreSQL                                  | [PostgreSQL Adapter](./adapters/database/postgresql.md) |
-| Use Elasticsearch                               | [Elasticsearch Adapter](./adapters/database/elasticsearch.md) |
-| Use Redis as a message broker                   | [Redis Broker](./adapters/broker/redis.md) |
-| Use Redis as a cache                            | [Redis Cache](./adapters/cache/redis.md) |
-| Use Message DB as an event store                | [Message DB](./adapters/eventstore/message-db.md) |
-| Build a custom broker adapter                   | [Custom Brokers](./adapters/broker/custom-brokers.md) |
+| Use PostgreSQL                                  | [PostgreSQL Adapter](./reference/adapters/database/postgresql.md) |
+| Use Elasticsearch                               | [Elasticsearch Adapter](./reference/adapters/database/elasticsearch.md) |
+| Use Redis as a message broker                   | [Redis Broker](./reference/adapters/broker/redis.md) |
+| Use Redis as a cache                            | [Redis Cache](./reference/adapters/cache/redis.md) |
+| Use Message DB as an event store                | [Message DB](./reference/adapters/eventstore/message-db.md) |
+| Build a custom broker adapter                   | [Custom Brokers](./reference/adapters/broker/custom-brokers.md) |
 
 ## Understand Internals
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
-| Understand how the field system works           | [Field System](./internals/field-system.md) |
-| Learn why three field definition styles exist   | [Field System](./internals/field-system.md) |
-| Understand how the query system works internally | [Query System](./internals/query-system.md) |
+| Understand how the field system works           | [Field System](./concepts/internals/field-system.md) |
+| Learn why three field definition styles exist   | [Field System](./concepts/internals/field-system.md) |
+| Understand how the query system works internally | [Query System](./concepts/internals/query-system.md) |

@@ -32,7 +32,7 @@ We have added:
 - **`choices=Genre`** on the `genre` field restricts values to a Python `Enum`.
 
 For the complete list of field types and options, see the
-[Fields reference](../../domain-definition/fields/index.md).
+[Fields reference](../../../reference/fields/index.md).
 
 ### Constraining with Choices
 
@@ -52,7 +52,7 @@ aggregates never enter your domain.
 A `Float` stores only a number, but a price also has a currency. Let's
 create a `Money` value object to capture both. A value object is an
 immutable object defined by its attributes, with no identity of its own
-(see [Value Objects](../../../core-concepts/domain-elements/value-objects.md)
+(see [Value Objects](../../../concepts/building-blocks/value-objects.md)
 for more).
 
 ```python

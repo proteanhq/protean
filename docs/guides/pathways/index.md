@@ -23,7 +23,7 @@ one level carry forward to the next:
     Start with **DDD**. It's the simplest path and covers the majority of
     use cases. You can always evolve to CQRS or Event Sourcing later —
     Protean is designed to make that transition smooth. See the
-    [Architecture Decision](../../core-concepts/architecture-decision.md)
+    [Architecture Decision](../../concepts/architecture/architecture-decision.md)
     guide for a systematic framework.
 
 ## How These Pathways Work

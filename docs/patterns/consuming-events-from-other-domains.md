@@ -394,7 +394,7 @@ from outside.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Subscribers](../core-concepts/domain-elements/subscribers.md) — Anti-corruption layer at the domain boundary.
+    - [Subscribers](../concepts/building-blocks/subscribers.md) — Anti-corruption layer at the domain boundary.
 
     **Guides:**
 

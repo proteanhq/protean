@@ -60,8 +60,8 @@ specific area.
 - [Initialize the Domain](./guides/compose-a-domain/initialize-domain.md) -- Call `init()` to wire everything together.
 - [Activate the Domain](./guides/compose-a-domain/activate-domain.md) -- Bind the domain to a context for use.
 - [When to Compose](./guides/compose-a-domain/when-to-compose.md) -- Lifecycle and timing of domain composition.
-- [Element Decorators](./guides/compose-a-domain/element-decorators.md) -- Decorators that construct and register domain elements.
-- [Object Model](./guides/essentials/object-model.md) -- Common structure and traits shared by all domain elements.
+- [Element Decorators](./reference/domain-elements/element-decorators.md) -- Decorators that construct and register domain elements.
+- [Object Model](./reference/domain-elements/object-model.md) -- Common structure and traits shared by all domain elements.
 
 ### Define Domain Elements
 
@@ -75,13 +75,13 @@ specific area.
 
 **Fields**
 
-- [Fields Overview](./guides/domain-definition/fields/index.md) -- Field types, attributes, options, and functionalities.
-- [Defining Fields](./guides/domain-definition/fields/defining-fields.md) -- Three styles for declaring fields: annotation, assignment, and raw Pydantic.
-- [Simple Fields](./guides/domain-definition/fields/simple-fields.md) -- String, Text, Integer, Float, Boolean, and other primitives.
-- [Container Fields](./guides/domain-definition/fields/container-fields.md) -- Fields that hold and embed value objects.
-- [Association Fields](./guides/domain-definition/fields/association-fields.md) -- HasOne, HasMany, and Reference fields for relationships.
-- [Common Arguments](./guides/domain-definition/fields/arguments.md) -- Shared field arguments like `required`, `default`, and `description`.
-- [Identity](./guides/essentials/identity.md) -- Identity generation strategies, types, and configuration.
+- [Fields Overview](./reference/fields/index.md) -- Field types, attributes, options, and functionalities.
+- [Defining Fields](./reference/fields/defining-fields.md) -- Three styles for declaring fields: annotation, assignment, and raw Pydantic.
+- [Simple Fields](./reference/fields/simple-fields.md) -- String, Text, Integer, Float, Boolean, and other primitives.
+- [Container Fields](./reference/fields/container-fields.md) -- Fields that hold and embed value objects.
+- [Association Fields](./reference/fields/association-fields.md) -- HasOne, HasMany, and Reference fields for relationships.
+- [Common Arguments](./reference/fields/arguments.md) -- Shared field arguments like `required`, `default`, and `description`.
+- [Identity](./reference/domain-elements/identity.md) -- Identity generation strategies, types, and configuration.
 
 ### Add Rules and Behavior
 
@@ -111,38 +111,38 @@ specific area.
 - [Process Managers](./guides/consume-state/process-managers.md) -- Coordinate multi-step processes across aggregates with stateful, event-sourced coordination.
 - [Projections](./guides/consume-state/projections.md) -- Create read-optimized views built from events.
 - [Subscribers](./guides/consume-state/subscribers.md) -- Consume messages from external brokers.
-- [Stream Categories](./guides/essentials/stream-categories.md) -- How messages are organized and routed.
-- [Event Upcasting](./guides/event-upcasting.md) -- Transforming old event schemas to match the current version during replay.
+- [Stream Categories](./concepts/async-processing/stream-categories.md) -- How messages are organized and routed.
+- [Event Upcasting](./guides/consume-state/event-upcasting.md) -- Transforming old event schemas to match the current version during replay.
 
 ### Run in Production
 
-- [Configuration](./guides/essentials/configuration.md) -- Configure Protean through domain.toml and environment variables.
+- [Configuration](./reference/configuration/index.md) -- Configure Protean through domain.toml and environment variables.
 - [FastAPI Integration](./guides/fastapi/index.md) -- Domain context middleware, exception handlers, and best practices for using Protean with FastAPI.
 
 **Server**
 
-- [Server Overview](./guides/server/index.md) -- Asynchronous message processing engine for events, commands, and external messages.
-- [Engine Architecture](./guides/server/engine.md) -- Core async processing, managing subscriptions and lifecycle.
-- [Subscriptions](./guides/server/subscriptions.md) -- Connect handlers to message sources.
-- [Subscription Types](./guides/server/subscription-types.md) -- Stream and EventStore subscriptions for different use cases.
-- [Subscription Configuration](./guides/server/configuration.md) -- Flexible configuration with priority hierarchy.
-- [Outbox Pattern](./guides/server/outbox.md) -- Reliable message delivery via same-transaction storage.
-- [Observability](./guides/server/observability.md) -- Real-time tracing, the Observatory monitoring server, SSE streaming, and Prometheus metrics.
-- [Running the Server](./guides/server/running.md) -- Start, configure, and operate the Protean server.
+- [Server Overview](./concepts/async-processing/index.md) -- Asynchronous message processing engine for events, commands, and external messages.
+- [Engine Architecture](./concepts/async-processing/engine.md) -- Core async processing, managing subscriptions and lifecycle.
+- [Subscriptions](./concepts/async-processing/subscriptions.md) -- Connect handlers to message sources.
+- [Subscription Types](./reference/server/subscription-types.md) -- Stream and EventStore subscriptions for different use cases.
+- [Subscription Configuration](./reference/server/configuration.md) -- Flexible configuration with priority hierarchy.
+- [Outbox Pattern](./concepts/async-processing/outbox.md) -- Reliable message delivery via same-transaction storage.
+- [Observability](./reference/server/observability.md) -- Real-time tracing, the Observatory monitoring server, SSE streaming, and Prometheus metrics.
+- [Running the Server](./guides/server/index.md) -- Start, configure, and operate the Protean server.
 
 **CLI**
 
-- [CLI Overview](./guides/cli/index.md) -- The `protean` command-line interface for scaffolding and management.
-- [Domain Discovery](./guides/cli/discovery.md) -- Use `--domain` to load and initialize domains.
-- [`protean new`](./guides/cli/new.md) -- Initialize new projects.
-- [`protean shell`](./guides/cli/shell.md) -- Interactive shell with the domain pre-loaded.
-- [`protean server`](./guides/cli/server.md) -- Run the async background message processing server.
-- [`protean docs`](./guides/cli/docs.md) -- Live preview server for documentation.
-- [`protean test`](./guides/cli/test.md) -- Run tests with category and technology options.
-- [`protean snapshot`](./guides/cli/snapshot.md) -- Create snapshots for event-sourced aggregates.
-- [`protean projection`](./guides/cli/projection.md) -- Rebuild projections by replaying events from the event store.
-- [`protean events`](./guides/cli/events.md) -- Inspect the event store: read streams, view stats, search events, and trace aggregate history.
-- [Type Checking](./guides/type-checking.md) -- Static type checking with the Protean mypy plugin.
+- [CLI Overview](./reference/cli/index.md) -- The `protean` command-line interface for scaffolding and management.
+- [Domain Discovery](./reference/cli/project/discovery.md) -- Use `--domain` to load and initialize domains.
+- [`protean new`](./reference/cli/project/new.md) -- Initialize new projects.
+- [`protean shell`](./reference/cli/project/shell.md) -- Interactive shell with the domain pre-loaded.
+- [`protean server`](./reference/cli/runtime/server.md) -- Run the async background message processing server.
+- [`protean docs`](./reference/cli/project/docs.md) -- Live preview server for documentation.
+- [`protean test`](./community/contributing/testing.md) -- Run Protean's framework test suite (development only).
+- [`protean snapshot`](./reference/cli/data/snapshot.md) -- Create snapshots for event-sourced aggregates.
+- [`protean projection`](./reference/cli/data/projection.md) -- Rebuild projections by replaying events from the event store.
+- [`protean events`](./reference/cli/data/events.md) -- Inspect the event store: read streams, view stats, search events, and trace aggregate history.
+- [Type Checking](./reference/type-checking/index.md) -- Static type checking with the Protean mypy plugin.
 
 ### Test Your Application
 
@@ -161,38 +161,38 @@ Architectural theory and the building blocks of domain-driven systems.
 
 ### Foundations
 
-- [Ubiquitous Language](./core-concepts/ubiquitous-language.md) -- The shared vocabulary between domain experts and developers.
-- [Bounded Contexts](./core-concepts/bounded-contexts.md) -- Boundaries within which a domain model is defined and applicable.
-- [Analysis Model](./core-concepts/analysis-model.md) -- Bridging the gap between domain understanding and software implementation.
-- [Identity](./core-concepts/identity.md) -- The property that distinguishes one domain object from all others.
-- [Invariants](./core-concepts/invariants.md) -- Business rules that must always hold true within a domain concept.
-- [Changing State](./core-concepts/changing-state.md) -- Principles governing how state transitions occur in DDD.
-- [Streams](./core-concepts/streams.md) -- The primary unit of organization in evented systems.
+- [Ubiquitous Language](./concepts/foundations/ubiquitous-language.md) -- The shared vocabulary between domain experts and developers.
+- [Bounded Contexts](./concepts/foundations/bounded-contexts.md) -- Boundaries within which a domain model is defined and applicable.
+- [Analysis Model](./concepts/foundations/analysis-model.md) -- Bridging the gap between domain understanding and software implementation.
+- [Identity](./concepts/foundations/identity.md) -- The property that distinguishes one domain object from all others.
+- [Invariants](./concepts/foundations/invariants.md) -- Business rules that must always hold true within a domain concept.
+- [Changing State](./concepts/foundations/changing-state.md) -- Principles governing how state transitions occur in DDD.
+- [Streams](./concepts/foundations/streams.md) -- The primary unit of organization in evented systems.
 
 ### Architecture Patterns
 
-- [Domain-Driven Design](./core-concepts/ddd.md) -- Tactical elements and their roles in the DDD pattern.
-- [CQRS](./core-concepts/cqrs.md) -- Separating read and write responsibilities.
-- [Event Sourcing](./core-concepts/event-sourcing.md) -- Deriving state from replaying event sequences.
-- [Choosing an Architecture](./core-concepts/architecture-decision.md) -- When to use CQRS vs Event Sourcing.
+- [Domain-Driven Design](./concepts/architecture/ddd.md) -- Tactical elements and their roles in the DDD pattern.
+- [CQRS](./concepts/architecture/cqrs.md) -- Separating read and write responsibilities.
+- [Event Sourcing](./concepts/architecture/event-sourcing.md) -- Deriving state from replaying event sequences.
+- [Choosing an Architecture](./concepts/architecture/architecture-decision.md) -- When to use CQRS vs Event Sourcing.
 
 ### Building Blocks
 
-- [Domain Elements Overview](./core-concepts/domain-elements/index.md) -- Tactical patterns organized into four layers.
-- [Aggregates](./core-concepts/domain-elements/aggregates.md) -- Clusters of objects treated as a single unit for data changes.
-- [Entities](./core-concepts/domain-elements/entities.md) -- Mutable objects with distinct identity.
-- [Value Objects](./core-concepts/domain-elements/value-objects.md) -- Immutable elements distinguished by properties.
-- [Domain Services](./core-concepts/domain-elements/domain-services.md) -- Domain logic that doesn't fit within aggregates.
-- [Events](./core-concepts/domain-elements/events.md) -- Immutable facts indicating state changes.
-- [Commands](./core-concepts/domain-elements/commands.md) -- Intentions to change system state.
-- [Command Handlers](./core-concepts/domain-elements/command-handlers.md) -- Process commands and execute domain logic.
-- [Event Handlers](./core-concepts/domain-elements/event-handlers.md) -- React to events with side effects and state synchronization.
-- [Application Services](./core-concepts/domain-elements/application-services.md) -- Coordinate use cases at the boundary between external world and domain.
-- [Repositories](./core-concepts/domain-elements/repositories.md) -- Collection-oriented persistence abstraction for aggregates.
-- [Subscribers](./core-concepts/domain-elements/subscribers.md) -- Consume messages from external brokers.
-- [Projections](./core-concepts/domain-elements/projections.md) -- Read-optimized denormalized views.
-- [Projectors](./core-concepts/domain-elements/projectors.md) -- Specialized event handlers that maintain projections.
-- [Process Managers](./core-concepts/domain-elements/process-managers.md) -- Stateful coordinators for multi-step processes across aggregates.
+- [Domain Elements Overview](./concepts/building-blocks/index.md) -- Tactical patterns organized into four layers.
+- [Aggregates](./concepts/building-blocks/aggregates.md) -- Clusters of objects treated as a single unit for data changes.
+- [Entities](./concepts/building-blocks/entities.md) -- Mutable objects with distinct identity.
+- [Value Objects](./concepts/building-blocks/value-objects.md) -- Immutable elements distinguished by properties.
+- [Domain Services](./concepts/building-blocks/domain-services.md) -- Domain logic that doesn't fit within aggregates.
+- [Events](./concepts/building-blocks/events.md) -- Immutable facts indicating state changes.
+- [Commands](./concepts/building-blocks/commands.md) -- Intentions to change system state.
+- [Command Handlers](./concepts/building-blocks/command-handlers.md) -- Process commands and execute domain logic.
+- [Event Handlers](./concepts/building-blocks/event-handlers.md) -- React to events with side effects and state synchronization.
+- [Application Services](./concepts/building-blocks/application-services.md) -- Coordinate use cases at the boundary between external world and domain.
+- [Repositories](./concepts/building-blocks/repositories.md) -- Collection-oriented persistence abstraction for aggregates.
+- [Subscribers](./concepts/building-blocks/subscribers.md) -- Consume messages from external brokers.
+- [Projections](./concepts/building-blocks/projections.md) -- Read-optimized denormalized views.
+- [Projectors](./concepts/building-blocks/projectors.md) -- Specialized event handlers that maintain projections.
+- [Process Managers](./concepts/building-blocks/process-managers.md) -- Stateful coordinators for multi-step processes across aggregates.
 
 ---
 
@@ -201,32 +201,32 @@ Architectural theory and the building blocks of domain-driven systems.
 Plug-in infrastructure that keeps your domain code free of technology
 dependencies.
 
-- [Adapters Overview](./adapters/index.md) -- Ports and Adapters (Hexagonal Architecture) in Protean.
-- [Adapter Internals](./adapters/internals.md) -- How database adapter components work together.
+- [Ports and Adapters](./concepts/ports-and-adapters/index.md) -- Hexagonal Architecture in Protean.
+- [Adapters Catalog](./reference/adapters/index.md) -- Available database, broker, cache, and event store adapters.
 
 ### Database
 
-- [Database Providers](./adapters/database/index.md) -- Overview of supported database adapters.
-- [PostgreSQL](./adapters/database/postgresql.md) -- SQLAlchemy-based adapter for PostgreSQL.
-- [Elasticsearch](./adapters/database/elasticsearch.md) -- Adapter for search and analytics.
+- [Database Providers](./reference/adapters/database/index.md) -- Overview of supported database adapters.
+- [PostgreSQL](./reference/adapters/database/postgresql.md) -- SQLAlchemy-based adapter for PostgreSQL.
+- [Elasticsearch](./reference/adapters/database/elasticsearch.md) -- Adapter for search and analytics.
 
 ### Brokers
 
-- [Broker Overview](./adapters/broker/index.md) -- Unified interface for message broker implementations.
-- [Inline Broker](./adapters/broker/inline.md) -- Synchronous in-memory broker for development and testing.
-- [Redis Streams](./adapters/broker/redis.md) -- Durable ordered messaging with consumer groups.
-- [Redis PubSub](./adapters/broker/redis-pubsub.md) -- Redis Lists-based queuing with consumer groups.
-- [Custom Brokers](./adapters/broker/custom-brokers.md) -- Build your own broker adapter.
+- [Broker Overview](./reference/adapters/broker/index.md) -- Unified interface for message broker implementations.
+- [Inline Broker](./reference/adapters/broker/inline.md) -- Synchronous in-memory broker for development and testing.
+- [Redis Streams](./reference/adapters/broker/redis.md) -- Durable ordered messaging with consumer groups.
+- [Redis PubSub](./reference/adapters/broker/redis-pubsub.md) -- Redis Lists-based queuing with consumer groups.
+- [Custom Brokers](./reference/adapters/broker/custom-brokers.md) -- Build your own broker adapter.
 
 ### Caches
 
-- [Cache Overview](./adapters/cache/index.md) -- Cache providers in Protean.
-- [Redis Cache](./adapters/cache/redis.md) -- Redis as a cache adapter.
+- [Cache Overview](./reference/adapters/cache/index.md) -- Cache providers in Protean.
+- [Redis Cache](./reference/adapters/cache/redis.md) -- Redis as a cache adapter.
 
 ### Event Stores
 
-- [Event Store Overview](./adapters/eventstore/index.md) -- Event store options in Protean.
-- [MessageDB](./adapters/eventstore/message-db.md) -- MessageDB event store adapter.
+- [Event Store Overview](./reference/adapters/eventstore/index.md) -- Event store options in Protean.
+- [MessageDB](./reference/adapters/eventstore/message-db.md) -- MessageDB event store adapter.
 
 ---
 
@@ -275,23 +275,23 @@ Protean supports but does not enforce.
 
 Design reasoning and internal architecture for contributors and advanced users.
 
-- [Internals Overview](./internals/index.md) -- What this section covers.
-- [Field System](./internals/field-system.md) -- How FieldSpec translates domain vocabulary to Pydantic, and why three definition styles are supported.
-- [Shadow Fields](./internals/shadow-fields.md) -- How ValueObject and Reference fields are flattened into database columns via shadow fields.
-- [Query System](./internals/query-system.md) -- How the Repository → DAO → QuerySet → Provider chain works, Q object expression trees, lookup resolution, and lazy evaluation.
+- [Internals Overview](./concepts/internals/index.md) -- What this section covers.
+- [Field System](./concepts/internals/field-system.md) -- How FieldSpec translates domain vocabulary to Pydantic, and why three definition styles are supported.
+- [Shadow Fields](./concepts/internals/shadow-fields.md) -- How ValueObject and Reference fields are flattened into database columns via shadow fields.
+- [Query System](./concepts/internals/query-system.md) -- How the Repository → DAO → QuerySet → Provider chain works, Q object expression trees, lookup resolution, and lazy evaluation.
 
 ---
 
 ## Migration
 
-- [Migrating to 0.15](./migration/v0-15.md) -- Upgrade guide for the Pydantic v2 foundation release. Covers breaking changes, field style migration, and new features.
+- [Migrating to 0.15](./reference/migration/v0-15.md) -- Upgrade guide for the Pydantic v2 foundation release. Covers breaking changes, field style migration, and new features.
 
 ---
 
 ## Reference
 
 - [Glossary](./glossary.md) -- Definitions of key terms.
-- [Philosophy & Design Principles](./core-concepts/philosophy.md) -- The convictions that guide Protean's design.
+- [Philosophy & Design Principles](./concepts/philosophy/index.md) -- The convictions that guide Protean's design.
 
 ---
 

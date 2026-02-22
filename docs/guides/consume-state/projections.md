@@ -3,12 +3,18 @@
 !!! abstract "Applies to: CQRS · Event Sourcing"
 
 
-Projections, a.k.a Read models, are representations of data optimized for querying
-and reading purposes. Projections are designed to provide data in a format that is
-easy and efficient to read, often tailored to the specific needs of a
+Why not just query the aggregate directly? You can — but aggregates are
+designed for consistency, not for read performance. Loading a full aggregate
+graph just to display a dashboard row is wasteful. Projections solve this by
+maintaining a separate, flattened view that is shaped for the query, not for
+the write model. They're the "read side" of CQRS.
+
+Projections (a.k.a. read models) are representations of data optimized for
+querying and reading purposes. They are designed to provide data in a format
+that is easy and efficient to read, often tailored to the specific needs of a
 particular view or user interface.
 
-Projections are typically populated in response to Domain Events raised in the
+Projections are populated in response to domain events raised in the
 domain model.
 
 ## Projections
@@ -17,8 +23,8 @@ domain model.
 
 Projections are defined with the `Domain.projection` decorator.
 
-```python hl_lines="15-19"
---8<-- "guides/consume-state/002.py:67:75"
+```python hl_lines="1-2"
+--8<-- "guides/consume-state/002.py:65:75"
 ```
 
 ### Projection Configuration Options
@@ -105,7 +111,7 @@ Projectors are specialized event handlers responsible for maintaining projection
 
 Projectors are defined using the `Domain.projector` decorator and must be associated with a specific projection:
 
-```python hl_lines="15-19"
+```python hl_lines="1-2"
 --8<-- "guides/consume-state/002.py:88:117"
 ```
 
@@ -132,15 +138,15 @@ class ProductInventoryProjector:
 
 You must specify either `aggregates` or `stream_categories` (but not both):
 
-- **`aggregates`**: A list of aggregate classes whose events this projector should handle. Protean automatically derives the [stream categories](../essentials/stream-categories.md) from the specified aggregates.
+- **`aggregates`**: A list of aggregate classes whose events this projector should handle. Protean automatically derives the [stream categories](../../concepts/async-processing/stream-categories.md) from the specified aggregates.
 
-- **`stream_categories`**: A list of [stream category](../essentials/stream-categories.md) names to listen to. This provides more fine-grained control over which event streams the projector monitors.
+- **`stream_categories`**: A list of [stream category](../../concepts/async-processing/stream-categories.md) names to listen to. This provides more fine-grained control over which event streams the projector monitors.
 
 ### Event Handling with `@on`
 
 Projectors use the `@on` decorator (an alias for `@handle`) to specify which events they respond to:
 
-```python hl_lines="15-19"
+```python hl_lines="5 21"
 --8<-- "guides/consume-state/002.py:88:117"
 ```
 
@@ -388,7 +394,7 @@ class CustomerOrderSummaryProjector:
 
 ### Stream Categories
 
-For more granular control, use [stream categories](../essentials/stream-categories.md) instead of aggregates:
+For more granular control, use [stream categories](../../concepts/async-processing/stream-categories.md) instead of aggregates:
 
 ```python
 @domain.projector(
@@ -411,7 +417,7 @@ class SystemMetricsProjector:
 
 Below is a comprehensive example showing projections and projectors working together to maintain multiple read models from a single aggregate:
 
-```python hl_lines="79-85 87-93 95-135 137-165"
+```python hl_lines="65-75 77-85 88-117 120-147"
 {! docs_src/guides/consume-state/002.py !}
 ```
 
@@ -523,8 +529,8 @@ def test_projector_handles_missing_projection():
 !!! tip "See also"
     **Concept overviews:**
 
-    - [Projections](../../core-concepts/domain-elements/projections.md) — Read-optimized views in CQRS.
-    - [Projectors](../../core-concepts/domain-elements/projectors.md) — Specialized handlers that maintain projections.
+    - [Projections](../../concepts/building-blocks/projections.md) — Read-optimized views in CQRS.
+    - [Projectors](../../concepts/building-blocks/projectors.md) — Specialized handlers that maintain projections.
 
     **Patterns:**
 

@@ -28,15 +28,15 @@ In the example above, `Post` is defined to as an Aggregate with two fields,
 `name` and `created_on`, and registered with the `publishing` domain.
 
 Read more about
-[`Domain.aggregate`](../compose-a-domain/element-decorators.md#domainaggregate)
-in [element decorators](../compose-a-domain/element-decorators.md).
+[`Domain.aggregate`](../../reference/domain-elements/element-decorators.md#domainaggregate)
+in [element decorators](../../reference/domain-elements/element-decorators.md).
 
 ## Fields
 
 Aggregates enclose a number of fields and associate behaviors with them to
 represent a domain concept.
 
-```python hl_lines="10-11"
+```python hl_lines="9-10"
 {! docs_src/guides/domain-definition/001.py !}
 ```
 
@@ -51,7 +51,7 @@ mandatory), and also fine-tune how it is persisted (like a database column
 name in `referenced_as`).
 
 The full list of available fields in Protean and their options is available in
-[Data Fields](../domain-definition/fields/index.md) section.
+[Data Fields](../../reference/fields/index.md) section.
 
 ## Initialization
 
@@ -72,7 +72,7 @@ This would output something like:
 ```
 
 You see an `id` attribute appear in the results. We discuss **identity**
-deeply in the [identity](../essentials/identity.md) section.
+deeply in the [identity](../../reference/domain-elements/identity.md) section.
 
 ---
 
@@ -227,7 +227,7 @@ the aggregate.
 
 ### `stream_category`
 
-The [stream category](../essentials/stream-categories.md) defines the logical grouping for all messages (events and commands) related to an aggregate. It serves as the foundation for message routing, subscription management, and event sourcing in Protean.
+The [stream category](../../concepts/async-processing/stream-categories.md) defines the logical grouping for all messages (events and commands) related to an aggregate. It serves as the foundation for message routing, subscription management, and event sourcing in Protean.
 
 By default, the stream category is automatically derived as the snake_case version of the aggregate's class name:
 
@@ -259,7 +259,7 @@ The stream category is used by:
 - **Subscriptions** to poll for new messages
 - **Brokers** to route messages to the correct destinations
 
-For a comprehensive understanding of stream categories, including message organization, handler subscriptions, cross-aggregate patterns, and best practices, see the [Stream Categories](../essentials/stream-categories.md) guide.
+For a comprehensive understanding of stream categories, including message organization, handler subscriptions, cross-aggregate patterns, and best practices, see the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
 ## Associations
 
@@ -340,7 +340,7 @@ The `Reference` field (`comment.post`) provides access to the full parent object
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Aggregates](../../core-concepts/domain-elements/aggregates.md) — What aggregates are, their core properties, and why they matter.
+    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md) — What aggregates are, their core properties, and why they matter.
 
     **Patterns:**
 

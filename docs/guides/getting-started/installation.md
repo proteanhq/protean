@@ -4,7 +4,7 @@
 ## Install Python
 
 !!! note
-    Protean supports Python 3.11 and newer, but it is recommended that that you
+    Protean supports Python 3.11 and newer, but it is recommended that you
     use the latest version of Python.
 
 [pyenv](https://github.com/pyenv/pyenv) allows you to install and manage
@@ -34,7 +34,7 @@ $ source .venv/bin/activate
 
 Your shell prompt will change to show the name of the activated environment.
 
-You can verify the Pyton version by typing ``python`` from your shell;
+You can verify the Python version by typing ``python`` from your shell;
 you should see something like
 ```shell
 $ python --version

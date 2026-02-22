@@ -35,15 +35,14 @@ theme:
     - content.code.select
     - content.tabs.link
     - content.tooltips
-    - navigation.expand
     - navigation.footer
     - navigation.indexes
+    - navigation.sections
+    - navigation.expand
     - navigation.instant
     - navigation.instant.prefetch
     - navigation.instant.progress
     - navigation.path
-    - navigation.prune
-    - navigation.sections
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.top
@@ -87,7 +86,7 @@ nav:
   - Protean:
     - index.md
     - start-here.md
-    - core-concepts/philosophy.md
+    - concepts/philosophy/index.md
     - contents.md
     - how-do-i.md
 
@@ -118,92 +117,48 @@ nav:
       - guides/pathways/ddd.md
       - guides/pathways/cqrs.md
       - guides/pathways/event-sourcing.md
-    - Define Your Domain:
-      - Set Up the Domain:
-        - guides/compose-a-domain/index.md
-        - guides/compose-a-domain/register-elements.md
-        - guides/compose-a-domain/initialize-domain.md
-        - guides/compose-a-domain/activate-domain.md
-        - guides/compose-a-domain/when-to-compose.md
-        - guides/compose-a-domain/element-decorators.md
-        - guides/essentials/object-model.md
-      - Define Domain Elements:
-        - guides/domain-definition/index.md
-        - Fields:
-          - guides/domain-definition/fields/index.md
-          - guides/domain-definition/fields/defining-fields.md
-          - guides/domain-definition/fields/simple-fields.md
-          - guides/domain-definition/fields/container-fields.md
-          - guides/domain-definition/fields/association-fields.md
-          - guides/domain-definition/fields/arguments.md
-        - guides/domain-definition/aggregates.md
-        - guides/domain-definition/entities.md
-        - guides/domain-definition/relationships.md
-        - guides/domain-definition/value-objects.md
-        - guides/domain-definition/deciding-between-elements.md
-        - guides/domain-definition/events.md
-        - guides/essentials/identity.md
-      - Add Rules and Behavior:
-        - guides/domain-behavior/index.md
-        - guides/domain-behavior/validations.md
-        - guides/domain-behavior/invariants.md
-        - guides/domain-behavior/aggregate-mutation.md
-        - guides/domain-behavior/raising-events.md
-        - guides/domain-behavior/domain-services.md
-
+    - Set Up the Domain:
+      - guides/compose-a-domain/index.md
+      - guides/compose-a-domain/register-elements.md
+      - guides/compose-a-domain/initialize-domain.md
+      - guides/compose-a-domain/activate-domain.md
+      - guides/compose-a-domain/when-to-compose.md
+    - Model Your Domain:
+      - guides/domain-definition/index.md
+      - guides/domain-definition/aggregates.md
+      - guides/domain-definition/entities.md
+      - guides/domain-definition/value-objects.md
+      - guides/domain-definition/relationships.md
+      - guides/domain-definition/events.md
+      - guides/domain-definition/deciding-between-elements.md
+    - Add Rules and Behavior:
+      - guides/domain-behavior/index.md
+      - guides/domain-behavior/validations.md
+      - guides/domain-behavior/invariants.md
+      - guides/domain-behavior/aggregate-mutation.md
+      - guides/domain-behavior/raising-events.md
+      - guides/domain-behavior/domain-services.md
     - Change State:
       - guides/change-state/index.md
-      - Process Requests:
-        - guides/change-state/application-services.md
-        - guides/change-state/commands.md
-        - guides/change-state/command-handlers.md
-      - Persist Data:
-        - guides/change-state/repositories.md
-        - guides/change-state/persist-aggregates.md
-        - guides/change-state/retrieve-aggregates.md
-        - guides/change-state/temporal-queries.md
-        - guides/change-state/unit-of-work.md
-
+      - guides/change-state/application-services.md
+      - guides/change-state/commands.md
+      - guides/change-state/command-handlers.md
+      - guides/change-state/repositories.md
+      - guides/change-state/persist-aggregates.md
+      - guides/change-state/retrieve-aggregates.md
+      - guides/change-state/temporal-queries.md
+      - guides/change-state/unit-of-work.md
     - React to Changes:
       - guides/consume-state/index.md
       - guides/consume-state/event-handlers.md
       - guides/consume-state/process-managers.md
       - guides/consume-state/projections.md
       - guides/consume-state/subscribers.md
-      - guides/essentials/stream-categories.md
-      - guides/event-upcasting.md
-
-    - Run in Production:
-      - guides/essentials/configuration.md
-      - FastAPI Integration:
-        - guides/fastapi/index.md
-      - Server:
-        - guides/server/index.md
-        - guides/server/engine.md
-        - guides/server/subscriptions.md
-        - guides/server/subscription-types.md
-        - guides/server/configuration.md
-        - guides/server/outbox.md
-        - guides/priority-lanes.md
-        - guides/running-migration-with-priority-lanes.md
-        - guides/server/supervisor.md
-        - guides/server/observability.md
-        - guides/server/running.md
-      - CLI:
-        - guides/cli/index.md
-        - guides/cli/discovery.md
-        - guides/cli/new.md
-        - guides/cli/shell.md
-        - guides/cli/server.md
-        - guides/cli/observatory.md
-        - guides/cli/database.md
-        - guides/cli/docs.md
-        - guides/cli/test.md
-        - guides/cli/snapshot.md
-        - guides/cli/projection.md
-        - guides/cli/events.md
-      - guides/type-checking.md
-
+      - guides/consume-state/event-upcasting.md
+    - Expose Your Domain:
+      - guides/fastapi/index.md
+    - Run the Server:
+      - guides/server/index.md
     - Test Your Application:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md
@@ -212,66 +167,124 @@ nav:
       - guides/testing/integration-tests.md
       - guides/testing/fixtures-and-patterns.md
 
-  # - Advanced:
-  #   - advanced/index.md
-  #   - advanced/multi-domain.md
-  #   - advanced/escape-hatches.md
-  #   - advanced/security.md
-  #   - advanced/performance.md
-  #   - advanced/monitoring.md
-  #   - advanced/integration.md
-  #   - advanced/troubleshooting.md
+  - Reference:
+    - reference/index.md
+    - Domain Elements:
+      - reference/domain-elements/index.md
+      - reference/domain-elements/element-decorators.md
+      - reference/domain-elements/object-model.md
+      - reference/domain-elements/identity.md
+    - Fields:
+      - reference/fields/index.md
+      - reference/fields/defining-fields.md
+      - reference/fields/simple-fields.md
+      - reference/fields/container-fields.md
+      - reference/fields/association-fields.md
+      - reference/fields/arguments.md
+    - Configuration:
+      - reference/configuration/index.md
+    - CLI:
+      - reference/cli/index.md
+      - Project:
+        - reference/cli/project/index.md
+        - reference/cli/project/new.md
+        - reference/cli/project/discovery.md
+        - reference/cli/project/shell.md
+        - reference/cli/project/docs.md
+      - Runtime:
+        - reference/cli/runtime/index.md
+        - reference/cli/runtime/server.md
+        - reference/cli/runtime/observatory.md
+      - Data:
+        - reference/cli/data/index.md
+        - reference/cli/data/database.md
+        - reference/cli/data/events.md
+        - reference/cli/data/snapshot.md
+        - reference/cli/data/projection.md
+    - Server:
+      - reference/server/index.md
+      - reference/server/subscription-types.md
+      - reference/server/configuration.md
+      - reference/server/supervisor.md
+      - reference/server/observability.md
+    - Adapters:
+      - reference/adapters/index.md
+      - Database:
+        - reference/adapters/database/index.md
+        - reference/adapters/database/postgresql.md
+        - reference/adapters/database/elasticsearch.md
+      - Brokers:
+        - reference/adapters/broker/index.md
+        - reference/adapters/broker/inline.md
+        - reference/adapters/broker/redis.md
+        - reference/adapters/broker/redis-pubsub.md
+        - reference/adapters/broker/custom-brokers.md
+      - Caches:
+        - reference/adapters/cache/index.md
+        - reference/adapters/cache/redis.md
+      - Event Stores:
+        - reference/adapters/eventstore/index.md
+        - reference/adapters/eventstore/message-db.md
+    - Type Checking:
+      - reference/type-checking/index.md
+    - Testing:
+      - reference/testing/index.md
+      - reference/testing/pytest-plugin.md
+    - Migration:
+      - reference/migration/index.md
+      - reference/migration/v0-15.md
 
-  - Core Concepts:
+  - Concepts:
+    - concepts/index.md
+    - Philosophy & Principles:
+      - concepts/philosophy/index.md
     - Foundations:
-      - core-concepts/ubiquitous-language.md
-      - core-concepts/bounded-contexts.md
-      - core-concepts/analysis-model.md
-      - core-concepts/identity.md
-      - core-concepts/invariants.md
-      - core-concepts/changing-state.md
-      - core-concepts/streams.md
+      - concepts/foundations/index.md
+      - concepts/foundations/ubiquitous-language.md
+      - concepts/foundations/bounded-contexts.md
+      - concepts/foundations/analysis-model.md
+      - concepts/foundations/identity.md
+      - concepts/foundations/invariants.md
+      - concepts/foundations/changing-state.md
+      - concepts/foundations/streams.md
     - Architecture Patterns:
-      - core-concepts/ddd.md
-      - core-concepts/cqrs.md
-      - core-concepts/event-sourcing.md
-      - core-concepts/architecture-decision.md
+      - concepts/architecture/index.md
+      - concepts/architecture/ddd.md
+      - concepts/architecture/cqrs.md
+      - concepts/architecture/event-sourcing.md
+      - concepts/architecture/architecture-decision.md
     - Building Blocks:
-      - core-concepts/domain-elements/index.md
-      - core-concepts/domain-elements/aggregates.md
-      - core-concepts/domain-elements/entities.md
-      - core-concepts/domain-elements/value-objects.md
-      - core-concepts/domain-elements/domain-services.md
-      - core-concepts/domain-elements/events.md
-      - core-concepts/domain-elements/commands.md
-      - core-concepts/domain-elements/command-handlers.md
-      - core-concepts/domain-elements/event-handlers.md
-      - core-concepts/domain-elements/application-services.md
-      - core-concepts/domain-elements/repositories.md
-      - core-concepts/domain-elements/subscribers.md
-      - core-concepts/domain-elements/projections.md
-      - core-concepts/domain-elements/projectors.md
-      - core-concepts/domain-elements/process-managers.md
-
-  - Adapters:
-    - adapters/index.md
-    - adapters/internals.md
-    - Database:
-      - adapters/database/index.md
-      - adapters/database/postgresql.md
-      - adapters/database/elasticsearch.md
-    - Brokers:
-      - adapters/broker/index.md
-      - adapters/broker/inline.md
-      - adapters/broker/redis.md
-      - adapters/broker/redis-pubsub.md
-      - adapters/broker/custom-brokers.md
-    - Caches:
-      - adapters/cache/index.md
-      - adapters/cache/redis.md
-    - Event Stores:
-      - adapters/eventstore/index.md
-      - adapters/eventstore/message-db.md
+      - concepts/building-blocks/index.md
+      - concepts/building-blocks/aggregates.md
+      - concepts/building-blocks/entities.md
+      - concepts/building-blocks/value-objects.md
+      - concepts/building-blocks/domain-services.md
+      - concepts/building-blocks/events.md
+      - concepts/building-blocks/commands.md
+      - concepts/building-blocks/command-handlers.md
+      - concepts/building-blocks/event-handlers.md
+      - concepts/building-blocks/application-services.md
+      - concepts/building-blocks/repositories.md
+      - concepts/building-blocks/subscribers.md
+      - concepts/building-blocks/projections.md
+      - concepts/building-blocks/projectors.md
+      - concepts/building-blocks/process-managers.md
+    - Async Processing:
+      - concepts/async-processing/index.md
+      - concepts/async-processing/engine.md
+      - concepts/async-processing/subscriptions.md
+      - concepts/async-processing/outbox.md
+      - concepts/async-processing/priority-lanes.md
+      - concepts/async-processing/stream-categories.md
+    - Ports & Adapters:
+      - concepts/ports-and-adapters/index.md
+    - Internals:
+      - concepts/internals/index.md
+      - concepts/internals/field-system.md
+      - concepts/internals/shadow-fields.md
+      - concepts/internals/query-system.md
+      - concepts/internals/event-sourcing.md
+      - concepts/internals/event-upcasting.md
 
   - Patterns & Recipes:
     - patterns/index.md
@@ -299,17 +312,7 @@ nav:
     - Testing & Infrastructure:
       - patterns/dual-mode-testing.md
       - patterns/setting-up-and-tearing-down-database-for-tests.md
-
-  - Internals:
-    - internals/index.md
-    - internals/field-system.md
-    - internals/shadow-fields.md
-    - internals/query-system.md
-    - internals/event-sourcing.md
-    - internals/event-upcasting.md
-
-  - Migration:
-    - migration/v0-15.md
+      - patterns/running-migration-with-priority-lanes.md
 
   - glossary.md
 

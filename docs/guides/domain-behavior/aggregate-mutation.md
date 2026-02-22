@@ -109,7 +109,7 @@ details on the `raise_()` + `@apply` integration.
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Aggregates](../../core-concepts/domain-elements/aggregates.md) — Aggregate consistency, invariants, and state management.
+    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md) — Aggregate consistency, invariants, and state management.
 
     **Patterns:**
 

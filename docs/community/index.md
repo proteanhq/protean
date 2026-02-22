@@ -33,7 +33,7 @@ the star button at the top right.
 
 ### Watch for releases
 
-You can **watch** Protean on GitHub for new releasese and updates.
+You can **watch** Protean on GitHub for new releases and updates.
 
 Click on the "watch" button at the top right in
 [Github](https://github.com/proteanhq/protean) and select "Releases only".

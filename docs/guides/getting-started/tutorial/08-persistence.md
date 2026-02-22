@@ -67,7 +67,7 @@ docker exec -it bookshelf-db psql -U postgres -d bookshelf -c "SELECT title FROM
 !!! tip "Production Credentials"
     For production, use environment variables instead of hardcoded
     credentials: `database_uri = "${DATABASE_URL}"`. See
-    [Configuration](../../essentials/configuration.md) for details on
+    [Configuration](../../../reference/configuration/index.md) for details on
     environment variables, multiple databases, and per-environment
     settings.
 

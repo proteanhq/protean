@@ -1,12 +1,11 @@
 # Start Here
 
-Welcome to Protean! Whether you're a seasoned developer or new to the
-framework, this guide will help you navigate the documentation and get started
-on the right foot.
+A guided reading order through Protean's documentation. Follow the sections
+below from top to bottom, or jump to the topic you need.
 
 ## Installation
 
-The first step is to get Protean up and running on your system. The
+Get Protean up and running. The
 [Installation guide](./guides/getting-started/installation.md) walks you
 through setting up Python, creating a virtual environment, and installing
 Protean.
@@ -33,8 +32,8 @@ application with a real database. It covers:
 ## Core concepts
 
 Get to know the driving principles and core ideas that shape this framework
-in [Philosophy](./core-concepts/philosophy.md). In
-[Domain Elements](./core-concepts/domain-elements/index.md), explore key DDD
+in [Philosophy](./concepts/philosophy/index.md). In
+[Domain Elements](./concepts/building-blocks/index.md), explore key DDD
 elements like Aggregates, Repositories, Events, and more to understand the
 core structures of Protean.
 
@@ -43,19 +42,10 @@ core structures of Protean.
 Everything you need to know to build ambitious applications with Protean is in
 the [Guides](./guides/index.md) section.
 
-Protean supports three architectural approaches, each building on the one
-before it:
-
-- **[Domain-Driven Design](./guides/pathways/ddd.md)** — Model your domain
-  with application services, repositories, and events. The simplest way to
-  start.
-- **[CQRS](./guides/pathways/cqrs.md)** — Separate reads from writes with
-  commands, command handlers, and projections.
-- **[Event Sourcing](./guides/pathways/event-sourcing.md)** — Derive state
-  from event replay for full audit trails and temporal queries.
-
-Not sure which to pick? Start with DDD — you can evolve later. See
-[Choose a Path](./guides/pathways/index.md) for guidance.
+Protean supports three architectural approaches — **DDD**, **CQRS**, and
+**Event Sourcing** — each building on the one before it. Start with DDD
+and evolve later. See [Choose a Path](./guides/pathways/index.md) to
+compare the options.
 
 Within the guides, you'll find everything from crafting rich
 [domain models](./guides/compose-a-domain/index.md) to adding
@@ -76,22 +66,22 @@ If you know what you want to do but aren't sure where to look, start here:
 
 Protean uses a simple configuration file (`domain.toml`) to wire in databases,
 brokers, caches, and other infrastructure without changing domain code. See
-[Configuration](./guides/essentials/configuration.md) for details.
+[Configuration](./reference/configuration/index.md) for details.
 
 For infrastructure adapters — PostgreSQL, Elasticsearch, Redis, MessageDB, and
-more — see [Adapters](./adapters/index.md).
+more — see [Adapters](./reference/adapters/index.md).
 
 ## Async processing
 
-The Protean [Server](./guides/server/index.md) is an async engine that
+The Protean [Server](./concepts/async-processing/index.md) is an async engine that
 processes events, commands, and external messages in the background. It
-supports the [outbox pattern](./guides/server/outbox.md) for reliable
-delivery and includes built-in [observability](./guides/server/observability.md).
+supports the [outbox pattern](./concepts/async-processing/outbox.md) for reliable
+delivery and includes built-in [observability](./reference/server/observability.md).
 
 ## CLI
 
 The `protean` command-line tool helps you scaffold projects, run the server,
-manage databases, and more. See [CLI](./guides/cli/index.md) for the full
+manage databases, and more. See [CLI](./reference/cli/index.md) for the full
 list of commands.
 
 ## Testing

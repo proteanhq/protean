@@ -161,3 +161,10 @@ ValidationError: {'_entity': ['Total should be sum of item prices']}
 !!!note
     Atomic Changes context manager can only be applied when updating or
     changing an already initialized element.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Invariants](../../concepts/foundations/invariants.md) — Why invariants are fundamental to DDD and how they keep your domain always valid.
+
+    **Patterns:** [Validation Layering](../../patterns/validation-layering.md) — Choosing the right layer for each kind of validation rule.

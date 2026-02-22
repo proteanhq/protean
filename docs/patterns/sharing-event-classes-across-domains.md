@@ -378,7 +378,7 @@ tests to verify compatibility without code dependencies.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Events](../core-concepts/domain-elements/events.md) — Event structure and cross-domain communication.
+    - [Events](../concepts/building-blocks/events.md) — Event structure and cross-domain communication.
 
     **Guides:**
 

@@ -49,7 +49,7 @@ When you need domain-named query methods -- such as finding all overdue
 orders or looking up customers by region -- you define a custom repository:
 
 ```python hl_lines="16"
-{! docs_src/guides/change_state_004.py !}
+{! docs_src/guides/change-state/004.py !}
 ```
 
 1. The repository is connected to `Person` aggregate through the `part_of`
@@ -76,8 +76,8 @@ Out[4]: <Person: Person object (id: 9ba6a890-e783-455e-9a6b-a0a16c0514df)>
 A repository can contain as many query methods as needed. Name them after
 the domain concepts they represent:
 
-```python hl_lines="16-28"
-{! docs_src/guides/change_state_009.py !}
+```python hl_lines="15-27"
+{! docs_src/guides/change-state/009.py !}
 ```
 
 1. The repository is connected to the `Person` aggregate through `part_of`.
@@ -176,3 +176,8 @@ You do **not** need a custom repository for:
     logic. If a retrieval method starts making decisions or enforcing rules,
     that logic belongs in the aggregate or a
     [domain service](../domain-behavior/domain-services.md).
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md) — The role of repositories in DDD and how Protean implements the pattern.

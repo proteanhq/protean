@@ -118,3 +118,8 @@ terminology.
   -- Manage database schema and test data lifecycles separately. Create schema
   once per session, reset data after every test, and clean up all infrastructure
   (providers, brokers, event stores) for fast, isolated integration tests.
+
+- **[Running Migration with Priority Lanes](running-migration-with-priority-lanes.md)**
+  -- Use priority lanes to backfill or migrate large volumes of events without
+  disrupting production traffic. Covers migration scripts, monitoring, and
+  troubleshooting.

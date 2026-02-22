@@ -181,5 +181,5 @@ async def place_order(payload: dict):
 - [Compose a Domain](../compose-a-domain/index.md) -- How the `Domain`
   object and domain contexts work
 - [Commands](../change-state/commands.md) -- Define commands for state changes
-- [Configuration](../essentials/configuration.md) -- Configure databases,
+- [Configuration](../../reference/configuration/index.md) -- Configure databases,
   brokers, and other adapters

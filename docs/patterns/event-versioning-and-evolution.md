@@ -271,7 +271,7 @@ know about historical schemas.
 **Trade-off:** Upcasting adds a processing layer and must be maintained as
 schemas evolve further. Each version needs an upcaster to the next.
 
-See the [Event Upcasting guide](../guides/event-upcasting.md) for a complete
+See the [Event Upcasting guide](../guides/consume-state/event-upcasting.md) for a complete
 walkthrough with real-world examples.
 
 ### Strategy 3: Tolerant Reader
@@ -588,7 +588,7 @@ When in doubt, create a new event type.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Events](../core-concepts/domain-elements/events.md) — Event fundamentals, versioning, and immutability.
+    - [Events](../concepts/building-blocks/events.md) — Event fundamentals, versioning, and immutability.
 
     **Guides:**
 

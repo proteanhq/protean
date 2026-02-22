@@ -419,20 +419,37 @@ a:visited {
   font-weight: 600;
 }
 
-/* Horizontal dividers between major nav sections (Diataxis-style) */
+/* Horizontal dividers between major nav sections */
 .md-nav__item--section + .md-nav__item--section {
   border-top: 2px solid rgba(13, 148, 136, 0.35);
   margin-top: 0.75rem;
   padding-top: 0.75rem;
 }
 
-[data-md-color-scheme="slate"] .md-nav__item--section + .md-nav__item--section {
+/* Separator when a section follows a non-section item (but not at the very top) */
+.md-nav__item:not(.md-nav__item--section) + .md-nav__item--section {
+  border-top: 2px solid rgba(13, 148, 136, 0.35);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+/* Suppress separator on section items at the lifted nav's top level
+   (these are the active tab's root — not inner content sections) */
+.md-nav--lifted > .md-nav__list > .md-nav__item--section {
+  border-top: none !important;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+[data-md-color-scheme="slate"] .md-nav__item--section + .md-nav__item--section,
+[data-md-color-scheme="slate"] .md-nav__item:not(.md-nav__item--section) + .md-nav__item--section {
   border-top-color: rgba(45, 212, 191, 0.3);
 }
 
-/* Section headers in left nav */
+/* Section headers in left nav — both label-style and container-style */
 .md-nav--primary .md-nav__item--section > label.md-nav__link,
-.md-nav--lifted > .md-nav__list > .md-nav__item > [for] {
+.md-nav--lifted .md-nav__item--section > label.md-nav__link,
+.md-nav--primary .md-nav__item--section > .md-nav__link.md-nav__container > a.md-nav__link {
   color: var(--md-primary-fg-color);
   font-weight: 700;
   font-size: 0.55rem;
@@ -442,14 +459,38 @@ a:visited {
 }
 
 [data-md-color-scheme="slate"] .md-nav--primary .md-nav__item--section > label.md-nav__link,
-[data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item > [for] {
+[data-md-color-scheme="slate"] .md-nav--lifted .md-nav__item--section > label.md-nav__link,
+[data-md-color-scheme="slate"] .md-nav--primary .md-nav__item--section > .md-nav__link.md-nav__container > a.md-nav__link {
   color: #5EEAD4;
 }
 
-.md-nav__title {
+/* Tab-level title in left sidebar (e.g. "Guides", "Reference", "Concepts")
+   Two variants: tabs WITH index.md use container>a, tabs WITHOUT use label */
+.md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link.md-nav__container > a.md-nav__link,
+.md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
+  font-weight: 800 !important;
+  font-size: 0.7rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
   color: var(--md-primary-fg-color) !important;
-  font-weight: 700;
-  font-size: 0.62rem;
+}
+
+/* Separator bar below the tab title (active tab only — both variants) */
+.md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link.md-nav__container,
+.md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 2px solid rgba(13, 148, 136, 0.35);
+}
+
+[data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link.md-nav__container > a.md-nav__link,
+[data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
+  color: #5EEAD4 !important;
+}
+
+[data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link.md-nav__container,
+[data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
+  border-bottom-color: rgba(45, 212, 191, 0.3);
 }
 
 /* --------------------------------------------------------------------------
@@ -480,9 +521,14 @@ a:visited {
    -------------------------------------------------------------------------- */
 .md-typeset .grid.cards > ul > li,
 .md-typeset .grid.cards > ol > li {
-  border: 1px solid var(--md-default-fg-color--lightest);
+  border: 1px solid #C8D1DC;
   border-radius: 0.5rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ol > li {
+  border-color: #2D3748;
 }
 
 .md-typeset .grid.cards > ul > li:hover,
@@ -622,10 +668,15 @@ a:visited {
 
 .md-typeset a.md-button:not(.md-button--primary),
 .md-typeset a.md-button:not(.md-button--primary):visited {
-  border-color: var(--md-default-fg-color--lightest);
+  border-color: #C8D1DC;
   color: var(--md-default-fg-color--light);
   font-weight: 500;
   transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+[data-md-color-scheme="slate"] .md-typeset a.md-button:not(.md-button--primary),
+[data-md-color-scheme="slate"] .md-typeset a.md-button:not(.md-button--primary):visited {
+  border-color: #4A5568;
 }
 
 .md-typeset a.md-button:not(.md-button--primary):hover {

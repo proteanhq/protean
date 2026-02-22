@@ -3,12 +3,18 @@
 !!! abstract "Applies to: CQRS · Event Sourcing"
 
 
-Commands represent actions or operations that change the state of the system.
-They encapsulate the intent to perform a specific task, often containing data necessary for the action, and are (typically) processed by command handlers to
-ensure business rules and invariants are upheld.
+Why not just call a method on an aggregate directly? In simple cases you can —
+that's the DDD path with [Application Services](./application-services.md).
+But as systems grow, you need to decouple *who requests a change* from
+*how the change is executed*. Commands give you that separation: they can be
+serialized, routed, processed asynchronously, retried, and audited — all
+without the caller knowing the details.
 
-In Protean, command objects are essentially DTOs (Data Transfer Objects) that
-carry intent and information necessary to perform a specific action.
+Commands represent actions or operations that change the state of the system.
+They encapsulate the intent to perform a specific task, containing the data
+necessary for the action, and are processed by
+[command handlers](./command-handlers.md) to ensure business rules and
+invariants are upheld.
 
 ## Key Facts
 
@@ -27,7 +33,7 @@ to eventually make the rest of the system consistent.
 A command is defined with the `Domain.command` decorator:
 
 ```python hl_lines="13-16"
-{! docs_src/guides/change_state_006.py !}
+{! docs_src/guides/change-state/006.py !}
 ```
 
 A command is always associated with an aggregate class with the `part_of`
@@ -197,7 +203,7 @@ To run the Protean server for processing asynchronous commands, use the CLI:
 protean server --domain path/to/domain.py
 ```
 
-See [CLI documentation](../cli/index.md) for more details about the server command and other available CLI options.
+See [CLI documentation](../../reference/cli/index.md) for more details about the server command and other available CLI options.
 
 The server continually polls the event store for new commands that have the `asynchronous` flag set to `True` in their metadata. When found, it dispatches them to the appropriate handlers, keeping track of processed commands to avoid duplicate processing.
 
@@ -288,4 +294,4 @@ This flexibility allows you to implement various architectural patterns like CQR
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Commands](../../core-concepts/domain-elements/commands.md) — Commands as immutable intent to change system state.
+    **Concept overview:** [Commands](../../concepts/building-blocks/commands.md) — Commands as immutable intent to change system state.

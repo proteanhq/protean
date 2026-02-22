@@ -28,7 +28,7 @@ for all other enclosed entities. Elements enclosed within an Aggregate are
 only accessible through the Aggregate itself - it acts as a consistency
 boundary and protects data sanctity within the cluster.
 
-Read more about [Aggregates](../../core-concepts/domain-elements/aggregates.md) in the Core Concepts section.
+Read more about [Aggregates](../../concepts/building-blocks/aggregates.md) in the Explanation section.
 
 ## Entities
 
@@ -54,9 +54,9 @@ Value Objects are characterized by:
 - **Purpose**: They encapsulate related attributes and associated validation rules
 - **Composition**: Value Objects can contain other Value Objects to represent complex attributes
 
-Learn more in the [Value Objects](./value-objects.md) guide and [Value Objects Core Concepts](../../core-concepts/domain-elements/value-objects.md).
+Learn more in the [Value Objects](./value-objects.md) guide and [Value Objects](../../concepts/building-blocks/value-objects.md).
 
-### Events
+## Events
 
 Events are immutable facts that indicate a state change in the domain. They capture what has happened in the system and allow different parts of the application to react accordingly.
 
@@ -69,10 +69,19 @@ Key characteristics of Events include:
 - **Communication Medium**: They enable decoupled communication between different parts of the system
 - **Structure**: Events contain metadata, timestamps, version information, and relevant data about the change
 
-Events can be processed either synchronously or asynchronously, depending on your application's needs. See the [Events](./events.md) guide and [Events Core Concepts](../../core-concepts/domain-elements/events.md) for more details.
+Events can be processed either synchronously or asynchronously, depending on your application's needs. See the [Events](./events.md) guide and [Events](../../concepts/building-blocks/events.md) for more details.
 
-### Identity
+## Identity
 
 Identity is a fundamental property of aggregates and entities. Protean provides configurable identity generation strategies, types (UUID, integer, string), and the ability to supply custom identity functions.
 
-[Learn more about identity →](../essentials/identity.md)
+[Learn more about identity →](../../reference/domain-elements/identity.md)
+
+## Fields
+
+Domain elements are composed of fields that define their attributes. Protean
+provides a rich set of field types — strings, numbers, dates, containers, and
+association fields for relationships.
+
+For the complete field type reference and options, see the
+[Fields Reference](../../reference/fields/index.md).

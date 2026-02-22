@@ -3,6 +3,13 @@
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
+When an aggregate changes state, other parts of the system often need to
+react — updating a different aggregate, sending a notification, or triggering
+a downstream process. Putting that logic inside the originating aggregate
+would violate its boundary. Event handlers solve this: they listen for
+domain events and execute side effects in their own transaction, keeping
+aggregates decoupled.
+
 Event handlers consume events raised in an aggregate and help sync the state of
 the aggregate with other aggregates and other systems. They are the preferred
 mechanism to update multiple aggregates.
@@ -104,12 +111,12 @@ If an event handler needs to communicate information as part of its processing, 
 
 - **`part_of`**: The aggregate to which the event handler is connected.
 - **`stream_category`**: The event handler listens to events on this [stream
-category](../essentials/stream-categories.md). The stream category defaults to the category of the aggregate associated with the handler.
+category](../../concepts/async-processing/stream-categories.md). The stream category defaults to the category of the aggregate associated with the handler.
 
     An Event Handler can be part of an aggregate, and have the stream category of
     a different aggregate. This is the mechanism for an aggregate to listen to
     another aggregate's events to sync its own state. Learn more in the
-    [Stream Categories](../essentials/stream-categories.md) guide.
+    [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
 - **`source_stream`**: When specified, the event handler only consumes events
 generated in response to events or commands from this original stream.
@@ -121,7 +128,7 @@ events can be configured to generate a `NotificationSent` event only when the
 ### Subscription Options
 
 Event handlers can be configured with subscription options that control how
-messages are consumed when running the [Protean server](../server/index.md):
+messages are consumed when running the [Protean server](../../concepts/async-processing/index.md):
 
 - **`subscription_type`**: Type of subscription to use:
     - `"stream"`: Uses Redis Streams with consumer groups (recommended for
@@ -159,7 +166,7 @@ class OrderEventHandler:
         ...
 ```
 
-See [Server → Configuration](../server/configuration.md) for detailed
+See [Server → Configuration](../../reference/server/configuration.md) for detailed
 configuration options and the priority hierarchy.
 
 ## Error Handling
@@ -217,7 +224,7 @@ def handle_error(cls, exc: Exception, message):
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Event Handlers](../../core-concepts/domain-elements/event-handlers.md) — How event handlers consume and react to domain events.
+    **Concept overview:** [Event Handlers](../../concepts/building-blocks/event-handlers.md) — How event handlers consume and react to domain events.
 
     **Patterns:**
 

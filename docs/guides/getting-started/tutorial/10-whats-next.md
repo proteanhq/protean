@@ -18,7 +18,7 @@ See [Domain Services](../../domain-behavior/domain-services.md).
 ## Async Processing and the Server
 
 Run event handlers and command handlers in a background process using
-message brokers. See the [Server guide](../../server/index.md).
+message brokers. See the [Server guide](../../../concepts/async-processing/index.md).
 
 ## Event Sourcing
 
@@ -28,7 +28,7 @@ See the [Event Sourcing pathway](../../pathways/event-sourcing.md).
 ## Multiple Databases
 
 Use PostgreSQL for aggregates and Elasticsearch for projections —
-configured per element. See [Configuration](../../essentials/configuration.md).
+configured per element. See [Configuration](../../../reference/configuration/index.md).
 
 ## Subscribers
 
@@ -44,10 +44,10 @@ into commands. See [FastAPI Integration](../../fastapi/index.md).
 
 - **[Guides](../../compose-a-domain/index.md)** — deep dives into each
   concept
-- **[Core Concepts](../../../core-concepts/ddd.md)** — DDD, CQRS, and
+- **[Architecture](../../../concepts/architecture/ddd.md)** — DDD, CQRS, and
   Event Sourcing theory
-- **[Adapters](../../../adapters/index.md)** — database, broker, cache,
+- **[Adapters](../../../reference/adapters/index.md)** — database, broker, cache,
   and event store adapters
 - **[Patterns](../../../patterns/index.md)** — aggregate sizing,
   idempotent handlers, validation layering, and more
-- **[CLI](../../cli/index.md)** — all command-line tools
+- **[CLI](../../../reference/cli/index.md)** — all command-line tools

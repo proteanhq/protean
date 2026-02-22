@@ -320,5 +320,5 @@ concerns have leaked into the domain model.
   that exercise real infrastructure
 - [Setting Up and Tearing Down Databases](setting-up-and-tearing-down-database-for-tests.md)
   -- schema and data lifecycle management for real-adapter tests
-- [Configuration](../guides/essentials/configuration.md) -- full reference for
+- [Configuration](../reference/configuration/index.md) -- full reference for
   `domain.toml` environment overlays

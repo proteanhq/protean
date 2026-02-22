@@ -468,9 +468,9 @@ it. The entire flow is simpler, more resilient, and naturally idempotent.
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Aggregate identity and versioning.
+    - [Aggregates](../concepts/building-blocks/aggregates.md) — Aggregate identity and versioning.
 
     **Guides:**
 
-    - [Identity](../guides/essentials/identity.md) — Identity strategies, types, and configuration.
-    - [Fields](../guides/domain-definition/fields/index.md) — The Auto and Identifier field types.
+    - [Identity](../reference/domain-elements/identity.md) — Identity strategies, types, and configuration.
+    - [Fields](../reference/fields/index.md) — The Auto and Identifier field types.

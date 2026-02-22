@@ -9,19 +9,19 @@ Protean provides two paths for changing state: directly through Application Serv
 
 The request processing pipeline handles incoming intentions to change state, whether from API endpoints, CLI commands, or background jobs.
 
-### Application Services
+### Application Services  :material-tag-outline:{ title="DDD" } DDD
 
-Application services coordinate use cases by orchestrating aggregates and domain services. They bridge the gap between the external world and the domain model.
+Application services coordinate use cases by orchestrating aggregates and domain services. They bridge the gap between the external world and the domain model. Use these when following the **DDD** pathway.
 
 [Learn more about application services →](./application-services.md)
 
-### Commands
+### Commands  :material-tag-outline:{ title="CQRS / ES" } CQRS · ES
 
-Commands are immutable data transfer objects expressing an intent to change state. They carry the data needed for a specific operation without containing any logic.
+Commands are immutable data transfer objects expressing an intent to change state. They carry the data needed for a specific operation without containing any logic. Use these when following the **CQRS** or **Event Sourcing** pathway.
 
 [Learn more about commands →](./commands.md)
 
-### Command Handlers
+### Command Handlers  :material-tag-outline:{ title="CQRS / ES" } CQRS · ES
 
 Command handlers receive commands, load the relevant aggregate, invoke domain methods, and persist the result. Each handler processes a specific command type.
 
@@ -49,7 +49,7 @@ Load and query aggregates using QuerySets, filters, Q objects, and lookup expres
 
 [Learn more about retrieving aggregates →](./retrieve-aggregates.md)
 
-### Temporal Queries
+### Temporal Queries  :material-tag-outline:{ title="ES" } ES
 
 Reconstitute event-sourced aggregates at a specific version or point in time, enabling time-travel over the full event history.
 

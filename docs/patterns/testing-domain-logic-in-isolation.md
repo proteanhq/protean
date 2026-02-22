@@ -659,8 +659,8 @@ methods, assert results. Save integration tests for verifying the plumbing.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Aggregate structure and invariants.
-    - [Value Objects](../core-concepts/domain-elements/value-objects.md) — Testing immutable domain concepts.
+    - [Aggregates](../concepts/building-blocks/aggregates.md) — Aggregate structure and invariants.
+    - [Value Objects](../concepts/building-blocks/value-objects.md) — Testing immutable domain concepts.
 
     **Guides:**
 

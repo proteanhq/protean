@@ -81,7 +81,7 @@ repo.get("order-123", at_version=5, as_of=cutoff)
 
 Protean's snapshot mechanism optimizes aggregate loading by caching state at
 periodic intervals (see
-[Event Sourcing Internals](../../internals/event-sourcing.md#snapshots)).
+[Event Sourcing Internals](../../concepts/internals/event-sourcing.md#snapshots)).
 
 Temporal queries handle snapshots correctly:
 

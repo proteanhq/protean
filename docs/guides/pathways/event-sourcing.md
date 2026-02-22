@@ -79,7 +79,7 @@ Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 | `@apply` decorator | Methods that define how each event type mutates aggregate state — called automatically by `raise_()` and during replay |
 | Event Sourced Repository | Persists events and reconstructs aggregates from event streams |
 | Fact Events | Auto-generated snapshot events capturing full aggregate state |
-| [Event Store adapter](../../adapters/eventstore/index.md) | Infrastructure for storing and retrieving events (e.g., Message DB) |
+| [Event Store adapter](../../reference/adapters/eventstore/index.md) | Infrastructure for storing and retrieving events (e.g., Message DB) |
 
 ## Guided Reading Order
 
@@ -90,7 +90,7 @@ below. These guides cover the Event Sourcing-specific concepts:
 
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
-| 1 | [Event Sourcing Concepts](../../core-concepts/event-sourcing.md) | Theory and workflow of event sourcing |
+| 1 | [Event Sourcing Concepts](../../concepts/architecture/event-sourcing.md) | Theory and workflow of event sourcing |
 | 2 | [Events](../domain-definition/events.md) | Delta events vs. fact events |
 | 3 | [Raising Events](../domain-behavior/raising-events.md) | How aggregates raise events and the `@apply` decorator |
 
@@ -102,7 +102,7 @@ replayed:
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
 | 4 | [Persist Aggregates](../change-state/persist-aggregates.md) | Event sourced repositories |
-| 5 | [Stream Categories](../essentials/stream-categories.md) | How events are organized into streams |
+| 5 | [Stream Categories](../../concepts/async-processing/stream-categories.md) | How events are organized into streams |
 
 ### Build read models and process events
 
@@ -112,8 +112,8 @@ views and asynchronous processing:
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
 | 6 | [Projections](../consume-state/projections.md) | Build read models from event streams |
-| 7 | [Server](../server/index.md) | Process events asynchronously |
-| 8 | [Event Store adapters](../../adapters/eventstore/index.md) | Configure Message DB or other event stores |
+| 7 | [Server](../../concepts/async-processing/index.md) | Process events asynchronously |
+| 8 | [Event Store adapters](../../reference/adapters/eventstore/index.md) | Configure Message DB or other event stores |
 
 ### Coordinate, evolve, and test
 
@@ -123,8 +123,8 @@ verify everything works:
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
 | 9 | [Process Managers](../consume-state/process-managers.md) | Coordinate multi-step processes across aggregates |
-| 10 | [Architecture Decision](../../core-concepts/architecture-decision.md) | When to use ES vs. CQRS per aggregate |
-| 11 | [Event Upcasting](../event-upcasting.md) | Transform old event schemas during replay |
+| 10 | [Architecture Decision](../../concepts/architecture/architecture-decision.md) | When to use ES vs. CQRS per aggregate |
+| 11 | [Event Upcasting](../consume-state/event-upcasting.md) | Transform old event schemas during replay |
 | 12 | [Testing](../testing/index.md) | Test event-sourced aggregates and projections |
 
 ## Relevant Patterns
@@ -206,5 +206,5 @@ class Order:
     ...
 ```
 
-See the [Architecture Decision](../../core-concepts/architecture-decision.md)
+See the [Architecture Decision](../../concepts/architecture/architecture-decision.md)
 guide for criteria on choosing the right pattern per aggregate.

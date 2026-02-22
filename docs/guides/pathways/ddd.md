@@ -54,7 +54,7 @@ sequenceDiagram
 | [Aggregates](../domain-definition/aggregates.md) | Root entities that encapsulate business logic and enforce invariants |
 | [Entities](../domain-definition/entities.md) | Objects with identity that live within an aggregate |
 | [Value Objects](../domain-definition/value-objects.md) | Immutable descriptive objects (Money, Address, Email) |
-| [Fields](../domain-definition/fields/index.md) | Typed attributes on domain elements |
+| [Fields](../../reference/fields/index.md) | Typed attributes on domain elements |
 | [Application Services](../change-state/application-services.md) | Orchestrate use cases with `@use_case` methods |
 | [Repositories](../change-state/persist-aggregates.md) | Persist and retrieve aggregates |
 | [Events](../domain-definition/events.md) | Record state changes as domain events |
@@ -75,7 +75,7 @@ DDD approach:
 | 2 | [Aggregates](../domain-definition/aggregates.md) | Define your root entities and aggregate boundaries |
 | 3 | [Entities](../domain-definition/entities.md) | Add child objects with identity |
 | 4 | [Value Objects](../domain-definition/value-objects.md) | Model immutable descriptive concepts |
-| 5 | [Fields](../domain-definition/fields/index.md) | Understand the field system and data types |
+| 5 | [Fields](../../reference/fields/index.md) | Understand the field system and data types |
 | 6 | [Relationships](../domain-definition/relationships.md) | Connect entities with HasOne, HasMany, Reference |
 
 ### Add business rules and behavior
@@ -137,5 +137,5 @@ Consider moving to [CQRS](./cqrs.md) when:
 - Your application would benefit from separating the write path from the
   read path
 
-See the [Architecture Decision](../../core-concepts/architecture-decision.md)
+See the [Architecture Decision](../../concepts/architecture/architecture-decision.md)
 guide for a systematic decision framework.

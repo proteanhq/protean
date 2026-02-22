@@ -132,12 +132,12 @@ parent_order = order_item.order  # Order object
 order_id = order_item.order_id   # Order's ID value
 ```
 
-For comprehensive relationship documentation, see [Expressing Relationships](./relationships.md) and [Association Fields](./fields/association-fields.md).
+For comprehensive relationship documentation, see [Expressing Relationships](./relationships.md) and [Association Fields](../../reference/fields/association-fields.md).
 
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Entities](../../core-concepts/domain-elements/entities.md) — What entities are and how they relate to aggregates.
+    **Concept overview:** [Entities](../../concepts/building-blocks/entities.md) — What entities are and how they relate to aggregates.
 
     **Patterns:**
 

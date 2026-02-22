@@ -3,8 +3,13 @@
 !!! abstract "Applies to: CQRS · Event Sourcing"
 
 
+Commands carry intent, but someone needs to act on them. Command handlers are
+the "doers" — they receive a command, load the right aggregate, call the
+appropriate domain method, and persist the result. They keep your aggregates
+free of infrastructure concerns and your API layer free of domain logic.
+
 Command handlers are responsible for executing commands and persisting system
-state. They typically interact with aggregate roots to perform the required
+state. They interact with aggregate roots to perform the required
 operations, ensuring that all business rules and invariants are upheld.
 
 ## Key Facts
@@ -23,12 +28,12 @@ domain events.
 Command Handlers are defined with the `Domain.command_handler` decorator:
 
 ```python hl_lines="20-23 47-53"
-{! docs_src/guides/change_state_007.py !}
+{! docs_src/guides/change-state/007.py !}
 ```
 
 ### Stream Category {#stream-category}
 
-Command handlers automatically subscribe to commands in their associated aggregate's [stream category](../essentials/stream-categories.md). When a command is processed, it's routed to the appropriate handler based on the command's target aggregate and its stream category.
+Command handlers automatically subscribe to commands in their associated aggregate's [stream category](../../concepts/async-processing/stream-categories.md). When a command is processed, it's routed to the appropriate handler based on the command's target aggregate and its stream category.
 
 For example, if an `Order` aggregate has a stream category of `order`, its command handler will listen for commands on the `order` stream category. Commands are stored in streams following the pattern `<domain>::<stream_category>-<aggregate_id>`.
 
@@ -43,7 +48,7 @@ class OrderCommandHandler:
 
 This is useful for cross-aggregate coordination patterns or when you want multiple aggregates to share a command stream.
 
-Learn more about stream categories and message routing in the [Stream Categories](../essentials/stream-categories.md) guide.
+Learn more about stream categories and message routing in the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
 ## Workflow
 
@@ -278,7 +283,7 @@ def handle_error(cls, exc: Exception, message):
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Command Handlers](../../core-concepts/domain-elements/command-handlers.md) — The role of command handlers in processing commands and persisting state.
+    **Concept overview:** [Command Handlers](../../concepts/building-blocks/command-handlers.md) — The role of command handlers in processing commands and persisting state.
 
     **Patterns:**
 

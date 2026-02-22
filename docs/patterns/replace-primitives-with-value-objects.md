@@ -676,9 +676,9 @@ type system enforce your domain rules.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Value Objects](../core-concepts/domain-elements/value-objects.md) — Immutable descriptive objects without identity.
+    - [Value Objects](../concepts/building-blocks/value-objects.md) — Immutable descriptive objects without identity.
 
     **Guides:**
 
     - [Value Objects](../guides/domain-definition/value-objects.md) — Defining, embedding, and validating value objects.
-    - [Fields](../guides/domain-definition/fields/index.md) — Field types and configuration options.
+    - [Fields](../reference/fields/index.md) — Field types and configuration options.

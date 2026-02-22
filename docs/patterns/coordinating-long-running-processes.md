@@ -243,7 +243,7 @@ map different field names: `correlate={"order_id": "payment_order_id"}`.
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Process Managers](../core-concepts/domain-elements/process-managers.md) — Coordinating multi-step processes across aggregates.
+    - [Process Managers](../concepts/building-blocks/process-managers.md) — Coordinating multi-step processes across aggregates.
 
     **Guides:**
 

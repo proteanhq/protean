@@ -586,8 +586,8 @@ what data each event must carry.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Events](../core-concepts/domain-elements/events.md) — Domain events and their role in the system.
-    - [Projections](../core-concepts/domain-elements/projections.md) — Read-optimized views built from events.
+    - [Events](../concepts/building-blocks/events.md) — Domain events and their role in the system.
+    - [Projections](../concepts/building-blocks/projections.md) — Read-optimized views built from events.
 
     **Guides:**
 

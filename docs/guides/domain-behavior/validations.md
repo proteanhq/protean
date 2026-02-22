@@ -14,7 +14,7 @@ them to a field.
 Field restrictions begin with the type of field chosen to represent an
 attribute.
 
-```python hl_lines="12-16"
+```python hl_lines="12-15"
 --8<-- "guides/domain-behavior/003.py:10:24"
 ```
 
@@ -72,7 +72,7 @@ ValidationError: {'account_number': ['is required']}
 ```
 
 A full-list of field types and their options is available in the
-[Fields](../domain-definition/fields/index.md) section.
+[Fields](../../reference/fields/index.md) section.
 
 ## In-built Validations
 
@@ -84,7 +84,7 @@ while `String` fields have `min_length` and `max_length` validators. These
 validators are typically activated by supplying them as a parameter during
 field initialization.
 
-```python hl_lines="12-16"
+```python hl_lines="3-4"
 --8<-- "guides/domain-behavior/004.py:7:10"
 ```
 
@@ -98,14 +98,14 @@ ValidationError: {'name': ['value has less than 3 characters'], 'age': ['value i
 ```
 
 A full-list of in-built validators is available in the
-[Fields](../domain-definition/fields/index.md) section under each field.
+[Fields](../../reference/fields/index.md) section under each field.
 
 
 ## Custom Validators
 
 You can also add vaidations at the field level by defining custom validators.
 
-```python hl_lines="14-17"
+```python hl_lines="14-16"
 --8<-- "guides/domain-behavior/005.py:10:26"
 ```
 
@@ -120,3 +120,10 @@ In [2]: Person(name="Jane", email="jane.doe@.gmail.com")
 ...
 ValueError: Invalid Email Address - jane.doe@.gmail.com
 ```
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Invariants](../../concepts/foundations/invariants.md) — The foundational concept of keeping domain objects always valid.
+
+    **Patterns:** [Validation Layering](../../patterns/validation-layering.md) — Choosing the right validation layer for each kind of rule.

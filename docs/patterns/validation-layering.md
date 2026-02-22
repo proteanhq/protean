@@ -558,8 +558,8 @@ Each layer trusts the layers below it and adds what they don't cover.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Aggregate invariants and consistency.
-    - [Value Objects](../core-concepts/domain-elements/value-objects.md) — Value-level validation through invariants.
+    - [Aggregates](../concepts/building-blocks/aggregates.md) — Aggregate invariants and consistency.
+    - [Value Objects](../concepts/building-blocks/value-objects.md) — Value-level validation through invariants.
 
     **Guides:**
 

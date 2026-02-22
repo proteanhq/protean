@@ -116,52 +116,14 @@ to get started.
 Protean supports three architectural approaches. Each builds on the one
 before it — start simple and add sophistication as your needs evolve.
 
-```mermaid
-graph LR
-    DDD["<strong>Domain-Driven Design</strong><br/>Aggregates · Repositories · Events"]
-    CQRS["<strong>CQRS</strong><br/>Commands · Projections · Read/Write"]
-    ES["<strong>Event Sourcing</strong><br/>Replay · Temporal Queries · Audit"]
+| | Path | Best for |
+|---|---|---|
+| :material-shield-outline: | [**Domain-Driven Design**](./guides/pathways/ddd.md) | Clean domain modeling — the simplest way to start |
+| :material-call-split: | [**CQRS**](./guides/pathways/cqrs.md) | Separate reads from writes with commands and projections |
+| :material-history: | [**Event Sourcing**](./guides/pathways/event-sourcing.md) | Full audit trail, temporal queries, and event replay |
 
-    DDD --> CQRS --> ES
-
-    style DDD fill:#f0faf9,stroke:#5EEAD4,stroke-width:1px,color:#0F4C5C
-    style CQRS fill:#e8f6f5,stroke:#2DD4BF,stroke-width:1px,color:#0F4C5C
-    style ES fill:#e0f2f0,stroke:#14B8A6,stroke-width:1px,color:#0F4C5C
-```
-
-<div class="grid cards" markdown>
-
--   __:material-shield-outline: Domain-Driven Design__
-
-    ---
-
-    Clean domain modeling with application services, repositories, and
-    event-driven side effects. The simplest way to start.
-
-    [:material-arrow-right-box: DDD Pathway](./guides/pathways/ddd.md)
-
--   __:material-call-split: CQRS__
-
-    ---
-
-    Separate reads from writes with commands, command handlers, and
-    read-optimized projections.
-
-    [:material-arrow-right-box: CQRS Pathway](./guides/pathways/cqrs.md)
-
--   __:material-history: Event Sourcing__
-
-    ---
-
-    Derive state from event replay. Full audit trail, temporal queries,
-    and complete traceability.
-
-    [:material-arrow-right-box: Event Sourcing Pathway](./guides/pathways/event-sourcing.md)
-
-</div>
-
-Not sure which to pick? Start with DDD — you can evolve later. See
-[Choose a Path](./guides/pathways/index.md) for guidance.
+Not sure? Start with DDD — you can evolve later. See
+[Choose a Path](./guides/pathways/index.md) for a detailed comparison.
 
 ---
 
@@ -219,7 +181,7 @@ Not sure which to pick? Start with DDD — you can evolve later. See
 
     ---
 
-    15-part guide from your first aggregate to production.
+    10-chapter tutorial from your first aggregate to production.
 
     [:material-arrow-right-box: Tutorial](./guides/getting-started/tutorial/index.md)
 
@@ -236,7 +198,7 @@ Not sure which to pick? Start with DDD — you can evolve later. See
 
     ---
 
-    Deep reference for every concept, pattern, and technique.
+    Step-by-step instructions for every task Protean supports.
 
     [:material-arrow-right-box: Guides](./guides/index.md)
 
@@ -246,7 +208,7 @@ Not sure which to pick? Start with DDD — you can evolve later. See
 
     DDD, CQRS, and Event Sourcing explained.
 
-    [:material-arrow-right-box: Core Concepts](./core-concepts/ddd.md)
+    [:material-arrow-right-box: Core Concepts](./concepts/architecture/ddd.md)
 
 -   __:material-puzzle-outline: Adapters__
 
@@ -254,7 +216,7 @@ Not sure which to pick? Start with DDD — you can evolve later. See
 
     PostgreSQL, Redis, Elasticsearch, MessageDB, and more.
 
-    [:material-arrow-right-box: Adapters](./adapters/index.md)
+    [:material-arrow-right-box: Adapters](./reference/adapters/index.md)
 
 -   __:material-flask-outline: Patterns & Recipes__
 

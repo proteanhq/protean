@@ -662,7 +662,7 @@ orchestrate. The aggregate is the authority on its own state transitions.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — Black-box design and invariant enforcement.
+    - [Aggregates](../concepts/building-blocks/aggregates.md) — Black-box design and invariant enforcement.
 
     **Guides:**
 

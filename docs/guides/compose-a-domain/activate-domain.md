@@ -38,8 +38,8 @@ You activate a domain by pushing up its context to the top of the domain stack:
 Protean provides a helpful context manager to nest the domain operations
 under.
 
-```python hl_lines="18-21"
-{! docs_src/guides/composing-a-domain/018.py !}
+```python hl_lines="18-20"
+{! docs_src/guides/compose-a-domain/018.py !}
 ```
 
 Subsequent calls to `current_domain` will return the currently active domain.

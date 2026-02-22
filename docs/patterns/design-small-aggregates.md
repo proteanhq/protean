@@ -645,8 +645,8 @@ for cross-aggregate communication.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../core-concepts/domain-elements/aggregates.md) — What aggregates are and their core properties.
-    - [Entities](../core-concepts/domain-elements/entities.md) — Objects with identity within aggregates.
+    - [Aggregates](../concepts/building-blocks/aggregates.md) — What aggregates are and their core properties.
+    - [Entities](../concepts/building-blocks/entities.md) — Objects with identity within aggregates.
 
     **Guides:**
 

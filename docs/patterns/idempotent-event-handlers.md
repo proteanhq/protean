@@ -629,7 +629,7 @@ not the framework, is the primary defense against duplicate events.**
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Event Handlers](../core-concepts/domain-elements/event-handlers.md) — How event handlers consume and process events.
+    - [Event Handlers](../concepts/building-blocks/event-handlers.md) — How event handlers consume and process events.
 
     **Guides:**
 

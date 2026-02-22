@@ -35,7 +35,7 @@ any infrastructure.
 
 An aggregate is a cluster of related objects treated as a single unit —
 the core building block of a Protean domain
-(see [Aggregates](../../../core-concepts/domain-elements/aggregates.md)
+(see [Aggregates](../../../concepts/building-blocks/aggregates.md)
 for more).
 
 Let's define a `Book`:

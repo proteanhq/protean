@@ -33,5 +33,5 @@ Subscribers consume messages from external message brokers and other systems out
 
 ## Supporting Topics
 
-- [Stream Categories](../essentials/stream-categories.md) — How messages are organized and routed through named streams.
-- [Event Upcasting](../event-upcasting.md) — Transforming old event schemas to match the current version during replay.
+- [Stream Categories](../../concepts/async-processing/stream-categories.md) — How messages are organized and routed through named streams.
+- [Event Upcasting](./event-upcasting.md) — Transforming old event schemas to match the current version during replay.

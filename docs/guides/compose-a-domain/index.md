@@ -17,7 +17,7 @@ The Domain maintains a registry of all domain elements, including entities, valu
 
 #### Configuration Storage
 
-Your Domain stores configuration settings that define how your application behaves. These settings can include database connection parameters, feature flags, environment-specific values, and other application-wide settings. Read more at [Configuration](../essentials/configuration.md).
+Your Domain stores configuration settings that define how your application behaves. These settings can include database connection parameters, feature flags, environment-specific values, and other application-wide settings. Read more at [Configuration](../../reference/configuration/index.md).
 
 #### Adapter Activation
 
@@ -33,7 +33,7 @@ from protean import Domain
 domain = Domain()
 ...
 
-@domain.aggregage
+@domain.aggregate
 class User:
     # Aggregate definition...
 ```
@@ -111,7 +111,7 @@ domain = Domain(config={
 domain = Domain()
 ```
 
-Refer to [Configuration](../essentials/configuration.md) to understand configuration file structure and parameters.
+Refer to [Configuration](../../reference/configuration/index.md) to understand configuration file structure and parameters.
 
 ### `identity_function`
 
@@ -134,7 +134,7 @@ domain = Domain(
 
 - [Register Elements](./register-elements.md) - Explore methods for registering domain elements
 - [Initialize Domain](./initialize-domain.md) - Understand how to set up and initialize a new domain
-- [Element Decorators](./element-decorators.md) - Learn about using decorators to automatically register domain elements
+- [Element Decorators](../../reference/domain-elements/element-decorators.md) - Learn about using decorators to automatically register domain elements
 - [Activate Domain](./activate-domain.md) - Understand how to activate a domain and its components
 - [When to Compose a Domain](./when-to-compose.md) - Learn about the appropriate timing and scenarios for composing a domain
-- [Object Model](../essentials/object-model.md) - Understand the common structure and traits shared by all domain elements
+- [Object Model](../../reference/domain-elements/object-model.md) - Understand the common structure and traits shared by all domain elements

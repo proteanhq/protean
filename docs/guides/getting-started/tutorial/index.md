@@ -31,6 +31,13 @@ previous one, growing the Bookshelf application step by step.
     grows throughout the tutorial into a complete application. Follow along
     in order for the best experience.
 
+!!! info "Which pathway does this tutorial follow?"
+    This tutorial follows the **CQRS** path — it introduces Commands and
+    Command Handlers starting in Chapter 5. If you're using the pure **DDD**
+    approach with Application Services instead, the domain modeling chapters
+    (1–4) still apply directly. See the
+    [DDD Pathway](../../pathways/ddd.md) for the DDD-specific reading order.
+
 ## Prerequisites
 
 - **Python 3.11+**

@@ -259,7 +259,7 @@ IncorrectUsageError: "Value Objects are immutable and cannot be modified once cr
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Value Objects](../../core-concepts/domain-elements/value-objects.md) — Immutable objects defined by their attributes, not identity.
+    **Concept overview:** [Value Objects](../../concepts/building-blocks/value-objects.md) — Immutable objects defined by their attributes, not identity.
 
     **Patterns:**
 

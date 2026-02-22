@@ -22,7 +22,7 @@ that an event has already occurred, such as `OrderPlaced` or `PaymentProcessed`.
 
 You can define an event with the `Domain.event` decorator:
 
-```python hl_lines="14-16 19-22 31-33 35-38"
+```python hl_lines="14-16 19-22 31-33 35-37"
 {! docs_src/guides/domain-definition/events/001.py !}
 ```
 
@@ -106,7 +106,7 @@ To run the Protean server for processing asynchronous events, use the CLI:
 protean server --domain path/to/domain.py
 ```
 
-See [CLI documentation](../cli/index.md) for more details about the server command and other available CLI options.
+See [CLI documentation](../../reference/cli/index.md) for more details about the server command and other available CLI options.
 
 The server continually polls the event store for new events that have the `asynchronous` flag set to `True` in their metadata. When found, it dispatches them to the appropriate handlers, keeping track of processed events to avoid duplicate processing.
 
@@ -207,12 +207,12 @@ related to `User` aggregate in the `Auth` domain with identity `1234`.
 The stream name follows the pattern `<domain>::<stream_category>-<aggregate_id>`, where:
 
 - `domain` is the normalized domain name
-- `stream_category` is the aggregate's [stream category](../essentials/stream-categories.md)
+- `stream_category` is the aggregate's [stream category](../../concepts/async-processing/stream-categories.md)
 - `aggregate_id` is the unique identifier of the aggregate instance
 
 All events for a specific aggregate instance are stored in its dedicated stream, enabling event sourcing and message ordering guarantees.
 
-See the [Stream Categories](../essentials/stream-categories.md) guide for comprehensive details on how stream categories organize and route messages.
+See the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide for comprehensive details on how stream categories organize and route messages.
 
 #### `origin_stream`
 
@@ -298,7 +298,7 @@ class UserActivated:
 When event schemas evolve (fields renamed, new required fields, changed
 structure), you can register **upcasters** that transform old event payloads
 to the current schema during deserialization. See the
-[Event Upcasting guide](../event-upcasting.md) for details, and the
+[Event Upcasting guide](../consume-state/event-upcasting.md) for details, and the
 [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
 pattern for broader versioning strategies.
 
@@ -350,7 +350,7 @@ IncorrectUsageError: 'Event/Command Objects are immutable and cannot be modified
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Events](../../core-concepts/domain-elements/events.md) — Domain events and their role in system communication.
+    **Concept overview:** [Events](../../concepts/building-blocks/events.md) — Domain events and their role in system communication.
 
     **Patterns:**
 

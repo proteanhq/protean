@@ -12,53 +12,11 @@ as a reference you'll return to as your application grows.
 
 ## Choose Your Path
 
-Protean supports three architectural approaches. Each builds on the one
-before it, so they also serve as a natural learning progression — start
-simple and add sophistication as your needs evolve.
+Protean supports three architectural approaches — **DDD**, **CQRS**, and
+**Event Sourcing** — each building on the one before it. Not sure which
+to use? Start with DDD and evolve later.
 
-```mermaid
-graph LR
-    DDD["<strong>Domain-Driven Design</strong><br/>Aggregates · Repositories · Events"]
-    CQRS["<strong>CQRS</strong><br/>Commands · Projections · Read/Write"]
-    ES["<strong>Event Sourcing</strong><br/>Replay · Temporal Queries · Audit"]
-
-    DDD --> CQRS --> ES
-
-    style DDD fill:#f0faf9,stroke:#5EEAD4,stroke-width:1px,color:#0F4C5C
-    style CQRS fill:#e8f6f5,stroke:#2DD4BF,stroke-width:1px,color:#0F4C5C
-    style ES fill:#e0f2f0,stroke:#14B8A6,stroke-width:1px,color:#0F4C5C
-```
-
-### :material-shield-outline: Domain-Driven Design
-
-For teams that want clean domain modeling with application services,
-repositories, and event-driven side effects. The simplest way to use Protean.
-
-**Start here if:** You're new to Protean, building a straightforward
-application, or your team is new to DDD.
-
-[:material-arrow-right-box: DDD Pathway](./pathways/ddd.md)
-
-### :material-call-split: CQRS
-
-Adds Commands, Command Handlers, and read-optimized Projections on top of
-DDD. Separates your write and read models for better scalability and clarity.
-
-**Start here if:** You need independent scaling of reads and writes, want
-explicit command/query separation, or are building a system with complex
-read requirements.
-
-[:material-arrow-right-box: CQRS Pathway](./pathways/cqrs.md)
-
-### :material-history: Event Sourcing
-
-Derives aggregate state entirely from event replay. Full audit trail,
-temporal queries, and complete traceability.
-
-**Start here if:** You need regulatory audit trails, temporal analysis,
-or your domain has complex state transitions where history matters.
-
-[:material-arrow-right-box: Event Sourcing Pathway](./pathways/event-sourcing.md)
+[:material-arrow-right-box: Compare pathways and choose](./pathways/index.md){ .md-button }
 
 ## Browse by Topic
 
@@ -97,12 +55,14 @@ or your domain has complex state transitions where history matters.
 
     ---
 
-    Configure databases, run the async processing server, and use the CLI.
+    Run the async processing server and integrate with FastAPI.
 
-    [:material-arrow-right-box: Configuration](./essentials/configuration.md) ·
-    [:material-arrow-right-box: Server](./server/index.md) ·
-    [:material-arrow-right-box: CLI](./cli/index.md) ·
+    [:material-arrow-right-box: Run the Server](./server/index.md) ·
     [:material-arrow-right-box: FastAPI](./fastapi/index.md)
+
+    *See also:* [Configuration](../reference/configuration/index.md) ·
+    [CLI](../reference/cli/index.md) ·
+    [Adapters](../reference/adapters/index.md)
 
 -   **:material-test-tube: Test Your Application**
 
@@ -129,7 +89,7 @@ A quick reference for common tasks. See the
 | Save or load an aggregate             | [Persist](./change-state/persist-aggregates.md) · [Retrieve](./change-state/retrieve-aggregates.md) |
 | React to a domain event               | [Event Handlers](./consume-state/event-handlers.md)                   |
 | Build a read-optimized view           | [Projections](./consume-state/projections.md)                         |
-| Choose between CQRS and ES            | [Architecture Decision](../core-concepts/architecture-decision.md)    |
+| Choose between CQRS and ES            | [Architecture Decision](../concepts/architecture/architecture-decision.md)    |
 | Use Protean with FastAPI              | [FastAPI Integration](./fastapi/index.md)                             |
 | Test my domain logic                  | [Testing](./testing/index.md)                                         |
 

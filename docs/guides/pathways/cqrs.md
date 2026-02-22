@@ -74,7 +74,7 @@ Everything from the [DDD pathway](./ddd.md), **plus**:
 | [Command Handlers](../change-state/command-handlers.md) | Process commands and orchestrate aggregate changes |
 | [Projections](../consume-state/projections.md) | Read-optimized views stored in database or cache |
 | [Subscribers](../consume-state/subscribers.md) | Consume messages from external message brokers |
-| [Server](../server/index.md) | Async processing engine for events and commands |
+| [Server](../../concepts/async-processing/index.md) | Async processing engine for events and commands |
 
 ## Guided Reading Order
 
@@ -119,8 +119,8 @@ infrastructure:
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
 | 10 | [Process Managers](../consume-state/process-managers.md) | Coordinate multi-step processes across aggregates |
-| 11 | [Server](../server/index.md) | Run the async processing engine |
-| 12 | [Configuration](../essentials/configuration.md) | Configure databases, brokers, and event stores |
+| 11 | [Server](../../concepts/async-processing/index.md) | Run the async processing engine |
+| 12 | [Configuration](../../reference/configuration/index.md) | Configure databases, brokers, and event stores |
 | 13 | [Testing](../testing/index.md) | Test commands, handlers, and projections |
 
 ## Relevant Patterns
@@ -161,5 +161,5 @@ meets **two or more** of these criteria:
     You don't have to move your entire domain to Event Sourcing. Protean
     supports mixing CQRS and Event Sourcing **at the aggregate level**
     within the same domain. See the
-    [Architecture Decision](../../core-concepts/architecture-decision.md)
+    [Architecture Decision](../../concepts/architecture/architecture-decision.md)
     guide for the full decision framework.
