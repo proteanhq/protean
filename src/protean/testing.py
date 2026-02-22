@@ -212,7 +212,7 @@ class AggregateResult:
         self._given_events.extend(events)
         return self
 
-    def process(self, command) -> AggregateResult:
+    def process(self, command, *, correlation_id: str | None = None) -> AggregateResult:
         """Dispatch a command through the domain's full processing pipeline.
 
         Seeds the event store with given events (on first call only),
@@ -249,7 +249,9 @@ class AggregateResult:
 
         # Process command through the domain
         try:
-            result = domain.process(command, asynchronous=False)
+            result = domain.process(
+                command, asynchronous=False, correlation_id=correlation_id
+            )
         except Exception as exc:
             self._rejection = exc
             # On rejection, load aggregate from event store to reflect

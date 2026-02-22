@@ -105,6 +105,13 @@ class UnitOfWork:
                 outbox_repo = self.domain._get_outbox_repo(provider_name)
 
                 for event in all_events[provider_name]:
+                    # Extract trace context for outbox denormalized fields
+                    correlation_id = None
+                    causation_id = None
+                    if event._metadata and event._metadata.domain:
+                        correlation_id = event._metadata.domain.correlation_id
+                        causation_id = event._metadata.domain.causation_id
+
                     outbox_message = Outbox.create_message(
                         message_id=event._metadata.headers.id,
                         stream_name=event._metadata.headers.stream,
@@ -112,6 +119,8 @@ class UnitOfWork:
                         data=event.payload,
                         metadata=event._metadata,
                         priority=priority,
+                        correlation_id=correlation_id,
+                        causation_id=causation_id,
                     )
                     outbox_repo._dao.save(outbox_message)
 

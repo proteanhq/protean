@@ -45,7 +45,6 @@ def sample_outbox(sample_metadata):
         metadata=sample_metadata,
         priority=1,
         correlation_id="corr-123",
-        trace_id="trace-456",
         max_retries=3,
     )
 
@@ -64,7 +63,6 @@ class TestOutboxCreation:
             metadata=sample_metadata,
             priority=5,
             correlation_id="corr-123",
-            trace_id="trace-456",
             max_retries=5,
             sequence_number=10,
         )
@@ -76,7 +74,6 @@ class TestOutboxCreation:
         assert outbox.metadata_ == sample_metadata
         assert outbox.priority == 5
         assert outbox.correlation_id == "corr-123"
-        assert outbox.trace_id == "trace-456"
         assert outbox.max_retries == 5
         assert outbox.sequence_number == 10
         assert outbox.status == OutboxStatus.PENDING.value
@@ -96,7 +93,6 @@ class TestOutboxCreation:
 
         assert outbox.priority == 0
         assert outbox.correlation_id is None
-        assert outbox.trace_id is None
         assert outbox.max_retries == 3
         assert outbox.sequence_number is None
         assert outbox.status == OutboxStatus.PENDING.value

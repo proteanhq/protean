@@ -97,12 +97,21 @@ class BaseEvent(BaseMessageType):
     def _build_metadata(self, incoming: Metadata | None) -> None:
         """Build metadata for the event from incoming metadata or defaults."""
         origin_stream = None
+        correlation_id = None
+        causation_id = None
         if hasattr(g, "message_in_context"):
+            msg_ctx = g.message_in_context
             if (
-                g.message_in_context.metadata.domain.kind == "COMMAND"
-                and g.message_in_context.metadata.domain.origin_stream is not None
+                msg_ctx.metadata.domain.kind == "COMMAND"
+                and msg_ctx.metadata.domain.origin_stream is not None
             ):
-                origin_stream = g.message_in_context.metadata.domain.origin_stream
+                origin_stream = msg_ctx.metadata.domain.origin_stream
+            # Inherit correlation_id from the command being processed
+            if msg_ctx.metadata.domain:
+                correlation_id = msg_ctx.metadata.domain.correlation_id
+            # causation_id = the command's message ID
+            if msg_ctx.metadata.headers:
+                causation_id = msg_ctx.metadata.headers.id
 
         # Use existing headers if they exist, but ensure type is set
         if incoming and hasattr(incoming, "headers") and incoming.headers:
@@ -138,6 +147,8 @@ class BaseEvent(BaseMessageType):
             asynchronous=existing_domain.asynchronous
             if existing_domain and hasattr(existing_domain, "asynchronous")
             else True,
+            correlation_id=correlation_id,
+            causation_id=causation_id,
         )
 
         # Also preserve envelope if it exists

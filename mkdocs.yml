@@ -138,6 +138,7 @@ nav:
       - guides/domain-behavior/invariants.md
       - guides/domain-behavior/aggregate-mutation.md
       - guides/domain-behavior/raising-events.md
+      - guides/domain-behavior/message-tracing.md
       - guides/domain-behavior/domain-services.md
     - Change State:
       - guides/change-state/index.md
@@ -301,6 +302,7 @@ nav:
       - patterns/event-versioning-and-evolution.md
       - patterns/command-idempotency.md
       - patterns/coordinating-long-running-processes.md
+      - patterns/message-tracing.md
     - Architecture & Quality:
       - patterns/organize-by-domain-concept.md
       - patterns/validation-layering.md

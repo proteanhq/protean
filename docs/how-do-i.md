@@ -36,6 +36,7 @@ need by what you're trying to accomplish.
 | Enforce business invariants                     | [Invariants](./guides/domain-behavior/invariants.md) |
 | Change aggregate state safely                   | [Aggregate Mutation](./guides/domain-behavior/aggregate-mutation.md) |
 | Raise domain events from an aggregate           | [Raising Events](./guides/domain-behavior/raising-events.md) |
+| Trace the full causal chain of commands and events | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
 | Coordinate logic across multiple aggregates     | [Domain Services](./guides/domain-behavior/domain-services.md) |
 
 ## Handle Requests and Change State
@@ -65,6 +66,7 @@ need by what you're trying to accomplish.
 | Build a read-optimized view from events         | [Projections](./guides/consume-state/projections.md) |
 | Rebuild a projection from historical events     | [`protean projection rebuild`](./reference/cli/data/projection.md) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
+| Follow the causal chain of a business operation | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
 
 ## Set Up and Configure
 
@@ -125,6 +127,7 @@ need by what you're trying to accomplish.
 | Rebuild projections from events                 | [`protean projection`](./reference/cli/data/projection.md) |
 | Inspect events in the event store               | [`protean events`](./reference/cli/data/events.md) |
 | View the event history of an aggregate          | [`protean events history`](./reference/cli/data/events.md) |
+| Follow a causal chain by correlation ID         | [`protean events trace`](./reference/cli/data/events.md) |
 
 ## Evolve and Maintain
 

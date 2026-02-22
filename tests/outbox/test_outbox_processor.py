@@ -84,7 +84,6 @@ def persist_outbox_messages(outbox_test_domain):
             metadata=metadata,
             priority=i,
             correlation_id=f"corr-{i}",
-            trace_id=f"trace-{i}",
         )
         outbox_repo.add(message)
         messages.append(message)
@@ -544,7 +543,6 @@ class TestMessageReconstruction:
             metadata=metadata,
             priority=5,
             correlation_id="corr-123",
-            trace_id="trace-456",
         )
         outbox_repo.add(message)
 
@@ -662,7 +660,6 @@ class TestMessageReconstruction:
             data={"traced": "event"},
             metadata=metadata,
             correlation_id="corr-789",
-            trace_id="trace-789",
         )
         outbox_repo.add(message)
 

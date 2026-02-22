@@ -93,9 +93,18 @@ class BaseCommand(BaseMessageType):
         )
 
         origin_stream = None
+        correlation_id = None
+        causation_id = None
         if hasattr(g, "message_in_context"):
-            if g.message_in_context.metadata.domain.kind == "EVENT":
-                origin_stream = g.message_in_context.metadata.headers.stream
+            msg_ctx = g.message_in_context
+            if msg_ctx.metadata.domain.kind == "EVENT":
+                origin_stream = msg_ctx.metadata.headers.stream
+            # Inherit correlation_id from parent message
+            if msg_ctx.metadata.domain:
+                correlation_id = msg_ctx.metadata.domain.correlation_id
+            # Set causation_id = parent message's ID
+            if msg_ctx.metadata.headers:
+                causation_id = msg_ctx.metadata.headers.id
 
         # Use existing headers if they have meaningful content, otherwise create new ones
         has_meaningful_headers = (
@@ -119,7 +128,7 @@ class BaseCommand(BaseMessageType):
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
 
-        # Build domain metadata
+        # Build domain metadata — preserve values from _enrich_command() if set
         domain_meta = DomainMeta(
             kind="COMMAND",
             fqn=fqn(self.__class__),
@@ -131,6 +140,12 @@ class BaseCommand(BaseMessageType):
             asynchronous=existing_domain.asynchronous
             if existing_domain and hasattr(existing_domain, "asynchronous")
             else True,
+            correlation_id=existing_domain.correlation_id
+            if existing_domain and existing_domain.correlation_id
+            else correlation_id,
+            causation_id=existing_domain.causation_id
+            if existing_domain and existing_domain.causation_id
+            else causation_id,
         )
 
         # Also preserve envelope if it exists

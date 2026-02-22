@@ -91,6 +91,7 @@ specific area.
 - [Invariants](./guides/domain-behavior/invariants.md) -- Business rules that must always hold true within an aggregate.
 - [Mutating Aggregates](./guides/domain-behavior/aggregate-mutation.md) -- Modify state through named methods reflecting actions and events.
 - [Raising Events](./guides/domain-behavior/raising-events.md) -- Notify other parts of the system through domain events.
+- [Message Tracing](./guides/domain-behavior/message-tracing.md) -- Track the full causal chain of commands and events with correlation and causation IDs.
 - [Domain Services](./guides/domain-behavior/domain-services.md) -- Complex domain logic that spans multiple aggregates.
 
 ### Change State
@@ -251,6 +252,7 @@ Protean supports but does not enforce.
 - [Event Versioning and Evolution](./patterns/event-versioning-and-evolution.md) -- Evolve event schemas without breaking consumers or the event store.
 - [Command Idempotency](./patterns/command-idempotency.md) -- Ensure processing the same command twice produces the same effect.
 - [Coordinating Long-Running Processes](./patterns/coordinating-long-running-processes.md) -- Use a process manager to coordinate multi-step workflows across aggregates.
+- [Message Tracing in Event-Driven Systems](./patterns/message-tracing.md) -- Correlation and causation IDs for end-to-end traceability across commands and events.
 
 ### Architecture & Quality
 

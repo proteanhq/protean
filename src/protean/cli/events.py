@@ -100,11 +100,32 @@ def _data_keys_summary(data: dict | None) -> str:
     return summary
 
 
+def _extract_trace_ids(msg: dict[str, Any]) -> tuple[str, str]:
+    """Extract correlation and causation IDs from message metadata."""
+    metadata = msg.get("metadata")
+    if not metadata or not isinstance(metadata, dict):
+        return ("", "")
+    domain_meta = metadata.get("domain")
+    if not domain_meta or not isinstance(domain_meta, dict):
+        return ("", "")
+    correlation_id = str(domain_meta.get("correlation_id", "") or "")
+    causation_id = str(domain_meta.get("causation_id", "") or "")
+    return (correlation_id, causation_id)
+
+
+def _truncate_id(value: str, length: int = 8) -> str:
+    """Truncate an ID for display, appending '...' if shortened."""
+    if len(value) > length:
+        return value[:length] + "..."
+    return value
+
+
 def _build_events_table(
     messages: list[dict[str, Any]],
     *,
     show_data: bool = False,
     show_stream: bool = False,
+    show_trace: bool = False,
 ) -> Table:
     """Build a Rich Table from a list of raw event dicts."""
     table = Table()
@@ -114,6 +135,9 @@ def _build_events_table(
     if show_stream:
         table.add_column("Stream")
     table.add_column("Time")
+    if show_trace:
+        table.add_column("Correlation ID", style="yellow")
+        table.add_column("Causation ID", style="dim yellow")
     if not show_data:
         table.add_column("Data Keys", style="dim")
 
@@ -126,6 +150,10 @@ def _build_events_table(
         if show_stream:
             row.append(str(msg.get("stream_name", "")))
         row.append(_format_time(msg.get("time")))
+        if show_trace:
+            correlation_id, causation_id = _extract_trace_ids(msg)
+            row.append(_truncate_id(correlation_id))
+            row.append(causation_id)
         if not show_data:
             row.append(_data_keys_summary(msg.get("data")))
         table.add_row(*row)
@@ -166,6 +194,10 @@ def read(
     show_data: Annotated[
         bool, typer.Option("--data/--no-data", help="Show full event data")
     ] = False,
+    show_trace: Annotated[
+        bool,
+        typer.Option("--trace/--no-trace", help="Show correlation and causation IDs"),
+    ] = False,
 ) -> None:
     """Read and display events from a stream."""
     derived_domain = _load_domain(domain)
@@ -177,7 +209,9 @@ def read(
             print(f"No events found in stream '{stream}'")
             return
 
-        table = _build_events_table(messages, show_data=show_data)
+        table = _build_events_table(
+            messages, show_data=show_data, show_trace=show_trace
+        )
         print(table)
 
         if show_data:
@@ -272,6 +306,10 @@ def search(
     show_data: Annotated[
         bool, typer.Option("--data/--no-data", help="Show full event data")
     ] = False,
+    show_trace: Annotated[
+        bool,
+        typer.Option("--trace/--no-trace", help="Show correlation and causation IDs"),
+    ] = False,
 ) -> None:
     """Search for events by type across streams."""
     derived_domain = _load_domain(domain)
@@ -296,7 +334,9 @@ def search(
         total_matched = len(matched)
         display = matched[:limit]
 
-        table = _build_events_table(display, show_data=show_data, show_stream=True)
+        table = _build_events_table(
+            display, show_data=show_data, show_stream=True, show_trace=show_trace
+        )
         print(table)
 
         if show_data:
@@ -317,6 +357,10 @@ def history(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     show_data: Annotated[
         bool, typer.Option("--data/--no-data", help="Show full event data")
+    ] = False,
+    show_trace: Annotated[
+        bool,
+        typer.Option("--trace/--no-trace", help="Show correlation and causation IDs"),
     ] = False,
 ) -> None:
     """Display the event timeline for a specific aggregate instance."""
@@ -341,6 +385,9 @@ def history(
         table.add_column("Version", justify="right", style="cyan")
         table.add_column("Type", style="green")
         table.add_column("Time")
+        if show_trace:
+            table.add_column("Correlation ID", style="yellow")
+            table.add_column("Causation ID", style="dim yellow")
         if not show_data:
             table.add_column("Data Keys", style="dim")
 
@@ -350,6 +397,10 @@ def history(
                 str(msg.get("type", "<unknown>")),
                 _format_time(msg.get("time")),
             ]
+            if show_trace:
+                correlation_id, causation_id = _extract_trace_ids(msg)
+                row.append(_truncate_id(correlation_id))
+                row.append(causation_id)
             if not show_data:
                 row.append(_data_keys_summary(msg.get("data")))
             table.add_row(*row)
@@ -371,3 +422,36 @@ def history(
             f"\n{aggregate} ({identifier}): "
             f"{len(messages)} event(s), current version: {last_position}"
         )
+
+
+@app.command()
+def trace(
+    correlation_id: Annotated[str, typer.Argument(help="Correlation ID to trace")],
+    domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
+    show_data: Annotated[
+        bool, typer.Option("--data/--no-data", help="Show full event data")
+    ] = False,
+) -> None:
+    """Follow the full causal chain for a correlation ID across all streams."""
+    derived_domain = _load_domain(domain)
+    with derived_domain.domain_context():
+        store = derived_domain.event_store.store
+        all_messages = store._read("$all", no_of_messages=1_000_000)
+
+        matched = [
+            m for m in all_messages if _extract_trace_ids(m)[0] == correlation_id
+        ]
+
+        if not matched:
+            print(f"No events found for correlation ID '{correlation_id}'")
+            return
+
+        table = _build_events_table(
+            matched, show_data=show_data, show_stream=True, show_trace=True
+        )
+        print(table)
+
+        if show_data:
+            _print_event_data(matched)
+
+        print(f"\nFound {len(matched)} event(s) for correlation ID '{correlation_id}'")

@@ -37,7 +37,6 @@ def _create_outbox_message(msg_id, priority=0, stream_category="test-stream"):
         metadata=_make_metadata(msg_id, stream_category),
         priority=priority,
         correlation_id=f"corr-{msg_id}",
-        trace_id=f"trace-{msg_id}",
     )
 
 
