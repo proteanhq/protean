@@ -10,9 +10,16 @@ Get Protean up and running. The
 through setting up Python, creating a virtual environment, and installing
 Protean.
 
+## Hello, Protean!
+
+New to Protean? Start with
+[Hello, Protean!](./guides/getting-started/hello.md) — define an aggregate,
+save it, and load it back in under 20 lines. This is the fastest way to see
+what Protean feels like.
+
 ## Quickstart
 
-Want to see Protean in action right away? The
+Want to go further? The
 [Quickstart](./guides/getting-started/quickstart.md) builds a working domain
 in 5 minutes — an aggregate, a command, an event, and handlers — all running
 in-memory with zero infrastructure.

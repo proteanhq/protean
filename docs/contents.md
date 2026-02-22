@@ -8,6 +8,7 @@ browser's search (`Ctrl+F` / `Cmd+F`) to find any topic.
 ## Getting Started
 
 - [Installation](./guides/getting-started/installation.md) -- Set up Python and install Protean.
+- [Hello, Protean!](./guides/getting-started/hello.md) -- Define, save, and load your first aggregate in under 20 lines.
 - [Quickstart](./guides/getting-started/quickstart.md) -- Build a domain in 5 minutes with in-memory adapters.
 
 ### Tutorial: Building Bookshelf

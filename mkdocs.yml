@@ -92,6 +92,7 @@ nav:
 
   - Getting Started:
     - guides/getting-started/installation.md
+    - "Hello, Protean!": guides/getting-started/hello.md
     - guides/getting-started/quickstart.md
     - Tutorial:
       - guides/getting-started/tutorial/index.md

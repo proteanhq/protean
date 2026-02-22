@@ -42,8 +42,9 @@ previous one, growing the Bookshelf application step by step.
 
 - **Python 3.11+**
 - **Protean installed** — see [Installation](../installation.md)
-- **Familiarity with the [Quickstart](../quickstart.md)** — the tutorial
-  assumes you've seen a basic Protean domain
+- **Familiarity with [Hello, Protean!](../hello.md)** — the tutorial
+  assumes you've seen a basic Protean domain (the
+  [Quickstart](../quickstart.md) is also recommended)
 
 ## Ready?
 

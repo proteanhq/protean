@@ -12,7 +12,7 @@ Build domain-driven Python applications with clean architecture.
 Start with DDD, evolve to CQRS or Event Sourcing — with pluggable
 infrastructure and zero boilerplate.
 
-[Get Started](./guides/getting-started/quickstart.md){ .md-button .md-button--primary }
+[Get Started](./guides/getting-started/hello.md){ .md-button .md-button--primary }
 [Tutorial](./guides/getting-started/tutorial/index.md){ .md-button }
 [How Do I...?](./how-do-i.md){ .md-button }
 
@@ -169,11 +169,19 @@ Not sure? Start with DDD — you can evolve later. See
 
 <div class="grid cards" markdown>
 
+-   __:material-hand-wave-outline: Hello, Protean!__
+
+    ---
+
+    Define, save, and load your first aggregate in under 20 lines.
+
+    [:material-arrow-right-box: Hello, Protean!](./guides/getting-started/hello.md)
+
 -   __:material-rocket-launch-outline: Quickstart__
 
     ---
 
-    Build a domain in 5 minutes — no infrastructure required.
+    Commands, events, and handlers in 5 minutes.
 
     [:material-arrow-right-box: Quickstart](./guides/getting-started/quickstart.md)
 

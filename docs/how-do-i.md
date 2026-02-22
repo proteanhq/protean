@@ -3,6 +3,14 @@
 A task-oriented index into the Protean documentation. Find the guide you
 need by what you're trying to accomplish.
 
+## Get Started
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| See Protean working in under 20 lines           | [Hello, Protean!](./guides/getting-started/hello.md) |
+| Build a full domain in 5 minutes                | [Quickstart](./guides/getting-started/quickstart.md) |
+| Follow a guided tutorial from scratch           | [Tutorial](./guides/getting-started/tutorial/index.md) |
+
 ## Model My Domain
 
 | I want to...                                    | Guide |

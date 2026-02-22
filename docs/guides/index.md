@@ -5,10 +5,11 @@ with Protean. Whether you're modeling your first aggregate or architecting an
 event-sourced system, you'll find detailed, practical guidance for every
 concept and pattern Protean supports.
 
-If you haven't already, start with the
-[Tutorial](./getting-started/tutorial/index.md) to build a complete
-application from scratch. These guides go deeper into each topic and serve
-as a reference you'll return to as your application grows.
+If you haven't already, start with
+[Hello, Protean!](./getting-started/hello.md) for a quick first taste, then
+work through the [Tutorial](./getting-started/tutorial/index.md) to build a
+complete application from scratch. These guides go deeper into each topic and
+serve as a reference you'll return to as your application grows.
 
 ## Choose Your Path
 
