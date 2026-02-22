@@ -171,7 +171,9 @@ Sample metadata from an event:
     "origin_stream": null,
     "timestamp": "2024-08-16 15:30:27.977101+00:00",
     "version": "v1",
-    "sequence_id": "0"
+    "sequence_id": "0",
+    "correlation_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+    "causation_id": "test::user:command-411b2ceb-9513-45d7-9e03-bbc0846fae93"
 }
 ```
 
@@ -239,6 +241,41 @@ event would be `3.2`.
 
 If the aggregate is event-sourced, the `sequence_id` is a single integer of the
 position of the event in its stream.
+
+#### `correlation_id`
+
+A string identifier that is constant across an entire causal chain of messages.
+Every command and event spawned from a single business operation shares the same
+`correlation_id`. It answers: *"Which business operation does this message
+belong to?"*
+
+The `correlation_id` is typically generated at the earliest entry point --
+often the API gateway or frontend -- and passed into `domain.process()`. If no
+external ID is provided, Protean auto-generates one (UUID4 hex, 32 characters).
+
+```python
+# Pass an external correlation ID
+domain.process(
+    PlaceOrder(customer_id="cust-123"),
+    correlation_id=request.headers["X-Correlation-ID"],
+)
+```
+
+See [Message Tracing](../domain-behavior/message-tracing.md) for details on
+how correlation IDs propagate through the system.
+
+#### `causation_id`
+
+The message ID (`headers.id`) of the immediate parent message that caused this
+one. It answers: *"What directly triggered this message?"*
+
+For example, when a command handler raises an event, the event's `causation_id`
+is the command's `headers.id`. When an event handler dispatches a new command,
+that command's `causation_id` is the event's `headers.id`. Root messages (the
+first command in a chain) have `causation_id = None`.
+
+Together with `correlation_id`, `causation_id` lets you reconstruct the full
+causation tree for any business operation.
 
 ## Payload
 
@@ -352,6 +389,11 @@ IncorrectUsageError: 'Event/Command Objects are immutable and cannot be modified
 !!! tip "See also"
     **Concept overview:** [Events](../../concepts/building-blocks/events.md) — Domain events and their role in system communication.
 
+    **Guides:**
+
+    - [Message Tracing](../domain-behavior/message-tracing.md) — Track the full causal chain of commands and events with correlation and causation IDs.
+
     **Patterns:**
 
     - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.
+    - [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md) — Design considerations for correlation and causation tracking.

@@ -189,6 +189,8 @@ def test_event_metadata():
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
                 "expected_version": None,
                 "priority": 0,
+                "correlation_id": None,
+                "causation_id": None,
             },
             "envelope": {
                 "specversion": "1.0",

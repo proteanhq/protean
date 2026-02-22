@@ -72,7 +72,7 @@ class Outbox(BaseAggregate):
 
     # For distributed tracing
     correlation_id: str | None = None
-    trace_id: str | None = None
+    causation_id: str | None = None
 
     # Message priority for processing order
     priority: int = 0  # Higher = more important
@@ -87,7 +87,7 @@ class Outbox(BaseAggregate):
         metadata: Metadata,
         priority: int = 0,
         correlation_id: Optional[str] = None,
-        trace_id: Optional[str] = None,
+        causation_id: Optional[str] = None,
         max_retries: int = 3,
         sequence_number: Optional[int] = None,
     ) -> "Outbox":
@@ -101,7 +101,7 @@ class Outbox(BaseAggregate):
             metadata: Message metadata
             priority: Processing priority (higher = more important)
             correlation_id: Correlation identifier for tracing
-            trace_id: Trace identifier for distributed tracing
+            causation_id: Causation identifier (parent message's headers.id)
             max_retries: Maximum retry attempts
             sequence_number: Sequence number for ordering
 
@@ -116,7 +116,7 @@ class Outbox(BaseAggregate):
             metadata_=metadata,
             priority=priority,
             correlation_id=correlation_id,
-            trace_id=trace_id,
+            causation_id=causation_id,
             max_retries=max_retries,
             sequence_number=sequence_number,
             status=OutboxStatus.PENDING.value,
@@ -526,6 +526,23 @@ class OutboxRepository(BaseRepository):
             List of Outbox messages with the given correlation ID
         """
         query = self._dao.query.filter(correlation_id=correlation_id)
+        query = query.order_by("-created_at")
+
+        return self._apply_limit_and_execute(query, limit)
+
+    def find_by_causation_id(
+        self, causation_id: str, limit: Optional[int] = PAGE_SIZE
+    ) -> List[Outbox]:
+        """Find messages caused by a specific parent message.
+
+        Args:
+            causation_id: Causation ID (parent message's headers.id) to filter by
+            limit: Maximum number of messages to return
+
+        Returns:
+            List of Outbox messages caused by the given message
+        """
+        query = self._dao.query.filter(causation_id=causation_id)
         query = query.order_by("-created_at")
 
         return self._apply_limit_and_execute(query, limit)

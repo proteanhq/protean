@@ -69,6 +69,8 @@ def test_event_payload():
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
                 "expected_version": None,
                 "priority": 0,
+                "correlation_id": None,
+                "causation_id": None,
             },
             "event_store": None,
         },

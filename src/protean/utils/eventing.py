@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field as PydanticField, PrivateAttr
 
@@ -129,6 +130,15 @@ class MessageHeaders(BaseValueObject):
         return cls(**headers)
 
 
+def new_correlation_id() -> str:
+    """Generate a new correlation ID (UUID4 hex, no dashes).
+
+    Used as fallback when no external correlation ID is provided
+    at the entry point (domain.process()).
+    """
+    return uuid4().hex
+
+
 class DomainMeta(BaseValueObject):
     # Fully Qualified Name of the event/command
     fqn: str | None = None
@@ -158,6 +168,18 @@ class DomainMeta(BaseValueObject):
     # Stored so the Engine can reconstruct the processing_priority() context
     # when handling commands asynchronously.
     priority: int = 0
+
+    # Correlation ID: constant across an entire causal chain.
+    # A flexible string — often provided by the external caller
+    # (frontend, API gateway). Auto-generated (UUID4 hex) only
+    # when no external ID is provided at the entry point.
+    correlation_id: str | None = None
+
+    # Causation ID: the message ID (headers.id) of the immediate
+    # parent message that caused this one. Always a Protean
+    # message ID (e.g. "testdomain::order-abc123-3"). None for
+    # root messages (the first command in a chain).
+    causation_id: str | None = None
 
 
 class EventStoreMeta(BaseValueObject):

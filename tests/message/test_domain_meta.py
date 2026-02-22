@@ -212,6 +212,8 @@ class TestDomainMetaFields:
             "asynchronous": False,
             "expected_version": 7,
             "priority": 0,
+            "correlation_id": None,
+            "causation_id": None,
         }
 
     def test_domain_meta_from_dict(self):

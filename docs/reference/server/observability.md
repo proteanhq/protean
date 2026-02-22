@@ -411,6 +411,8 @@ pip install fastapi uvicorn
 
 ## Next steps
 
+- [Message Tracing](../../guides/domain-behavior/message-tracing.md) -- Correlation
+  and causation IDs for end-to-end traceability across commands and events
 - [Engine Architecture](../../concepts/async-processing/engine.md) -- How the engine manages subscriptions
   and lifecycle
 - [Running the Server](../../guides/server/index.md) -- CLI options, deployment, and monitoring

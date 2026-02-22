@@ -55,7 +55,13 @@ from protean.utils import (
     clone_class,
 )
 from protean.utils.container import Element
-from protean.utils.eventing import Metadata, MessageEnvelope, MessageHeaders, DomainMeta
+from protean.utils.eventing import (
+    Metadata,
+    MessageEnvelope,
+    MessageHeaders,
+    DomainMeta,
+    new_correlation_id,
+)
 from protean.utils.globals import g
 from protean.utils.idempotency import IdempotencyStore
 from protean.utils.outbox import Outbox, OutboxRepository
@@ -1614,6 +1620,7 @@ class Domain:
         asynchronous: bool,
         idempotency_key: Optional[str] = None,
         priority: int = 0,
+        correlation_id: Optional[str] = None,
     ) -> BaseCommand:
         # Enrich Command
         identifier = None
@@ -1626,9 +1633,23 @@ class Domain:
         stream = f"{command.meta_.part_of.meta_.stream_category}:command-{identifier}"
 
         origin_stream = None
+        inherited_correlation_id = correlation_id  # Caller-provided takes precedence
+        causation_id = None
+
         if hasattr(g, "message_in_context"):
-            if g.message_in_context.metadata.domain.kind == "EVENT":
-                origin_stream = g.message_in_context.metadata.headers.stream
+            msg_ctx = g.message_in_context
+            if msg_ctx.metadata.domain.kind == "EVENT":
+                origin_stream = msg_ctx.metadata.headers.stream
+            # Inherit correlation_id from parent message (if not caller-provided)
+            if inherited_correlation_id is None and msg_ctx.metadata.domain:
+                inherited_correlation_id = msg_ctx.metadata.domain.correlation_id
+            # Set causation_id = parent message's ID
+            if msg_ctx.metadata.headers:
+                causation_id = msg_ctx.metadata.headers.id
+
+        # Generate new correlation_id if this is a root entry point
+        if inherited_correlation_id is None:
+            inherited_correlation_id = new_correlation_id()
 
         headers = MessageHeaders(
             id=identifier,  # FIXME Double check command ID format and construction
@@ -1660,6 +1681,8 @@ class Domain:
             sequence_id=None,
             asynchronous=asynchronous,
             priority=priority,
+            correlation_id=inherited_correlation_id,
+            causation_id=causation_id,
         )
 
         metadata = Metadata(
@@ -1682,6 +1705,7 @@ class Domain:
         idempotency_key: Optional[str] = None,
         raise_on_duplicate: bool = False,
         priority: Optional[int] = None,
+        correlation_id: Optional[str] = None,
     ) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
@@ -1704,10 +1728,15 @@ class Domain:
                 primary stream is empty. Use ``Priority`` enum values from
                 ``protean.utils.processing``. If not specified, uses the value from
                 the current ``processing_priority()`` context, or ``Priority.NORMAL`` (0).
+            correlation_id (str, optional): Correlation ID for distributed tracing.
+                When provided (e.g. from a frontend or API gateway), this ID is propagated
+                to all commands and events in the causal chain. If not provided, a new
+                UUID is auto-generated.
 
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
+        from protean.utils.eventing import Message
         from protean.utils.processing import current_priority, processing_priority
 
         # If asynchronous is not specified, use the command_processing setting from config
@@ -1744,6 +1773,7 @@ class Domain:
             asynchronous,
             idempotency_key=idempotency_key,
             priority=resolved_priority,
+            correlation_id=correlation_id,
         )
         position = self.event_store.store.append(command_with_metadata)
 
@@ -1754,6 +1784,11 @@ class Domain:
             handler_class = self.command_handler_for(command)
             if handler_class:
                 try:
+                    # Build a Message for context propagation so that events
+                    # raised during sync handling inherit trace IDs.
+                    command_message = Message.from_domain_object(command_with_metadata)
+                    g.message_in_context = command_message
+
                     # Set the processing priority context so that UoW.commit()
                     # can read it when creating outbox records
                     with processing_priority(resolved_priority):
@@ -1763,6 +1798,8 @@ class Domain:
                     if idempotency_key and store.is_active:
                         store.record_error(idempotency_key, "handler_failed")
                     raise
+                finally:
+                    g.pop("message_in_context", None)
 
                 # Record success
                 if idempotency_key and store.is_active:

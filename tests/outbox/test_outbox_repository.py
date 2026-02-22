@@ -308,6 +308,83 @@ class TestOutboxRepositoryFilterQueries:
 
         assert len(corr_messages) == 0
 
+    def test_find_by_causation_id_filters_correctly(self, outbox_repo, sample_metadata):
+        """Test that find_by_causation_id filters by parent message ID."""
+        msg1 = Outbox.create_message(
+            message_id="evt-1",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "val1"},
+            metadata=sample_metadata,
+            causation_id="parent-cmd-123",
+        )
+        msg2 = Outbox.create_message(
+            message_id="evt-2",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "val2"},
+            metadata=sample_metadata,
+            causation_id="parent-cmd-456",
+        )
+        msg3 = Outbox.create_message(
+            message_id="evt-3",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "val3"},
+            metadata=sample_metadata,
+            causation_id="parent-cmd-123",
+        )
+        outbox_repo.add(msg1)
+        outbox_repo.add(msg2)
+        outbox_repo.add(msg3)
+
+        results = outbox_repo.find_by_causation_id("parent-cmd-123")
+        assert len(results) == 2
+        assert all(r.causation_id == "parent-cmd-123" for r in results)
+
+    def test_find_by_causation_id_returns_empty_when_no_match(
+        self, outbox_repo, sample_metadata
+    ):
+        """Test that find_by_causation_id returns empty list for nonexistent ID."""
+        msg = Outbox.create_message(
+            message_id="evt-1",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "val"},
+            metadata=sample_metadata,
+            causation_id="parent-cmd-123",
+        )
+        outbox_repo.add(msg)
+
+        results = outbox_repo.find_by_causation_id("nonexistent-id")
+        assert len(results) == 0
+
+    def test_create_message_stores_both_trace_ids(self, sample_metadata):
+        """Test that create_message correctly stores correlation_id and causation_id."""
+        msg = Outbox.create_message(
+            message_id="evt-traced",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "val"},
+            metadata=sample_metadata,
+            correlation_id="corr-abc",
+            causation_id="cause-xyz",
+        )
+        assert msg.correlation_id == "corr-abc"
+        assert msg.causation_id == "cause-xyz"
+
+    def test_create_message_defaults_trace_ids_to_none(self, sample_metadata):
+        """Test that create_message defaults trace IDs to None."""
+        msg = Outbox.create_message(
+            message_id="evt-no-trace",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "val"},
+            metadata=sample_metadata,
+        )
+        assert msg.correlation_id is None
+        assert msg.causation_id is None
+
 
 class TestOutboxRepositoryTimeBasedQueries:
     """Test time-based repository query methods."""

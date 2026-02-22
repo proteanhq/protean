@@ -90,6 +90,8 @@ class TestDomainEventDefinition:
                         "asynchronous": True,  # Asynchronous is True by default
                         "expected_version": None,
                         "priority": 0,
+                        "correlation_id": None,
+                        "causation_id": None,
                     },
                     "event_store": None,
                 },
@@ -128,6 +130,8 @@ class TestDomainEventDefinition:
                     "asynchronous": False,
                     "expected_version": None,
                     "priority": 0,
+                    "correlation_id": None,
+                    "causation_id": None,
                 },
                 "event_store": None,
             },

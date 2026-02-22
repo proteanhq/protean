@@ -59,6 +59,11 @@ terminology.
   multiple aggregates. Declarative correlation, lifecycle management, and
   compensation handling replace ad-hoc event handler chains.
 
+- **[Message Tracing in Event-Driven Systems](message-tracing.md)** -- Thread
+  `correlation_id` and `causation_id` through every command and event in a
+  causal chain. Enables end-to-end debugging, auditing, and cross-service
+  traceability.
+
 ## Architecture & Quality
 
 - **[Organize by Domain Concept](organize-by-domain-concept.md)** -- The

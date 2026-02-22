@@ -57,7 +57,6 @@ def _create_outbox_message(msg_id, priority=0, stream_category="customer"):
         metadata=_make_metadata(msg_id, stream_category),
         priority=priority,
         correlation_id=f"corr-{msg_id}",
-        trace_id=f"trace-{msg_id}",
     )
 
 
@@ -366,7 +365,6 @@ class TestPriorityLaneRouting:
             metadata=metadata,
             priority=-50,  # Will route to backfill
             correlation_id="corr-preserved",
-            trace_id="trace-preserved",
         )
 
         captured_payloads = []

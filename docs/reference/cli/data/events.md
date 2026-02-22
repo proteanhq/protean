@@ -16,6 +16,7 @@ All commands accept a `--domain` option to specify the domain module path
 | `protean events stats` | Show stream statistics across the domain |
 | `protean events search` | Search for events by type across streams |
 | `protean events history` | Display the event timeline for an aggregate instance |
+| `protean events trace` | Follow the full causal chain for a correlation ID |
 
 ## `protean events read`
 
@@ -34,6 +35,9 @@ protean events read "test::user-abc123" --from 5 --limit 10 --domain=my_domain
 
 # Include full event data payloads
 protean events read "test::user-abc123" --data --domain=my_domain
+
+# Include correlation and causation IDs
+protean events read "test::user-abc123" --trace --domain=my_domain
 ```
 
 **Options**
@@ -45,6 +49,7 @@ protean events read "test::user-abc123" --data --domain=my_domain
 | `--from` | Start reading from this position | `0` |
 | `--limit` | Maximum number of events to display | `20` |
 | `--data/--no-data` | Show full event data payloads | `--no-data` |
+| `--trace/--no-trace` | Show correlation and causation ID columns | `--no-trace` |
 
 **Output**
 
@@ -107,6 +112,9 @@ protean events search --type=UserRegistered --category=app::user --domain=my_dom
 
 # Limit results and show data
 protean events search --type=UserRegistered --limit=5 --data --domain=my_domain
+
+# Include trace IDs
+protean events search --type=UserRegistered --trace --domain=my_domain
 ```
 
 **Options**
@@ -118,6 +126,7 @@ protean events search --type=UserRegistered --limit=5 --data --domain=my_domain
 | `--category` | Restrict search to a stream category | All streams (`$all`) |
 | `--limit` | Maximum number of results to display | `20` |
 | `--data/--no-data` | Show full event data payloads | `--no-data` |
+| `--trace/--no-trace` | Show correlation and causation ID columns | `--no-trace` |
 
 **Type matching rules:**
 
@@ -137,6 +146,9 @@ protean events history --aggregate=User --id=abc-123 --domain=my_domain
 
 # Include full event data
 protean events history --aggregate=User --id=abc-123 --data --domain=my_domain
+
+# Include trace IDs
+protean events history --aggregate=User --id=abc-123 --trace --domain=my_domain
 ```
 
 **Options**
@@ -147,6 +159,7 @@ protean events history --aggregate=User --id=abc-123 --data --domain=my_domain
 | `--id` | Aggregate instance identifier | Required |
 | `--domain` | Domain module path | `.` (current directory) |
 | `--data/--no-data` | Show full event data payloads | `--no-data` |
+| `--trace/--no-trace` | Show correlation and causation ID columns | `--no-trace` |
 
 **Output**
 
@@ -164,6 +177,52 @@ Snapshot exists at version 1
 User (abc-123): 3 event(s), current version: 2
 ```
 
+## `protean events trace`
+
+Follows the full causal chain for a given `correlation_id`. Scans all events
+in the event store that share the same correlation ID and displays them in
+chronological order, revealing the complete causation tree of a business
+operation.
+
+```bash
+# Follow a causal chain
+protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --domain=my_domain
+
+# Include full event data payloads
+protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --data --domain=my_domain
+```
+
+**Options**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `CORRELATION_ID` | Correlation ID to trace (positional argument) | Required |
+| `--domain` | Domain module path | `.` (current directory) |
+| `--data/--no-data` | Show full event data payloads | `--no-data` |
+
+**Output**
+
+The output shows the stream, type, time, correlation ID, and causation ID for
+each message in the chain. When `--data` is enabled, event payloads are
+displayed inline.
+
+```
+Trace: a1b2c3d4... (3 messages)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Stream                    ┃ Type                    ┃ Time                ┃ Causation ID              ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ app::order:command-abc123 │ App.PlaceOrder.v1       │ 2026-02-22 10:30:00 │                           │
+│ app::order-abc123         │ App.OrderPlaced.v1      │ 2026-02-22 10:30:01 │ app::order:command-abc123 │
+│ app::inventory-inv456     │ App.InventoryReserved.v1│ 2026-02-22 10:30:02 │ app::order-abc123-0.1     │
+└───────────────────────────┴─────────────────────────┴─────────────────────┴───────────────────────────┘
+```
+
+This is useful for debugging multi-step workflows and verifying that trace
+context propagates correctly across handlers.
+
+See [Message Tracing](../../../guides/domain-behavior/message-tracing.md) for
+details on how correlation and causation IDs work.
+
 ## Error Handling
 
 | Condition | Behavior |
@@ -174,6 +233,7 @@ User (abc-123): 3 event(s), current version: 2
 | No matching events (`search`) | Prints "No events found matching type" |
 | No events for aggregate (`history`) | Prints "No events found for \<Aggregate\>" |
 | No aggregates in domain (`stats`) | Prints "No aggregates registered" |
+| No events for correlation ID (`trace`) | Prints "No events found for correlation ID" |
 
 ## Domain Discovery
 
