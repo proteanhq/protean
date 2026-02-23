@@ -56,6 +56,15 @@ class MessageDBStore(BaseEventStore):
         """Read the last message from the event store."""
         return self.client.read_last_message(stream_name)
 
+    def _stream_head_position(self, stream_category: str) -> int:
+        # _read_last_message uses get_last_stream_message() which only works
+        # for specific streams (with entity ID), not category streams.
+        # Use _read to get category messages and take the last one.
+        messages = self._read(stream_category, no_of_messages=1_000_000)
+        if messages:
+            return messages[-1].get("global_position", -1)
+        return -1
+
     def _stream_identifiers(self, stream_category: str) -> List[str]:
         """Return unique aggregate identifiers for a stream category.
 

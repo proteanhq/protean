@@ -394,6 +394,44 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             }
         )
 
+    @router.get("/subscriptions")
+    async def subscriptions():
+        """Subscription lag status for all domains.
+
+        Returns per-subscription lag, pending count, DLQ depth, and
+        overall summary for each monitored domain.
+        """
+        from protean.server.subscription_status import collect_subscription_statuses
+
+        result = {}
+        for domain in domains:
+            try:
+                statuses = collect_subscription_statuses(domain)
+                result[domain.name] = {
+                    "status": "ok",
+                    "subscriptions": [s.to_dict() for s in statuses],
+                    "summary": {
+                        "total": len(statuses),
+                        "ok": sum(1 for s in statuses if s.status == "ok"),
+                        "lagging": sum(1 for s in statuses if s.status == "lagging"),
+                        "unknown": sum(1 for s in statuses if s.status == "unknown"),
+                        "total_lag": sum(s.lag or 0 for s in statuses),
+                        "total_pending": sum(s.pending for s in statuses),
+                        "total_dlq": sum(s.dlq_depth for s in statuses),
+                    },
+                }
+            except Exception as e:
+                logger.error(
+                    f"Error collecting subscription status for {domain.name}: {e}",
+                    exc_info=True,
+                )
+                result[domain.name] = {
+                    "status": "error",
+                    "error": "Failed to collect subscription status",
+                }
+
+        return JSONResponse(content=result)
+
     @router.delete("/traces")
     async def delete_traces():
         """Clear all persisted trace history."""

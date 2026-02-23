@@ -318,6 +318,53 @@ The `error_rate` is the percentage of trace events that are error types
 (`handler.failed` or `message.dlq`). The `avg_latency_ms` is calculated from
 `handler.completed` events only.
 
+#### Subscriptions -- `GET /api/subscriptions`
+
+Subscription lag status for all domains. Returns per-subscription lag,
+pending count, DLQ depth, and summary aggregation. Works without the engine
+running -- queries infrastructure directly.
+
+```bash
+curl http://localhost:9000/api/subscriptions
+```
+
+```json
+{
+  "identity": {
+    "status": "ok",
+    "subscriptions": [
+      {
+        "name": "identity-customer-projector-customer",
+        "handler_name": "CustomerProjector",
+        "subscription_type": "event_store",
+        "stream_category": "customer",
+        "lag": 0,
+        "pending": 0,
+        "current_position": "42",
+        "head_position": "42",
+        "status": "ok",
+        "consumer_count": 0,
+        "dlq_depth": 0
+      }
+    ],
+    "summary": {
+      "total": 3,
+      "ok": 2,
+      "lagging": 1,
+      "unknown": 0,
+      "total_lag": 5,
+      "total_pending": 3,
+      "total_dlq": 0
+    }
+  }
+}
+```
+
+#### Queue Depth -- `GET /api/queue-depth`
+
+Queue depth snapshot for backpressure visualization. Returns outbox pending
+counts per domain, per-stream XLEN, and per-consumer-group XPENDING.
+
 #### Delete traces -- `DELETE /api/traces`
 
 Clear all persisted trace history from the Redis Stream.
@@ -370,6 +417,10 @@ Available metrics:
 | `protean_stream_pending` | gauge | Pending (in-flight) messages |
 | `protean_streams_count` | gauge | Number of active streams |
 | `protean_consumer_groups_count` | gauge | Number of consumer groups |
+| `protean_subscription_lag` | gauge | Messages behind stream head (per subscription) |
+| `protean_subscription_pending` | gauge | Unacknowledged messages (per subscription) |
+| `protean_subscription_dlq_depth` | gauge | Dead letter queue depth (per subscription) |
+| `protean_subscription_status` | gauge | Subscription health: 1=ok, 0=not ok |
 
 ### Prometheus scrape configuration
 

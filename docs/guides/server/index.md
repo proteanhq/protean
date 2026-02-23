@@ -496,6 +496,7 @@ The Observatory exposes:
 | `GET /api/outbox` | Outbox message counts per domain |
 | `GET /api/streams` | Stream lengths and consumer groups |
 | `GET /api/stats` | Combined throughput statistics |
+| `GET /api/subscriptions` | Subscription lag, pending, DLQ per handler |
 | `GET /metrics` | Prometheus text exposition format |
 
 ### Key metrics
@@ -510,6 +511,44 @@ Monitor these metrics in production (available at `/metrics`):
 | `protean_stream_pending` | In-flight (unacknowledged) messages |
 | `protean_broker_ops_per_sec` | Broker operations per second |
 | `protean_broker_memory_bytes` | Broker memory usage |
+| `protean_subscription_lag` | Per-subscription lag behind stream head |
+| `protean_subscription_pending` | Per-subscription unacknowledged messages |
+| `protean_subscription_dlq_depth` | Per-subscription dead letter queue depth |
+
+### Monitoring subscription lag
+
+Check if subscriptions are falling behind from the CLI without starting the
+Observatory:
+
+```bash
+protean subscriptions status --domain=my_app
+```
+
+Or query the Observatory's REST API:
+
+```bash
+curl http://localhost:9000/api/subscriptions
+```
+
+For Prometheus alerting, use `protean_subscription_lag` to detect handlers
+that are falling behind:
+
+```yaml
+# prometheus alert rule
+groups:
+  - name: protean
+    rules:
+      - alert: SubscriptionLagging
+        expr: protean_subscription_lag > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Subscription {{ $labels.handler }} is lagging"
+```
+
+See [`protean subscriptions`](../../reference/cli/runtime/subscriptions.md)
+for full CLI documentation.
 
 ### Prometheus scrape configuration
 

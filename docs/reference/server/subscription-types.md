@@ -326,6 +326,31 @@ class OrderProjector:
     ...
 ```
 
+## Monitoring lag
+
+Both subscription types support lag monitoring through the CLI, Observatory
+API, and Prometheus metrics. Lag is computed differently for each type:
+
+| Type | How lag is calculated |
+|------|----------------------|
+| **EventStoreSubscription** | `stream_head_position(category) - current_position` where `current_position` is read from the handler's `position-{subscriber}-{category}` stream |
+| **StreamSubscription** | Redis `XINFO GROUPS` native `lag` field (Redis 7.0+), falling back to counting messages after `last-delivered-id` via `XRANGE` |
+
+Check subscription lag from the CLI:
+
+```bash
+protean subscriptions status --domain=my_app
+```
+
+Or query the Observatory:
+
+```bash
+curl http://localhost:9000/api/subscriptions
+```
+
+See [`protean subscriptions`](../cli/runtime/subscriptions.md) for full CLI
+documentation and [Observability](observability.md) for the Observatory API.
+
 ## Next Steps
 
 - [Configuration](configuration.md) - Learn about configuration profiles and

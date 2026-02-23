@@ -1186,6 +1186,32 @@ body {
     </div>
   </div>
 
+  <!-- Subscription Lag -->
+  <div class="card" id="subscriptionLagCard">
+    <div class="card-header">
+      <span title="Per-handler subscription lag, pending, and DLQ depth. Covers event store, stream, broker, and outbox subscriptions.">Subscription Status</span>
+      <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-code)" id="subLastUpdated"></span>
+    </div>
+    <div class="card-body" id="subscriptionLagBody">
+      <table class="lag-table" id="subTable">
+        <thead>
+          <tr>
+            <th title="Handler class name or outbox processor label.">Handler</th>
+            <th title="Subscription mechanism: event_store, stream, broker, or outbox.">Type</th>
+            <th title="Stream category or outbox route being consumed.">Stream</th>
+            <th title="Messages behind the stream head. 0 means fully caught up.">Lag</th>
+            <th title="Messages delivered but not yet acknowledged.">Pending</th>
+            <th title="Messages in the dead-letter queue or failed/abandoned outbox entries.">DLQ</th>
+            <th title="ok = caught up, lagging = behind, unknown = unable to query.">Status</th>
+          </tr>
+        </thead>
+        <tbody id="subTableBody">
+          <tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Throughput Chart -->
   <div class="card">
     <div class="sparkline-container">
@@ -2804,6 +2830,60 @@ function updateConsumerLagTable() {
   tbody.innerHTML = html;
 }
 
+// --- Subscription Status ---
+async function pollSubscriptions() {
+  try {
+    const resp = await fetch('/api/subscriptions');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    updateSubscriptionTable(data);
+    const el = document.getElementById('subLastUpdated');
+    if (el) el.textContent = new Date().toLocaleTimeString();
+  } catch (e) { /* silent */ }
+}
+
+function updateSubscriptionTable(data) {
+  const tbody = document.getElementById('subTableBody');
+  if (!tbody) return;
+
+  // Flatten all domain subscriptions into one list
+  let rows = [];
+  for (const [domainName, info] of Object.entries(data)) {
+    if (info.status !== 'ok' || !info.subscriptions) continue;
+    for (const s of info.subscriptions) {
+      rows.push(s);
+    }
+  }
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">No subscriptions</td></tr>';
+    return;
+  }
+
+  let html = '';
+  for (const s of rows) {
+    const lag = s.lag != null ? s.lag.toLocaleString() : '-';
+    const pending = (s.pending || 0).toLocaleString();
+    const dlq = s.dlq_depth ? s.dlq_depth.toLocaleString() : '-';
+    let statusColor = 'var(--text-muted)';
+    let statusLabel = s.status;
+    if (s.status === 'ok') statusColor = 'var(--success)';
+    else if (s.status === 'lagging') statusColor = 'var(--accent)';
+
+    html += '<tr>';
+    html += '<td>' + escapeHtml(s.handler_name) + '</td>';
+    html += '<td style="font-family:var(--font-code);font-size:12px">' + escapeHtml(s.subscription_type) + '</td>';
+    html += '<td>' + escapeHtml(s.stream_category) + '</td>';
+    html += '<td style="font-family:var(--font-code)">' + lag + '</td>';
+    html += '<td style="font-family:var(--font-code)">' + pending + '</td>';
+    html += '<td style="font-family:var(--font-code)">' + dlq + '</td>';
+    html += '<td style="color:' + statusColor + ';font-weight:600">' + escapeHtml(statusLabel) + '</td>';
+    html += '</tr>';
+  }
+
+  tbody.innerHTML = html;
+}
+
 // --- Utils ---
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -2849,10 +2929,12 @@ async function init() {
   connectSSE();
   pollInfrastructure();
   pollQueueDepth();
+  pollSubscriptions();
   setInterval(tickThroughput, 1000);
   setInterval(tickQueueDepth, 1000);
   setInterval(() => { loadStats(); pollInfrastructure(); }, 5000);
   setInterval(pollQueueDepth, 2000);
+  setInterval(pollSubscriptions, 5000);
   drawSparkline();
   drawQueueSparkline();
 }

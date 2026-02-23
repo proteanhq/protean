@@ -123,3 +123,38 @@ class TestMessageDBEventStore:
     def test_read_last_message_when_there_are_no_messages(self, test_domain):
         message = test_domain.event_store.store._read_last_message("foo-bar")
         assert message is None
+
+    def test_stream_head_position_empty_stream(self, test_domain):
+        """stream_head_position returns -1 for a stream with no messages."""
+        result = test_domain.event_store.store.stream_head_position("nonexistent")
+        assert result == -1
+
+    def test_stream_head_position_with_messages(self, test_domain):
+        """stream_head_position returns global_position of the newest message."""
+        for i in range(5):
+            test_domain.event_store.store._write(
+                "testStream-123", "Event1", {"foo": f"bar{i}"}
+            )
+
+        result = test_domain.event_store.store.stream_head_position("testStream")
+        assert result >= 0
+
+        # Should match the last category message's global_position
+        all_msgs = test_domain.event_store.store._read(
+            "testStream", no_of_messages=1_000_000
+        )
+        assert result == all_msgs[-1]["global_position"]
+
+    def test_stream_head_position_per_category(self, test_domain):
+        """stream_head_position returns correct head per stream category."""
+        for i in range(3):
+            test_domain.event_store.store._write("streamA-123", "EventA", {"idx": i})
+        for i in range(2):
+            test_domain.event_store.store._write("streamB-456", "EventB", {"idx": i})
+
+        head_a = test_domain.event_store.store.stream_head_position("streamA")
+        head_b = test_domain.event_store.store.stream_head_position("streamB")
+
+        assert head_a >= 0
+        assert head_b >= 0
+        assert head_a != head_b

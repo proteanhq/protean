@@ -744,6 +744,36 @@ class BaseEventStore(metaclass=ABCMeta):
         return _build_node(roots[0])
 
     @abstractmethod
+    def _stream_head_position(self, stream_category: str) -> int:
+        """Return the global_position of the newest message in a category stream.
+
+        Used by subscription lag monitoring to determine how far behind
+        a subscription is from the head of its stream.
+
+        Args:
+            stream_category: The stream category to check (e.g. ``test::user``
+                or ``$all``).
+
+        Returns:
+            The ``global_position`` of the latest message, or ``-1`` if the
+            stream has no messages.
+        """
+
+    def stream_head_position(self, stream_category: str) -> int:
+        """Return the global_position of the newest message in a category stream.
+
+        Public wrapper around :meth:`_stream_head_position`.
+
+        Args:
+            stream_category: The stream category to check.
+
+        Returns:
+            The ``global_position`` of the latest message, or ``-1`` if the
+            stream has no messages.
+        """
+        return self._stream_head_position(stream_category)
+
+    @abstractmethod
     def _data_reset(self) -> None:
         """Flush all events.
 

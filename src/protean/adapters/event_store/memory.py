@@ -156,6 +156,12 @@ class MemoryEventStore(BaseEventStore):
         messages = repo.read(stream_name)
         return messages[-1] if messages else None
 
+    def _stream_head_position(self, stream_category: str) -> int:
+        messages = self._read(stream_category, no_of_messages=1_000_000)
+        if messages:
+            return messages[-1].get("global_position", -1)
+        return -1
+
     def _stream_identifiers(self, stream_category: str) -> List[str]:
         messages = self._read(stream_category, no_of_messages=1_000_000)
         identifiers: set[str] = set()

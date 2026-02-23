@@ -12,6 +12,10 @@ Metrics:
 - protean_broker_memory_bytes (gauge) — Broker memory usage
 - protean_broker_ops_per_sec (gauge) — Broker operations per second
 - protean_broker_up (gauge) — Broker health status (1=up, 0=down)
+- protean_subscription_lag (gauge) — Messages behind stream head per subscription
+- protean_subscription_pending (gauge) — Unacknowledged messages per subscription
+- protean_subscription_dlq_depth (gauge) — Dead letter queue depth per subscription
+- protean_subscription_status (gauge) — Subscription health (1=ok, 0=not ok)
 """
 
 import logging
@@ -152,6 +156,59 @@ def create_metrics_endpoint(domains: List[Domain]):
 
         except Exception as e:
             logger.debug(f"Metrics: broker query failed: {e}")
+
+        # --- Subscription lag metrics ---
+        try:
+            from protean.server.subscription_status import (
+                collect_subscription_statuses,
+            )
+
+            lines.append("")
+            lines.append("# HELP protean_subscription_lag Messages behind stream head")
+            lines.append("# TYPE protean_subscription_lag gauge")
+            lines.append("")
+            lines.append("# HELP protean_subscription_pending Unacknowledged messages")
+            lines.append("# TYPE protean_subscription_pending gauge")
+            lines.append("")
+            lines.append(
+                "# HELP protean_subscription_dlq_depth Dead letter queue depth"
+            )
+            lines.append("# TYPE protean_subscription_dlq_depth gauge")
+            lines.append("")
+            lines.append(
+                "# HELP protean_subscription_status Subscription health (1=ok, 0=not ok)"
+            )
+            lines.append("# TYPE protean_subscription_status gauge")
+
+            for domain in domains:
+                try:
+                    statuses = collect_subscription_statuses(domain)
+                    for s in statuses:
+                        labels = (
+                            f'domain="{domain.name}",'
+                            f'handler="{s.handler_name}",'
+                            f'stream="{s.stream_category}",'
+                            f'type="{s.subscription_type}"'
+                        )
+                        if s.lag is not None:
+                            lines.append(
+                                f"protean_subscription_lag{{{labels}}} {s.lag}"
+                            )
+                        lines.append(
+                            f"protean_subscription_pending{{{labels}}} {s.pending}"
+                        )
+                        lines.append(
+                            f"protean_subscription_dlq_depth{{{labels}}} {s.dlq_depth}"
+                        )
+                        lines.append(
+                            f"protean_subscription_status{{{labels}}} {1 if s.status == 'ok' else 0}"
+                        )
+                except Exception as e:
+                    logger.debug(
+                        f"Metrics: subscription status failed for {domain.name}: {e}"
+                    )
+        except Exception as e:
+            logger.debug(f"Metrics: subscription status import failed: {e}")
 
         lines.append("")  # Trailing newline
         return Response(
