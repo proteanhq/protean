@@ -1,4 +1,4 @@
-"""Entity Functionality and Classes"""
+"""Entity module providing the base class for entity domain elements."""
 
 import functools
 import logging
@@ -122,15 +122,30 @@ class _EntityState:
 # BaseEntity
 # ---------------------------------------------------------------------------
 class BaseEntity(BaseModel, OptionsMixin):
-    """Base class for Entity domain elements.
+    """Base class for entities -- domain objects with unique identity that live
+    within an aggregate.
 
-    Mutable, identity-based equality, with invariant checking.
-    Uses ``validate_assignment=True`` for field declaration, validation,
-    and mutation.
+    Entities are mutable with identity-based equality: two entities are equal
+    if they share the same identifier, regardless of attribute values. Field
+    mutations are validated via Pydantic's ``validate_assignment`` and trigger
+    pre/post invariant checks automatically.
 
     Fields are declared using standard Python type annotations with optional
-    ``Field`` constraints.  Identity fields must be annotated with
-    ``json_schema_extra={"identifier": True}``.
+    ``Field`` constraints. An identity field is auto-injected unless one is
+    explicitly declared with ``identifier=True``.
+
+    Entities track their lifecycle state (new, persisted, changed, destroyed)
+    via the ``state_`` property, and can raise events that are registered on
+    the aggregate root.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``part_of`` | ``type`` | The aggregate class this entity belongs to. Required. |
+    | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
+    | ``schema_name`` | ``str`` | The storage table/collection name. |
+    | ``auto_add_id_field`` | ``bool`` | Whether to auto-inject an ``id`` field (default: ``True``). |
     """
 
     element_type: ClassVar[str] = DomainObjects.ENTITY

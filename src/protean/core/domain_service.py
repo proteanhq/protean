@@ -13,11 +13,36 @@ logger = logging.getLogger(__name__)
 
 
 class BaseDomainService(Element, OptionsMixin):
-    """Base DomainService class that all other domain services should inherit from.
+    """Base class for domain services that encapsulate business logic spanning
+    multiple aggregates.
 
-    This is a placeholder class for now. Methods that are implemented
-    in concreate Domain Service classes are inspired from Domain concepts,
-    and typically use more than one aggregate to accomplish a task"""
+    Domain services are stateless, instantiated with the aggregate instances
+    they operate on, and must be associated with two or more aggregates via
+    the ``part_of`` option. Public methods (including ``__call__``) are
+    automatically wrapped with pre/post invariant checks when the service
+    class has methods decorated with ``@invariant.pre`` or ``@invariant.post``.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``part_of`` | ``list`` | List of two or more aggregate classes this service operates on. Required. |
+
+    Example::
+
+        @domain.domain_service(part_of=[Order, Inventory])
+        class PlaceOrderService(BaseDomainService):
+
+            @invariant.post
+            def order_should_have_items(self):
+                if not self._aggregates[0].items:
+                    raise ValidationError({"items": ["Order must have items"]})
+
+            def __call__(self):
+                order, inventory = self._aggregates
+                inventory.reserve(order.items)
+                order.confirm()
+    """
 
     element_type = DomainObjects.DOMAIN_SERVICE
 
@@ -39,12 +64,10 @@ class BaseDomainService(Element, OptionsMixin):
         setattr(cls, "_invariants", defaultdict(dict))
 
     def __init__(self, *aggregates: Union[BaseAggregate, List[BaseAggregate]]):
-        """
-        Initializes a DomainService with one or more aggregates.
+        """Initialize a DomainService with one or more aggregates.
 
         Args:
-            *aggregates (Union[BaseAggregate, List[BaseAggregate]]): One or more aggregates to be associated with this
-            DomainService.
+            *aggregates: One or more aggregates to operate on.
         """
         self._aggregates = aggregates
 

@@ -127,6 +127,7 @@ optional = true
 mkdocs = ">=1.6,<2"
 mkdocs-material = "^9.5.15"
 mdx-include = "^1.4.2"
+mkdocstrings = {version = ">=0.27,<1", extras = ["python"]}
 
 [tool.poetry.group.types]
 optional = true

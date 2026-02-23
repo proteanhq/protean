@@ -740,3 +740,108 @@ a:visited {
 .md-typeset img[src*="codecov.io"] {
   margin-right: 0.25rem;
 }
+
+/* --------------------------------------------------------------------------
+   mkdocstrings — API Reference Styling
+   -------------------------------------------------------------------------- */
+
+/* Object heading (class/function name) — match the teal theme */
+.doc-heading code {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--md-primary-fg-color);
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+[data-md-color-scheme="slate"] .doc-heading code {
+  color: #5EEAD4;
+}
+
+/* Object labels (class, method, function, attribute badges) */
+.doc-label {
+  font-size: 0.65em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15em 0.5em;
+  border-radius: 0.25rem;
+  vertical-align: middle;
+  margin-left: 0.5em;
+}
+
+.doc-label-class {
+  background-color: #0D948820;
+  color: #0D9488;
+}
+
+.doc-label-method,
+.doc-label-function {
+  background-color: #8B5CF620;
+  color: #8B5CF6;
+}
+
+.doc-label-attribute {
+  background-color: #F59E0B20;
+  color: #F59E0B;
+}
+
+[data-md-color-scheme="slate"] .doc-label-class {
+  background-color: #2DD4BF20;
+  color: #2DD4BF;
+}
+
+[data-md-color-scheme="slate"] .doc-label-method,
+[data-md-color-scheme="slate"] .doc-label-function {
+  background-color: #A78BFA20;
+  color: #A78BFA;
+}
+
+[data-md-color-scheme="slate"] .doc-label-attribute {
+  background-color: #FBBF2420;
+  color: #FBBF24;
+}
+
+/* Signature block — give it a subtle code-block feel */
+.doc-signature {
+  font-size: 0.80em;
+  padding: 0.5em 0.75em;
+  background-color: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.375rem;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+}
+
+/* Parameters table — tighten spacing */
+.doc-md-description table {
+  font-size: 0.9em;
+}
+
+/* Source link — subtle positioning */
+.doc-source-link {
+  font-size: 0.7em;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.doc-source-link:hover {
+  opacity: 1;
+}
+
+/* Members section — add left border for visual grouping */
+.doc-children {
+  border-left: 2px solid var(--md-default-fg-color--lightest);
+  padding-left: 1rem;
+  margin-left: 0.25rem;
+}
+
+[data-md-color-scheme="slate"] .doc-children {
+  border-left-color: #2D3748;
+}
+
+/* Prevent overly wide content in the API pages */
+.doc-contents {
+  max-width: 100%;
+}

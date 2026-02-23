@@ -109,7 +109,7 @@ class BaseRepository(Element, OptionsMixin):
         will not allow instances of the same object to be added twice. Also, when retrieving objects from
         a Repository and modifying them, you don't need to "re-save" them to the Repository.
 
-        If there is a :ref:`Unit of Work <unit-of-work>` in progress, then the changes are performed on the
+        If there is a Unit of Work in progress, then the changes are performed on the
         UoW's active session. They are committed whenever the entire UoW is committed. If there is no
         transaction in progress, changes are committed immediately to the persistence store. This mechanism
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
@@ -250,7 +250,7 @@ class BaseRepository(Element, OptionsMixin):
         Returns the fetched object.
 
         All other data filtering capabilities can be implemented by using the underlying DAO's
-        :meth:`BaseDAO.filter` method.
+        ``BaseDAO.filter`` method.
 
         Filter methods are typically implemented as domain-contextual queries, like `find_adults()`,
         `find_residents_of_area(zipcode)`, etc. It is also possible to make use of more complicated,

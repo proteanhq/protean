@@ -74,17 +74,16 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     Event handlers process domain events asynchronously. They can be configured
     with subscription settings to control message consumption behavior.
 
-    Meta Options:
-        part_of: The aggregate this handler is associated with.
-        source_stream: Optional source stream filter for origin filtering.
-        stream_category: The stream category to subscribe to. Defaults to the
-            aggregate's stream category if part_of is specified.
-        subscription_type: The subscription type to use (STREAM or EVENT_STORE).
-            When None, uses the domain's default subscription type.
-        subscription_profile: A predefined configuration profile
-            (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION).
-        subscription_config: A dictionary of custom configuration overrides
-            that take precedence over profile defaults.
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``part_of`` | ``type`` | The aggregate this handler is associated with. |
+    | ``source_stream`` | ``str`` | Optional source stream filter for origin filtering. |
+    | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. |
+    | ``subscription_type`` | ``str`` | The subscription type (STREAM or EVENT_STORE). |
+    | ``subscription_profile`` | ``str`` | A predefined profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION). |
+    | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
 
     Configuration Priority (highest to lowest):
         1. Handler Meta subscription_config
@@ -95,16 +94,17 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         6. Profile defaults
         7. Hardcoded defaults
 
-    Example:
-        >>> @domain.event_handler(
-        ...     part_of=Order,
-        ...     subscription_profile=SubscriptionProfile.PRODUCTION,
-        ...     subscription_config={"messages_per_tick": 50},
-        ... )
-        ... class OrderEventHandler(BaseEventHandler):
-        ...     @handle(OrderPlaced)
-        ...     def handle_order_placed(self, event):
-        ...         pass
+    Example::
+
+        @domain.event_handler(
+            part_of=Order,
+            subscription_profile=SubscriptionProfile.PRODUCTION,
+            subscription_config={"messages_per_tick": 50},
+        )
+        class OrderEventHandler(BaseEventHandler):
+            @handle(OrderPlaced)
+            def handle_order_placed(self, event):
+                pass
     """
 
     element_type = DomainObjects.EVENT_HANDLER

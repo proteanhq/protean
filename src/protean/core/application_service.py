@@ -1,25 +1,49 @@
+from __future__ import annotations
+
 import functools
 import logging
+from collections.abc import Callable
+from typing import Any
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
-from typing import Any, TypeVar
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
 
 class BaseApplicationService(Element, OptionsMixin):
-    """Base ApplicationService class that all other Application services should inherit from.
+    """Base class for application services -- stateless orchestration layers that
+    coordinate use cases between external callers (API controllers, CLI handlers,
+    background jobs) and the domain model.
 
-    This class is a placeholder class for now. Application concepts directly influence the
-    method names in concrete Application Service classes, so no abstract methods are necessary.
-    Each Application Service class is usually associated one-to-one with API calls.
+    Application services load aggregates, invoke domain methods, and persist
+    results without containing business logic themselves. They are always
+    associated with one aggregate via ``part_of``. Use the ``@use_case``
+    decorator on methods for automatic ``UnitOfWork`` wrapping.
 
-    Application services are responsible for fetching the linked domain, initializing repositories,
-    caches, and message brokers, and injecting dependencies into the domain layer. These are automatable
-    aspects that can be part of the base class in the future.
+    Unlike command handlers, application services are invoked directly (not
+    via ``domain.process()``) and always return values synchronously.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``part_of`` | ``type`` | The aggregate class this service orchestrates. Required. |
+
+    Example::
+
+        @domain.application_service(part_of=Order)
+        class OrderService(BaseApplicationService):
+
+            @use_case
+            def place_order(self, order_data: dict) -> Order:
+                order = Order(**order_data)
+                repo = domain.repository_for(Order)
+                repo.add(order)
+                return order
     """
 
     element_type = DomainObjects.APPLICATION_SERVICE
@@ -50,14 +74,14 @@ def application_service_factory(
     return element_cls
 
 
-def use_case(func):
+def use_case(func: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator to mark a method as a use case in an Application Service.
 
     Args:
-        func (Callable): The method to be decorated.
+        func: The method to be decorated.
 
     Returns:
-        Callable: The decorated method.
+        The decorated method.
     """
 
     @functools.wraps(func)

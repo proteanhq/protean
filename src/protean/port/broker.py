@@ -571,10 +571,10 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     def register(self, subscriber_cls: Type[BaseSubscriber]) -> None:
-        """Registers subscribers to brokers against their streams.
+        """Register a subscriber to this broker against its stream.
 
-        Arguments:
-            subscriber_cls {Subscriber} -- The subscriber class connected to the stream
+        Args:
+            subscriber_cls: The subscriber class connected to the stream.
         """
         stream = subscriber_cls.meta_.stream
 

@@ -6,10 +6,45 @@ from typing import Any, TypeVar
 
 
 class BaseProjector(Element, HandlerMixin, OptionsMixin):
-    """Base class for all Projectors. This is also a marker class that is referenced
-    when projectors are registered with the domain.
+    """Base class for projectors that maintain read-optimized projections by
+    listening to domain events.
 
-    Projectors are used to project events into projections.
+    Projectors are always associated with a projection via ``projector_for``
+    and use the ``@handle`` (or its alias ``@on``) decorator to map specific
+    event types to handler methods. Unlike generic event handlers, projectors
+    explicitly target a projection and can listen to events from multiple
+    aggregates.
+
+    Handler methods receive the event as their only argument and are
+    responsible for creating, updating, or deleting the projection record.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``projector_for`` | ``type`` | The projection class this projector maintains. Required. |
+    | ``aggregates`` | ``list`` | Aggregate classes whose events this projector listens to. |
+    | ``stream_categories`` | ``list`` | Explicit stream categories to subscribe to. Overrides ``aggregates``. |
+
+    Example::
+
+        @domain.projector(projector_for=OrderSummary, aggregates=[Order])
+        class OrderSummaryProjector(BaseProjector):
+
+            @on(OrderPlaced)
+            def on_order_placed(self, event):
+                repo = current_domain.repository_for(OrderSummary)
+                repo.add(OrderSummary(
+                    order_id=event.order_id,
+                    status="placed",
+                ))
+
+            @on(OrderShipped)
+            def on_order_shipped(self, event):
+                repo = current_domain.repository_for(OrderSummary)
+                summary = repo.get(event.order_id)
+                summary.status = "shipped"
+                repo.add(summary)
     """
 
     element_type = DomainObjects.PROJECTOR

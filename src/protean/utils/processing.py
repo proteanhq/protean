@@ -26,7 +26,10 @@ Usage:
         domain.process(cmd3)  # LOW again
 """
 
+from __future__ import annotations
+
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import IntEnum
@@ -73,7 +76,7 @@ _processing_priority: ContextVar[int] = ContextVar(
 
 
 @contextmanager
-def processing_priority(priority):
+def processing_priority(priority: "Priority") -> Generator[None, None, None]:
     """Context manager to set processing priority for all operations in scope.
 
     All commands processed within this context will have their events tagged
@@ -82,11 +85,11 @@ def processing_priority(priority):
     and processed only when the primary stream is empty.
 
     Args:
-        priority: A Priority enum member or integer value. Values below the
+        priority (Priority): A Priority enum member or integer value. Values below the
             configured threshold (default 0) are routed to the backfill lane.
 
     Yields:
-        None
+        None: Context manager does not yield a value.
 
     Example:
         >>> with processing_priority(Priority.LOW):

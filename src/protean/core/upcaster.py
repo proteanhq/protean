@@ -25,14 +25,17 @@ logger = logging.getLogger(__name__)
 class BaseUpcaster(Element, OptionsMixin):
     """Base class for event upcasters.
 
-    Subclasses must implement :meth:`upcast` which receives the raw event
+    Subclasses must implement ``upcast()`` which receives the raw event
     payload dict (as stored in the event store) and returns a transformed
     dict compatible with the target version's schema.
 
-    Meta Options:
-        event_type: The event class this upcaster targets (current version).
-        from_version: Source version string (e.g. ``"v1"``).
-        to_version: Target version string (e.g. ``"v2"``).
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``event_type`` | ``type`` | The event class this upcaster targets (current version). |
+    | ``from_version`` | ``str`` | Source version string (e.g. ``"v1"``). |
+    | ``to_version`` | ``str`` | Target version string (e.g. ``"v2"``). |
     """
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseUpcaster":

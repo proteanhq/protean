@@ -175,6 +175,14 @@ need by what you're trying to accomplish.
 | Use Message DB as an event store                | [Message DB](./reference/adapters/eventstore/message-db.md) |
 | Build a custom broker adapter                   | [Custom Brokers](./reference/adapters/broker/custom-brokers.md) |
 
+## Look Up API Details
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| Look up the exact signature of a base class     | [Python API Reference](./api/index.md) |
+| Browse Domain class methods and options         | [Domain API](./api/domain.md) |
+| See all field types and their parameters        | [Fields API](./api/fields/index.md) |
+
 ## Understand Internals
 
 | I want to...                                    | Guide |

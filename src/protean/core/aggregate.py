@@ -1,4 +1,4 @@
-"""Aggregate Functionality and Classes"""
+"""Aggregate module providing the base class for aggregate root entities."""
 
 import functools
 import inspect
@@ -35,10 +35,24 @@ logger = logging.getLogger(__name__)
 
 
 class BaseAggregate(BaseEntity):
-    """Base class for Aggregate root entities.
+    """Base class for aggregate root entities -- the primary building block for
+    modeling domain concepts.
 
-    Inherits from ``BaseEntity``. Adds versioning, event raising (``raise_``),
-    event sourcing (``_apply`` / ``from_events``), and projection dispatch.
+    Aggregates enforce consistency rules and define transaction boundaries.
+    They inherit all entity capabilities (fields, identity, invariants) and add
+    versioning for optimistic concurrency, event raising via ``raise_()``, and
+    event-sourcing support via ``_apply()`` / ``from_events()``.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``is_event_sourced`` | ``bool`` | Enable event-sourcing mode (default: ``False``). |
+    | ``fact_events`` | ``bool`` | Auto-generate fact events on persistence (default: ``False``). |
+    | ``stream_category`` | ``str`` | Override the event stream category name. |
+    | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
+    | ``schema_name`` | ``str`` | The storage table/collection name. |
+    | ``auto_add_id_field`` | ``bool`` | Whether to auto-inject an ``id`` field (default: ``True``). |
     """
 
     element_type: ClassVar[str] = DomainObjects.AGGREGATE

@@ -58,9 +58,12 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import ProteanExceptionWithMessage
+
+if TYPE_CHECKING:
+    from protean.core.event import BaseEvent
 from protean.utils import fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -71,15 +74,15 @@ from protean.utils.eventing import (
 from protean.utils.reflection import _ID_FIELD_NAME
 
 
-def given(aggregate_cls, *events):
+def given(aggregate_cls: type, *events: "BaseEvent") -> "AggregateResult":
     """Start an event-sourcing test sentence.
 
     Args:
-        aggregate_cls: The aggregate class under test.
-        *events: Past domain events constituting the aggregate's history.
+        aggregate_cls (type): The aggregate class under test.
+        *events (BaseEvent): Past domain events constituting the aggregate's history.
 
     Returns:
-        AggregateResult ready for ``.after()`` or ``.process()``.
+        AggregateResult: Result object ready for ``.after()`` or ``.process()``.
 
     Examples::
 
@@ -183,7 +186,7 @@ class AggregateResult:
             .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
         )
 
-    Created by :func:`given`, not directly.
+    Created by ``given()``, not directly.
     """
 
     def __init__(

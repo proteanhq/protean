@@ -13,10 +13,19 @@ logger = logging.getLogger(__name__)
 
 
 class BaseSubscriber(Element, OptionsMixin):
-    """Base Subscriber class that should implemented by all Domain Subscribers.
+    """Base class for subscribers that consume messages from external message
+    brokers and act as an anti-corruption layer at the domain boundary.
 
-    This is also a marker class that is referenced when subscribers are registered
-    with the domain
+    Subscribers listen to named broker streams, receive raw ``dict`` payloads
+    (not typed domain events), and translate external data into domain
+    operations. Implement the ``__call__`` method to process incoming messages.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``broker`` | ``str`` | The broker adapter name to consume from (default: ``"default"``). |
+    | ``stream`` | ``str`` | The external stream/topic name to subscribe to. Required. |
     """
 
     element_type = DomainObjects.SUBSCRIBER

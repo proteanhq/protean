@@ -1,4 +1,4 @@
-"""Value Object Functionality and Classes"""
+"""Value Object module providing the base class for immutable value objects."""
 
 import logging
 from collections import defaultdict
@@ -27,10 +27,20 @@ logger = logging.getLogger(__name__)
 # BaseValueObject
 # ---------------------------------------------------------------------------
 class BaseValueObject(BaseModel, OptionsMixin):
-    """Base class for Value Objects - immutable, no identity, equality by value.
+    """Base class for value objects -- immutable domain elements without identity,
+    defined entirely by their attributes.
+
+    Two value objects with the same attribute values are considered equal.
+    Value objects are always embedded within aggregates or entities and cannot
+    exist independently. They become immutable after construction -- any attempt
+    to modify an attribute raises ``IncorrectUsageError``.
 
     Fields are declared using standard Python type annotations with optional
-    Field constraints.
+    ``Field`` constraints. Value objects cannot contain ``identifier`` or
+    ``unique`` fields, and cannot have associations (``HasOne``, ``HasMany``).
+
+    Supports ``@invariant.post`` decorators for validation rules that are
+    checked after construction.
     """
 
     element_type: ClassVar[str] = DomainObjects.VALUE_OBJECT

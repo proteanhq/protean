@@ -88,4 +88,13 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Migrating to 0.15](migration/v0-15.md)
 
+-   **:material-api: Python API Reference**
+
+    ---
+
+    Auto-generated class signatures, method parameters, and return types
+    from source code.
+
+    [:material-arrow-right-box: API Reference](../api/index.md)
+
 </div>

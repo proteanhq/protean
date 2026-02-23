@@ -32,15 +32,39 @@ logger = logging.getLogger(__name__)
 # BaseProjection
 # ---------------------------------------------------------------------------
 class BaseProjection(BaseModel, OptionsMixin):
-    """Base class for Projection domain elements.
+    """Base class for projections -- read-optimized, denormalized views
+    maintained by projectors in response to domain events.
 
-    Mutable, identity-based equality, with basic field types only.
-    Uses ``validate_assignment=True`` for field declaration, validation,
-    and mutation.
+    Projections are mutable with identity-based equality. They only support
+    basic field types (``String``, ``Integer``, ``Float``, ``Identifier``,
+    ``DateTime``, etc.) — no ``Reference``, ``HasOne``, ``HasMany``, or
+    ``ValueObject`` fields. Every projection must have at least one field
+    marked with ``identifier=True``.
+
+    Projections can be backed by a database provider or a cache (e.g. Redis).
+    When ``cache`` is specified, it overrides the database ``provider``.
 
     Fields are declared using standard Python type annotations with optional
-    ``Field`` constraints. Identity fields must be annotated with
-    ``json_schema_extra={"identifier": True}``.
+    ``Field`` constraints.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
+    | ``cache`` | ``str`` | Cache adapter name. When set, overrides ``provider``. |
+    | ``schema_name`` | ``str`` | The storage table/collection name. |
+    | ``order_by`` | ``tuple`` | Default ordering for queries. |
+    | ``limit`` | ``int`` | Default query result limit (default: ``100``). |
+
+    Example::
+
+        @domain.projection
+        class OrderSummary(BaseProjection):
+            order_id = Identifier(identifier=True)
+            customer_name = String(max_length=100)
+            total_amount = Float()
+            status = String(max_length=20)
     """
 
     element_type: ClassVar[str] = DomainObjects.PROJECTION

@@ -16,15 +16,28 @@ logger = logging.getLogger(__name__)
 
 
 class UnitOfWork:
-    def __init__(self):
-        """Initialize session factories from all providers
+    """Transaction boundary for persistence operations.
 
-        Connections will be retrieved at this stage
+    Groups one or more repository operations into an atomic unit. Use as a
+    context manager to ensure that all changes within the block are committed
+    together or rolled back on error::
 
-        Also initialize Identity Map?
-        Repository will first check here before retrieving from Database
-        """
-        # FIXME Should UnitOfWork keep an Identity map, of all `seen` objects?
+        with UnitOfWork():
+            repo = domain.repository_for(Order)
+            order = repo.get(order_id)
+            order.confirm()
+            repo.add(order)
+
+    Command handlers and the ``@use_case`` decorator wrap their execution in a
+    UnitOfWork automatically, so explicit usage is typically only needed in
+    application services or scripts.
+
+    The UnitOfWork maintains an identity map to track loaded aggregates and
+    collects domain events raised during the transaction. On commit, events
+    are persisted to the outbox and dispatched to brokers/event store.
+    """
+
+    def __init__(self) -> None:
         self.domain = current_domain
         self._in_progress = False
 
@@ -76,13 +89,19 @@ class UnitOfWork:
                 # Clear events from the item
                 item._events = []
 
-    def start(self):
-        # Stand in method for `__enter__`
-        #   To explicitly begin and end transactions
+    def start(self) -> None:
+        """Begin the transaction and push this UnitOfWork onto the context stack."""
         self._in_progress = True
         _uow_context_stack.push(self)
 
-    def commit(self):  # noqa: C901
+    def commit(self) -> None:  # noqa: C901
+        """Commit all changes, persist outbox messages, and dispatch events.
+
+        Raises:
+            InvalidOperationError: If the UnitOfWork is not in progress.
+            ExpectedVersionError: On optimistic concurrency conflict.
+            TransactionError: If the underlying database commit fails.
+        """
         from protean.utils.outbox import Outbox
         from protean.utils.processing import current_priority
 
@@ -205,7 +224,12 @@ class UnitOfWork:
         self._identity_map = defaultdict(dict)
         self._in_progress = False
 
-    def rollback(self):
+    def rollback(self) -> None:
+        """Roll back all changes and close sessions.
+
+        Raises:
+            InvalidOperationError: If the UnitOfWork is not in progress.
+        """
         # Raise error if the Unit Of Work is not active
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")

@@ -1,11 +1,11 @@
 """Upcasting infrastructure for event schema evolution.
 
-:class:`UpcasterChain` is built during ``domain.init()`` and provides
+``UpcasterChain`` is built during ``domain.init()`` and provides
 efficient lookup and chained transformation of old event payloads to the
 current schema version.
 
 Usage is fully internal — the chain is consulted by
-:meth:`Message.to_domain_object` when a stored type string has no direct
+``Message.to_domain_object`` when a stored type string has no direct
 match in ``_events_and_commands``.
 """
 
@@ -26,7 +26,7 @@ class UpcasterChain:
     ``(from_version) → (to_version)`` grouped by *event_base_type* (the type
     string prefix without the version, e.g. ``"MyDomain.OrderPlaced"``).
 
-    :meth:`build_chains` computes a full chain from every old version to the
+    ``build_chains()`` computes a full chain from every old version to the
     terminal (current) version and stores it for O(1) lookup at read time.
     """
 
@@ -65,10 +65,10 @@ class UpcasterChain:
     def build_chains(self, events_and_commands: dict[str, type]) -> None:
         """Build and validate all upcaster chains from registered edges.
 
-        Also populates :attr:`_version_map` so that old type strings can be
+        Also populates ``_version_map`` so that old type strings can be
         resolved to the current event class.
 
-        Raises :class:`ConfigurationError` on:
+        Raises ``ConfigurationError`` on:
         - Duplicate upcasters for the same ``(event_type, from_version)``
         - Cycles in the version graph
         - Non-convergent chains (multiple terminal versions)

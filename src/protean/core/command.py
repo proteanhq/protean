@@ -28,10 +28,22 @@ from protean.utils.globals import g
 # BaseCommand
 # ---------------------------------------------------------------------------
 class BaseCommand(BaseMessageType):
-    """Base Command class that all commands should inherit from.
+    """Base class for domain commands -- immutable DTOs representing an intent
+    to change aggregate state.
+
+    Commands are named with imperative verbs (``PlaceOrder``,
+    ``RegisterUser``, ``CancelReservation``) and processed by command handlers.
+    They are immutable after construction and carry metadata for tracing
+    (correlation ID, causation ID, origin stream).
 
     Fields are declared using standard Python type annotations with optional
-    Field constraints.
+    ``Field`` constraints.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``part_of`` | ``type`` | The aggregate class this command targets. Required. |
     """
 
     element_type: ClassVar[str] = DomainObjects.COMMAND
@@ -42,6 +54,27 @@ class BaseCommand(BaseMessageType):
         return super().__new__(cls)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Create a new command instance.
+
+        Accepts keyword arguments matching the declared fields. Optionally,
+        a ``dict`` can be passed as a positional argument to serve as a
+        template — keyword arguments take precedence over template values.
+
+        Args:
+            *args (dict): Optional template dictionaries for field values.
+            **kwargs (Any): Field values for the command.
+
+        Raises:
+            ValidationError: If field validation fails.
+
+        Example::
+
+            # Keyword arguments
+            PlaceOrder(order_id="abc", amount=100)
+
+            # Template dict pattern
+            PlaceOrder({"order_id": "abc"}, amount=100)
+        """
         incoming_metadata = kwargs.pop("_metadata", None)
 
         # Support template dict pattern: Command({"key": "val"}, key2="val2")

@@ -157,6 +157,30 @@ specific area.
 
 ---
 
+## Python API Reference
+
+Auto-generated documentation from source code docstrings.
+
+- [API Reference Overview](./api/index.md) -- Landing page for the Python API reference.
+- [Domain](./api/domain.md) -- The central registry class.
+- [BaseAggregate](./api/aggregate.md) -- Aggregate root entity base class.
+- [BaseEntity](./api/entity.md) -- Entity base class.
+- [BaseValueObject](./api/value-object.md) -- Immutable value object base class.
+- [Messages](./api/messages.md) -- BaseCommand and BaseEvent.
+- [Handlers](./api/handlers.md) -- BaseCommandHandler and BaseEventHandler.
+- [Services](./api/services.md) -- BaseApplicationService and BaseDomainService.
+- [BaseRepository](./api/repository.md) -- Repository base class.
+- [UnitOfWork](./api/unit-of-work.md) -- Transaction boundary.
+- [QuerySet](./api/queryset.md) -- Chainable query builder.
+- [BaseDatabaseModel](./api/database-model.md) -- Database model base class.
+- [Read Models](./api/read-models.md) -- BaseProjection and BaseProjector.
+- [Event Processing](./api/event-processing.md) -- BaseSubscriber, BaseProcessManager, and BaseUpcaster.
+- [Fields](./api/fields/index.md) -- All field types and FieldSpec.
+- [Ports](./api/ports/index.md) -- Adapter interface contracts.
+- [Testing DSL](./api/testing.md) -- Fluent test helpers for event-sourced aggregates.
+
+---
+
 ## Core Concepts
 
 Architectural theory and the building blocks of domain-driven systems.

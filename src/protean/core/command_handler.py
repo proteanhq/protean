@@ -58,16 +58,15 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
     Command handlers process domain commands asynchronously. They can be configured
     with subscription settings to control message consumption behavior.
 
-    Meta Options:
-        part_of: The aggregate this handler is associated with. Required.
-        stream_category: Read-only. Always derived from the associated aggregate's
-            stream category. Cannot be overridden by the user.
-        subscription_type: The subscription type to use (STREAM or EVENT_STORE).
-            When None, uses the domain's default subscription type.
-        subscription_profile: A predefined configuration profile
-            (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION).
-        subscription_config: A dictionary of custom configuration overrides
-            that take precedence over profile defaults.
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``part_of`` | ``type`` | The aggregate this handler is associated with. Required. |
+    | ``stream_category`` | ``str`` | Read-only. Derived from the associated aggregate's stream category. |
+    | ``subscription_type`` | ``str`` | The subscription type (STREAM or EVENT_STORE). |
+    | ``subscription_profile`` | ``str`` | A predefined profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION). |
+    | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
 
     Note:
         Unlike event handlers, command handlers cannot have their stream_category
@@ -82,16 +81,17 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         6. Profile defaults
         7. Hardcoded defaults
 
-    Example:
-        >>> @domain.command_handler(
-        ...     part_of=Order,
-        ...     subscription_profile=SubscriptionProfile.PRODUCTION,
-        ...     subscription_config={"messages_per_tick": 50},
-        ... )
-        ... class OrderCommandHandler(BaseCommandHandler):
-        ...     @handle(PlaceOrder)
-        ...     def handle_place_order(self, command):
-        ...         pass
+    Example::
+
+        @domain.command_handler(
+            part_of=Order,
+            subscription_profile=SubscriptionProfile.PRODUCTION,
+            subscription_config={"messages_per_tick": 50},
+        )
+        class OrderCommandHandler(BaseCommandHandler):
+            @handle(PlaceOrder)
+            def handle_place_order(self, command):
+                pass
     """
 
     element_type = DomainObjects.COMMAND_HANDLER

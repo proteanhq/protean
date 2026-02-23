@@ -10,8 +10,25 @@ if TYPE_CHECKING:
 
 
 class BaseDatabaseModel(Element, OptionsMixin):
-    """This is a Model representing a data schema in the persistence store. A concrete implementation of this
-    model has to be provided by each persistence store plugin.
+    """Base class for database models -- persistence-layer representations
+    that map between domain aggregates/entities and database-specific schemas.
+
+    Database models are the bridge between the domain model and the storage
+    layer. Each persistence adapter (SQLAlchemy, Elasticsearch, etc.) provides
+    its own concrete subclass. Protean auto-generates a default database model
+    for every aggregate; use ``@domain.model`` only when you need to customize
+    the schema mapping (e.g. column names, indexes, JSON serialization).
+
+    Subclasses must implement ``from_entity()`` and ``to_entity()`` for
+    bidirectional conversion between domain objects and database records.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``part_of`` | ``type`` | The aggregate or entity this model maps. Required. |
+    | ``database`` | ``str`` | The database provider name (default: ``"default"``). |
+    | ``schema_name`` | ``str`` | Override the storage table/collection name. |
     """
 
     element_type = DomainObjects.DATABASE_MODEL
@@ -30,8 +47,15 @@ class BaseDatabaseModel(Element, OptionsMixin):
         ]
 
     @classmethod
-    def derive_schema_name(cls):
-        """Derive schema name from database model class"""
+    def derive_schema_name(cls) -> str:
+        """Derive the storage table/collection name.
+
+        Uses ``meta_.schema_name`` if explicitly set, otherwise falls back
+        to the schema name of the associated aggregate or entity.
+
+        Returns:
+            str: The resolved schema name.
+        """
         if hasattr(cls.meta_, "schema_name") and cls.meta_.schema_name:
             return cls.meta_.schema_name
         else:
@@ -40,12 +64,29 @@ class BaseDatabaseModel(Element, OptionsMixin):
     @classmethod
     @abstractmethod
     def from_entity(cls, entity: Any) -> Any:
-        """Initialize DatabaseModel object from Entity object"""
+        """Convert a domain entity/aggregate into a database model instance.
+
+        Implementors should extract field values from the domain object and
+        map them to the database-specific representation.
+
+        Args:
+            entity (BaseEntity): The domain entity or aggregate to convert.
+
+        Returns:
+            The database model instance ready for persistence.
+        """
 
     @classmethod
     @abstractmethod
     def to_entity(cls, *args: Any, **kwargs: Any) -> "BaseEntity":
-        """Convert Database Model Object to Entity Object"""
+        """Convert a database record back into a domain entity/aggregate.
+
+        Implementors should reconstruct the domain object from the
+        database-specific representation.
+
+        Returns:
+            BaseEntity: The reconstituted domain entity or aggregate.
+        """
 
 
 _T = TypeVar("_T")

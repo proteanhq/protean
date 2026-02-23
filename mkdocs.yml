@@ -64,6 +64,41 @@ validation:
 
 plugins:
   - privacy
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            docstring_style: google
+            docstring_section_style: spacy
+            show_docstring_attributes: true
+            show_docstring_parameters: true
+            show_docstring_returns: true
+            show_docstring_raises: true
+            show_docstring_examples: true
+            members_order: source
+            show_source: true
+            show_bases: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            merge_init_into_class: true
+            inherited_members: false
+            group_by_category: true
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            heading_level: 2
+            filters:
+              - "!^_[^_]"
+              - "!^__pydantic"
+              - "!^__new__"
+              - "!^model_config"
+              - "!^model_fields"
 markdown_extensions:
   - admonition
   - attr_list
@@ -317,6 +352,39 @@ nav:
       - patterns/dual-mode-testing.md
       - patterns/setting-up-and-tearing-down-database-for-tests.md
       - patterns/running-migration-with-priority-lanes.md
+
+  - API:
+    - api/index.md
+    - api/domain.md
+    - api/aggregate.md
+    - api/entity.md
+    - api/value-object.md
+    - api/messages.md
+    - api/handlers.md
+    - api/services.md
+    - api/repository.md
+    - api/unit-of-work.md
+    - api/queryset.md
+    - api/database-model.md
+    - api/read-models.md
+    - api/event-processing.md
+    - Fields:
+      - api/fields/index.md
+      - api/fields/simple.md
+      - api/fields/containers.md
+      - api/fields/association.md
+      - api/fields/embedded.md
+      - api/fields/spec.md
+    - Ports:
+      - api/ports/index.md
+      - api/ports/provider.md
+      - api/ports/broker.md
+      - api/ports/event-store.md
+      - api/ports/cache.md
+    - Utilities:
+      - api/testing.md
+      - api/processing.md
+      - api/eventing.md
 
   - glossary.md
 

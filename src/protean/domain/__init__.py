@@ -85,8 +85,8 @@ class Domain:
     * Querying/Retrieving Domain Artifacts like Entities, Services, etc.
     * Retrieve injected infrastructure adapters
 
-    Usually you create a :class:`Domain` instance in your main module or
-    in the :file:`__init__.py` file of your package like this::
+    Usually you create a ``Domain`` instance in your main module or
+    in the ``__init__.py`` file of your package like this::
 
         from protean import Domain
         domain = Domain()
@@ -97,6 +97,7 @@ class Domain:
         domain = Domain(root_path="/path/to/domain")
 
     The root path resolution follows this priority:
+
     1. Explicit `root_path` parameter if provided
     2. `DOMAIN_ROOT_PATH` environment variable if set
     3. Auto-detection of caller's file location
@@ -224,7 +225,7 @@ class Domain:
         # Registry for all domain Objects
         self._domain_registry = _DomainRegistry()
 
-        #: The configuration dictionary as :class:`Config`.  This behaves
+        #: The configuration dictionary as ``Config``.  This behaves
         #: exactly like a regular dictionary but supports additional methods
         #: to load a config from files.
         self.config = self.load_config(config)
@@ -558,8 +559,8 @@ class Domain:
         return config_obj
 
     def domain_context(self, **kwargs):
-        """Create an :class:`~protean.context.DomainContext`. Use as a ``with``
-        block to push the context, which will make :data:`current_domain`
+        """Create a ``DomainContext``. Use as a ``with``
+        block to push the context, which will make ``current_domain``
         point at this domain.
 
         ::
@@ -586,7 +587,7 @@ class Domain:
         such constructs in tests.
 
         When a teardown function was called because of an unhandled exception
-        it will be passed an error object. If an :meth:`errorhandler` is
+        it will be passed an error object. If an ``errorhandler`` is
         registered, it will handle the exception and the teardown will not
         receive it.
 
@@ -599,10 +600,10 @@ class Domain:
         """Called right before the domain context is popped.
 
         This calls all functions decorated with
-        :meth:`teardown_domain_context`.
+        ``teardown_domain_context``.
 
         This is called by
-        :meth:`DomainContext.pop() <protean.context.DomainContext.pop>`.
+        ``DomainContext.pop()``.
         """
         if exc is _sentinel:
             exc = sys.exc_info()[1]
@@ -1587,10 +1588,10 @@ class Domain:
         a newer one.  They are applied lazily during deserialization so that
         ``@apply`` handlers and event handlers always see the current schema.
 
-        Args:
-            event_type: The event class this upcaster targets (current version).
-            from_version: Source version string (e.g. ``"v1"``).
-            to_version: Target version string (e.g. ``"v2"``).
+        Keyword Args:
+            event_type (type): The event class this upcaster targets (current version).
+            from_version (str): Source version string (e.g. ``"v1"``).
+            to_version (str): Target version string (e.g. ``"v2"``).
 
         Example::
 
@@ -1719,7 +1720,7 @@ class Domain:
                 Defaults to True.
             idempotency_key (str, optional): Caller-provided key for command deduplication.
                 When provided, enables submission-level dedup via the idempotency store.
-            raise_on_duplicate (bool): If ``True``, raises :class:`DuplicateCommandError`
+            raise_on_duplicate (bool): If ``True``, raises ``DuplicateCommandError``
                 when a duplicate idempotency key is detected. If ``False`` (default),
                 silently returns the cached result.
             priority (int, optional): Processing priority for events produced by this command.
@@ -2109,7 +2110,7 @@ class Domain:
         aggregate tables already exist.  Must be called after ``domain.init()``
         and within ``domain.domain_context()``.
 
-        Raises :class:`~protean.exceptions.ConfigurationError` if the outbox
+        Raises ``ConfigurationError`` if the outbox
         is not enabled.
         """
         if not self.has_outbox:

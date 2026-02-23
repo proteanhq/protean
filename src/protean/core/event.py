@@ -31,10 +31,22 @@ logger = logging.getLogger(__name__)
 # BaseEvent
 # ---------------------------------------------------------------------------
 class BaseEvent(BaseMessageType):
-    """Base Event class that all Events should inherit from.
+    """Base class for domain events -- immutable facts representing state
+    changes that have occurred in the domain.
+
+    Events are named in past tense (``OrderPlaced``, ``CustomerRegistered``,
+    ``PaymentConfirmed``) and enable decoupled communication between system
+    components. They are immutable after construction and carry metadata for
+    tracing (correlation ID, causation ID, stream position).
 
     Fields are declared using standard Python type annotations with optional
-    Field constraints.
+    ``Field`` constraints.
+
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``part_of`` | ``type`` | The aggregate class that raises this event. Required. |
     """
 
     element_type: ClassVar[str] = DomainObjects.EVENT
@@ -45,6 +57,30 @@ class BaseEvent(BaseMessageType):
         return super().__new__(cls)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Create a new event instance.
+
+        Accepts keyword arguments matching the declared fields. Optionally,
+        a ``dict`` can be passed as a positional argument to serve as a
+        template — keyword arguments take precedence over template values.
+
+        Events are typically created by calling ``self.raise_()`` inside an
+        aggregate method rather than being instantiated directly.
+
+        Args:
+            *args (dict): Optional template dictionaries for field values.
+            **kwargs (Any): Field values for the event.
+
+        Raises:
+            ValidationError: If field validation fails.
+
+        Example::
+
+            # Raised from an aggregate method
+            self.raise_(OrderPlaced(order_id=self.id, amount=self.total))
+
+            # Template dict pattern (e.g. during reconstitution)
+            OrderPlaced({"order_id": "abc"}, amount=100)
+        """
         incoming_metadata = kwargs.pop("_metadata", None)
         expected_version = kwargs.pop("_expected_version", -1)
 

@@ -120,13 +120,15 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
     aggregate streams) with aggregate-like stateful persistence (via
     auto-generated transition events in the event store).
 
-    Meta Options:
-        stream_categories: List of stream categories to subscribe to.
-        aggregates: List of aggregate classes to listen to (alternative to
-            stream_categories — categories are derived from aggregates).
-        subscription_type: The subscription type to use.
-        subscription_profile: A predefined configuration profile.
-        subscription_config: Dictionary of custom configuration overrides.
+    **Meta Options**
+
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | ``stream_categories`` | ``list`` | Stream categories to subscribe to. |
+    | ``aggregates`` | ``list`` | Aggregate classes to listen to (categories derived automatically). |
+    | ``subscription_type`` | ``str`` | The subscription type to use. |
+    | ``subscription_profile`` | ``str`` | A predefined configuration profile. |
+    | ``subscription_config`` | ``dict`` | Dictionary of custom configuration overrides. |
     """
 
     element_type: ClassVar[str] = DomainObjects.PROCESS_MANAGER

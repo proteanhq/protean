@@ -93,8 +93,8 @@ class Reference(FieldCacheMixin, Field):
     the reverse relationship to the remote entity.
 
     Args:
-        to_cls (str or Entity): The target entity class or its name.
-        **kwargs: Additional keyword arguments to be passed to the base `Field` class.
+        to_cls (str | type): The target entity class or its name.
+        **kwargs (Any): Additional keyword arguments to be passed to the base `Field` class.
     """
 
     def __init__(self, to_cls, **kwargs):
@@ -407,6 +407,7 @@ class HasOne(Association):
         has been added, updated, or deleted. We track two aspects: state and old value.
 
         For `HasOne`, there are three possible states:
+
         - ADDED: The relationship is being added for the first time
         - UPDATED: The relationship is being updated
         - DELETED: The relationship is being removed
@@ -525,8 +526,8 @@ class HasMany(Association):
     aggregate has multiple instances of a chil entity.
 
     Args:
-        to_cls (class): The class of the target entity.
-        **kwargs: Additional keyword arguments to be passed to the base field class.
+        to_cls (type): The class of the target entity.
+        **kwargs (Any): Additional keyword arguments to be passed to the base field class.
     """
 
     def __set__(self, instance, value):
@@ -581,8 +582,8 @@ class HasMany(Association):
         the changes to be persisted.
 
         Args:
-            instance: The source entity instance.
-            items: The linked entity or entities to be added.
+            instance (BaseEntity): The source entity instance.
+            items (list | BaseEntity): The linked entity or entities to be added.
         """
         super().__set__(instance, items)
 
@@ -679,8 +680,8 @@ class HasMany(Association):
         We also recursively remove child entities if they are associated with the removed value.
 
         Args:
-            instance: The source entity instance.
-            items: The linked entity or entities to be removed.
+            instance (BaseEntity): The source entity instance.
+            items (list | BaseEntity): The linked entity or entities to be removed.
         """
         data = getattr(instance, self.field_name)
 
@@ -789,7 +790,7 @@ class HasMany(Association):
         Return JSON-compatible value of self.
 
         Args:
-            value: The value to be converted to a JSON-compatible format.
+            value (list): The value to be converted to a JSON-compatible format.
 
         Returns:
             list: A list of dictionaries representing the linked entities.
@@ -802,7 +803,7 @@ class HasMany(Association):
         Available as `get_one_from_<HasMany Field Name>` method on the entity instance.
 
         Args:
-            **kwargs: The filtering criteria.
+            **kwargs (Any): The filtering criteria.
         """
         data = self.filter(instance, **kwargs)
 
@@ -824,7 +825,7 @@ class HasMany(Association):
         Available as `filter_<HasMany Field Name>` method on the entity instance.
 
         Args:
-            **kwargs: The filtering criteria.
+            **kwargs (Any): The filtering criteria.
         """
         data = getattr(instance, self.field_name)
         return [
