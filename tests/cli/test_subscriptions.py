@@ -185,6 +185,37 @@ class TestSubscriptionsStatus:
 
         assert result.exit_code != 0
 
+    def test_table_with_unknown_and_zero_counts(self):
+        """Table renders '-' for lag=None, dlq_depth=0, and consumer_count=0."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status(
+                "UnknownHandler",
+                lag=None,
+                dlq_depth=0,
+                consumer_count=0,
+                status="unknown",
+            ),
+        ]
+        mock_domain = _mock_domain_for_cli()
+
+        with (
+            patch("protean.cli.subscriptions.derive_domain", return_value=mock_domain),
+            patch(
+                "protean.server.subscription_status.collect_subscription_statuses",
+                return_value=statuses,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["subscriptions", "status", "--domain", "publishing7.py"],
+            )
+
+        assert result.exit_code == 0
+        assert "1 subscription(s)" in result.output
+        assert "unknown" in result.output
+
     def test_summary_counts(self):
         change_working_directory_to("test7")
 

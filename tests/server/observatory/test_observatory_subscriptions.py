@@ -274,3 +274,94 @@ class TestSubscriptionsMetrics:
 
         body = response.text
         assert "protean_subscription_status" in body
+
+    def test_metrics_skips_lag_when_none(self):
+        """When lag is None, protean_subscription_lag line is omitted."""
+        mock_domain = _make_mock_domain("metric-domain")
+
+        unknown_status = SubscriptionStatus(
+            name="sub-unknown",
+            handler_name="UnknownHandler",
+            subscription_type="stream",
+            stream_category="test",
+            lag=None,
+            pending=0,
+            current_position=None,
+            head_position=None,
+            status="unknown",
+            consumer_count=0,
+            dlq_depth=0,
+        )
+
+        with patch(
+            "protean.server.subscription_status.collect_subscription_statuses",
+            return_value=[unknown_status],
+        ):
+            observatory = Observatory(domains=[mock_domain])
+            client = TestClient(observatory.app)
+            response = client.get("/metrics")
+
+        body = response.text
+        # The HELP/TYPE lines should still exist
+        assert "# HELP protean_subscription_lag" in body
+        # But no value line for this handler since lag is None
+        assert (
+            "UnknownHandler"
+            not in body.split("protean_subscription_lag")[1].split("\n")[0]
+        )
+        # pending and dlq_depth lines should still appear
+        assert 'handler="UnknownHandler"' in body
+
+    def test_metrics_handles_per_domain_collection_error(self):
+        """Per-domain error in collect_subscription_statuses is handled gracefully."""
+        mock_domain = _make_mock_domain("failing-domain")
+
+        with patch(
+            "protean.server.subscription_status.collect_subscription_statuses",
+            side_effect=RuntimeError("collection exploded"),
+        ):
+            observatory = Observatory(domains=[mock_domain])
+            client = TestClient(observatory.app)
+            response = client.get("/metrics")
+
+        # Should still return 200 with other metrics
+        assert response.status_code == 200
+        body = response.text
+        # The HELP/TYPE header lines should still be present
+        assert "# HELP protean_subscription_lag" in body
+
+    def test_metrics_handles_import_error(self):
+        """If subscription_status module can't be imported, metrics still works."""
+        import asyncio
+        import sys
+
+        from protean.server.observatory.metrics import create_metrics_endpoint
+
+        mock_domain = _make_mock_domain("import-fail-domain")
+
+        # Remove the cached module so the lazy `from ... import` will re-execute
+        saved = sys.modules.pop("protean.server.subscription_status", None)
+        try:
+            import builtins
+
+            real_import = builtins.__import__
+
+            def selective_import(name, *args, **kwargs):
+                if "subscription_status" in name:
+                    raise ImportError("simulated import failure")
+                return real_import(name, *args, **kwargs)
+
+            builtins.__import__ = selective_import
+            try:
+                endpoint_fn = create_metrics_endpoint([mock_domain])
+                response = asyncio.run(endpoint_fn())
+            finally:
+                builtins.__import__ = real_import
+
+            assert response.status_code == 200
+            # Subscription metrics should be absent (import failed)
+            assert "protean_subscription_lag" not in response.body.decode()
+        finally:
+            # Restore the module so other tests aren't affected
+            if saved is not None:
+                sys.modules["protean.server.subscription_status"] = saved
