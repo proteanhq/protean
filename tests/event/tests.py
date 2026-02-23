@@ -94,6 +94,7 @@ class TestDomainEventDefinition:
                         "causation_id": None,
                     },
                     "event_store": None,
+                    "extensions": {},
                 },
                 "email": {
                     "address": "john.doe@gmail.com",
@@ -134,6 +135,7 @@ class TestDomainEventDefinition:
                     "causation_id": None,
                 },
                 "event_store": None,
+                "extensions": {},
             },
             "email": {
                 "address": "john.doe@gmail.com",

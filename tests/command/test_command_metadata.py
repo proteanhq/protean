@@ -145,6 +145,7 @@ def test_command_metadata(test_domain):
                     "idempotency_key": None,
                 },
                 "event_store": None,
+                "extensions": {},
             },
             "user_id": command.user_id,
         }

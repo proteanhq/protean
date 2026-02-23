@@ -252,6 +252,13 @@ class Domain:
         self._upcasters: list[type] = []
         self._upcaster_chain: UpcasterChain = UpcasterChain()
 
+        # Message enricher hooks — callables that add custom metadata to events/commands.
+        # Event enrichers receive (event, aggregate) and return dict[str, Any].
+        # Command enrichers receive (command,) and return dict[str, Any].
+        # Results are merged into metadata.extensions.
+        self._event_enrichers: List[Callable] = []
+        self._command_enrichers: List[Callable] = []
+
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
@@ -1612,6 +1619,93 @@ class Domain:
             return wrap
         return wrap(_cls)
 
+    ########################
+    # Message Enrichment  #
+    ########################
+    def register_event_enricher(self, fn: Callable) -> None:
+        """Register a callable that enriches every event's metadata.
+
+        The enricher is called during :meth:`~protean.core.aggregate.raise_`
+        with ``(event, aggregate)`` and must return a ``dict[str, Any]``
+        whose entries are merged into ``metadata.extensions``.
+
+        Enrichers execute in registration order (FIFO).  Later enrichers
+        can overwrite keys set by earlier ones.  If an enricher raises an
+        exception it propagates and the event is not appended.
+
+        Args:
+            fn: A callable with signature ``(event, aggregate) -> dict[str, Any]``.
+
+        Example::
+
+            def add_user_context(event, aggregate):
+                return {"user_id": get_current_user_id()}
+
+            domain.register_event_enricher(add_user_context)
+        """
+        if not callable(fn):
+            raise IncorrectUsageError("Event enricher must be callable")
+        self._event_enrichers.append(fn)
+
+    @property
+    def event_enricher(self) -> Callable:
+        """Decorator form of :meth:`register_event_enricher`.
+
+        Example::
+
+            @domain.event_enricher
+            def add_tenant(event, aggregate):
+                return {"tenant_id": get_current_tenant_id()}
+        """
+
+        def decorator(fn: Callable) -> Callable:
+            self.register_event_enricher(fn)
+            return fn
+
+        return decorator
+
+    def register_command_enricher(self, fn: Callable) -> None:
+        """Register a callable that enriches every command's metadata.
+
+        The enricher is called during :meth:`process` with ``(command,)``
+        and must return a ``dict[str, Any]`` whose entries are merged into
+        ``metadata.extensions``.
+
+        Enrichers execute in registration order (FIFO).  Later enrichers
+        can overwrite keys set by earlier ones.  If an enricher raises an
+        exception it propagates and the command is not processed.
+
+        Args:
+            fn: A callable with signature ``(command,) -> dict[str, Any]``.
+
+        Example::
+
+            def add_request_context(command):
+                return {"request_id": get_request_id()}
+
+            domain.register_command_enricher(add_request_context)
+        """
+        if not callable(fn):
+            raise IncorrectUsageError("Command enricher must be callable")
+        self._command_enrichers.append(fn)
+
+    @property
+    def command_enricher(self) -> Callable:
+        """Decorator form of :meth:`register_command_enricher`.
+
+        Example::
+
+            @domain.command_enricher
+            def add_request_id(command):
+                return {"request_id": get_request_id()}
+        """
+
+        def decorator(fn: Callable) -> Callable:
+            self.register_command_enricher(fn)
+            return fn
+
+        return decorator
+
     #####################
     # Handling Commands #
     #####################
@@ -1691,6 +1785,22 @@ class Domain:
             envelope=envelope,
             domain=domain_meta,
         )
+
+        # Run command enrichers
+        if self._command_enrichers:
+            extensions = dict(metadata.extensions)
+            for enricher in self._command_enrichers:
+                result = enricher(command)
+                if result:
+                    extensions.update(result)
+            if extensions:
+                metadata = Metadata(
+                    headers=metadata.headers,
+                    envelope=metadata.envelope,
+                    domain=metadata.domain,
+                    event_store=metadata.event_store,
+                    extensions=extensions,
+                )
 
         command_with_metadata = command.__class__(
             command.to_dict(),

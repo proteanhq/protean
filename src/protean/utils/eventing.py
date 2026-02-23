@@ -191,10 +191,24 @@ class EventStoreMeta(BaseValueObject):
 
 
 class Metadata(BaseValueObject):
+    """Complete metadata for a domain message (event or command).
+
+    Attributes:
+        headers: Transport-level metadata (id, type, stream, time, traceparent).
+        envelope: Integrity and versioning (specversion, checksum).
+        domain: Domain-level metadata (fqn, kind, correlation/causation IDs, etc.).
+        event_store: Store-level metadata (positions), set after persistence.
+        extensions: User-provided metadata populated by message enrichment hooks.
+            Registered via ``domain.register_event_enricher()`` or
+            ``domain.register_command_enricher()``.  Persisted alongside all
+            other metadata and survives serialization round-trips.
+    """
+
     headers: MessageHeaders
     envelope: MessageEnvelope | None = PydanticField(default_factory=MessageEnvelope)
     domain: DomainMeta | None = None
     event_store: EventStoreMeta | None = None
+    extensions: dict[str, Any] = PydanticField(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

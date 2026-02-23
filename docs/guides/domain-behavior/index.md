@@ -47,6 +47,17 @@ Domain events record significant state changes and enable communication between 
 
 [Learn more about raising events →](raising-events.md)
 
+### Message Tracing & Enrichment
+
+Protean automatically tracks causal chains across commands and events, and
+lets you attach custom metadata to every message:
+
+- **Correlation & causation IDs** - Automatically propagated through command → event chains
+- **Message enrichment hooks** - Register callables that add custom metadata (user context, tenant ID, audit data) to every event and command
+- **Extensions metadata** - A user-space `metadata.extensions` dict persisted in the event store
+
+[Learn more about message tracing →](message-tracing.md) &nbsp;|&nbsp; [Learn more about message enrichment →](message-enrichment.md)
+
 ### Domain Services
 
 Domain services encapsulate business logic that doesn't naturally fit within any single aggregate:
