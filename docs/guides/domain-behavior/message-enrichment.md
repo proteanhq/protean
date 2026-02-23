@@ -175,6 +175,6 @@ are enriched automatically.
 !!! tip "See also"
     **Related guides:**
 
-    - [Message Tracing](message-tracing.md) -- Correlation and causation IDs for distributed tracing
+    - [Message Tracing](message-tracing.md) -- Correlation and causation IDs for distributed tracing, plus the programmatic causation chain API
     - [Raising Events](raising-events.md) -- How aggregates raise domain events
     - [Commands](../../guides/change-state/commands.md) -- Command processing via `domain.process()`

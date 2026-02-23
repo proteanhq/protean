@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
-from collections import deque
+from collections import defaultdict, deque
+from dataclasses import dataclass, field as dc_field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Type, Union
 
@@ -8,6 +9,19 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
 from protean.utils.eventing import Message
+
+
+@dataclass
+class CausationNode:
+    """A node in the causation tree, representing a single message and its effects."""
+
+    message_id: str
+    message_type: str
+    kind: str  # "EVENT" or "COMMAND"
+    stream: str
+    time: str | None
+    global_position: int | None
+    children: list["CausationNode"] = dc_field(default_factory=list)
 
 
 class BaseEventStore(metaclass=ABCMeta):
@@ -451,6 +465,283 @@ class BaseEventStore(metaclass=ABCMeta):
             count += 1
 
         return count
+
+    # ------------------------------------------------------------------
+    # Causation chain traversal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_message_id(msg: dict[str, Any]) -> str | None:
+        """Extract the Protean message ID (headers.id) from a raw message dict."""
+        metadata = msg.get("metadata")
+        if not metadata or not isinstance(metadata, dict):
+            return None
+        headers = metadata.get("headers")
+        if not headers or not isinstance(headers, dict):
+            return None
+        return headers.get("id")
+
+    @staticmethod
+    def _extract_causation_id(msg: dict[str, Any]) -> str | None:
+        """Extract causation_id from a raw message dict."""
+        metadata = msg.get("metadata")
+        if not metadata or not isinstance(metadata, dict):
+            return None
+        domain = metadata.get("domain")
+        if not domain or not isinstance(domain, dict):
+            return None
+        return domain.get("causation_id")
+
+    @staticmethod
+    def _extract_correlation_id(msg: dict[str, Any]) -> str | None:
+        """Extract correlation_id from a raw message dict."""
+        metadata = msg.get("metadata")
+        if not metadata or not isinstance(metadata, dict):
+            return None
+        domain = metadata.get("domain")
+        if not domain or not isinstance(domain, dict):
+            return None
+        return domain.get("correlation_id")
+
+    def _load_correlation_group(self, correlation_id: str) -> list[dict[str, Any]]:
+        """Load all raw messages sharing a correlation_id from the event store.
+
+        Reads ``$all`` and filters by ``correlation_id``.
+        This is a debugging/inspection utility — not optimized for high-throughput.
+        """
+        all_messages = self._read("$all", no_of_messages=1_000_000)
+        return [
+            m for m in all_messages if self._extract_correlation_id(m) == correlation_id
+        ]
+
+    def _resolve_and_load_group(
+        self, message_id: str | Message
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Resolve a message identifier and load its full correlation group.
+
+        When ``message_id`` is a :class:`Message`, the correlation ID is read
+        directly from metadata (no scan required).  When it is a ``str``, a
+        single pass over ``$all`` finds the message and its correlation group.
+
+        Returns:
+            Tuple of ``(resolved_message_id, correlation_group)``.
+
+        Raises:
+            ValueError: If the message cannot be found in the event store.
+        """
+        if isinstance(message_id, Message):
+            mid = (
+                message_id.metadata.headers.id
+                if message_id.metadata and message_id.metadata.headers
+                else None
+            )
+            cid = (
+                message_id.metadata.domain.correlation_id
+                if message_id.metadata and message_id.metadata.domain
+                else None
+            )
+            if mid is None:
+                raise ValueError("Message has no headers.id")
+            if cid is None:
+                return mid, []
+            group = self._load_correlation_group(cid)
+            return mid, group
+
+        # String ID — single pass to find the target and its group
+        all_messages = self._read("$all", no_of_messages=1_000_000)
+        target_correlation_id: str | None = None
+        for m in all_messages:
+            if self._extract_message_id(m) == message_id:
+                target_correlation_id = self._extract_correlation_id(m)
+                break
+
+        if target_correlation_id is None:
+            raise ValueError(f"Message with ID '{message_id}' not found in event store")
+
+        group = [
+            m
+            for m in all_messages
+            if self._extract_correlation_id(m) == target_correlation_id
+        ]
+        return message_id, group
+
+    # ------------------------------------------------------------------
+    # Public causation chain API
+    # ------------------------------------------------------------------
+
+    def trace_causation(self, message_id: str | Message) -> list[Message]:
+        """Walk UP the causation chain from a message to the root.
+
+        Returns an ordered list of Messages from the root command (first)
+        to the given message (last).  The given message itself is included.
+
+        Args:
+            message_id: A Protean message ID string (``headers.id``) or
+                a :class:`Message` object.
+
+        Returns:
+            List of :class:`Message` objects in causal order (root first,
+            target last).
+
+        Raises:
+            ValueError: If the message cannot be found in the event store.
+        """
+        mid, group = self._resolve_and_load_group(message_id)
+
+        # Build lookup: headers.id -> raw_message
+        by_id: dict[str, dict[str, Any]] = {}
+        for m in group:
+            hid = self._extract_message_id(m)
+            if hid:
+                by_id[hid] = m
+
+        # Walk up from target to root
+        chain: list[dict[str, Any]] = []
+        current_id: str | None = mid
+        visited: set[str] = set()
+
+        while current_id and current_id not in visited:
+            visited.add(current_id)
+            raw_msg = by_id.get(current_id)
+            if raw_msg is None:
+                break
+            chain.append(raw_msg)
+            current_id = self._extract_causation_id(raw_msg)
+
+        # Reverse so root is first
+        chain.reverse()
+
+        return [Message.deserialize(m) for m in chain]
+
+    def trace_effects(
+        self, message_id: str | Message, *, recursive: bool = True
+    ) -> list[Message]:
+        """Walk DOWN the causation chain to find all effects of a message.
+
+        Returns messages that were caused by the given message, ordered by
+        ``global_position`` (chronological order).
+
+        Args:
+            message_id: A Protean message ID string (``headers.id``) or
+                a :class:`Message` object.
+            recursive: If ``True`` (default), return the full subtree of
+                effects.  If ``False``, return only direct children.
+
+        Returns:
+            List of :class:`Message` objects caused by the given message,
+            in chronological order.  The given message itself is NOT included.
+
+        Raises:
+            ValueError: If the message cannot be found in the event store.
+        """
+        mid, group = self._resolve_and_load_group(message_id)
+
+        # Build children lookup: causation_id -> [raw_messages]
+        children: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for m in group:
+            cid = self._extract_causation_id(m)
+            if cid:
+                children[cid].append(m)
+
+        if not recursive:
+            direct = children.get(mid, [])
+            direct.sort(key=lambda m: m.get("global_position", 0))
+            return [Message.deserialize(m) for m in direct]
+
+        # BFS for full subtree
+        result: list[dict[str, Any]] = []
+        queue: deque[str] = deque([mid])
+        visited: set[str] = {mid}
+
+        while queue:
+            current = queue.popleft()
+            for child in children.get(current, []):
+                child_id = self._extract_message_id(child)
+                if child_id and child_id not in visited:
+                    visited.add(child_id)
+                    result.append(child)
+                    queue.append(child_id)
+
+        result.sort(key=lambda m: m.get("global_position", 0))
+        return [Message.deserialize(m) for m in result]
+
+    def build_causation_tree(self, correlation_id: str) -> CausationNode | None:
+        """Build a full causation tree for a correlation ID.
+
+        Returns the root node of the tree with children recursively populated.
+
+        Args:
+            correlation_id: The correlation ID to trace.
+
+        Returns:
+            Root :class:`CausationNode` with children, or ``None`` if no
+            messages found.
+        """
+        group = self._load_correlation_group(correlation_id)
+        if not group:
+            return None
+
+        # Build index and children map
+        by_id: dict[str, dict[str, Any]] = {}
+        children_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        roots: list[dict[str, Any]] = []
+
+        for m in group:
+            hid = self._extract_message_id(m)
+            if hid:
+                by_id[hid] = m
+            cid = self._extract_causation_id(m)
+            if cid:
+                children_map[cid].append(m)
+            else:
+                roots.append(m)
+
+        # Sort children by global_position for deterministic ordering
+        for cid in children_map:
+            children_map[cid].sort(key=lambda m: m.get("global_position", 0))
+
+        visited: set[str] = set()
+
+        def _build_node(raw_msg: dict[str, Any]) -> CausationNode:
+            hid = self._extract_message_id(raw_msg) or "?"
+            visited.add(hid)
+
+            metadata = raw_msg.get("metadata", {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            headers = metadata.get("headers", {})
+            if not isinstance(headers, dict):
+                headers = {}
+            domain_meta = metadata.get("domain", {})
+            if not isinstance(domain_meta, dict):
+                domain_meta = {}
+
+            node = CausationNode(
+                message_id=hid,
+                message_type=raw_msg.get("type", headers.get("type", "?")),
+                kind=domain_meta.get("kind", "?"),
+                stream=raw_msg.get("stream_name", headers.get("stream", "?")),
+                time=str(raw_msg.get("time", "")) if raw_msg.get("time") else None,
+                global_position=raw_msg.get("global_position"),
+            )
+
+            for child_msg in children_map.get(hid, []):
+                child_id = self._extract_message_id(child_msg)
+                if child_id and child_id not in visited:
+                    node.children.append(_build_node(child_msg))
+
+            return node
+
+        if not roots:
+            # All messages have causation_id set — pick the one whose
+            # causation_id points outside the group
+            root_candidates = [
+                m for m in group if self._extract_causation_id(m) not in by_id
+            ]
+            roots = root_candidates if root_candidates else [group[0]]
+
+        roots.sort(key=lambda m: m.get("global_position", 0))
+        return _build_node(roots[0])
 
     @abstractmethod
     def _data_reset(self) -> None:

@@ -135,16 +135,54 @@ outbox_repo.find_by_correlation_id("a1b2c3d4...")
 outbox_repo.find_by_causation_id("myapp::order-abc123-0.1")
 ```
 
+### Causation Chain API
+
+The event store provides methods to traverse causation chains programmatically:
+
+```python
+store = domain.event_store.store
+
+# Walk UP from a message to the root command
+chain = store.trace_causation(event_message)
+# Returns [root_command, ..., target_message]
+
+# Walk DOWN from a command to find all its effects
+effects = store.trace_effects(command_message)
+# Returns downstream events/commands in chronological order
+
+# Build the full tree for a correlation ID
+root = store.build_causation_tree("a1b2c3d4...")
+# Returns a CausationNode with .children recursively populated
+```
+
+These methods answer the three debugging questions directly:
+
+1. **"Which user request caused this?"** — `trace_causation()` walks up to the root
+2. **"What was the immediate trigger?"** — check `causation_id` on the message
+3. **"What other effects did that request produce?"** — `trace_effects()` walks down
+
 ### CLI Inspection
 
-The `protean events` CLI supports tracing:
+The `protean events` CLI supports tracing with both tree and flat views:
 
 ```bash
 # Show trace IDs alongside events
 protean events read "myapp::order-abc123" --trace
 
-# Follow a full causal chain
+# Follow a full causal chain (tree view, default)
 protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+
+# Flat table view for chronological listing
+protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --flat
+```
+
+The tree view reconstructs parent-child relationships from `causation_id` links:
+
+```
+CMD App.PlaceOrder.v1 (myapp::order:command-abc123-0) @ 2026-02-22 10:30:00
+├── EVT App.OrderPlaced.v1 (myapp::order-abc123-0) @ 2026-02-22 10:30:00
+│   └── CMD App.ReserveInventory.v1 (myapp::inventory:command-inv456-0) @ 2026-02-22 10:30:01
+│       └── EVT App.InventoryReserved.v1 (myapp::inventory-inv456-0) @ 2026-02-22 10:30:02
 ```
 
 ## When to Use External Correlation IDs
@@ -220,6 +258,8 @@ assert result2.events[0]._metadata.domain.correlation_id == corr_id
 - **`causation_id`** links each message to its direct parent, forming a tree.
 - Protean handles propagation automatically -- you only need to supply an
   external `correlation_id` at the entry point if you have one.
+- Use `trace_causation()`, `trace_effects()`, and `build_causation_tree()` to
+  traverse chains programmatically.
 - Use `protean events trace` to follow a full chain in the event store.
 - Prefer external (caller-provided) correlation IDs for end-to-end
   traceability across services.
@@ -230,6 +270,8 @@ assert result2.events[0]._metadata.domain.correlation_id == corr_id
     **Guide:** [Message Tracing](../guides/domain-behavior/message-tracing.md) -- How-to guide with code examples for setting up tracing.
 
     **Reference:** [`protean events trace`](../reference/cli/data/events.md) -- CLI command for following causal chains.
+
+    **Internals:** [Causation Chain Traversal](../concepts/internals/event-sourcing.md#causation-chain-traversal) -- Algorithm details for `trace_causation`, `trace_effects`, and `build_causation_tree`.
 
     **Related patterns:**
 

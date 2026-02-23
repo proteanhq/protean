@@ -67,6 +67,7 @@ need by what you're trying to accomplish.
 | Rebuild a projection from historical events     | [`protean projection rebuild`](./reference/cli/data/projection.md) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
 | Follow the causal chain of a business operation | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
+| Traverse causation chains programmatically      | [Message Tracing](./guides/domain-behavior/message-tracing.md#traversing-the-causation-chain-programmatically) |
 
 ## Set Up and Configure
 
@@ -190,3 +191,4 @@ need by what you're trying to accomplish.
 | Understand how the field system works           | [Field System](./concepts/internals/field-system.md) |
 | Learn why three field definition styles exist   | [Field System](./concepts/internals/field-system.md) |
 | Understand how the query system works internally | [Query System](./concepts/internals/query-system.md) |
+| Understand causation chain traversal internals  | [Event Sourcing Internals](./concepts/internals/event-sourcing.md#causation-chain-traversal) |

@@ -255,6 +255,60 @@ historical accuracy.
 See [Temporal Queries](../../guides/change-state/temporal-queries.md) for the
 practical guide with examples.
 
+## Causation chain traversal
+
+Every message in the event store carries a `correlation_id` (shared across the
+full causal chain) and a `causation_id` (the `headers.id` of the immediate
+parent message). `BaseEventStore` provides three methods that use these links
+to traverse the causation graph.
+
+All three methods scan `$all` (the global ordered stream) and filter by
+`correlation_id` to build a working set. This is intentional: causation
+traversal is a **debugging/inspection tool**, not a hot-path operation, so a
+single full scan trades simplicity for generality.
+
+### `trace_causation(message_id)`
+
+Walks **up** from a target message to the root command by following
+`causation_id` links. Returns a `list[Message]` ordered root-first,
+target-last.
+
+**Algorithm:** Build a `{headers.id: raw_msg}` index from the correlation
+group. Starting from the target, follow `causation_id` pointers until reaching
+a message with `causation_id=None` (the root). A `visited` set guards against
+cycles. The chain is reversed at the end so the root is first.
+
+### `trace_effects(message_id, *, recursive=True)`
+
+Walks **down** from a message to find everything it caused. Returns effects in
+chronological order (by `global_position`). The target message is **not**
+included.
+
+**Algorithm:** Build a reverse index `{causation_id: [children]}`. BFS from
+the target message's `headers.id`, collecting children at each level. When
+`recursive=False`, only direct children (one level) are returned.
+
+### `build_causation_tree(correlation_id)`
+
+Builds a `CausationNode` tree for an entire correlation group. Returns the
+root node with `.children` recursively populated, or `None` if no messages
+exist.
+
+**Algorithm:** Build `{causation_id: [children]}` from the raw messages.
+Identify root(s) as messages with `causation_id=None`. Recursively construct
+`CausationNode` objects using `_build_node()`, with a `visited` set to
+prevent infinite recursion when message IDs overlap between parent and child
+(can happen with the MessageDB adapter in sync mode).
+
+`CausationNode` is a dataclass with: `message_id`, `message_type`, `kind`
+(`"EVENT"` or `"COMMAND"`), `stream`, `time`, `global_position`, and
+`children`.
+
+See [Message Tracing](../../guides/domain-behavior/message-tracing.md) for the
+practical guide with code examples, and
+[`protean events trace`](../../reference/cli/data/events.md#protean-events-trace)
+for the CLI command.
+
 ## Projection rebuilding
 
 Projections are read-optimized views maintained by projectors in response to

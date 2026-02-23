@@ -179,16 +179,18 @@ User (abc-123): 3 event(s), current version: 2
 
 ## `protean events trace`
 
-Follows the full causal chain for a given `correlation_id`. Scans all events
-in the event store that share the same correlation ID and displays them in
-chronological order, revealing the complete causation tree of a business
-operation.
+Follows the full causal chain for a given `correlation_id`. Scans all messages
+in the event store that share the same correlation ID and displays them as a
+**causation tree** (default) or a **flat table**.
 
 ```bash
-# Follow a causal chain
+# Tree view (default) — shows parent-child causation structure
 protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --domain=my_domain
 
-# Include full event data payloads
+# Flat table view — chronological list with trace columns
+protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --flat --domain=my_domain
+
+# Include full event data payloads (works with both views)
 protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --data --domain=my_domain
 ```
 
@@ -199,29 +201,48 @@ protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --data --domain=my_domai
 | `CORRELATION_ID` | Correlation ID to trace (positional argument) | Required |
 | `--domain` | Domain module path | `.` (current directory) |
 | `--data/--no-data` | Show full event data payloads | `--no-data` |
+| `--flat/--tree` | Show flat table instead of causation tree | `--tree` |
 
-**Output**
+**Tree output** (default)
 
-The output shows the stream, type, time, correlation ID, and causation ID for
-each message in the chain. When `--data` is enabled, event payloads are
-displayed inline.
+The tree view uses `build_causation_tree()` to reconstruct the parent-child
+relationships between commands and events. Each node shows a `CMD` or `EVT`
+badge, the message type, a truncated message ID, and a timestamp:
 
 ```
-Trace: a1b2c3d4... (3 messages)
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Stream                    ┃ Type                    ┃ Time                ┃ Causation ID              ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ app::order:command-abc123 │ App.PlaceOrder.v1       │ 2026-02-22 10:30:00 │                           │
-│ app::order-abc123         │ App.OrderPlaced.v1      │ 2026-02-22 10:30:01 │ app::order:command-abc123 │
-│ app::inventory-inv456     │ App.InventoryReserved.v1│ 2026-02-22 10:30:02 │ app::order-abc123-0.1     │
-└───────────────────────────┴─────────────────────────┴─────────────────────┴───────────────────────────┘
+CMD App.PlaceOrder.v1 (app::order:command-abc123-0) @ 2026-02-22 10:30:00
+├── EVT App.OrderPlaced.v1 (app::order-abc123-0) @ 2026-02-22 10:30:00
+│   └── CMD App.ReserveInventory.v1 (app::inventory:command-inv456-0) @ 2026-02-22 10:30:01
+│       └── EVT App.InventoryReserved.v1 (app::inventory-inv456-0) @ 2026-02-22 10:30:02
+└── EVT App.OrderConfirmed.v1 (app::order-abc123-1) @ 2026-02-22 10:30:01
+
+Causation tree: 5 message(s) for correlation ID 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
 ```
 
-This is useful for debugging multi-step workflows and verifying that trace
-context propagates correctly across handlers.
+**Flat output** (`--flat`)
+
+The flat view shows all matching messages in a chronological table with stream,
+type, time, correlation ID, and causation ID columns:
+
+```
+┏━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Position ┃ Global Pos ┃ Type                      ┃ Stream                    ┃ Time                ┃ Correlation ID  ┃ Causation ID              ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│        0 │          1 │ App.PlaceOrder.v1         │ app::order:command-abc123 │ 2026-02-22 10:30:00 │ a1b2c3d4...     │                           │
+│        0 │          2 │ App.OrderPlaced.v1        │ app::order-abc123         │ 2026-02-22 10:30:01 │ a1b2c3d4...     │ app::order:command-abc123 │
+│        1 │          3 │ App.InventoryReserved.v1  │ app::inventory-inv456     │ 2026-02-22 10:30:02 │ a1b2c3d4...     │ app::order-abc123-0.1     │
+└──────────┴────────────┴───────────────────────────┴───────────────────────────┴─────────────────────┴─────────────────┴───────────────────────────┘
+
+Found 3 event(s) for correlation ID 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
+```
+
+The tree view is most useful for debugging because it shows causal relationships
+at a glance. The flat view is useful when you need to see exact positions and
+timestamps for every message.
 
 See [Message Tracing](../../../guides/domain-behavior/message-tracing.md) for
-details on how correlation and causation IDs work.
+details on how correlation and causation IDs work, including the programmatic
+causation chain API.
 
 ## Error Handling
 
