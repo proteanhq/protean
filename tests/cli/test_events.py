@@ -1114,7 +1114,9 @@ class TestEventsHistoryTrace:
 # ---------------------------------------------------------------------------
 
 
-class TestEventsTrace:
+class TestEventsTraceFlat:
+    """Tests for ``protean events trace --flat`` (flat table output)."""
+
     @pytest.fixture(autouse=True)
     def reset_path(self):
         original_path = sys.path[:]
@@ -1123,7 +1125,7 @@ class TestEventsTrace:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_trace_finds_matching_events(self):
+    def test_trace_flat_finds_matching_events(self):
         change_working_directory_to("test7")
 
         events = [
@@ -1163,6 +1165,7 @@ class TestEventsTrace:
                     "trace-corr-abc",
                     "--domain",
                     "publishing7.py",
+                    "--flat",
                 ],
             )
             assert result.exit_code == 0
@@ -1170,7 +1173,7 @@ class TestEventsTrace:
                 "Found 2 event(s) for correlation ID 'trace-corr-abc'" in result.output
             )
 
-    def test_trace_no_matching_events(self):
+    def test_trace_flat_no_matching_events(self):
         change_working_directory_to("test7")
 
         events = [
@@ -1189,6 +1192,7 @@ class TestEventsTrace:
                     "nonexistent-corr-id",
                     "--domain",
                     "publishing7.py",
+                    "--flat",
                 ],
             )
             assert result.exit_code == 0
@@ -1197,7 +1201,7 @@ class TestEventsTrace:
                 in result.output
             )
 
-    def test_trace_with_data_flag(self):
+    def test_trace_flat_with_data_flag(self):
         change_working_directory_to("test7")
 
         events = [
@@ -1220,6 +1224,7 @@ class TestEventsTrace:
                     "trace-data-corr",
                     "--domain",
                     "publishing7.py",
+                    "--flat",
                     "--data",
                 ],
             )
@@ -1227,7 +1232,7 @@ class TestEventsTrace:
             assert "Alice" in result.output
             assert "100.0" in result.output
 
-    def test_trace_with_empty_event_store(self):
+    def test_trace_flat_with_empty_event_store(self):
         change_working_directory_to("test7")
 
         mock_domain = _mock_domain_with_store(read_return=[])
@@ -1241,6 +1246,7 @@ class TestEventsTrace:
                     "any-corr-id",
                     "--domain",
                     "publishing7.py",
+                    "--flat",
                 ],
             )
             assert result.exit_code == 0
@@ -1257,3 +1263,150 @@ class TestEventsTrace:
             )
             assert result.exit_code != 0
             assert "Error loading Protean domain" in result.output
+
+
+# ---------------------------------------------------------------------------
+# protean events trace (tree view — default)
+# ---------------------------------------------------------------------------
+
+
+class TestEventsTraceTree:
+    """Tests for ``protean events trace`` (tree output, default mode)."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_trace_tree_shows_causation_tree(self):
+        change_working_directory_to("test7")
+
+        from protean.port.event_store import CausationNode
+
+        root_node = CausationNode(
+            message_id="test::order:command-abc123-0",
+            message_type="Test.PlaceOrder.v1",
+            kind="COMMAND",
+            stream="test::order:command-abc123",
+            time="2026-02-22T10:00:00",
+            global_position=1,
+            children=[
+                CausationNode(
+                    message_id="test::order-abc123-0",
+                    message_type="Test.OrderPlaced.v1",
+                    kind="EVENT",
+                    stream="test::order-abc123",
+                    time="2026-02-22T10:00:01",
+                    global_position=2,
+                ),
+            ],
+        )
+
+        mock_domain = _mock_domain_with_store()
+        mock_domain.event_store.store.build_causation_tree.return_value = root_node
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "trace",
+                    "test-corr-id",
+                    "--domain",
+                    "publishing7.py",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "CMD" in result.output
+            assert "EVT" in result.output
+            assert "PlaceOrder" in result.output
+            assert "OrderPlaced" in result.output
+            assert "Causation tree: 2 message(s)" in result.output
+
+    def test_trace_tree_empty_store(self):
+        change_working_directory_to("test7")
+
+        mock_domain = _mock_domain_with_store()
+        mock_domain.event_store.store.build_causation_tree.return_value = None
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "trace",
+                    "nonexistent-corr",
+                    "--domain",
+                    "publishing7.py",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "No events found for correlation ID" in result.output
+
+    def test_trace_tree_multi_level_chain(self):
+        change_working_directory_to("test7")
+
+        from protean.port.event_store import CausationNode
+
+        root_node = CausationNode(
+            message_id="cmd-0",
+            message_type="Test.PlaceOrder.v1",
+            kind="COMMAND",
+            stream="test::order:command-abc123",
+            time="2026-02-22T10:00:00",
+            global_position=1,
+            children=[
+                CausationNode(
+                    message_id="evt-0",
+                    message_type="Test.OrderPlaced.v1",
+                    kind="EVENT",
+                    stream="test::order-abc123",
+                    time="2026-02-22T10:00:01",
+                    global_position=2,
+                    children=[
+                        CausationNode(
+                            message_id="cmd-1",
+                            message_type="Test.ConfirmOrder.v1",
+                            kind="COMMAND",
+                            stream="test::order:command-abc123",
+                            time="2026-02-22T10:00:02",
+                            global_position=3,
+                            children=[
+                                CausationNode(
+                                    message_id="evt-1",
+                                    message_type="Test.OrderConfirmed.v1",
+                                    kind="EVENT",
+                                    stream="test::order-abc123",
+                                    time="2026-02-22T10:00:03",
+                                    global_position=4,
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        mock_domain = _mock_domain_with_store()
+        mock_domain.event_store.store.build_causation_tree.return_value = root_node
+
+        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                [
+                    "events",
+                    "trace",
+                    "chain-corr-id",
+                    "--domain",
+                    "publishing7.py",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Causation tree: 4 message(s)" in result.output
+            assert "PlaceOrder" in result.output
+            assert "OrderPlaced" in result.output
+            assert "ConfirmOrder" in result.output
+            assert "OrderConfirmed" in result.output

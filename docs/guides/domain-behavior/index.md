@@ -53,6 +53,7 @@ Protean automatically tracks causal chains across commands and events, and
 lets you attach custom metadata to every message:
 
 - **Correlation & causation IDs** - Automatically propagated through command → event chains
+- **Causation chain API** - Walk up to the root command, down to all effects, or build a full causation tree programmatically
 - **Message enrichment hooks** - Register callables that add custom metadata (user context, tenant ID, audit data) to every event and command
 - **Extensions metadata** - A user-space `metadata.extensions` dict persisted in the event store
 

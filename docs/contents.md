@@ -91,7 +91,7 @@ specific area.
 - [Invariants](./guides/domain-behavior/invariants.md) -- Business rules that must always hold true within an aggregate.
 - [Mutating Aggregates](./guides/domain-behavior/aggregate-mutation.md) -- Modify state through named methods reflecting actions and events.
 - [Raising Events](./guides/domain-behavior/raising-events.md) -- Notify other parts of the system through domain events.
-- [Message Tracing](./guides/domain-behavior/message-tracing.md) -- Track the full causal chain of commands and events with correlation and causation IDs.
+- [Message Tracing](./guides/domain-behavior/message-tracing.md) -- Track the full causal chain of commands and events with correlation and causation IDs, and traverse causation chains programmatically.
 - [Domain Services](./guides/domain-behavior/domain-services.md) -- Complex domain logic that spans multiple aggregates.
 
 ### Change State
@@ -143,7 +143,7 @@ specific area.
 - [`protean test`](./community/contributing/testing.md) -- Run Protean's framework test suite (development only).
 - [`protean snapshot`](./reference/cli/data/snapshot.md) -- Create snapshots for event-sourced aggregates.
 - [`protean projection`](./reference/cli/data/projection.md) -- Rebuild projections by replaying events from the event store.
-- [`protean events`](./reference/cli/data/events.md) -- Inspect the event store: read streams, view stats, search events, and trace aggregate history.
+- [`protean events`](./reference/cli/data/events.md) -- Inspect the event store: read streams, view stats, search events, trace aggregate history, and follow causal chains as a tree or flat table.
 - [Type Checking](./reference/type-checking/index.md) -- Static type checking with the Protean mypy plugin.
 
 ### Test Your Application
@@ -306,6 +306,8 @@ Design reasoning and internal architecture for contributors and advanced users.
 - [Field System](./concepts/internals/field-system.md) -- How FieldSpec translates domain vocabulary to Pydantic, and why three definition styles are supported.
 - [Shadow Fields](./concepts/internals/shadow-fields.md) -- How ValueObject and Reference fields are flattened into database columns via shadow fields.
 - [Query System](./concepts/internals/query-system.md) -- How the Repository → DAO → QuerySet → Provider chain works, Q object expression trees, lookup resolution, and lazy evaluation.
+- [Event Sourcing](./concepts/internals/event-sourcing.md) -- How `raise_()` invokes `@apply` handlers, aggregate reconstitution, version tracking, causation chain traversal algorithms, and projection rebuilding.
+- [Event Upcasting](./concepts/internals/event-upcasting.md) -- How old event payloads are transparently transformed to the current schema during deserialization.
 
 ---
 

@@ -144,6 +144,79 @@ result.process(
 )
 ```
 
+## Traversing the Causation Chain Programmatically
+
+The event store provides three methods for traversing causation chains in code.
+These are inspection/debugging utilities that operate on the event store
+directly.
+
+### Walking up: `trace_causation()`
+
+Given a message, walk **up** the causation chain to the root command:
+
+```python
+store = domain.event_store.store
+
+# From a message ID string
+chain = store.trace_causation("myapp::order-abc123-0.1")
+
+# From a Message object
+chain = store.trace_causation(some_message)
+
+# chain = [root_command, ..., target_message]
+for msg in chain:
+    print(f"{msg.metadata.headers.type} (caused by {msg.metadata.domain.causation_id})")
+```
+
+The result is a list of `Message` objects ordered root-first, target-last. The
+root command (with `causation_id=None`) is always the first element, and the
+target message is always the last.
+
+### Walking down: `trace_effects()`
+
+Given a message, walk **down** to find everything it caused:
+
+```python
+# All downstream effects (recursive)
+effects = store.trace_effects("myapp::order:command-abc123-0")
+
+# Only direct children (one level)
+direct = store.trace_effects("myapp::order:command-abc123-0", recursive=False)
+```
+
+Effects are returned in chronological order (by `global_position`). The target
+message itself is **not** included in the result.
+
+### Building the full tree: `build_causation_tree()`
+
+For a complete picture of a business operation, build the full causation tree
+from a `correlation_id`:
+
+```python
+from protean.port.event_store import CausationNode
+
+root = store.build_causation_tree("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
+
+if root:
+    print(f"{root.kind} {root.message_type}")  # e.g., "COMMAND App.PlaceOrder.v1"
+    for child in root.children:
+        print(f"  {child.kind} {child.message_type}")
+```
+
+`CausationNode` is a dataclass with these attributes:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `message_id` | `str` | The message's `headers.id` |
+| `message_type` | `str` | The fully-qualified message type |
+| `kind` | `str` | `"EVENT"` or `"COMMAND"` |
+| `stream` | `str` | The stream name |
+| `time` | `str \| None` | Write timestamp |
+| `global_position` | `int \| None` | Global position in the event store |
+| `children` | `list[CausationNode]` | Child messages caused by this message |
+
+Returns `None` if no messages exist for the given `correlation_id`.
+
 ## Inspecting Traces via CLI
 
 The `protean events` CLI commands support a `--trace` flag to display
@@ -160,11 +233,27 @@ protean events search --type=OrderPlaced --trace --domain=myapp
 To follow an entire causal chain by correlation ID:
 
 ```bash
+# Tree view (default) — shows parent-child causation structure
 protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --domain=myapp
+
+# Flat table view — chronological list with trace columns
+protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --flat --domain=myapp
 ```
 
-This scans all events matching the given `correlation_id` and displays them in
-chronological order, showing the full causation tree.
+The default tree view reconstructs the parent-child causation relationships and
+displays them as an indented tree:
+
+```
+CMD App.PlaceOrder.v1 (myapp::order:command-abc123-0) @ 2026-02-22 10:30:00
+├── EVT App.OrderPlaced.v1 (myapp::order-abc123-0) @ 2026-02-22 10:30:00
+│   └── CMD App.ReserveInventory.v1 (myapp::inventory:command-inv456-0) @ 2026-02-22 10:30:01
+│       └── EVT App.InventoryReserved.v1 (myapp::inventory-inv456-0) @ 2026-02-22 10:30:02
+
+Causation tree: 4 message(s) for correlation ID 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
+```
+
+Use `--flat` for a chronological table view when you need exact positions and
+timestamps.
 
 See [`protean events`](../../reference/cli/data/events.md) for the complete CLI
 reference.
@@ -193,5 +282,9 @@ This is useful for operational dashboards and debugging delivery issues.
     **Pattern:** [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md) -- Design considerations, when to use external vs generated IDs, and multi-service tracing strategies.
 
     **Reference:** [`protean events trace`](../../reference/cli/data/events.md) -- CLI command for following causal chains.
+
+    **Internals:** [Causation Chain Traversal](../../concepts/internals/event-sourcing.md#causation-chain-traversal) -- Algorithm details for the traversal methods.
+
+    **API:** [BaseEventStore](../../api/ports/event-store.md) -- Auto-generated API reference for `trace_causation`, `trace_effects`, `build_causation_tree`, and `CausationNode`.
 
     **Concept:** [Observability](../../reference/server/observability.md) -- Real-time tracing and monitoring with the Protean Observatory.

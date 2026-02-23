@@ -211,3 +211,5 @@ PM's state when loading.
     **Patterns:**
 
     - [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Patterns for orchestrating multi-step workflows.
+
+    **Related guide:** [Message Tracing](../domain-behavior/message-tracing.md) — Correlation and causation IDs that thread through process manager workflows, plus the programmatic causation chain API.

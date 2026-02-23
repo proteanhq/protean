@@ -248,3 +248,4 @@ map different field names: `correlate={"order_id": "payment_order_id"}`.
     **Guides:**
 
     - [Process Managers](../guides/consume-state/process-managers.md) — Defining process managers, correlation, lifecycle, and configuration.
+    - [Message Tracing](../guides/domain-behavior/message-tracing.md) — Correlation and causation IDs for end-to-end traceability, with programmatic causation chain traversal.

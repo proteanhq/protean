@@ -1,7 +1,8 @@
 """CLI commands for inspecting the event store.
 
 Provides commands for reading events, viewing stream statistics,
-searching for events by type, and viewing aggregate event histories.
+searching for events by type, viewing aggregate event histories,
+and tracing causation chains.
 
 Usage::
 
@@ -16,6 +17,12 @@ Usage::
 
     # View aggregate event history
     protean events history --aggregate=User --id=abc123 --domain=my_domain
+
+    # Trace causation chain (tree view)
+    protean events trace <correlation_id> --domain=my_domain
+
+    # Trace causation chain (flat table)
+    protean events trace <correlation_id> --flat --domain=my_domain
 """
 
 import json
@@ -25,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 import typer
 from rich import print
 from rich.table import Table
+from rich.tree import Tree as RichTree
 from typing_extensions import Annotated
 
 from protean.exceptions import NoDomainException
@@ -34,6 +42,7 @@ from protean.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.port.event_store import CausationNode
 
 logger = get_logger(__name__)
 
@@ -169,6 +178,26 @@ def _print_event_data(messages: list[dict[str, Any]]) -> None:
         data = msg.get("data", {})
         print(f"\n[bold]Event {position}[/bold] ({event_type}):")
         print(json.dumps(data, indent=2, default=str))
+
+
+def _build_rich_tree(node: "CausationNode") -> RichTree:
+    """Build a Rich Tree from a CausationNode for CLI display."""
+    kind_badge = "[bold cyan]CMD[/]" if node.kind == "COMMAND" else "[bold green]EVT[/]"
+    time_str = f" @ {_format_time(node.time)}" if node.time else ""
+    label = (
+        f"{kind_badge} {node.message_type} "
+        f"[dim]({_truncate_id(node.message_id, 40)}){time_str}[/]"
+    )
+
+    tree = RichTree(label)
+    for child in node.children:
+        tree.add(_build_rich_tree(child))
+    return tree
+
+
+def _count_nodes(node: "CausationNode") -> int:
+    """Count all nodes in a CausationNode tree."""
+    return 1 + sum(_count_nodes(c) for c in node.children)
 
 
 # ---------------------------------------------------------------------------
@@ -431,27 +460,51 @@ def trace(
     show_data: Annotated[
         bool, typer.Option("--data/--no-data", help="Show full event data")
     ] = False,
+    flat: Annotated[
+        bool,
+        typer.Option("--flat/--tree", help="Show flat table instead of causation tree"),
+    ] = False,
 ) -> None:
     """Follow the full causal chain for a correlation ID across all streams."""
     derived_domain = _load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
-        all_messages = store._read("$all", no_of_messages=1_000_000)
 
-        matched = [
-            m for m in all_messages if _extract_trace_ids(m)[0] == correlation_id
-        ]
+        if flat:
+            # Flat table display (original behavior)
+            all_messages = store._read("$all", no_of_messages=1_000_000)
 
-        if not matched:
-            print(f"No events found for correlation ID '{correlation_id}'")
-            return
+            matched = [
+                m for m in all_messages if _extract_trace_ids(m)[0] == correlation_id
+            ]
 
-        table = _build_events_table(
-            matched, show_data=show_data, show_stream=True, show_trace=True
-        )
-        print(table)
+            if not matched:
+                print(f"No events found for correlation ID '{correlation_id}'")
+                return
 
-        if show_data:
-            _print_event_data(matched)
+            table = _build_events_table(
+                matched, show_data=show_data, show_stream=True, show_trace=True
+            )
+            print(table)
 
-        print(f"\nFound {len(matched)} event(s) for correlation ID '{correlation_id}'")
+            if show_data:
+                _print_event_data(matched)
+
+            print(
+                f"\nFound {len(matched)} event(s) for correlation ID '{correlation_id}'"
+            )
+        else:
+            # Tree display (default)
+            root_node = store.build_causation_tree(correlation_id)
+            if root_node is None:
+                print(f"No events found for correlation ID '{correlation_id}'")
+                return
+
+            tree = _build_rich_tree(root_node)
+            print(tree)
+
+            total = _count_nodes(root_node)
+            print(
+                f"\nCausation tree: {total} message(s) for correlation ID "
+                f"'{correlation_id}'"
+            )

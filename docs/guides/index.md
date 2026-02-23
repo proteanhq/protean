@@ -88,6 +88,7 @@ A quick reference for common tasks. See the
 | Handle a request (synchronous)        | [Application Services](./change-state/application-services.md)        |
 | Handle a request (via commands)       | [Commands](./change-state/commands.md) + [Handlers](./change-state/command-handlers.md) |
 | Save or load an aggregate             | [Persist](./change-state/persist-aggregates.md) · [Retrieve](./change-state/retrieve-aggregates.md) |
+| Trace a causal chain of messages      | [Message Tracing](./domain-behavior/message-tracing.md)               |
 | React to a domain event               | [Event Handlers](./consume-state/event-handlers.md)                   |
 | Build a read-optimized view           | [Projections](./consume-state/projections.md)                         |
 | Choose between CQRS and ES            | [Architecture Decision](../concepts/architecture/architecture-decision.md)    |
