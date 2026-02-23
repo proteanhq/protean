@@ -205,6 +205,7 @@ def test_event_metadata():
                 "idempotency_key": None,
             },
             "event_store": None,
+            "extensions": {},
         },
         "user_id": event.user_id,
     }

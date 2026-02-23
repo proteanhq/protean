@@ -188,6 +188,8 @@ This is useful for operational dashboards and debugging delivery issues.
 ---
 
 !!! tip "See also"
+    **Related guide:** [Message Enrichment](message-enrichment.md) -- Automatically add custom metadata (user context, tenant ID, audit data) to every event and command via enricher hooks.
+
     **Pattern:** [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md) -- Design considerations, when to use external vs generated IDs, and multi-service tracing strategies.
 
     **Reference:** [`protean events trace`](../../reference/cli/data/events.md) -- CLI command for following causal chains.

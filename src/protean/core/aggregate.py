@@ -205,6 +205,22 @@ class BaseAggregate(BaseEntity):
             domain=domain_meta,
         )
 
+        # Run event enrichers
+        if current_domain._event_enrichers:
+            extensions = dict(metadata.extensions)
+            for enricher in current_domain._event_enrichers:
+                result = enricher(event, self)
+                if result:
+                    extensions.update(result)
+            if extensions:
+                metadata = Metadata(
+                    headers=metadata.headers,
+                    envelope=metadata.envelope,
+                    domain=metadata.domain,
+                    event_store=metadata.event_store,
+                    extensions=extensions,
+                )
+
         event_with_metadata = event.__class__(
             event.payload,
             _expected_version=self._event_position,

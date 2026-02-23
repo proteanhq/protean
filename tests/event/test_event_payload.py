@@ -73,6 +73,7 @@ def test_event_payload():
                 "causation_id": None,
             },
             "event_store": None,
+            "extensions": {},
         },
         "user_id": event.user_id,
     }
