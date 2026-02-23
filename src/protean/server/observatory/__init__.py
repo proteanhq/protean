@@ -82,13 +82,14 @@ class Observatory:
     """Dedicated observability server for Protean applications.
 
     Provides:
-    - GET /            — Embedded HTML dashboard
-    - GET /stream      — SSE real-time trace events
-    - GET /api/health  — Infrastructure health
-    - GET /api/outbox  — Outbox status per domain
-    - GET /api/streams — Redis stream info
-    - GET /api/stats   — Throughput/error rate stats
-    - GET /metrics     — Prometheus text exposition
+    - GET /                    — Embedded HTML dashboard
+    - GET /stream              — SSE real-time trace events
+    - GET /api/health          — Infrastructure health
+    - GET /api/outbox          — Outbox status per domain
+    - GET /api/streams         — Redis stream info
+    - GET /api/subscriptions   — Subscription lag status per domain
+    - GET /api/stats           — Throughput/error rate stats
+    - GET /metrics             — Prometheus text exposition
     """
 
     def __init__(
