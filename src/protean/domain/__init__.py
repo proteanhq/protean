@@ -2305,6 +2305,55 @@ class Domain:
     def cache_for(self, projection_cls):
         return self.caches.cache_for(projection_cls)
 
+    ################################
+    # Raw Connection Functionality #
+    ################################
+
+    def connection_for(self, projection_cls: type) -> Any:
+        """Return the raw database or cache connection for a projection.
+
+        This is the lowest-level read access for projections -- an escape
+        hatch for executing technology-specific queries directly against the
+        backing store.
+
+        For **database-backed** projections the method returns the database
+        provider's connection (e.g. a SQLAlchemy session, an Elasticsearch
+        client, or a ``MemorySession``).
+
+        For **cache-backed** projections the method returns the cache
+        client (e.g. a ``redis.Redis`` instance or a plain ``dict``).
+
+        Args:
+            projection_cls: A registered projection class.
+
+        Returns:
+            The raw connection object for the projection's backing store.
+
+        Raises:
+            IncorrectUsageError: If the element is not a projection.
+
+        Example::
+
+            conn = domain.connection_for(OrderSummary)
+            # Use conn to execute raw queries against the backing store
+        """
+        if isinstance(projection_cls, str):
+            raise IncorrectUsageError(
+                f"Element {projection_cls} is not registered in domain {self.name}"
+            )
+
+        if projection_cls.element_type != DomainObjects.PROJECTION:
+            raise IncorrectUsageError(
+                f"`connection_for` is only available for projections. "
+                f"Received {projection_cls.__name__} "
+                f"({projection_cls.element_type})."
+            )
+
+        if projection_cls.meta_.cache:
+            return self.caches.get_connection(projection_cls.meta_.cache)
+        else:
+            return self.providers.get_connection(projection_cls.meta_.provider)
+
     ##########################
     # Snapshot Functionality #
     ##########################

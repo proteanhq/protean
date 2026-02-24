@@ -161,16 +161,34 @@ When a projection is stored in a cache (Redis, in-memory), `view.get()`,
 and `view.find_by()` raise `NotSupportedError` because cache backends are
 key-value stores and do not support field-based filtering.
 
-#### Three levels of read access
+#### Four levels of projection access
 
-Protean provides three levels of projection read access, each suited to
+Protean provides four levels of projection access, each suited to
 different use cases:
 
 | Level | Entry point | Returns | Use when |
 |-------|-------------|---------|----------|
 | **ReadView** | `domain.view_for(Proj)` | `ReadView` | Default for endpoints and query handlers — read-only by design |
 | **QuerySet** | `domain.query_for(Proj)` | `ReadOnlyQuerySet` | Direct QuerySet access for custom filtering |
+| **Raw** | `domain.connection_for(Proj)` | DB/cache connection | Escape hatch — technology-specific queries (SQL, ES DSL, Redis) |
 | **Repository** | `domain.repository_for(Proj)` | `BaseRepository` | Inside projectors — when you need to write |
+
+#### Raw connection access
+
+When you need to run technology-specific queries that cannot be expressed
+through `QuerySet` — such as SQL aggregations, Elasticsearch DSL, or Redis
+`SCAN` commands — use `domain.connection_for()`:
+
+```python
+conn = domain.connection_for(OrderSummary)
+# conn is the raw SQLAlchemy session, Elasticsearch client,
+# Redis client, etc., depending on the projection's backing store
+```
+
+The method automatically routes to the correct provider or cache based on
+the projection's configuration. For database-backed projections it returns
+the database provider's connection; for cache-backed projections it returns
+the cache client.
 
 ### Query — Named Read Intents
 

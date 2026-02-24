@@ -140,11 +140,12 @@ Protean provides three levels of read abstraction:
 |-------|-----|-------------|
 | **Pipeline** | `domain.dispatch(query)` | Named queries with validation, structured read logic |
 | **Direct** | `domain.query_for(Projection)` | Simple filtering without handler ceremony |
-| **Raw** | Repository/DAO access | Complex queries needing database-specific features |
+| **Raw** | `domain.connection_for(Projection)` | Complex queries needing database-specific features |
 
 Query handlers operate at Level 1, providing the most structured approach.
 Use `domain.query_for()` (Level 2) for simple lookups that don't need a
-handler.
+handler. Use `domain.connection_for()` (Level 3) when you need the raw
+database or cache client for technology-specific queries.
 
 ## Error Handling
 
