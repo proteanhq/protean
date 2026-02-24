@@ -25,8 +25,9 @@ A projection is a flat data structure optimized for queries:
 ```
 
 Notice that the projection has only simple fields — `String`, `Float`,
-`Identifier`. No associations, no value objects. The `identifier=True`
-on `book_id` marks it as the primary key.
+`Identifier`. No associations or references. (ValueObject fields are also
+allowed in projections when you need to group related attributes.) The
+`identifier=True` on `book_id` marks it as the primary key.
 
 ## Building a Projector
 

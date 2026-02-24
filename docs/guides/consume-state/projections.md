@@ -322,9 +322,29 @@ sequenceDiagram
 
 ## Supported Field Types
 
-Projections can only contain basic field types. References, Associations, and ValueObjects
-are not supported in projections. This is because projections are designed to be flattened,
-denormalized representations of data.
+Projections support basic field types (`String`, `Integer`, `Float`,
+`Identifier`, `DateTime`, `Boolean`, etc.) and `ValueObject` fields.
+References and Associations (`HasOne`, `HasMany`) are not supported.
+
+ValueObject fields preserve domain semantics in your projections while being
+stored as flattened shadow fields for efficient querying:
+
+```python
+@domain.projection
+class OrderSummary(BaseProjection):
+    order_id = Identifier(identifier=True)
+    customer_name = String(max_length=100)
+    total_amount = Float()
+    shipping_address = ValueObject(Address)  # Stored as shipping_address_street, etc.
+```
+
+You can query on individual shadow fields:
+
+```python
+results = domain.query_for(OrderSummary).filter(
+    shipping_address_city="Springfield"
+).all()
+```
 
 ## Best Practices
 

@@ -36,6 +36,14 @@ application with a real database. It covers:
 - **Part III** — Projections and real database persistence
 - **Part IV** — Testing strategies and next steps
 
+## Event Sourcing Tutorial
+
+If you're interested in Event Sourcing, work through
+[Building Fidelis](./guides/getting-started/es-tutorial/index.md) — a
+22-chapter deep dive that builds a banking ledger with immutable audit trails,
+projections, and production tooling. It assumes familiarity with the Bookshelf
+tutorial above.
+
 ## Core concepts
 
 Get to know the driving principles and core ideas that shape this framework
