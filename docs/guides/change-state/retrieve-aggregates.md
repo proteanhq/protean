@@ -362,13 +362,16 @@ def get_page(self, page_number, page_size=10):
 
 ### Pagination navigation
 
-The result provides `has_next` and `has_prev` properties for pagination:
+The result provides pagination properties for navigating through pages:
 
 ```python
 result = repository._dao.query.offset(10).limit(10).all()
 
-result.has_next   # True if more pages exist beyond the current one
-result.has_prev   # True if this is not the first page
+result.page        # Current page number (1-indexed)
+result.page_size   # Number of items per page (alias for limit)
+result.total_pages # Total number of pages
+result.has_next    # True if more pages exist beyond the current one
+result.has_prev    # True if this is not the first page
 ```
 
 ## Evaluating a QuerySet
@@ -383,7 +386,7 @@ Evaluation is triggered when you:
 - **Slice**: `queryset[0]` or `queryset[0:5]`
 - Check **containment**: `person in queryset`
 - Access **properties**: `.total`, `.items`, `.first`, `.last`, `.has_next`,
-  `.has_prev`
+  `.has_prev`, `.page`, `.page_size`, `.total_pages`
 
 Once evaluated, results are cached internally. Call `.all()` again to force
 a fresh database query.
@@ -399,6 +402,9 @@ on first access:
 - **`last`** -- last result, or `None` if empty
 - **`has_next`** -- `True` if more pages exist
 - **`has_prev`** -- `True` if previous pages exist
+- **`page`** -- current page number (1-indexed, int)
+- **`page_size`** -- items per page, or `None` when unlimited (alias for `limit`)
+- **`total_pages`** -- total number of pages (0 when no results)
 
 ```shell
 In [1]: query = repository._dao.query.filter(country="CA").order_by("age")
@@ -486,11 +492,15 @@ DAO-specific data structures from leaking into the domain layer.
 - **`last`** -- last item, or `None` if empty
 - **`has_next`** -- `True` if more pages exist beyond the current one
 - **`has_prev`** -- `True` if this is not the first page
+- **`page`** -- current page number (1-indexed)
+- **`page_size`** -- number of items per page (alias for `limit`; `None` when unlimited)
+- **`total_pages`** -- total number of pages (0 when no results)
 
 ### Methods
 
 - **`to_dict()`** -- returns the result as a dictionary with `offset`,
-  `limit`, `total`, and `items` keys.
+  `limit`, `total`, `page`, `page_size`, `total_pages`, `has_next`,
+  `has_prev`, and `items` keys.
 
 A ResultSet also supports `bool()` (truthy if items exist), `iter()` (iterate
 over items), and `len()` (number of items in the current page, not the total).

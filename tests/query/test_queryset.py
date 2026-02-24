@@ -643,6 +643,37 @@ class TestCriteriaConstruction:
         results = person_repo._dao.query.raw('{"last_name":"John", "age__in":[3,7]}')
         assert results.total == 2
 
+    def test_page(self, test_domain):
+        """Test page property on QuerySet proxy"""
+        person_repo = test_domain.repository_for(Person)
+
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
+
+        query = person_repo._dao.query.offset(2).limit(2)
+        assert query.page == 2
+
+    def test_page_size(self, test_domain):
+        """Test page_size property on QuerySet proxy"""
+        person_repo = test_domain.repository_for(Person)
+
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+
+        query = person_repo._dao.query.limit(5)
+        assert query.page_size == 5
+
+    def test_total_pages(self, test_domain):
+        """Test total_pages property on QuerySet proxy"""
+        person_repo = test_domain.repository_for(Person)
+
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
+
+        query = person_repo._dao.query.limit(2)
+        assert query.total_pages == 2
+
 
 # ---------------------------------------------------------------------------
 # Tests: ResultSet
@@ -687,7 +718,17 @@ class TestResultSet:
     def test_to_dict(self):
         rs = ResultSet(offset=5, limit=10, total=20, items=["a"])
         d = rs.to_dict()
-        assert d == {"offset": 5, "limit": 10, "total": 20, "items": ["a"]}
+        assert d == {
+            "offset": 5,
+            "limit": 10,
+            "total": 20,
+            "page": 1,
+            "page_size": 10,
+            "total_pages": 2,
+            "has_next": True,
+            "has_prev": True,
+            "items": ["a"],
+        }
 
     def test_has_prev_true(self):
         rs = ResultSet(offset=10, limit=10, total=20, items=["a"])
@@ -708,6 +749,38 @@ class TestResultSet:
     def test_has_next_false(self):
         rs = ResultSet(offset=10, limit=10, total=20, items=["a"])
         assert rs.has_next is False
+
+    def test_has_next_with_unlimited_limit(self):
+        rs = ResultSet(offset=0, limit=None, total=20, items=["a"])
+        assert rs.has_next is False
+
+    def test_page(self):
+        rs = ResultSet(offset=10, limit=10, total=30, items=["a"])
+        assert rs.page == 2
+
+    def test_page_with_unlimited_limit(self):
+        rs = ResultSet(offset=0, limit=None, total=30, items=["a"])
+        assert rs.page == 1
+
+    def test_page_size(self):
+        rs = ResultSet(offset=0, limit=10, total=20, items=["a"])
+        assert rs.page_size == 10
+
+    def test_page_size_unlimited(self):
+        rs = ResultSet(offset=0, limit=None, total=20, items=["a"])
+        assert rs.page_size is None
+
+    def test_total_pages(self):
+        rs = ResultSet(offset=0, limit=10, total=25, items=["a"])
+        assert rs.total_pages == 3
+
+    def test_total_pages_empty(self):
+        rs = ResultSet(offset=0, limit=10, total=0, items=[])
+        assert rs.total_pages == 0
+
+    def test_total_pages_unlimited(self):
+        rs = ResultSet(offset=0, limit=None, total=50, items=["a"])
+        assert rs.total_pages == 1
 
 
 # ---------------------------------------------------------------------------

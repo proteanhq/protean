@@ -309,15 +309,18 @@ structures from leaking into the domain layer:
 ```python
 class ResultSet:
     offset: int          # current page offset
-    limit: int           # requested page size
+    limit: int | None    # requested page size (None = unlimited)
     total: int           # total matching records
     items: list          # entity objects in current page
 
     # Properties
     has_prev → bool      # offset > 0 and items exist
-    has_next → bool      # (offset + limit) < total
+    has_next → bool      # more pages exist (always False when unlimited)
     first → entity|None  # items[0] if items, else None
     last → entity|None   # items[-1] if items, else None
+    page → int           # current page number (1-indexed)
+    page_size → int|None # alias for limit
+    total_pages → int    # math.ceil(total / limit), 0 when empty
 ```
 
 The `all()` method on QuerySet converts raw database results (dicts or model

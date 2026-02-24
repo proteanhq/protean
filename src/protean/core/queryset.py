@@ -2,6 +2,7 @@
 
 import copy
 import logging
+import math
 from typing import TYPE_CHECKING, Any, Union
 
 from protean.exceptions import NotSupportedError
@@ -469,6 +470,21 @@ class QuerySet:
         """Return True if there are previous values present"""
         return self._data.has_prev
 
+    @property
+    def page(self):
+        """Return the current page number"""
+        return self._data.page
+
+    @property
+    def page_size(self):
+        """Return the page size"""
+        return self._data.page_size
+
+    @property
+    def total_pages(self):
+        """Return the total number of pages"""
+        return self._data.total_pages
+
 
 class ReadOnlyQuerySet(QuerySet):
     """A QuerySet that blocks all mutation operations.
@@ -504,7 +520,7 @@ class ReadOnlyQuerySet(QuerySet):
         )
 
 
-class ResultSet(object):
+class ResultSet:
     """This is an internal helper class returned by DAO query operations.
 
     The purpose of this class is to prevent DAO-specific data structures from leaking into the domain layer.
@@ -512,10 +528,10 @@ class ResultSet(object):
     basic pagination support.
     """
 
-    def __init__(self, offset: int, limit: int, total: int, items: list):
+    def __init__(self, offset: int, limit: int | None, total: int, items: list) -> None:
         # the current offset (zero indexed)
         self.offset = offset
-        # the number of items to be fetched
+        # the number of items to be fetched (None means unlimited)
         self.limit = limit
         # the total number of items matching the query
         self.total = total
@@ -523,47 +539,86 @@ class ResultSet(object):
         self.items = items
 
     @property
-    def has_prev(self):
-        """Is `True` if the results are a subset of all results"""
+    def has_prev(self) -> bool:
+        """Is ``True`` if the results are a subset of all results."""
         return bool(self.items) and self.offset > 0
 
     @property
-    def has_next(self):
-        """Is `True` if more pages exist"""
+    def has_next(self) -> bool:
+        """Is ``True`` if more pages exist beyond the current one."""
+        if self.limit is None:
+            return False
         return (self.offset + self.limit) < self.total
 
     @property
-    def first(self):
-        """Return the first item from results"""
-        if self.items:
-            return self.items[0]
+    def page(self) -> int:
+        """Current page number (1-indexed).
+
+        Returns 1 when ``limit`` is ``None`` (unlimited).
+        """
+        if not self.limit:
+            return 1
+        return self.offset // self.limit + 1
 
     @property
-    def last(self):
-        """Return the last item from results"""
+    def page_size(self) -> int | None:
+        """Number of items per page. Alias for ``limit``.
+
+        Returns ``None`` when no limit is set (unlimited results).
+        """
+        return self.limit
+
+    @property
+    def total_pages(self) -> int:
+        """Total number of pages for the full result set.
+
+        Returns 0 when there are no results, 1 when ``limit`` is ``None``.
+        """
+        if self.total == 0:
+            return 0
+        if not self.limit:
+            return 1
+        return math.ceil(self.total / self.limit)
+
+    @property
+    def first(self) -> Any | None:
+        """Return the first item from results."""
+        if self.items:
+            return self.items[0]
+        return None
+
+    @property
+    def last(self) -> Any | None:
+        """Return the last item from results."""
         if self.items:
             return self.items[-1]
+        return None
 
-    def __bool__(self):
-        """Returns `True` when the resultset is not empty"""
+    def __bool__(self) -> bool:
+        """Returns ``True`` when the resultset is not empty."""
         return bool(self.items)
 
     def __iter__(self):
-        """Returns an iterable on items, to support traversal"""
+        """Returns an iterable on items, to support traversal."""
         return iter(self.items)
 
-    def __len__(self):
-        """Returns number of items in the resultset"""
+    def __len__(self) -> int:
+        """Returns number of items in the resultset."""
         return len(self.items)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ResultSet: {len(self.items)} items>"
 
-    def to_dict(self):
-        """Return the resultset as a dictionary"""
+    def to_dict(self) -> dict:
+        """Return the resultset as a dictionary."""
         return {
             "offset": self.offset,
             "limit": self.limit,
             "total": self.total,
+            "page": self.page,
+            "page_size": self.page_size,
+            "total_pages": self.total_pages,
+            "has_next": self.has_next,
+            "has_prev": self.has_prev,
             "items": self.items,
         }
