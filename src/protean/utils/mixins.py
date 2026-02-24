@@ -60,6 +60,41 @@ class handle:
         return wrapper
 
 
+class read:
+    """Decorator to mark handler methods in QueryHandler classes.
+
+    Like ``@handle`` but does **not** wrap in ``UnitOfWork`` — reads are
+    stateless and must not trigger side-effects.
+
+    Only ``target_cls`` is accepted (no ``start``, ``correlate``, or
+    ``end`` — those are ProcessManager-specific)::
+
+        @read(GetOrdersByCustomer)
+        def get_by_customer(self, query): ...
+    """
+
+    def __init__(self, target_cls: type) -> None:
+        self._target_cls = target_cls
+
+    def __call__(self, fn: Callable) -> Callable:
+        """Marks the method with ``_target_cls`` metadata for handler map construction.
+
+        Args:
+            fn (Callable): Handler method
+
+        Returns:
+            Callable: Handler method with handler metadata attributes
+        """
+
+        @functools.wraps(fn)
+        def wrapper(instance: Any, target_obj: Any) -> Any:
+            # No UoW wrapping — reads are stateless
+            return fn(instance, target_obj)
+
+        setattr(wrapper, "_target_cls", self._target_cls)
+        return wrapper
+
+
 class HandlerMixin:
     """Mixin to add common handler behavior to Event Handlers and Command Handlers"""
 
@@ -77,10 +112,10 @@ class HandlerMixin:
 
     @classmethod
     def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> Any:
-        """Handle a message or command/event.
+        """Handle a message, command, event, or query.
 
         Returns:
-            Any: Return value from the handler method (only applicable for command handlers)
+            Any: Return value from the handler method (for command and query handlers)
         """
 
         # Convert Message to object if necessary
@@ -89,8 +124,11 @@ class HandlerMixin:
         # Use specific handlers if available, or fallback on `$any` if defined
         handlers = cls._handlers[item.__class__.__type__] or cls._handlers["$any"]
 
-        if cls.element_type == DomainObjects.COMMAND_HANDLER:
-            # Command handlers only have one handler method per command
+        if cls.element_type in (
+            DomainObjects.COMMAND_HANDLER,
+            DomainObjects.QUERY_HANDLER,
+        ):
+            # Command/Query handlers only have one handler method per command/query
             handler_method = next(iter(handlers))
             return handler_method(cls(), item)
         else:

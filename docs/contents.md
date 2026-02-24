@@ -127,6 +127,7 @@ specific area.
 - [Event Handlers](./guides/consume-state/event-handlers.md) -- Consume events to sync state or trigger side effects.
 - [Process Managers](./guides/consume-state/process-managers.md) -- Coordinate multi-step processes across aggregates with stateful, event-sourced coordination.
 - [Projections](./guides/consume-state/projections.md) -- Create read-optimized views built from events.
+- [Query Handlers](./guides/consume-state/query-handlers.md) -- Process queries and return results from projections.
 - [Subscribers](./guides/consume-state/subscribers.md) -- Consume messages from external brokers.
 - [Stream Categories](./concepts/async-processing/stream-categories.md) -- How messages are organized and routed.
 - [Event Upcasting](./guides/consume-state/event-upcasting.md) -- Transforming old event schemas to match the current version during replay.
@@ -233,6 +234,7 @@ Architectural theory and the building blocks of domain-driven systems.
 - [Subscribers](./concepts/building-blocks/subscribers.md) -- Consume messages from external brokers.
 - [Projections](./concepts/building-blocks/projections.md) -- Read-optimized denormalized views.
 - [Projectors](./concepts/building-blocks/projectors.md) -- Specialized event handlers that maintain projections.
+- [Query Handlers](./concepts/building-blocks/query-handlers.md) -- Process queries and return read-side results from projections.
 - [Process Managers](./concepts/building-blocks/process-managers.md) -- Stateful coordinators for multi-step processes across aggregates.
 
 ---

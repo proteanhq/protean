@@ -208,12 +208,16 @@ class TestQueryHasNoMessageInfrastructure:
         q = GetOrdersByCustomer(customer_id="C-123")
         assert not hasattr(q, "_metadata")
 
-    def test_query_has_no_type_string(self, test_domain):
+    def test_query_has_type_string_for_handler_routing(self, test_domain):
+        """Queries get a __type__ (for QueryHandler routing) but it has no
+        version component and is not stored in _events_and_commands."""
         test_domain.register(OrderSummary)
         test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
         test_domain.init(traverse=False)
 
-        assert not hasattr(GetOrdersByCustomer, "__type__")
+        assert hasattr(GetOrdersByCustomer, "__type__")
+        # No version component (unlike events/commands which have .v1)
+        assert ".v" not in GetOrdersByCustomer.__type__
 
     def test_query_not_in_events_and_commands(self, test_domain):
         test_domain.register(OrderSummary)

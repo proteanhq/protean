@@ -394,6 +394,12 @@ class Domain:
         # Parse and setup handler methods in Process Managers
         self._setup_process_managers()
 
+        # Generate and set query `__type__` value
+        self._set_query_type()
+
+        # Parse and setup handler methods in Query Handlers
+        self._setup_query_handlers()
+
         # Run Validations
         self._validate_domain()
 
@@ -644,6 +650,7 @@ class Domain:
         from protean.core.projection import projection_factory
         from protean.core.projector import projector_factory
         from protean.core.query import query_factory
+        from protean.core.query_handler import query_handler_factory
         from protean.core.repository import repository_factory
         from protean.core.subscriber import subscriber_factory
         from protean.core.value_object import value_object_factory
@@ -669,6 +676,7 @@ class Domain:
             DomainObjects.PROJECTION.value: projection_factory,
             DomainObjects.PROJECTOR.value: projector_factory,
             DomainObjects.QUERY.value: query_factory,
+            DomainObjects.QUERY_HANDLER.value: query_handler_factory,
         }
 
         if domain_object_type.value not in factories:
@@ -776,6 +784,12 @@ class Domain:
                     ("QueryProjectionCls", (new_cls))
                 )
 
+        if element_type == DomainObjects.QUERY_HANDLER:
+            if isinstance(new_cls.meta_.part_of, str):
+                self._pending_class_resolutions[new_cls.meta_.part_of].append(
+                    ("QueryHandlerProjectionCls", (new_cls))
+                )
+
         return new_cls
 
     def _resolve_references(self):
@@ -818,6 +832,13 @@ class Domain:
                         )
                         cls.meta_.projector_for = to_cls
                     case "QueryProjectionCls":
+                        cls = params
+                        to_cls = self.fetch_element_cls_from_registry(
+                            cls.meta_.part_of,
+                            (DomainObjects.PROJECTION,),
+                        )
+                        cls.meta_.part_of = to_cls
+                    case "QueryHandlerProjectionCls":
                         cls = params
                         to_cls = self.fetch_element_cls_from_registry(
                             cls.meta_.part_of,
@@ -1056,6 +1077,20 @@ class Domain:
                 ):
                     raise IncorrectUsageError(
                         f"`{query_record.cls.meta_.part_of.__name__}` is not a Projection, "
+                        f"or is not registered in domain {self.name}"
+                    )
+
+        # Check that query handlers are associated with registered projections
+        for _, qh_record in self.registry._elements[
+            DomainObjects.QUERY_HANDLER.value
+        ].items():
+            if qh_record.cls.meta_.part_of:
+                if (
+                    fqn(qh_record.cls.meta_.part_of)
+                    not in self.registry._elements[DomainObjects.PROJECTION.value]
+                ):
+                    raise IncorrectUsageError(
+                        f"`{qh_record.cls.meta_.part_of.__name__}` is not a Projection, "
                         f"or is not registered in domain {self.name}"
                     )
 
@@ -1364,6 +1399,73 @@ class Domain:
 
                 pm_cls.meta_.stream_categories = list(inferred_categories)
 
+    def _set_query_type(self) -> None:
+        """Set ``__type__`` on registered queries so HandlerMixin._handle() can route them."""
+        for _, element in self.registry._elements[DomainObjects.QUERY.value].items():
+            # Simpler than events/commands: no version (queries are not persisted)
+            type_string = f"{self.camel_case_name}.{element.cls.__name__}"
+            setattr(element.cls, "__type__", type_string)
+
+    def _setup_query_handlers(self) -> None:
+        """Build the handler map for all registered query handlers.
+
+        For each query handler, discovers methods decorated with ``@read``
+        and maps query types to their handler methods.
+        """
+        from protean.core.query import BaseQuery
+
+        for _, element in self.registry._elements[
+            DomainObjects.QUERY_HANDLER.value
+        ].items():
+            # Iterate through methods marked with `@read` and construct a handler map
+            if not element.cls._handlers:  # Protect against re-registration
+                methods = inspect.getmembers(element.cls, predicate=inspect.isroutine)
+                for method_name, method in methods:
+                    if not (
+                        method_name.startswith("__") and method_name.endswith("__")
+                    ) and hasattr(method, "_target_cls"):
+                        # Validate target is a Query
+                        if not inspect.isclass(method._target_cls) or not issubclass(
+                            method._target_cls, BaseQuery
+                        ):
+                            raise IncorrectUsageError(
+                                f"Method `{method_name}` in Query Handler "
+                                f"`{element.cls.__name__}` is not associated with a query"
+                            )
+
+                        # Validate query is associated with a projection
+                        if not method._target_cls.meta_.part_of:
+                            raise IncorrectUsageError(
+                                f"Query `{method._target_cls.__name__}` in Query Handler "
+                                f"`{element.cls.__name__}` is not associated with a projection"
+                            )
+
+                        # Validate query's projection matches handler's projection
+                        if (
+                            method._target_cls.meta_.part_of
+                            != element.cls.meta_.part_of
+                        ):
+                            raise IncorrectUsageError(
+                                f"Query `{method._target_cls.__name__}` in Query Handler "
+                                f"`{element.cls.__name__}` is not associated with the same "
+                                f"projection as the Query Handler"
+                            )
+
+                        query_type = method._target_cls.__type__
+
+                        # Do not allow multiple handlers per query
+                        if (
+                            query_type in element.cls._handlers
+                            and len(element.cls._handlers[query_type]) != 0
+                        ):
+                            raise NotSupportedError(
+                                f"Query {method._target_cls.__name__} cannot be handled "
+                                f"by multiple handlers"
+                            )
+
+                        # Map query type to handler method
+                        element.cls._handlers[query_type].add(method)
+
     def _generate_fact_event_classes(self):
         """Generate FactEvent classes for all aggregates with `fact_events` enabled"""
         for _, element in self.registry._elements[
@@ -1609,6 +1711,22 @@ class Domain:
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.QUERY,
+            _cls=_cls,
+            **kwargs,
+        )
+
+    @overload
+    def query_handler(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def query_handler(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def query_handler(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
+        return self._domain_element(
+            DomainObjects.QUERY_HANDLER,
             _cls=_cls,
             **kwargs,
         )
@@ -2121,6 +2239,64 @@ class Domain:
             )
 
         return ReadView(self, projection_cls)
+
+    def dispatch(self, query: Any) -> Any:
+        """Dispatch a query to its registered QueryHandler and return results.
+
+        This is the read-side counterpart of :meth:`process` (which handles
+        commands on the write side).  Unlike ``process()``, ``dispatch()``
+        is always synchronous, never wraps in a ``UnitOfWork``, and always
+        returns the handler's return value.
+
+        Args:
+            query: Query to dispatch (instance of a ``@domain.query``-decorated class).
+
+        Returns:
+            Any: Return value from the query handler method.
+
+        Raises:
+            IncorrectUsageError: If *query* is not a registered query or
+                no handler is registered.
+
+        Example::
+
+            result = domain.dispatch(
+                GetOrdersByCustomer(customer_id="123", status="shipped")
+            )
+        """
+        from protean.core.query import BaseQuery
+
+        if not isinstance(query, BaseQuery):
+            raise IncorrectUsageError(f"`{query.__class__.__name__}` is not a Query")
+
+        if (
+            fqn(query.__class__)
+            not in self.registry._elements[DomainObjects.QUERY.value]
+        ):
+            raise IncorrectUsageError(
+                f"Query `{query.__class__.__name__}` is not registered "
+                f"in domain {self.name}"
+            )
+
+        handler_cls = self._query_handler_for(query)
+        if handler_cls is None:
+            raise IncorrectUsageError(
+                f"No Query Handler registered for `{query.__class__.__name__}`"
+            )
+
+        return handler_cls._handle(query)
+
+    def _query_handler_for(self, query: Any) -> type | None:
+        """Find the QueryHandler class registered to handle *query*.
+
+        Returns ``None`` when no handler is registered.
+        """
+        for _, record in self.registry._elements[
+            DomainObjects.QUERY_HANDLER.value
+        ].items():
+            if query.__class__.__type__ in record.cls._handlers:
+                return record.cls
+        return None
 
     #######################
     # Cache Functionality #

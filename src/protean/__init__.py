@@ -10,7 +10,7 @@ from .domain import Domain
 from .server import Engine
 from .utils import get_version
 from .utils.globals import current_domain, current_uow, g
-from .utils.mixins import handle
+from .utils.mixins import handle, read
 from .utils.processing import Priority, current_priority, processing_priority
 
 __all__ = [
@@ -29,6 +29,7 @@ __all__ = [
     "processing_priority",
     "Q",
     "QuerySet",
+    "read",
     "ReadOnlyQuerySet",
     "ReadView",
     "UnitOfWork",
