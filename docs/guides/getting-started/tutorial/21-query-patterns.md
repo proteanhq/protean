@@ -47,9 +47,14 @@ results = domain.query_for(BookCatalog).order_by("author", "-price").all()
 ```python
 # First page (10 items)
 page1 = domain.query_for(BookCatalog).limit(10).offset(0).all()
+page1.page         # 1
+page1.total_pages  # total pages based on matching records
+page1.has_next     # True if more pages exist
 
 # Second page
 page2 = domain.query_for(BookCatalog).limit(10).offset(10).all()
+page2.page         # 2
+page2.has_prev     # True
 ```
 
 ### Chaining
