@@ -105,7 +105,7 @@ class BaseQuery(BaseModel, OptionsMixin):
         This converts ``email = ValueObject(Email)`` to the equivalent of
         ``email: Email | None = None``.
         """
-        own_annots = getattr(cls, "__annotations__", {})
+        own_annots = dict(getattr(cls, "__annotations__", {}))
         names_to_remove: list[str] = []
         defaults_to_set: dict[str, None] = {}
 
