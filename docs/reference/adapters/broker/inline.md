@@ -51,6 +51,7 @@ The Inline broker supports the following capabilities:
 - ✅ **BASIC_PUBSUB** - Fire-and-forget message publishing
 - ✅ **SIMPLE_QUEUING** - Consumer groups for message distribution
 - ✅ **RELIABLE_MESSAGING** - Message acknowledgment and rejection
+- ✅ **DEAD_LETTER_QUEUE** - Failed messages routed to DLQ for inspection and replay
 - ❌ **ORDERED_MESSAGING** - Not supported
 - ❌ **ENTERPRISE_STREAMING** - Not supported
 
@@ -173,9 +174,11 @@ class OrderProcessor2:
     - No support for partitioned delivery
     - Cannot ensure strict message sequencing
 - **Limited Error Recovery**
-    - Basic retry support only
-    - No dead letter queue functionality
-    - Limited visibility into failed messages
+    - Basic retry support with configurable max retries
+    - Dead letter queue stores failed messages in memory (lost on restart)
+    - DLQ messages can be listed, inspected, replayed, and purged via
+      [`protean dlq`](../../cli/data/dlq.md) CLI or the
+      [Observatory dashboard](../../server/observability.md)
 
 ## Migration Path
 

@@ -242,7 +242,9 @@ def test_broker_capabilities(broker):
     from protean.port.broker import BrokerCapabilities
 
     capabilities = broker.capabilities
-    assert capabilities == BrokerCapabilities.RELIABLE_MESSAGING
+    assert capabilities == (
+        BrokerCapabilities.RELIABLE_MESSAGING | BrokerCapabilities.DEAD_LETTER_QUEUE
+    )
 
 
 def test_info_tracking_with_operations(broker):

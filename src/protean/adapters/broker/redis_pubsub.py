@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Dict
 
 import redis
 
-from protean.port.broker import BaseBroker, BrokerCapabilities, registry
+from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry, registry
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -262,6 +262,25 @@ class RedisPubSubBroker(BaseBroker):
             self._consumer_groups.clear()
         except Exception as e:
             logger.error(f"Error during data reset: {e}")
+
+    # DLQ methods — not supported by PubSub broker (no DEAD_LETTER_QUEUE capability).
+    # These stubs satisfy the abstract interface; the capability gate in BaseBroker
+    # prevents them from ever being called.
+
+    def _dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
+        return []
+
+    def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        return None
+
+    def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        return False
+
+    def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        return 0
+
+    def _dlq_purge(self, dlq_stream: str) -> int:
+        return 0
 
 
 # Self-registration function for entry point

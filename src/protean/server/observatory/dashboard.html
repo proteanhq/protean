@@ -1242,6 +1242,7 @@ body {
         <button class="feed-tab active" id="tabMessages" onclick="setViewTab('messages')" title="Messages grouped by message ID, showing the full lifecycle of each event across all handlers.">Messages</button>
         <button class="feed-tab" id="tabEvents" onclick="setViewTab('events')" title="Chronological stream of individual trace events (published, started, completed, failed, acked).">Events</button>
         <button class="feed-tab" id="tabErrors" onclick="setViewTab('errors')" title="Messages that have at least one error event (handler failure, DLQ, nack).">Errors <span class="error-badge" id="errorBadge" style="display:none">0</span></button>
+        <button class="feed-tab" id="tabDlq" onclick="setViewTab('dlq')" title="Dead letter queue messages that can be inspected, replayed, or purged.">DLQ <span class="error-badge" id="dlqBadge" style="display:none">0</span></button>
       </div>
       <div class="feed-controls">
         <select id="filterStream">
@@ -1260,6 +1261,33 @@ body {
     <!-- Events tab content (hidden by default) -->
     <div class="tab-content" id="eventsContent" style="display:none">
       <div class="feed-empty" id="eventsEmpty">Loading history...</div>
+    </div>
+    <!-- DLQ tab content (hidden by default) -->
+    <div class="tab-content" id="dlqContent" style="display:none">
+      <div style="padding:8px 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border)">
+        <select id="dlqSubscriptionFilter" style="font-family:var(--font-text);font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
+          <option value="">All subscriptions</option>
+        </select>
+        <button onclick="pollDlq()" style="font-family:var(--font-text);font-size:13px;padding:4px 12px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);cursor:pointer" title="Refresh DLQ list">Refresh</button>
+        <button onclick="dlqReplayAll()" id="dlqReplayAllBtn" style="font-family:var(--font-text);font-size:13px;padding:4px 12px;border:1px solid var(--success);border-radius:4px;background:var(--surface);color:var(--success);cursor:pointer;display:none" title="Replay all messages for selected subscription">Replay All</button>
+        <button onclick="dlqPurgeAll()" id="dlqPurgeBtn" style="font-family:var(--font-text);font-size:13px;padding:4px 12px;border:1px solid var(--accent);border-radius:4px;background:var(--surface);color:var(--accent);cursor:pointer;display:none" title="Purge all DLQ messages for selected subscription">Purge</button>
+        <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-code);margin-left:auto" id="dlqLastUpdated"></span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px" id="dlqTable">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:8px 12px;font-weight:600;font-size:12px;color:var(--text-muted)">DLQ ID</th>
+            <th style="text-align:left;padding:8px 12px;font-weight:600;font-size:12px;color:var(--text-muted)">Subscription</th>
+            <th style="text-align:left;padding:8px 12px;font-weight:600;font-size:12px;color:var(--text-muted)">Failure</th>
+            <th style="text-align:left;padding:8px 12px;font-weight:600;font-size:12px;color:var(--text-muted)">Failed At</th>
+            <th style="text-align:right;padding:8px 12px;font-weight:600;font-size:12px;color:var(--text-muted)">Retries</th>
+            <th style="text-align:center;padding:8px 12px;font-weight:600;font-size:12px;color:var(--text-muted)">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="dlqTableBody">
+          <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">Loading...</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -2362,10 +2390,13 @@ function setViewTab(tab) {
   document.getElementById('tabMessages').classList.toggle('active', tab === 'messages');
   document.getElementById('tabEvents').classList.toggle('active', tab === 'events');
   document.getElementById('tabErrors').classList.toggle('active', tab === 'errors');
+  document.getElementById('tabDlq').classList.toggle('active', tab === 'dlq');
 
   document.getElementById('messagesContent').style.display = (tab === 'messages' || tab === 'errors') ? '' : 'none';
   document.getElementById('eventsContent').style.display = tab === 'events' ? '' : 'none';
+  document.getElementById('dlqContent').style.display = tab === 'dlq' ? '' : 'none';
 
+  if (tab === 'dlq') pollDlq();
   applyFilters();
 }
 
@@ -2837,6 +2868,7 @@ async function pollSubscriptions() {
     if (!resp.ok) return;
     const data = await resp.json();
     updateSubscriptionTable(data);
+    populateDlqFilter(data);
     const el = document.getElementById('subLastUpdated');
     if (el) el.textContent = new Date().toLocaleTimeString();
   } catch (e) { /* silent */ }
@@ -2921,6 +2953,155 @@ document.getElementById('filterSearch').addEventListener('input', () => {
   }
 });
 
+// --- DLQ Management ---
+let dlqEntries = [];
+
+async function pollDlq() {
+  try {
+    const sub = document.getElementById('dlqSubscriptionFilter').value;
+    const url = sub ? `/api/dlq?subscription=${encodeURIComponent(sub)}` : '/api/dlq';
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      if (resp.status === 501) {
+        document.getElementById('dlqTableBody').innerHTML =
+          '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">Broker does not support DLQ</td></tr>';
+        return;
+      }
+      return;
+    }
+    const data = await resp.json();
+    dlqEntries = data.entries || [];
+    renderDlqTable();
+    updateDlqBadge();
+    const el = document.getElementById('dlqLastUpdated');
+    if (el) el.textContent = new Date().toLocaleTimeString();
+
+    // Show/hide bulk action buttons
+    const hasSub = !!document.getElementById('dlqSubscriptionFilter').value;
+    document.getElementById('dlqReplayAllBtn').style.display = hasSub && dlqEntries.length > 0 ? '' : 'none';
+    document.getElementById('dlqPurgeBtn').style.display = hasSub && dlqEntries.length > 0 ? '' : 'none';
+  } catch (e) { /* silent */ }
+}
+
+function renderDlqTable() {
+  const tbody = document.getElementById('dlqTableBody');
+  if (!tbody) return;
+  if (dlqEntries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">No DLQ messages</td></tr>';
+    return;
+  }
+  let html = '';
+  for (const e of dlqEntries) {
+    const shortId = e.dlq_id.length > 16 ? e.dlq_id.substring(0, 16) + '...' : e.dlq_id;
+    const failedAt = e.failed_at ? new Date(e.failed_at).toLocaleString() : '-';
+    html += '<tr style="border-bottom:1px solid var(--border)">';
+    html += '<td style="padding:8px 12px;font-family:var(--font-code);font-size:12px" title="' + escapeHtml(e.dlq_id) + '">' + escapeHtml(shortId) + '</td>';
+    html += '<td style="padding:8px 12px">' + escapeHtml(e.stream) + '</td>';
+    html += '<td style="padding:8px 12px;color:var(--accent)">' + escapeHtml(e.failure_reason) + '</td>';
+    html += '<td style="padding:8px 12px;font-size:12px">' + escapeHtml(failedAt) + '</td>';
+    html += '<td style="padding:8px 12px;text-align:right;font-family:var(--font-code)">' + e.retry_count + '</td>';
+    html += '<td style="padding:8px 12px;text-align:center">';
+    html += '<button onclick="dlqInspect(\'' + escapeHtml(e.dlq_id) + '\')" style="font-size:11px;padding:2px 8px;margin:0 2px;border:1px solid var(--border);border-radius:3px;background:var(--surface);color:var(--text);cursor:pointer" title="Inspect">Inspect</button>';
+    html += '<button onclick="dlqReplay(\'' + escapeHtml(e.dlq_id) + '\')" style="font-size:11px;padding:2px 8px;margin:0 2px;border:1px solid var(--success);border-radius:3px;background:var(--surface);color:var(--success);cursor:pointer" title="Replay">Replay</button>';
+    html += '</td></tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function updateDlqBadge() {
+  const badge = document.getElementById('dlqBadge');
+  if (dlqEntries.length > 0) {
+    badge.textContent = dlqEntries.length > 99 ? '99+' : dlqEntries.length;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+async function dlqInspect(dlqId) {
+  try {
+    const resp = await fetch('/api/dlq/' + encodeURIComponent(dlqId));
+    if (!resp.ok) { alert('Message not found'); return; }
+    const data = await resp.json();
+    const payload = data.payload ? JSON.stringify(data.payload, null, 2) : '{}';
+    alert(
+      'DLQ ID: ' + data.dlq_id + '\n' +
+      'Original ID: ' + data.original_id + '\n' +
+      'Stream: ' + data.stream + '\n' +
+      'Consumer Group: ' + data.consumer_group + '\n' +
+      'Failure: ' + data.failure_reason + '\n' +
+      'Failed At: ' + (data.failed_at || '-') + '\n' +
+      'Retries: ' + data.retry_count + '\n\n' +
+      'Payload:\n' + payload
+    );
+  } catch (e) { alert('Failed to inspect message'); }
+}
+
+async function dlqReplay(dlqId) {
+  if (!confirm('Replay this message?')) return;
+  try {
+    const resp = await fetch('/api/dlq/' + encodeURIComponent(dlqId) + '/replay', { method: 'POST' });
+    if (resp.ok) {
+      pollDlq();
+    } else {
+      alert('Replay failed');
+    }
+  } catch (e) { alert('Replay failed'); }
+}
+
+async function dlqReplayAll() {
+  const sub = document.getElementById('dlqSubscriptionFilter').value;
+  if (!sub) { alert('Select a subscription first'); return; }
+  if (!confirm('Replay ALL DLQ messages for subscription "' + sub + '"?')) return;
+  try {
+    const resp = await fetch('/api/dlq/replay-all?subscription=' + encodeURIComponent(sub), { method: 'POST' });
+    if (resp.ok) {
+      const data = await resp.json();
+      alert('Replayed ' + data.replayed + ' message(s)');
+      pollDlq();
+    } else { alert('Replay failed'); }
+  } catch (e) { alert('Replay failed'); }
+}
+
+async function dlqPurgeAll() {
+  const sub = document.getElementById('dlqSubscriptionFilter').value;
+  if (!sub) { alert('Select a subscription first'); return; }
+  if (!confirm('PURGE all DLQ messages for subscription "' + sub + '"? This cannot be undone.')) return;
+  try {
+    const resp = await fetch('/api/dlq?subscription=' + encodeURIComponent(sub), { method: 'DELETE' });
+    if (resp.ok) {
+      const data = await resp.json();
+      alert('Purged ' + data.purged + ' message(s)');
+      pollDlq();
+    } else { alert('Purge failed'); }
+  } catch (e) { alert('Purge failed'); }
+}
+
+document.getElementById('dlqSubscriptionFilter').addEventListener('change', () => {
+  pollDlq();
+});
+
+// Populate DLQ subscription filter from subscription status data
+function populateDlqFilter(data) {
+  const select = document.getElementById('dlqSubscriptionFilter');
+  if (!select) return;
+  const current = select.value;
+  const streams = new Set();
+  for (const [, info] of Object.entries(data)) {
+    if (info.status !== 'ok' || !info.subscriptions) continue;
+    for (const s of info.subscriptions) {
+      if (s.stream_category) streams.add(s.stream_category);
+    }
+  }
+  // Preserve selected value
+  let html = '<option value="">All subscriptions</option>';
+  for (const s of [...streams].sort()) {
+    const sel = s === current ? ' selected' : '';
+    html += '<option value="' + escapeHtml(s) + '"' + sel + '>' + escapeHtml(s) + '</option>';
+  }
+  select.innerHTML = html;
+}
+
 // --- Init ---
 async function init() {
   initScrollListener();
@@ -2930,11 +3111,13 @@ async function init() {
   pollInfrastructure();
   pollQueueDepth();
   pollSubscriptions();
+  pollDlq();
   setInterval(tickThroughput, 1000);
   setInterval(tickQueueDepth, 1000);
   setInterval(() => { loadStats(); pollInfrastructure(); }, 5000);
   setInterval(pollQueueDepth, 2000);
   setInterval(pollSubscriptions, 5000);
+  setInterval(pollDlq, 5000);
   drawSparkline();
   drawQueueSparkline();
 }

@@ -2,9 +2,16 @@ import logging
 import time
 import uuid
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Dict
 
-from protean.port.broker import BaseBroker, BrokerCapabilities, OperationState, registry
+from protean.port.broker import (
+    BaseBroker,
+    BrokerCapabilities,
+    DLQEntry,
+    OperationState,
+    registry,
+)
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -84,7 +91,9 @@ class InlineBroker(BaseBroker):
     @property
     def capabilities(self) -> BrokerCapabilities:
         """InlineBroker provides full manual broker capabilities for testing."""
-        return BrokerCapabilities.RELIABLE_MESSAGING
+        return (
+            BrokerCapabilities.RELIABLE_MESSAGING | BrokerCapabilities.DEAD_LETTER_QUEUE
+        )
 
     def _publish(self, stream: str, message: dict) -> str:
         """Publish a message dict to the stream"""
@@ -773,6 +782,119 @@ class InlineBroker(BaseBroker):
         except Exception as e:
             logger.error(f"Error reprocessing DLQ message '{identifier}': {e}")
             return False
+
+    # ------------------------------------------------------------------
+    # DLQ Management
+    # ------------------------------------------------------------------
+
+    def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:
+        """List DLQ messages across specified DLQ streams."""
+        entries: list[DLQEntry] = []
+        for group_key, messages in self._dead_letter_queue.items():
+            if not messages:
+                continue
+            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            dlq_stream_name = f"{stream}:dlq"
+            if dlq_stream_name not in dlq_streams:
+                continue
+            for identifier, message, failure_reason, timestamp in messages:
+                entries.append(
+                    DLQEntry(
+                        dlq_id=identifier,
+                        original_id=identifier,
+                        stream=stream,
+                        consumer_group=consumer_group,
+                        payload=message,
+                        failure_reason=failure_reason,
+                        failed_at=(
+                            datetime.fromtimestamp(
+                                timestamp, tz=timezone.utc
+                            ).isoformat()
+                            if timestamp
+                            else None
+                        ),
+                        retry_count=0,
+                        dlq_stream=dlq_stream_name,
+                    )
+                )
+        entries.sort(key=lambda e: e.failed_at or "", reverse=True)
+        return entries[:limit]
+
+    def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        """Inspect a specific DLQ message by ID."""
+        for group_key, messages in self._dead_letter_queue.items():
+            if not messages:
+                continue
+            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            dlq_stream_name = f"{stream}:dlq"
+            if dlq_stream_name != dlq_stream:
+                continue
+            for identifier, message, failure_reason, timestamp in messages:
+                if identifier == dlq_id:
+                    return DLQEntry(
+                        dlq_id=identifier,
+                        original_id=identifier,
+                        stream=stream,
+                        consumer_group=consumer_group,
+                        payload=message,
+                        failure_reason=failure_reason,
+                        failed_at=(
+                            datetime.fromtimestamp(
+                                timestamp, tz=timezone.utc
+                            ).isoformat()
+                            if timestamp
+                            else None
+                        ),
+                        retry_count=0,
+                        dlq_stream=dlq_stream_name,
+                    )
+        return None
+
+    def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        """Replay a single DLQ message back to its original stream."""
+        for group_key, messages in self._dead_letter_queue.items():
+            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            dlq_stream_name = f"{stream}:dlq"
+            if dlq_stream_name != dlq_stream:
+                continue
+            for i, (identifier, message, failure_reason, timestamp) in enumerate(
+                messages
+            ):
+                if identifier == dlq_id:
+                    del messages[i]
+                    self._publish(target_stream, message)
+                    logger.info(
+                        f"Replayed DLQ message '{identifier}' to stream '{target_stream}'"
+                    )
+                    return True
+        return False
+
+    def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        """Replay all DLQ messages from a stream."""
+        replayed = 0
+        for group_key in list(self._dead_letter_queue.keys()):
+            messages = self._dead_letter_queue[group_key]
+            stream, _ = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            dlq_stream_name = f"{stream}:dlq"
+            if dlq_stream_name != dlq_stream:
+                continue
+            for identifier, message, failure_reason, timestamp in messages:
+                self._publish(target_stream, message)
+                replayed += 1
+            messages.clear()
+        return replayed
+
+    def _dlq_purge(self, dlq_stream: str) -> int:
+        """Purge all messages from a DLQ stream."""
+        purged = 0
+        for group_key in list(self._dead_letter_queue.keys()):
+            stream, _ = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            dlq_stream_name = f"{stream}:dlq"
+            if dlq_stream_name != dlq_stream:
+                continue
+            purged += len(self._dead_letter_queue[group_key])
+            self._dead_letter_queue[group_key].clear()
+        return purged
 
     def _ensure_group(self, group_name: str, stream: str) -> None:
         """Bootstrap/create consumer group."""

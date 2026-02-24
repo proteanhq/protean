@@ -22,6 +22,7 @@ from rich import print
 from typing_extensions import Annotated
 
 from protean.cli.database import app as db_app
+from protean.cli.dlq import app as dlq_app
 from protean.cli.docs import app as docs_app
 from protean.cli.events import app as events_app
 from protean.cli.generate import app as generate_app
@@ -47,6 +48,7 @@ app.command()(new)
 app.command()(observatory)
 app.command()(shell)
 app.add_typer(db_app, name="db")
+app.add_typer(dlq_app, name="dlq")
 app.add_typer(events_app, name="events")
 app.add_typer(generate_app, name="generate")
 app.add_typer(docs_app, name="docs")

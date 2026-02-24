@@ -228,6 +228,42 @@ For unrecoverable errors:
 - Graceful shutdown is initiated
 - Exit code indicates failure
 
+### Dead Letter Queue Management
+
+Messages that exhaust all retries in a `StreamSubscription` are moved to a
+**Dead Letter Queue (DLQ)** — a separate stream named `{stream_category}:dlq`.
+When [priority lanes](./priority-lanes.md) are enabled, backfill failures go to
+`{stream_category}:backfill:dlq`.
+
+DLQ messages retain the original payload along with metadata about why they
+failed, how many retries were attempted, and which consumer group was processing
+them. Protean provides two interfaces for inspecting and acting on DLQ
+messages:
+
+**CLI** — The [`protean dlq`](../../reference/cli/data/dlq.md) commands let you
+list, inspect, replay, and purge DLQ messages from the terminal:
+
+```bash
+# See all failed messages
+protean dlq list --domain=my_app
+
+# Inspect a specific failure
+protean dlq inspect <dlq_id> --domain=my_app
+
+# Replay a single message back to its original stream
+protean dlq replay <dlq_id> --domain=my_app
+
+# Replay all messages for a subscription
+protean dlq replay-all --subscription=order --domain=my_app
+
+# Clear a subscription's DLQ
+protean dlq purge --subscription=order --domain=my_app
+```
+
+**Observatory** — The [Observatory dashboard](../../reference/server/observability.md)
+includes a DLQ tab that provides the same capabilities through a web interface,
+plus REST API endpoints at `/api/dlq/*` for programmatic access.
+
 
 ## Next Steps
 
