@@ -64,6 +64,8 @@ need by what you're trying to accomplish.
 | Coordinate a multi-step process across aggregates | [Process Managers](./guides/consume-state/process-managers.md) |
 | Correlate events to a running process           | [Process Managers](./guides/consume-state/process-managers.md) |
 | Build a read-optimized view from events         | [Projections](./guides/consume-state/projections.md) |
+| Process a query and return results              | [Query Handlers](./guides/consume-state/query-handlers.md) |
+| Dispatch a named read intent                    | [Query Handlers](./guides/consume-state/query-handlers.md) |
 | Rebuild a projection from historical events     | [`protean projection rebuild`](./reference/cli/data/projection.md) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
 | Follow the causal chain of a business operation | [Message Tracing](./guides/domain-behavior/message-tracing.md) |

@@ -113,6 +113,7 @@ change.
 | [Process Manager](./process-managers.md) | Stateful coordinator for multi-step processes spanning multiple aggregates |
 | [Projection](./projections.md) | Read-optimized, denormalized view of domain data |
 | [Projector](./projectors.md) | Specialized handler that keeps a projection in sync with domain events |
+| [Query Handler](./query-handlers.md) | Processes named read intents and returns results from projections |
 | [Subscriber](./subscribers.md) | Consumes messages from an external message broker |
 
 ## Persistence

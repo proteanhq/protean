@@ -73,6 +73,7 @@ Everything from the [DDD pathway](./ddd.md), **plus**:
 | [Commands](../change-state/commands.md) | Immutable DTOs representing intent to change state |
 | [Command Handlers](../change-state/command-handlers.md) | Process commands and orchestrate aggregate changes |
 | [Projections](../consume-state/projections.md) | Read-optimized views stored in database or cache |
+| [Query Handlers](../consume-state/query-handlers.md) | Process named read intents and return projection data |
 | [Subscribers](../consume-state/subscribers.md) | Consume messages from external message brokers |
 | [Server](../../concepts/async-processing/index.md) | Async processing engine for events and commands |
 

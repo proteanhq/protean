@@ -1,12 +1,14 @@
 # Handlers
 
-Command handlers and event handlers process messages asynchronously. They
-are always associated with an aggregate and use the `@handle` decorator to
-map specific message types to methods.
+Command handlers, event handlers, and query handlers process messages. Command
+and event handlers are associated with aggregates and use the `@handle`
+decorator. Query handlers are associated with projections and use the `@read`
+decorator.
 
 **Guides:**
 [Command Handlers](../guides/change-state/command-handlers.md) ·
-[Event Handlers](../guides/consume-state/event-handlers.md)
+[Event Handlers](../guides/consume-state/event-handlers.md) ·
+[Query Handlers](../guides/consume-state/query-handlers.md)
 
 ---
 
@@ -17,5 +19,11 @@ map specific message types to methods.
 ---
 
 ::: protean.core.event_handler.BaseEventHandler
+    options:
+      inherited_members: false
+
+---
+
+::: protean.core.query_handler.BaseQueryHandler
     options:
       inherited_members: false
