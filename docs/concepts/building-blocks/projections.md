@@ -19,13 +19,18 @@ data from multiple [aggregates](./aggregates.md) into a single queryable
 record. The goal is to make reads fast, simple, and free from joins or
 post-processing.
 
-### Projections only support simple field types. { data-toc-label="Simple Fields" }
+### Projections support simple field types and value objects. { data-toc-label="Supported Fields" }
 
-Unlike aggregates and entities, projections cannot contain associations,
-references, or nested [value objects](./value-objects.md). They hold only
-simple, scalar field types — strings, integers, floats, identifiers,
-timestamps. This restriction keeps projections close to the storage layer and
-avoids the complexity of object-graph management on the read side.
+Projections hold simple, scalar field types — strings, integers, floats,
+identifiers, timestamps — and may also embed
+[value objects](./value-objects.md) for grouping related attributes (e.g. an
+address or monetary amount). Value objects are persisted as flattened shadow
+fields (e.g. `billing_address_street`, `billing_address_city`), making them
+queryable by individual attribute.
+
+Projections cannot contain associations (`HasOne`, `HasMany`) or references
+(`Reference`). These navigational constructs belong to the domain model, not
+the read side.
 
 ### Projections can be stored in a database or cache. { data-toc-label="Storage Options" }
 

@@ -33,17 +33,18 @@ def test_that_projections_should_have_at_least_one_identifier_field(test_domain)
     )
 
 
-def test_that_projections_cannot_have_value_object_fields():
-    with pytest.raises(IncorrectUsageError) as exception:
+def test_that_projections_can_have_value_object_fields():
+    """ValueObject fields are now supported in projections."""
 
-        class User(BaseProjection):
-            user_id: Identifier(identifier=True)
-            email = ValueObject(Email)
+    class UserView(BaseProjection):
+        user_id: Identifier(identifier=True)
+        email = ValueObject(Email)
 
-    assert (
-        exception.value.args[0]
-        == "Projections can only contain basic field types. Remove email (ValueObject) from class User"
-    )
+    from protean.utils.reflection import _FIELDS
+
+    cf = getattr(UserView, _FIELDS, {})
+    assert "email" in cf
+    assert isinstance(cf["email"], ValueObject)
 
 
 def test_that_projections_cannot_have_references():
@@ -55,7 +56,7 @@ def test_that_projections_cannot_have_references():
 
     assert (
         exception.value.args[0]
-        == "Projections can only contain basic field types. Remove role (Reference) from class User"
+        == "Projections can only contain basic field types and ValueObjects. Remove role (Reference) from class User"
     )
 
 
@@ -68,5 +69,5 @@ def test_that_projections_cannot_have_associations():
 
     assert (
         exception.value.args[0]
-        == "Projections can only contain basic field types. Remove role (HasOne) from class User"
+        == "Projections can only contain basic field types and ValueObjects. Remove role (HasOne) from class User"
     )
