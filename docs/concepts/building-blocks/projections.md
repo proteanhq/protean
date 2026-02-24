@@ -67,6 +67,14 @@ Use `domain.query_for(ProjectionClass)` to query projections. This returns a
 structurally prevents mutation. This enforces the CQRS contract at the API
 level — reads cannot accidentally write.
 
+### Projections have a read-only view facade. { data-toc-label="ReadView" }
+
+Use `domain.view_for(ProjectionClass)` to obtain a `ReadView` — a read-only
+facade that exposes `get()`, `query`, `find_by()`, `count()`, and `exists()`
+but no write methods. This is the recommended way to access projections from
+API endpoints and query handlers, ensuring CQRS separation is enforced
+structurally rather than by convention.
+
 ### Projections can aggregate data across aggregates. { data-toc-label="Cross-Aggregate Views" }
 
 A single projection can combine data from multiple aggregate streams. For
