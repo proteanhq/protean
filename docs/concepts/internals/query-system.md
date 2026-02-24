@@ -364,6 +364,28 @@ qs.delete()                        # raises NotSupportedError
 
 ---
 
+## Raw connection access
+
+For queries that cannot be expressed through `QuerySet` or `ReadOnlyQuerySet`
+(e.g., database-specific aggregation pipelines, full-text search, or direct
+cache operations), `domain.connection_for()` provides the underlying
+connection object:
+
+```python
+conn = domain.connection_for(OrderSummary)
+# conn is now the raw SQLAlchemy session, Elasticsearch client,
+# Redis client, etc., depending on the projection's backing store
+```
+
+This is the escape hatch — it bypasses Protean's query abstraction entirely
+and hands you the technology-specific client. The method automatically routes
+to the correct provider or cache based on the projection's meta options
+(`provider` or `cache`).
+
+**Key source file:** `src/protean/domain/__init__.py`
+
+---
+
 ## Entity state tracking
 
 When entities flow through the repository/DAO layer, their `state_` property
