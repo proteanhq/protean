@@ -114,3 +114,18 @@ Read more at Repositories.
 
 <!-- FIXME Add link-->
 Read more at Projections.
+
+## `Domain.query`
+
+Queries are named, validated, immutable read intents targeting a projection —
+the read-side counterpart of commands:
+
+```python
+@domain.query(part_of=OrderSummary)
+class GetOrdersByCustomer:
+    customer_id = Identifier(required=True)
+    status = String(choices=["pending", "shipped", "delivered"])
+    page = Integer(default=1, min_value=1)
+```
+
+Read more at [Projections](../../guides/consume-state/projections.md#query--named-read-intents).

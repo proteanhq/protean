@@ -172,6 +172,64 @@ different use cases:
 | **QuerySet** | `domain.query_for(Proj)` | `ReadOnlyQuerySet` | Direct QuerySet access for custom filtering |
 | **Repository** | `domain.repository_for(Proj)` | `BaseRepository` | Inside projectors — when you need to write |
 
+### Query — Named Read Intents
+
+For structured, validated read requests, define a Query domain element using
+the `Domain.query` decorator:
+
+```python
+@domain.query(part_of=ProductInventory)
+class GetLowStockItems:
+    threshold = Integer(default=10)
+    category = String()
+```
+
+Queries are immutable DTOs that capture the parameters for a read operation.
+They are registered with the domain, discoverable in `domain.registry.queries`,
+and validated on construction — giving the read side the same structure as
+commands give the write side.
+
+#### Defining a Query
+
+A query must be associated with a projection via `part_of`:
+
+```python
+@domain.query(part_of=OrderSummary)
+class GetOrdersByCustomer:
+    customer_id = Identifier(required=True)
+    status = String(choices=["pending", "shipped", "delivered"])
+    page = Integer(default=1, min_value=1)
+    page_size = Integer(default=20, min_value=1, max_value=100)
+```
+
+Queries support all basic field types (`String`, `Integer`, `Float`,
+`Identifier`, `Boolean`, `DateTime`, `List`) as well as `ValueObject` fields.
+Like commands, they reject References and Associations.
+
+#### Query vs Command
+
+| Aspect | Command | Query |
+|--------|---------|-------|
+| Purpose | Change state | Read state |
+| Targets | Aggregate | Projection |
+| Metadata | Full (headers, stream, correlation) | None |
+| Event store | Persisted and routed | Not persisted |
+| Immutable | Yes | Yes |
+| Validated | Yes | Yes |
+
+#### Usage
+
+Queries are constructed and passed to query handlers (see Step 5) for
+processing:
+
+```python
+query = GetOrdersByCustomer(customer_id="C-123", status="shipped", page=2)
+
+# Serialization
+query.to_dict()
+# {'customer_id': 'C-123', 'status': 'shipped', 'page': 2, 'page_size': 20}
+```
+
 ---
 
 ## Projectors

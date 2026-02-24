@@ -643,6 +643,7 @@ class Domain:
         )
         from protean.core.projection import projection_factory
         from protean.core.projector import projector_factory
+        from protean.core.query import query_factory
         from protean.core.repository import repository_factory
         from protean.core.subscriber import subscriber_factory
         from protean.core.value_object import value_object_factory
@@ -667,6 +668,7 @@ class Domain:
             DomainObjects.VALUE_OBJECT.value: value_object_factory,
             DomainObjects.PROJECTION.value: projection_factory,
             DomainObjects.PROJECTOR.value: projector_factory,
+            DomainObjects.QUERY.value: query_factory,
         }
 
         if domain_object_type.value not in factories:
@@ -768,6 +770,12 @@ class Domain:
                     ("ProjectionCls", (new_cls))
                 )
 
+        if element_type == DomainObjects.QUERY:
+            if isinstance(new_cls.meta_.part_of, str):
+                self._pending_class_resolutions[new_cls.meta_.part_of].append(
+                    ("QueryProjectionCls", (new_cls))
+                )
+
         return new_cls
 
     def _resolve_references(self):
@@ -809,6 +817,13 @@ class Domain:
                             (DomainObjects.PROJECTION,),
                         )
                         cls.meta_.projector_for = to_cls
+                    case "QueryProjectionCls":
+                        cls = params
+                        to_cls = self.fetch_element_cls_from_registry(
+                            cls.meta_.part_of,
+                            (DomainObjects.PROJECTION,),
+                        )
+                        cls.meta_.part_of = to_cls
                     case _:
                         raise NotSupportedError(
                             f"Resolution Type {resolution_type} not supported"
@@ -1028,6 +1043,20 @@ class Domain:
                 ):
                     raise IncorrectUsageError(
                         f"`{projector.cls.meta_.projector_for.__name__}` is not a Projection, or is not registered in domain {self.name}"
+                    )
+
+        # Check that queries are associated with registered projections
+        for _, query_record in self.registry._elements[
+            DomainObjects.QUERY.value
+        ].items():
+            if query_record.cls.meta_.part_of:
+                if (
+                    fqn(query_record.cls.meta_.part_of)
+                    not in self.registry._elements[DomainObjects.PROJECTION.value]
+                ):
+                    raise IncorrectUsageError(
+                        f"`{query_record.cls.meta_.part_of.__name__}` is not a Projection, "
+                        f"or is not registered in domain {self.name}"
                     )
 
     def _assign_aggregate_clusters(self):
@@ -1564,6 +1593,22 @@ class Domain:
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(
             DomainObjects.PROJECTOR,
+            _cls=_cls,
+            **kwargs,
+        )
+
+    @overload
+    def query(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def query(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
+    @dataclass_transform()
+    def query(
+        self, _cls: type[_T] | None = None, **kwargs: Any
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
+        return self._domain_element(
+            DomainObjects.QUERY,
             _cls=_cls,
             **kwargs,
         )
