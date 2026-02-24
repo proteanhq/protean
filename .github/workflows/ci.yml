@@ -6,13 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     name: Python ${{ matrix.python-version }} Tests
@@ -20,56 +26,6 @@ jobs:
     # one place to set the PyO3 flag; every step inherits it automatically
     env:
       PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ (matrix.python-version == '3.13' || matrix.python-version == '3.14') && '1' || '' }}
-
-    services:
-      postgres:
-        image: postgres:11
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      message-db:
-        image: ethangarofolo/message-db:1.2.6
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-        ports:
-          - 5433:5432
-
-      mssql:
-        image: mcr.microsoft.com/mssql/server:2022-latest
-        env:
-          ACCEPT_EULA: Y
-          SA_PASSWORD: Protean123!
-        ports:
-          - 1433:1433
-        options: >-
-          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Protean123! -Q 'SELECT 1' -b -C"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: Log in to Docker Hub
@@ -82,6 +38,45 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Cache Docker images
+        id: docker-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-images
+          key: docker-images-${{ runner.os }}-v2
+
+      - name: Load or pull Docker images
+        run: |
+          IMAGES=(
+            "postgres:16"
+            "redis:7"
+            "elasticsearch:7.12.0"
+            "ethangarofolo/message-db:1.2.6"
+            "mcr.microsoft.com/mssql/server:2022-latest"
+          )
+
+          if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ]; then
+            echo "Loading cached Docker images..."
+            for f in /tmp/docker-images/*.tar; do
+              docker load -i "$f" &
+            done
+            wait
+          else
+            echo "Pulling Docker images..."
+            for img in "${IMAGES[@]}"; do
+              docker pull "$img" &
+            done
+            wait
+
+            echo "Saving Docker images to cache..."
+            mkdir -p /tmp/docker-images
+            for img in "${IMAGES[@]}"; do
+              name=$(echo "$img" | tr '/:' '_')
+              docker save "$img" -o "/tmp/docker-images/${name}.tar" &
+            done
+            wait
+          fi
+
       - name: Configure sysctl limits
         run: |
           sudo swapoff -a
@@ -89,10 +84,28 @@ jobs:
           sudo sysctl -w fs.file-max=262144
           sudo sysctl -w vm.max_map_count=262144
 
-      - name: Run Elasticsearch
+      - name: Start service containers
         run: |
-          docker run -d \
-            --name elasticsearch \
+          docker run -d --name postgres \
+            -p 5432:5432 \
+            -e POSTGRES_PASSWORD=postgres \
+            postgres:16
+
+          docker run -d --name redis \
+            -p 6379:6379 \
+            redis:7
+
+          docker run -d --name message-db \
+            -p 5433:5432 \
+            ethangarofolo/message-db:1.2.6
+
+          docker run -d --name mssql \
+            -p 1433:1433 \
+            -e ACCEPT_EULA=Y \
+            -e "SA_PASSWORD=Protean123!" \
+            mcr.microsoft.com/mssql/server:2022-latest
+
+          docker run -d --name elasticsearch \
             -p 9200:9200 \
             -p 9300:9300 \
             -e "discovery.type=single-node" \
@@ -100,22 +113,41 @@ jobs:
             -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
             elasticsearch:7.12.0
 
-      - name: Wait for Elasticsearch
+      - name: Wait for services
         run: |
-          echo "Waiting for Elasticsearch to be ready..."
+          echo "Waiting for PostgreSQL..."
+          timeout 60 bash -c 'until docker exec postgres pg_isready -U postgres 2>/dev/null; do sleep 2; done'
+          echo "PostgreSQL is ready!"
+
+          echo "Waiting for Redis..."
+          timeout 30 bash -c 'until docker exec redis redis-cli ping 2>/dev/null; do sleep 2; done'
+          echo "Redis is ready!"
+
+          echo "Waiting for Message DB..."
+          timeout 60 bash -c 'until docker exec message-db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
+          echo "Message DB is ready!"
+
+          echo "Waiting for MSSQL..."
+          timeout 60 bash -c 'until docker exec mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Protean123!" -Q "SELECT 1" -b -C 2>/dev/null; do sleep 2; done'
+          echo "MSSQL is ready!"
+
+          echo "Waiting for Elasticsearch..."
           timeout 60 bash -c 'until curl -s http://localhost:9200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
           echo "Elasticsearch is ready!"
+
+          echo "All services are ready!"
 
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: actions/cache@v4
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            venv-${{ runner.os }}-py${{ matrix.python-version }}-
 
       - name: Install Microsoft ODBC Driver 18 and tools
         run: |
@@ -130,27 +162,28 @@ jobs:
       - name: Install dependencies
         run: |
           pip install poetry
-          poetry config virtualenvs.create false
-          poetry install --with dev,test,docs,types --all-extras
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction --with dev,test,docs,types --all-extras
 
       - name: Mypy Plugin Tests
-        run: pytest tests/ext/ -v
+        run: poetry run pytest tests/ext/ -v
 
       - name: Tests
-        run: protean test -c FULL
+        run: poetry run protean test -c FULL
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+          POSTGRES_PORT: 5432
           PGPASSWORD: postgres
           REDIS_HOST: localhost
-          REDIS_PORT: ${{ job.services.redis.ports[6379] }}
+          REDIS_PORT: 6379
           MSSQL_PASSWORD: Protean123!
           MSSQL_USER: sa
-          MSSQL_PORT: ${{ job.services.mssql.ports[1433] }}
+          MSSQL_PORT: 1433
           MSSQL_HOST: localhost
 
       - name: CodeCOV
+        if: success() || failure()
         uses: codecov/codecov-action@v5.4.2
         with:
           files: coverage.xml
@@ -158,8 +191,11 @@ jobs:
 
   docs-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: test
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -172,7 +208,7 @@ jobs:
         with:
           python-version: 3.x
 
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV 
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
 
       - uses: actions/cache@v4
         with:
@@ -185,6 +221,6 @@ jobs:
         run: |
           pip install poetry
           poetry config virtualenvs.create false
-          poetry install --only docs
+          poetry install --no-interaction --only docs
 
       - run: mkdocs gh-deploy --force
