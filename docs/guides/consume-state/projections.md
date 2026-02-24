@@ -84,22 +84,48 @@ class ProductInventory:
 
 ### Querying Projections
 
-Projections are optimized for querying. You can use the repository pattern to query projections:
+Projections are optimized for querying. Use `domain.query_for()` to get a
+read-only query interface for any projection:
 
 ```python
-# Get a single projection record by ID
-inventory = repository.get(ProductInventory, id=1)
+# Filter and retrieve projections
+results = domain.query_for(ProductInventory).filter(
+    stock_quantity__lt=10
+).order_by("name").all()
 
-# Query projection with filters
-low_stock_items = repository._dao.filter(
-    ProductInventory, 
-    quantity__lt=10,
-    limit=20
-)
+for item in results:
+    print(f"{item.name}: {item.stock_quantity} remaining")
 ```
 
-<!-- FIXME Add note that one can use anything to query projections, and that
-repositories are essentially write-side artifacts. -->
+The returned `ReadOnlyQuerySet` supports all read operations — `filter()`,
+`exclude()`, `order_by()`, `limit()`, `offset()`, and `all()` — but blocks
+mutations (`update`, `delete`) to enforce CQRS read/write separation.
+
+```python
+# Pagination
+page = domain.query_for(ProductInventory).order_by("name").limit(20).offset(40).all()
+page.total       # Total matching records across all pages
+page.has_next    # True if more pages exist
+page.has_prev    # True if previous pages exist
+
+# Single result
+first_item = domain.query_for(ProductInventory).filter(
+    product_id="abc-123"
+).first
+```
+
+For write operations (used inside projectors), continue using
+`domain.repository_for()`:
+
+```python
+repo = domain.repository_for(ProductInventory)
+repo.add(inventory_record)
+```
+
+!!! note
+    `domain.query_for()` is specifically for projections. To query aggregates,
+    use [repositories](../change-state/retrieve-aggregates.md) with custom
+    query methods.
 
 ---
 

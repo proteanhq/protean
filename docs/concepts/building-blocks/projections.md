@@ -55,6 +55,13 @@ business-rule enforcement, while the read side can be denormalized and
 optimized for query performance. Changes to one do not force changes on the
 other.
 
+### Projections have a dedicated read-only query API. { data-toc-label="Query API" }
+
+Use `domain.query_for(ProjectionClass)` to query projections. This returns a
+`ReadOnlyQuerySet` that supports filtering, ordering, and pagination but
+structurally prevents mutation. This enforces the CQRS contract at the API
+level — reads cannot accidentally write.
+
 ### Projections can aggregate data across aggregates. { data-toc-label="Cross-Aggregate Views" }
 
 A single projection can combine data from multiple aggregate streams. For

@@ -114,6 +114,11 @@ def email_taken(self, person_id: str, email: str) -> bool:
 
 ## QuerySet
 
+!!! tip "Querying projections?"
+    For projection queries, use `domain.query_for(ProjectionClass)` instead.
+    It returns a `ReadOnlyQuerySet` that enforces CQRS read-only access.
+    See [Querying Projections](../consume-state/projections.md#querying-projections).
+
 A QuerySet represents a collection of objects from your database that can be
 filtered, ordered, and paginated. You access a QuerySet through the DAO's
 `.query` property:

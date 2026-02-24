@@ -329,6 +329,38 @@ aggregates, adds them to the active Unit of Work's identity map.
 
 ---
 
+## ReadOnlyQuerySet
+
+`ReadOnlyQuerySet` is a `QuerySet` subclass that blocks mutation methods.
+It is returned by `domain.query_for()` to enforce CQRS read-only access
+on projections.
+
+**Blocked methods:** `update()`, `delete()`, `update_all()`, `delete_all()`.
+All raise `NotSupportedError`.
+
+**Read methods work identically:** `filter()`, `exclude()`, `order_by()`,
+`limit()`, `offset()`, `all()`, `raw()`, and all properties.
+
+The clone-on-write pattern preserves the type — chaining `.filter()` on a
+`ReadOnlyQuerySet` returns another `ReadOnlyQuerySet`, because `_clone()`
+uses `self.__class__()`.
+
+```python
+# domain.query_for() returns a ReadOnlyQuerySet
+qs = domain.query_for(OrderSummary)
+
+# All read operations work
+results = qs.filter(status="shipped").order_by("-placed_at").limit(20).all()
+
+# Mutation attempts raise NotSupportedError
+qs.update(status="cancelled")      # raises NotSupportedError
+qs.delete()                        # raises NotSupportedError
+```
+
+**Key source file:** `src/protean/core/queryset.py`
+
+---
+
 ## Entity state tracking
 
 When entities flow through the repository/DAO layer, their `state_` property

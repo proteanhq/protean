@@ -4,6 +4,7 @@ import copy
 import logging
 from typing import TYPE_CHECKING, Any, Union
 
+from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
@@ -467,6 +468,40 @@ class QuerySet:
     def has_prev(self):
         """Return True if there are previous values present"""
         return self._data.has_prev
+
+
+class ReadOnlyQuerySet(QuerySet):
+    """A QuerySet that blocks all mutation operations.
+
+    Used by ``domain.query_for()`` to enforce CQRS read-only access
+    on projections. All read operations (filter, exclude, order_by,
+    limit, offset, all, raw) work unchanged. Mutation methods raise
+    ``NotSupportedError``.
+    """
+
+    def update(self, *data: Any, **kwargs: Any) -> int:
+        raise NotSupportedError(
+            "Updates are not allowed on a read-only query. "
+            "Use domain.repository_for() if you need to mutate projections."
+        )
+
+    def delete(self) -> int:
+        raise NotSupportedError(
+            "Deletes are not allowed on a read-only query. "
+            "Use domain.repository_for() if you need to mutate projections."
+        )
+
+    def update_all(self, *args: Any, **kwargs: Any) -> int:
+        raise NotSupportedError(
+            "Bulk updates are not allowed on a read-only query. "
+            "Use domain.repository_for() if you need to mutate projections."
+        )
+
+    def delete_all(self, *args: Any, **kwargs: Any) -> int:
+        raise NotSupportedError(
+            "Bulk deletes are not allowed on a read-only query. "
+            "Use domain.repository_for() if you need to mutate projections."
+        )
 
 
 class ResultSet(object):

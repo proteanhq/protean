@@ -3,7 +3,7 @@ __version__ = "0.14.2"
 from .core.aggregate import apply, atomic_change
 from .core.application_service import use_case
 from .core.entity import invariant
-from .core.queryset import Q, QuerySet
+from .core.queryset import Q, QuerySet, ReadOnlyQuerySet
 from .core.unit_of_work import UnitOfWork
 from .domain import Domain
 from .server import Engine
@@ -28,6 +28,7 @@ __all__ = [
     "processing_priority",
     "Q",
     "QuerySet",
+    "ReadOnlyQuerySet",
     "UnitOfWork",
     "use_case",
 ]
