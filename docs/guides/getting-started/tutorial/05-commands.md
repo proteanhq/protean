@@ -65,7 +65,7 @@ All checks passed!
 
 Notice that we never touched the repository directly — the command
 handler did that for us. This separation means the same command can
-later be processed asynchronously by a background server.
+later be processed asynchronously by a background server (Chapter 12).
 
 ## What We Built
 

@@ -46,6 +46,26 @@ The output should look the same as before — but now the data is stored
 in PostgreSQL. Protean creates the necessary tables automatically on
 first run.
 
+## Managing the Database Schema
+
+Protean provides CLI commands to manage your database schema explicitly.
+These are essential for production deployments where you want full
+control over when tables are created or dropped:
+
+```shell
+# Create all tables (aggregates, entities, projections)
+$ protean database setup --domain bookshelf
+
+# Drop all tables (use with care!)
+$ protean database drop --domain bookshelf
+
+# Delete all data but keep the schema intact
+$ protean database truncate --domain bookshelf
+```
+
+In development, Protean creates tables automatically. In production,
+use `protean database setup` as part of your deployment process.
+
 ## Verifying Persistence
 
 To confirm data is in the database, use the Protean shell:
@@ -77,11 +97,12 @@ docker exec -it bookshelf-db psql -U postgres -d bookshelf -c "SELECT title FROM
   from memory to PostgreSQL.
 - **Zero code changes** — the same domain logic runs against any
   database adapter.
+- **`protean database setup/drop/truncate`** — CLI commands for schema
+  management.
 
 Our domain logic is now decoupled from storage. In the next chapter,
-we will add tests to make sure everything works as we continue to
-evolve the application.
+we will organize the growing codebase into a proper project structure.
 
 ## Next
 
-[Chapter 9: Testing Your Domain →](09-testing.md)
+[Chapter 9: Structuring the Project →](09-project-structure.md)

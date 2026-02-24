@@ -22,20 +22,35 @@ A guided, hands-on tutorial building a complete online bookstore.
 - [3. Entities and Associations](./guides/getting-started/tutorial/03-entities-and-associations.md) -- Build the Order aggregate with child entities.
 - [4. Business Rules](./guides/getting-started/tutorial/04-business-rules.md) -- Add invariants and encapsulate behavior in aggregate methods.
 
-**Part II -- Making It Event-Driven**
+**Part II -- Making It Real**
 
 - [5. Commands and Handlers](./guides/getting-started/tutorial/05-commands.md) -- Formalize state changes with commands and command handlers.
 - [6. Events and Reactions](./guides/getting-started/tutorial/06-events-and-reactions.md) -- Define events, raise them from aggregates, and react with handlers.
-
-**Part III -- Read Models and Persistence**
-
 - [7. Projections](./guides/getting-started/tutorial/07-projections.md) -- Build read-optimized views from events.
 - [8. Connecting a Real Database](./guides/getting-started/tutorial/08-persistence.md) -- Switch to PostgreSQL with a configuration change.
+- [9. Structuring the Project](./guides/getting-started/tutorial/09-project-structure.md) -- Organize domain code into a proper project layout with auto-discovery.
+- [10. Exposing the Domain Through an API](./guides/getting-started/tutorial/10-api.md) -- Build a FastAPI web layer for commands and projections.
+- [11. Testing Your Domain](./guides/getting-started/tutorial/11-testing.md) -- Testing strategies for every layer of the application.
 
-**Part IV -- Testing**
+**Part III -- Growing the System**
 
-- [9. Testing Your Domain](./guides/getting-started/tutorial/09-testing.md) -- Testing strategies for every layer of the application.
-- [10. What Comes Next](./guides/getting-started/tutorial/10-whats-next.md) -- Where to go from here.
+- [12. Going Async — The Server](./guides/getting-started/tutorial/12-going-async.md) -- Move side effects to background processing with the Protean server.
+- [13. Domain Services](./guides/getting-started/tutorial/13-domain-services.md) -- Cross-aggregate business logic with domain services.
+- [14. Subscribers](./guides/getting-started/tutorial/14-subscribers.md) -- Consume messages from external systems.
+- [15. Fact Events](./guides/getting-started/tutorial/15-fact-events.md) -- Auto-generated snapshots for reporting pipelines.
+
+**Part IV -- Production Operations**
+
+- [16. Message Tracing](./guides/getting-started/tutorial/16-message-tracing.md) -- Track commands and events with correlation and causation IDs.
+- [17. Dead Letter Queues](./guides/getting-started/tutorial/17-dead-letter-queues.md) -- Inspect, replay, and purge failed messages.
+- [18. Monitoring Health](./guides/getting-started/tutorial/18-monitoring.md) -- Monitor subscription health with the Observatory dashboard.
+- [19. Priority Lanes](./guides/getting-started/tutorial/19-priority-lanes.md) -- Bulk imports without starving production traffic.
+
+**Part V -- System Mastery**
+
+- [20. Process Managers](./guides/getting-started/tutorial/20-process-managers.md) -- Orchestrate multi-step workflows with compensation.
+- [21. Advanced Query Patterns](./guides/getting-started/tutorial/21-query-patterns.md) -- Filtering, sorting, pagination, and cross-aggregate projections.
+- [22. The Full Picture](./guides/getting-started/tutorial/22-full-picture.md) -- Complete architecture reference and where to go next.
 
 ---
 

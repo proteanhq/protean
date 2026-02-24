@@ -135,15 +135,28 @@ nav:
         - "2. Rich Fields and Value Objects": guides/getting-started/tutorial/02-fields-and-value-objects.md
         - "3. Entities and Associations": guides/getting-started/tutorial/03-entities-and-associations.md
         - "4. Business Rules": guides/getting-started/tutorial/04-business-rules.md
-      - "Part II - Making It Event-Driven":
+      - "Part II - Making It Real":
         - "5. Commands and Handlers": guides/getting-started/tutorial/05-commands.md
         - "6. Events and Reactions": guides/getting-started/tutorial/06-events-and-reactions.md
-      - "Part III - Read Models and Persistence":
         - "7. Projections": guides/getting-started/tutorial/07-projections.md
         - "8. Connecting a Real Database": guides/getting-started/tutorial/08-persistence.md
-      - "Part IV - Testing":
-        - "9. Testing Your Domain": guides/getting-started/tutorial/09-testing.md
-        - "10. What Comes Next": guides/getting-started/tutorial/10-whats-next.md
+        - "9. Structuring the Project": guides/getting-started/tutorial/09-project-structure.md
+        - "10. Exposing the Domain Through an API": guides/getting-started/tutorial/10-api.md
+        - "11. Testing Your Domain": guides/getting-started/tutorial/11-testing.md
+      - "Part III - Growing the System":
+        - "12. Going Async — The Server": guides/getting-started/tutorial/12-going-async.md
+        - "13. Domain Services": guides/getting-started/tutorial/13-domain-services.md
+        - "14. Subscribers": guides/getting-started/tutorial/14-subscribers.md
+        - "15. Fact Events": guides/getting-started/tutorial/15-fact-events.md
+      - "Part IV - Production Operations":
+        - "16. Message Tracing": guides/getting-started/tutorial/16-message-tracing.md
+        - "17. Dead Letter Queues": guides/getting-started/tutorial/17-dead-letter-queues.md
+        - "18. Monitoring Health": guides/getting-started/tutorial/18-monitoring.md
+        - "19. Priority Lanes": guides/getting-started/tutorial/19-priority-lanes.md
+      - "Part V - System Mastery":
+        - "20. Process Managers": guides/getting-started/tutorial/20-process-managers.md
+        - "21. Advanced Query Patterns": guides/getting-started/tutorial/21-query-patterns.md
+        - "22. The Full Picture": guides/getting-started/tutorial/22-full-picture.md
     - "Event Sourcing Tutorial":
       - guides/getting-started/es-tutorial/index.md
       - "Part I - Building the Foundation":

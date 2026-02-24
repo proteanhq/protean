@@ -1,7 +1,8 @@
-# Chapter 9: Testing Your Domain
+# Chapter 11: Testing Your Domain
 
 In this chapter we will set up pytest for Bookshelf and write tests that
-verify our business logic — commands, events, invariants, and projections.
+verify our business logic — commands, events, invariants, projections,
+and API endpoints.
 
 !!! tip "Focus on business logic"
     Protean handles field validation, immutability, and wiring automatically.
@@ -154,7 +155,8 @@ def test_book_added_creates_inventory():
 
 ## Testing Projections
 
-Verify that projectors maintain projections correctly:
+Verify that projectors maintain projections correctly using
+`domain.query_for()`:
 
 ```python
 from bookshelf.models import Book, BookCatalog
@@ -168,9 +170,46 @@ def test_book_catalog_projection():
     )
     current_domain.repository_for(Book).add(book)
 
-    catalog = current_domain.repository_for(BookCatalog).get(book.id)
-    assert catalog.title == "Dune"
-    assert catalog.price == 15.99
+    entries = current_domain.query_for(BookCatalog).all()
+    assert entries.total == 1
+    assert entries.items[0].title == "Dune"
+```
+
+## Testing API Endpoints
+
+Test the FastAPI endpoints using `TestClient`:
+
+```python
+from fastapi.testclient import TestClient
+from bookshelf.api import app
+
+client = TestClient(app)
+
+def test_add_book_endpoint():
+    response = client.post("/books", json={
+        "title": "The Great Gatsby",
+        "author": "F. Scott Fitzgerald",
+        "price_amount": 12.99,
+    })
+    assert response.status_code == 200
+    assert "book_id" in response.json()
+
+def test_browse_catalog():
+    # Add a book first
+    client.post("/books", json={
+        "title": "Dune",
+        "author": "Frank Herbert",
+        "price_amount": 15.99,
+    })
+
+    response = client.get("/catalog")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] >= 1
+
+def test_book_not_found():
+    response = client.get("/catalog/nonexistent-id")
+    assert response.status_code == 404
 ```
 
 ## Integration Testing
@@ -224,12 +263,15 @@ the [Testing guide](../../testing/index.md) and the
 - **Invariant tests** for business rules and state guards.
 - **Command flow tests** from dispatch to persisted state.
 - **Event handler tests** verifying automatic side effects.
-- **Projection tests** confirming projector output.
+- **Projection tests** confirming projector output using `domain.query_for()`.
+- **API endpoint tests** using FastAPI's `TestClient`.
 - An **integration test** covering a complete end-to-end flow.
 
-Congratulations — we have built a fully tested bookstore application!
-In the next chapter, we will see where to go from here.
+Congratulations — Part II is complete! We have a fully tested bookstore
+with a web API, a real database, and organized code. In the next
+chapter, we will move to asynchronous processing so the system can
+handle real production traffic.
 
 ## Next
 
-[Chapter 10: What Comes Next →](10-whats-next.md)
+[Chapter 12: Going Async — The Server →](12-going-async.md)

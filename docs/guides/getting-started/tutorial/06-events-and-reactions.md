@@ -144,7 +144,7 @@ commands, just like Chapter 5.
   inventory.
 
 In the next chapter, we will build a read-optimized projection for
-browsing the book catalog.
+browsing the book catalog — the read side of CQRS.
 
 ## Full Source
 
@@ -154,4 +154,4 @@ browsing the book catalog.
 
 ## Next
 
-[Chapter 7: Projections →](07-projections.md)
+[Chapter 7: Projections and Projectors →](07-projections.md)

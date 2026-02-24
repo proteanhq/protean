@@ -159,6 +159,8 @@ protean = "protean.ext.mypy_plugin:plugin"
 [tool.ruff.lint.per-file-ignores]
 # Mypy test fixtures use reveal_type() which is a mypy built-in, not a runtime function
 "tests/ext/fixtures/*.py" = ["F821"]
+# Tutorial ch09 concatenates multiple module files into one for documentation snippets
+"docs_src/guides/getting-started/tutorial/ch09.py" = ["E402", "F811"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["protean"]

@@ -48,12 +48,16 @@ entry.
 
 ## Querying the Projection
 
-Projections are queried the same way as aggregates — through a
-repository:
+Projections are queried using `domain.query_for()`, which returns a
+read-only query set — the CQRS read-side API:
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch07.py:usage"
 ```
+
+`domain.query_for(BookCatalog)` returns a `ReadOnlyQuerySet` — it
+supports filtering, sorting, and pagination but blocks any mutation
+operations. This enforces the CQRS principle: projections are read-only.
 
 Run it:
 
@@ -82,6 +86,7 @@ reflects the latest state of the Book aggregate.
 - A **`BookCatalog` projection** — flat, query-optimized data.
 - A **`BookCatalogProjector`** — listens to Book events and maintains
   the projection.
+- **`domain.query_for()`** — the read-only query API for projections.
 - Automatic sync: adding or updating a book immediately updates the
   catalog.
 

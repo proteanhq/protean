@@ -144,10 +144,8 @@ if __name__ == "__main__":
         book_repo.add(orwell)
 
         # Query the projection — optimized for browsing
-        # Note: _dao.query is the current query API for projections.
-        # A public domain.query_for() API is planned.
         print("\n=== Book Catalog (Projection) ===")
-        all_entries = catalog_repo._dao.query.all()
+        all_entries = domain.query_for(BookCatalog).all()
         print(f"Total entries: {all_entries.total}")
         for entry in all_entries.items:
             print(f"  {entry.title} by {entry.author} — ${entry.price}")
