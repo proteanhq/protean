@@ -155,6 +155,12 @@ app = create_observatory_app(domains=[identity, catalogue])
 An embedded HTML dashboard that connects to the SSE stream and displays
 real-time message flow. Open `http://localhost:9000` in your browser.
 
+The dashboard includes a **DLQ tab** alongside Messages, Events, and Errors.
+The DLQ tab provides a filterable list of failed messages with buttons to
+inspect, replay, or purge entries — the same operations available through the
+[`protean dlq`](../cli/data/dlq.md) CLI commands and the `/api/dlq/*` REST
+endpoints documented below.
+
 #### SSE stream -- `GET /stream`
 
 Server-Sent Events endpoint for real-time trace streaming. Supports
@@ -358,6 +364,90 @@ curl http://localhost:9000/api/subscriptions
     }
   }
 }
+```
+
+#### DLQ Messages -- `GET /api/dlq`
+
+List dead letter queue messages across all subscriptions. Returns messages
+sorted by failure time (newest first).
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `subscription` | Filter by stream category | all |
+| `limit` | Maximum messages to return | `100` |
+
+```bash
+# List all DLQ messages
+curl http://localhost:9000/api/dlq
+
+# Filter by subscription
+curl "http://localhost:9000/api/dlq?subscription=order&limit=50"
+```
+
+```json
+{
+  "entries": [
+    {
+      "dlq_id": "1705312200000-0",
+      "original_id": "abc-123",
+      "stream": "order",
+      "consumer_group": "tests.order_handler.OrderEventHandler",
+      "payload": {"type": "OrderPlaced", "data": {"order_id": "123"}},
+      "failure_reason": "ConnectionError: database unavailable",
+      "failed_at": "2025-01-15T10:30:00Z",
+      "retry_count": 3,
+      "dlq_stream": "order:dlq"
+    }
+  ],
+  "total": 1,
+  "subscriptions": ["order", "payment"]
+}
+```
+
+#### DLQ Inspect -- `GET /api/dlq/{dlq_id}`
+
+Inspect a single DLQ message with full payload details.
+
+```bash
+curl http://localhost:9000/api/dlq/1705312200000-0
+```
+
+#### DLQ Replay -- `POST /api/dlq/{dlq_id}/replay`
+
+Replay a single DLQ message back to its original stream for reprocessing.
+
+```bash
+curl -X POST http://localhost:9000/api/dlq/1705312200000-0/replay
+```
+
+```json
+{"status": "ok", "replayed": true, "dlq_id": "1705312200000-0"}
+```
+
+#### DLQ Replay All -- `POST /api/dlq/replay-all`
+
+Replay all DLQ messages for a subscription. The `subscription` query parameter
+is required.
+
+```bash
+curl -X POST "http://localhost:9000/api/dlq/replay-all?subscription=order"
+```
+
+```json
+{"status": "ok", "replayed_count": 5, "subscription": "order"}
+```
+
+#### DLQ Purge -- `DELETE /api/dlq`
+
+Purge all DLQ messages for a subscription. The `subscription` query parameter
+is required.
+
+```bash
+curl -X DELETE "http://localhost:9000/api/dlq?subscription=order"
+```
+
+```json
+{"status": "ok", "purged_count": 5, "subscription": "order"}
 ```
 
 #### Queue Depth -- `GET /api/queue-depth`

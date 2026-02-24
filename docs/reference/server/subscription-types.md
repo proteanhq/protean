@@ -111,6 +111,19 @@ DLQ messages include metadata for debugging:
 }
 ```
 
+##### Managing DLQ Messages
+
+Protean provides built-in tools to inspect and act on DLQ messages without
+writing custom scripts:
+
+- **CLI**: Use [`protean dlq`](../cli/data/dlq.md) to list, inspect, replay, or
+  purge DLQ messages from the terminal.
+- **Observatory**: The [DLQ tab](observability.md) in the Observatory dashboard
+  provides a web UI and REST API (`/api/dlq/*`) for the same operations.
+
+See [Dead Letter Queue Management](../../concepts/async-processing/subscriptions.md#dead-letter-queue-management)
+for usage examples.
+
 #### Automatic Retries
 
 Failed messages are automatically retried with configurable delays:

@@ -432,6 +432,276 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
         return JSONResponse(content=result)
 
+    # ------------------------------------------------------------------
+    # DLQ Management Endpoints
+    # ------------------------------------------------------------------
+
+    @router.get("/dlq")
+    async def dlq_list(
+        subscription: Optional[str] = Query(
+            None, description="Filter by stream category"
+        ),
+        limit: int = Query(100, ge=1, le=1000, description="Maximum entries"),
+    ):
+        """List DLQ messages across all subscriptions."""
+        from protean.port.broker import BrokerCapabilities
+        from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
+
+        domain = domains[0]
+        try:
+            with domain.domain_context():
+                broker = domain.brokers.get("default")
+                if broker is None:
+                    return JSONResponse(
+                        content={"error": "No default broker configured"},
+                        status_code=503,
+                    )
+                if not broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+                    return JSONResponse(
+                        content={"error": "Broker does not support DLQ"},
+                        status_code=501,
+                    )
+
+                if subscription:
+                    infos = discover_subscriptions(domain)
+                    dlq_streams = []
+                    for info in infos:
+                        if info.stream_category == subscription:
+                            dlq_streams.append(info.dlq_stream)
+                            if info.backfill_dlq_stream:
+                                dlq_streams.append(info.backfill_dlq_stream)
+                    if not dlq_streams:
+                        return JSONResponse(
+                            content={"error": f"No subscription for '{subscription}'"},
+                            status_code=404,
+                        )
+                else:
+                    dlq_streams = collect_dlq_streams(domain)
+
+                entries = broker.dlq_list(dlq_streams, limit=limit)
+                return JSONResponse(
+                    content={
+                        "entries": [
+                            {
+                                "dlq_id": e.dlq_id,
+                                "original_id": e.original_id,
+                                "stream": e.stream,
+                                "consumer_group": e.consumer_group,
+                                "failure_reason": e.failure_reason,
+                                "failed_at": e.failed_at,
+                                "retry_count": e.retry_count,
+                                "dlq_stream": e.dlq_stream,
+                            }
+                            for e in entries
+                        ],
+                        "count": len(entries),
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Error listing DLQ: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to list DLQ messages"},
+                status_code=500,
+            )
+
+    @router.get("/dlq/{dlq_id}")
+    async def dlq_inspect(dlq_id: str):
+        """Inspect a single DLQ message with full payload."""
+        from protean.port.broker import BrokerCapabilities
+        from protean.utils.dlq import collect_dlq_streams
+
+        domain = domains[0]
+        try:
+            with domain.domain_context():
+                broker = domain.brokers.get("default")
+                if broker is None or not broker.has_capability(
+                    BrokerCapabilities.DEAD_LETTER_QUEUE
+                ):
+                    return JSONResponse(
+                        content={"error": "DLQ not available"},
+                        status_code=503,
+                    )
+
+                dlq_streams = collect_dlq_streams(domain)
+                for dlq_stream in dlq_streams:
+                    entry = broker.dlq_inspect(dlq_stream, dlq_id)
+                    if entry:
+                        # Strip internal DLQ metadata from displayed payload
+                        payload = {
+                            k: v
+                            for k, v in entry.payload.items()
+                            if k != "_dlq_metadata"
+                        }
+                        return JSONResponse(
+                            content={
+                                "dlq_id": entry.dlq_id,
+                                "original_id": entry.original_id,
+                                "stream": entry.stream,
+                                "consumer_group": entry.consumer_group,
+                                "failure_reason": entry.failure_reason,
+                                "failed_at": entry.failed_at,
+                                "retry_count": entry.retry_count,
+                                "dlq_stream": entry.dlq_stream,
+                                "payload": payload,
+                            }
+                        )
+
+                return JSONResponse(
+                    content={"error": f"DLQ message '{dlq_id}' not found"},
+                    status_code=404,
+                )
+        except Exception as e:
+            logger.error(f"Error inspecting DLQ message: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to inspect DLQ message"},
+                status_code=500,
+            )
+
+    @router.post("/dlq/{dlq_id}/replay")
+    async def dlq_replay(dlq_id: str):
+        """Replay a single DLQ message back to its original stream."""
+        from protean.port.broker import BrokerCapabilities
+        from protean.utils.dlq import collect_dlq_streams
+
+        domain = domains[0]
+        try:
+            with domain.domain_context():
+                broker = domain.brokers.get("default")
+                if broker is None or not broker.has_capability(
+                    BrokerCapabilities.DEAD_LETTER_QUEUE
+                ):
+                    return JSONResponse(
+                        content={"error": "DLQ not available"},
+                        status_code=503,
+                    )
+
+                dlq_streams = collect_dlq_streams(domain)
+                for dlq_stream in dlq_streams:
+                    entry = broker.dlq_inspect(dlq_stream, dlq_id)
+                    if entry:
+                        success = broker.dlq_replay(dlq_stream, dlq_id, entry.stream)
+                        if success:
+                            return JSONResponse(
+                                content={
+                                    "status": "ok",
+                                    "replayed": True,
+                                    "target_stream": entry.stream,
+                                }
+                            )
+                        return JSONResponse(
+                            content={"error": "Replay failed"},
+                            status_code=500,
+                        )
+
+                return JSONResponse(
+                    content={"error": f"DLQ message '{dlq_id}' not found"},
+                    status_code=404,
+                )
+        except Exception as e:
+            logger.error(f"Error replaying DLQ message: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to replay DLQ message"},
+                status_code=500,
+            )
+
+    @router.post("/dlq/replay-all")
+    async def dlq_replay_all(
+        subscription: str = Query(..., description="Stream category (required)"),
+    ):
+        """Replay all DLQ messages for a subscription."""
+        from protean.port.broker import BrokerCapabilities
+        from protean.utils.dlq import discover_subscriptions
+
+        domain = domains[0]
+        try:
+            with domain.domain_context():
+                broker = domain.brokers.get("default")
+                if broker is None or not broker.has_capability(
+                    BrokerCapabilities.DEAD_LETTER_QUEUE
+                ):
+                    return JSONResponse(
+                        content={"error": "DLQ not available"},
+                        status_code=503,
+                    )
+
+                infos = discover_subscriptions(domain)
+                dlq_streams = []
+                for info in infos:
+                    if info.stream_category == subscription:
+                        dlq_streams.append(info.dlq_stream)
+                        if info.backfill_dlq_stream:
+                            dlq_streams.append(info.backfill_dlq_stream)
+
+                if not dlq_streams:
+                    return JSONResponse(
+                        content={"error": f"No subscription for '{subscription}'"},
+                        status_code=404,
+                    )
+
+                total = 0
+                for dlq_stream in dlq_streams:
+                    total += broker.dlq_replay_all(dlq_stream, subscription)
+
+                return JSONResponse(
+                    content={
+                        "status": "ok",
+                        "replayed": total,
+                        "target_stream": subscription,
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Error replaying all DLQ messages: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to replay DLQ messages"},
+                status_code=500,
+            )
+
+    @router.delete("/dlq")
+    async def dlq_purge(
+        subscription: str = Query(..., description="Stream category (required)"),
+    ):
+        """Purge all DLQ messages for a subscription."""
+        from protean.port.broker import BrokerCapabilities
+        from protean.utils.dlq import discover_subscriptions
+
+        domain = domains[0]
+        try:
+            with domain.domain_context():
+                broker = domain.brokers.get("default")
+                if broker is None or not broker.has_capability(
+                    BrokerCapabilities.DEAD_LETTER_QUEUE
+                ):
+                    return JSONResponse(
+                        content={"error": "DLQ not available"},
+                        status_code=503,
+                    )
+
+                infos = discover_subscriptions(domain)
+                dlq_streams = []
+                for info in infos:
+                    if info.stream_category == subscription:
+                        dlq_streams.append(info.dlq_stream)
+                        if info.backfill_dlq_stream:
+                            dlq_streams.append(info.backfill_dlq_stream)
+
+                if not dlq_streams:
+                    return JSONResponse(
+                        content={"error": f"No subscription for '{subscription}'"},
+                        status_code=404,
+                    )
+
+                total = 0
+                for dlq_stream in dlq_streams:
+                    total += broker.dlq_purge(dlq_stream)
+
+                return JSONResponse(content={"status": "ok", "purged": total})
+        except Exception as e:
+            logger.error(f"Error purging DLQ: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to purge DLQ"},
+                status_code=500,
+            )
+
     @router.delete("/traces")
     async def delete_traces():
         """Clear all persisted trace history."""

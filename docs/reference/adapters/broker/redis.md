@@ -58,6 +58,7 @@ The Redis Stream broker provides the following capabilities:
 
 - ✅ **ORDERED_MESSAGING** - Reliable messaging with ordering guarantees within streams
 - ✅ **BLOCKING_READ** - Efficient blocking reads for new messages
+- ✅ **DEAD_LETTER_QUEUE** - Failed messages routed to DLQ streams for inspection and replay
 
 This includes:
 - **Publish/subscribe** messaging
@@ -65,11 +66,12 @@ This includes:
 - **Message acknowledgment** (ACK/NACK) for reliable delivery
 - **At-least-once delivery** guarantees
 - **Message ordering** preservation within streams
+- **Dead letter queue management** — list, inspect, replay, and purge failed messages via
+  [`protean dlq`](../../cli/data/dlq.md) CLI or the
+  [Observatory dashboard](../../server/observability.md)
 
 Not supported:
-- ❌ **Dead Letter Queue (DLQ)** - Not implemented
 - ❌ **Stream partitioning** - Not a native feature
-- ❌ **Message replay** - Not implemented
 
 ## Monitoring and Debugging
 

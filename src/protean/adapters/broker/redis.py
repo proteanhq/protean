@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import redis
 
-from protean.port.broker import BaseBroker, BrokerCapabilities, registry
+from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry, registry
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -46,7 +46,11 @@ class RedisBroker(BaseBroker):
     @property
     def capabilities(self) -> BrokerCapabilities:
         """Redis Streams provide ordered messaging with native consumer groups and blocking reads."""
-        return BrokerCapabilities.ORDERED_MESSAGING | BrokerCapabilities.BLOCKING_READ
+        return (
+            BrokerCapabilities.ORDERED_MESSAGING
+            | BrokerCapabilities.BLOCKING_READ
+            | BrokerCapabilities.DEAD_LETTER_QUEUE
+        )
 
     @property
     def _created_groups(self):
@@ -357,6 +361,114 @@ class RedisBroker(BaseBroker):
             return False
 
         return True
+
+    # ------------------------------------------------------------------
+    # DLQ Management
+    # ------------------------------------------------------------------
+
+    def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:
+        """List DLQ messages across specified DLQ streams."""
+        entries: list[DLQEntry] = []
+        for dlq_stream in dlq_streams:
+            try:
+                raw_messages = self.redis_instance.xrange(dlq_stream)
+            except redis.ResponseError:
+                # Stream doesn't exist
+                continue
+
+            for redis_id, fields in raw_messages:
+                entry = self._parse_dlq_entry(dlq_stream, redis_id, fields)
+                if entry:
+                    entries.append(entry)
+
+        # Sort by failed_at descending (newest first)
+        entries.sort(key=lambda e: e.failed_at or "", reverse=True)
+        return entries[:limit]
+
+    def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        """Inspect a specific DLQ message by ID."""
+        try:
+            raw_messages = self.redis_instance.xrange(
+                dlq_stream, min=dlq_id, max=dlq_id, count=1
+            )
+        except redis.ResponseError:
+            return None
+
+        if not raw_messages:
+            return None
+
+        redis_id, fields = raw_messages[0]
+        return self._parse_dlq_entry(dlq_stream, redis_id, fields)
+
+    def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        """Replay a single DLQ message back to its original stream."""
+        try:
+            raw_messages = self.redis_instance.xrange(
+                dlq_stream, min=dlq_id, max=dlq_id, count=1
+            )
+        except redis.ResponseError:
+            return False
+
+        if not raw_messages:
+            return False
+
+        redis_id, fields = raw_messages[0]
+        message = self._deserialize_message(fields)
+        # Strip DLQ metadata before republishing
+        message.pop("_dlq_metadata", None)
+        self._publish(target_stream, message)
+        self.redis_instance.xdel(dlq_stream, self._decode_if_bytes(redis_id))
+        logger.info(f"Replayed DLQ message '{dlq_id}' to stream '{target_stream}'")
+        return True
+
+    def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        """Replay all DLQ messages from a stream."""
+        try:
+            raw_messages = self.redis_instance.xrange(dlq_stream)
+        except redis.ResponseError:
+            return 0
+
+        replayed = 0
+        for redis_id, fields in raw_messages:
+            message = self._deserialize_message(fields)
+            message.pop("_dlq_metadata", None)
+            self._publish(target_stream, message)
+            self.redis_instance.xdel(dlq_stream, self._decode_if_bytes(redis_id))
+            replayed += 1
+        return replayed
+
+    def _dlq_purge(self, dlq_stream: str) -> int:
+        """Purge all messages from a DLQ stream."""
+        try:
+            count = self.redis_instance.xlen(dlq_stream)
+        except redis.ResponseError:
+            return 0
+        if count > 0:
+            self.redis_instance.delete(dlq_stream)
+        return count
+
+    def _parse_dlq_entry(
+        self, dlq_stream: str, redis_id: bytes | str, fields: dict
+    ) -> DLQEntry | None:
+        """Parse a raw Redis DLQ message into a DLQEntry."""
+        message = self._deserialize_message(fields)
+        if not message:
+            return None
+
+        dlq_meta = message.get("_dlq_metadata", {})
+        redis_id_str = self._decode_if_bytes(redis_id)
+
+        return DLQEntry(
+            dlq_id=redis_id_str,
+            original_id=dlq_meta.get("original_id", redis_id_str),
+            stream=dlq_meta.get("original_stream", dlq_stream.removesuffix(":dlq")),
+            consumer_group=dlq_meta.get("consumer_group", ""),
+            payload=message,
+            failure_reason=dlq_meta.get("failure_reason", "unknown"),
+            failed_at=dlq_meta.get("failed_at"),
+            retry_count=int(dlq_meta.get("retry_count", 0)),
+            dlq_stream=dlq_stream,
+        )
 
     def _ensure_group(self, group_name: str, stream: str) -> None:
         """Create consumer group if it doesn't exist"""

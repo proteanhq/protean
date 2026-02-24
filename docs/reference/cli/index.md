@@ -22,6 +22,11 @@ load the domain.
 | [`protean events stats`](data/events.md)    | Show stream statistics across the domain |
 | [`protean events search`](data/events.md)   | Search for events by type |
 | [`protean events history`](data/events.md)  | Display aggregate event timeline |
+| [`protean dlq list`](data/dlq.md)           | List failed DLQ messages |
+| [`protean dlq inspect`](data/dlq.md)        | Inspect a specific DLQ message |
+| [`protean dlq replay`](data/dlq.md)         | Replay a DLQ message to its original stream |
+| [`protean dlq replay-all`](data/dlq.md)     | Replay all DLQ messages for a subscription |
+| [`protean dlq purge`](data/dlq.md)          | Purge DLQ messages for a subscription |
 
 !!! note
 

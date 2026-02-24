@@ -237,6 +237,7 @@ nav:
       - Data:
         - reference/cli/data/index.md
         - reference/cli/data/database.md
+        - reference/cli/data/dlq.md
         - reference/cli/data/events.md
         - reference/cli/data/snapshot.md
         - reference/cli/data/projection.md

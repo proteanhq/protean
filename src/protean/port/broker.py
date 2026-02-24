@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from importlib import import_module, metadata
 import logging
 import time
@@ -22,6 +23,36 @@ BACKOFF_MULTIPLIER = 2.0
 MESSAGE_TIMEOUT = 300.0
 ENABLE_DLQ = True
 OPERATION_STATE_TTL_MAX = 60.0
+
+
+@dataclass
+class DLQEntry:
+    """Normalized representation of a dead letter queue message.
+
+    Provides a broker-agnostic view of a DLQ entry for use by CLI commands
+    and Observatory API endpoints.
+
+    Attributes:
+        dlq_id: Identifier within the DLQ (Redis stream ID or UUID).
+        original_id: Original message identifier before it entered DLQ.
+        stream: Original stream category the message belonged to.
+        consumer_group: Consumer group that failed to process the message.
+        payload: Full message payload dict.
+        failure_reason: Why the message was moved to DLQ.
+        failed_at: ISO 8601 timestamp of when the message failed.
+        retry_count: Number of retries attempted before DLQ.
+        dlq_stream: Name of the DLQ stream this entry lives in.
+    """
+
+    dlq_id: str
+    original_id: str
+    stream: str
+    consumer_group: str
+    payload: dict
+    failure_reason: str
+    failed_at: str | None
+    retry_count: int
+    dlq_stream: str
 
 
 class OperationState(Enum):
@@ -569,6 +600,105 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             dict: Information about consumer groups and their consumers
         """
+
+    # ------------------------------------------------------------------
+    # Dead Letter Queue Management
+    # ------------------------------------------------------------------
+
+    def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
+        """List DLQ messages across specified DLQ streams.
+
+        Args:
+            dlq_streams: List of DLQ stream names to query.
+            limit: Maximum total messages to return.
+
+        Returns:
+            List of DLQEntry objects sorted by failure time (newest first).
+        """
+        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            logger.warning(f"Broker {self.name} does not support DLQ management")
+            return []
+        return self._dlq_list(dlq_streams, limit)
+
+    def dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        """Inspect a specific DLQ message by its DLQ entry ID.
+
+        Args:
+            dlq_stream: The DLQ stream to look in.
+            dlq_id: The entry identifier within the DLQ stream.
+
+        Returns:
+            DLQEntry if found, None otherwise.
+        """
+        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            logger.warning(f"Broker {self.name} does not support DLQ management")
+            return None
+        return self._dlq_inspect(dlq_stream, dlq_id)
+
+    def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        """Replay a single DLQ message back to its original stream.
+
+        Args:
+            dlq_stream: The DLQ stream the message is in.
+            dlq_id: The entry identifier within the DLQ stream.
+            target_stream: The stream to re-publish the message to.
+
+        Returns:
+            True if replayed successfully, False otherwise.
+        """
+        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            logger.warning(f"Broker {self.name} does not support DLQ management")
+            return False
+        return self._dlq_replay(dlq_stream, dlq_id, target_stream)
+
+    def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        """Replay all DLQ messages from a stream back to the original stream.
+
+        Args:
+            dlq_stream: The DLQ stream to drain.
+            target_stream: The stream to re-publish messages to.
+
+        Returns:
+            Number of messages replayed.
+        """
+        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            logger.warning(f"Broker {self.name} does not support DLQ management")
+            return 0
+        return self._dlq_replay_all(dlq_stream, target_stream)
+
+    def dlq_purge(self, dlq_stream: str) -> int:
+        """Purge all messages from a DLQ stream.
+
+        Args:
+            dlq_stream: The DLQ stream to purge.
+
+        Returns:
+            Number of messages purged.
+        """
+        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            logger.warning(f"Broker {self.name} does not support DLQ management")
+            return 0
+        return self._dlq_purge(dlq_stream)
+
+    @abstractmethod
+    def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:
+        """List DLQ messages across specified DLQ streams."""
+
+    @abstractmethod
+    def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        """Inspect a specific DLQ message."""
+
+    @abstractmethod
+    def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        """Replay a single DLQ message back to its original stream."""
+
+    @abstractmethod
+    def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        """Replay all DLQ messages from a stream."""
+
+    @abstractmethod
+    def _dlq_purge(self, dlq_stream: str) -> int:
+        """Purge all messages from a DLQ stream."""
 
     def register(self, subscriber_cls: Type[BaseSubscriber]) -> None:
         """Register a subscriber to this broker against its stream.
