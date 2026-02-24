@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -147,3 +148,6 @@ class place_order:
             raise ValidationError(
                 {"_service": ["Total reserved quantity does not match order quantity"]}
             )
+
+
+# --8<-- [end:full]

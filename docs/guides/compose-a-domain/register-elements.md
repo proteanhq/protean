@@ -9,7 +9,7 @@ the domain.
 ## With decorators
 
 ```python hl_lines="7-11"
-{! docs_src/guides/compose-a-domain/002.py !}
+--8<-- "guides/compose-a-domain/002.py:full"
 ```
 
 A full list of domain decorators along with examples are available in the
@@ -21,7 +21,7 @@ There might be additional options you will pass in a `Meta` inner class,
 depending upon the element being registered.
 
 ```python hl_lines="7"
-{! docs_src/guides/compose-a-domain/015.py !}
+--8<-- "guides/compose-a-domain/015.py:full"
 ```
 
 In the above example, the `User` aggregate's default stream category **`user`**
@@ -38,7 +38,7 @@ documentation to understand the additional options supported by that element.
 You can also choose to register elements manually.
 
 ```python hl_lines="8-11 14"
-{! docs_src/guides/compose-a-domain/014.py !}
+--8<-- "guides/compose-a-domain/014.py:full"
 ```
 
 Note that the `User` class has been subclassed from `BaseAggregate`. That is

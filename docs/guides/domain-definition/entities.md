@@ -25,7 +25,7 @@ over time.
 An Entity is defined with the `Domain.entity` decorator:
 
 ```python hl_lines="13-15"
-{! docs_src/guides/domain-definition/007.py !}
+--8<-- "guides/domain-definition/007.py:full"
 ```
 
 An Entity has to be associated with an Aggregate. If `part_of` is not

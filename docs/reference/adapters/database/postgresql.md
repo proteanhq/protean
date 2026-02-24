@@ -31,7 +31,7 @@ You can supply a custom SQLAlchemy Model in place of the one that Protean
 generates internally, allowing you full customization.
 
 ```python hl_lines="8-11 20-23"
-{! docs_src/adapters/database/postgresql/001.py !}
+--8<-- "adapters/database/postgresql/001.py:full"
 ```
 
 !!!note

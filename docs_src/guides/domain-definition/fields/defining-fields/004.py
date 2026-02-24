@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from typing import Annotated
 
 from pydantic import Field
@@ -20,3 +21,6 @@ class Product:
 
     # Raw Pydantic
     metadata: Annotated[dict, Field(default_factory=dict)]
+
+
+# --8<-- [end:full]

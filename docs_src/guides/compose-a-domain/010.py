@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain, handle
 from protean.fields import Identifier, String
 
@@ -30,3 +31,6 @@ class UserEventHandlers:
     @handle(Registered)
     def send_email_notification(self, event: Registered) -> None:
         pass
+
+
+# --8<-- [end:full]

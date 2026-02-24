@@ -12,7 +12,7 @@ style that reads best for each situation.
 Fields are declared as type annotations using Protean's field functions:
 
 ```python hl_lines="4-6"
-{! docs_src/guides/domain-definition/fields/defining-fields/001.py !}
+--8<-- "guides/domain-definition/fields/defining-fields/001.py:full"
 ```
 
 This is the recommended style. It reads as a declaration — "description IS
@@ -29,7 +29,7 @@ discover fields declared this way.
 Fields are assigned as class variables, using the same field functions:
 
 ```python hl_lines="4-6"
-{! docs_src/guides/domain-definition/fields/defining-fields/002.py !}
+--8<-- "guides/domain-definition/fields/defining-fields/002.py:full"
 ```
 
 This style is familiar if you have used Django models or earlier versions of
@@ -43,7 +43,7 @@ Protean domain elements are Pydantic models under the hood, so you can use
 standard Python type annotations and Pydantic's `Field()` directly:
 
 ```python hl_lines="6-7"
-{! docs_src/guides/domain-definition/fields/defining-fields/003.py !}
+--8<-- "guides/domain-definition/fields/defining-fields/003.py:full"
 ```
 
 This is useful as an escape hatch when you need full control over Pydantic's
@@ -59,7 +59,7 @@ All three styles can coexist in a single class. Each field is processed
 according to its form:
 
 ```python hl_lines="14-22"
-{! docs_src/guides/domain-definition/fields/defining-fields/004.py !}
+--8<-- "guides/domain-definition/fields/defining-fields/004.py:full"
 ```
 
 There is no performance or behavioral difference between styles. The choice

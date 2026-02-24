@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import datetime, timezone
 
 from protean.domain import Domain
@@ -31,3 +32,6 @@ class Comment:
     content: String(max_length=500)
     post = Reference(Post)
     added_at: DateTime()
+
+
+# --8<-- [end:full]

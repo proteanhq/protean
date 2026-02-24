@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer, String, ValueObject
 
@@ -21,3 +22,6 @@ class User:
     last_name: String(max_length=50)
     age: Integer()
     address = ValueObject(Address)
+
+
+# --8<-- [end:full]

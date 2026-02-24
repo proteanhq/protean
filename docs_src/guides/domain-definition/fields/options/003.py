@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import datetime, timezone
 
 from protean.domain import Domain
@@ -14,3 +15,6 @@ def utc_now():
 class Post:
     title: String(max_length=50)
     created_at: DateTime(default=utc_now)
+
+
+# --8<-- [end:full]

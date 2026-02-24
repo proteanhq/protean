@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from enum import Enum
 
 from protean import Domain, invariant
@@ -143,3 +144,4 @@ if __name__ == "__main__":
 
         print("\nAll checks passed!")
 # --8<-- [end:usage]
+# --8<-- [end:full]

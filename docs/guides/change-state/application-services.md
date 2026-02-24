@@ -31,7 +31,7 @@ Application Services are defined with the `Domain.application_service`
 decorator:
 
 ```python hl_lines="32 34 41"
-{! docs_src/guides/change-state/008.py !}
+--8<-- "guides/change-state/008.py:full"
 ```
 
 1. The `@auth.application_service(part_of=User)` decorator registers the class

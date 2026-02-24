@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer
 
@@ -9,3 +10,6 @@ class Building:
     doors: Integer(
         required=True, error_messages={"required": "Every building needs some!"}
     )
+
+
+# --8<-- [end:full]

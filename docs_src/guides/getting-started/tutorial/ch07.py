@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.core.projector import on
 from protean.fields import Float, Identifier, String, Text
@@ -143,6 +144,8 @@ if __name__ == "__main__":
         book_repo.add(orwell)
 
         # Query the projection — optimized for browsing
+        # Note: _dao.query is the current query API for projections.
+        # A public domain.query_for() API is planned.
         print("\n=== Book Catalog (Projection) ===")
         all_entries = catalog_repo._dao.query.all()
         print(f"Total entries: {all_entries.total}")
@@ -162,3 +165,4 @@ if __name__ == "__main__":
         assert updated_entry.price == 15.99
         print("\nAll checks passed!")
 # --8<-- [end:usage]
+# --8<-- [end:full]

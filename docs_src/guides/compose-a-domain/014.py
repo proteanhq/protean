@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.fields import Integer, String
@@ -12,3 +13,4 @@ class User(BaseAggregate):
 
 
 domain.register(User, stream_category="account")
+# --8<-- [end:full]

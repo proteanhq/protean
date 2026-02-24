@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import String, Integer, HasOne
 
@@ -15,3 +16,6 @@ class Warehouse:
     name = String(max_length=100, required=True)
     capacity = Integer(min_value=0)
     manager = HasOne("InventoryManager", via="warehouse_ref")
+
+
+# --8<-- [end:full]

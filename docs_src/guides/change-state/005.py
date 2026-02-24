@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer, String
 
@@ -9,3 +10,6 @@ class Person:
     name: String(required=True, max_length=50)
     age: Integer(default=21)
     country: String(max_length=2)
+
+
+# --8<-- [end:full]

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 
 domain = Domain()
@@ -9,3 +10,4 @@ domain.config["databases"]["default"] = {
 }
 
 domain.init(traverse=False)
+# --8<-- [end:full]

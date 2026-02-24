@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Identifier, String
 
@@ -31,3 +32,4 @@ print(domain.registry.elements)
     'entities': [<class '__main__.Credentials'>]
 }
 """
+# --8<-- [end:full]

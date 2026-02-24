@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from typing import Annotated
 
 from pydantic import Field
@@ -13,3 +14,6 @@ class Metric:
     name: String(max_length=100, required=True)
     score: float = 0.0
     metadata: Annotated[dict, Field(default_factory=dict)]
+
+
+# --8<-- [end:full]

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import String
 
@@ -11,3 +12,4 @@ class UserProfile:
 
 print(UserProfile.meta_.schema_name)
 # 'user_profile'
+# --8<-- [end:full]

@@ -1207,7 +1207,8 @@ class Domain:
                             # Target could be an event or an event type string
                             event_type = (
                                 method._target_cls.__type__
-                                if issubclass(method._target_cls, BaseEvent)
+                                if inspect.isclass(method._target_cls)
+                                and issubclass(method._target_cls, BaseEvent)
                                 else method._target_cls
                             )
                             element.cls._handlers[event_type].add(method)

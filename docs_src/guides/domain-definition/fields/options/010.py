@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from typing import Any
 
 from protean import Domain
@@ -20,3 +21,6 @@ class EmailDomainValidator:
 @domain.aggregate
 class Employee:
     email: String(identifier=True, validators=[EmailDomainValidator("mydomain.com")])
+
+
+# --8<-- [end:full]

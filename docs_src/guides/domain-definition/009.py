@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean.domain import Domain
 from protean.exceptions import ValidationError
 from protean.fields import String, ValueObject
@@ -56,3 +57,6 @@ class User:
     email = ValueObject(Email)
     name: String(max_length=30)
     timezone: String(max_length=30)
+
+
+# --8<-- [end:full]

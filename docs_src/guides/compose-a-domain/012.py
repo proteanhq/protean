@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from typing import List
 
 from protean import Domain
@@ -18,3 +19,6 @@ class Person:
 class PersonCustomRepository:
     def adults(self, minimum_age: int = 21) -> List[Person]:
         return current_domain.repository_for(Person)._dao.filter(age__gte=minimum_age)
+
+
+# --8<-- [end:full]

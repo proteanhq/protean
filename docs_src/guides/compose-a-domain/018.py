@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer, String
 from protean.utils.globals import current_domain
@@ -18,3 +19,4 @@ domain.init(traverse=False)
 with domain.domain_context():
     # Access an active, connected instance of User Repository
     user_repo = current_domain.repository_for(User)
+# --8<-- [end:full]

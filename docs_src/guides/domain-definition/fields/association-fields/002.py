@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Float, HasMany, String, Text
 
@@ -15,3 +16,6 @@ class Post:
 class Comment:
     content: String(required=True, max_length=50)
     rating: Float(max_value=5)
+
+
+# --8<-- [end:full]

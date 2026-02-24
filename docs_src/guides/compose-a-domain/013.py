@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Identifier, Integer, String
 
@@ -22,3 +23,6 @@ class Token:
     key: Identifier(identifier=True)
     id: Identifier(required=True)
     email: String(required=True)
+
+
+# --8<-- [end:full]

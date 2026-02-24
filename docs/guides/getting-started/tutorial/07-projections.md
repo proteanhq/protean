@@ -4,6 +4,12 @@ In this chapter we will create a `BookCatalog` projection — a
 read-optimized view that stays in sync with our Book aggregate through
 events.
 
+!!! note "CQRS Concept"
+    Projections are a **CQRS-specific** pattern — they separate your read
+    model from your write model. In the pure DDD approach, you query
+    aggregates directly through repositories. Projections become valuable
+    when your read and write needs diverge.
+
 ## Why Projections?
 
 Our aggregates enforce business rules, but for listing books in a catalog
@@ -15,7 +21,7 @@ Projections give us that.
 A projection is a flat data structure optimized for queries:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch07.py [ln:68-80] !}
+--8<-- "guides/getting-started/tutorial/ch07.py:projection"
 ```
 
 Notice that the projection has only simple fields — `String`, `Float`,
@@ -27,7 +33,7 @@ on `book_id` marks it as the primary key.
 A **projector** listens to events and maintains the projection:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch07.py [ln:83-107] !}
+--8<-- "guides/getting-started/tutorial/ch07.py:projector"
 ```
 
 The projector is registered with `projector_for=BookCatalog` (the
@@ -45,7 +51,7 @@ Projections are queried the same way as aggregates — through a
 repository:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch07.py [ln:113-] !}
+--8<-- "guides/getting-started/tutorial/ch07.py:usage"
 ```
 
 Run it:
@@ -84,7 +90,7 @@ PostgreSQL database.
 ## Full Source
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch07.py !}
+--8<-- "guides/getting-started/tutorial/ch07.py:full"
 ```
 
 ## Next

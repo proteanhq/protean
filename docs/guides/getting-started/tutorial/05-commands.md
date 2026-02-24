@@ -4,6 +4,14 @@ In this chapter we will add an `AddBook` command and a handler that
 processes it, so books are added through a formal command interface
 instead of direct aggregate creation.
 
+!!! note "DDD Alternative: Application Services"
+    This chapter introduces the **CQRS** approach to handling state changes.
+    In the pure **DDD** approach, you'd use
+    [Application Services](../../change-state/application-services.md) instead
+    of Commands and Command Handlers — the Application Service receives
+    requests directly and coordinates the domain logic. See the
+    [DDD Pathway](../../pathways/ddd.md) for that reading order.
+
 ## Defining a Command
 
 So far we have created aggregates directly. In a real application, state
@@ -11,7 +19,7 @@ changes arrive as **commands** — formal requests to do something, named
 with imperative verbs:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch05.py [ln:25-36] !}
+--8<-- "guides/getting-started/tutorial/ch05.py:command"
 ```
 
 A command is an immutable data object — it carries the intent ("add this
@@ -23,7 +31,7 @@ A **command handler** receives the command and orchestrates the state
 change:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch05.py [ln:39-58] !}
+--8<-- "guides/getting-started/tutorial/ch05.py:handler"
 ```
 
 Notice the pattern: receive command, create aggregate, persist it, return
@@ -34,7 +42,7 @@ the result. Each handler method runs in a transaction automatically.
 To dispatch a command, use `domain.process()`:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch05.py [ln:64-76] !}
+--8<-- "guides/getting-started/tutorial/ch05.py:usage"
 ```
 
 We set `command_processing = "sync"` so commands are processed
@@ -72,7 +80,7 @@ system can react automatically when things happen.
 ## Full Source
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch05.py !}
+--8<-- "guides/getting-started/tutorial/ch05.py:full"
 ```
 
 ## Next

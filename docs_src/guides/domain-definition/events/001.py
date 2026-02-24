@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from enum import Enum
 
 from protean import Domain
@@ -35,3 +36,6 @@ class User:
     def change_name(self, name: str) -> None:
         self.name = name
         self.raise_(UserRenamed(user_id=self.id, name=name))
+
+
+# --8<-- [end:full]

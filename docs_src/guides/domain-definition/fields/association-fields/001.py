@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import HasOne, String
 
@@ -13,3 +14,6 @@ class Book:
 @domain.entity(part_of="Book")
 class Author:
     name: String(required=True, max_length=50)
+
+
+# --8<-- [end:full]

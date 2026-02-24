@@ -1,3 +1,5 @@
+# --8<-- [start:full]
+# --8<-- [start:imports_and_aggregate]
 from protean import Domain, handle, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Identifier, String, Text
@@ -26,6 +28,7 @@ class Post:
 
 
 # --8<-- [end:aggregate]
+# --8<-- [end:imports_and_aggregate]
 
 
 # --8<-- [start:event]
@@ -38,6 +41,7 @@ class PostPublished:
 # --8<-- [end:event]
 
 
+# --8<-- [start:command_and_handler]
 # --8<-- [start:command]
 @domain.command(part_of="Post")
 class CreatePost:
@@ -59,6 +63,7 @@ class PostCommandHandler:
 
 
 # --8<-- [end:command_handler]
+# --8<-- [end:command_and_handler]
 
 
 # --8<-- [start:event_handler]
@@ -97,3 +102,4 @@ if __name__ == "__main__":
         updated = domain.repository_for(Post).get(post_id)
         print(f"Updated: {updated.title} (status: {updated.status})")
 # --8<-- [end:usage]
+# --8<-- [end:full]

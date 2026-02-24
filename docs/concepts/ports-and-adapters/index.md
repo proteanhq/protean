@@ -161,7 +161,7 @@ If a connection cannot be established for whatever reason, the Protean
 initialization procedure immediately halts and exits with an error message:
 
 ```python hl_lines="8"
-{! docs_src/adapters/001.py !}
+--8<-- "adapters/001.py:full"
 ```
 
 1. `foobar` database does not exist on port 5444

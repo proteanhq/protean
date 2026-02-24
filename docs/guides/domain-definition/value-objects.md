@@ -34,7 +34,7 @@ above.
 Below is a sample implementation of the `Email` concept as a Value Object:
 
 ```python hl_lines="8-38 40-49"
-{! docs_src/guides/domain-definition/009.py !}
+--8<-- "guides/domain-definition/009.py:full"
 ```
 
 The complex validation logic of an email address is elegantly encapsulated in a
@@ -63,7 +63,7 @@ Value Objects can be embedded into Aggregates and Entities with the
 `ValueObject` field:
 
 ```python hl_lines="54"
-{! docs_src/guides/domain-definition/009.py !}
+--8<-- "guides/domain-definition/009.py:full"
 ```
 
 !!!note
@@ -114,7 +114,7 @@ ValidationError: {'email_address': ['Invalid email address']}
 Value Objects are typically initialized along with the enclosing entity.
 
 ```python hl_lines="14"
-{! docs_src/guides/domain-definition/010.py !}
+--8<-- "guides/domain-definition/010.py:full"
 ```
 
 Assigning value is straight-forward with a `Balance` object:
@@ -175,7 +175,7 @@ When a validation spans across multiple fields, you can specify it in an
 initialized.
 
 ```python hl_lines="13-16"
-{! docs_src/guides/domain-definition/012.py !}
+--8<-- "guides/domain-definition/012.py:full"
 ```
 
 ```shell hl_lines="3"
@@ -192,7 +192,7 @@ deeper explanation of invariants.
 Two value objects are considered to be equal if their values are equal.
 
 ```python
-{! docs_src/guides/domain-definition/011.py !}
+--8<-- "guides/domain-definition/011.py:full"
 ```
 
 ```shell

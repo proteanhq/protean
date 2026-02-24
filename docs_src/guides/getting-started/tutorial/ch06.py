@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from enum import Enum
 
 from protean import Domain, handle
@@ -161,6 +162,7 @@ class OrderEventHandler:
 # --8<-- [end:order_event_handler]
 
 
+# --8<-- [start:commands]
 @domain.command(part_of=Book)
 class AddBook:
     title: String(max_length=200, required=True)
@@ -170,6 +172,29 @@ class AddBook:
     description: Text()
 
 
+@domain.command(part_of=Order)
+class PlaceOrder:
+    customer_name: String(max_length=150, required=True)
+    book_title: String(max_length=200, required=True)
+    quantity: Integer(required=True)
+    unit_price_amount: Float(required=True)
+
+
+@domain.command(part_of=Order)
+class ConfirmOrder:
+    order_id: Identifier(required=True)
+
+
+@domain.command(part_of=Order)
+class ShipOrder:
+    order_id: Identifier(required=True)
+
+
+# --8<-- [end:commands]
+
+
+# --8<-- [start:command_handlers]
+# --8<-- [start:book_command_handler]
 @domain.command_handler(part_of=Book)
 class BookCommandHandler:
     @handle(AddBook)
@@ -184,6 +209,46 @@ class BookCommandHandler:
         book.add_to_catalog()
         current_domain.repository_for(Book).add(book)
         return book.id
+
+
+# --8<-- [end:book_command_handler]
+
+
+# --8<-- [start:order_command_handler]
+@domain.command_handler(part_of=Order)
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def place_order(self, command: PlaceOrder) -> Identifier:
+        order = Order(
+            customer_name=command.customer_name,
+            items=[
+                OrderItem(
+                    book_title=command.book_title,
+                    quantity=command.quantity,
+                    unit_price=Money(amount=command.unit_price_amount),
+                ),
+            ],
+        )
+        current_domain.repository_for(Order).add(order)
+        return order.id
+
+    @handle(ConfirmOrder)
+    def confirm_order(self, command: ConfirmOrder) -> None:
+        repo = current_domain.repository_for(Order)
+        order = repo.get(command.order_id)
+        order.confirm()
+        repo.add(order)
+
+    @handle(ShipOrder)
+    def ship_order(self, command: ShipOrder) -> None:
+        repo = current_domain.repository_for(Order)
+        order = repo.get(command.order_id)
+        order.ship()
+        repo.add(order)
+
+
+# --8<-- [end:order_command_handler]
+# --8<-- [end:command_handlers]
 
 
 domain.init(traverse=False)
@@ -209,27 +274,30 @@ if __name__ == "__main__":
         inv = inventories.items[0]
         print(f"  Inventory: {inv.title}, qty={inv.quantity}")
 
-        # Place and confirm an order
+        # Place an order — through the command pipeline
         print("\nPlacing an order...")
-        order = Order(
-            customer_name="Alice Johnson",
-            items=[
-                OrderItem(
-                    book_title="The Great Gatsby",
-                    quantity=2,
-                    unit_price=Money(amount=12.99),
-                ),
-            ],
+        order_id = domain.process(
+            PlaceOrder(
+                customer_name="Alice Johnson",
+                book_title="The Great Gatsby",
+                quantity=2,
+                unit_price_amount=12.99,
+            )
         )
-        current_domain.repository_for(Order).add(order)
 
+        # Confirm the order — triggers OrderConfirmed event
         print("Confirming order...")
-        order.confirm()
-        current_domain.repository_for(Order).add(order)
+        domain.process(ConfirmOrder(order_id=order_id))
 
+        # Ship the order — triggers OrderShipped event
         print("Shipping order...")
-        order.ship()
-        current_domain.repository_for(Order).add(order)
+        domain.process(ShipOrder(order_id=order_id))
+
+        # Verify final state
+        order = current_domain.repository_for(Order).get(order_id)
+        assert order.status == "SHIPPED"
+        assert len(order.items) == 1
 
         print("\nAll checks passed!")
 # --8<-- [end:usage]
+# --8<-- [end:full]

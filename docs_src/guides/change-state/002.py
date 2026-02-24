@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Float, HasMany, String, Text
 
@@ -31,3 +32,4 @@ with domain.domain_context():
 
     # This persists one `Post` record and two `Comment` records
     domain.repository_for(Post).add(post)
+# --8<-- [end:full]

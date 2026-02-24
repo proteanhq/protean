@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import datetime, timezone
 
 from protean import Domain
@@ -20,3 +21,6 @@ class PublishArticle:
 class Article:
     article_id: Identifier(required=True)
     published_at: DateTime(default=utc_now)
+
+
+# --8<-- [end:full]

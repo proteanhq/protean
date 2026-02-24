@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import List, String
 
@@ -8,3 +9,6 @@ domain = Domain()
 class User:
     email: String(max_length=255, required=True, unique=True)
     roles: List()
+
+
+# --8<-- [end:full]

@@ -39,7 +39,7 @@ Protean provides a helpful context manager to nest the domain operations
 under.
 
 ```python hl_lines="18-20"
-{! docs_src/guides/compose-a-domain/018.py !}
+--8<-- "guides/compose-a-domain/018.py:full"
 ```
 
 Subsequent calls to `current_domain` will return the currently active domain.

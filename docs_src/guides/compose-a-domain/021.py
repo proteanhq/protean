@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer, String
 
@@ -12,3 +13,4 @@ class User:
 
 
 domain.register(User)
+# --8<-- [end:full]

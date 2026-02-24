@@ -13,7 +13,7 @@ Value Object within an entity.
 - **`value_object_cls`**: The class of the value object to be embedded.
 
 ```python hl_lines="7-15 20"
-{! docs_src/guides/domain-definition/fields/container-fields/003.py !}
+--8<-- "guides/domain-definition/fields/container-fields/003.py:full"
 ```
 
 You can provide an instance of the Value Object as input to the value object
@@ -51,7 +51,7 @@ Accepted field types are `Boolean`, `Date`, `DateTime`, `Float`, `Identifier`,
     the field as a python object.
 
 ```python hl_lines="10"
-{! docs_src/guides/domain-definition/fields/container-fields/001.py !}
+--8<-- "guides/domain-definition/fields/container-fields/001.py:full"
 ```
 
 The value is provided as a `list`, and the values in the `list` are validated
@@ -80,7 +80,7 @@ essentially like `List(Dict())` when it comes to persistence. However, it will
 have the added benefit of a validation structure of content within the List.
 
 ```python hl_lines="7-12 19"
-{! docs_src/guides/domain-definition/fields/container-fields/004.py !}
+--8<-- "guides/domain-definition/fields/container-fields/004.py:full"
 ```
 
 ```shell
@@ -162,7 +162,7 @@ A field that represents a dictionary.
 `False`.
 
 ```python hl_lines="10"
-{! docs_src/guides/domain-definition/fields/container-fields/002.py !}
+--8<-- "guides/domain-definition/fields/container-fields/002.py:full"
 ```
 
 A regular dictionary can be supplied as value to payload:

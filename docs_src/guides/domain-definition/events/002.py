@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import json
 from datetime import datetime, timezone
 
@@ -79,3 +80,4 @@ with domain.domain_context():
         "activated_at": "2024-07-18 22:06:10.155694+00:00"
     }
     """
+# --8<-- [end:full]

@@ -10,7 +10,7 @@ Let's add a rule: every order must have at least one item. A
 and on every subsequent mutation:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch04.py [ln:23-71] !}
+--8<-- "guides/getting-started/tutorial/ch04.py:aggregate"
 ```
 
 The `order_must_have_items` invariant runs whenever the Order is created
@@ -79,7 +79,7 @@ business logic inside the aggregate where invariants can enforce it.
 ## Putting It Together
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch04.py [ln:87-144] !}
+--8<-- "guides/getting-started/tutorial/ch04.py:usage"
 ```
 
 Run it:
@@ -118,13 +118,25 @@ enters an invalid state.
   public API for state changes.
 
 We now have a rich domain model with aggregates, entities, value objects,
-and business rules. In the next chapter, we will add **commands** and
-**handlers** — the entry point for all state changes.
+and business rules.
+
+!!! success "DDD Milestone"
+    You have built a complete **DDD domain model** — aggregates, entities,
+    value objects, and invariants. These concepts are the foundation for
+    every Protean application, regardless of architecture.
+
+    If you are following the **pure DDD** approach, your next step is
+    [Application Services](../../change-state/application-services.md) to
+    wire use cases. See the [DDD Pathway](../../pathways/ddd.md) for the
+    full reading order.
+
+    The remaining chapters add **CQRS patterns** — Commands, Projections,
+    and separated read/write models — on top of this foundation.
 
 ## Full Source
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch04.py !}
+--8<-- "guides/getting-started/tutorial/ch04.py:full"
 ```
 
 ## Next

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import String
 
@@ -21,3 +22,6 @@ class User:
     name: String(max_length=30)
     email: String(required=True)
     timezone: String(max_length=30)
+
+
+# --8<-- [end:full]

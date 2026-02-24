@@ -23,7 +23,7 @@ that an event has already occurred, such as `OrderPlaced` or `PaymentProcessed`.
 You can define an event with the `Domain.event` decorator:
 
 ```python hl_lines="14-16 19-22 31-33 35-37"
-{! docs_src/guides/domain-definition/events/001.py !}
+--8<-- "guides/domain-definition/events/001.py:full"
 ```
 
 Events are always connected to an Aggregate class, specified with the
@@ -343,7 +343,7 @@ The configured version is reflected in `version` and `type` attributes of the
 generated event's metadata:
 
 ```python hl_lines="32 49 55 70 76"
-{! docs_src/guides/domain-definition/events/002.py !}
+--8<-- "guides/domain-definition/events/002.py:full"
 ```
 
 ## Fact Events

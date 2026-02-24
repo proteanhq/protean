@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain, handle
 from protean.fields import Float, Identifier, String
 
@@ -74,3 +75,6 @@ class OrderFulfillmentPM:
     def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
         self.status = "completed"
         self.mark_as_complete()  # (4)
+
+
+# --8<-- [end:full]

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean.domain import Domain
 from protean.fields import List, String
 
@@ -12,3 +13,6 @@ def standard_topics():
 class Adult:
     name: String(max_length=255)
     topics: List(default=standard_topics)
+
+
+# --8<-- [end:full]

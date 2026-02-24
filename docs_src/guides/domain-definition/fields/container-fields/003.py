@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Float, String, ValueObject
 
@@ -19,3 +20,6 @@ class Balance:
 class Account:
     balance = ValueObject(Balance)
     name: String(max_length=30)
+
+
+# --8<-- [end:full]

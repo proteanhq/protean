@@ -9,7 +9,7 @@ A long form description of the field. This value can be used by database
 adapters to provide additional context to a field.
 
 ```python hl_lines="9"
-{! docs_src/guides/domain-definition/fields/options/009.py !}
+--8<-- "guides/domain-definition/fields/options/009.py:full"
 ```
 
 ## `required`
@@ -18,7 +18,7 @@ Indicates if the field is required (must have a value). If `True`, the field
 is not allowed to be blank. Default is `False`.
 
 ```python hl_lines="9"
-{! docs_src/guides/domain-definition/fields/options/001.py !}
+--8<-- "guides/domain-definition/fields/options/001.py:full"
 ```
 
 Leaving the field blank or not specifying a value will raise a
@@ -37,7 +37,7 @@ If True, the field is an identifier for the entity (a la _primary key_
 in RDBMS).
 
 ```python hl_lines="9"
-{! docs_src/guides/domain-definition/fields/options/002.py !}
+--8<-- "guides/domain-definition/fields/options/002.py:full"
 ```
 
 The field is validated to be unique and non-blank:
@@ -78,7 +78,7 @@ This can be a value or a callable object. If callable, the function will be
 called every time a new object is created.
 
 ```python hl_lines="16"
-{! docs_src/guides/domain-definition/fields/options/003.py !}
+--8<-- "guides/domain-definition/fields/options/003.py:full"
 ```
 
 ```shell hl_lines="6"
@@ -100,7 +100,7 @@ default in all instances. Instead, wrap the desired default in a callable.
 For example, to specify a default `list` for `List` field, use a function:
 
 ```python hl_lines="12"
-{! docs_src/guides/domain-definition/fields/options/004.py !}
+--8<-- "guides/domain-definition/fields/options/004.py:full"
 ```
 
 Initializing an Adult aggregate will populate the defaults correctly:
@@ -120,7 +120,7 @@ Out[2]:
 You can use lambda expressions to specify an anonymous function:
 
 ```python hl_lines="13"
-{! docs_src/guides/domain-definition/fields/options/005.py !}
+--8<-- "guides/domain-definition/fields/options/005.py:full"
 ```
 
 ```shell hl_lines="4"
@@ -141,7 +141,7 @@ Indicates if the field values must be unique within the repository. If `True`,
 this field's value is validated to be unique among all entities.
 
 ```python hl_lines="10"
-{! docs_src/guides/domain-definition/fields/options/006.py !}
+--8<-- "guides/domain-definition/fields/options/006.py:full"
 ```
 
 Obviously, this field's integrity is enforced at the database layer when an
@@ -171,7 +171,7 @@ A set of allowed choices for the field value. When supplied as an `Enum`, the
 value of the field is validated to be one among the specified options.
 
 ```python hl_lines="9-11 18"
-{! docs_src/guides/domain-definition/fields/options/007.py !}
+--8<-- "guides/domain-definition/fields/options/007.py:full"
 ```
 
 The choices are enforced when the field is initialized or updated:
@@ -198,7 +198,7 @@ The name of the field as referenced in the database or external systems.
 Defaults to the field's name.
 
 ```python hl_lines="10"
-{! docs_src/guides/domain-definition/fields/options/008.py !}
+--8<-- "guides/domain-definition/fields/options/008.py:full"
 ```
 
 Protean will now persist the value under `fullname` instead of `name`.
@@ -232,7 +232,7 @@ for example, has two default validators: `MinLengthValidator` and
 attributes.
 
 ```python hl_lines="9-16 21"
-{! docs_src/guides/domain-definition/fields/options/010.py !}
+--8<-- "guides/domain-definition/fields/options/010.py:full"
 ```
 
 If the value fails to satisfy the validation, a `ValidationError` will be
@@ -259,7 +259,7 @@ keys that apply to all field types are `required`, `invalid`, `unique`, and
 detailed in their documentation.
 
 ```python hl_lines="9-11"
-{! docs_src/guides/domain-definition/fields/options/011.py !}
+--8<-- "guides/domain-definition/fields/options/011.py:full"
 ```
 
 Now the custom message will be available in `ValidationError`:

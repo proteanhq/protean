@@ -149,7 +149,7 @@ while `post` invariants check the state after the mutation.
 ## A full-blown example
 
 ```python hl_lines="105-149"
-{! docs_src/guides/domain-behavior/006.py !}
+--8<-- "guides/domain-behavior/006.py:full"
 ```
 
 When an order is placed, `Order` status has to be `CONFIRMED` _and_ the stock

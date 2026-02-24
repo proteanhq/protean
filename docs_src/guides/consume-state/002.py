@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.core.projector import on
 from protean.fields import DateTime, Float, Identifier, Integer, String, Text
@@ -213,3 +214,4 @@ if __name__ == "__main__":
         assert inventory.stock_quantity == 0
         assert catalog.in_stock == "NO"
         print("\n✅ All projections updated correctly!")
+# --8<-- [end:full]

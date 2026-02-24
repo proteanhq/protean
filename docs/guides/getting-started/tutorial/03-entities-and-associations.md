@@ -10,11 +10,11 @@ multiple items, has a shipping address, and tracks its status. Let's model
 it:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch03.py [ln:1-12] !}
+--8<-- "guides/getting-started/tutorial/ch03.py:imports"
 ```
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch03.py [ln:40-56] !}
+--8<-- "guides/getting-started/tutorial/ch03.py:order_with_status"
 ```
 
 Notice that:
@@ -32,7 +32,7 @@ belongs to the Order aggregate. Unlike value objects, entities can be
 individually tracked:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch03.py [ln:63-69] !}
+--8<-- "guides/getting-started/tutorial/ch03.py:order_item_entity"
 ```
 
 The `part_of=Order` parameter tells Protean this entity belongs to the
@@ -44,7 +44,7 @@ through its parent.
 Let's create an order with items and a shipping address:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch03.py [ln:78-111] !}
+--8<-- "guides/getting-started/tutorial/ch03.py:create_order"
 ```
 
 Run it:
@@ -70,7 +70,7 @@ OrderItems + Address) is persisted as a single unit.
 We can also add items to an existing order:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch03.py [ln:122-139] !}
+--8<-- "guides/getting-started/tutorial/ch03.py:add_items"
 ```
 
 The output should show:
@@ -97,7 +97,7 @@ valid state.
 ## Full Source
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch03.py !}
+--8<-- "guides/getting-started/tutorial/ch03.py:full"
 ```
 
 ## Next

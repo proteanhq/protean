@@ -5,6 +5,12 @@
     temporal queries, and full audit trails. If you haven't read the CQRS
     pathway yet, start there — Event Sourcing builds on those concepts.
 
+!!! tip "Hands-On Tutorial"
+    For a hands-on, project-based introduction, see the
+    **[Event Sourcing Tutorial](../getting-started/es-tutorial/index.md)**
+    — a 22-chapter guide that builds a complete banking platform from
+    scratch, covering every Event Sourcing capability in Protean.
+
 ## Overview
 
 In Event Sourcing, aggregate state is not stored as a snapshot in a

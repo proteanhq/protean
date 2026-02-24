@@ -9,7 +9,7 @@ A string field, for small- to large-sized strings. For large amounts of text,
 use [Text](#text).
 
 ```python hl_lines="9"
-{! docs_src/guides/domain-definition/fields/simple-fields/001.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/001.py:full"
 ```
 
 **Optional Arguments**
@@ -26,7 +26,7 @@ A large text field, to hold large amounts of text. Text fields do not have
 size constraints.
 
 ```python hl_lines="10"
-{! docs_src/guides/domain-definition/fields/simple-fields/002.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/002.py:full"
 ```
 
 **Optional Arguments**
@@ -38,7 +38,7 @@ size constraints.
 An integer.
 
 ```python hl_lines="10"
-{! docs_src/guides/domain-definition/fields/simple-fields/003.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/003.py:full"
 ```
 
 **Optional Arguments**
@@ -51,7 +51,7 @@ An integer.
 A floating-point number represented in Python by a float instance.
 
 ```python hl_lines="10"
-{! docs_src/guides/domain-definition/fields/simple-fields/004.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/004.py:full"
 ```
 
 **Optional Arguments**
@@ -64,7 +64,7 @@ A floating-point number represented in Python by a float instance.
 A date, represented in Python by a `datetime.date` instance.
 
 ```python hl_lines="12"
-{! docs_src/guides/domain-definition/fields/simple-fields/005.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/005.py:full"
 ```
 
 ```shell hl_lines="6"
@@ -102,7 +102,7 @@ ValidationError: {'published_on': ['"2019-02-29" has an invalid date format.']}
 A date and time, represented in Python by a `datetime.datetime` instance.
 
 ```python hl_lines="12"
-{! docs_src/guides/domain-definition/fields/simple-fields/006.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/006.py:full"
 ```
 
 ```shell
@@ -120,7 +120,7 @@ Out[2]:
 A `True`/`False` field.
 
 ```python hl_lines="10"
-{! docs_src/guides/domain-definition/fields/simple-fields/007.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/007.py:full"
 ```
 
 ```shell hl_lines="6"
@@ -168,7 +168,7 @@ By default, all entities and aggregates create an `Auto` field named `id`
 that represents their unique identifier.
 
 ```python hl_lines="9"
-{! docs_src/guides/domain-definition/fields/simple-fields/001.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/001.py:full"
 ```
 
 ```shell hl_lines="4 11"
@@ -203,7 +203,7 @@ will be picked from the domain configuration. Defaults to `STRING`. Raises
 `ValidationError` if the provided identity type is not supported.
 
 ```python hl_lines="14"
-{! docs_src/guides/domain-definition/fields/simple-fields/008.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/008.py:full"
 ```
 
 ```shell hl_lines="4"

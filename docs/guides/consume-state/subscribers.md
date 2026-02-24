@@ -43,7 +43,7 @@ integration at the messaging level.
 Subscribers are defined with the `Domain.subscriber` decorator:
 
 ```python hl_lines="23-33"
-{! docs_src/guides/consume-state/003.py !}
+--8<-- "guides/consume-state/003.py:full"
 ```
 
 1. `@domain.subscriber(stream="payment_gateway")` registers this class as a
@@ -267,7 +267,7 @@ Below is a comprehensive example showing two subscribers processing webhooks
 from different external systems -- a payment gateway and a shipping provider:
 
 ```python hl_lines="24-48 51-63"
-{! docs_src/guides/consume-state/004.py !}
+--8<-- "guides/consume-state/004.py:full"
 ```
 
 1. `PaymentWebhookSubscriber` listens to the `"payment_gateway"` stream on the

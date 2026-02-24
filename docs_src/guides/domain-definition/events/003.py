@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import json
 
 from protean import Domain
@@ -56,3 +57,4 @@ with domain.domain_context():
         "id": "781c4363-5e7e-4c53-a599-2cb2dc428d96"
     }
     """
+# --8<-- [end:full]

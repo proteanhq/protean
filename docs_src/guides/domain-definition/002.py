@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import json
 
 from protean.domain import Domain
@@ -15,3 +16,4 @@ class Post:
 with publishing.domain_context():
     post = Post(name="My First Post", created_on="2024-01-01")
     print(json.dumps(post.to_dict(), indent=4))
+# --8<-- [end:full]

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import String
 
@@ -8,3 +9,6 @@ domain = Domain()
 class Person:
     email: String(unique=True)
     name: String(referenced_as="fullname", required=True)
+
+
+# --8<-- [end:full]

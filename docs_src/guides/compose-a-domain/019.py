@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import logging.config
 
 from flask import Flask
@@ -38,3 +39,6 @@ def create_app(config):
         return response
 
     return app
+
+
+# --8<-- [end:full]

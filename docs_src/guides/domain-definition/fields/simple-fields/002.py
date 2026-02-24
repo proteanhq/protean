@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import String, Text
 
@@ -8,3 +9,6 @@ domain = Domain()
 class Book:
     title: String(max_length=255)
     content: Text(required=True)
+
+
+# --8<-- [end:full]

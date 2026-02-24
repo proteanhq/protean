@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import datetime
 
 from protean import Domain
@@ -10,3 +11,6 @@ domain = Domain()
 class Post:
     title: String(max_length=255)
     published_on: Date(default=lambda: datetime.today().date())
+
+
+# --8<-- [end:full]

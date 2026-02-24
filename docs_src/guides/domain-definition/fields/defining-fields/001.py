@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import String, Integer, Float, HasMany
 
@@ -15,3 +16,6 @@ class LineItem:
 class Order:
     customer_name: String(max_length=100, required=True)
     items = HasMany("LineItem")
+
+
+# --8<-- [end:full]

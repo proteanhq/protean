@@ -19,7 +19,7 @@ handler method uses the `@handle` decorator with additional parameters for
 lifecycle management and event correlation.
 
 ```python hl_lines="12-13 18 23 28"
-{! docs_src/guides/consume-state/process-managers/001.py !}
+--8<-- "guides/consume-state/process-managers/001.py:full"
 ```
 
 1. `start=True` marks this handler as the entry point — it creates a new PM
@@ -132,7 +132,7 @@ are silently skipped. No new transition is persisted and no handler runs.
 Process managers drive other aggregates forward by issuing commands:
 
 ```python
-{! docs_src/guides/consume-state/process-managers/003.py !}
+--8<-- "guides/consume-state/process-managers/003.py:full"
 ```
 
 Commands issued inside a handler are committed atomically as part of the same

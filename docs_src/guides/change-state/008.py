@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain, current_domain, use_case
 from protean.fields import Identifier, String
 
@@ -48,3 +49,4 @@ auth.register(User)
 auth.register(UserApplicationServices, part_of=User)
 auth.register(Registered, part_of=User)
 auth.init(traverse=False)
+# --8<-- [end:full]

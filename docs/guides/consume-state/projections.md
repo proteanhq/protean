@@ -418,7 +418,7 @@ class SystemMetricsProjector:
 Below is a comprehensive example showing projections and projectors working together to maintain multiple read models from a single aggregate:
 
 ```python hl_lines="65-75 77-85 88-117 120-147"
-{! docs_src/guides/consume-state/002.py !}
+--8<-- "guides/consume-state/002.py:full"
 ```
 
 This example demonstrates:

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean.domain import Domain
 from protean.fields import Date, String
 
@@ -13,3 +14,6 @@ class Post:
 @publishing.entity(part_of=Post)
 class Comment:
     content: String(max_length=500)
+
+
+# --8<-- [end:full]

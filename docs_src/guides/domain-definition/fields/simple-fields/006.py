@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import datetime, timezone
 
 from protean import Domain
@@ -10,3 +11,6 @@ domain = Domain()
 class Post:
     title: String(max_length=255)
     created_at: DateTime(default=lambda: datetime.now(timezone.utc))
+
+
+# --8<-- [end:full]

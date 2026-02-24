@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -51,3 +52,6 @@ class ArticleCommandHandler:
         article = current_domain.repository_for(Article).get(command.article_id)
         article.publish()
         current_domain.repository_for(Article).add(article)
+
+
+# --8<-- [end:full]

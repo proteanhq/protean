@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Boolean, String
 
@@ -8,3 +9,6 @@ domain = Domain()
 class User:
     name: String(required=True)
     subscribed: Boolean(default=False)
+
+
+# --8<-- [end:full]

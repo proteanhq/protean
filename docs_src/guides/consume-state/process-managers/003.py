@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain, current_domain, handle
 from protean.fields import Float, Identifier, String
 
@@ -60,3 +61,6 @@ class OrderPaymentPM:
         current_domain.process(  # (2)
             CancelOrder(order_id=self.order_id)
         )
+
+
+# --8<-- [end:full]

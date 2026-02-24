@@ -21,7 +21,7 @@ and ***Aggregate Root*** are synonymous.
 Aggregates are defined with the `Domain.aggregate` decorator:
 
 ```python hl_lines="8"
-{! docs_src/guides/domain-definition/001.py !}
+--8<-- "guides/domain-definition/001.py:full"
 ```
 
 In the example above, `Post` is defined to as an Aggregate with two fields,
@@ -37,7 +37,7 @@ Aggregates enclose a number of fields and associate behaviors with them to
 represent a domain concept.
 
 ```python hl_lines="9-10"
-{! docs_src/guides/domain-definition/001.py !}
+--8<-- "guides/domain-definition/001.py:full"
 ```
 
 Here, `Post` aggregate has two fields:
@@ -58,7 +58,7 @@ The full list of available fields in Protean and their options is available in
 An aggregate can be initialized by passing field values as key-value pairs:
 
 ```python hl_lines="17"
-{! docs_src/guides/domain-definition/002.py !}
+--8<-- "guides/domain-definition/002.py:full"
 ```
 
 This would output something like:
@@ -121,7 +121,7 @@ Often, you may want to have common attributes across aggregates in your domain.
 attributes in a base aggregate and inherit it in concrete classes:
 
 ```python hl_lines="9-10 16"
-{! docs_src/guides/domain-definition/003.py !}
+--8<-- "guides/domain-definition/003.py:full"
 ```
 
 Notice that the `TimeStamped` class has been marked `abstract=True`. This is
@@ -161,7 +161,7 @@ Marks an Aggregate as abstract if `True`. If abstract, the aggregate
 cannot be instantiated and needs to be subclassed.
 
 ```python hl_lines="12"
-{! docs_src/guides/domain-definition/003.py !}
+--8<-- "guides/domain-definition/003.py:full"
 ```
 
 Trying to instantiate an abstact Aggregate will throw `NotSupportedError`:
@@ -190,7 +190,7 @@ Domain’s configuration. Protean identifies the correct data store, establishes
 the connection and takes responsibility of persisting the data.
 
 ```python hl_lines="5-16 19"
-{! docs_src/guides/domain-definition/004.py !}
+--8<-- "guides/domain-definition/004.py:full"
 ```
 
 Protean requires at least one provider, named `default`, to be specified in the
@@ -205,7 +205,7 @@ The name to store and retrieve the aggregate from the persistence store. By
 default, `schema_name` is the snake case version of the Aggregate's name.
 
 ```python hl_lines="12-13"
-{! docs_src/guides/domain-definition/006.py !}
+--8<-- "guides/domain-definition/006.py:full"
 ```
 
 ### `model`
@@ -216,7 +216,7 @@ use cases, you can also explicitly construct a model and associate it with
 the aggregate.
 
 ```python hl_lines="22-25"
-{! docs_src/guides/domain-definition/005.py !}
+--8<-- "guides/domain-definition/005.py:full"
 ```
 
 !!!note
@@ -273,7 +273,7 @@ A HasOne field establishes a has-one relation with the entity. In the example
 below, `Post` has exactly one `Statistic` record associated with it.
 
 ```python hl_lines="18 22-26"
-{! docs_src/guides/domain-definition/008.py !}
+--8<-- "guides/domain-definition/008.py:full"
 ```
 
 ```shell
@@ -287,7 +287,7 @@ In [3]: current_domain.repository_for(Post).add(post)
 ### `HasMany`
 
 ```python hl_lines="19 29-33"
-{! docs_src/guides/domain-definition/008.py !}
+--8<-- "guides/domain-definition/008.py:full"
 ```
 
 Below is an example of adding multiple comments to the domain defined above:

@@ -41,7 +41,7 @@ for more).
 Let's define a `Book`:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch01.py [ln:1-15] !}
+--8<-- "guides/getting-started/tutorial/ch01.py:imports_and_aggregate"
 ```
 
 Notice that:
@@ -103,7 +103,7 @@ Creating a `Book` object gives you an in-memory instance, but it is not
 persisted yet. To save and retrieve books, use a **repository**:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch01.py [ln:24-45] !}
+--8<-- "guides/getting-started/tutorial/ch01.py:usage"
 ```
 
 - **`domain.repository_for(Book)`** returns a repository bound to the
@@ -161,7 +161,7 @@ we will add richer fields and create value objects for price and address.
 ## Full Source
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch01.py !}
+--8<-- "guides/getting-started/tutorial/ch01.py:full"
 ```
 
 ## Next

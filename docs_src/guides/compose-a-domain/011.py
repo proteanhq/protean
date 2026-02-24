@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import uuid
 
 import sqlalchemy as sa
@@ -24,3 +25,6 @@ class UserCustomModel:
 
     class Meta:
         schema_name = "customers"
+
+
+# --8<-- [end:full]

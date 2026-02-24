@@ -10,15 +10,15 @@ Our Book currently has just `title`, `author`, `isbn`, and `price`. A real
 bookstore needs more. Let's add several new fields:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch02.py [ln:1-8] !}
+--8<-- "guides/getting-started/tutorial/ch02.py:field_imports"
 ```
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch02.py [ln:11-20] !}
+--8<-- "guides/getting-started/tutorial/ch02.py:genre_enum"
 ```
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch02.py [ln:52-63] !}
+--8<-- "guides/getting-started/tutorial/ch02.py:aggregate"
 ```
 
 We have added:
@@ -56,13 +56,13 @@ immutable object defined by its attributes, with no identity of its own
 for more).
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch02.py [ln:24-32] !}
+--8<-- "guides/getting-started/tutorial/ch02.py:money_vo"
 ```
 
 Now embed it in the `Book` aggregate using a `ValueObject` field:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch02.py [ln:52-63] !}
+--8<-- "guides/getting-started/tutorial/ch02.py:aggregate"
 ```
 
 Notice that `price` is now declared with `ValueObject(Money)` instead of
@@ -100,7 +100,7 @@ print(price1 == price3)  # False — different amount
 Let's also create an `Address` value object for shipping addresses:
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch02.py [ln:36-44] !}
+--8<-- "guides/getting-started/tutorial/ch02.py:address_vo"
 ```
 
 We will use this in the next chapter when we build the `Order` aggregate.
@@ -108,7 +108,7 @@ We will use this in the next chapter when we build the `Order` aggregate.
 ## Putting It Together
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch02.py [ln:70-] !}
+--8<-- "guides/getting-started/tutorial/ch02.py:usage"
 ```
 
 Run it:
@@ -149,7 +149,7 @@ next chapter, we will build the `Order` aggregate with child entities.
 ## Full Source
 
 ```python
-{! docs_src/guides/getting-started/tutorial/ch02.py !}
+--8<-- "guides/getting-started/tutorial/ch02.py:full"
 ```
 
 ## Next

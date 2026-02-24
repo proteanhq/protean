@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from enum import Enum
 
 from protean import Domain
@@ -16,3 +17,6 @@ class Building:
     name: String(max_length=50)
     floors: Integer()
     status: String(choices=BuildingStatus)
+
+
+# --8<-- [end:full]

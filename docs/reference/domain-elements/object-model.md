@@ -14,7 +14,7 @@ specified for the element.
 Options are passed as parameters to the element decorator:
 
 ```python hl_lines="7"
-{! docs_src/guides/compose-a-domain/021.py !}
+--8<-- "guides/compose-a-domain/021.py:full"
 ```
 
 ```python

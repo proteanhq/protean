@@ -210,7 +210,7 @@ def _replay_projector(
         all_messages.extend(messages)
 
     # Sort by global_position for correct cross-category ordering
-    all_messages.sort(key=lambda m: (m.metadata.event_store.global_position or 0))
+    all_messages.sort(key=lambda m: m.metadata.event_store.global_position or 0)
 
     dispatched = 0
     skipped = 0

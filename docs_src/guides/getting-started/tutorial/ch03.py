@@ -1,3 +1,5 @@
+# --8<-- [start:full]
+# --8<-- [start:imports]
 from enum import Enum
 
 from protean import Domain
@@ -10,6 +12,7 @@ from protean.fields import (
     ValueObject,
 )
 
+# --8<-- [end:imports]
 domain = Domain()
 
 
@@ -37,6 +40,7 @@ class Book:
     description: Text()
 
 
+# --8<-- [start:order_with_status]
 class OrderStatus(Enum):
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
@@ -57,6 +61,7 @@ class Order:
 
 
 # --8<-- [end:order_aggregate]
+# --8<-- [end:order_with_status]
 
 
 # --8<-- [start:order_item_entity]
@@ -76,6 +81,7 @@ domain.init(traverse=False)
 # --8<-- [start:usage]
 if __name__ == "__main__":
     with domain.domain_context():
+        # --8<-- [start:create_order]
         repo = domain.repository_for(Order)
 
         # Create an order with items
@@ -109,6 +115,7 @@ if __name__ == "__main__":
         for item in order.items:
             print(f"  - {item.book_title} x{item.quantity} @ ${item.unit_price.amount}")
             print(f"    Item ID: {item.id}")
+        # --8<-- [end:create_order]
 
         # Persist the entire aggregate (order + items together)
         repo.add(order)
@@ -118,6 +125,7 @@ if __name__ == "__main__":
         print(f"\nRetrieved order: {saved_order.customer_name}")
         print(f"Items: {len(saved_order.items)}")
 
+        # --8<-- [start:add_items]
         # Add another item to the order
         saved_order.add_items(
             OrderItem(
@@ -137,4 +145,6 @@ if __name__ == "__main__":
         assert len(updated.items) == 3
         assert updated.shipping_address.city == "Portland"
         print("\nAll checks passed!")
+        # --8<-- [end:add_items]
 # --8<-- [end:usage]
+# --8<-- [end:full]

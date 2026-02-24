@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 
 domain = Domain()
@@ -14,3 +15,4 @@ domain.init(traverse=False)
 #
 # protean.exceptions.ConfigurationError:
 # Could not connect to database at postgresql://postgres:postgres@localhost:5444/foobar
+# --8<-- [end:full]

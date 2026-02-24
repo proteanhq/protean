@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer, String
 
@@ -15,3 +16,6 @@ class User:
 class Credentials:
     email: String(max_length=254)
     password_hash: String(max_length=128)
+
+
+# --8<-- [end:full]

@@ -121,4 +121,4 @@ class DomainContext(object):
         self.pop(exc_value)
 
         if exc_type is not None:
-            raise exc_type(exc_value, tb)
+            raise exc_value.with_traceback(tb)

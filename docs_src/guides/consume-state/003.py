@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import logging
 
 from protean import Domain
@@ -51,3 +52,4 @@ if __name__ == "__main__":
         print(f"Payment status: {updated.status}")
         assert updated.status == "CONFIRMED"
         print("Payment confirmed successfully!")
+# --8<-- [end:full]

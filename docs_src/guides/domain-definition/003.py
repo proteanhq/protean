@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import datetime, timezone
 
 from protean import Domain
@@ -20,3 +21,6 @@ class TimeStamped:
 class User(TimeStamped):
     name: String(max_length=30)
     timezone: String(max_length=30)
+
+
+# --8<-- [end:full]

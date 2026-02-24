@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain, handle
 from protean.fields import Identifier, String
 
@@ -32,3 +33,6 @@ class UserCommandHandlers:
     @handle(ChangePassword)
     def change_password(self, command: ChangePassword) -> None:
         pass
+
+
+# --8<-- [end:full]

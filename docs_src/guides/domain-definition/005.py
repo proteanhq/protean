@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import sqlalchemy
 
 from protean import Domain
@@ -23,3 +24,6 @@ class Person:
 class PersonModel:
     first_name = sqlalchemy.Column(sqlalchemy.Text)
     last_name = sqlalchemy.Column(sqlalchemy.Text)
+
+
+# --8<-- [end:full]

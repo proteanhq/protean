@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import HasOne, List, String, ValueObject
 
@@ -22,3 +23,6 @@ class Customer:
 @domain.aggregate
 class Order:
     customer = HasOne(Customer)
+
+
+# --8<-- [end:full]

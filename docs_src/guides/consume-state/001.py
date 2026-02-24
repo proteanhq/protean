@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain, handle
 from protean.fields import Identifier, Integer, String
 
@@ -69,3 +70,4 @@ with domain.domain_context():
     stock = domain.repository_for(Inventory).get(inventory.id)
     print(stock.to_dict())
     assert stock.in_stock == 90
+# --8<-- [end:full]

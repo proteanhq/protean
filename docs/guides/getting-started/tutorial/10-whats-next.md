@@ -4,10 +4,14 @@ We have built a working bookstore with aggregates, value objects, entities,
 commands, events, projections, a real database, and tests. Here is where
 to go from here.
 
-## Application Services
+## Application Services (The DDD Alternative)
 
-Coordinate use cases from an API layer with synchronous request-response.
-See [Application Services](../../change-state/application-services.md).
+This tutorial used **Commands and Command Handlers** (the CQRS approach).
+In the **pure DDD** approach, **Application Services** fill the same role
+— they receive requests directly and coordinate the domain logic, without
+the explicit command objects.
+See [Application Services](../../change-state/application-services.md)
+and the [DDD Pathway](../../pathways/ddd.md) for the full reading order.
 
 ## Domain Services
 
@@ -23,7 +27,11 @@ message brokers. See the [Server guide](../../../concepts/async-processing/index
 ## Event Sourcing
 
 Store events instead of state for full audit trails and temporal queries.
-See the [Event Sourcing pathway](../../pathways/event-sourcing.md).
+The **[Event Sourcing Tutorial](../es-tutorial/index.md)** is a
+comprehensive 22-chapter guide that builds a banking platform from
+scratch, covering everything from your first event-sourced aggregate
+to production operations. Also see the
+[Event Sourcing pathway](../../pathways/event-sourcing.md).
 
 ## Multiple Databases
 

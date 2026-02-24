@@ -49,7 +49,7 @@ When you need domain-named query methods -- such as finding all overdue
 orders or looking up customers by region -- you define a custom repository:
 
 ```python hl_lines="16"
-{! docs_src/guides/change-state/004.py !}
+--8<-- "guides/change-state/004.py:full"
 ```
 
 1. The repository is connected to `Person` aggregate through the `part_of`
@@ -77,7 +77,7 @@ A repository can contain as many query methods as needed. Name them after
 the domain concepts they represent:
 
 ```python hl_lines="15-27"
-{! docs_src/guides/change-state/009.py !}
+--8<-- "guides/change-state/009.py:full"
 ```
 
 1. The repository is connected to the `Person` aggregate through `part_of`.

@@ -34,7 +34,7 @@ rules.
 Let's model a `Post`:
 
 ```python hl_lines="4-5 8-18"
-{! docs_src/guides/getting-started/quickstart.py [ln:1-26] !}
+--8<-- "guides/getting-started/quickstart.py:imports_and_aggregate"
 ```
 
 A few things to note:
@@ -54,7 +54,7 @@ Events represent things that *happened*. They are named in past tense and
 are raised from within aggregates:
 
 ```python
-{! docs_src/guides/getting-started/quickstart.py [ln:30-34] !}
+--8<-- "guides/getting-started/quickstart.py:event"
 ```
 
 The `part_of` option connects the event to its aggregate. Events are immutable
@@ -66,7 +66,7 @@ Commands represent *intent to change state*. They are named as imperative
 verbs. A command handler receives the command and orchestrates the change:
 
 ```python
-{! docs_src/guides/getting-started/quickstart.py [ln:38-53] !}
+--8<-- "guides/getting-started/quickstart.py:command_and_handler"
 ```
 
 The command handler follows a simple pattern: receive a command, create or
@@ -79,7 +79,7 @@ Event handlers process events after they occur — for side effects like
 sending notifications, syncing other aggregates, or logging:
 
 ```python
-{! docs_src/guides/getting-started/quickstart.py [ln:57-62] !}
+--8<-- "guides/getting-started/quickstart.py:event_handler"
 ```
 
 Event handlers are decoupled from the aggregate that raised the event. In
@@ -92,7 +92,7 @@ Initialize the domain and run the full cycle — create a post via a command,
 then publish it:
 
 ```python
-{! docs_src/guides/getting-started/quickstart.py [ln:65-89] !}
+--8<-- "guides/getting-started/quickstart.py:usage"
 ```
 
 Run it:
@@ -145,7 +145,7 @@ When you're ready for production, swap in real adapters with
 Here is the complete example in a single file:
 
 ```python
-{! docs_src/guides/getting-started/quickstart.py !}
+--8<-- "guides/getting-started/quickstart.py:full"
 ```
 
 ## Next Steps

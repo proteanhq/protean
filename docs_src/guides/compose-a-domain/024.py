@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import time
 
 from protean import Domain
@@ -19,3 +20,6 @@ class User:
         identity_type="integer",
     )
     name: String(required=True)
+
+
+# --8<-- [end:full]

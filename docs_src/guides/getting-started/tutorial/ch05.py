@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain, handle
 from protean.fields import Float, Identifier, String, Text, ValueObject
 from protean.utils.globals import current_domain
@@ -102,3 +103,4 @@ if __name__ == "__main__":
         assert all_books.total == 2
         print("\nAll checks passed!")
 # --8<-- [end:usage]
+# --8<-- [end:full]

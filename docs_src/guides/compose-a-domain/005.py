@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Identifier, Integer, String, ValueObject
 
@@ -35,3 +36,6 @@ class SubscriptionManagement:
     def subscribe_user(self, user, plan):
         subscription = Subscription(user=user, plan=plan, status="ACTIVE")
         return subscription
+
+
+# --8<-- [end:full]

@@ -22,7 +22,7 @@ This field is used to define a relationship where an aggregate is associated
 with at most one instance of a child entity.
 
 ```python hl_lines="10 13"
-{! docs_src/guides/domain-definition/fields/association-fields/001.py !}
+--8<-- "guides/domain-definition/fields/association-fields/001.py:full"
 ```
 
 !!!note
@@ -82,7 +82,7 @@ to define a relationship where an aggregate has multiple instances of a child
 entity.
 
 ```python hl_lines="11"
-{! docs_src/guides/domain-definition/fields/association-fields/002.py !}
+--8<-- "guides/domain-definition/fields/association-fields/002.py:full"
 ```
 
 Protean provides helper methods that begin with `add_` and `remove_` to add

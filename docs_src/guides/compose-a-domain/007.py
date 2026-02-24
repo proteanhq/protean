@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Identifier, String
 
@@ -21,3 +22,6 @@ class Register:
     email: String()
     name: String()
     password_hash: String()
+
+
+# --8<-- [end:full]

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Boolean, Identifier, String, Text
 
@@ -19,3 +20,6 @@ class Post:
 class PostPublished:
     post_id: Identifier(required=True)
     body: Text()
+
+
+# --8<-- [end:full]

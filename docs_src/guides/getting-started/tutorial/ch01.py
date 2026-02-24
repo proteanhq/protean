@@ -1,3 +1,5 @@
+# --8<-- [start:full]
+# --8<-- [start:imports_and_aggregate]
 from protean import Domain
 from protean.fields import Float, String
 
@@ -14,6 +16,7 @@ class Book:
 
 
 # --8<-- [end:aggregate]
+# --8<-- [end:imports_and_aggregate]
 
 
 domain.init(traverse=False)
@@ -46,3 +49,4 @@ if __name__ == "__main__":
         assert saved_book.price == 12.99
         print("All checks passed!")
 # --8<-- [end:usage]
+# --8<-- [end:full]

@@ -1,3 +1,5 @@
+# --8<-- [start:full]
+# --8<-- [start:field_imports]
 from enum import Enum
 
 from protean import Domain
@@ -15,6 +17,7 @@ from protean.fields import (
 domain = Domain()
 
 
+# --8<-- [end:field_imports]
 # --8<-- [start:genre_enum]
 class Genre(Enum):
     FICTION = "FICTION"
@@ -128,3 +131,4 @@ if __name__ == "__main__":
         assert shipping.country == "US"
         print("\nAll checks passed!")
 # --8<-- [end:usage]
+# --8<-- [end:full]

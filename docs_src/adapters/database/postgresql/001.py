@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import sqlalchemy as sa
 
 from protean import Domain
@@ -27,3 +28,4 @@ domain.init()
 with domain.domain_context():
     database_model_cls = domain.repository_for(Provider)._database_model
     assert issubclass(database_model_cls, SqlalchemyModel)
+# --8<-- [end:full]

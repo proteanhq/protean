@@ -38,7 +38,6 @@ theme:
     - navigation.footer
     - navigation.indexes
     - navigation.sections
-    - navigation.expand
     - navigation.instant
     - navigation.instant.prefetch
     - navigation.instant.progress
@@ -145,6 +144,35 @@ nav:
       - "Part IV - Testing":
         - "9. Testing Your Domain": guides/getting-started/tutorial/09-testing.md
         - "10. What Comes Next": guides/getting-started/tutorial/10-whats-next.md
+    - "Event Sourcing Tutorial":
+      - guides/getting-started/es-tutorial/index.md
+      - "Part I - Building the Foundation":
+        - "1. The Faithful Ledger": guides/getting-started/es-tutorial/01-the-faithful-ledger.md
+        - "2. Deposits and Withdrawals": guides/getting-started/es-tutorial/02-deposits-and-withdrawals.md
+        - "3. Commands and the Pipeline": guides/getting-started/es-tutorial/03-commands-and-pipeline.md
+        - "4. Business Rules": guides/getting-started/es-tutorial/04-business-rules.md
+        - "5. Testing the Ledger": guides/getting-started/es-tutorial/05-testing-the-ledger.md
+      - "Part II - Growing the Platform":
+        - "6. The Account Dashboard": guides/getting-started/es-tutorial/06-account-dashboard.md
+        - "7. Reacting to Events": guides/getting-started/es-tutorial/07-reacting-to-events.md
+        - "8. Going Async": guides/getting-started/es-tutorial/08-going-async.md
+        - "9. Transferring Funds": guides/getting-started/es-tutorial/09-transferring-funds.md
+        - "10. Entities Inside Aggregates": guides/getting-started/es-tutorial/10-entities-inside-aggregates.md
+      - "Part III - Evolution and Adaptation":
+        - "11. Event Upcasting": guides/getting-started/es-tutorial/11-event-upcasting.md
+        - "12. Snapshots": guides/getting-started/es-tutorial/12-snapshots.md
+        - "13. Temporal Queries": guides/getting-started/es-tutorial/13-temporal-queries.md
+        - "14. External Integrations": guides/getting-started/es-tutorial/14-connecting-outside-world.md
+      - "Part IV - Production Operations":
+        - "15. Fact Events": guides/getting-started/es-tutorial/15-fact-events.md
+        - "16. Message Tracing": guides/getting-started/es-tutorial/16-message-tracing.md
+        - "17. Dead Letter Queues": guides/getting-started/es-tutorial/17-dead-letter-queues.md
+        - "18. Monitoring Health": guides/getting-started/es-tutorial/18-monitoring-health.md
+        - "19. Priority Lanes": guides/getting-started/es-tutorial/19-priority-lanes.md
+      - "Part V - Mastery":
+        - "20. Rebuilding Projections": guides/getting-started/es-tutorial/20-rebuilding-projections.md
+        - "21. The Event Store as a Database": guides/getting-started/es-tutorial/21-event-store-database.md
+        - "22. The Full Picture": guides/getting-started/es-tutorial/22-the-full-picture.md
 
   - Guides:
     - guides/index.md
@@ -234,6 +262,7 @@ nav:
         - reference/cli/runtime/index.md
         - reference/cli/runtime/server.md
         - reference/cli/runtime/observatory.md
+        - reference/cli/runtime/subscriptions.md
       - Data:
         - reference/cli/data/index.md
         - reference/cli/data/database.md

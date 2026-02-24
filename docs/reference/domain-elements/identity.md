@@ -85,7 +85,7 @@ field can be designated as the identity by setting `identifier=True`
 in its properties.
 
 ```py hl_lines="9"
-{! docs_src/guides/compose-a-domain/023.py !}
+--8<-- "guides/compose-a-domain/023.py:full"
 ```
 
 ```shell hl_lines="4 9 15"
@@ -112,7 +112,7 @@ When an identity field is not supplied, an `Auto` field called `id` is
 automatically added to the entity.
 
 ```py
-{! docs_src/guides/domain-definition/fields/simple-fields/001.py !}
+--8<-- "guides/domain-definition/fields/simple-fields/001.py:full"
 ```
 
 ```shell hl_lines="6"
@@ -148,7 +148,7 @@ The identity of an aggregate or entity element can be customized by explicit
 configuration of an `Auto` or `Identifier`:
 
 ```python hl_lines="9-10 15-20"
-{! docs_src/guides/compose-a-domain/024.py !}
+--8<-- "guides/compose-a-domain/024.py:full"
 ```
 
 1. A custom function that generates identity in the form of epoch time

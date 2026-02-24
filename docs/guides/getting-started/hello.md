@@ -12,7 +12,7 @@ Define an aggregate, save it, load it — in under 20 lines of Python.
 Create a file called `hello.py`:
 
 ```python
-{! docs_src/guides/getting-started/hello.py !}
+--8<-- "guides/getting-started/hello.py:full"
 ```
 
 Run it:

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import date
 
 from protean import Domain
@@ -39,3 +40,6 @@ class Hold:
                 patron_id=self._owner.id,  # (1)
             )
         )
+
+
+# --8<-- [end:full]

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Boolean, String
 
@@ -26,3 +27,4 @@ if __name__ == "__main__":
         saved = repo.get(task.id)
         print(f"Loaded:  {saved.title} (done={saved.done})")
         print(f"ID:      {saved.id}")
+# --8<-- [end:full]

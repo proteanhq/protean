@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import String
 
@@ -18,3 +19,4 @@ with domain.domain_context():
         email="john.doe@localhost",
     )
     domain.repository_for(Person).add(person)
+# --8<-- [end:full]

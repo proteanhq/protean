@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer, String
 
@@ -15,3 +16,6 @@ class Person:
 class CustomPersonRepository:
     def find_by_email(self, email: str) -> Person:
         return self._dao.find_by(email=email)
+
+
+# --8<-- [end:full]

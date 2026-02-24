@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import logging
 
 from protean import Domain
@@ -99,3 +100,4 @@ if __name__ == "__main__":
         assert updated.status == "SHIPPED"
 
         print("\nAll webhooks processed successfully!")
+# --8<-- [end:full]

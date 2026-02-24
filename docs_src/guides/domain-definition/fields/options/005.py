@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import random
 
 from protean.domain import Domain
@@ -14,3 +15,6 @@ class Dice:
 
     def throw(self):
         return random.randint(1, self.sides)
+
+
+# --8<-- [end:full]

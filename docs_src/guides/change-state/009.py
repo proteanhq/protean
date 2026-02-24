@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer, String
 
@@ -25,3 +26,6 @@ class PersonRepository:
     def by_country(self, country_code: str) -> list:
         """Find all people in a given country."""
         return self._dao.query.filter(country=country_code).all().items
+
+
+# --8<-- [end:full]
