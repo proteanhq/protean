@@ -80,9 +80,12 @@ class Caches(collections.abc.MutableMapping):
         if self._caches is None:
             self._initialize()
 
-        projection_provider = projection_cls.meta_.provider
+        # Use meta_.cache (the cache adapter name) when the projection is
+        # cache-backed.  Fall back to meta_.provider for backward compatibility
+        # with projections that call cache_for() without formal registration.
+        cache_name = projection_cls.meta_.cache or projection_cls.meta_.provider
 
-        cache = self.get(projection_provider)
+        cache = self.get(cache_name)
 
         projection_name = underscore(projection_cls.__name__)
         if projection_name not in cache._projections:

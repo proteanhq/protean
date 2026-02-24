@@ -127,6 +127,51 @@ repo.add(inventory_record)
     use [repositories](../change-state/retrieve-aggregates.md) with custom
     query methods.
 
+### ReadView — Read-Only Projection Access
+
+For a higher-level, read-only interface, use `domain.view_for()`. It returns
+a `ReadView` — a lightweight facade that bundles the most common read
+operations and structurally prevents writes:
+
+```python
+view = domain.view_for(ProductInventory)
+
+# Single lookup by identifier
+item = view.get("abc-123")
+
+# Fluent filtering via ReadOnlyQuerySet
+low_stock = view.query.filter(stock_quantity__lt=10).order_by("name").all()
+
+# Convenience single-item lookup by criteria
+item = view.find_by(product_id="abc-123")
+
+# Total count and existence checks
+total = view.count()
+found = view.exists("abc-123")
+```
+
+`ReadView` does not expose `add()`, `_dao`, or any mutation methods — it is
+safe to pass to API endpoints and query handlers without risking accidental
+writes.
+
+#### Cache-backed projections
+
+When a projection is stored in a cache (Redis, in-memory), `view.get()`,
+`view.count()`, and `view.exists()` work as expected. However, `view.query`
+and `view.find_by()` raise `NotSupportedError` because cache backends are
+key-value stores and do not support field-based filtering.
+
+#### Three levels of read access
+
+Protean provides three levels of projection read access, each suited to
+different use cases:
+
+| Level | Entry point | Returns | Use when |
+|-------|-------------|---------|----------|
+| **ReadView** | `domain.view_for(Proj)` | `ReadView` | Default for endpoints and query handlers — read-only by design |
+| **QuerySet** | `domain.query_for(Proj)` | `ReadOnlyQuerySet` | Direct QuerySet access for custom filtering |
+| **Repository** | `domain.repository_for(Proj)` | `BaseRepository` | Inside projectors — when you need to write |
+
 ---
 
 ## Projectors

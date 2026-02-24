@@ -26,6 +26,7 @@ from typing import (
 
 if TYPE_CHECKING:
     from protean.core.queryset import ReadOnlyQuerySet
+    from protean.core.view import ReadView
     from protean.utils.projection_rebuilder import RebuildResult
 from uuid import uuid4
 
@@ -2031,6 +2032,50 @@ class Domain:
             self,
             projection_cls,
         )
+
+    ###########################
+    # ReadView Functionality #
+    ###########################
+
+    def view_for(self, projection_cls: type) -> "ReadView":
+        """Return a read-only :class:`ReadView` for querying a projection.
+
+        The returned ``ReadView`` exposes ``get()``, ``query``
+        (``ReadOnlyQuerySet``), ``find_by()``, ``count()``, and
+        ``exists()`` — but no mutation methods.
+
+        Works with both database-backed and cache-backed projections.
+
+        Args:
+            projection_cls: A registered projection class.
+
+        Returns:
+            A ``ReadView`` bound to the projection's data store.
+
+        Raises:
+            IncorrectUsageError: If the element is not a projection.
+
+        Example::
+
+            view = domain.view_for(OrderSummary)
+            order = view.get("order-123")
+            results = view.query.filter(status="shipped").all()
+        """
+        from protean.core.view import ReadView
+
+        if isinstance(projection_cls, str):
+            raise IncorrectUsageError(
+                f"Element {projection_cls} is not registered in domain {self.name}"
+            )
+
+        if projection_cls.element_type != DomainObjects.PROJECTION:
+            raise IncorrectUsageError(
+                f"`view_for` is only available for projections. "
+                f"Received {projection_cls.__name__} "
+                f"({projection_cls.element_type})."
+            )
+
+        return ReadView(self, projection_cls)
 
     #######################
     # Cache Functionality #

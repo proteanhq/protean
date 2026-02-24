@@ -5,6 +5,7 @@ from .core.application_service import use_case
 from .core.entity import invariant
 from .core.queryset import Q, QuerySet, ReadOnlyQuerySet
 from .core.unit_of_work import UnitOfWork
+from .core.view import ReadView
 from .domain import Domain
 from .server import Engine
 from .utils import get_version
@@ -29,6 +30,7 @@ __all__ = [
     "Q",
     "QuerySet",
     "ReadOnlyQuerySet",
+    "ReadView",
     "UnitOfWork",
     "use_case",
 ]
