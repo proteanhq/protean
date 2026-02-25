@@ -128,14 +128,6 @@ class ESSession:
         self._provider = provider
         self.is_active = True
 
-    def add(self, element):
-        dao = self._provider.get_dao(element.__class__)
-        dao.create(element.to_dict())
-
-    def delete(self, element):
-        dao = self._provider.get_dao(element.__class__)
-        dao.delete(element)
-
     def commit(self):
         pass
 
