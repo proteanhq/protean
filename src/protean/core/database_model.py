@@ -1,8 +1,10 @@
 from abc import abstractmethod
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.fields.association import Reference
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
+from protean.utils.reflection import attributes
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
@@ -62,6 +64,15 @@ class BaseDatabaseModel(Element, OptionsMixin):
             return cls.meta_.part_of.meta_.schema_name
 
     @classmethod
+    def _entity_to_dict(cls, entity: Any) -> dict[str, Any]:
+        """Extract attribute values from an entity into a plain dict.
+
+        Handles Reference fields and ``referenced_as`` remapping.
+        Subclass ``from_entity()`` can call this and post-process as needed.
+        """
+        return _entity_to_dict(cls, entity)
+
+    @classmethod
     @abstractmethod
     def from_entity(cls, entity: Any) -> Any:
         """Convert a domain entity/aggregate into a database model instance.
@@ -87,6 +98,36 @@ class BaseDatabaseModel(Element, OptionsMixin):
         Returns:
             BaseEntity: The reconstituted domain entity or aggregate.
         """
+
+
+def _entity_to_dict(model_cls: type, entity: Any) -> dict[str, Any]:
+    """Extract attribute values from an entity into a plain dict.
+
+    Handles Reference fields and ``referenced_as`` remapping.  This is
+    the shared implementation used by all adapter-specific ``from_entity()``
+    methods.
+
+    Args:
+        model_cls: A database model class with ``meta_.part_of`` pointing
+            to the domain entity/aggregate class.
+        entity: The domain entity or aggregate instance.
+
+    Returns:
+        A dict mapping storage-level attribute names to their values.
+    """
+    item_dict: dict[str, Any] = {}
+    for attr_obj in attributes(model_cls.meta_.part_of).values():
+        if isinstance(attr_obj, Reference):
+            item_dict[attr_obj.relation.attribute_name] = attr_obj.relation.value
+        else:
+            if attr_obj.referenced_as:
+                value = getattr(entity, attr_obj.field_name)
+                key = attr_obj.referenced_as
+            else:
+                value = getattr(entity, attr_obj.attribute_name)
+                key = attr_obj.attribute_name
+            item_dict[key] = value
+    return item_dict
 
 
 _T = TypeVar("_T")

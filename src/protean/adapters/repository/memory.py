@@ -14,7 +14,6 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.exceptions import DatabaseError, ObjectNotFoundError
-from protean.fields.association import Reference
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
 from protean.utils.container import Options
@@ -69,18 +68,7 @@ class MemoryModel(BaseDatabaseModel):
     @classmethod
     def from_entity(cls, entity) -> dict[str, Any]:
         """Convert the entity to a dictionary record"""
-        item_dict = {}
-        for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
-            if isinstance(attr_obj, Reference):
-                item_dict[attr_obj.relation.attribute_name] = attr_obj.relation.value
-            else:
-                if attr_obj.referenced_as:
-                    item_dict[attr_obj.referenced_as] = getattr(
-                        entity, attr_obj.field_name
-                    )
-                else:
-                    item_dict[attr_name] = getattr(entity, attr_name)
-        return item_dict
+        return cls._entity_to_dict(entity)
 
     @classmethod
     def to_entity(cls, item: dict[str, Any]) -> BaseEntity:
