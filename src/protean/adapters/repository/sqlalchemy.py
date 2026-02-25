@@ -356,26 +356,20 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     @classmethod
     def from_entity(cls, entity) -> "SqlalchemyModel":
         """Convert the entity to a model object"""
-        item_dict = {}
+        item_dict = cls._entity_to_dict(entity)
+
+        # Serialize List-of-VOs to dicts for JSON/ARRAY(JSON) storage.
+        # Works for both legacy ValueObjectList and ResolvedField.
         for attr_obj in attributes(cls.meta_.part_of).values():
             if isinstance(attr_obj, Reference):
-                item_dict[attr_obj.relation.attribute_name] = attr_obj.relation.value
-            else:
-                if attr_obj.referenced_as:
-                    value = getattr(entity, attr_obj.field_name)
-                    key = attr_obj.referenced_as
-                else:
-                    value = getattr(entity, attr_obj.attribute_name)
-                    key = attr_obj.attribute_name
+                continue
+            key = attr_obj.referenced_as or attr_obj.attribute_name
+            value = item_dict.get(key)
+            if isinstance(attr_obj, ValueObjectList) and value:
+                item_dict[key] = attr_obj.as_dict(value)
+            elif hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple)):
+                item_dict[key] = attr_obj.as_dict(value)
 
-                # Serialize List-of-VOs to dicts for JSON/ARRAY(JSON) storage.
-                # Works for both legacy ValueObjectList and ResolvedField.
-                if isinstance(attr_obj, ValueObjectList) and value:
-                    value = attr_obj.as_dict(value)
-                elif hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple)):
-                    value = attr_obj.as_dict(value)
-
-                item_dict[key] = value
         return cls(**item_dict)
 
     @classmethod

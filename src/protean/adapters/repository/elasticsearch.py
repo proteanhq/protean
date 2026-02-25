@@ -10,9 +10,9 @@ from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
 
+from protean.core.database_model import _entity_to_dict
 from protean.core.queryset import ResultSet
 from protean.exceptions import DatabaseError, ObjectNotFoundError
-from protean.fields import Reference
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
 from protean.utils import IdentityStrategy, IdentityType
@@ -47,21 +47,11 @@ class ElasticsearchModel(Document):
     @classmethod
     def from_entity(cls, entity) -> "ElasticsearchModel":
         """Convert the entity to a Elasticsearch record"""
-        item_dict = {}
-        for attribute_obj in attributes(cls.meta_.part_of).values():
-            if isinstance(attribute_obj, Reference):
-                item_dict[attribute_obj.relation.attribute_name] = (
-                    attribute_obj.relation.value
-                )
-            else:
-                attr_name = attribute_obj.attribute_name
-                attr_value = getattr(entity, attr_name)
-                # Store entity version as 'entity_version' to avoid conflict with ES _version
-                # FIXME Make this more robust and database implementation resistant
-                if attr_name == "_version":
-                    item_dict["entity_version"] = attr_value
-                else:
-                    item_dict[attr_name] = attr_value
+        item_dict = _entity_to_dict(cls, entity)
+
+        # Remap _version → entity_version to avoid conflict with ES _version metadata
+        if "_version" in item_dict:
+            item_dict["entity_version"] = item_dict.pop("_version")
 
         model_obj = cls(**item_dict)
 
