@@ -32,6 +32,12 @@ terminology.
   format rules, composition, or operations. Make invalid states
   unrepresentable at the type level.
 
+- **[Factory Methods for Aggregate Creation](factory-methods-for-aggregate-creation.md)**
+  -- Encapsulate complex or repeated aggregate construction in factory
+  classmethods on the aggregate itself. When construction needs repository
+  access or external data translation, extract to a standalone factory class.
+  Keeps handlers thin and construction knowledge centralized.
+
 ## Event-Driven Patterns
 
 - **[Design Events for Consumers](design-events-for-consumers.md)** -- Events

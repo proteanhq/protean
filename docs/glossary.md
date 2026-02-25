@@ -416,7 +416,7 @@ A database adapter that provides persistence functionality for a specific storag
 
 Protean's built-in logging system based on structlog. `configure_logging()` sets up environment-aware structured logging with JSON output in production and colored console output in development. Supports context variables that propagate across async boundaries, method call tracing, rotating file handlers, and automatic suppression of noisy third-party loggers.
 
-[Learn more →](guides/server/index.md#logging) | **See also**: [Engine](#engine), [Observatory](#observatory)
+[Learn more →](guides/server/index.md) | **See also**: [Engine](#engine), [Observatory](#observatory)
 
 ---
 

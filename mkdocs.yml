@@ -381,6 +381,7 @@ nav:
       - patterns/one-aggregate-per-transaction.md
       - patterns/encapsulate-state-changes.md
       - patterns/replace-primitives-with-value-objects.md
+      - patterns/factory-methods-for-aggregate-creation.md
     - Event-Driven Patterns:
       - patterns/design-events-for-consumers.md
       - patterns/idempotent-event-handlers.md
