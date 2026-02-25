@@ -1,10 +1,14 @@
 """Base class for Providers"""
 
+import logging
 from abc import ABCMeta, abstractmethod
 from enum import Flag, auto
 from typing import Any
 
+from protean.exceptions import NotSupportedError
 from protean.utils.query import RegisterLookupMixin
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseCapabilities(Flag):
@@ -142,14 +146,30 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def construct_database_model_class(self, entity_cls):
         """Return dynamically constructed Model Class"""
 
-    @abstractmethod
     def raw(self, query: Any, data: Any = None):
-        """Run raw query directly on the database
+        """Run raw query directly on the database.
 
         Query should be executed immediately on the database as a separate unit of work
             (in a different transaction context). The results should be returned as returned by
             the database without any intervention. It is left to the consumer to interpret and
             organize the results correctly.
+
+        Raises NotSupportedError if the provider does not support raw queries.
+        """
+        if not self.has_capability(DatabaseCapabilities.RAW_QUERIES):
+            raise NotSupportedError(
+                f"Provider '{self.name}' ({self.__class__.__name__}) "
+                "does not support raw queries"
+            )
+        return self._raw(query, data)
+
+    @abstractmethod
+    def _raw(self, query: Any, data: Any = None):
+        """Internal raw query implementation.
+
+        Override in adapters that support RAW_QUERIES capability.
+        Adapters without RAW_QUERIES need not provide a meaningful implementation
+        as the base class gates access via ``raw()``.
         """
 
     @abstractmethod

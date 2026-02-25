@@ -6,6 +6,7 @@ import math
 from typing import TYPE_CHECKING, Any, Union
 
 from protean.exceptions import NotSupportedError
+from protean.port.provider import DatabaseCapabilities
 from protean.utils import DomainObjects
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
@@ -303,7 +304,16 @@ class QuerySet:
             database are passed as-is. Data passed will be transferred as-is to the plugin.
 
         All other query options like `order_by`, `offset` and `limit` are ignored for this action.
+
+        Raises NotSupportedError if the provider does not support raw queries.
         """
+        provider = self._owner_dao.provider
+        if not provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
+            raise NotSupportedError(
+                f"Provider '{provider.name}' ({provider.__class__.__name__}) "
+                "does not support raw queries"
+            )
+
         logger.debug(
             f"Query `{self.__class__.__name__}` objects with raw query {query}"
         )
