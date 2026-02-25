@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -7,6 +8,10 @@ from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from protean.port.provider import DatabaseCapabilities
 
 import typer
 from typing_extensions import Annotated
@@ -524,3 +529,355 @@ def test(
 
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
+
+
+# --- Capability-to-marker mapping for test-adapter ---
+
+# Maps individual DatabaseCapabilities flags to pytest marker names.
+# This is the single source of truth for which capability flag corresponds
+# to which marker.  The `transactional` marker is special: it accepts
+# either TRANSACTIONS or SIMULATED_TRANSACTIONS.
+CAPABILITY_MARKER_MAP: dict[str, list[str]] = {
+    "basic_storage": ["CRUD", "FILTER", "BULK_OPERATIONS", "ORDERING"],
+    "transactional": ["TRANSACTIONS", "SIMULATED_TRANSACTIONS"],
+    "atomic_transactions": ["TRANSACTIONS"],
+    "raw_queries": ["RAW_QUERIES"],
+    "schema_management": ["SCHEMA_MANAGEMENT"],
+    "native_json": ["NATIVE_JSON"],
+    "native_array": ["NATIVE_ARRAY"],
+}
+
+# Path to the generic test directory relative to the protean package
+GENERIC_TEST_DIR = Path(__file__).resolve().parent.parent.parent.parent / (
+    "tests/adapters/repository/generic"
+)
+
+
+@dataclass
+class CapabilityResult:
+    """Result of running tests for a single capability."""
+
+    __test__ = False  # Prevent pytest from collecting this as a test class
+
+    name: str
+    status: str  # "PASS", "FAIL", "SKIP"
+    passed: int = 0
+    failed: int = 0
+    errors: int = 0
+    skipped: int = 0
+    total: int = 0
+    reason: str = ""
+
+
+def _provider_has_capability_for_marker(
+    provider_capabilities: "DatabaseCapabilities", marker_name: str
+) -> bool:
+    """Check whether a provider's capabilities satisfy a given marker.
+
+    For ``transactional``, the provider needs TRANSACTIONS or SIMULATED_TRANSACTIONS.
+    For all other markers, ALL listed capability flags must be present.
+    """
+    from protean.port.provider import DatabaseCapabilities
+
+    flag_names = CAPABILITY_MARKER_MAP.get(marker_name, [])
+    if not flag_names:
+        return False
+
+    if marker_name == "transactional":
+        # Any of the listed flags is sufficient
+        return any(DatabaseCapabilities[f] in provider_capabilities for f in flag_names)
+    else:
+        # All listed flags must be present
+        return all(DatabaseCapabilities[f] in provider_capabilities for f in flag_names)
+
+
+def _get_applicable_markers(
+    provider_capabilities: "DatabaseCapabilities",
+    requested_capabilities: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Determine which markers to run and which to skip.
+
+    Returns:
+        A tuple of (markers_to_run, markers_to_skip).
+    """
+    all_markers = list(CAPABILITY_MARKER_MAP.keys())
+
+    if requested_capabilities is not None:
+        # Only consider requested capabilities
+        all_markers = [m for m in all_markers if m in requested_capabilities]
+
+    markers_to_run = []
+    markers_to_skip = []
+
+    for marker in all_markers:
+        if _provider_has_capability_for_marker(provider_capabilities, marker):
+            markers_to_run.append(marker)
+        else:
+            markers_to_skip.append(marker)
+
+    return markers_to_run, markers_to_skip
+
+
+def _run_pytest_for_marker(
+    marker: str,
+    db_name: str,
+    generic_test_dir: Path,
+    verbose: bool = False,
+) -> CapabilityResult:
+    """Run pytest for a single capability marker and parse results.
+
+    Uses ``--tb=no -q`` by default for clean output, or ``-v`` in verbose mode.
+    Results are captured via pytest's JSON report plugin (if available) or
+    parsed from the exit code and summary line.
+    """
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        str(generic_test_dir),
+        "-m",
+        marker,
+        f"--db={db_name}",
+        "--cache-clear",
+        "--ignore=tests/support/",
+        "--no-header",
+    ]
+
+    if verbose:
+        cmd.append("-v")
+    else:
+        cmd.extend(["--tb=no", "-q"])
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    # Parse summary from pytest output
+    passed = failed = errors = skipped = 0
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        # Match pytest summary lines like "42 passed", "3 failed, 2 passed"
+        if "passed" in line or "failed" in line or "error" in line:
+            # This is likely the summary line
+            import re
+
+            counts = re.findall(r"(\d+) (\w+)", line)
+            for count_str, label in counts:
+                count = int(count_str)
+                if label == "passed":
+                    passed = count
+                elif label == "failed":
+                    failed = count
+                elif label in ("error", "errors"):
+                    errors = count
+                elif label in ("skipped", "deselected"):
+                    skipped = count
+
+    total = passed + failed + errors
+
+    if result.returncode == 0:
+        status = "PASS"
+    elif result.returncode == 5:
+        # Exit code 5 means no tests collected
+        status = "SKIP"
+        return CapabilityResult(
+            name=marker,
+            status=status,
+            reason="no tests collected",
+        )
+    else:
+        status = "FAIL"
+
+    return CapabilityResult(
+        name=marker,
+        status=status,
+        passed=passed,
+        failed=failed,
+        errors=errors,
+        skipped=skipped,
+        total=total,
+    )
+
+
+def _print_conformance_report(
+    provider_name: str,
+    provider_class_name: str,
+    results: list[CapabilityResult],
+    skipped_markers: list[str],
+) -> None:
+    """Print a formatted conformance report to stdout."""
+    header = f"Conformance Report: {provider_name}"
+    print(f"\n{header}")
+    print("=" * len(header))
+    print()
+    print(f"{'Capability':<24} {'Status':<10} {'Tests'}")
+    print("-" * 56)
+
+    total_passed = 0
+    total_failed = 0
+    total_errors = 0
+    capabilities_passed = 0
+    capabilities_failed = 0
+
+    for r in results:
+        if r.status == "PASS":
+            test_info = f"{r.passed}/{r.total}"
+            capabilities_passed += 1
+        elif r.status == "FAIL":
+            test_info = f"{r.passed}/{r.total} ({r.failed} failed"
+            if r.errors:
+                test_info += f", {r.errors} errors"
+            test_info += ")"
+            capabilities_failed += 1
+        else:
+            test_info = f"({r.reason})" if r.reason else ""
+
+        total_passed += r.passed
+        total_failed += r.failed
+        total_errors += r.errors
+
+        print(f"{r.name:<24} {r.status:<10} {test_info}")
+
+    for marker in skipped_markers:
+        print(f"{marker:<24} {'SKIP':<10} (not declared)")
+
+    print("-" * 56)
+    skip_count = len(skipped_markers)
+    print(
+        f"Total: {total_passed} passed, {total_failed} failed, "
+        f"{total_errors} errors, {skip_count} capabilities skipped"
+    )
+    print()
+
+
+@app.command("test-adapter")
+def test_adapter(
+    provider: Annotated[
+        str, typer.Option(help="Provider name to test (e.g. memory, postgresql)")
+    ],
+    uri: Annotated[
+        str,
+        typer.Option(help="Database connection URI (default: provider's default)"),
+    ] = "",
+    capabilities: Annotated[
+        Optional[str],
+        typer.Option(
+            help="Comma-separated capabilities to test (default: all declared)"
+        ),
+    ] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+    test_dir: Annotated[
+        Optional[str],
+        typer.Option(
+            help="Path to generic test directory (default: built-in tests)",
+        ),
+    ] = None,
+) -> None:
+    """Run the generic conformance test suite against a database provider.
+
+    Tests are automatically selected based on the provider's declared
+    capabilities. Results show which capability areas pass or fail.
+
+    Examples:
+
+        protean test test-adapter --provider=memory
+
+        protean test test-adapter --provider=postgresql --uri="postgresql://localhost/test"
+
+        protean test test-adapter --provider=memory --capabilities=basic_storage,transactional
+
+        protean test test-adapter --provider=postgresql --uri="postgresql://localhost/test" -v
+    """
+    from protean.port.provider import ProviderRegistry
+
+    # 1. Verify provider is registered
+    try:
+        ProviderRegistry.get(provider)
+    except Exception as e:
+        print(f"Error: {e}")
+        raise typer.Exit(code=1)
+
+    # 2. Get provider capabilities (instantiate temporarily to access property)
+    #    We need a minimal domain to instantiate the provider for capabilities
+    try:
+        from protean.domain import Domain
+
+        domain = Domain(name="ConformanceTest")
+
+        # Configure the provider
+        db_config: dict[str, str | dict] = {"provider": provider}
+        if uri:
+            db_config["database_uri"] = uri
+        domain.config["databases"]["default"] = db_config
+
+        domain._initialize()
+
+        with domain.domain_context():
+            provider_instance = domain.providers["default"]
+            provider_capabilities = provider_instance.capabilities
+            provider_class_name = provider_instance.__class__.__name__
+    except Exception as e:
+        print(f"Error initializing provider '{provider}': {e}")
+        raise typer.Exit(code=1)
+
+    # 3. Determine which capabilities to test
+    requested: list[str] | None = None
+    if capabilities:
+        requested = [c.strip() for c in capabilities.split(",")]
+        # Validate requested capabilities
+        for cap in requested:
+            if cap not in CAPABILITY_MARKER_MAP:
+                valid = ", ".join(sorted(CAPABILITY_MARKER_MAP.keys()))
+                print(f"Error: Unknown capability '{cap}'. Valid capabilities: {valid}")
+                raise typer.Exit(code=1)
+
+    markers_to_run, markers_to_skip = _get_applicable_markers(
+        provider_capabilities, requested
+    )
+
+    if not markers_to_run:
+        print(f"No applicable capabilities to test for provider '{provider}'.")
+        if markers_to_skip:
+            print(f"Skipped capabilities (not declared): {', '.join(markers_to_skip)}")
+        raise typer.Exit(code=0)
+
+    # 4. Determine test directory
+    generic_dir = Path(test_dir) if test_dir else GENERIC_TEST_DIR
+    if not generic_dir.is_dir():
+        print(f"Error: Generic test directory not found: {generic_dir}")
+        raise typer.Exit(code=1)
+
+    # Determine the --db flag value (uppercase provider name)
+    db_name = provider.upper()
+
+    print(
+        f"Running conformance tests for provider '{provider}' "
+        f"({provider_class_name})..."
+    )
+    print(f"Capabilities to test: {', '.join(markers_to_run)}")
+    if markers_to_skip:
+        print(f"Capabilities to skip: {', '.join(markers_to_skip)}")
+    print()
+
+    # 5. Run tests per capability
+    results: list[CapabilityResult] = []
+    has_failures = False
+
+    for marker in markers_to_run:
+        if verbose:
+            print(f"Testing capability: {marker}...")
+
+        cap_result = _run_pytest_for_marker(
+            marker=marker,
+            db_name=db_name,
+            generic_test_dir=generic_dir,
+            verbose=verbose,
+        )
+        results.append(cap_result)
+
+        if cap_result.status == "FAIL":
+            has_failures = True
+
+    # 6. Print report
+    _print_conformance_report(provider, provider_class_name, results, markers_to_skip)
+
+    if has_failures:
+        raise typer.Exit(code=1)

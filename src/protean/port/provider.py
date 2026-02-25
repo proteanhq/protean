@@ -62,8 +62,113 @@ class DatabaseCapabilities(Flag):
 
 
 class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
-    """Provider Implementation for each database that acts as a gateway to configure the database,
-    retrieve connections and perform commits
+    """Provider implementation for each database.
+
+    Acts as a gateway to configure the database, retrieve connections, and
+    perform commits.
+
+    Building a Database Adapter
+    ===========================
+
+    To create a new database adapter, implement these components:
+
+    1. **Provider** (extends ``BaseProvider``)
+       - 12 abstract methods (see below) + ``capabilities`` property
+       - Manages connections, sessions, and database lifecycle
+       - Reference: ``protean.adapters.repository.memory.MemoryProvider``
+
+    2. **DAO** (extends ``BaseDAO`` from ``protean.port.dao``)
+       - 8 abstract methods: ``_filter``, ``_create``, ``_update``,
+         ``_update_all``, ``_delete``, ``_delete_all``, ``_raw``, ``has_table``
+       - Handles data access operations using sessions from the Provider
+       - ``BaseDAO`` provides lifecycle wrappers (``get``, ``save``, ``create``,
+         ``update``, ``delete``) — you implement the underscored internals
+
+    3. **DatabaseModel** (extends ``BaseDatabaseModel`` from
+       ``protean.core.database_model``)
+       - 2 abstract methods: ``from_entity``, ``to_entity``
+       - Use ``_entity_to_dict()`` helper for shared field extraction
+       - ``construct_database_model_class`` auto-generates models;
+         ``decorate_database_model_class`` wraps user-defined ``@domain.model``
+
+    4. **Lookups** (extends ``BaseLookup`` from ``protean.port.dao``)
+       - Required lookups: exact, iexact, contains, icontains, startswith,
+         endswith, gt, gte, lt, lte, in (see ``REQUIRED_LOOKUPS``)
+       - Register with ``@YourProvider.register_lookup``
+       - Each lookup implements ``as_expression()`` returning adapter-native
+         comparison
+
+    5. **Registration function**
+       - A ``register()`` function that calls
+         ``registry.register(name, class_path)``
+       - Wrap imports in try/except for optional dependencies
+       - Add entry point in ``pyproject.toml`` under
+         ``[project.entry-points."protean.providers"]``
+
+    Session Protocol
+    ================
+
+    ``get_session()`` and ``get_connection()`` must return objects that support:
+
+    - ``commit()`` — flush pending changes to the database
+    - ``rollback()`` — discard pending changes
+    - ``close()`` — release the connection back to the pool
+
+    The ``BaseDAO``'s ``_commit_if_standalone()`` calls these methods when
+    operating outside a Unit of Work. Adapters without real transactions
+    (e.g., Elasticsearch) should provide a session object with no-op
+    implementations of these methods.
+
+    Call Flow
+    =========
+
+    Initialization::
+
+        Domain.init()
+          → ProviderRegistry.get(name)        # loads your Provider class
+          → Provider.__init__(name, domain, conn_info)
+          → Provider._create_database_artifacts()   # if setup_database() called
+
+    Persist (within UnitOfWork)::
+
+        Repository.add(aggregate)
+          → DAO.save(aggregate)
+            → DAO._validate_and_update_version(aggregate)
+            → DatabaseModel.from_entity(aggregate)    # your conversion
+            → DAO._create(model_obj) or DAO._update(model_obj)
+            # UoW holds session — no commit yet
+
+        UnitOfWork.__exit__()
+          → session.commit()                          # your session
+          # On error: session.rollback()
+
+    Persist (standalone, no UoW)::
+
+        Repository.add(aggregate)
+          → DAO.save(aggregate)
+            → DatabaseModel.from_entity(aggregate)
+            → DAO._create(model_obj) or DAO._update(model_obj)
+            → DAO._commit_if_standalone(conn)
+              → conn.commit() / conn.rollback() / conn.close()
+
+    Retrieve::
+
+        Repository.get(identifier)
+          → DAO.get(identifier)
+            → DAO.query.filter(id=identifier).all()
+              → DAO._filter(criteria, offset, limit, order_by)
+                # Must return ResultSet(items, total)
+              → DatabaseModel.to_entity(item)         # your conversion
+              → DAO._sync_event_position(entity)
+              → DAO._track_in_uow(entity)
+
+    Lifecycle::
+
+        Provider._create_database_artifacts()   # create tables/indices
+        Provider._drop_database_artifacts()     # drop tables/indices
+        Provider._data_reset()                  # truncate all data (tests)
+        Provider.is_alive()                     # health check
+        Provider.close()                        # release connections
     """
 
     # Minimum lookups every adapter must register
@@ -168,11 +273,26 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
 
     @abstractmethod
     def decorate_database_model_class(self, entity_cls, database_model_cls):
-        """Return decorated Model Class for custom-defined models"""
+        """Enhance a user-defined DatabaseModel class with adapter internals.
+
+        Called when the user has defined a custom ``@domain.model`` for an
+        entity. The model class is passed in — add adapter-specific base
+        classes, column mappings, or metadata as needed.
+
+        Must return the decorated model class.
+        """
 
     @abstractmethod
     def construct_database_model_class(self, entity_cls):
-        """Return dynamically constructed Model Class"""
+        """Dynamically build a DatabaseModel class for an entity.
+
+        Called when no user-defined ``@domain.model`` exists for the entity.
+        The framework calls this during domain initialization for every
+        aggregate/entity that doesn't have an explicit model mapping.
+
+        Must return a class that extends ``BaseDatabaseModel`` with
+        ``from_entity()`` and ``to_entity()`` implemented.
+        """
 
     def raw(self, query: Any, data: Any = None):
         """Run raw query directly on the database.

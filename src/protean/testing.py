@@ -58,6 +58,7 @@ Usage::
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import ProteanExceptionWithMessage
@@ -446,3 +447,47 @@ class AggregateResult:
                     handler_cls._handle(enriched)
 
         return aggregate_id
+
+
+# ---------------------------------------------------------------------------
+# Generic database adapter conformance tests
+# ---------------------------------------------------------------------------
+
+
+def get_generic_test_dir() -> Path:
+    """Return the path to the generic database adapter conformance tests.
+
+    These tests can be run against any database provider to verify it
+    correctly implements the required capabilities.  Use this path with
+    ``pytest`` or pass it to ``protean test test-adapter``.
+
+    Returns:
+        Path to the ``tests/adapters/repository/generic/`` directory.
+
+    Raises:
+        FileNotFoundError: If the generic test directory is not available
+            (e.g. when Protean is installed from a wheel rather than a
+            source checkout).
+
+    Example::
+
+        from protean.testing import get_generic_test_dir
+
+        # In an external adapter's conftest.py or test runner
+        generic_dir = get_generic_test_dir()
+        # Pass to pytest: pytest.main([str(generic_dir), "--db=MY_ADAPTER"])
+    """
+    # Relative to this file: src/protean/testing.py
+    # Tests live at: <repo>/tests/adapters/repository/generic/
+    candidate = Path(__file__).resolve().parent.parent.parent / (
+        "tests/adapters/repository/generic"
+    )
+    if candidate.is_dir():
+        return candidate
+
+    raise FileNotFoundError(
+        "Generic database conformance tests not found. "
+        "This is expected when Protean is installed from a wheel. "
+        "To run conformance tests, install Protean from source: "
+        "pip install -e 'protean[dev]' or use a source checkout."
+    )
