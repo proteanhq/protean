@@ -7,10 +7,17 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.cli.test import (
+    CAPABILITY_MARKER_MAP,
     TEST_CONFIGS,
+    CapabilityResult,
     RunCategory,
     TestRunner,
     TestSuite,
+    _get_applicable_markers,
+    _print_conformance_report,
+    _provider_has_capability_for_marker,
+    _run_pytest_for_marker,
+    test_adapter as cli_test_adapter,
     validate_category,
 )
 
@@ -919,3 +926,452 @@ class TestDatabaseEmptyMarkerBranches:
         for cmd in commands_run:
             assert "--db=UNKNOWN_DB_X" not in cmd
         assert len(commands_run) == len(original_dbs)
+
+
+class TestCapabilityMarkerMap:
+    """Test the CAPABILITY_MARKER_MAP constant."""
+
+    def test_all_expected_markers_present(self):
+        """Test that all capability markers are defined."""
+        expected = {
+            "basic_storage",
+            "transactional",
+            "atomic_transactions",
+            "raw_queries",
+            "schema_management",
+            "native_json",
+            "native_array",
+        }
+        assert set(CAPABILITY_MARKER_MAP.keys()) == expected
+
+    def test_transactional_has_both_flags(self):
+        """Test transactional maps to both real and simulated transaction flags."""
+        assert "TRANSACTIONS" in CAPABILITY_MARKER_MAP["transactional"]
+        assert "SIMULATED_TRANSACTIONS" in CAPABILITY_MARKER_MAP["transactional"]
+
+    def test_basic_storage_has_four_flags(self):
+        """Test basic_storage maps to the four foundation capabilities."""
+        flags = CAPABILITY_MARKER_MAP["basic_storage"]
+        assert set(flags) == {"CRUD", "FILTER", "BULK_OPERATIONS", "ORDERING"}
+
+
+class TestProviderHasCapabilityForMarker:
+    """Test _provider_has_capability_for_marker helper."""
+
+    def test_memory_has_basic_storage(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        assert _provider_has_capability_for_marker(caps, "basic_storage") is True
+
+    def test_memory_has_transactional(self):
+        """Memory has SIMULATED_TRANSACTIONS which satisfies transactional."""
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        assert _provider_has_capability_for_marker(caps, "transactional") is True
+
+    def test_memory_lacks_atomic_transactions(self):
+        """Memory does not have real TRANSACTIONS."""
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        assert _provider_has_capability_for_marker(caps, "atomic_transactions") is False
+
+    def test_memory_has_raw_queries(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        assert _provider_has_capability_for_marker(caps, "raw_queries") is True
+
+    def test_memory_lacks_schema_management(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        assert _provider_has_capability_for_marker(caps, "schema_management") is False
+
+    def test_relational_has_all_core_markers(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.RELATIONAL
+        assert _provider_has_capability_for_marker(caps, "basic_storage") is True
+        assert _provider_has_capability_for_marker(caps, "transactional") is True
+        assert _provider_has_capability_for_marker(caps, "atomic_transactions") is True
+        assert _provider_has_capability_for_marker(caps, "raw_queries") is True
+        assert _provider_has_capability_for_marker(caps, "schema_management") is True
+
+    def test_relational_lacks_native_json(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.RELATIONAL
+        assert _provider_has_capability_for_marker(caps, "native_json") is False
+
+    def test_relational_full_has_native_types(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = (
+            DatabaseCapabilities.RELATIONAL
+            | DatabaseCapabilities.NATIVE_JSON
+            | DatabaseCapabilities.NATIVE_ARRAY
+        )
+        assert _provider_has_capability_for_marker(caps, "native_json") is True
+        assert _provider_has_capability_for_marker(caps, "native_array") is True
+
+    def test_document_store_has_basic_and_schema(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.DOCUMENT_STORE
+        assert _provider_has_capability_for_marker(caps, "basic_storage") is True
+        assert _provider_has_capability_for_marker(caps, "schema_management") is True
+
+    def test_document_store_lacks_transactions(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.DOCUMENT_STORE
+        assert _provider_has_capability_for_marker(caps, "transactional") is False
+        assert _provider_has_capability_for_marker(caps, "atomic_transactions") is False
+
+    def test_unknown_marker_returns_false(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        assert _provider_has_capability_for_marker(caps, "nonexistent_marker") is False
+
+
+class TestGetApplicableMarkers:
+    """Test _get_applicable_markers helper."""
+
+    def test_memory_markers(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        run, skip = _get_applicable_markers(caps)
+        assert "basic_storage" in run
+        assert "transactional" in run
+        assert "raw_queries" in run
+        assert "atomic_transactions" in skip
+        assert "schema_management" in skip
+        assert "native_json" in skip
+        assert "native_array" in skip
+
+    def test_requested_capabilities_filter(self):
+        """Only requested capabilities should appear in output."""
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        run, skip = _get_applicable_markers(caps, ["basic_storage", "native_json"])
+        assert run == ["basic_storage"]
+        assert skip == ["native_json"]
+
+    def test_relational_all_core_markers(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.RELATIONAL
+        run, skip = _get_applicable_markers(caps)
+        assert "basic_storage" in run
+        assert "transactional" in run
+        assert "atomic_transactions" in run
+        assert "raw_queries" in run
+        assert "schema_management" in run
+        assert "native_json" in skip
+        assert "native_array" in skip
+
+    def test_empty_requested_yields_no_markers(self):
+        from protean.port.provider import DatabaseCapabilities
+
+        caps = DatabaseCapabilities.IN_MEMORY
+        run, skip = _get_applicable_markers(caps, [])
+        assert run == []
+        assert skip == []
+
+
+class TestCapabilityResult:
+    """Test CapabilityResult dataclass."""
+
+    def test_default_values(self):
+        result = CapabilityResult(name="test", status="PASS")
+        assert result.name == "test"
+        assert result.status == "PASS"
+        assert result.passed == 0
+        assert result.failed == 0
+        assert result.errors == 0
+        assert result.total == 0
+        assert result.reason == ""
+
+    def test_with_counts(self):
+        result = CapabilityResult(
+            name="basic_storage", status="PASS", passed=42, total=42
+        )
+        assert result.passed == 42
+        assert result.total == 42
+
+
+class TestRunPytestForMarker:
+    """Test _run_pytest_for_marker with mocked subprocess."""
+
+    def test_successful_run(self, tmp_path):
+        """Test parsing a successful pytest run."""
+        mock_output = "42 passed in 1.23s\n"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout=mock_output, stderr="")
+            result = _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "PASS"
+        assert result.passed == 42
+        assert result.total == 42
+
+    def test_failed_run(self, tmp_path):
+        """Test parsing a failed pytest run."""
+        mock_output = "3 failed, 39 passed in 2.50s\n"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stdout=mock_output, stderr="")
+            result = _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "FAIL"
+        assert result.passed == 39
+        assert result.failed == 3
+        assert result.total == 42
+
+    def test_no_tests_collected(self, tmp_path):
+        """Test handling when no tests are collected (exit code 5)."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=5, stdout="no tests ran\n", stderr=""
+            )
+            result = _run_pytest_for_marker(
+                marker="native_json",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "SKIP"
+        assert result.reason == "no tests collected"
+
+    def test_verbose_mode_flag(self, tmp_path):
+        """Test that verbose mode adds -v flag."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")
+            _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+                verbose=True,
+            )
+
+            cmd = mock_run.call_args[0][0]
+            assert "-v" in cmd
+            assert "--tb=no" not in cmd
+
+    def test_quiet_mode_flags(self, tmp_path):
+        """Test that non-verbose mode adds --tb=no -q flags."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")
+            _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+                verbose=False,
+            )
+
+            cmd = mock_run.call_args[0][0]
+            assert "--tb=no" in cmd
+            assert "-q" in cmd
+            assert "-v" not in cmd
+
+    def test_db_flag_in_command(self, tmp_path):
+        """Test that --db flag is passed to pytest."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")
+            _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="POSTGRESQL",
+                generic_test_dir=tmp_path,
+            )
+
+            cmd = mock_run.call_args[0][0]
+            assert "--db=POSTGRESQL" in cmd
+
+    def test_marker_in_command(self, tmp_path):
+        """Test that -m marker is passed to pytest."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")
+            _run_pytest_for_marker(
+                marker="schema_management",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+            cmd = mock_run.call_args[0][0]
+            # Command is: python -m pytest ... -m schema_management ...
+            # The first -m is the Python module flag, the last is the pytest marker
+            m_indices = [i for i, arg in enumerate(cmd) if arg == "-m"]
+            assert len(m_indices) >= 2  # python -m pytest ... -m marker
+            last_m_idx = m_indices[-1]
+            assert cmd[last_m_idx + 1] == "schema_management"
+
+    def test_errors_in_output(self, tmp_path):
+        """Test parsing errors from pytest output."""
+        mock_output = "2 errors, 1 failed, 5 passed in 1.00s\n"
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stdout=mock_output, stderr="")
+            result = _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "FAIL"
+        assert result.passed == 5
+        assert result.failed == 1
+        assert result.errors == 2
+        assert result.total == 8
+
+
+class TestPrintConformanceReport:
+    """Test _print_conformance_report output formatting."""
+
+    def test_report_output_with_all_pass(self, capsys):
+        """Test report with all capabilities passing."""
+        results = [
+            CapabilityResult("basic_storage", "PASS", passed=42, total=42),
+            CapabilityResult("raw_queries", "PASS", passed=5, total=5),
+        ]
+        _print_conformance_report("memory", "MemoryProvider", results, ["native_json"])
+
+        captured = capsys.readouterr()
+        assert "Conformance Report: memory" in captured.out
+        assert "basic_storage" in captured.out
+        assert "PASS" in captured.out
+        assert "42/42" in captured.out
+        assert "native_json" in captured.out
+        assert "SKIP" in captured.out
+        assert "(not declared)" in captured.out
+        assert "47 passed" in captured.out
+        assert "0 failed" in captured.out
+
+    def test_report_output_with_failures(self, capsys):
+        """Test report with failing capabilities."""
+        results = [
+            CapabilityResult("basic_storage", "FAIL", passed=39, failed=3, total=42),
+        ]
+        _print_conformance_report("test", "TestProvider", results, [])
+
+        captured = capsys.readouterr()
+        assert "FAIL" in captured.out
+        assert "39/42" in captured.out
+        assert "3 failed" in captured.out
+
+    def test_report_output_with_errors(self, capsys):
+        """Test report shows errors in parenthetical."""
+        results = [
+            CapabilityResult(
+                "basic_storage", "FAIL", passed=38, failed=2, errors=2, total=42
+            ),
+        ]
+        _print_conformance_report("test", "TestProvider", results, [])
+
+        captured = capsys.readouterr()
+        assert "2 errors" in captured.out
+
+    def test_report_output_with_skipped_capabilities(self, capsys):
+        """Test report shows skipped capabilities."""
+        results = []
+        skipped = ["atomic_transactions", "schema_management", "native_json"]
+        _print_conformance_report("memory", "MemoryProvider", results, skipped)
+
+        captured = capsys.readouterr()
+        assert "3 capabilities skipped" in captured.out
+        for marker in skipped:
+            assert marker in captured.out
+
+
+@pytest.mark.no_test_domain
+class TestTestAdapterCommand:
+    """Tests for the test_adapter CLI function.
+
+    Uses the real memory provider (fast, no external services).
+    Exercises the full command path including real subprocess pytest runs.
+
+    When called directly (not via Typer CLI), ``typer.Exit`` raises
+    ``click.exceptions.Exit``, not ``SystemExit``.
+    """
+
+    def test_success_with_single_capability(self, capsys):
+        """Run conformance against memory for a single capability."""
+        # On success, the function returns normally (no exit raised)
+        cli_test_adapter(provider="memory", capabilities="basic_storage")
+
+        captured = capsys.readouterr()
+        assert "Conformance Report" in captured.out
+        assert "basic_storage" in captured.out
+
+    def test_unknown_provider_exits(self, capsys):
+        """Unknown provider name exits with code 1."""
+        from click.exceptions import Exit
+
+        with pytest.raises(Exit) as exc_info:
+            cli_test_adapter(provider="nonexistent_provider_xyz")
+        assert exc_info.value.exit_code == 1
+
+        captured = capsys.readouterr()
+        assert "Error" in captured.out
+
+    def test_invalid_capability_exits(self, capsys):
+        """Unknown capability name exits with code 1."""
+        from click.exceptions import Exit
+
+        with pytest.raises(Exit) as exc_info:
+            cli_test_adapter(provider="memory", capabilities="nonexistent_cap")
+        assert exc_info.value.exit_code == 1
+
+        captured = capsys.readouterr()
+        assert "Unknown capability" in captured.out
+
+    def test_nonexistent_test_dir_exits(self, capsys):
+        """Missing test directory exits with code 1."""
+        from click.exceptions import Exit
+
+        with pytest.raises(Exit) as exc_info:
+            cli_test_adapter(provider="memory", test_dir="/nonexistent/path")
+        assert exc_info.value.exit_code == 1
+
+        captured = capsys.readouterr()
+        assert "not found" in captured.out
+
+    def test_no_applicable_capabilities(self, capsys):
+        """Requested capability not declared by provider exits cleanly."""
+        from click.exceptions import Exit
+
+        # Memory doesn't have native_json
+        with pytest.raises(Exit) as exc_info:
+            cli_test_adapter(provider="memory", capabilities="native_json")
+        assert exc_info.value.exit_code == 0
+
+        captured = capsys.readouterr()
+        assert "No applicable capabilities" in captured.out
+
+    def test_verbose_flag(self, capsys):
+        """Verbose flag prints per-marker progress."""
+        cli_test_adapter(
+            provider="memory",
+            capabilities="basic_storage",
+            verbose=True,
+        )
+
+        captured = capsys.readouterr()
+        assert "Testing capability: basic_storage" in captured.out
+
+    def test_skipped_capabilities_in_report(self, capsys):
+        """Report includes skipped capabilities in output."""
+        cli_test_adapter(provider="memory", capabilities="basic_storage")
+
+        captured = capsys.readouterr()
+        assert "Conformance Report" in captured.out

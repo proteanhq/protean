@@ -24,21 +24,29 @@ logger = logging.getLogger(__name__)
 
 
 class BaseDAO(metaclass=ABCMeta):
-    """This is the baseclass for concrete DAO implementations.
+    """Base class for concrete DAO (Data Access Object) implementations.
 
-    One part of this base class contains abstract methods to be overridden and implemented in each
-    concrete database implementation. These methods are where the actual interaction with the database
-    takes place. The other part contains fully-implemented object lifecycle methods to help in persistence
-    and data fetch. These methods invoke the concrete methods of each database implementation to
-    complete their function.
+    A DAO bridges the domain entity layer and the database. It has two parts:
 
-    The lifecycle methods of DAO handle the casting of a model object to a domain entity object, and vice versa.
+    1. **Abstract methods** (``_filter``, ``_create``, ``_update``,
+       ``_update_all``, ``_delete``, ``_delete_all``, ``_raw``, ``has_table``)
+       — override these in your adapter to interact with the database.
+
+    2. **Lifecycle methods** (``get``, ``save``, ``create``, ``update``,
+       ``delete``) — fully implemented wrappers that handle entity ↔ model
+       conversion, version checking, UoW tracking, and then delegate to
+       the abstract internals above.
+
+    See ``BaseProvider`` in ``protean.port.provider`` for the full adapter
+    development guide, including the call-flow diagram showing how the
+    framework invokes DAO methods.
 
     :param domain: the domain of the application this DAO is associated with.
-    :param provider: the corresponding provider object of the database implementation, from whom the DAO can
-                     request and fetch sessions and connections.
-    :param database_model_cls: the concrete model class associated with the DAO. The model class is a direct representation
-                      of an object in ORM/ODM terms or as represented by a python driver.
+    :param provider: the corresponding provider object of the database
+        implementation, from whom the DAO can request sessions and connections.
+    :param database_model_cls: the concrete model class associated with the
+        DAO. The model class is a direct representation of an object in
+        ORM/ODM terms or as represented by a python driver.
     :param entity_cls: the domain entity class associated with the DAO.
     """
 
