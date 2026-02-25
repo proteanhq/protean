@@ -342,6 +342,48 @@ class TestDAOLookups:
         assert people_contains.total == 1
         assert people_icontains.total == 2
 
+    def test_filtering_using_startswith(self, test_domain):
+        test_domain.repository_for(Person)._dao.create(
+            id="2", first_name="Murdock", age=7, last_name="Johnson"
+        )
+        test_domain.repository_for(Person)._dao.create(
+            id="3", first_name="Jean", age=3, last_name="Jones"
+        )
+        test_domain.repository_for(Person)._dao.create(
+            id="4", first_name="Bart", age=6, last_name="Carrie"
+        )
+
+        people_startswith = test_domain.repository_for(Person)._dao.query.filter(
+            last_name__startswith="Jo"
+        )
+        assert people_startswith.total == 2
+
+        people_startswith_no_match = test_domain.repository_for(
+            Person
+        )._dao.query.filter(last_name__startswith="Zo")
+        assert people_startswith_no_match.total == 0
+
+    def test_filtering_using_endswith(self, test_domain):
+        test_domain.repository_for(Person)._dao.create(
+            id="2", first_name="Murdock", age=7, last_name="Johnson"
+        )
+        test_domain.repository_for(Person)._dao.create(
+            id="3", first_name="Jean", age=3, last_name="Watson"
+        )
+        test_domain.repository_for(Person)._dao.create(
+            id="4", first_name="Bart", age=6, last_name="Carrie"
+        )
+
+        people_endswith = test_domain.repository_for(Person)._dao.query.filter(
+            last_name__endswith="son"
+        )
+        assert people_endswith.total == 2
+
+        people_endswith_no_match = test_domain.repository_for(Person)._dao.query.filter(
+            last_name__endswith="xyz"
+        )
+        assert people_endswith_no_match.total == 0
+
     def test_exception_on_usage_of_unsupported_comparison_operator(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
