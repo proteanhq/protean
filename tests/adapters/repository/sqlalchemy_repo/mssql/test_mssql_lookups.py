@@ -71,7 +71,9 @@ class TestMssqlLookups:
         exact_lookup_cls = provider.get_lookup("exact")
 
         # Test with string field - should apply collation
-        string_lookup = exact_lookup_cls("name", "Alice", dao.database_model_cls)
+        string_lookup = exact_lookup_cls(
+            "name", "Alice", database_model_cls=dao.database_model_cls
+        )
         string_source = string_lookup.process_source()
 
         # For string fields, collation should be applied (returns BinaryExpression)
@@ -81,7 +83,9 @@ class TestMssqlLookups:
         )
 
         # Test with integer field - should NOT apply collation
-        int_lookup = exact_lookup_cls("age", 25, dao.database_model_cls)
+        int_lookup = exact_lookup_cls(
+            "age", 25, database_model_cls=dao.database_model_cls
+        )
         int_source = int_lookup.process_source()
 
         # For non-string fields, no collation should be applied (returns InstrumentedAttribute)

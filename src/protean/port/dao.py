@@ -578,14 +578,19 @@ class BaseLookup(metaclass=ABCMeta):
 
     lookup_name = None
 
-    def __init__(self, source, target):
+    def __init__(self, source, target, *, database_model_cls=None):
         """Source is LHS and Target is RHS of a comparsion.
 
         For example, in the expression `name == 'John'`, `name` is source (LHS) and `'John'` is target (RHS).
         In other words, source is the key/column/attribute to be searched on, and target is the value present in the
         persistent store.
+
+        :param source: The key/column/attribute (LHS of the comparison)
+        :param target: The value to compare against (RHS of the comparison)
+        :param database_model_cls: Optional database model class for adapter-specific lookups
         """
         self.source, self.target = source, target
+        self.database_model_cls = database_model_cls
 
     def process_source(self):
         """This is a blank implementation that simply returns the source.

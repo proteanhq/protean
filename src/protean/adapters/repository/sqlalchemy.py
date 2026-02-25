@@ -430,7 +430,9 @@ class SADAO(BaseDAO):
                 stripped_key, lookup_class = self.provider._extract_lookup(child[0])
 
                 # Instantiate the lookup class and get the expression
-                lookup = lookup_class(stripped_key, child[1], self.database_model_cls)  # type: ignore[reportCallIssue]
+                lookup = lookup_class(
+                    stripped_key, child[1], database_model_cls=self.database_model_cls
+                )
                 if criteria.negated:
                     expression = lookup.as_expression()
                     assert expression is not None
@@ -1115,10 +1117,9 @@ operators = {
 class DefaultLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
 
-    def __init__(self, source, target, database_model_cls):
+    def __init__(self, source, target, *, database_model_cls=None):
         """Source is LHS and Target is RHS of a comparsion"""
-        self.database_model_cls = database_model_cls
-        super().__init__(source, target)
+        super().__init__(source, target, database_model_cls=database_model_cls)
 
     def process_source(self):
         """Return source with transformations, if any"""
