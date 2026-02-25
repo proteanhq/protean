@@ -146,6 +146,13 @@ inline = "protean.adapters.broker.inline:register"
 redis = "protean.adapters.broker.redis:register"
 redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
 
+[tool.poetry.plugins."protean.providers"]
+memory = "protean.adapters.repository.memory:register"
+postgresql = "protean.adapters.repository.sqlalchemy:register_postgresql"
+sqlite = "protean.adapters.repository.sqlalchemy:register_sqlite"
+mssql = "protean.adapters.repository.sqlalchemy:register_mssql"
+elasticsearch = "protean.adapters.repository.elasticsearch:register"
+
 [tool.poetry.plugins."pytest11"]
 protean = "protean.integrations.pytest.plugin"
 

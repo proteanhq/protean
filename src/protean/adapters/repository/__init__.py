@@ -1,24 +1,15 @@
-"""Package for  Concrete Implementations of Protean repositories"""
+"""Package for Concrete Implementations of Protean repositories"""
 
 import collections
-import importlib
 import logging
 from collections import defaultdict
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
+from protean.port.provider import registry
 from protean.utils import fully_qualified_name
 
 logger = logging.getLogger(__name__)
-
-
-DATABASE_PROVIDERS = {
-    "memory": "protean.adapters.MemoryProvider",
-    "postgresql": "protean.adapters.repository.sqlalchemy.PostgresqlProvider",
-    "sqlite": "protean.adapters.repository.sqlalchemy.SqliteProvider",
-    "mssql": "protean.adapters.repository.sqlalchemy.MssqlProvider",
-    "elasticsearch": "protean.adapters.repository.elasticsearch.ESProvider",
-}
 
 
 class Providers(collections.abc.MutableMapping):
@@ -111,21 +102,7 @@ class Providers(collections.abc.MutableMapping):
 
             for provider_name, conn_info in configured_providers.items():
                 provider_type = conn_info.get("provider")
-                if provider_type not in DATABASE_PROVIDERS:
-                    available = ", ".join(sorted(DATABASE_PROVIDERS.keys()))
-                    raise ConfigurationError(
-                        f"Unknown database provider '{provider_type}'. "
-                        f"Available providers: {available}"
-                    )
-
-                provider_full_path = DATABASE_PROVIDERS[provider_type]
-                provider_module, provider_class = provider_full_path.rsplit(
-                    ".", maxsplit=1
-                )
-
-                provider_cls = getattr(
-                    importlib.import_module(provider_module), provider_class
-                )
+                provider_cls = registry.get(provider_type)
                 provider = provider_cls(provider_name, self.domain, conn_info)
 
                 # Initialize a connection to check if everything is ok
