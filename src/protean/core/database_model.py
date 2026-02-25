@@ -1,7 +1,6 @@
 from abc import abstractmethod
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.fields.association import Reference
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import attributes
@@ -67,8 +66,9 @@ class BaseDatabaseModel(Element, OptionsMixin):
     def _entity_to_dict(cls, entity: Any) -> dict[str, Any]:
         """Extract attribute values from an entity into a plain dict.
 
-        Handles Reference fields and ``referenced_as`` remapping.
-        Subclass ``from_entity()`` can call this and post-process as needed.
+        Handles ``referenced_as`` remapping and flattened value-object
+        shadow fields.  Subclass ``from_entity()`` can call this and
+        post-process as needed.
         """
         return _entity_to_dict(cls, entity)
 
@@ -103,9 +103,9 @@ class BaseDatabaseModel(Element, OptionsMixin):
 def _entity_to_dict(model_cls: type, entity: Any) -> dict[str, Any]:
     """Extract attribute values from an entity into a plain dict.
 
-    Handles Reference fields and ``referenced_as`` remapping.  This is
-    the shared implementation used by all adapter-specific ``from_entity()``
-    methods.
+    Handles ``referenced_as`` remapping and flattened value-object shadow
+    fields.  This is the shared implementation used by all adapter-specific
+    ``from_entity()`` methods.
 
     Args:
         model_cls: A database model class with ``meta_.part_of`` pointing
@@ -117,16 +117,13 @@ def _entity_to_dict(model_cls: type, entity: Any) -> dict[str, Any]:
     """
     item_dict: dict[str, Any] = {}
     for attr_obj in attributes(model_cls.meta_.part_of).values():
-        if isinstance(attr_obj, Reference):
-            item_dict[attr_obj.relation.attribute_name] = attr_obj.relation.value
+        if attr_obj.referenced_as:
+            value = getattr(entity, attr_obj.field_name)
+            key = attr_obj.referenced_as
         else:
-            if attr_obj.referenced_as:
-                value = getattr(entity, attr_obj.field_name)
-                key = attr_obj.referenced_as
-            else:
-                value = getattr(entity, attr_obj.attribute_name)
-                key = attr_obj.attribute_name
-            item_dict[key] = value
+            value = getattr(entity, attr_obj.attribute_name)
+            key = attr_obj.attribute_name
+        item_dict[key] = value
     return item_dict
 
 

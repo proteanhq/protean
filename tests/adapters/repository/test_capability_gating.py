@@ -6,6 +6,7 @@ and succeed on providers that declare them.
 """
 
 import logging
+from unittest.mock import PropertyMock, patch
 
 import pytest
 
@@ -191,3 +192,59 @@ class TestTransactionCapabilityWarnings:
             or "does not support transactions" in record.message
         ]
         assert len(transaction_messages) == 0
+
+    def test_real_transactions_skips_warning_branch(self, test_domain, caplog):
+        """Force TRANSACTIONS capability to cover the no-warning branch (97->96)."""
+        from protean.core.unit_of_work import UnitOfWork
+
+        provider = test_domain.providers["default"]
+        real_caps = DatabaseCapabilities.RELATIONAL  # includes TRANSACTIONS
+
+        with (
+            caplog.at_level(logging.DEBUG, logger="protean.core.unit_of_work"),
+            patch.object(
+                type(provider),
+                "capabilities",
+                new_callable=PropertyMock,
+                return_value=real_caps,
+            ),
+        ):
+            uow = UnitOfWork()
+            uow.start()
+            uow.rollback()
+
+        transaction_messages = [
+            record
+            for record in caplog.records
+            if "simulated transactions" in record.message
+            or "does not support transactions" in record.message
+        ]
+        assert len(transaction_messages) == 0
+
+
+class TestQuerySetRawCapabilityGatingForced:
+    """Force the RAW_QUERIES guard in QuerySet.raw() to cover line 291."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Widget)
+        test_domain.init(traverse=False)
+
+    def test_queryset_raw_raises_when_capability_removed(self, test_domain):
+        """QuerySet.raw() raises NotSupportedError when provider lacks RAW_QUERIES."""
+        dao = test_domain.repository_for(Widget)._dao
+        provider = dao.provider
+
+        # Strip RAW_QUERIES from the provider's capabilities
+        caps_without_raw = provider.capabilities & ~DatabaseCapabilities.RAW_QUERIES
+
+        with (
+            patch.object(
+                type(provider),
+                "capabilities",
+                new_callable=PropertyMock,
+                return_value=caps_without_raw,
+            ),
+            pytest.raises(NotSupportedError, match="does not support raw queries"),
+        ):
+            dao.query.raw("SELECT * FROM widget")

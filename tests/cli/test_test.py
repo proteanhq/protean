@@ -873,3 +873,49 @@ class TestDatabaseTestSuiteGeneration:
                 "--parallel-mode",
                 "-m",
             ]
+
+
+class TestDatabaseEmptyMarkerBranches:
+    """Test branches where a database has no marker expression."""
+
+    def test_generate_test_suites_skips_database_with_no_marker(self):
+        """Database with empty marker expression is skipped in suite generation."""
+        runner = TestRunner()
+        original_dbs = TEST_CONFIGS["databases"]
+        try:
+            # Add an unknown database to the config list
+            TEST_CONFIGS["databases"] = list(original_dbs) + ["UNKNOWN_DB"]
+
+            suites = runner.generate_test_suites()
+            suite_names = [s.name for s in suites]
+
+            # UNKNOWN_DB should NOT produce a test suite (empty marker expr)
+            assert "Database: UNKNOWN_DB" not in suite_names
+            # All real databases should still have suites
+            for db in original_dbs:
+                assert f"Database: {db}" in suite_names
+        finally:
+            TEST_CONFIGS["databases"] = original_dbs
+
+    def test_run_category_tests_skips_database_with_no_marker(self, capsys):
+        """DATABASE category run skips databases with empty marker expression."""
+        runner = TestRunner()
+        commands_run = []
+
+        def capture_command(cmd):
+            commands_run.append(cmd)
+            return 0
+
+        runner.run_command = capture_command
+        # Inject an unknown database into the config list
+        original_dbs = TEST_CONFIGS["databases"]
+        try:
+            TEST_CONFIGS["databases"] = ["UNKNOWN_DB_X"] + list(original_dbs)
+            runner.run_category_tests("DATABASE")
+        finally:
+            TEST_CONFIGS["databases"] = original_dbs
+
+        # UNKNOWN_DB_X should not produce a command — only real databases
+        for cmd in commands_run:
+            assert "--db=UNKNOWN_DB_X" not in cmd
+        assert len(commands_run) == len(original_dbs)
