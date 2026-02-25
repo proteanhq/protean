@@ -730,10 +730,12 @@ class TestRepositoryLazyInit:
             assert test_domain.providers._providers is not None
 
     def test_get_connection_unknown_provider_raises(self, test_domain):
-        """get_connection with unknown provider name raises AssertionError."""
+        """get_connection with unknown provider name raises ConfigurationError."""
         with test_domain.domain_context():
             test_domain.init(traverse=False)
-            with pytest.raises(AssertionError, match="No Provider registered"):
+            with pytest.raises(
+                ConfigurationError, match="No provider configured with name"
+            ):
                 test_domain.providers.get_connection("nonexistent_provider")
 
 

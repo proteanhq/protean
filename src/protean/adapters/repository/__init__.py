@@ -110,7 +110,15 @@ class Providers(collections.abc.MutableMapping):
                 raise ConfigurationError("You must define a 'default' provider")
 
             for provider_name, conn_info in configured_providers.items():
-                provider_full_path = DATABASE_PROVIDERS[conn_info["provider"]]
+                provider_type = conn_info.get("provider")
+                if provider_type not in DATABASE_PROVIDERS:
+                    available = ", ".join(sorted(DATABASE_PROVIDERS.keys()))
+                    raise ConfigurationError(
+                        f"Unknown database provider '{provider_type}'. "
+                        f"Available providers: {available}"
+                    )
+
+                provider_full_path = DATABASE_PROVIDERS[provider_type]
                 provider_module, provider_class = provider_full_path.rsplit(
                     ".", maxsplit=1
                 )
@@ -136,11 +144,15 @@ class Providers(collections.abc.MutableMapping):
         if self._providers is None:
             self._initialize()
 
-        try:
-            assert self._providers is not None
-            return self._providers[provider_name].get_connection()
-        except KeyError:
-            raise AssertionError(f"No Provider registered with name {provider_name}")
+        assert self._providers is not None
+
+        if provider_name not in self._providers:
+            configured = sorted(self._providers.keys()) if self._providers else []
+            raise ConfigurationError(
+                f"No provider configured with name '{provider_name}'. "
+                f"Configured providers: {', '.join(configured) or 'none'}"
+            )
+        return self._providers[provider_name].get_connection()
 
     def repository_for(self, part_of) -> BaseRepository:
         """Retrieve a Repository registered for the Aggregate"""
@@ -149,6 +161,13 @@ class Providers(collections.abc.MutableMapping):
 
         provider_name = part_of.meta_.provider
         assert self._providers is not None
+
+        if provider_name not in self._providers:
+            configured = sorted(self._providers.keys()) if self._providers else []
+            raise ConfigurationError(
+                f"No provider configured with name '{provider_name}'. "
+                f"Configured providers: {', '.join(configured) or 'none'}"
+            )
         provider = self._providers[provider_name]
         database = provider.__class__.__database__
 

@@ -1,6 +1,7 @@
 import pytest
 
-from protean.adapters.repository import Providers
+from protean.adapters.repository import DATABASE_PROVIDERS, Providers
+from protean.exceptions import ConfigurationError
 from protean.port.provider import BaseProvider
 
 
@@ -177,3 +178,125 @@ class TestLifecycleMethodsIntegration:
         """domain.drop_database() delegates to provider._drop_database_artifacts()."""
         # Should succeed without error
         test_domain.drop_database()
+
+
+@pytest.mark.no_test_domain
+class TestConfigurationErrorMessages:
+    """Test that provider misconfiguration produces helpful error messages."""
+
+    def test_unknown_provider_type_raises_with_available_list(self):
+        """A typo in the provider name raises ConfigurationError listing available providers."""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestBadProvider")
+        domain.config["databases"] = {
+            "default": {
+                "provider": "postgresqll",  # typo
+                "database_uri": "postgresql://localhost/test",
+            }
+        }
+
+        with domain.domain_context():
+            with pytest.raises(
+                ConfigurationError, match="Unknown database provider"
+            ) as exc_info:
+                domain.providers._initialize()
+
+            error_msg = str(exc_info.value)
+            assert "'postgresqll'" in error_msg
+            assert "Available providers:" in error_msg
+            for name in sorted(DATABASE_PROVIDERS.keys()):
+                assert name in error_msg
+
+    def test_none_provider_type_raises_with_available_list(self):
+        """Missing 'provider' key in config raises ConfigurationError."""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestNoneProvider")
+        domain.config["databases"] = {
+            "default": {
+                "database_uri": "memory://",
+                # 'provider' key missing entirely
+            }
+        }
+
+        with domain.domain_context():
+            with pytest.raises(
+                ConfigurationError, match="Unknown database provider"
+            ) as exc_info:
+                domain.providers._initialize()
+
+            assert "'None'" in str(exc_info.value)
+
+    def test_get_connection_unknown_name_raises_with_configured_list(self):
+        """get_connection with unknown name raises ConfigurationError listing configured providers."""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestUnknownConn")
+        domain.config["databases"] = {
+            "default": {
+                "provider": "memory",
+                "database_uri": "memory://",
+            }
+        }
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            with pytest.raises(
+                ConfigurationError, match="No provider configured"
+            ) as exc_info:
+                domain.providers.get_connection("nonexistent")
+
+            error_msg = str(exc_info.value)
+            assert "'nonexistent'" in error_msg
+            assert "Configured providers:" in error_msg
+            assert "default" in error_msg
+
+    def test_repository_for_unknown_provider_raises_with_configured_list(self):
+        """repository_for with aggregate pointing to unknown provider raises ConfigurationError."""
+        from protean.core.aggregate import BaseAggregate
+        from protean.domain import Domain
+        from protean.fields import String
+
+        domain = Domain(name="TestRepoProviderMismatch")
+        domain.config["databases"] = {
+            "default": {
+                "provider": "memory",
+                "database_uri": "memory://",
+            }
+        }
+
+        class MismatchedAgg(BaseAggregate):
+            name: String(max_length=50)
+
+        domain.register(MismatchedAgg, provider="analytics")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            with pytest.raises(
+                ConfigurationError, match="No provider configured"
+            ) as exc_info:
+                domain.providers.repository_for(MismatchedAgg)
+
+            error_msg = str(exc_info.value)
+            assert "'analytics'" in error_msg
+            assert "Configured providers:" in error_msg
+            assert "default" in error_msg
+
+    def test_missing_default_provider_raises_configuration_error(self):
+        """_initialize raises ConfigurationError when no 'default' provider."""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestNoDefault")
+        domain.config["databases"] = {
+            "custom_only": {
+                "provider": "memory",
+                "database_uri": "memory://",
+            }
+        }
+
+        with domain.domain_context():
+            with pytest.raises(
+                ConfigurationError, match="You must define a 'default' provider"
+            ):
+                domain.providers._initialize()
