@@ -560,6 +560,8 @@ operators = {
     "iexact": "==",
     "contains": "in",
     "icontains": "in",
+    "startswith": "startswith",
+    "endswith": "endswith",
     "gt": ">",
     "gte": ">= ",
     "lt": "<",
@@ -664,6 +666,28 @@ class IContains(MemoryLookup):
             operators[self.lookup_name],
             self.process_source(),
         )
+
+
+@MemoryProvider.register_lookup
+class Startswith(MemoryLookup):
+    """Startswith Query"""
+
+    lookup_name = "startswith"
+
+    def as_expression(self):
+        """Check if source string starts with target string"""
+        return f"{self.process_source()}.startswith({self.process_target()})"
+
+
+@MemoryProvider.register_lookup
+class Endswith(MemoryLookup):
+    """Endswith Query"""
+
+    lookup_name = "endswith"
+
+    def as_expression(self):
+        """Check if source string ends with target string"""
+        return f"{self.process_source()}.endswith({self.process_target()})"
 
 
 @MemoryProvider.register_lookup

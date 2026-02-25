@@ -84,6 +84,7 @@ class TestProviderRegistry:
         with patch("protean.port.provider.import_module") as mock_import:
             mock_module = Mock()
             mock_provider_class = Mock()
+            mock_provider_class.validate_lookups = Mock(return_value=[])
             mock_module.TestProvider = mock_provider_class
             mock_import.return_value = mock_module
 
@@ -92,6 +93,45 @@ class TestProviderRegistry:
 
             assert provider_cls == mock_provider_class
             mock_import.assert_called_once_with("test.module")
+
+    def test_get_warns_on_missing_required_lookups(self, caplog):
+        """Test that get() logs a warning when provider is missing required lookups."""
+        caplog.set_level(logging.WARNING, logger="protean.port.provider")
+
+        with patch("protean.port.provider.import_module") as mock_import:
+            mock_module = Mock()
+            mock_provider_class = Mock()
+            mock_provider_class.__name__ = "IncompleteProvider"
+            mock_provider_class.validate_lookups = Mock(
+                return_value=["contains", "icontains"]
+            )
+            mock_module.IncompleteProvider = mock_provider_class
+            mock_import.return_value = mock_module
+
+            registry.register("incomplete", "test.module.IncompleteProvider")
+            provider_cls = registry.get("incomplete")
+
+            assert provider_cls == mock_provider_class
+            assert "missing required lookups" in caplog.text
+            assert "contains" in caplog.text
+            assert "icontains" in caplog.text
+
+    def test_get_no_warning_when_all_lookups_present(self, caplog):
+        """Test that get() does not warn when all required lookups are registered."""
+        caplog.set_level(logging.WARNING, logger="protean.port.provider")
+
+        with patch("protean.port.provider.import_module") as mock_import:
+            mock_module = Mock()
+            mock_provider_class = Mock()
+            mock_provider_class.__name__ = "CompleteProvider"
+            mock_provider_class.validate_lookups = Mock(return_value=[])
+            mock_module.CompleteProvider = mock_provider_class
+            mock_import.return_value = mock_module
+
+            registry.register("complete", "test.module.CompleteProvider")
+            registry.get("complete")
+
+            assert "missing required lookups" not in caplog.text
 
     def test_get_unregistered_provider_raises_error(self):
         """Test that getting an unregistered provider raises ConfigurationError."""
@@ -373,7 +413,9 @@ class TestProviderRegistryDiscovery:
 
             with patch("protean.port.provider.import_module") as mock_import:
                 mock_module = Mock()
-                mock_module.Test = Mock()
+                mock_provider_class = Mock()
+                mock_provider_class.validate_lookups = Mock(return_value=[])
+                mock_module.Test = mock_provider_class
                 mock_import.return_value = mock_module
 
                 registry.get("test")

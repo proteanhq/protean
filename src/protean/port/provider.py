@@ -66,6 +66,23 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     retrieve connections and perform commits
     """
 
+    # Minimum lookups every adapter must register
+    REQUIRED_LOOKUPS: frozenset[str] = frozenset(
+        {
+            "exact",
+            "iexact",
+            "contains",
+            "icontains",
+            "startswith",
+            "endswith",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "in",
+        }
+    )
+
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
         self.name = name
@@ -88,6 +105,16 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def has_any_capability(self, capabilities: DatabaseCapabilities) -> bool:
         """Check if provider has any of the specified capabilities."""
         return bool(self.capabilities & capabilities)
+
+    @classmethod
+    def validate_lookups(cls) -> list[str]:
+        """Check that all required lookups are registered.
+
+        Returns a list of missing lookup names. Empty list means
+        all required lookups are present.
+        """
+        registered = set(cls.get_lookups().keys())
+        return sorted(cls.REQUIRED_LOOKUPS - registered)
 
     def _extract_lookup(self, key):
         """Extract lookup method based on key name format"""
@@ -269,12 +296,22 @@ class ProviderRegistry:
             module_path, class_name = provider_path.rsplit(".", maxsplit=1)
             module = import_module(module_path)
             provider_cls = getattr(module, class_name)
-            return provider_cls
         except (ImportError, AttributeError) as e:
             raise ConfigurationError(
                 f"Failed to load provider '{name}' from '{provider_path}': {e}. "
                 f"Ensure the required dependencies are installed."
             )
+
+        # Validate that all required lookups are registered
+        missing = provider_cls.validate_lookups()
+        if missing:
+            logger.warning(
+                f"Provider '{name}' ({provider_cls.__name__}) is missing "
+                f"required lookups: {', '.join(missing)}. "
+                f"Filters using these lookups will raise NotImplementedError."
+            )
+
+        return provider_cls
 
     @classmethod
     def list(cls) -> dict[str, str]:
