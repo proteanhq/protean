@@ -1,7 +1,24 @@
 # PostgreSQL
 
-The PostgreSQL adapter uses (`SQLAlchemy`)[https://www.sqlalchemy.org/] under
-the covers as the ORM to communicate with the database.
+The PostgreSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) under
+the covers as the ORM to communicate with the database. It is the recommended
+provider for production deployments.
+
+## Overview
+
+PostgreSQL is a production-grade relational provider that supports the full
+range of database capabilities, including native JSON and array columns. It
+provides real ACID transactions, connection pooling, and schema management.
+
+## Installation
+
+```bash
+pip install "protean[postgresql]"
+
+# Or install the driver separately
+pip install psycopg2-binary   # Pre-compiled binary (recommended for development)
+pip install psycopg2          # Compiled from source (recommended for production)
+```
 
 ## Configuration
 
@@ -11,19 +28,46 @@ provider = "postgresql"
 database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"
 ```
 
-## Options
+### Configuration Options
 
-### provider
+| Option | Default | Description |
+|--------|---------|-------------|
+| `provider` | Required | Must be `"postgresql"` for PostgreSQL |
+| `database_uri` | Required | Connection string (see format below) |
+| `schema` | `None` | Database schema to use (e.g. `"myapp"`) |
+| `pool_size` | `5` | Number of connections in the SQLAlchemy connection pool |
+| `max_overflow` | `10` | Additional connections allowed beyond `pool_size` |
 
-`postgresql` is the provider for PostgreSQL.
+### Connection String Format
 
-### database_uri
+```
+postgresql://[username]:[password]@[host]:[port]/[database]
 
-Connection string that specifies how to connect to a PostgreSQL database.
+# Examples:
+postgresql://postgres:postgres@localhost:5432/postgres
+postgresql://user:pass@db.example.com:5432/myapp
+postgresql://user:pass@db.example.com/myapp?sslmode=require
+```
 
-### schema
+## Capabilities
 
-Specifies the database schema to use in the database.
+The PostgreSQL provider supports the following capabilities:
+
+- :white_check_mark: **CRUD** -- Create, Read, Update, Delete single records
+- :white_check_mark: **FILTER** -- Query/filter records with lookup criteria
+- :white_check_mark: **BULK_OPERATIONS** -- `update_all()`, `delete_all()`
+- :white_check_mark: **ORDERING** -- Server-side `ORDER BY` support
+- :white_check_mark: **TRANSACTIONS** -- Real commit/rollback ACID atomicity
+- :white_check_mark: **OPTIMISTIC_LOCKING** -- Version-based concurrency control
+- :white_check_mark: **RAW_QUERIES** -- Execute raw SQL queries
+- :white_check_mark: **SCHEMA_MANAGEMENT** -- Create/drop tables and indices
+- :white_check_mark: **CONNECTION_POOLING** -- SQLAlchemy connection pool management
+- :white_check_mark: **NATIVE_JSON** -- PostgreSQL `JSONB` column type
+- :white_check_mark: **NATIVE_ARRAY** -- PostgreSQL `ARRAY` column type
+
+PostgreSQL is the only built-in provider that supports **all 12 capability
+flags** (excluding `SIMULATED_TRANSACTIONS`, which is specific to the Memory
+provider).
 
 ## SQLAlchemy Model
 
@@ -38,3 +82,34 @@ generates internally, allowing you full customization.
     The column names specified in the model should exactly match the attribute
     names of the Aggregate or Entity it represents.
 
+## Raw Queries
+
+Use the `raw()` method to execute SQL directly:
+
+```python
+results = domain.providers["default"].raw(
+    "SELECT * FROM users WHERE age > :age",
+    {"age": 21}
+)
+```
+
+Raw queries execute immediately in their own transaction context. Results are
+returned as-is from the database without entity conversion.
+
+## Limitations
+
+- **Requires Running Server** -- PostgreSQL must be installed and running as a
+  separate service. Use `make up` to start Protean's Docker-based development
+  services.
+- **Connection Overhead** -- Each connection consumes server resources. Tune
+  `pool_size` and `max_overflow` for your workload.
+
+## Next Steps
+
+- Learn about [database capabilities](./index.md#database-capabilities) in
+  detail
+- Explore [Elasticsearch](./elasticsearch.md) for search-oriented storage
+- See [Building Custom Database Adapters](./custom-databases.md) to support
+  other databases
+- Learn about
+  [setting up databases for tests](../../../patterns/setting-up-and-tearing-down-database-for-tests.md)

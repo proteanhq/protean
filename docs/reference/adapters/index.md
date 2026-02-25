@@ -10,25 +10,36 @@ into Protean's design, see
 ## Database
 
 The [Database port](./database/index.md) defines the interface for interacting
-with persistent storage
-systems. It abstracts the underlying database technology, allowing Protean to
-support various databases without changing the core application logic.
+with persistent storage systems. It abstracts the underlying database
+technology, allowing Protean to support various databases without changing the
+core application logic.
+
+Each provider declares its [capabilities](./database/index.md#database-capabilities),
+enabling capability-gated methods and automatic test selection.
 
 Current Implementations:
 
-- [PostgreSQL](./database/postgresql.md)
-- [Elasticsearch](./database/elasticsearch.md)
+- [Memory](./database/memory.md) - Default in-memory provider (no external dependencies)
+- [SQLite](./database/sqlite.md) - File-based relational provider
+- [PostgreSQL](./database/postgresql.md) - Production-grade relational provider
+- [Elasticsearch](./database/elasticsearch.md) - Document store for search and analytics
+
+Learn more:
+
+- [Database Capabilities](./database/index.md#database-capabilities) - Understanding what each provider can do
+- [Custom Database Adapters](./database/custom-databases.md) - Create your own database adapters
 
 ## Broker
 
-The [Broker port](./broker/index.md) defines the interface for message brokers and pub/sub systems.
-It enables communication between different parts of the ecosystem via messages,
-facilitating asynchronous processing and decoupling.
+The [Broker port](./broker/index.md) defines the interface for message brokers
+and pub/sub systems. It enables communication between different parts of the
+ecosystem via messages, facilitating asynchronous processing and decoupling.
 
 !!!note
     Protean internally uses an Event Store that acts both as an event
-    storage mechanism as well as a message delivery mechanism within a Protean-based
-    application. Brokers are more focused on integration with other systems.
+    storage mechanism as well as a message delivery mechanism within a
+    Protean-based application. Brokers are more focused on integration with
+    other systems.
 
 Current Implementations:
 
@@ -43,32 +54,35 @@ Learn more:
 
 ## Cache
 
-The [Cache port](./cache/index.md) defines the interface for interacting with caching systems. It
-exposes APIs to temporarily store and retrieve data, improving application
-performance by reducing the need for repeated database access.
+The [Cache port](./cache/index.md) defines the interface for interacting with
+caching systems. It exposes APIs to temporarily store and retrieve projection
+data, improving application performance by reducing the need for repeated
+database access.
 
 Current Implementations:
 
-- [Redis](./cache/redis.md)
+- Memory - Default in-memory cache (no external dependencies)
+- [Redis](./cache/redis.md) - Persistent distributed cache with TTL support
 
 ## Event Store
 
-The [Event Store](./eventstore/index.md) port defines the interface for event sourcing and event store
-systems. It handles the storage and retrieval of events, which are the
-fundamental units of change in event-driven architectures. This port ensures
-that all state changes are recorded as a sequence of events, providing a
-complete audit trail and enabling features like event replay and temporal
-queries.
+The [Event Store](./eventstore/index.md) port defines the interface for event
+sourcing and event store systems. It handles the storage and retrieval of
+events, which are the fundamental units of change in event-driven
+architectures. This port ensures that all state changes are recorded as a
+sequence of events, providing a complete audit trail and enabling features like
+event replay and temporal queries.
 
 Current Implementations:
 
-- [Message DB](./eventstore/message-db.md)
+- Memory - Default in-memory event store (no external dependencies)
+- [Message DB](./eventstore/message-db.md) - PostgreSQL-based production event store
 
-!!!note
-    We are working on adding a comprehensive set of adapters to this list.
-    We welcome your contribution - head over to the section on
-    [contributing adapters](../../community/contributing/adapters.md) for more
-    information.
+---
 
-    You can sponsor an adapter if you want to fast-track its implementation.
-    [Get in touch](mailto:sponsor@ambitious.systems) with us for a discussion.
+!!!tip "Build your own"
+    All adapter types support third-party extensions via Python entry points.
+    See [Building Adapters](../../community/contributing/adapters.md) for an
+    overview, or jump directly to
+    [Custom Database Adapters](./database/custom-databases.md) or
+    [Custom Brokers](./broker/custom-brokers.md) for detailed guides.

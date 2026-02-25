@@ -20,7 +20,7 @@ Categories:
 
 - `CORE`: Runs core tests without external dependencies (default)
 - `EVENTSTORE`: Runs tests for all configured event store adapters
-- `DATABASE`: Runs tests for all configured database adapters
+- `DATABASE`: Runs tests for all configured database adapters. Tests are capability-gated — each provider only runs tests matching its declared capabilities (e.g., `basic_storage`, `transactional`, `raw_queries`, `native_json`). See [Adapter Conformance Testing](../../reference/testing/conformance.md) for details.
 - `FULL`: Runs the complete test suite for all adapters
 - `COVERAGE`: Runs the complete test suite with all adapters and generates coverage report
 
@@ -209,9 +209,34 @@ Pytest markers are used to categorize tests and control their execution. Protean
 - `eventstore`: Tests for event store functionality
 - `no_test_domain`: Tests that should not use the default test domain
 
+**Capability markers** (used by the generic adapter test suite):
+
+- `basic_storage`: CRUD, filtering, bulk operations, ordering
+- `transactional`: Transaction support (real or simulated)
+- `atomic_transactions`: Real database transactions only
+- `raw_queries`: Native query support
+- `schema_management`: DDL operations (create/drop tables)
+- `native_json`: Native JSON column type
+- `native_array`: Native array column type
+
 These markers can be used with pytest's `-m` option to selectively run tests for a specific database, e.g., `pytest -m database --db=POSTGRESQL --ignore=tests/support/`.
 
 Refer to `tests/conftest.py` for other database options.
+
+### `protean test test-adapter`
+
+In addition to `protean test`, Protean provides a dedicated subcommand for
+validating that a database adapter correctly implements its declared
+capabilities:
+
+```shell
+protean test test-adapter --provider postgresql --uri "postgresql://..."
+```
+
+This runs the generic adapter conformance suite against the specified provider,
+automatically skipping tests for capabilities the provider does not declare.
+See [Adapter Conformance Testing](../../reference/testing/conformance.md) for
+full CLI reference and usage examples.
 
 ## Important Fixtures
 

@@ -175,9 +175,14 @@ need by what you're trying to accomplish.
 | Use PostgreSQL                                  | [PostgreSQL Adapter](./reference/adapters/database/postgresql.md) |
 | Use Elasticsearch                               | [Elasticsearch Adapter](./reference/adapters/database/elasticsearch.md) |
 | Use Redis as a message broker                   | [Redis Broker](./reference/adapters/broker/redis.md) |
+| Use the in-memory database                      | [Memory Adapter](./reference/adapters/database/memory.md) |
+| Use SQLite                                      | [SQLite Adapter](./reference/adapters/database/sqlite.md) |
 | Use Redis as a cache                            | [Redis Cache](./reference/adapters/cache/redis.md) |
 | Use Message DB as an event store                | [Message DB](./reference/adapters/eventstore/message-db.md) |
+| Build a custom database adapter                 | [Custom Databases](./reference/adapters/database/custom-databases.md) |
 | Build a custom broker adapter                   | [Custom Brokers](./reference/adapters/broker/custom-brokers.md) |
+| Check what capabilities a database supports     | [Database Capabilities](./reference/adapters/database/index.md#database-capabilities) |
+| Test a custom adapter for conformance           | [Conformance Testing](./reference/testing/conformance.md) |
 
 ## Look Up API Details
 
