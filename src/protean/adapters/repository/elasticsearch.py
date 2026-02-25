@@ -694,14 +694,21 @@ class ESProvider(BaseProvider):
         }
 
         for _, element_record in elements.items():
-            provider = current_domain.providers[element_record.cls.meta_.provider]
-            repo = self.domain.repository_for(element_record.cls)
+            cls = element_record.cls
+            # Skip event-sourced aggregates — they have no database model
+            if getattr(cls.meta_, "is_event_sourced", False):
+                continue
+            part_of = getattr(cls.meta_, "part_of", None)
+            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
+                continue
 
+            provider = current_domain.providers[cls.meta_.provider]
+            if provider != self:
+                continue
+
+            repo = self.domain.repository_for(cls)
             database_model_cls = repo._database_model
-            if (
-                provider.__class__.__database__ == "elasticsearch"
-                and conn.indices.exists(index=database_model_cls._index._name)
-            ):
+            if conn.indices.exists(index=database_model_cls._index._name):
                 # Delete all documents from the index using delete_by_query with match_all
                 # This clears the data but keeps the index structure
                 conn.delete_by_query(
@@ -736,14 +743,21 @@ class ESProvider(BaseProvider):
                 elements.update(self.domain.registry._elements[element_type])
 
         for _, element_record in elements.items():
-            provider = current_domain.providers[element_record.cls.meta_.provider]
-            database_model_cls = current_domain.repository_for(
-                element_record.cls
-            )._database_model
-            if (
-                provider.__class__.__database__ == "elasticsearch"
-                and not database_model_cls._index.exists(using=conn)
-            ):
+            cls = element_record.cls
+            # Skip event-sourced aggregates — they use the event store, not ES indices
+            if getattr(cls.meta_, "is_event_sourced", False):
+                continue
+            # Skip entities that belong to event-sourced aggregates
+            part_of = getattr(cls.meta_, "part_of", None)
+            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
+                continue
+
+            provider = current_domain.providers[cls.meta_.provider]
+            if provider != self:
+                continue
+
+            database_model_cls = current_domain.repository_for(cls)._database_model
+            if not database_model_cls._index.exists(using=conn):
                 # We use database_model_cls here to ensure the index is created along with mappings
                 database_model_cls.init(using=conn)
 
@@ -756,14 +770,20 @@ class ESProvider(BaseProvider):
             **self.domain.registry.projections,
         }
         for _, element_record in elements.items():
-            database_model_cls = self.domain.repository_for(
-                element_record.cls
-            )._database_model
-            provider = self.domain.providers[element_record.cls.meta_.provider]
-            if (
-                provider.__class__.__database__ == "elasticsearch"
-                and database_model_cls._index.exists(using=conn)
-            ):
+            cls = element_record.cls
+            # Skip event-sourced aggregates — they have no database model
+            if getattr(cls.meta_, "is_event_sourced", False):
+                continue
+            part_of = getattr(cls.meta_, "part_of", None)
+            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
+                continue
+
+            provider = self.domain.providers[cls.meta_.provider]
+            if provider != self:
+                continue
+
+            database_model_cls = self.domain.repository_for(cls)._database_model
+            if database_model_cls._index.exists(using=conn):
                 conn.indices.delete(index=database_model_cls._index._name)
 
 

@@ -6,9 +6,14 @@ from elasticsearch_dsl.response import Response
 
 from protean import Domain
 from protean.adapters.repository.elasticsearch import ESProvider
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.exceptions import ConfigurationError
+from protean.fields import HasMany, String
 
 from .elements import Alien, Person
+
+from tests.shared import initialize_domain
 
 
 @pytest.mark.elasticsearch
@@ -156,3 +161,50 @@ class TestElasticsearchProvider:
             dao1.database_model_cls._keyword_fields
             is dao2.database_model_cls._keyword_fields
         )
+
+
+class ESOrder(BaseAggregate):
+    name: String(required=True)
+    items = HasMany("ESLineItem")
+
+
+class ESLineItem(BaseEntity):
+    sku: String(required=True)
+
+
+@pytest.mark.elasticsearch
+@pytest.mark.no_test_domain
+class TestCreateArtifactsEventSourcedFilter:
+    """Test that _create_database_artifacts skips event-sourced aggregates."""
+
+    def test_create_artifacts_skips_event_sourced_aggregates(self):
+        """Event-sourced aggregates use the event store, not ES indices.
+        _create_database_artifacts should skip them and their child entities."""
+        domain = initialize_domain(name="ES-EventSourced-Test", root_path=__file__)
+
+        # Register a regular aggregate and an event-sourced aggregate with entity
+        domain.register(Person)
+        domain.register(ESOrder, is_event_sourced=True)
+        domain.register(ESLineItem, part_of=ESOrder)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            provider = domain.providers["default"]
+            conn = provider.get_connection()
+
+            try:
+                provider._create_database_artifacts()
+
+                # Person (regular aggregate) should have its index created
+                person_model = domain.repository_for(Person)._database_model
+                assert conn.indices.exists(index=person_model._index._name)
+
+                # Event-sourced aggregate should NOT have an index
+                es_order_schema = provider.namespaced_schema_name("es_order")
+                assert not conn.indices.exists(index=es_order_schema)
+
+                # Entity of event-sourced aggregate should NOT have an index
+                es_line_item_schema = provider.namespaced_schema_name("es_line_item")
+                assert not conn.indices.exists(index=es_line_item_schema)
+            finally:
+                provider._drop_database_artifacts()
