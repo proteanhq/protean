@@ -33,7 +33,7 @@ STYLE_BLOCK = """
 """
 
 TEST_CONFIGS = {
-    "databases": ["MEMORY", "POSTGRESQL", "SQLITE", "MSSQL"],
+    "databases": ["MEMORY", "POSTGRESQL", "SQLITE", "MSSQL", "ELASTICSEARCH"],
     "brokers": [
         "REDIS",
         "INLINE",
@@ -104,6 +104,37 @@ class TestRunner:
             "ENTERPRISE_STREAMING": "enterprise_streaming",
         }
 
+        # Database capability mappings
+        self.database_capabilities: dict[str, str] = {
+            "MEMORY": "IN_MEMORY",
+            "POSTGRESQL": "RELATIONAL_FULL",
+            "SQLITE": "RELATIONAL",
+            "MSSQL": "RELATIONAL_FULL",
+            "ELASTICSEARCH": "DOCUMENT_STORE",
+        }
+
+        # Map convenience sets to applicable markers (set-based, not hierarchical)
+        self.database_capability_markers: dict[str, set[str]] = {
+            "IN_MEMORY": {"basic_storage", "transactional", "raw_queries"},
+            "DOCUMENT_STORE": {"basic_storage", "schema_management"},
+            "RELATIONAL": {
+                "basic_storage",
+                "transactional",
+                "atomic_transactions",
+                "raw_queries",
+                "schema_management",
+            },
+            "RELATIONAL_FULL": {
+                "basic_storage",
+                "transactional",
+                "atomic_transactions",
+                "raw_queries",
+                "schema_management",
+                "native_json",
+                "native_array",
+            },
+        }
+
     def run_command(self, cmd: list[str]) -> int:
         """Execute a command and return its exit code."""
         return subprocess.call(cmd)
@@ -168,6 +199,18 @@ class TestRunner:
 
         return " or ".join(marker_names)
 
+    def get_database_marker_expression(self, database: str) -> str:
+        """Get marker expression for database's capabilities.
+
+        Returns a marker expression like 'basic_storage or transactional or raw_queries'
+        that includes all capability markers supported by this database.
+        """
+        capability = self.database_capabilities.get(database)
+        if not capability:
+            return ""
+        markers = self.database_capability_markers.get(capability, set())
+        return " or ".join(sorted(markers))
+
     def generate_test_suites(self) -> list[TestSuite]:
         """Generate all test suites for comprehensive testing."""
         suites = []
@@ -180,12 +223,16 @@ class TestRunner:
         )
         suites.append(TestSuite("Full Matrix", full_cmd))
 
-        # Database tests
+        # Database tests (capability-based)
         for db in TEST_CONFIGS["databases"]:
-            cmd = self.build_coverage_command(
-                self.build_test_command("database", f"--db={db}")
-            )
-            suites.append(TestSuite(f"Database: {db}", cmd))
+            marker_expression = self.get_database_marker_expression(db)
+            if marker_expression:
+                cmd = self.build_coverage_command(
+                    self.build_test_command(
+                        marker=marker_expression, extra_flags=[f"--db={db}"]
+                    )
+                )
+                suites.append(TestSuite(f"Database: {db}", cmd))
 
         # Capability-based broker tests
         all_brokers = TEST_CONFIGS["brokers"]
@@ -304,9 +351,15 @@ class TestRunner:
                 self.track_exit_code(self.run_command(cmd))
         elif category == "DATABASE":
             for db in TEST_CONFIGS["databases"]:
-                print(f"Running tests for DATABASE: {db}…")
-                cmd = self.build_test_command("database", f"--db={db}")
-                self.track_exit_code(self.run_command(cmd))
+                marker_expression = self.get_database_marker_expression(db)
+                if marker_expression:
+                    db_capability = self.database_capabilities.get(db, "UNKNOWN")
+                    print(f"Running tests for DATABASE: {db} ({db_capability})…")
+                    cmd = self.build_test_command(
+                        marker=marker_expression,
+                        extra_flags=[f"--db={db}"],
+                    )
+                    self.track_exit_code(self.run_command(cmd))
         elif category == "BROKER":
             # Use capability-based testing for brokers
             all_brokers = TEST_CONFIGS["brokers"]

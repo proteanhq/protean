@@ -45,6 +45,24 @@ class TestTestRunner:
         runner = TestRunner()
         assert runner.exit_status == 0
 
+        # Broker capability mappings
+        assert runner.broker_capabilities
+        assert runner.capability_hierarchy
+        assert runner.capability_markers
+
+        # Database capability mappings
+        assert runner.database_capabilities == {
+            "MEMORY": "IN_MEMORY",
+            "POSTGRESQL": "RELATIONAL_FULL",
+            "SQLITE": "RELATIONAL",
+            "MSSQL": "RELATIONAL_FULL",
+            "ELASTICSEARCH": "DOCUMENT_STORE",
+        }
+        assert "IN_MEMORY" in runner.database_capability_markers
+        assert "DOCUMENT_STORE" in runner.database_capability_markers
+        assert "RELATIONAL" in runner.database_capability_markers
+        assert "RELATIONAL_FULL" in runner.database_capability_markers
+
     def test_track_exit_code(self, mock_runner):
         """Test exit code tracking with bitwise OR."""
         mock_runner.track_exit_code(1)
@@ -133,9 +151,8 @@ class TestTestRunner:
         """Test test suite generation."""
         suites = mock_runner.generate_test_suites()
 
-        assert (
-            len(suites) == 9
-        )  # Full Matrix + 4 DBs + 1 Brokers + 2 Manual Brokers + 1 EventStore
+        # Full Matrix + 5 DBs + 3 Brokers + 1 EventStore = 10
+        assert len(suites) == 10
         suite_names = [suite.name for suite in suites]
 
         assert "Full Matrix" in suite_names
@@ -610,7 +627,7 @@ class TestConfiguration:
         assert "eventstores" in TEST_CONFIGS
         assert "full_matrix_flags" in TEST_CONFIGS
 
-        assert len(TEST_CONFIGS["databases"]) == 4
+        assert len(TEST_CONFIGS["databases"]) == 5
         assert len(TEST_CONFIGS["brokers"]) == 3
         assert len(TEST_CONFIGS["eventstores"]) == 2
 
@@ -626,3 +643,233 @@ class TestConfiguration:
         }
         actual_categories = {category.value for category in RunCategory}
         assert actual_categories == expected_categories
+
+    def test_elasticsearch_in_databases(self):
+        """Test that ELASTICSEARCH is included in the databases list."""
+        assert "ELASTICSEARCH" in TEST_CONFIGS["databases"]
+
+
+class TestDatabaseMarkerExpression:
+    """Test database capability marker expression generation."""
+
+    def test_memory_marker_expression(self):
+        """Test Memory produces correct marker expression."""
+        runner = TestRunner()
+        expr = runner.get_database_marker_expression("MEMORY")
+        assert expr == "basic_storage or raw_queries or transactional"
+
+    def test_postgresql_marker_expression(self):
+        """Test PostgreSQL produces correct marker expression (RELATIONAL_FULL)."""
+        runner = TestRunner()
+        expr = runner.get_database_marker_expression("POSTGRESQL")
+        assert expr == (
+            "atomic_transactions or basic_storage or native_array "
+            "or native_json or raw_queries or schema_management or transactional"
+        )
+
+    def test_sqlite_marker_expression(self):
+        """Test SQLite produces correct marker expression (RELATIONAL)."""
+        runner = TestRunner()
+        expr = runner.get_database_marker_expression("SQLITE")
+        assert expr == (
+            "atomic_transactions or basic_storage or raw_queries "
+            "or schema_management or transactional"
+        )
+
+    def test_mssql_marker_expression(self):
+        """Test MSSQL produces correct marker expression (RELATIONAL_FULL)."""
+        runner = TestRunner()
+        expr = runner.get_database_marker_expression("MSSQL")
+        # Same as PostgreSQL — both are RELATIONAL_FULL
+        assert expr == runner.get_database_marker_expression("POSTGRESQL")
+
+    def test_elasticsearch_marker_expression(self):
+        """Test Elasticsearch produces correct marker expression (DOCUMENT_STORE)."""
+        runner = TestRunner()
+        expr = runner.get_database_marker_expression("ELASTICSEARCH")
+        assert expr == "basic_storage or schema_management"
+
+    def test_unknown_database_returns_empty(self):
+        """Test unknown database name returns empty string."""
+        runner = TestRunner()
+        assert runner.get_database_marker_expression("UNKNOWN_DB") == ""
+
+    def test_markers_are_sorted_alphabetically(self):
+        """Test that marker expressions are consistently sorted."""
+        runner = TestRunner()
+        for db in runner.database_capabilities:
+            expr = runner.get_database_marker_expression(db)
+            markers = expr.split(" or ")
+            assert markers == sorted(markers)
+
+    def test_all_configured_databases_have_expressions(self):
+        """Test every database in TEST_CONFIGS produces a non-empty expression."""
+        runner = TestRunner()
+        for db in TEST_CONFIGS["databases"]:
+            expr = runner.get_database_marker_expression(db)
+            assert expr, f"Database {db} produced an empty marker expression"
+
+    def test_relational_full_superset_of_relational(self):
+        """Test RELATIONAL_FULL markers are a superset of RELATIONAL markers."""
+        runner = TestRunner()
+        relational = runner.database_capability_markers["RELATIONAL"]
+        relational_full = runner.database_capability_markers["RELATIONAL_FULL"]
+        assert relational.issubset(relational_full)
+
+    def test_all_databases_include_basic_storage(self):
+        """Test all capability sets include basic_storage marker."""
+        runner = TestRunner()
+        for capability_set, markers in runner.database_capability_markers.items():
+            assert "basic_storage" in markers, (
+                f"Capability set {capability_set} missing basic_storage"
+            )
+
+
+class TestDatabaseCategoryTests:
+    """Test capability-based DATABASE category execution."""
+
+    def test_database_category_uses_capability_markers(self, capsys):
+        """Test DATABASE category uses capability-based marker expressions."""
+        runner = TestRunner()
+        commands_run = []
+
+        def capture_command(cmd):
+            commands_run.append(cmd)
+            return 0
+
+        runner.run_command = capture_command
+        runner.run_category_tests("DATABASE")
+
+        # Verify each database was tested with capability markers, not "database"
+        assert len(commands_run) == len(TEST_CONFIGS["databases"])
+        for cmd in commands_run:
+            # Should use -m with capability markers, not "database"
+            assert "-m" in cmd
+            marker_idx = cmd.index("-m") + 1
+            marker_expr = cmd[marker_idx]
+            assert "database" not in marker_expr.split(" or ")
+            assert "basic_storage" in marker_expr
+
+    def test_database_category_prints_capability_info(self, capsys):
+        """Test DATABASE category prints capability info for each database."""
+        runner = TestRunner()
+        runner.run_command = lambda cmd: 0
+        runner.run_category_tests("DATABASE")
+
+        captured = capsys.readouterr()
+        assert "MEMORY (IN_MEMORY)" in captured.out
+        assert "POSTGRESQL (RELATIONAL_FULL)" in captured.out
+        assert "SQLITE (RELATIONAL)" in captured.out
+        assert "MSSQL (RELATIONAL_FULL)" in captured.out
+        assert "ELASTICSEARCH (DOCUMENT_STORE)" in captured.out
+
+    def test_database_category_passes_db_flag(self):
+        """Test DATABASE category passes --db flag for each database."""
+        runner = TestRunner()
+        commands_run = []
+
+        def capture_command(cmd):
+            commands_run.append(cmd)
+            return 0
+
+        runner.run_command = capture_command
+        runner.run_category_tests("DATABASE")
+
+        for i, db in enumerate(TEST_CONFIGS["databases"]):
+            assert f"--db={db}" in commands_run[i]
+
+    def test_database_category_tracks_failures(self):
+        """Test DATABASE category tracks exit codes from failing runs."""
+        runner = TestRunner()
+        call_count = 0
+
+        def fail_second(cmd):
+            nonlocal call_count
+            call_count += 1
+            return 1 if call_count == 2 else 0
+
+        runner.run_command = fail_second
+        result = runner.run_category_tests("DATABASE")
+
+        assert result != 0
+
+
+class TestDatabaseTestSuiteGeneration:
+    """Test capability-based database test suite generation."""
+
+    @staticmethod
+    def _find_pytest_marker(command: list[str]) -> str:
+        """Extract the pytest -m marker expression from a coverage-wrapped command.
+
+        Coverage commands look like:
+            coverage run --parallel-mode -m pytest ... -m "marker expr" ...
+        The first -m belongs to coverage (module flag), the second to pytest.
+        """
+        # Find the last -m flag, which is the pytest marker
+        indices = [i for i, arg in enumerate(command) if arg == "-m"]
+        assert len(indices) >= 2, (
+            f"Expected at least 2 -m flags, got {indices} in {command}"
+        )
+        return command[indices[-1] + 1]
+
+    def test_database_suites_use_capability_markers(self):
+        """Test generated database suites use capability markers."""
+        runner = TestRunner()
+        suites = runner.generate_test_suites()
+
+        db_suites = [s for s in suites if s.name.startswith("Database:")]
+        assert len(db_suites) == len(TEST_CONFIGS["databases"])
+
+        for suite in db_suites:
+            marker_expr = self._find_pytest_marker(suite.command)
+            # Should not be the old "database" marker
+            assert marker_expr != "database"
+            assert "basic_storage" in marker_expr
+
+    def test_database_suites_include_db_flag(self):
+        """Test generated database suites include --db flag."""
+        runner = TestRunner()
+        suites = runner.generate_test_suites()
+
+        for db in TEST_CONFIGS["databases"]:
+            db_suite = next(s for s in suites if s.name == f"Database: {db}")
+            assert f"--db={db}" in db_suite.command
+
+    def test_elasticsearch_suite_has_limited_markers(self):
+        """Test Elasticsearch suite only gets basic_storage and schema_management."""
+        runner = TestRunner()
+        suites = runner.generate_test_suites()
+
+        es_suite = next(s for s in suites if s.name == "Database: ELASTICSEARCH")
+        marker_expr = self._find_pytest_marker(es_suite.command)
+
+        assert "basic_storage" in marker_expr
+        assert "schema_management" in marker_expr
+        # Should NOT include transaction or raw query markers
+        assert "transactional" not in marker_expr
+        assert "raw_queries" not in marker_expr
+
+    def test_memory_suite_excludes_atomic_transactions(self):
+        """Test Memory suite does not include atomic_transactions marker."""
+        runner = TestRunner()
+        suites = runner.generate_test_suites()
+
+        mem_suite = next(s for s in suites if s.name == "Database: MEMORY")
+        marker_expr = self._find_pytest_marker(mem_suite.command)
+
+        assert "transactional" in marker_expr
+        assert "atomic_transactions" not in marker_expr
+
+    def test_database_suites_wrapped_in_coverage(self):
+        """Test generated database suites are wrapped in coverage commands."""
+        runner = TestRunner()
+        suites = runner.generate_test_suites()
+
+        db_suites = [s for s in suites if s.name.startswith("Database:")]
+        for suite in db_suites:
+            assert suite.command[:4] == [
+                "coverage",
+                "run",
+                "--parallel-mode",
+                "-m",
+            ]
