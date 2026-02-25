@@ -84,7 +84,7 @@ class TestTrackingSeenObjects:
         uow = UnitOfWork()
         uow.start()
 
-        test_domain.repository_for(User)._dao.query.filter(name__contains="Doe").all()
+        test_domain.repository_for(User).query.filter(name__contains="Doe").all()
 
         assert len(uow._identity_map["default"]) == 2
         assert all(

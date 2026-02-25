@@ -113,7 +113,7 @@ class OrderCommandHandler:
         inv_repo = current_domain.repository_for(Inventory)
         inventories = []
         for item in order.items:
-            inv_results = inv_repo._dao.query.filter(title=item.book_title).all()
+            inv_results = inv_repo.query.filter(title=item.book_title).all()
             if inv_results.items:
                 inventories.append(inv_results.items[0])
 

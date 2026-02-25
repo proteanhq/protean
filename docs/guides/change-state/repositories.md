@@ -81,7 +81,7 @@ the domain concepts they represent:
 ```
 
 1. The repository is connected to the `Person` aggregate through `part_of`.
-2. Custom methods use `self._dao` to access the persistence layer.
+2. Custom methods use `self.query` and `self.find_by` to access the persistence layer.
 
 ```shell
 In [1]: repo = domain.repository_for(Person)
@@ -98,38 +98,33 @@ Out[3]: [<Person: Person object (id: ...)>]
     perform. `adults` is a better name than `filter_by_age_gte_18`. The
     repository should speak the ubiquitous language of the domain.
 
-## The DAO layer
+## Querying inside repositories
 
-Every repository has an internal `_dao` property that provides access to the
-Data Access Object -- the layer that talks to the database.
+Every repository exposes two convenience methods for building queries:
 
-At first glance, repositories and DAOs may seem similar. But a repository
-leans towards the domain in its functionality. It contains methods whose names
-reflect what the domain is trying to ask. Data Access Objects, on the other
-hand, talk the language of the database. A repository works in conjunction
-with the DAO layer to access and manipulate the persistence store.
-
-Within your custom repository methods, you use `self._dao` to build queries:
+- **`self.query`** -- a [QuerySet](./retrieve-aggregates.md#queryset) for
+  building filtered, sorted, paginated queries.
+- **`self.find_by(**kwargs)`** -- find a single aggregate matching the given
+  fields. Raises `ObjectNotFoundError` if no match is found, and
+  `TooManyObjectsError` if multiple matches are found.
 
 ```python
 @domain.repository(part_of=Person)
 class PersonRepository:
     def adults_in_country(self, country_code: str) -> list:
-        return self._dao.query.filter(
+        return self.query.filter(
             age__gte=18, country=country_code
         ).all().items
 
     def find_by_email(self, email: str) -> Person:
-        return self._dao.find_by(email=email)
+        return self.find_by(email=email)
 ```
 
-The DAO exposes:
-
-- **`.query`** -- a [QuerySet](./retrieve-aggregates.md#queryset) for building
-  filtered, sorted, paginated queries.
-- **`.find_by(**kwargs)`** -- find a single aggregate matching the given fields.
-- **`.exists(excludes_, **filters)`** -- check if matching aggregates exist.
-- **`.get(identifier)`** -- retrieve by primary key.
+Internally, these delegate to the repository's Data Access Object (DAO) --
+the layer that talks to the database. The DAO is still accessible as
+`self._dao` for advanced use cases (e.g. `exists()`, `outside_uow()`), but
+for typical custom queries, `self.query` and `self.find_by()` are all you
+need.
 
 For a comprehensive guide on querying, see
 [Retrieving Aggregates](./retrieve-aggregates.md).
@@ -143,7 +138,7 @@ to a specific one using the `database` parameter:
 @domain.repository(part_of=Person, database="reporting")
 class PersonReportingRepository:
     def active_users_summary(self) -> list:
-        return self._dao.query.filter(active=True).all().items
+        return self.query.filter(active=True).all().items
 ```
 
 When no `database` is specified, the repository uses the `default` provider.
@@ -168,8 +163,8 @@ Define a custom repository when you need to:
 You do **not** need a custom repository for:
 
 - Basic `add` and `get` operations -- the default repository handles these.
-- One-off queries in command handlers or application services -- you can
-  access the DAO directly through `domain.repository_for(Aggregate)._dao`.
+- One-off queries in command handlers or application services -- consider
+  adding a named method to a custom repository instead.
 
 !!!note
     Keep repositories thin. They should contain query logic, not business

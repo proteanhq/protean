@@ -72,7 +72,7 @@ class TestReferencedAs:
         user_repo = test_domain.repository_for(User)
         user_repo.add(user)
 
-        hydrated_user = user_repo._dao.query.filter(name="John Doe").first
+        hydrated_user = user_repo.query.filter(name="John Doe").first
         assert hydrated_user.name == "John Doe"
 
     def test_query_by_attribute_name_with_referenced_as(self, test_domain):
@@ -80,7 +80,7 @@ class TestReferencedAs:
         user_repo = test_domain.repository_for(User)
         user_repo.add(user)
 
-        hydrated_user = user_repo._dao.query.filter(full_name="John Doe").first
+        hydrated_user = user_repo.query.filter(full_name="John Doe").first
         assert hydrated_user.name == "John Doe"
 
     def test_different_queries_by_field_with_referenced_as(self, test_domain):
@@ -88,40 +88,40 @@ class TestReferencedAs:
         user_repo = test_domain.repository_for(User)
         user_repo.add(user)
 
-        hydrated_user = user_repo._dao.query.filter(name="John Doe").first
+        hydrated_user = user_repo.query.filter(name="John Doe").first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(full_name="John Doe").first
+        hydrated_user = user_repo.query.filter(full_name="John Doe").first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(age=21).first
+        hydrated_user = user_repo.query.filter(age=21).first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(years=21).first
+        hydrated_user = user_repo.query.filter(years=21).first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(age__gt=21).first
+        hydrated_user = user_repo.query.filter(age__gt=21).first
         assert hydrated_user is None
 
-        hydrated_user = user_repo._dao.query.filter(years__gt=21).first
+        hydrated_user = user_repo.query.filter(years__gt=21).first
         assert hydrated_user is None
 
-        hydrated_user = user_repo._dao.query.filter(age__gte=21).first
+        hydrated_user = user_repo.query.filter(age__gte=21).first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(years__gte=21).first
+        hydrated_user = user_repo.query.filter(years__gte=21).first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(name__contains="John").first
+        hydrated_user = user_repo.query.filter(name__contains="John").first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(full_name__contains="John").first
+        hydrated_user = user_repo.query.filter(full_name__contains="John").first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(name__iexact="john doe").first
+        hydrated_user = user_repo.query.filter(name__iexact="john doe").first
         assert hydrated_user.name == "John Doe"
 
-        hydrated_user = user_repo._dao.query.filter(full_name__iexact="john doe").first
+        hydrated_user = user_repo.query.filter(full_name__iexact="john doe").first
         assert hydrated_user.name == "John Doe"
 
     def test_order_by_referenced_as(self, test_domain):
@@ -136,37 +136,35 @@ class TestReferencedAs:
         user_repo.add(user4)
 
         # Should work with field name
-        asc_ordered_users = user_repo._dao.query.order_by("age").all().items
+        asc_ordered_users = user_repo.query.order_by("age").all().items
         assert asc_ordered_users[0].name == "Jim Doe"
         assert asc_ordered_users[1].name == "Jane Doe"
         assert asc_ordered_users[2].name in ["Uncle Doe", "John Doe"]
         assert asc_ordered_users[3].name in ["Uncle Doe", "John Doe"]
 
         # Should work with referenced as as well
-        asc_ordered_users = user_repo._dao.query.order_by("years").all().items
+        asc_ordered_users = user_repo.query.order_by("years").all().items
         assert asc_ordered_users[0].name == "Jim Doe"
         assert asc_ordered_users[1].name == "Jane Doe"
         assert asc_ordered_users[2].name in ["Uncle Doe", "John Doe"]
         assert asc_ordered_users[3].name in ["Uncle Doe", "John Doe"]
 
         # Should work irrespective of asc or desc
-        desc_ordered_users = user_repo._dao.query.order_by("-years").all().items
+        desc_ordered_users = user_repo.query.order_by("-years").all().items
         assert desc_ordered_users[0].name in ["Uncle Doe", "John Doe"]
         assert desc_ordered_users[1].name in ["Uncle Doe", "John Doe"]
         assert desc_ordered_users[2].name == "Jane Doe"
         assert desc_ordered_users[3].name == "Jim Doe"
 
         # Should work with multiple fields
-        asc_ordered_users = user_repo._dao.query.order_by(["age", "name"]).all().items
+        asc_ordered_users = user_repo.query.order_by(["age", "name"]).all().items
         assert asc_ordered_users[0].name == "Jim Doe"
         assert asc_ordered_users[1].name == "Jane Doe"
         assert asc_ordered_users[2].name in ["Uncle Doe", "John Doe"]
         assert asc_ordered_users[3].name in ["Uncle Doe", "John Doe"]
 
         # Should work with multiple fields in descending order
-        desc_ordered_users = (
-            user_repo._dao.query.order_by(["-age", "-name"]).all().items
-        )
+        desc_ordered_users = user_repo.query.order_by(["-age", "-name"]).all().items
         assert desc_ordered_users[0].name in ["Uncle Doe", "John Doe"]
         assert desc_ordered_users[1].name in ["Uncle Doe", "John Doe"]
         assert desc_ordered_users[2].name == "Jane Doe"

@@ -266,7 +266,7 @@ class TestSqlalchemyAssertGuards:
         with test_domain.domain_context():
             repo = test_domain.repository_for(SqlTestPerson)
             repo.add(SqlTestPerson(name="Alice"))
-            results = repo._dao.query.all()
+            results = repo.query.all()
             assert len(results.items) == 1
 
     @pytest.mark.sqlite
@@ -285,7 +285,7 @@ class TestSqlalchemyAssertGuards:
             repo = test_domain.repository_for(SqlTestItem)
             item = SqlTestItem(label="TestLabel")
             repo.add(item)
-            results = repo._dao.query.all()
+            results = repo.query.all()
             assert len(results.items) == 1
 
     @pytest.mark.sqlite
@@ -309,7 +309,7 @@ class TestSqlalchemyAssertGuards:
             widget.title = "Updated"
             repo.add(widget)
 
-            results = repo._dao.query.all()
+            results = repo.query.all()
             assert results.items[0].title == "Updated"
 
     @pytest.mark.sqlite
@@ -355,7 +355,7 @@ class TestSqlalchemyAssertGuards:
             dao._delete_all()
             dao._outside_uow = False
 
-            results = repo._dao.query.all()
+            results = repo.query.all()
             assert len(results.items) == 0
 
     @pytest.mark.sqlite
@@ -457,7 +457,7 @@ class TestElasticsearchModelAsserts:
             repo.add(person)
 
             # Retrieve to exercise to_entity path
-            results = repo._dao.query.all()
+            results = repo.query.all()
             assert len(results.items) == 1
             assert results.items[0].name == "Bob"
 

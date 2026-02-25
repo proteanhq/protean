@@ -45,9 +45,10 @@ BaseRepository._dao
         → ConcreteDAO(domain, provider, entity_cls, database_model_cls)
 ```
 
-The repository speaks domain language (`add`, `get`, custom methods). The DAO
-speaks database language (`_filter`, `_create`, `_update`, `_delete`). Custom
-repository methods use `self._dao` to build queries and persist data.
+The repository speaks domain language (`add`, `get`, `query`, `find_by`, and
+custom methods). The DAO speaks database language (`_filter`, `_create`,
+`_update`, `_delete`). Custom repository methods use `self.query` and
+`self.find_by` (which delegate to the internal `_dao`) to build queries.
 
 **Key source files:**
 
@@ -335,7 +336,7 @@ aggregates, adds them to the active Unit of Work's identity map.
 ## ReadOnlyQuerySet
 
 `ReadOnlyQuerySet` is a `QuerySet` subclass that blocks mutation methods.
-It is returned by `domain.query_for()` to enforce CQRS read-only access
+It is returned by `domain.view_for().query` to enforce CQRS read-only access
 on projections.
 
 **Blocked methods:** `update()`, `delete()`, `update_all()`, `delete_all()`.
@@ -349,8 +350,9 @@ The clone-on-write pattern preserves the type — chaining `.filter()` on a
 uses `self.__class__()`.
 
 ```python
-# domain.query_for() returns a ReadOnlyQuerySet
-qs = domain.query_for(OrderSummary)
+# domain.view_for().query returns a ReadOnlyQuerySet
+view = domain.view_for(OrderSummary)
+qs = view.query
 
 # All read operations work
 results = qs.filter(status="shipped").order_by("-placed_at").limit(20).all()

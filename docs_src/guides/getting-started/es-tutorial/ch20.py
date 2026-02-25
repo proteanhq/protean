@@ -239,9 +239,9 @@ if __name__ == "__main__":
         )
         print(f"Account {account_id} created with 3 transactions")
 
-        # Verify projection is up to date
-        summary_repo = current_domain.repository_for(AccountSummary)
-        summary = summary_repo.get(account_id)
+        # Verify projection is up to date via the read-only view
+        view = current_domain.view_for(AccountSummary)
+        summary = view.get(account_id)
         print(
             f"Before rebuild - Balance: ${summary.balance:.2f}, "
             f"Transactions: {summary.transaction_count}"
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         print(f"Success: {result.success}")
 
         # Verify the rebuilt projection matches the original
-        rebuilt_summary = summary_repo.get(account_id)
+        rebuilt_summary = view.get(account_id)
         print(
             f"\nAfter rebuild - Balance: ${rebuilt_summary.balance:.2f}, "
             f"Transactions: {rebuilt_summary.transaction_count}"

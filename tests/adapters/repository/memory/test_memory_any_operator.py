@@ -16,25 +16,25 @@ def test_for_any_lookup(test_domain):
     user_repo.add(User(emails=["qux@example.com"]))
 
     # One result
-    users = user_repo._dao.query.filter(emails__any=["foo@example.com"]).all().items
+    users = user_repo.query.filter(emails__any=["foo@example.com"]).all().items
     assert len(users) == 1
 
     # Scalar value to `any`
-    users = user_repo._dao.query.filter(emails__any="foo@example.com").all().items
+    users = user_repo.query.filter(emails__any="foo@example.com").all().items
     assert len(users) == 1
 
     # Multiple results
-    users = user_repo._dao.query.filter(emails__any=["bar@example.com"]).all().items
+    users = user_repo.query.filter(emails__any=["bar@example.com"]).all().items
     assert len(users) == 2
 
     # Multiple input values
     users = (
-        user_repo._dao.query.filter(emails__any=["foo@example.com", "baz@example.com"])
+        user_repo.query.filter(emails__any=["foo@example.com", "baz@example.com"])
         .all()
         .items
     )
     assert len(users) == 2
 
     # Single value in target list
-    users = user_repo._dao.query.filter(emails__any=["qux@example.com"]).all().items
+    users = user_repo.query.filter(emails__any=["qux@example.com"]).all().items
     assert len(users) == 1

@@ -117,7 +117,7 @@ def run_migration(batch_size: int = 100, dry_run: bool = False):
     with domain.domain_context():
         # Load all customer IDs that need migration
         repo = domain.repository_for(Customer)
-        customers = repo._dao.query.all()
+        customers = repo.query.all()
 
         total = len(customers)
         logger.info(f"Found {total} customers to migrate")

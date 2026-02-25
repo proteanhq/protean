@@ -119,7 +119,7 @@ domain lives. Use the `--domain` flag:
 ```shell
 $ protean shell --domain bookshelf
 >>> from bookshelf.models import Book
->>> domain.repository_for(Book)._dao.query.all().total
+>>> domain.repository_for(Book).query.all().total
 3
 ```
 

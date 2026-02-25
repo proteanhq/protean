@@ -439,7 +439,7 @@ def test_create_order():
 
 def test_no_orders_exist():
     repo = domain.repository_for(Order)
-    orders = repo._dao.query.all()
+    orders = repo.query.all()
     assert len(orders.items) == 0  # FAILS — order from previous test
 ```
 

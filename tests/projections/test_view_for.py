@@ -340,13 +340,13 @@ class TestReadViewAndRepositoryCoexistence:
         person = view.get("1")
         assert person.first_name == "John"
 
-    def test_view_and_query_for_see_same_data(self, test_domain, seeded_projections):
-        """view.query and domain.query_for() return the same results."""
+    def test_view_query_and_repo_see_same_data(self, test_domain, seeded_projections):
+        """view.query and repository query return the same results."""
         view = test_domain.view_for(PersonProjection)
         view_results = view.query.all()
-        query_results = test_domain.query_for(PersonProjection).all()
+        repo_results = test_domain.repository_for(PersonProjection).query.all()
 
-        assert view_results.total == query_results.total
+        assert view_results.total == repo_results.total
 
     def test_repo_writes_visible_through_view(self, test_domain):
         """Adding data via repo, then reading through view."""

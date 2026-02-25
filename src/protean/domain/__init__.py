@@ -25,7 +25,6 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from protean.core.queryset import ReadOnlyQuerySet
     from protean.core.view import ReadView
     from protean.utils.projection_rebuilder import RebuildResult
 from uuid import uuid4
@@ -2148,53 +2147,6 @@ class Domain:
         else:
             # This is a regular aggregate or a projection
             return self.providers.repository_for(element_cls)
-
-    def query_for(self, projection_cls: type) -> "ReadOnlyQuerySet":
-        """Return a read-only QuerySet for querying a projection.
-
-        This is the public entry point for projection reads. The returned
-        ``ReadOnlyQuerySet`` supports ``filter()``, ``exclude()``,
-        ``order_by()``, ``limit()``, ``offset()``, and ``all()`` but
-        blocks all mutation operations (``update``, ``delete``,
-        ``update_all``, ``delete_all``).
-
-        Args:
-            projection_cls: A registered projection class.
-
-        Returns:
-            A ``ReadOnlyQuerySet`` bound to the projection's data store.
-
-        Raises:
-            IncorrectUsageError: If the element is not a projection.
-
-        Example::
-
-            results = domain.query_for(OrderSummary).filter(
-                status="shipped"
-            ).order_by("-placed_at").all()
-        """
-        from protean.core.queryset import ReadOnlyQuerySet
-
-        if isinstance(projection_cls, str):
-            raise IncorrectUsageError(
-                f"Element {projection_cls} is not registered in domain {self.name}"
-            )
-
-        if projection_cls.element_type != DomainObjects.PROJECTION:
-            raise IncorrectUsageError(
-                f"`query_for` is only available for projections. "
-                f"Received {projection_cls.__name__} "
-                f"({projection_cls.element_type})."
-            )
-
-        repo = self.providers.repository_for(projection_cls)
-        dao = repo._dao
-
-        return ReadOnlyQuerySet(
-            dao,
-            self,
-            projection_cls,
-        )
 
     ###########################
     # ReadView Functionality #

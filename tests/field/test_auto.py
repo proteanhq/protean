@@ -52,13 +52,13 @@ class TestValueGeneration:
         auto1 = AutoTest()
         assert auto1.auto_field is None  # Ensure value is unset before saving
         test_domain.repository_for(AutoTest).add(auto1)
-        refreshed_auto1 = test_domain.repository_for(AutoTest)._dao.query.all().items[0]
+        refreshed_auto1 = test_domain.repository_for(AutoTest).query.all().items[0]
         assert refreshed_auto1.auto_field == 1
 
         auto2 = AutoTest()
         test_domain.repository_for(AutoTest).add(auto2)
         # Dicts are ordered in insertion order, so we can look for the second item in the DB
-        refreshed_auto2 = test_domain.repository_for(AutoTest)._dao.query.all().items[1]
+        refreshed_auto2 = test_domain.repository_for(AutoTest).query.all().items[1]
         assert refreshed_auto2.auto_field == 2
 
     def test_automatic_incrementing_of_non_identifier_fields(self, test_domain):
@@ -70,13 +70,13 @@ class TestValueGeneration:
         auto1 = AutoTest()
         assert auto1.auto_field is None  # Ensure value is unset before saving
         test_domain.repository_for(AutoTest).add(auto1)
-        refreshed_auto1 = test_domain.repository_for(AutoTest)._dao.query.all().items[0]
+        refreshed_auto1 = test_domain.repository_for(AutoTest).query.all().items[0]
         assert refreshed_auto1.auto_field == 1
 
         auto2 = AutoTest()
         test_domain.repository_for(AutoTest).add(auto2)
         # Dicts are ordered in insertion order, so we can look for the second item in the DB
-        refreshed_auto2 = test_domain.repository_for(AutoTest)._dao.query.all().items[1]
+        refreshed_auto2 = test_domain.repository_for(AutoTest).query.all().items[1]
         assert refreshed_auto2.auto_field == 2
 
     def test_automatic_uuid_generation_of_identifier_fields_in_projections(

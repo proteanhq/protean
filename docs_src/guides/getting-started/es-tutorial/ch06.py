@@ -270,9 +270,8 @@ if __name__ == "__main__":
         )
         print("Deposit of $500.00 made")
 
-        # Check the projection
-        summary_repo = current_domain.repository_for(AccountSummary)
-        summary = summary_repo.get(account_id)
+        # Check the projection via the read-only view
+        summary = current_domain.view_for(AccountSummary).get(account_id)
         print("\n=== Account Dashboard ===")
         print(f"Account: {summary.account_number}")
         print(f"Holder: {summary.holder_name}")

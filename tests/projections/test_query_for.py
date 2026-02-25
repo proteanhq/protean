@@ -1,12 +1,11 @@
-"""Tests for domain.query_for() and ReadOnlyQuerySet.
+"""Tests for domain.view_for().query and ReadOnlyQuerySet.
 
 Validates:
 - ReadOnlyQuerySet blocks all mutation operations with NotSupportedError
 - ReadOnlyQuerySet preserves all read operations (filter, exclude, order_by, etc.)
 - Chained operations on ReadOnlyQuerySet preserve the type
-- domain.query_for() returns ReadOnlyQuerySet for projections
-- domain.query_for() rejects non-projection types
-- Filtering, ordering, pagination work through the new API
+- domain.view_for().query returns ReadOnlyQuerySet for projections
+- Filtering, ordering, pagination work through the API
 - Backward compatibility: domain.repository_for(Projection) still works
 """
 
@@ -16,7 +15,7 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.projection import BaseProjection
 from protean.core.queryset import ReadOnlyQuerySet
-from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.exceptions import NotSupportedError
 
 
 # ---------------------------------------------------------------------------
@@ -67,31 +66,31 @@ def seeded_projections(test_domain):
 @pytest.mark.usefixtures("db")
 class TestReadOnlyQuerySetMutationBlocking:
     def test_update_raises_not_supported(self, test_domain):
-        qs = test_domain.query_for(PersonProjection)
+        qs = test_domain.view_for(PersonProjection).query
 
         with pytest.raises(NotSupportedError, match="Updates are not allowed"):
             qs.update(first_name="X")
 
     def test_delete_raises_not_supported(self, test_domain):
-        qs = test_domain.query_for(PersonProjection)
+        qs = test_domain.view_for(PersonProjection).query
 
         with pytest.raises(NotSupportedError, match="Deletes are not allowed"):
             qs.delete()
 
     def test_update_all_raises_not_supported(self, test_domain):
-        qs = test_domain.query_for(PersonProjection)
+        qs = test_domain.view_for(PersonProjection).query
 
         with pytest.raises(NotSupportedError, match="Bulk updates are not allowed"):
             qs.update_all(first_name="X")
 
     def test_delete_all_raises_not_supported(self, test_domain):
-        qs = test_domain.query_for(PersonProjection)
+        qs = test_domain.view_for(PersonProjection).query
 
         with pytest.raises(NotSupportedError, match="Bulk deletes are not allowed"):
             qs.delete_all()
 
     def test_error_messages_guide_user(self, test_domain):
-        qs = test_domain.query_for(PersonProjection)
+        qs = test_domain.view_for(PersonProjection).query
 
         with pytest.raises(NotSupportedError, match="domain.repository_for"):
             qs.update(first_name="X")
@@ -113,29 +112,29 @@ class TestReadOnlyQuerySetMutationBlocking:
 @pytest.mark.usefixtures("db")
 class TestReadOnlyQuerySetChaining:
     def test_filter_returns_read_only_queryset(self, test_domain):
-        qs = test_domain.query_for(PersonProjection).filter(last_name="Doe")
+        qs = test_domain.view_for(PersonProjection).query.filter(last_name="Doe")
         assert isinstance(qs, ReadOnlyQuerySet)
 
     def test_exclude_returns_read_only_queryset(self, test_domain):
-        qs = test_domain.query_for(PersonProjection).exclude(last_name="Doe")
+        qs = test_domain.view_for(PersonProjection).query.exclude(last_name="Doe")
         assert isinstance(qs, ReadOnlyQuerySet)
 
     def test_order_by_returns_read_only_queryset(self, test_domain):
-        qs = test_domain.query_for(PersonProjection).order_by("age")
+        qs = test_domain.view_for(PersonProjection).query.order_by("age")
         assert isinstance(qs, ReadOnlyQuerySet)
 
     def test_limit_returns_read_only_queryset(self, test_domain):
-        qs = test_domain.query_for(PersonProjection).limit(10)
+        qs = test_domain.view_for(PersonProjection).query.limit(10)
         assert isinstance(qs, ReadOnlyQuerySet)
 
     def test_offset_returns_read_only_queryset(self, test_domain):
-        qs = test_domain.query_for(PersonProjection).offset(5)
+        qs = test_domain.view_for(PersonProjection).query.offset(5)
         assert isinstance(qs, ReadOnlyQuerySet)
 
     def test_deeply_chained_remains_read_only(self, test_domain):
         qs = (
-            test_domain.query_for(PersonProjection)
-            .filter(last_name="Doe")
+            test_domain.view_for(PersonProjection)
+            .query.filter(last_name="Doe")
             .exclude(age=3)
             .order_by("-age")
             .limit(10)
@@ -144,7 +143,7 @@ class TestReadOnlyQuerySetChaining:
         assert isinstance(qs, ReadOnlyQuerySet)
 
     def test_chained_mutation_still_blocked(self, test_domain):
-        qs = test_domain.query_for(PersonProjection).filter(last_name="Doe")
+        qs = test_domain.view_for(PersonProjection).query.filter(last_name="Doe")
 
         with pytest.raises(NotSupportedError):
             qs.update(first_name="X")
@@ -154,52 +153,48 @@ class TestReadOnlyQuerySetChaining:
 
 
 # ---------------------------------------------------------------------------
-# Tests: domain.query_for() — entry point
+# Tests: domain.view_for().query — entry point
 # ---------------------------------------------------------------------------
 @pytest.mark.database
 @pytest.mark.usefixtures("db")
-class TestQueryFor:
+class TestViewForQuery:
     def test_returns_read_only_queryset(self, test_domain):
-        qs = test_domain.query_for(PersonProjection)
+        qs = test_domain.view_for(PersonProjection).query
         assert isinstance(qs, ReadOnlyQuerySet)
 
-    def test_rejects_aggregate_class(self, test_domain):
-        with pytest.raises(IncorrectUsageError, match="only available for projections"):
-            test_domain.query_for(Person)
-
-    def test_rejects_string_argument(self, test_domain):
-        with pytest.raises(IncorrectUsageError, match="not registered"):
-            test_domain.query_for("PersonProjection")
-
     def test_filter_and_all(self, test_domain, seeded_projections):
-        results = test_domain.query_for(PersonProjection).filter(last_name="Doe").all()
+        results = (
+            test_domain.view_for(PersonProjection).query.filter(last_name="Doe").all()
+        )
 
         assert results.total == 3
         names = {item.first_name for item in results}
         assert names == {"John", "Jane", "Baby"}
 
     def test_exclude(self, test_domain, seeded_projections):
-        results = test_domain.query_for(PersonProjection).exclude(last_name="Doe").all()
+        results = (
+            test_domain.view_for(PersonProjection).query.exclude(last_name="Doe").all()
+        )
 
         assert results.total == 1
         assert results.first.first_name == "Bob"
 
     def test_order_by(self, test_domain, seeded_projections):
-        results = test_domain.query_for(PersonProjection).order_by("age").all()
+        results = test_domain.view_for(PersonProjection).query.order_by("age").all()
 
         ages = [item.age for item in results]
         assert ages == [3, 25, 36, 38]
 
     def test_order_by_descending(self, test_domain, seeded_projections):
-        results = test_domain.query_for(PersonProjection).order_by("-age").all()
+        results = test_domain.view_for(PersonProjection).query.order_by("-age").all()
 
         ages = [item.age for item in results]
         assert ages == [38, 36, 25, 3]
 
     def test_limit_and_offset(self, test_domain, seeded_projections):
         results = (
-            test_domain.query_for(PersonProjection)
-            .order_by("age")
+            test_domain.view_for(PersonProjection)
+            .query.order_by("age")
             .limit(2)
             .offset(1)
             .all()
@@ -210,7 +205,9 @@ class TestQueryFor:
         assert ages == [25, 36]
 
     def test_result_set_properties(self, test_domain, seeded_projections):
-        results = test_domain.query_for(PersonProjection).order_by("age").limit(2).all()
+        results = (
+            test_domain.view_for(PersonProjection).query.order_by("age").limit(2).all()
+        )
 
         assert results.total == 4
         assert len(results.items) == 2
@@ -221,7 +218,9 @@ class TestQueryFor:
 
     def test_iteration(self, test_domain, seeded_projections):
         names = []
-        for item in test_domain.query_for(PersonProjection).filter(last_name="Doe"):
+        for item in test_domain.view_for(PersonProjection).query.filter(
+            last_name="Doe"
+        ):
             names.append(item.first_name)
 
         assert len(names) == 3
@@ -229,8 +228,8 @@ class TestQueryFor:
 
     def test_empty_result(self, test_domain):
         results = (
-            test_domain.query_for(PersonProjection)
-            .filter(last_name="Nonexistent")
+            test_domain.view_for(PersonProjection)
+            .query.filter(last_name="Nonexistent")
             .all()
         )
 
@@ -261,15 +260,15 @@ class TestBackwardCompatibility:
         repo.add(PersonProjection(person_id="1", first_name="John", last_name="Doe"))
         repo.add(PersonProjection(person_id="2", first_name="Jane", last_name="Doe"))
 
-        # Mutation through DAO still works
-        count = repo._dao.query.filter(last_name="Doe").delete()
+        # Mutation through repository query still works
+        count = repo.query.filter(last_name="Doe").delete()
         assert count == 2
 
-    def test_query_for_and_repository_for_see_same_data(
+    def test_view_for_and_repository_for_see_same_data(
         self, test_domain, seeded_projections
     ):
-        """query_for() and repository_for() query the same backing store."""
-        query_results = test_domain.query_for(PersonProjection).all()
-        repo_results = test_domain.repository_for(PersonProjection)._dao.query.all()
+        """view_for().query and repository_for() query the same backing store."""
+        view_results = test_domain.view_for(PersonProjection).query.all()
+        repo_results = test_domain.repository_for(PersonProjection).query.all()
 
-        assert query_results.total == repo_results.total
+        assert view_results.total == repo_results.total

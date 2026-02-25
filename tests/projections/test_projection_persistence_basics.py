@@ -78,7 +78,7 @@ class TestProjectionCRUD:
         repo.add(PersonProjection(person_id="2", first_name="Jane", last_name="Doe"))
         repo.add(PersonProjection(person_id="3", first_name="Bob", last_name="Smith"))
 
-        results = repo._dao.query.filter(last_name="Doe").all()
+        results = repo.query.filter(last_name="Doe").all()
         assert len(results) == 2
 
     def test_default_values_persisted(self, test_domain):

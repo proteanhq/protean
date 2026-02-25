@@ -42,7 +42,7 @@ In [1]: book = Book(
 In [2]: domain.repository_for(Book).add(book)
 Out[2]: <Book: Book object (id: a4a642d9-87ed-44de-9889-c687466f171b)>
 
-In [3]: domain.repository_for(Book)._dao.query.all().items[0].to_dict()
+In [3]: domain.repository_for(Book).query.all().items[0].to_dict()
 Out[3]: 
 {'title': 'The Great Gatsby',
  'author': {'name': 'F. Scott Fitzgerald',

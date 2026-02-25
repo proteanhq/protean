@@ -225,13 +225,13 @@ class TestHasManyFetchObjectsState:
         target.score = 99
         member_repo.add(target)
 
-        refreshed_member = member_repo._dao.query.filter(id=target.id).all().items[0]
+        refreshed_member = member_repo.query.filter(id=target.id).all().items[0]
         assert refreshed_member.score == 99
 
         team2 = team_repo.get(team_with_members)
         team_repo.add(team2)
 
-        final_member = member_repo._dao.query.filter(id=target.id).all().items[0]
+        final_member = member_repo.query.filter(id=target.id).all().items[0]
         assert final_member.score == 99, (
             "Child update was overwritten by _sync_children because "
             "fetched children were erroneously marked as changed"

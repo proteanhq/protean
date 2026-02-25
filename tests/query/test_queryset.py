@@ -17,12 +17,12 @@ class TestCriteriaConstruction:
         test_domain.register(Person)
 
     def test_that_an_empty_Q_object_is_initialized_with_queryset(self, test_domain):
-        assert isinstance(test_domain.repository_for(Person)._dao.query, QuerySet)
-        assert isinstance(test_domain.repository_for(Person)._dao.query._criteria, Q)
+        assert isinstance(test_domain.repository_for(Person).query, QuerySet)
+        assert isinstance(test_domain.repository_for(Person).query._criteria, Q)
 
     def test_query_construction_with_simple_filter_kwargs(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(last_name="John")
+        q1 = test_domain.repository_for(Person).query.filter(last_name="John")
         assert q1._criteria is not None
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
@@ -35,7 +35,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_simple_exclude_kwargs(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.exclude(last_name="John")
+        q1 = test_domain.repository_for(Person).query.exclude(last_name="John")
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -47,7 +47,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_multiple_filter_criteria(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(last_name="John")
+        q1 = test_domain.repository_for(Person).query.filter(last_name="John")
         q2 = q1.filter(age=3)
 
         _, decon_args, decon_kwargs = q2._criteria.deconstruct()
@@ -60,7 +60,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_multiple_exclude_criteria(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.exclude(last_name="John")
+        q1 = test_domain.repository_for(Person).query.exclude(last_name="John")
         q2 = q1.exclude(age=3)
 
         _, decon_args, decon_kwargs = q2._criteria.deconstruct()
@@ -76,7 +76,7 @@ class TestCriteriaConstruction:
     def test_query_construction_with_multiple_criteria_in_filter(self, test_domain):
         person_repo = test_domain.repository_for(Person)
         # Filter by the last_name
-        q1 = person_repo._dao.query.filter(last_name="John", age=3)
+        q1 = person_repo.query.filter(last_name="John", age=3)
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
         assert decon_args == (("age", 3), ("last_name", "John"))
@@ -87,9 +87,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_multiple_criteria_in_exclude(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.exclude(
-            last_name="John", age=3
-        )
+        q1 = test_domain.repository_for(Person).query.exclude(last_name="John", age=3)
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -105,7 +103,7 @@ class TestCriteriaConstruction:
         # Filter by the last_name
         q1 = (
             test_domain.repository_for(Person)
-            ._dao.query.filter(last_name="John")
+            .query.filter(last_name="John")
             .exclude(age=3)
         )
 
@@ -125,7 +123,7 @@ class TestCriteriaConstruction:
         # Filter by the last_name
         q1 = (
             test_domain.repository_for(Person)
-            ._dao.query.exclude(age=3)
+            .query.exclude(age=3)
             .filter(last_name="John")
         )
 
@@ -143,7 +141,7 @@ class TestCriteriaConstruction:
         self, test_domain
     ):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(Q(last_name="John"))
+        q1 = test_domain.repository_for(Person).query.filter(Q(last_name="John"))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -157,7 +155,7 @@ class TestCriteriaConstruction:
         self, test_domain
     ):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.exclude(Q(last_name="John"))
+        q1 = test_domain.repository_for(Person).query.exclude(Q(last_name="John"))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -171,7 +169,7 @@ class TestCriteriaConstruction:
         self, test_domain
     ):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(
+        q1 = test_domain.repository_for(Person).query.filter(
             Q(last_name="John"), Q(age=3)
         )
 
@@ -189,7 +187,7 @@ class TestCriteriaConstruction:
     def test_query_construnction_with_multiple_Q_objects_input_to_exclude_method(
         self, test_domain
     ):
-        q1 = test_domain.repository_for(Person)._dao.query.exclude(
+        q1 = test_domain.repository_for(Person).query.exclude(
             Q(last_name="John"), Q(age=3)
         )
 
@@ -206,7 +204,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_AND_filter(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(
+        q1 = test_domain.repository_for(Person).query.filter(
             Q(last_name="John") & Q(age=3)
         )
 
@@ -220,7 +218,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_OR_filter(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(
+        q1 = test_domain.repository_for(Person).query.filter(
             Q(last_name="John") | Q(age=3)
         )
 
@@ -234,7 +232,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_multiple_AND_criteria(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(
+        q1 = test_domain.repository_for(Person).query.filter(
             Q(last_name="John") & Q(age=3) & Q(name="Jean")
         )
 
@@ -250,7 +248,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_multiple_OR_criteria(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(
+        q1 = test_domain.repository_for(Person).query.filter(
             Q(last_name="John") | Q(age=3) | Q(name="Jean")
         )
 
@@ -266,7 +264,7 @@ class TestCriteriaConstruction:
 
     def test_query_construction_with_AND_OR_combinations(self, test_domain):
         # Filter by the last_name
-        q1 = test_domain.repository_for(Person)._dao.query.filter(
+        q1 = test_domain.repository_for(Person).query.filter(
             Q(last_name="John") | Q(age=3), first_name="Jean"
         )
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
@@ -276,7 +274,7 @@ class TestCriteriaConstruction:
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
         assert q1._criteria.children[0].connector == Q.OR
 
-        q2 = test_domain.repository_for(Person)._dao.query.filter(
+        q2 = test_domain.repository_for(Person).query.filter(
             (Q(last_name="John") | Q(age=3)), Q(first_name="Jean")
         )
         _, decon_args, decon_kwargs = q2._criteria.deconstruct()
@@ -287,7 +285,7 @@ class TestCriteriaConstruction:
         assert Q(*decon_args, **decon_kwargs) == q2._criteria
         assert q2._criteria.children[0].connector == Q.OR
 
-        q3 = test_domain.repository_for(Person)._dao.query.filter(
+        q3 = test_domain.repository_for(Person).query.filter(
             Q(first_name="Jean") & (Q(last_name="John") | Q(age=3))
         )
         _, decon_args, decon_kwargs = q3._criteria.deconstruct()
@@ -301,7 +299,7 @@ class TestCriteriaConstruction:
 
     def test_clone(self, test_domain):
         """Test that clone works as expected... it clones!"""
-        query1 = test_domain.repository_for(Person)._dao.query.filter(last_name="John")
+        query1 = test_domain.repository_for(Person).query.filter(last_name="John")
         query2 = query1.filter(age=3)
         query3 = query2.order_by("first_name")
 
@@ -317,7 +315,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
         dogs = list(query)
 
         assert dogs is not None
@@ -327,7 +325,7 @@ class TestCriteriaConstruction:
         """Test that filter is evaluted on calling `list()`"""
         query = (
             test_domain.repository_for(Person)
-            ._dao.query.filter(last_name="John")
+            .query.filter(last_name="John")
             .order_by("age")
         )
         assert repr(query) == (
@@ -341,7 +339,7 @@ class TestCriteriaConstruction:
         """Test that `bool` returns `False` on no records"""
         query = (
             test_domain.repository_for(Person)
-            ._dao.query.filter(last_name="John")
+            .query.filter(last_name="John")
             .order_by("age")
         )
         assert bool(query) is False
@@ -354,7 +352,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
 
         assert bool(query) is True
 
@@ -368,7 +366,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
         assert len(query) == 2
 
     def test_slice(self, test_domain):
@@ -383,7 +381,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=6, first_name="Flint", age=2, last_name="Steve"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.order_by("age")
+        query = person_repo.query.order_by("age")
         sliced = query[1:]
         assert len(sliced) == 4
 
@@ -397,7 +395,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
 
         # Result cache is empty to begin with
         assert query._result_cache is None
@@ -419,7 +417,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
 
         # Total invokes an evaluation and a query
         assert query.total == 2
@@ -438,7 +436,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
         assert query.total == 2
 
     def test_total_with_cache(self, test_domain):
@@ -451,7 +449,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
         assert query.total == 2
 
         person_repo.add(Person(id=5, first_name="Berry", age=1, last_name="John"))
@@ -474,7 +472,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
         assert query.items[0].id == query.all().items[0].id
 
     def test_items_with_cache(self, test_domain):
@@ -487,7 +485,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.filter(last_name="John").order_by("age")
+        query = person_repo.query.filter(last_name="John").order_by("age")
         assert query.items[0].id == 3
 
         person_repo.add(Person(id=5, first_name="Berry", age=1, last_name="John"))
@@ -505,7 +503,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.limit(2)
+        query = person_repo.query.limit(2)
         assert query.has_next is True
 
     def test_has_next_with_cache(self, test_domain):
@@ -520,7 +518,7 @@ class TestCriteriaConstruction:
         )
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.limit(2)
+        query = person_repo.query.limit(2)
         assert query.has_next is True
 
         test_domain.repository_for(Person)._dao.delete(dog)
@@ -538,7 +536,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.offset(2).limit(2)
+        query = person_repo.query.offset(2).limit(2)
         assert query.has_prev is True
 
     def test_has_prev_with_cache(self, test_domain):
@@ -553,7 +551,7 @@ class TestCriteriaConstruction:
         )
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.offset(2).limit(2)
+        query = person_repo.query.offset(2).limit(2)
         assert query.has_prev is True
 
         test_domain.repository_for(Person)._dao.delete(dog)
@@ -571,7 +569,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.order_by("-age")
+        query = person_repo.query.order_by("-age")
         assert query.first.id == 2
 
     def test_first_with_cache(self, test_domain):
@@ -584,7 +582,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        query = person_repo._dao.query.order_by("-age")
+        query = person_repo.query.order_by("-age")
         assert query.first.id == 2
 
         person_repo.add(Person(id=5, first_name="Berry", age=8, last_name="John"))
@@ -600,7 +598,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
-        query = person_repo._dao.query.order_by("age")
+        query = person_repo.query.order_by("age")
         assert query.last.id == 2
 
     def test_last_with_cache(self, test_domain):
@@ -612,7 +610,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
-        query = person_repo._dao.query.order_by("age")
+        query = person_repo.query.order_by("age")
         assert query.last.id == 2
 
         person_repo.add(Person(id=5, first_name="Berry", age=8, last_name="John"))
@@ -628,19 +626,19 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
-        results = person_repo._dao.query.raw('{"last_name":"John"}')
+        results = person_repo.query.raw('{"last_name":"John"}')
         assert results.total == 2
 
-        results = person_repo._dao.query.raw("{'last_name':'John'}")
+        results = person_repo.query.raw("{'last_name':'John'}")
         assert results.total == 2
 
-        results = person_repo._dao.query.raw('{"last_name":"John", "age":3}')
+        results = person_repo.query.raw('{"last_name":"John", "age":3}')
         assert results.total == 1
 
-        results = person_repo._dao.query.raw('{"last_name":"John", "age__in":[6,7]}')
+        results = person_repo.query.raw('{"last_name":"John", "age__in":[6,7]}')
         assert results.total == 1
 
-        results = person_repo._dao.query.raw('{"last_name":"John", "age__in":[3,7]}')
+        results = person_repo.query.raw('{"last_name":"John", "age__in":[3,7]}')
         assert results.total == 2
 
     def test_page(self, test_domain):
@@ -651,7 +649,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
-        query = person_repo._dao.query.offset(2).limit(2)
+        query = person_repo.query.offset(2).limit(2)
         assert query.page == 2
 
     def test_page_size(self, test_domain):
@@ -660,7 +658,7 @@ class TestCriteriaConstruction:
 
         person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
 
-        query = person_repo._dao.query.limit(5)
+        query = person_repo.query.limit(5)
         assert query.page_size == 5
 
     def test_total_pages(self, test_domain):
@@ -671,7 +669,7 @@ class TestCriteriaConstruction:
         person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
         person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
-        query = person_repo._dao.query.limit(2)
+        query = person_repo.query.limit(2)
         assert query.total_pages == 2
 
 
@@ -793,13 +791,13 @@ class TestQuerySetBadKeys:
 
     def test_filter_with_unknown_field_raises_key_error(self, test_domain):
         """filter with unknown field name raises KeyError."""
-        query = test_domain.repository_for(Person)._dao.query
+        query = test_domain.repository_for(Person).query
         with pytest.raises(KeyError, match="not found in either fields or attributes"):
             query.filter(nonexistent_field="value")
 
     def test_order_by_with_unknown_field_raises_key_error(self, test_domain):
         """order_by with unknown field name raises KeyError."""
-        query = test_domain.repository_for(Person)._dao.query
+        query = test_domain.repository_for(Person).query
         with pytest.raises(KeyError, match="not found in either fields or attributes"):
             query.order_by("nonexistent_field")
 
@@ -818,7 +816,7 @@ class TestQuerySetContains:
             Person(id=10, first_name="Alice", last_name="Wonder", age=30)
         )
 
-        query = person_repo._dao.query.filter(last_name="Wonder")
+        query = person_repo.query.filter(last_name="Wonder")
         assert person in query
 
     def test_contains_missing_entity(self, test_domain):
@@ -826,7 +824,7 @@ class TestQuerySetContains:
         person_repo.add(Person(id=10, first_name="Alice", last_name="Wonder", age=30))
         other = Person(id=99, first_name="Bob", last_name="Other", age=25)
 
-        query = person_repo._dao.query.filter(last_name="Wonder")
+        query = person_repo.query.filter(last_name="Wonder")
         assert other not in query
 
 
@@ -840,6 +838,6 @@ class TestQuerySetOffsetEdge:
 
     def test_offset_with_non_int_is_ignored(self, test_domain):
         """Non-int offset value is ignored."""
-        query = test_domain.repository_for(Person)._dao.query
+        query = test_domain.repository_for(Person).query
         clone = query.offset("not_an_int")
         assert clone._offset == 0  # Original offset preserved

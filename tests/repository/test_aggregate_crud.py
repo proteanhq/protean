@@ -97,7 +97,7 @@ class TestAggregateCRUD:
         repo.add(Person(first_name="Jane", last_name="Doe", age=25))
         repo.add(Person(first_name="Bob", last_name="Smith", age=40))
 
-        results = repo._dao.query.filter(last_name="Doe").all()
+        results = repo.query.filter(last_name="Doe").all()
         assert len(results) == 2
 
     def test_count(self, test_domain):
@@ -105,7 +105,7 @@ class TestAggregateCRUD:
         repo.add(Person(first_name="John", last_name="Doe"))
         repo.add(Person(first_name="Jane", last_name="Doe"))
 
-        results = repo._dao.query.all()
+        results = repo.query.all()
         assert results.total == 2
 
     def test_default_values_persisted(self, test_domain):

@@ -269,7 +269,7 @@ if __name__ == "__main__":
         )
 
         # Verify inventory was created by the event handler
-        inventories = current_domain.repository_for(Inventory)._dao.query.all()
+        inventories = current_domain.repository_for(Inventory).query.all()
         assert inventories.total == 1
         inv = inventories.items[0]
         print(f"  Inventory: {inv.title}, qty={inv.quantity}")

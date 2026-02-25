@@ -271,7 +271,7 @@ def test_workflow_among_protean_domains(test_domain, shipment_domain):
 
         shipments = (
             shipment_domain.repository_for(Shipment)
-            ._dao.query.filter(order_id=command.order_id)
+            .query.filter(order_id=command.order_id)
             .all()
             .items
         )

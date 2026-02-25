@@ -189,14 +189,14 @@ def process_register(email):
 
 @then(parsers.parse('a user should exist with email "{email}"'))
 def user_exists(email):
-    users = domain.repository_for(User)._dao.query.all()
+    users = domain.repository_for(User).query.all()
     match = [u for u in users.items if u.email == email]
     assert len(match) == 1
 
 
 @then(parsers.parse('the user status should be "{status}"'))
 def user_has_status(email, status):
-    users = domain.repository_for(User)._dao.query.all()
+    users = domain.repository_for(User).query.all()
     user = next(u for u in users.items if u.email == email)
     assert user.status == status
 ```
@@ -253,7 +253,7 @@ def place_order(customer, book, name, qty, title):
             total=book.price.amount * qty,
         )
     )
-    orders = domain.repository_for(Order)._dao.query.all()
+    orders = domain.repository_for(Order).query.all()
     return orders.items[0]
 
 
@@ -264,7 +264,7 @@ def order_confirmed(order):
 
 @then(parsers.parse('"{title}" should have {expected:d} copies in stock'))
 def check_stock(title, expected):
-    inventories = domain.repository_for(Inventory)._dao.query.all()
+    inventories = domain.repository_for(Inventory).query.all()
     inv = next(i for i in inventories.items if i.title == title)
     assert inv.quantity == expected
 ```
@@ -360,7 +360,7 @@ def place_order_from_cart(customer, cart, name):
             total=cart["book"].price.amount * cart["quantity"],
         )
     )
-    orders = domain.repository_for(Order)._dao.query.all()  # noqa: E501
+    orders = domain.repository_for(Order).query.all()  # noqa: E501
     return orders.items[0]
 
 

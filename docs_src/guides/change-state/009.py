@@ -17,15 +17,15 @@ class Person:
 class PersonRepository:
     def adults(self) -> list:  # (2)!
         """Find all adults."""
-        return self._dao.query.filter(age__gte=18).all().items
+        return self.query.filter(age__gte=18).all().items
 
     def find_by_email(self, email: str) -> Person:
         """Find a person by email address."""
-        return self._dao.find_by(email=email)
+        return self.find_by(email=email)
 
     def by_country(self, country_code: str) -> list:
         """Find all people in a given country."""
-        return self._dao.query.filter(country=country_code).all().items
+        return self.query.filter(country=country_code).all().items
 
 
 # --8<-- [end:full]

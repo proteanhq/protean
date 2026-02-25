@@ -84,35 +84,52 @@ class ProductInventory:
 
 ### Querying Projections
 
-Projections are optimized for querying. Use `domain.query_for()` to get a
-read-only query interface for any projection:
+Projections are optimized for querying. Use `domain.view_for()` to get a
+read-only interface for any projection:
 
 ```python
-# Filter and retrieve projections
-results = domain.query_for(ProductInventory).filter(
+view = domain.view_for(ProductInventory)
+
+# Single lookup by identifier
+item = view.get("abc-123")
+
+# Fluent filtering via ReadOnlyQuerySet
+results = view.query.filter(
     stock_quantity__lt=10
 ).order_by("name").all()
 
 for item in results:
     print(f"{item.name}: {item.stock_quantity} remaining")
+
+# Convenience single-item lookup by criteria
+item = view.find_by(product_id="abc-123")
+
+# Total count and existence checks
+total = view.count()
+found = view.exists("abc-123")
 ```
 
-The returned `ReadOnlyQuerySet` supports all read operations — `filter()`,
-`exclude()`, `order_by()`, `limit()`, `offset()`, and `all()` — but blocks
-mutations (`update`, `delete`) to enforce CQRS read/write separation.
+The `query` property returns a `ReadOnlyQuerySet` that supports all read
+operations — `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`,
+and `all()` — but blocks mutations (`update`, `delete`) to enforce CQRS
+read/write separation.
 
 ```python
 # Pagination
-page = domain.query_for(ProductInventory).order_by("name").limit(20).offset(40).all()
+page = view.query.order_by("name").limit(20).offset(40).all()
 page.total       # Total matching records across all pages
 page.has_next    # True if more pages exist
 page.has_prev    # True if previous pages exist
 
 # Single result
-first_item = domain.query_for(ProductInventory).filter(
+first_item = view.query.filter(
     product_id="abc-123"
 ).first
 ```
+
+`ReadView` does not expose `add()`, `_dao`, or any mutation methods — it is
+safe to pass to API endpoints and query handlers without risking accidental
+writes.
 
 For write operations (used inside projectors), continue using
 `domain.repository_for()`:
@@ -123,36 +140,9 @@ repo.add(inventory_record)
 ```
 
 !!! note
-    `domain.query_for()` is specifically for projections. To query aggregates,
+    `domain.view_for()` is specifically for projections. To query aggregates,
     use [repositories](../change-state/retrieve-aggregates.md) with custom
     query methods.
-
-### ReadView — Read-Only Projection Access
-
-For a higher-level, read-only interface, use `domain.view_for()`. It returns
-a `ReadView` — a lightweight facade that bundles the most common read
-operations and structurally prevents writes:
-
-```python
-view = domain.view_for(ProductInventory)
-
-# Single lookup by identifier
-item = view.get("abc-123")
-
-# Fluent filtering via ReadOnlyQuerySet
-low_stock = view.query.filter(stock_quantity__lt=10).order_by("name").all()
-
-# Convenience single-item lookup by criteria
-item = view.find_by(product_id="abc-123")
-
-# Total count and existence checks
-total = view.count()
-found = view.exists("abc-123")
-```
-
-`ReadView` does not expose `add()`, `_dao`, or any mutation methods — it is
-safe to pass to API endpoints and query handlers without risking accidental
-writes.
 
 #### Cache-backed projections
 
@@ -161,15 +151,14 @@ When a projection is stored in a cache (Redis, in-memory), `view.get()`,
 and `view.find_by()` raise `NotSupportedError` because cache backends are
 key-value stores and do not support field-based filtering.
 
-#### Four levels of projection access
+#### Three levels of projection access
 
-Protean provides four levels of projection access, each suited to
+Protean provides three levels of projection access, each suited to
 different use cases:
 
 | Level | Entry point | Returns | Use when |
 |-------|-------------|---------|----------|
 | **ReadView** | `domain.view_for(Proj)` | `ReadView` | Default for endpoints and query handlers — read-only by design |
-| **QuerySet** | `domain.query_for(Proj)` | `ReadOnlyQuerySet` | Direct QuerySet access for custom filtering |
 | **Raw** | `domain.connection_for(Proj)` | DB/cache connection | Escape hatch — technology-specific queries (SQL, ES DSL, Redis) |
 | **Repository** | `domain.repository_for(Proj)` | `BaseRepository` | Inside projectors — when you need to write |
 
@@ -462,7 +451,7 @@ class OrderSummary(BaseProjection):
 You can query on individual shadow fields:
 
 ```python
-results = domain.query_for(OrderSummary).filter(
+results = domain.view_for(OrderSummary).query.filter(
     shipping_address_city="Springfield"
 ).all()
 ```

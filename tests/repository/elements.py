@@ -7,7 +7,6 @@ from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import Integer, String, ValueObject
-from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):
@@ -18,7 +17,7 @@ class Person(BaseAggregate):
 
 class PersonRepository(BaseRepository):
     def find_adults(self, minimum_age: int = 21) -> List[Person]:
-        return current_domain.repository_for(Person)._dao.filter(age__gte=minimum_age)
+        return self.query.filter(age__gte=minimum_age).all().items
 
 
 class Email(BaseValueObject):

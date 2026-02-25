@@ -489,7 +489,7 @@ class QuerySet:
 class ReadOnlyQuerySet(QuerySet):
     """A QuerySet that blocks all mutation operations.
 
-    Used by ``domain.query_for()`` to enforce CQRS read-only access
+    Used by ``domain.view_for().query`` to enforce CQRS read-only access
     on projections. All read operations (filter, exclude, order_by,
     limit, offset, all, raw) work unchanged. Mutation methods raise
     ``NotSupportedError``.

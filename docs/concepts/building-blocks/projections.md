@@ -62,16 +62,12 @@ other.
 
 ### Projections have a dedicated read-only query API. { data-toc-label="Query API" }
 
-Use `domain.query_for(ProjectionClass)` to query projections. This returns a
-`ReadOnlyQuerySet` that supports filtering, ordering, and pagination but
-structurally prevents mutation. This enforces the CQRS contract at the API
-level — reads cannot accidentally write.
-
-### Projections have a read-only view facade. { data-toc-label="ReadView" }
-
 Use `domain.view_for(ProjectionClass)` to obtain a `ReadView` — a read-only
 facade that exposes `get()`, `query`, `find_by()`, `count()`, and `exists()`
-but no write methods. This is the recommended way to access projections from
+but no write methods. The `query` property returns a `ReadOnlyQuerySet` that
+supports filtering, ordering, and pagination but structurally prevents
+mutation. This enforces the CQRS contract at the API level — reads cannot
+accidentally write. This is the recommended way to access projections from
 API endpoints and query handlers, ensuring CQRS separation is enforced
 structurally rather than by convention.
 

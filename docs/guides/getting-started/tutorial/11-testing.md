@@ -127,7 +127,7 @@ def test_add_book_raises_event():
     )
 
     # With sync processing, the event handler runs immediately
-    inventories = current_domain.repository_for(Inventory)._dao.query.all()
+    inventories = current_domain.repository_for(Inventory).query.all()
     assert inventories.total == 1
 ```
 
@@ -148,7 +148,7 @@ def test_book_added_creates_inventory():
     book.add_to_catalog()
     current_domain.repository_for(Book).add(book)
 
-    inventories = current_domain.repository_for(Inventory)._dao.query.all()
+    inventories = current_domain.repository_for(Inventory).query.all()
     assert inventories.total == 1
     assert inventories.items[0].title == "1984"
 ```
@@ -156,7 +156,7 @@ def test_book_added_creates_inventory():
 ## Testing Projections
 
 Verify that projectors maintain projections correctly using
-`domain.query_for()`:
+`domain.view_for()`:
 
 ```python
 from bookshelf.models import Book, BookCatalog
@@ -170,7 +170,7 @@ def test_book_catalog_projection():
     )
     current_domain.repository_for(Book).add(book)
 
-    entries = current_domain.query_for(BookCatalog).all()
+    entries = current_domain.view_for(BookCatalog).query.all()
     assert entries.total == 1
     assert entries.items[0].title == "Dune"
 ```
@@ -263,7 +263,7 @@ the [Testing guide](../../testing/index.md) and the
 - **Invariant tests** for business rules and state guards.
 - **Command flow tests** from dispatch to persisted state.
 - **Event handler tests** verifying automatic side effects.
-- **Projection tests** confirming projector output using `domain.query_for()`.
+- **Projection tests** confirming projector output using `domain.view_for()`.
 - **API endpoint tests** using FastAPI's `TestClient`.
 - An **integration test** covering a complete end-to-end flow.
 

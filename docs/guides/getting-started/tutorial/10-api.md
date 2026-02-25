@@ -48,14 +48,17 @@ The pattern is always the same:
 
 ## Read Endpoints — Querying Projections
 
-Read endpoints query projections using `domain.query_for()`:
+Read endpoints query projections using `domain.view_for()`, which
+returns a `ReadView` — the read-side entry point for projections:
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch10.py:read_endpoints"
 ```
 
-`domain.query_for(BookCatalog)` returns a `ReadOnlyQuerySet` that
-supports filtering, sorting, and pagination — but blocks any writes.
+`domain.view_for(BookCatalog)` returns a `ReadView` with `get()` for
+single-record lookups, `query` for a `ReadOnlyQuerySet` (filtering,
+sorting, pagination), `find_by()`, `count()`, and `exists()`. All
+mutation operations are blocked.
 
 ## Running the API
 
@@ -97,7 +100,7 @@ documentation that FastAPI generates automatically.
 - A **FastAPI application** with `DomainContextMiddleware` and automatic
   error handling.
 - **Write endpoints** that translate HTTP requests into domain commands.
-- **Read endpoints** that query projections with `domain.query_for()`.
+- **Read endpoints** that query projections with `domain.view_for()`.
 - A running **web server** that exposes the bookstore over HTTP.
 
 In the next chapter, we will add tests for everything we have built so

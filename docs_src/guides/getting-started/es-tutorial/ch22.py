@@ -625,9 +625,8 @@ if __name__ == "__main__":
         print(f"\nAlice's balance: ${alice.balance:.2f}")  # 10000 + 2000 = 12000
         print(f"Bob's balance: ${bob.balance:.2f}")  # 5000
 
-        # Verify AccountSummary projection (populated by projector)
-        summary_repo = current_domain.repository_for(AccountSummary)
-        alice_summary = summary_repo.get(alice_id)
+        # Verify AccountSummary projection via the read-only view
+        alice_summary = current_domain.view_for(AccountSummary).get(alice_id)
         print(
             f"\nAlice summary - Balance: ${alice_summary.balance:.2f}, "
             f"Transactions: {alice_summary.transaction_count}"

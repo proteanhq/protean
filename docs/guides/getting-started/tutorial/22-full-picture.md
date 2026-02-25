@@ -14,7 +14,7 @@ to go from here.
                                      │
                   ┌──────────────────┼──────────────────┐
                   │                  │                  │
-          domain.process()    domain.query_for()    domain.query_for()
+          domain.process()    domain.view_for()     domain.view_for()
           (Commands)          (BookCatalog)         (StorefrontView)
                   │                  │                  │
                   ▼                  ▼                  ▼
@@ -82,7 +82,7 @@ to go from here.
 
 | Pattern | How We Used It |
 |---------|---------------|
-| Command/Query Separation | Commands change state; `query_for()` reads projections |
+| Command/Query Separation | Commands change state via `domain.process()`; `view_for()` reads projections |
 | Event-Driven Side Effects | Events trigger inventory, notifications, projections |
 | Read Model Projections | BookCatalog, BookReport, StorefrontView |
 | Outbox Pattern | Reliable event delivery via Redis |

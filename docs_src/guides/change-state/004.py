@@ -15,7 +15,7 @@ class Person:
 @domain.repository(part_of=Person)  # (1)
 class CustomPersonRepository:
     def find_by_email(self, email: str) -> Person:
-        return self._dao.find_by(email=email)
+        return self.find_by(email=email)
 
 
 # --8<-- [end:full]

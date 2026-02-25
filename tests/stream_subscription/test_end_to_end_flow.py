@@ -190,7 +190,7 @@ class TestEndToEndFlow:
         engine.run()
 
         # Verify notification was created
-        notifications = test_domain.repository_for(Notification)._dao.query.all().items
+        notifications = test_domain.repository_for(Notification).query.all().items
         assert len(notifications) > 0
         notification = notifications[0]
         assert notification.user_email == "test@example.com"

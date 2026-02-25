@@ -46,7 +46,7 @@ class TestBasicTransactions:
                 raise ValueError("Forced rollback")
 
         # Verify the person was not saved
-        all_persons = test_domain.repository_for(Person)._dao.query.all()
+        all_persons = test_domain.repository_for(Person).query.all()
         assert len(all_persons) == 0
 
     def test_multiple_operations_in_transaction(self, test_domain):
@@ -59,7 +59,7 @@ class TestBasicTransactions:
             test_domain.repository_for(Person).add(person2)
 
         # Verify both persons were saved
-        all_persons = test_domain.repository_for(Person)._dao.query.all()
+        all_persons = test_domain.repository_for(Person).query.all()
         assert len(all_persons) == 2
 
         names = [p.first_name for p in all_persons]

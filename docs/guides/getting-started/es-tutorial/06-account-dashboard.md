@@ -77,6 +77,8 @@ flowed through the system.
 - An **AccountSummaryProjector** that listens to account events and
   updates the projection.
 - The **`@on` decorator** for mapping events to projector handlers.
+- **`domain.view_for()`** — the read-only view API for querying
+  projections (with `get()`, `query`, `find_by()`, `count()`, `exists()`).
 - A clear separation between the **write model** (aggregate) and
   **read model** (projection).
 

@@ -115,7 +115,6 @@ domain.init(traverse=False)
 if __name__ == "__main__":
     with domain.domain_context():
         book_repo = domain.repository_for(Book)
-        catalog_repo = domain.repository_for(BookCatalog)
 
         # Add books — events trigger the projector
         print("=== Adding Books ===")
@@ -145,7 +144,8 @@ if __name__ == "__main__":
 
         # Query the projection — optimized for browsing
         print("\n=== Book Catalog (Projection) ===")
-        all_entries = domain.query_for(BookCatalog).all()
+        catalog = domain.view_for(BookCatalog)
+        all_entries = catalog.query.all()
         print(f"Total entries: {all_entries.total}")
         for entry in all_entries.items:
             print(f"  {entry.title} by {entry.author} — ${entry.price}")
@@ -155,7 +155,7 @@ if __name__ == "__main__":
         gatsby.update_price(15.99)
         book_repo.add(gatsby)
 
-        updated_entry = catalog_repo.get(gatsby.id)
+        updated_entry = catalog.get(gatsby.id)
         print(f"Updated: {updated_entry.title} — ${updated_entry.price}")
 
         # Verify

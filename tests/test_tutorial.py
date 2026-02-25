@@ -341,7 +341,7 @@ class TestTutorialCh06(_TutorialBase):
             )
 
             # Verify inventory was created by the event handler
-            inventories = domain.repository_for(ch06.Inventory)._dao.query.all()
+            inventories = domain.repository_for(ch06.Inventory).query.all()
             assert inventories.total == 1
             assert inventories.items[0].title == "The Great Gatsby"
             assert inventories.items[0].quantity == 10
@@ -397,8 +397,8 @@ class TestTutorialCh07(_TutorialBase):
             )
             book_repo.add(brave)
 
-            # Verify projection was populated via domain.query_for()
-            all_entries = domain.query_for(ch07.BookCatalog).all()
+            # Verify projection was populated via domain.view_for()
+            all_entries = domain.view_for(ch07.BookCatalog).query.all()
             assert all_entries.total == 2
 
             # Update price — projector updates the catalog
@@ -689,8 +689,8 @@ class TestTutorialCh21(_TutorialBase):
             assert updated.quantity == 25
             assert updated.in_stock is True
 
-    def test_query_for_storefront(self):
-        """Ch21: domain.query_for(StorefrontView) returns read-only results."""
+    def test_view_for_storefront(self):
+        """Ch21: domain.view_for(StorefrontView).query returns read-only results."""
         domain = ch21.domain
         with domain.domain_context():
             # Add two books
@@ -709,6 +709,6 @@ class TestTutorialCh21(_TutorialBase):
                 )
                 domain.repository_for(ch21.Book).add(book)
 
-            # Query via domain.query_for()
-            results = domain.query_for(ch21.StorefrontView).all()
+            # Query via domain.view_for()
+            results = domain.view_for(ch21.StorefrontView).query.all()
             assert results.total == 2

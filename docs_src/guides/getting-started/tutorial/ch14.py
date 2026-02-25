@@ -110,7 +110,7 @@ def test_new_book_available_webhook():
     )
 
     # Verify the book was created
-    books = current_domain.repository_for(Book)._dao.query.all()
+    books = current_domain.repository_for(Book).query.all()
     assert books.total >= 1
 
 

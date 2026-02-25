@@ -18,6 +18,7 @@ from protean.utils.globals import current_uow
 from protean.utils.reflection import association_fields, has_association_fields
 
 if TYPE_CHECKING:
+    from protean.core.queryset import QuerySet
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,34 @@ class BaseRepository(Element, OptionsMixin):
         """Retrieve a DAO registered for the Aggregate with a live connection"""
         # Fixate on Model class at the domain level because an explicit model may have been registered
         return self._provider.get_dao(self.meta_.part_of, self._database_model)  # type: ignore[return-value]
+
+    @property
+    def query(self) -> "QuerySet":
+        """Return a QuerySet for fluent filtering on the aggregate's data store.
+
+        Use this inside custom repository methods instead of ``self._dao.query``::
+
+            @domain.repository(part_of=Person)
+            class PersonRepository:
+                def adults(self):
+                    return self.query.filter(age__gte=18).all().items
+        """
+        return self._dao.query
+
+    def find_by(self, **kwargs: Any) -> Any:
+        """Find a single aggregate matching the given criteria.
+
+        Raises ``ObjectNotFoundError`` if no match is found.
+        Raises ``TooManyObjectsError`` if multiple matches are found.
+
+        Example::
+
+            @domain.repository(part_of=Person)
+            class PersonRepository:
+                def find_by_email(self, email: str) -> Person:
+                    return self.find_by(email=email)
+        """
+        return self._dao.find_by(**kwargs)
 
     def add(self, item: Any) -> Any:  # noqa: C901
         """This method helps persist or update aggregates or projections into the persistence store.

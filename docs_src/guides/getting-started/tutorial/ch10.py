@@ -85,7 +85,7 @@ def ship_order(order_id: str):
 # --8<-- [start:read_endpoints]
 @app.get("/catalog")
 def browse_catalog():
-    results = domain.query_for(BookCatalog).all()
+    results = domain.view_for(BookCatalog).query.all()
     return {
         "entries": [
             {
@@ -103,7 +103,7 @@ def browse_catalog():
 
 @app.get("/catalog/{book_id}")
 def get_catalog_entry(book_id: str):
-    entry = domain.repository_for(BookCatalog).get(book_id)
+    entry = domain.view_for(BookCatalog).get(book_id)
     return {
         "book_id": str(entry.book_id),
         "title": entry.title,

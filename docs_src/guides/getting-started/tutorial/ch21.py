@@ -104,7 +104,7 @@ def browse_storefront(
     limit: int = 20,
     offset: int = 0,
 ):
-    qs = domain.query_for(StorefrontView)
+    qs = domain.view_for(StorefrontView).query
 
     if author:
         qs = qs.filter(author=author)
@@ -127,6 +127,9 @@ def browse_storefront(
             for e in results.items
         ],
         "total": results.total,
+        "page": results.page,
+        "page_size": results.page_size,
+        "total_pages": results.total_pages,
     }
 
 

@@ -263,7 +263,7 @@ class BillingAccountLifecycleHandler:
     @handle(CustomerDeactivated)
     def on_customer_deactivated(self, event: CustomerDeactivated):
         repo = current_domain.repository_for(BillingAccount)
-        account = repo._dao.find_by(customer_id=event.customer_id)
+        account = repo.find_by(customer_id=event.customer_id)
         account.suspend()
         repo.add(account)
 ```
@@ -323,7 +323,7 @@ class CustomerEventSubscriber:
 
     def _handle_address_update(self, payload: dict) -> None:
         repo = shipping.repository_for(Recipient)
-        recipient = repo._dao.find_by(
+        recipient = repo.find_by(
             customer_id=payload["customer_id"]
         )
         recipient.update_address(

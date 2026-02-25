@@ -66,13 +66,16 @@ class ReadView:
         Only available for database-backed projections.  Cache-backed
         projections raise ``NotSupportedError``.
         """
+        from protean.core.queryset import ReadOnlyQuerySet
+
         if self._is_cache_backed:
             raise NotSupportedError(
                 f"Querying with filters is not supported for cache-backed "
                 f"projection `{self._projection_cls.__name__}`. "
                 f"Use get() for key-based lookups."
             )
-        return self._domain.query_for(self._projection_cls)
+        repo = self._domain.providers.repository_for(self._projection_cls)
+        return ReadOnlyQuerySet(repo._dao, self._domain, self._projection_cls)
 
     def get(self, identifier: Any) -> "BaseProjection":
         """Retrieve a single projection record by its identifier.
@@ -115,7 +118,7 @@ class ReadView:
             key_pattern = f"{projection_name}:::.*"
             return self._cache().count(key_pattern)
         else:
-            return self._domain.query_for(self._projection_cls).all().total
+            return self.query.all().total
 
     def exists(self, identifier: Any) -> bool:
         """Return ``True`` if a record with *identifier* exists."""

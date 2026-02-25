@@ -11,7 +11,6 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ExpectedVersionError, ValidationError
 from protean.fields import Integer, String, ValueObject
-from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):
@@ -22,7 +21,7 @@ class Person(BaseAggregate):
 
 class PersonRepository(BaseRepository):
     def find_adults(self, minimum_age: int = 21) -> List[Person]:
-        return current_domain.repository_for(Person)._dao.filter(age__gte=minimum_age)
+        return self.query.filter(age__gte=minimum_age).all().items
 
 
 class Email(BaseValueObject):
@@ -57,7 +56,7 @@ class TestPersistenceViaRepository:
             Person(first_name="John", last_name="Doe")
         )
 
-        assert len(test_domain.repository_for(Person)._dao.query.all().items) == 1
+        assert len(test_domain.repository_for(Person).query.all().items) == 1
 
     def test_that_an_aggregate_can_be_retrieved_with_repository(self, test_domain):
         person = Person(first_name="John", last_name="Doe")
@@ -69,7 +68,7 @@ class TestPersistenceViaRepository:
         person = Person(first_name="John", last_name="Doe")
         test_domain.repository_for(Person).add(person)
 
-        assert test_domain.repository_for(Person)._dao.query.all().items == [person]
+        assert test_domain.repository_for(Person).query.all().items == [person]
 
 
 @pytest.mark.database

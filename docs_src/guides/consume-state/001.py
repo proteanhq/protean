@@ -45,7 +45,7 @@ class ManageInventory:
     @handle(OrderShipped)
     def reduce_stock_level(self, event: OrderShipped):
         repo = domain.repository_for(Inventory)
-        inventory = repo._dao.find_by(book_id=event.book_id)
+        inventory = repo.find_by(book_id=event.book_id)
 
         inventory.in_stock -= event.quantity  # (2)
 

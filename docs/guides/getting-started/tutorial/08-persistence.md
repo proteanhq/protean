@@ -73,7 +73,7 @@ To confirm data is in the database, use the Protean shell:
 ```shell
 $ protean shell --domain bookshelf
 >>> repo = domain.repository_for(Book)
->>> books = repo._dao.query.all()
+>>> books = repo.query.all()
 >>> books.total
 3
 ```

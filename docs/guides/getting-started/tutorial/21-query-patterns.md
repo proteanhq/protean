@@ -3,20 +3,23 @@
 The storefront needs rich browsing capabilities: filter books by author,
 sort by price, paginate results, and show inventory availability
 alongside book information. In this chapter we will explore the full
-power of `domain.query_for()` and build a cross-aggregate projection.
+power of `domain.view_for()` and build a cross-aggregate projection.
 
 ## ReadOnlyQuerySet Deep Dive
 
-`domain.query_for()` returns a `ReadOnlyQuerySet` that supports:
+`domain.view_for()` returns a `ReadView`. Its `query` property gives
+you a `ReadOnlyQuerySet` that supports:
 
 ### Filtering
 
 ```python
+catalog = domain.view_for(BookCatalog)
+
 # Exact match
-results = domain.query_for(BookCatalog).filter(author="George Orwell").all()
+results = catalog.query.filter(author="George Orwell").all()
 
 # Multiple conditions (AND)
-results = domain.query_for(BookCatalog).filter(
+results = catalog.query.filter(
     author="George Orwell",
     price__lte=15.00,
 ).all()
@@ -26,33 +29,34 @@ results = domain.query_for(BookCatalog).filter(
 
 ```python
 # Exclude specific values
-results = domain.query_for(BookCatalog).exclude(author="Unknown").all()
+results = catalog.query.exclude(author="Unknown").all()
 ```
 
 ### Ordering
 
 ```python
 # Ascending
-results = domain.query_for(BookCatalog).order_by("price").all()
+results = catalog.query.order_by("price").all()
 
 # Descending (prefix with -)
-results = domain.query_for(BookCatalog).order_by("-price").all()
+results = catalog.query.order_by("-price").all()
 
 # Multiple fields
-results = domain.query_for(BookCatalog).order_by("author", "-price").all()
+results = catalog.query.order_by("author", "-price").all()
 ```
 
 ### Pagination
 
 ```python
 # First page (10 items)
-page1 = domain.query_for(BookCatalog).limit(10).offset(0).all()
+page1 = catalog.query.limit(10).offset(0).all()
 page1.page         # 1
+page1.page_size    # 10 (alias for limit)
 page1.total_pages  # total pages based on matching records
 page1.has_next     # True if more pages exist
 
 # Second page
-page2 = domain.query_for(BookCatalog).limit(10).offset(10).all()
+page2 = catalog.query.limit(10).offset(10).all()
 page2.page         # 2
 page2.has_prev     # True
 ```
@@ -63,7 +67,7 @@ All methods can be chained:
 
 ```python
 results = (
-    domain.query_for(BookCatalog)
+    catalog.query
     .filter(author="George Orwell")
     .exclude(price__gt=20.00)
     .order_by("-price")
@@ -78,8 +82,8 @@ results = (
 
 ```python
 # These all raise ReadOnlyQuerySetError
-domain.query_for(BookCatalog).update(price=0)      # blocked
-domain.query_for(BookCatalog).delete()              # blocked
+catalog.query.update(price=0)      # blocked
+catalog.query.delete()              # blocked
 ```
 
 This enforces the CQRS principle: read models are read-only. Changes

@@ -28,7 +28,7 @@ class PaymentConfirmationSubscriber:
         order_id = payload["order_id"]
 
         repo = domain.repository_for(Payment)
-        payment = repo._dao.find_by(order_id=order_id)
+        payment = repo.find_by(order_id=order_id)
         payment.confirm()  # (3)
         repo.add(payment)
 

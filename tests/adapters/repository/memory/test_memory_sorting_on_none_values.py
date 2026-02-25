@@ -20,8 +20,8 @@ def test_for_sorting_without_nulls(test_domain):
     user_repo.add(User(name="Baby1", seq=3))
     user_repo.add(User(name="Baby2", seq=4))
 
-    user_repo._dao.query.order_by("seq").all().first.name == "John"
-    user_repo._dao.query.order_by("-seq").all().first.name == "Baby2"
+    user_repo.query.order_by("seq").all().first.name == "John"
+    user_repo.query.order_by("-seq").all().first.name == "Baby2"
 
 
 def test_for_sorting_with_dates(test_domain):
@@ -36,10 +36,10 @@ def test_for_sorting_with_dates(test_domain):
     user_repo.add(User(name="Baby1", joined_on=today))
     user_repo.add(User(name="Baby2", joined_on=(today - datetime.timedelta(days=1))))
 
-    assert user_repo._dao.query.order_by("joined_on").all().first.name == "Baby2"
-    assert user_repo._dao.query.order_by("joined_on").all().last.name == "Jane"
-    assert user_repo._dao.query.order_by("-joined_on").all().first.name == "John"
-    assert user_repo._dao.query.order_by("-joined_on").all().last.name == "Baby2"
+    assert user_repo.query.order_by("joined_on").all().first.name == "Baby2"
+    assert user_repo.query.order_by("joined_on").all().last.name == "Jane"
+    assert user_repo.query.order_by("-joined_on").all().first.name == "John"
+    assert user_repo.query.order_by("-joined_on").all().last.name == "Baby2"
 
 
 def test_for_in_lookup_with_integers(test_domain):
@@ -52,6 +52,6 @@ def test_for_in_lookup_with_integers(test_domain):
     user_repo.add(User(name="Baby1", seq=2))
     user_repo.add(User(name="Baby2", seq=1))
 
-    assert user_repo._dao.query.order_by("seq").all().first.name == "Baby2"
-    assert user_repo._dao.query.order_by("-seq").all().first.name == "John"
-    assert user_repo._dao.query.order_by("-seq").all().last.name == "Baby2"
+    assert user_repo.query.order_by("seq").all().first.name == "Baby2"
+    assert user_repo.query.order_by("-seq").all().first.name == "John"
+    assert user_repo.query.order_by("-seq").all().last.name == "Baby2"

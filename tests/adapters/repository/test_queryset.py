@@ -32,7 +32,7 @@ class TestQuerySetLimit:
         )
         test_domain.repository_for(Order).add(order)
 
-        assert test_domain.repository_for(OrderItem)._dao.query._limit == 100
+        assert test_domain.repository_for(OrderItem).query._limit == 100
 
         # Fetch the order
         order = test_domain.repository_for(Order).get(order.id)
@@ -41,10 +41,7 @@ class TestQuerySetLimit:
         assert len(order.items) == 100
 
         # Verify that the order items are not limited when limit is set to None
-        assert (
-            len(test_domain.repository_for(OrderItem)._dao.query.limit(None).all())
-            == 101
-        )
+        assert len(test_domain.repository_for(OrderItem).query.limit(None).all()) == 101
 
     def test_no_queryset_limit_is_applied_if_limit_is_set_to_none(self, test_domain):
         test_domain.register(OrderItem, part_of=Order, limit=None)
@@ -58,7 +55,7 @@ class TestQuerySetLimit:
         )
         test_domain.repository_for(Order).add(order)
 
-        assert test_domain.repository_for(OrderItem)._dao.query._limit is None
+        assert test_domain.repository_for(OrderItem).query._limit is None
 
         # Fetch the order
         order = test_domain.repository_for(Order).get(order.id)
@@ -78,7 +75,7 @@ class TestQuerySetLimit:
         )
         test_domain.repository_for(Order).add(order)
 
-        assert test_domain.repository_for(OrderItem)._dao.query._limit == 10
+        assert test_domain.repository_for(OrderItem).query._limit == 10
 
         # Fetch the order
         order = test_domain.repository_for(Order).get(order.id)
@@ -100,7 +97,7 @@ class TestQuerySetLimit:
         )
         test_domain.repository_for(Order).add(order)
 
-        assert test_domain.repository_for(OrderItem)._dao.query._limit is None
+        assert test_domain.repository_for(OrderItem).query._limit is None
 
         # Fetch the order
         order = test_domain.repository_for(Order).get(order.id)

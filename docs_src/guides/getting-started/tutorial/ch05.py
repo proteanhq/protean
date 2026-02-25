@@ -94,7 +94,7 @@ if __name__ == "__main__":
         )
 
         # Verify both books exist
-        all_books = current_domain.repository_for(Book)._dao.query.all()
+        all_books = current_domain.repository_for(Book).query.all()
         print(f"\nTotal books: {all_books.total}")
         for b in all_books.items:
             print(f"  - {b.title}")

@@ -203,7 +203,7 @@ Use them in tests:
 ```python
 def test_user_is_persisted(user_repo):
     user_repo.add(User(name="Alice", email="alice@example.com"))
-    users = user_repo._dao.query.all()
+    users = user_repo.query.all()
     assert len(users.items) == 1
 ```
 

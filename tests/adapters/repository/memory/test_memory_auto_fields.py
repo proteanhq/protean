@@ -60,9 +60,7 @@ def test_auto_field_increment_with_identifier_field(test_domain):
     test_domain.repository_for(AutoIdentifierEntity).add(entity1)
 
     # Check the stored data directly
-    saved_entities = (
-        test_domain.repository_for(AutoIdentifierEntity)._dao.query.all().items
-    )
+    saved_entities = test_domain.repository_for(AutoIdentifierEntity).query.all().items
     assert len(saved_entities) == 1
     assert saved_entities[0].id == 1
 
@@ -70,9 +68,7 @@ def test_auto_field_increment_with_identifier_field(test_domain):
     test_domain.repository_for(AutoIdentifierEntity).add(entity2)
 
     # Check all saved entities
-    saved_entities = (
-        test_domain.repository_for(AutoIdentifierEntity)._dao.query.all().items
-    )
+    saved_entities = test_domain.repository_for(AutoIdentifierEntity).query.all().items
     assert len(saved_entities) == 2
     # Sort by id to ensure consistent order
     saved_entities.sort(key=lambda x: x.id)

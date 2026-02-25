@@ -192,7 +192,7 @@ def place_order(customer, book_id, name, qty, title):
             items=[{"book_id": book_id, "quantity": qty}],
         )
     )
-    orders = domain.repository_for(Order)._dao.query.all()
+    orders = domain.repository_for(Order).query.all()
     return orders.items[0]
 
 

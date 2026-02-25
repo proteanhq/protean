@@ -362,7 +362,7 @@ class TestVOPersistence:
 
         results = (
             test_domain.repository_for(CustomerView)
-            ._dao.query.filter(billing_address_city="Springfield")
+            .query.filter(billing_address_city="Springfield")
             .all()
         )
         assert len(results) == 1
