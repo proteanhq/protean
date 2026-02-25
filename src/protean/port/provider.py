@@ -1,9 +1,59 @@
 """Base class for Providers"""
 
 from abc import ABCMeta, abstractmethod
+from enum import Flag, auto
 from typing import Any
 
 from protean.utils.query import RegisterLookupMixin
+
+
+class DatabaseCapabilities(Flag):
+    """Capability flags for database providers.
+
+    Individual capabilities are orthogonal -- unlike broker capabilities,
+    database capabilities are not strictly hierarchical.  Convenience sets
+    bundle common combinations, but individual flags can be mixed freely.
+    """
+
+    # Tier 1: Universal Foundation (every provider has these)
+    CRUD = auto()  # Create, Read, Update, Delete single records
+    FILTER = auto()  # Query/filter records with lookup criteria
+    BULK_OPERATIONS = auto()  # update_all(), delete_all()
+    ORDERING = auto()  # Server-side ORDER BY support
+
+    # Tier 2: Data Integrity
+    TRANSACTIONS = auto()  # Real commit/rollback atomicity
+    SIMULATED_TRANSACTIONS = auto()  # Copy-on-write UoW semantics (no true rollback)
+    OPTIMISTIC_LOCKING = auto()  # Version-based concurrency control
+
+    # Tier 3: Query Power
+    RAW_QUERIES = auto()  # Execute raw/native queries
+
+    # Tier 4: Infrastructure
+    SCHEMA_MANAGEMENT = auto()  # Create/drop tables/indices
+    CONNECTION_POOLING = auto()  # Connection pool management
+
+    # Tier 5: Type System
+    NATIVE_JSON = auto()  # Native JSON column support
+    NATIVE_ARRAY = auto()  # Native array column support
+
+    # Convenience Capability Sets
+    BASIC_STORAGE = CRUD | FILTER | BULK_OPERATIONS | ORDERING
+
+    RELATIONAL = (
+        BASIC_STORAGE
+        | TRANSACTIONS
+        | OPTIMISTIC_LOCKING
+        | RAW_QUERIES
+        | SCHEMA_MANAGEMENT
+        | CONNECTION_POOLING
+    )
+
+    DOCUMENT_STORE = BASIC_STORAGE | SCHEMA_MANAGEMENT | OPTIMISTIC_LOCKING
+
+    IN_MEMORY = (
+        BASIC_STORAGE | SIMULATED_TRANSACTIONS | OPTIMISTIC_LOCKING | RAW_QUERIES
+    )
 
 
 class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
@@ -16,6 +66,23 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         self.name = name
         self.domain = domain
         self.conn_info = conn_info
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> DatabaseCapabilities:
+        """Return the capabilities of this database provider."""
+
+    def has_capability(self, capability: DatabaseCapabilities) -> bool:
+        """Check if provider has a specific capability."""
+        return capability in self.capabilities
+
+    def has_all_capabilities(self, capabilities: DatabaseCapabilities) -> bool:
+        """Check if provider has all the specified capabilities."""
+        return (self.capabilities & capabilities) == capabilities
+
+    def has_any_capability(self, capabilities: DatabaseCapabilities) -> bool:
+        """Check if provider has any of the specified capabilities."""
+        return bool(self.capabilities & capabilities)
 
     def _extract_lookup(self, key):
         """Extract lookup method based on key name format"""

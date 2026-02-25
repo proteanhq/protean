@@ -14,7 +14,7 @@ from protean.core.database_model import _entity_to_dict
 from protean.core.queryset import ResultSet
 from protean.exceptions import DatabaseError, ObjectNotFoundError
 from protean.port.dao import BaseDAO, BaseLookup
-from protean.port.provider import BaseProvider
+from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import IdentityStrategy, IdentityType
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
@@ -444,6 +444,11 @@ class ElasticsearchDAO(BaseDAO):
 
 class ESProvider(BaseProvider):
     __database__ = "elasticsearch"
+
+    @property
+    def capabilities(self) -> DatabaseCapabilities:
+        """Elasticsearch supports document storage with schema management but no transactions."""
+        return DatabaseCapabilities.DOCUMENT_STORE
 
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""

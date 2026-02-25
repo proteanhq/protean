@@ -32,7 +32,7 @@ from protean.fields.association import Reference, _ReferenceField
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.port.dao import BaseDAO, BaseLookup
-from protean.port.provider import BaseProvider
+from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import IdentityType
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
@@ -650,6 +650,11 @@ class SADAO(BaseDAO):
 class SAProvider(BaseProvider):
     """Provider Implementation class for SQLAlchemy"""
 
+    @property
+    def capabilities(self) -> DatabaseCapabilities:
+        """SQLAlchemy providers support full relational capabilities."""
+        return DatabaseCapabilities.RELATIONAL
+
     class databases(Enum):
         postgresql = "postgresql"
         sqlite = "sqlite"
@@ -988,6 +993,15 @@ class SAProvider(BaseProvider):
 class PostgresqlProvider(SAProvider):
     __database__ = SAProvider.databases.postgresql.value
 
+    @property
+    def capabilities(self) -> DatabaseCapabilities:
+        """PostgreSQL supports relational capabilities plus native JSON and arrays."""
+        return (
+            DatabaseCapabilities.RELATIONAL
+            | DatabaseCapabilities.NATIVE_JSON
+            | DatabaseCapabilities.NATIVE_ARRAY
+        )
+
     def _get_database_specific_engine_args(self) -> dict:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
 
@@ -1058,6 +1072,15 @@ class SqliteProvider(SAProvider):
 
 class MssqlProvider(SAProvider):
     __database__ = SAProvider.databases.mssql.value
+
+    @property
+    def capabilities(self) -> DatabaseCapabilities:
+        """MSSQL supports relational capabilities plus native JSON and arrays."""
+        return (
+            DatabaseCapabilities.RELATIONAL
+            | DatabaseCapabilities.NATIVE_JSON
+            | DatabaseCapabilities.NATIVE_ARRAY
+        )
 
     def _get_database_specific_engine_args(self) -> dict:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.

@@ -2,7 +2,7 @@ import pytest
 
 from protean.adapters.repository import DATABASE_PROVIDERS, Providers
 from protean.exceptions import ConfigurationError
-from protean.port.provider import BaseProvider
+from protean.port.provider import BaseProvider, DatabaseCapabilities
 
 
 @pytest.mark.database
@@ -47,6 +47,10 @@ class TestLifecycleMethodsAbstractContract:
         """A provider subclass that omits _data_reset cannot be instantiated."""
 
         class IncompleteProvider(BaseProvider):
+            @property
+            def capabilities(self) -> DatabaseCapabilities:
+                return DatabaseCapabilities.BASIC_STORAGE
+
             def get_session(self): ...
             def get_connection(self): ...
             def is_alive(self) -> bool: ...
@@ -67,6 +71,10 @@ class TestLifecycleMethodsAbstractContract:
         cannot be instantiated."""
 
         class IncompleteProvider(BaseProvider):
+            @property
+            def capabilities(self) -> DatabaseCapabilities:
+                return DatabaseCapabilities.BASIC_STORAGE
+
             def get_session(self): ...
             def get_connection(self): ...
             def is_alive(self) -> bool: ...
@@ -87,6 +95,10 @@ class TestLifecycleMethodsAbstractContract:
         cannot be instantiated."""
 
         class IncompleteProvider(BaseProvider):
+            @property
+            def capabilities(self) -> DatabaseCapabilities:
+                return DatabaseCapabilities.BASIC_STORAGE
+
             def get_session(self): ...
             def get_connection(self): ...
             def is_alive(self) -> bool: ...
@@ -108,6 +120,10 @@ class TestLifecycleMethodsAbstractContract:
         can be instantiated successfully."""
 
         class CompleteProvider(BaseProvider):
+            @property
+            def capabilities(self) -> DatabaseCapabilities:
+                return DatabaseCapabilities.BASIC_STORAGE
+
             def get_session(self): ...
             def get_connection(self): ...
             def is_alive(self) -> bool:
