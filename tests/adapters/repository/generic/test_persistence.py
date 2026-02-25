@@ -1,4 +1,11 @@
+"""Generic persistence tests that run against all database providers.
+
+Covers repository-level persistence, retrieval, and concurrency control.
+Merged from test_generic.py and test_persistence.py.
+"""
+
 import re
+from datetime import datetime
 from typing import List
 from uuid import uuid4
 
@@ -10,7 +17,7 @@ from protean.core.repository import BaseRepository
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ExpectedVersionError, ValidationError
-from protean.fields import Integer, String, ValueObject
+from protean.fields import DateTime, Integer, String, ValueObject
 
 
 class Person(BaseAggregate):
@@ -42,14 +49,21 @@ class User(BaseAggregate):
     password: String(required=True, max_length=255)
 
 
+class Event(BaseAggregate):
+    name: String(max_length=255, required=True)
+    created_at: DateTime(default=datetime.now)
+    sequence_id: Integer()
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Person)
     test_domain.register(PersonRepository, part_of=Person)
     test_domain.register(User)
+    test_domain.register(Event)
 
 
-@pytest.mark.database
+@pytest.mark.basic_storage
 class TestPersistenceViaRepository:
     def test_that_aggregate_can_be_persisted_with_repository(self, test_domain):
         test_domain.repository_for(Person).add(
@@ -71,7 +85,41 @@ class TestPersistenceViaRepository:
         assert test_domain.repository_for(Person).query.all().items == [person]
 
 
-@pytest.mark.database
+@pytest.mark.basic_storage
+class TestBasicPersistence:
+    """Test basic persistence operations across databases"""
+
+    def test_persist_and_retrieve_entity(self, test_domain):
+        """Test basic entity persistence and retrieval"""
+        event = Event(name="TestEvent", sequence_id=1)
+        test_domain.repository_for(Event).add(event)
+
+        retrieved_event = test_domain.repository_for(Event).get(event.id)
+
+        assert retrieved_event.id == event.id
+        assert retrieved_event.name == event.name
+        assert retrieved_event.sequence_id == event.sequence_id
+
+    def test_entity_update(self, test_domain):
+        """Test entity update operations"""
+        event = Event(name="TestEvent", sequence_id=1)
+        test_domain.repository_for(Event).add(event)
+
+        # Fetch the event again
+        retrieved_event = test_domain.repository_for(Event).get(event.id)
+
+        # Update the event
+        retrieved_event.name = "UpdatedEvent"
+        retrieved_event.sequence_id = 2
+        test_domain.repository_for(Event).add(retrieved_event)
+
+        # Retrieve and verify
+        retrieved_event = test_domain.repository_for(Event).get(event.id)
+        assert retrieved_event.name == "UpdatedEvent"
+        assert retrieved_event.sequence_id == 2
+
+
+@pytest.mark.basic_storage
 class TestConcurrency:
     def test_expected_version_error_on_version_mismatch(self, test_domain):
         identifier = str(uuid4())

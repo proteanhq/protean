@@ -1,13 +1,48 @@
+"""Generic provider tests that run against all database providers.
+
+Covers provider initialization, connection management, lifecycle methods,
+and configuration error messages.
+"""
+
 import pytest
 
 from protean.adapters.repository import DATABASE_PROVIDERS, Providers
+from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
+from protean.fields import String
 from protean.port.provider import BaseProvider, DatabaseCapabilities
 
 
-@pytest.mark.database
+class User(BaseAggregate):
+    name: String(required=True)
+    email: String(required=True)
+
+
+@pytest.fixture
+def user_cls():
+    """Provide the User class to tests, ensuring class identity
+    matches what is registered in the db fixture."""
+    return User
+
+
+@pytest.fixture
+def db(test_domain):
+    """Override root db fixture to register User before creating
+    database artifacts, ensuring the index exists for ES tests."""
+    test_domain.register(User)
+    test_domain.init(traverse=False)
+
+    test_domain.providers["default"]._create_database_artifacts()
+
+    yield
+
+    test_domain.providers["default"]._drop_database_artifacts()
+    test_domain.registry._reset()
+
+
+@pytest.mark.basic_storage
 class TestBasicProvider:
-    """Test basic provider functionality across SQLAlchemy databases"""
+    """Test basic provider functionality across all databases"""
 
     def test_initialization_of_providers_on_first_call(self, test_domain):
         """Test that providers object is available"""
@@ -143,7 +178,7 @@ class TestLifecycleMethodsAbstractContract:
         assert provider.name == "test"
 
 
-@pytest.mark.database
+@pytest.mark.basic_storage
 class TestLifecycleMethodsIntegration:
     """Test that lifecycle methods work correctly through the domain."""
 

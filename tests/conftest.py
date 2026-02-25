@@ -158,9 +158,23 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_sendgrid)
 
         # Automatically add the `db` fixture to tests marked with `database`
-        #   to setup and destroy database artifacts
+        #   or any database capability marker, to setup and destroy database artifacts
         if item.get_closest_marker("database"):
             item.fixturenames.append("db")
+        else:
+            capability_markers = [
+                "basic_storage",
+                "transactional",
+                "atomic_transactions",
+                "raw_queries",
+                "schema_management",
+                "native_json",
+                "native_array",
+            ]
+            for marker_name in capability_markers:
+                if item.get_closest_marker(marker_name):
+                    item.fixturenames.append("db")
+                    break  # Only need to add db once
 
 
 @pytest.fixture(scope="session")
