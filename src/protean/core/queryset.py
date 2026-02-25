@@ -7,10 +7,8 @@ from typing import TYPE_CHECKING, Any, Union
 
 from protean.exceptions import NotSupportedError
 from protean.port.provider import DatabaseCapabilities
-from protean.utils import DomainObjects
-from protean.utils.globals import current_uow
 from protean.utils.query import Q
-from protean.utils.reflection import id_field, fields, attributes
+from protean.utils.reflection import attributes, fields
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
@@ -239,30 +237,11 @@ class QuerySet:
             entity = self._owner_dao.database_model_cls.to_entity(item)
             entity.state_.mark_retrieved()
 
-            # If we are dealing with an aggregate, we should also update the last event position
-            #   to make use of optimistic concurrency control. This event version will be used
-            #   to check for conflicts when the aggregate is updated.
-            # FIXME: This concurrency control applies only when events are generated. We should
-            #   ensure the same control is applied when aggregates are updated without events.
-            if entity.element_type == DomainObjects.AGGREGATE:
-                # Fetch and sync events version
-                id_f = id_field(entity)
-                assert id_f is not None
-                identifier = getattr(entity, id_f.field_name)
-                last_message = self._domain.event_store.store.read_last_message(
-                    f"{entity.meta_.stream_category}-{identifier}"
-                )
-                if last_message:
-                    assert last_message.metadata is not None
-                    assert last_message.metadata.event_store is not None
-                    entity._event_position = last_message.metadata.event_store.position
+            # Sync event position and register in UoW identity map
+            self._owner_dao._sync_event_position(entity)
+            self._owner_dao._track_in_uow(entity)
 
             entity_items.append(entity)
-
-            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
-            #   like persisting events raised by the aggregate.
-            if current_uow and entity.element_type == DomainObjects.AGGREGATE:
-                current_uow._add_to_identity_map(entity)
 
         results.items = entity_items
 
@@ -330,6 +309,11 @@ class QuerySet:
             for item in results.items:
                 entity = self._owner_dao.database_model_cls.to_entity(item)
                 entity.state_.mark_retrieved()
+
+                # Sync event position and register in UoW identity map
+                self._owner_dao._sync_event_position(entity)
+                self._owner_dao._track_in_uow(entity)
+
                 entity_items.append(entity)
             results.items = entity_items
 

@@ -13,7 +13,7 @@ from protean.exceptions import (
 )
 from protean.port.provider import BaseProvider
 from protean.utils import DomainObjects
-from protean.utils.globals import current_uow
+from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import declared_fields, id_field, unique_fields
 
@@ -108,6 +108,42 @@ class BaseDAO(metaclass=ABCMeta):
                 raise
             finally:
                 conn.close()
+
+    def _sync_event_position(self, entity: BaseEntity) -> None:
+        """Sync the aggregate's event position from the event store.
+
+        When an aggregate is loaded from the persistence store, its
+        ``_event_position`` must reflect the last written event so that
+        optimistic concurrency control (expected-version checks) works
+        correctly on subsequent ``raise_()`` calls.
+
+        This is a no-op for non-aggregate entities.
+        """
+        if entity.element_type != DomainObjects.AGGREGATE:
+            return
+
+        id_f = id_field(entity)
+        assert id_f is not None
+        identifier = getattr(entity, id_f.field_name)
+        last_message = current_domain.event_store.store.read_last_message(
+            f"{entity.meta_.stream_category}-{identifier}"
+        )
+        if last_message:
+            assert last_message.metadata is not None
+            assert last_message.metadata.event_store is not None
+            entity._event_position = last_message.metadata.event_store.position
+
+    def _track_in_uow(self, entity: BaseEntity) -> None:
+        """Register the aggregate in the active Unit of Work's identity map.
+
+        Tracking loaded aggregates lets the UoW collect domain events
+        raised during the transaction and persist them on commit.
+
+        This is a no-op for non-aggregate entities or when there is no
+        active UoW.
+        """
+        if current_uow and entity.element_type == DomainObjects.AGGREGATE:
+            current_uow._add_to_identity_map(entity)
 
     def outside_uow(self):
         """When called, the DAO is instructed to work outside active transactions."""
