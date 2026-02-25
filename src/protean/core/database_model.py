@@ -118,10 +118,14 @@ def _entity_to_dict(model_cls: type, entity: Any) -> dict[str, Any]:
     item_dict: dict[str, Any] = {}
     for attr_obj in attributes(model_cls.meta_.part_of).values():
         if attr_obj.referenced_as:
-            value = getattr(entity, attr_obj.field_name)
+            # Use None default: shadow fields for a None ValueObject are
+            # removed from __dict__ by _set_embedded_values, and they are
+            # not Pydantic model fields, so bare getattr would raise
+            # AttributeError via Pydantic's __getattr__.
+            value = getattr(entity, attr_obj.field_name, None)
             key = attr_obj.referenced_as
         else:
-            value = getattr(entity, attr_obj.attribute_name)
+            value = getattr(entity, attr_obj.attribute_name, None)
             key = attr_obj.attribute_name
         item_dict[key] = value
     return item_dict
