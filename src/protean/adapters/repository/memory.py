@@ -15,7 +15,7 @@ from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.exceptions import ObjectNotFoundError
 from protean.port.dao import BaseDAO, BaseLookup
-from protean.port.provider import BaseProvider
+from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
@@ -115,6 +115,11 @@ class MemoryProvider(BaseProvider):
     """Provider class for Dict Repositories"""
 
     __database__ = "memory"
+
+    @property
+    def capabilities(self) -> DatabaseCapabilities:
+        """Memory provider supports basic storage with simulated transactions."""
+        return DatabaseCapabilities.IN_MEMORY
 
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
