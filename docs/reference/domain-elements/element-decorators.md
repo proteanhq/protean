@@ -119,7 +119,7 @@ of commands.
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Associated projection class |
 
-Guide: [Projections — Query](../../guides/consume-state/projections.md#query--named-read-intents)
+Guide: [Projections — Query](../../guides/consume-state/projections.md#querying-projections)
 
 ---
 

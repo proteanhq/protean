@@ -102,9 +102,9 @@ need by what you're trying to accomplish.
 | Process events and commands asynchronously      | [Server](./concepts/async-processing/index.md) |
 | Understand subscriptions and event processing   | [Subscriptions](./concepts/async-processing/subscriptions.md) |
 | Use the outbox pattern for reliable messaging   | [Outbox](./concepts/async-processing/outbox.md) |
-| Set up structured logging                       | [Running the Server](./guides/server/index.md#logging) |
-| Add request-scoped context to logs              | [Running the Server](./guides/server/index.md#context-variables) |
-| Minimize logging noise in tests                 | [Running the Server](./guides/server/index.md#test-configuration) |
+| Set up structured logging                       | [Running the Server](./guides/server/index.md) |
+| Add request-scoped context to logs              | [Running the Server](./guides/server/index.md) |
+| Minimize logging noise in tests                 | [Running the Server](./guides/server/index.md#test-mode) |
 | Monitor message flow in real time               | [Observability](./reference/server/observability.md) |
 | Expose Prometheus metrics for the message pipeline | [Observability](./reference/server/observability.md) |
 | Stream trace events via SSE                     | [Observability](./reference/server/observability.md) |

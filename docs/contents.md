@@ -286,6 +286,7 @@ Protean supports but does not enforce.
 - [One Aggregate Per Transaction](./patterns/one-aggregate-per-transaction.md) -- Modify one aggregate per handler; use events for cross-aggregate side effects.
 - [Encapsulate State Changes](./patterns/encapsulate-state-changes.md) -- Express every state change as a named method capturing business intent.
 - [Replace Primitives with Value Objects](./patterns/replace-primitives-with-value-objects.md) -- Extract strings and numbers into value objects with format rules and operations.
+- [Factory Methods for Aggregate Creation](./patterns/factory-methods-for-aggregate-creation.md) -- Encapsulate complex construction in factory classmethods on the aggregate or standalone factory classes.
 
 ### Event-Driven Patterns
 

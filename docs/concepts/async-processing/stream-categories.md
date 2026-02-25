@@ -168,7 +168,7 @@ Learn more:
 
 - [Event Handlers](../../guides/consume-state/event-handlers.md#configuration-options)
 - [Command Handlers](../../guides/change-state/command-handlers.md#stream-category)
-- [Projections](../../guides/consume-state/projections.md#stream-categories)
+- [Projections](../../guides/consume-state/projections.md)
 
 ## Stream Categories in Subscriptions
 
