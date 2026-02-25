@@ -56,15 +56,14 @@ aggregate's identity with the help of `_owner` property:
 ## Dispatching Events {#stream-category}
 
 These events are dispatched automatically to registered brokers when the
-aggregate is persisted. We will explore this when we discuss repositories, but
-you can also manually publish the events to the rest of the system with
-`domain.publish()`.
+aggregate is persisted. See [Repositories](../../guides/change-state/repositories.md)
+for details on persistence. You can also manually publish the events to the
+rest of the system with `domain.publish()`.
 
 Events are published to streams based on the aggregate's [stream category](../../concepts/async-processing/stream-categories.md). Each event is stored in a stream named `<domain>::<stream_category>-<aggregate_id>`, ensuring that all events for a specific aggregate instance are grouped together and can be processed in order.
 
 Learn more about how stream categories organize message flows in the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
-<!-- FIXME Add link to repositories above -->
 
 ```shell hl_lines="11 16"
 In [1]: order = Order(

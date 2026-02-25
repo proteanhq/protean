@@ -87,7 +87,7 @@ specific area.
 - [Value Objects](./guides/domain-definition/value-objects.md) -- Immutable descriptive objects identified by their attributes.
 - [Expressing Relationships](./guides/domain-definition/relationships.md) -- Model associations between domain elements.
 - [Events](./guides/domain-definition/events.md) -- Model past changes as discrete, meaningful facts.
-- [Deciding Between Elements](./guides/domain-definition/deciding-between-elements.md) -- Checklists and decision flows for choosing element types.
+- [Choosing Element Types](./concepts/building-blocks/choosing-element-types.md) -- Checklists and decision flows for choosing element types.
 
 **Fields**
 
@@ -127,6 +127,7 @@ specific area.
 - [Event Handlers](./guides/consume-state/event-handlers.md) -- Consume events to sync state or trigger side effects.
 - [Process Managers](./guides/consume-state/process-managers.md) -- Coordinate multi-step processes across aggregates with stateful, event-sourced coordination.
 - [Projections](./guides/consume-state/projections.md) -- Create read-optimized views built from events.
+- [Projectors](./guides/consume-state/projectors.md) -- Define event handlers that maintain projections.
 - [Query Handlers](./guides/consume-state/query-handlers.md) -- Process queries and return results from projections.
 - [Subscribers](./guides/consume-state/subscribers.md) -- Consume messages from external brokers.
 - [Stream Categories](./concepts/async-processing/stream-categories.md) -- How messages are organized and routed.

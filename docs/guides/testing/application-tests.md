@@ -13,15 +13,10 @@ these tests. It uses Gherkin feature files to express scenarios in plain
 language and maps each step to a Python function, integrating seamlessly with
 pytest fixtures.
 
-## Key Facts
-
-- Application tests exercise the full processing pipeline: command dispatch,
-  handler execution, aggregate mutation, event raising, and persistence.
-- They use synchronous processing (`"sync"`) so events and commands are
-  handled immediately within the test, making assertions deterministic.
-- They run entirely in-memory — no infrastructure required.
-- Feature files serve as living documentation of your application's behavior.
-- Steps are shared via `conftest.py` and reused across scenarios.
+Application tests exercise the full processing pipeline -- from command
+dispatch through handler execution to persistence -- using synchronous
+processing and in-memory adapters so that assertions are deterministic and
+no infrastructure is required.
 
 ## Installing pytest-bdd
 

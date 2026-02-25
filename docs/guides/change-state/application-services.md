@@ -9,21 +9,8 @@ underlying domain complexity. They encapsulate and coordinate operations,
 making them reusable and easier to manage, ensuring that all interactions with
 the domain are consistent and controlled.
 
-## Key Facts
-
-- Application Services encapsulate business use cases and serve as the main
-entry point for external requests to interact with the domain model.
-- Application Services are predominantly used on the write side of the
-application. If you want to use them on the read side as well, it is
-recommended to create a separate application service for the read side.
-- Application Services are stateless and should not hold any business logic
-themselves; instead, they orchestrate and manage the flow of data and
-operations to and from the domain model.
-- Application Services ensure transaction consistency by automatically
-enclosing all use case methods within a unit of work context.
-- Application Services can interact with multiple aggregates and repositories,
-but should only persist one aggregate, relying on events for eventual
-consistency.
+For background on how application services orchestrate use cases, see
+[Application Services concept](../../concepts/building-blocks/application-services.md).
 
 ## Defining an Application Service
 
@@ -95,55 +82,55 @@ class OrderApplicationServices:
     receive this treatment. You can add helper methods without the decorator,
     but they will not have automatic transaction management.
 
-## Workflow
+??? info "Internal workflow"
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant App as API Layer
-    participant AS as Application Service
-    participant R as Repository
-    participant Agg as Aggregate
+    ```mermaid
+    sequenceDiagram
+        autonumber
+        participant App as API Layer
+        participant AS as Application Service
+        participant R as Repository
+        participant Agg as Aggregate
 
-    App->>AS: Call use case method
-    AS->>AS: Begin UnitOfWork
-    AS->>R: Load aggregate
-    R-->>AS: Aggregate
-    AS->>Agg: Invoke domain method
-    Agg->>Agg: Mutate state
-    Agg-->>AS: Updated aggregate
-    AS->>R: Persist aggregate
-    AS->>AS: Commit UnitOfWork
-    AS-->>App: Return value
-```
+        App->>AS: Call use case method
+        AS->>AS: Begin UnitOfWork
+        AS->>R: Load aggregate
+        R-->>AS: Aggregate
+        AS->>Agg: Invoke domain method
+        Agg->>Agg: Mutate state
+        Agg-->>AS: Updated aggregate
+        AS->>R: Persist aggregate
+        AS->>AS: Commit UnitOfWork
+        AS-->>App: Return value
+    ```
 
-1. **API Layer Calls Use Case Method**: The external layer (e.g., a REST
-controller, GraphQL resolver, or CLI handler) instantiates the Application
-Service and calls the appropriate use case method with plain Python arguments.
+    1. **API Layer Calls Use Case Method**: The external layer (e.g., a REST
+    controller, GraphQL resolver, or CLI handler) instantiates the Application
+    Service and calls the appropriate use case method with plain Python arguments.
 
-1. **UnitOfWork Begins**: The `@use_case` decorator automatically opens a
-`UnitOfWork` context before the method body executes.
+    1. **UnitOfWork Begins**: The `@use_case` decorator automatically opens a
+    `UnitOfWork` context before the method body executes.
 
-1. **Application Service Loads Aggregate**: If the use case operates on an
-existing aggregate, the service retrieves it from the repository using
-`current_domain.repository_for(Aggregate).get(id)`.
+    1. **Application Service Loads Aggregate**: If the use case operates on an
+    existing aggregate, the service retrieves it from the repository using
+    `current_domain.repository_for(Aggregate).get(id)`.
 
-1. **Aggregate Receives Method Call**: The application service invokes the
-relevant domain method on the aggregate, passing the necessary parameters.
+    1. **Aggregate Receives Method Call**: The application service invokes the
+    relevant domain method on the aggregate, passing the necessary parameters.
 
-1. **Aggregate Mutates**: The aggregate applies business rules, validates
-invariants, and changes its internal state. It may also raise domain events.
+    1. **Aggregate Mutates**: The aggregate applies business rules, validates
+    invariants, and changes its internal state. It may also raise domain events.
 
-1. **Application Service Persists Aggregate**: The service persists the
-mutated aggregate back to the repository using `repository.add()`.
+    1. **Application Service Persists Aggregate**: The service persists the
+    mutated aggregate back to the repository using `repository.add()`.
 
-1. **UnitOfWork Commits**: Upon successful completion of the method, the
-`UnitOfWork` commits all pending changes to the persistence store and
-publishes any raised domain events.
+    1. **UnitOfWork Commits**: Upon successful completion of the method, the
+    `UnitOfWork` commits all pending changes to the persistence store and
+    publishes any raised domain events.
 
-1. **Return Value Delivered**: The return value from the use case method is
-passed directly back to the calling API layer, enabling immediate feedback
-(e.g., a newly created entity ID).
+    1. **Return Value Delivered**: The return value from the use case method is
+    passed directly back to the calling API layer, enabling immediate feedback
+    (e.g., a newly created entity ID).
 
 ## Return Values
 
@@ -182,30 +169,12 @@ immediately.
 
 ## Unit of Work
 
-Use case methods always execute within a `UnitOfWork` context by default. The
-UnitOfWork pattern ensures that the series of changes to an aggregate cluster
-are treated as a single, atomic transaction. If an error occurs, the
-UnitOfWork rolls back all changes, ensuring no partial updates are applied.
+Use case methods always execute within a `UnitOfWork` context — if the method
+completes successfully, all changes are committed; if an exception is raised,
+everything is rolled back.
 
-Each use case method is wrapped in a `UnitOfWork` context, without having to
-explicitly specify it. Both use case methods in `UserApplicationServices`
-below are equivalent:
-
-```python hl_lines="8"
-from protean import UnitOfWork, use_case
-
-
-@domain.application_service(part_of=User)
-class UserApplicationServices:
-    @use_case
-    def register_user(self, email: str, name: str) -> Identifier:
-        with UnitOfWork():
-            ...  # code to register user
-
-    @use_case
-    def activate_user(self, user_id: Identifier) -> None:
-        ...  # code to activate user
-```
+For details on how the Unit of Work pattern works, see the
+[Unit of Work](unit-of-work.md) guide.
 
 !!!note
     A `UnitOfWork` context applies to objects in the aggregate cluster,

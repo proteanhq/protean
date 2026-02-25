@@ -12,18 +12,9 @@ Protean treats invariants as first-class citizens, to make them explicit and
 visible, making it easier to maintain the integrity of the domain model. You
 can define invariants on Aggregates, Entities, and Value Objects.
 
-## Key Facts
-
-- **Always Valid:** Invariants are conditions that must hold true at all times.
-- **Declared on Concepts:** Invariants are registered along with domain
-concepts, typically in aggregates as they encapsulate the concept.
-- **Immediate:** Invariants are validated immediately after a domain
-concept is initialized as well as on changes to any attribute in the
-aggregate cluster.
-- **Domain-Driven:** Invariants stem from the business rules and policies
-specific to a domain.
-- **Enforced by the Domain Model:** Protean takes on the responsibility of
-enforcing invariants.
+For background on why invariants are fundamental to DDD and how they keep
+your domain always valid, see
+[Invariants concept](../../concepts/foundations/invariants.md).
 
 ## `@invariant` decorator
 

@@ -16,17 +16,8 @@ necessary for the action, and are processed by
 [command handlers](./command-handlers.md) to ensure business rules and
 invariants are upheld.
 
-## Key Facts
-
-- Commands are unique throughout the domain.
-- Commands are typically named using imperative verbs that clearly describe the intended action or change. E.g. CreateOrder, UpdateCustomerAddress,
-ShipProduct, and CancelReservation.
-- Commands are typically related to an aggregate, because aggregates are the
-entry point for all modifications, ensuring consistency and enforcing business
-rules.
-- When commands represent a domain concept that spans across aggregates, one
-aggregate takes the responsibility of processing the command and raising events
-to eventually make the rest of the system consistent.
+For background on what commands are and how they fit the architecture,
+see [Commands concept](../../concepts/building-blocks/commands.md).
 
 ## Defining Commands
 
@@ -294,4 +285,4 @@ This flexibility allows you to implement various architectural patterns like CQR
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Commands](../../concepts/building-blocks/commands.md) — Commands as immutable intent to change system state.
+    **Concept overview:** [Commands](../../concepts/building-blocks/commands.md) — The role of commands as immutable DTOs expressing intent.

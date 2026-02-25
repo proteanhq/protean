@@ -25,7 +25,7 @@ Out[2]: {'name': 'John Doe', 'email': 'john.doe@localhost', 'id': '1'}
 ## Transaction
 
 The `add` method is enclosed in a [Unit of Work](unit-of-work.md) context by
-default. Changes are committed to the persistence store when the Unit Of Work
+default. Changes are committed to the persistence store when the Unit of Work
 context exits.
 
 The following calls are equivalent in behavior:
@@ -127,3 +127,14 @@ Out[7]:
  'published': False,
  'id': '1'}
 ```
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md) — The role of repositories in DDD and how Protean implements the pattern.
+
+    **Related guides:**
+
+    - [Repositories](./repositories.md) — Define custom repositories with domain-named query methods.
+    - [Retrieve Aggregates](./retrieve-aggregates.md) — Query, filter, sort, and paginate aggregates.
+    - [Unit of Work](./unit-of-work.md) — Transactional consistency when persisting multiple changes.

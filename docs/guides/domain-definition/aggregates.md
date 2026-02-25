@@ -150,10 +150,13 @@ class:
 
 ---
 
+
 ## Configuration
 
-An aggregate's behavior can be customized with by passing additional options
-to its decorator, or with a `Meta` class as we saw earlier.
+An aggregate's behavior can be customized by passing options to its decorator.
+Here are the most commonly used options — see
+[element decorators](../../reference/domain-elements/element-decorators.md)
+for the complete reference.
 
 ### `abstract`
 
@@ -164,30 +167,9 @@ cannot be instantiated and needs to be subclassed.
 --8<-- "guides/domain-definition/003.py:full"
 ```
 
-Trying to instantiate an abstact Aggregate will throw `NotSupportedError`:
-
-```shell
->>> t = TimeStamped()
-NotSupportedError                         Traceback (most recent call last)
-...
-NotSupportedError: TimeStamped class has been marked abstract and cannot be instantiated
-```
-
-### `auto_add_id_field`
-
-If `True`, the aggregate will not contain an identifier field (acting as
-primary key) added by default. This option is usually combined with
-`abstract` to create classes that are meant to be subclassed by other
-aggregates.
-
 ### `provider`
 
-Specifies the database that the aggregate is persisted in.
-
-Aggregates are connected to underlying data stores via providers. The
-definitions of these providers are supplied within the `databases` key in the
-Domain’s configuration. Protean identifies the correct data store, establishes
-the connection and takes responsibility of persisting the data.
+Specifies the database that the aggregate is persisted in:
 
 ```python hl_lines="5-16 19"
 --8<-- "guides/domain-definition/004.py:full"
@@ -195,55 +177,13 @@ the connection and takes responsibility of persisting the data.
 
 Protean requires at least one provider, named `default`, to be specified in the
 configuration. When no provider is explicitly specified, Aggregate objects are
-persisted into the default data store. Refer to `Configuration Management`
-for more details.
-<!-- FIXME Update Configuration Management link in above paragraph -->
-
-### `schema_name`
-
-The name to store and retrieve the aggregate from the persistence store. By
-default, `schema_name` is the snake case version of the Aggregate's name.
-
-```python hl_lines="12-13"
---8<-- "guides/domain-definition/006.py:full"
-```
-
-### `model`
-
-Protean automatically constructs a representation of the aggregate that is
-compatible with the configured database. While the generated model suits most
-use cases, you can also explicitly construct a model and associate it with
-the aggregate.
-
-```python hl_lines="22-25"
---8<-- "guides/domain-definition/005.py:full"
-```
-
-!!!note
-    Custom models are associated with a specific database type and are
-    used only when the configured database is active. Refer to the section on
-    `Customizing Persistence schemas` for more information.
-    <!-- FIXME Add link to customizing persistence schemas -->
+persisted into the default data store.
+Refer to [Configuration](../../reference/configuration/index.md) for more details.
 
 ### `stream_category`
 
-The [stream category](../../concepts/async-processing/stream-categories.md) defines the logical grouping for all messages (events and commands) related to an aggregate. It serves as the foundation for message routing, subscription management, and event sourcing in Protean.
-
-By default, the stream category is automatically derived as the snake_case version of the aggregate's class name:
-
-```python
-@domain.aggregate
-class User:
-    ...
-# Stream category: "user"
-
-@domain.aggregate
-class OrderItem:
-    ...
-# Stream category: "order_item"
-```
-
-You can explicitly specify a stream category:
+The [stream category](../../concepts/async-processing/stream-categories.md)
+defines the logical grouping for all messages related to an aggregate:
 
 ```python
 @domain.aggregate(stream_category="customer_orders")
@@ -252,14 +192,9 @@ class Order:
 # Stream category: "customer_orders"
 ```
 
-The stream category is used by:
-
-- **Handlers** to determine which message streams to subscribe to
-- **Event Store** to organize events for event sourcing
-- **Subscriptions** to poll for new messages
-- **Brokers** to route messages to the correct destinations
-
-For a comprehensive understanding of stream categories, including message organization, handler subscriptions, cross-aggregate patterns, and best practices, see the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
+By default, it is the snake_case version of the class name. For details on
+`auto_add_id_field`, `schema_name`, `model`, and other options, see
+[element decorators](../../reference/domain-elements/element-decorators.md).
 
 ## Associations
 

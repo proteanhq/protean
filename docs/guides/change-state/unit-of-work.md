@@ -94,3 +94,12 @@ sequenceDiagram
     as a single unit, it is left to the database implementation to construct
     and manage sessions and commit transactions atomically.
 
+---
+
+!!! tip "See also"
+    **Related guides:**
+
+    - [Persist Aggregates](./persist-aggregates.md) — Save and update aggregates through repositories.
+    - [Command Handlers](./command-handlers.md) — Each handler method runs within an implicit Unit of Work.
+    - [Application Services](./application-services.md) — Use `@use_case` for automatic Unit of Work management.
+

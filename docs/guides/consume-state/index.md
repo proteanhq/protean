@@ -25,6 +25,12 @@ Projections are read-optimized, denormalized views built from domain events. The
 
 [Learn more about projections →](./projections.md)
 
+### Projectors
+
+Projectors are specialized event handlers responsible for maintaining projections. They listen to domain events and update projection data, bridging the write and read sides of CQRS.
+
+[Learn more about projectors →](./projectors.md)
+
 ### Query Handlers
 
 Query handlers process named read intents (queries) and return results from projections. They are the read-side counterpart of command handlers, dispatched via `domain.dispatch(query)`.

@@ -58,38 +58,38 @@ Out[8]: {
  }
 ```
 
-## Event Handler Workflow
+??? info "Internal workflow"
 
-Event handlers follow an asynchronous, fire-and-forget pattern. When an event is published, event handlers process it without returning any values to the caller.
+    Event handlers follow an asynchronous, fire-and-forget pattern. When an event is published, event handlers process it without returning any values to the caller.
 
-```mermaid
-sequenceDiagram
-  autonumber
-  Aggregate->>Domain: Publish Event
-  Domain->>Event Store: Store Event
-  Event Store-->>Domain: 
-  Domain-->>Aggregate: 
-  
-  Note over Domain,Event Handler: Asynchronous Processing
-  
-  Event Store->>Event Handler: Deliver Event
-  Event Handler->>Event Handler: Process Event
-  Event Handler->>Repository: Load/Update Aggregates
-  Repository-->>Event Handler: 
-  Event Handler->>Event Handler: Perform Side Effects
-  Event Handler->>Repository: Persist Aggregates
-```
+    ```mermaid
+    sequenceDiagram
+      autonumber
+      Aggregate->>Domain: Publish Event
+      Domain->>Event Store: Store Event
+      Event Store-->>Domain: 
+      Domain-->>Aggregate: 
 
-1. **Aggregate Publishes Event**: An action in an aggregate triggers an event to be published.
-2. **Domain Stores Event**: The domain stores the event in the event store.
-3. **Event Store Confirms Storage**: The event store confirms the event has been stored.
-4. **Domain Returns to Aggregate**: The domain returns control to the aggregate.
-5. **Event Store Delivers Event**: Asynchronously, the event store delivers the event to all subscribed event handlers.
-6. **Event Handler Processes Event**: The event handler receives and processes the event.
-7. **Event Handler Loads/Updates Aggregates**: If needed, the event handler loads and updates relevant aggregates.
-8. **Repository Returns Data**: The repository returns requested data to the event handler.
-9. **Event Handler Performs Side Effects**: The event handler may perform additional side effects (sending emails, updating other systems, etc.).
-10. **Event Handler Persists Data and Optionally Raises Events**: The event handler persists the mutated aggregate, which can also raise events.
+      Note over Domain,Event Handler: Asynchronous Processing
+
+      Event Store->>Event Handler: Deliver Event
+      Event Handler->>Event Handler: Process Event
+      Event Handler->>Repository: Load/Update Aggregates
+      Repository-->>Event Handler: 
+      Event Handler->>Event Handler: Perform Side Effects
+      Event Handler->>Repository: Persist Aggregates
+    ```
+
+    1. **Aggregate Publishes Event**: An action in an aggregate triggers an event to be published.
+    2. **Domain Stores Event**: The domain stores the event in the event store.
+    3. **Event Store Confirms Storage**: The event store confirms the event has been stored.
+    4. **Domain Returns to Aggregate**: The domain returns control to the aggregate.
+    5. **Event Store Delivers Event**: Asynchronously, the event store delivers the event to all subscribed event handlers.
+    6. **Event Handler Processes Event**: The event handler receives and processes the event.
+    7. **Event Handler Loads/Updates Aggregates**: If needed, the event handler loads and updates relevant aggregates.
+    8. **Repository Returns Data**: The repository returns requested data to the event handler.
+    9. **Event Handler Performs Side Effects**: The event handler may perform additional side effects (sending emails, updating other systems, etc.).
+    10. **Event Handler Persists Data and Optionally Raises Events**: The event handler persists the mutated aggregate, which can also raise events.
 
 ## Return Values from Event Handlers
 

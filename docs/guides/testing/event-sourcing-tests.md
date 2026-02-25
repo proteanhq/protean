@@ -17,20 +17,9 @@ order = given(Order, order_created, order_confirmed).process(initiate_payment)
 *"Given an Order after order_created and order_confirmed, process
 initiate_payment."*
 
-## Key Facts
-
-- Tests exercise the **real pipeline** — `domain.process()` is called, not a
-  mock. Commands go through command handlers, repository loading, aggregate
-  methods, and event store writes.
-- The DSL uses **plain Python** for assertions — `in`, `[]`, `len`, `assert`.
-  No custom assertion methods.
-- Attribute access is **proxied** to the aggregate — `order.status` works
-  directly on the result object.
-- `.process()` can be **chained** — call it multiple times to build up
-  aggregate state through the real pipeline.
-- Designed for event-sourced aggregates (`is_event_sourced=True`). For
-  non-event-sourced aggregates, see
-  [Application Tests](./application-tests.md).
+Every `.process()` call runs through the real pipeline -- command handler,
+aggregate loading, event store writes -- with no mocks. For testing
+non-event-sourced aggregates, see [Application Tests](./application-tests.md).
 
 ## The Three Words
 

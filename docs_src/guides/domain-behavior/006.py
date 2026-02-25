@@ -24,12 +24,6 @@ class OrderStatus(Enum):
     DELIVERED = "DELIVERED"
 
 
-@domain.event(part_of="Order")
-class OrderConfirmed:
-    order_id: Identifier(required=True)
-    confirmed_at: DateTime(required=True)
-
-
 @domain.aggregate
 class Order:
     customer_id: Identifier(required=True)
@@ -47,6 +41,12 @@ class Order:
         self.raise_(
             OrderConfirmed(order_id=self.id, confirmed_at=datetime.now(timezone.utc))
         )
+
+
+@domain.event(part_of=Order)
+class OrderConfirmed:
+    order_id: Identifier(required=True)
+    confirmed_at: DateTime(required=True)
 
 
 @domain.entity(part_of=Order)

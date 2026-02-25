@@ -207,7 +207,7 @@ nav:
       - guides/domain-definition/value-objects.md
       - guides/domain-definition/relationships.md
       - guides/domain-definition/events.md
-      - guides/domain-definition/deciding-between-elements.md
+      - concepts/building-blocks/choosing-element-types.md
     - Add Rules and Behavior:
       - guides/domain-behavior/index.md
       - guides/domain-behavior/validations.md
@@ -232,6 +232,7 @@ nav:
       - guides/consume-state/event-handlers.md
       - guides/consume-state/process-managers.md
       - guides/consume-state/projections.md
+      - guides/consume-state/projectors.md
       - guides/consume-state/query-handlers.md
       - guides/consume-state/subscribers.md
       - guides/consume-state/event-upcasting.md

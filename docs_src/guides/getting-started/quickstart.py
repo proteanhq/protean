@@ -32,7 +32,7 @@ class Post:
 
 
 # --8<-- [start:event]
-@domain.event(part_of="Post")
+@domain.event(part_of=Post)
 class PostPublished:
     post_id: Identifier(required=True)
     title: String(required=True)
@@ -43,7 +43,7 @@ class PostPublished:
 
 # --8<-- [start:command_and_handler]
 # --8<-- [start:command]
-@domain.command(part_of="Post")
+@domain.command(part_of=Post)
 class CreatePost:
     title: String(max_length=100, required=True)
     body: Text(required=True)

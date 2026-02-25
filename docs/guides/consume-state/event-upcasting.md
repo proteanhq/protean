@@ -403,3 +403,12 @@ class WrongTarget(BaseUpcaster): ...
   rewrite the event store in a new format, use the copy-transform pattern
   documented in the [Event Versioning](../../patterns/event-versioning-and-evolution.md)
   pattern.
+
+---
+
+!!! tip "See also"
+    **Patterns:** [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) — Strategies for evolving event schemas over time.
+
+    **Related guides:**
+
+    - [Temporal Queries](../change-state/temporal-queries.md) — Load aggregate state at a specific version or point in time.

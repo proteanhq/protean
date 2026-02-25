@@ -7,30 +7,8 @@ Domain services act as orchestrators, centralizing complex domain logic that
 doesn't neatly fit within an entity or aggregate. They encapsulate business
 rules and domain decisions that need multiple aggregates as input.
 
-Domain services free us from having to shoehorn business logic into aggregate
-clusters. This keeps domain objects focused on their core state and behavior,
-while domain services handle the broader workflows and complex interactions
-within the domain.
-
-Even though Domain services can access multiple aggregates, they are not meant
-to propagate state changes in more than one aggregate. A combination of
-Application Services, Events, and eventual consistency sync aggregates when a
-transaction spans beyond an aggregate's boundary. We will discuss these aspects
-more thoroughly in the Application Layer section.
-
-## Key Facts
-
-- **Stateless:** Domain services are stateless - they don’t hold any internal
-state between method calls. They operate on the state provided to them through
-their method parameters.
-- **Encapsulate Business Logic:** Domain Services encapsulate complex business
-logic or operations that involve multiple aggregate, specifically, logic that
-doesn't naturally fit within any single aggregate.
-- **Pure Domain Concepts:** Domain services focus purely on domain logic and
-cannot handle technical aspects like persistence or messaging, though they
-mutate aggregates to a state that they is ready to be persisted. Technical
-concerns are typically handled by invoking services like application services
-or command/event handlers.
+For background on when and why to use domain services, see
+[Domain Services concept](../../concepts/building-blocks/domain-services.md).
 
 ## Defining a Domain Service
 
@@ -82,7 +60,7 @@ class:
 ```
 
 ```shell
-service = OrderPlacementService(order, inventories)
+service = PlaceOrder(order, inventories)
 service()
 ```
 

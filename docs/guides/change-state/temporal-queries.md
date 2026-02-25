@@ -116,3 +116,11 @@ with UnitOfWork():
 | `as_of` before the first event | `ObjectNotFoundError` |
 | Both `at_version` and `as_of` provided | `IncorrectUsageError` |
 | `raise_()` on a temporal aggregate | `IncorrectUsageError` |
+
+---
+
+!!! tip "See also"
+    **Related guides:**
+
+    - [Event Upcasting](../consume-state/event-upcasting.md) — Transform historical event schemas during replay.
+    - [Retrieve Aggregates](./retrieve-aggregates.md) — Standard aggregate querying with QuerySets.

@@ -31,7 +31,7 @@ Review the [object model](../../reference/domain-elements/object-model.md) to un
 multiple ways to pass these options. Refer to each domain element's
 documentation to understand the additional options supported by that element.
 
-<!--FIXME Add info on how to get to each domain element -->
+See [element decorators](../../reference/domain-elements/element-decorators.md) for the full list of domain elements and their options.
 
 ## Explicit registration
 
@@ -47,4 +47,4 @@ of element in Protean has a distinct base class of its own.
 
 Also, additional options are now passed in the `register` call to the domain.
 
-<!-- FIXME Add link to base classes -->
+See the [object model](../../reference/domain-elements/object-model.md) for details on base classes and registration.

@@ -84,7 +84,7 @@ Out[2]: 'Jane Doe'
 ### `exists`
 
 Use `exists` to check whether matching aggregates exist without loading them.
-`exists` is available on the DAO layer (`_dao`):
+`exists` is available on the DAO layer via `_dao`:
 
 ```shell
 In [1]: repository._dao.exists({}, email="john.doe@example.com")
@@ -99,10 +99,15 @@ these criteria are excluded from the check. This is useful for uniqueness
 checks that need to exclude the current record:
 
 ```python
-# Check if another person (excluding current) has this email
+# Inside a custom repository method
 def email_taken(self, person_id: str, email: str) -> bool:
     return self._dao.exists({"id": person_id}, email=email)
 ```
+
+!!! note
+    `exists` is one of the advanced DAO operations not yet surfaced as a
+    convenience method. For typical queries, prefer `self.query` and
+    `self.find_by()` — see [Repositories](./repositories.md).
 
 ---
 
@@ -166,9 +171,8 @@ In a real application, you would wrap QuerySet operations in repository
 methods with domain-meaningful names:
 
 ```python hl_lines="5-7 10-12"
-class PersonRepository(Repository):
-    part_of = Person
-
+@domain.repository(part_of=Person)
+class PersonRepository:
     def adults_in_country(self, country_code):
         """Find all adults in the specified country."""
         return self.query.filter(
@@ -535,3 +539,13 @@ SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
     Raw queries bypass Protean's query abstraction and are tied to a specific
     database technology. Use them sparingly and only when the QuerySet API
     cannot express your query.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md) — The role of repositories in DDD and how Protean implements the pattern.
+
+    **Related guides:**
+
+    - [Repositories](./repositories.md) — Define custom repositories with domain-named query methods.
+    - [Persist Aggregates](./persist-aggregates.md) — Save and update aggregates through repositories.

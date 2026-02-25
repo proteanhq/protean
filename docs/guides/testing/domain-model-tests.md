@@ -7,16 +7,9 @@ Domain model tests are **unit tests** that validate your aggregates, entities,
 value objects, invariants, and domain services. They are the foundation of your
 test suite — fast, isolated, and focused on business rules.
 
-## Key Facts
-
-- Domain model tests require **no infrastructure** — they run entirely
-  in-memory.
-- They test **your** business logic: state transitions, invariant enforcement,
-  event raising, and domain service orchestration.
-- They are the fastest tests in your suite and should form the bulk of your
-  coverage.
-- Every business rule encoded in your domain model should have a corresponding
-  test.
+These tests require no infrastructure and run entirely in-memory, making them
+the fastest tests in your suite. Every business rule you encode in your domain
+model should have a corresponding test.
 
 !!!note "Don't Test What Protean Guarantees"
     Protean already guarantees that fields work correctly — `required=True`

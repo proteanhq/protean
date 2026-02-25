@@ -7,15 +7,8 @@ query, access the right projection through a ReadView, and return the result.
 Query handlers are the read-side mirror of command handlers, completing the
 CQRS pipeline.
 
-## Key Facts
-
-- Query handlers are associated with a **projection** (not an aggregate).
-- Handler methods use the `@read` decorator, which does **not** wrap in a
-  UnitOfWork.
-- Queries are dispatched with `domain.dispatch(query)`, mirroring
-  `domain.process(command)` on the write side.
-- Handler methods always return values.
-- Each query is handled by exactly one handler method.
+For background on how query handlers complete the CQRS read pipeline, see
+[Query Handlers concept](../../concepts/building-blocks/query-handlers.md).
 
 ## Defining a Query Handler
 
@@ -164,3 +157,8 @@ except IncorrectUsageError as e:
     # Handle missing handler or unregistered query
     ...
 ```
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Query Handlers](../../concepts/building-blocks/query-handlers.md) — How query handlers process read intents in CQRS.

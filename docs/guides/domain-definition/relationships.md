@@ -168,3 +168,13 @@ post.remove_comments([comment1, comment2])
 Relationships in Protean respect aggregate boundaries - associations only exist within an aggregate cluster. Aggregates cannot directly reference other aggregates, maintaining clear transaction boundaries and ensuring data consistency.
 
 The relationship system ensures that all related entities within an aggregate are persisted and retrieved together, maintaining the aggregate's transactional integrity.
+
+---
+
+!!! tip "See also"
+    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md) — How aggregates define consistency boundaries that contain entities and value objects.
+
+    **Related guides:**
+
+    - [Entities](./entities.md) — Define entities with identity within an aggregate.
+    - [Value Objects](./value-objects.md) — Embed immutable descriptive objects in aggregates.

@@ -18,7 +18,7 @@ need by what you're trying to accomplish.
 | Define a root entity with business logic        | [Aggregates](./guides/domain-definition/aggregates.md) |
 | Add a child object with identity to an aggregate | [Entities](./guides/domain-definition/entities.md) |
 | Create an immutable descriptive value (Money, Email, Address) | [Value Objects](./guides/domain-definition/value-objects.md) |
-| Choose between an entity and a value object     | [Deciding Between Elements](./guides/domain-definition/deciding-between-elements.md) |
+| Choose between an entity and a value object     | [Choosing Element Types](./concepts/building-blocks/choosing-element-types.md) |
 | Connect entities with relationships             | [Relationships](./guides/domain-definition/relationships.md) |
 | Add typed attributes to domain objects          | [Fields](./reference/fields/index.md) |
 | Choose between field definition styles          | [Defining Fields](./reference/fields/defining-fields.md) |
@@ -64,6 +64,7 @@ need by what you're trying to accomplish.
 | Coordinate a multi-step process across aggregates | [Process Managers](./guides/consume-state/process-managers.md) |
 | Correlate events to a running process           | [Process Managers](./guides/consume-state/process-managers.md) |
 | Build a read-optimized view from events         | [Projections](./guides/consume-state/projections.md) |
+| Define an event handler that maintains a projection | [Projectors](./guides/consume-state/projectors.md) |
 | Process a query and return results              | [Query Handlers](./guides/consume-state/query-handlers.md) |
 | Dispatch a named read intent                    | [Query Handlers](./guides/consume-state/query-handlers.md) |
 | Rebuild a projection from historical events     | [`protean projection rebuild`](./reference/cli/data/projection.md) |

@@ -19,24 +19,8 @@ integration at the messaging level.
 
     See [Event Handlers](event-handlers.md) for handling domain events.
 
-## Key Facts
-
-- Subscribers are registered with the `@domain.subscriber` decorator and must
-  specify a `stream` name.
-- Subscribers consume raw `dict` payloads from external message brokers, not
-  typed domain events.
-- Each subscriber must implement the `__call__(self, payload: dict)` method,
-  which is invoked for every message on the stream.
-- Subscribers are associated with a **broker** (defaults to `"default"`) and a
-  **stream** (required).
-- In synchronous mode (`message_processing = "sync"`), subscribers are invoked
-  immediately when a message is published. In asynchronous mode (the default),
-  they are processed by the [Protean Engine](../../concepts/async-processing/index.md).
-- Subscribers support error recovery through an optional `handle_error`
-  classmethod.
-- Unlike event handlers, subscribers do not use the `@handle` decorator for
-  event-type dispatch -- they receive all messages on their stream through a
-  single `__call__` method.
+For background on how subscribers bridge external systems, see
+[Subscribers concept](../../concepts/building-blocks/subscribers.md).
 
 ## Defining a Subscriber
 

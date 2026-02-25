@@ -652,4 +652,4 @@ for cross-aggregate communication.**
 
     - [Aggregates](../guides/domain-definition/aggregates.md) — Defining aggregates, fields, and configuration.
     - [Relationships](../guides/domain-definition/relationships.md) — Connecting entities within aggregate boundaries.
-    - [Deciding Between Elements](../guides/domain-definition/deciding-between-elements.md) — Choosing between aggregates, entities, and value objects.
+    - [Choosing Element Types](../concepts/building-blocks/choosing-element-types.md) — Choosing between aggregates, entities, and value objects.

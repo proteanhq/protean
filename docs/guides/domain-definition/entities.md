@@ -49,8 +49,6 @@ throw `IncorrectUsageError`.
 ... 
 IncorrectUsageError: 'Entity `Comment` needs to be associated with an Aggregate'
 ```
-<!-- FIXME Ensure entities cannot enclose other entities. When entities
-enclose something other than permitted fields, through an error-->
 
 ## Configuration
 

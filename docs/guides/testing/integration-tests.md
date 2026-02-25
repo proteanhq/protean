@@ -13,15 +13,10 @@ Like [application tests](./application-tests.md), we recommend using
 here — the only difference is the domain is configured with real
 infrastructure instead of in-memory adapters.
 
-## Key Facts
-
-- Integration tests use the same feature files and step definitions as
-  application tests, but run against real infrastructure.
-- Configure your domain with real adapters (PostgreSQL, Redis, etc.)
-  via a separate fixture or configuration override.
-- Use pytest markers or tags to separate integration tests from fast
-  in-memory tests.
-- Run in-memory tests during development; run integration tests in CI.
+Integration tests reuse the same feature files and step definitions as
+[application tests](./application-tests.md), but swap in real adapters
+(PostgreSQL, Redis, etc.) via configuration overrides. Use pytest markers to
+keep them separate from your fast in-memory suite.
 
 ## Configuring for Real Infrastructure
 
