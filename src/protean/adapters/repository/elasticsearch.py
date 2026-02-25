@@ -142,9 +142,11 @@ class ElasticsearchDAO(BaseDAO):
                     composed_query = composed_query & self._build_filters(child)
                 else:
                     stripped_key, lookup_class = self.provider._extract_lookup(child[0])
-                    lookup = lookup_class(stripped_key, child[1])
-                    # Pass database model class to lookup for cached field type information
-                    lookup.database_model_cls = self.database_model_cls
+                    lookup = lookup_class(
+                        stripped_key,
+                        child[1],
+                        database_model_cls=self.database_model_cls,
+                    )
                     expression = lookup.as_expression()
                     if criteria.negated:
                         assert expression is not None
@@ -157,9 +159,11 @@ class ElasticsearchDAO(BaseDAO):
                     composed_query = composed_query | self._build_filters(child)
                 else:
                     stripped_key, lookup_class = self.provider._extract_lookup(child[0])
-                    lookup = lookup_class(stripped_key, child[1])
-                    # Pass database model class to lookup for cached field type information
-                    lookup.database_model_cls = self.database_model_cls
+                    lookup = lookup_class(
+                        stripped_key,
+                        child[1],
+                        database_model_cls=self.database_model_cls,
+                    )
                     expression = lookup.as_expression()
                     if criteria.negated:
                         assert expression is not None
@@ -793,7 +797,7 @@ class DefaultLookup(BaseLookup):
         Uses precomputed field type information from the database model class for efficiency.
         """
         # Access the precomputed keyword fields from the database model class
-        if hasattr(self, "database_model_cls") and hasattr(
+        if self.database_model_cls is not None and hasattr(
             self.database_model_cls, "_keyword_fields"
         ):
             return field_name in self.database_model_cls._keyword_fields

@@ -81,8 +81,9 @@ class TestLookupFieldTypeDetection:
         dao = test_domain.repository_for(self.Person)._dao
 
         # Create lookup with database model class attached (as done in _build_filters)
-        lookup = repo.Exact("first_name", "John")
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.Exact(
+            "first_name", "John", database_model_cls=dao.database_model_cls
+        )
 
         # String field should use .keyword subfield
         query_dict = lookup.as_expression().to_dict()
@@ -93,8 +94,7 @@ class TestLookupFieldTypeDetection:
         dao = test_domain.repository_for(self.Person)._dao
 
         # Create lookup with database model class attached
-        lookup = repo.Exact("age", 25)
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.Exact("age", 25, database_model_cls=dao.database_model_cls)
 
         # Numeric field should NOT use .keyword subfield
         query_dict = lookup.as_expression().to_dict()
@@ -105,8 +105,7 @@ class TestLookupFieldTypeDetection:
         dao = test_domain.repository_for(self.Person)._dao
 
         # Create lookup with database model class attached
-        lookup = repo.Exact("id", "some-id")
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.Exact("id", "some-id", database_model_cls=dao.database_model_cls)
 
         # ID field should NOT use .keyword subfield (already keyword mapped)
         query_dict = lookup.as_expression().to_dict()
@@ -116,8 +115,9 @@ class TestLookupFieldTypeDetection:
         """Test that In lookup uses .keyword subfield for string fields"""
         dao = test_domain.repository_for(self.Person)._dao
 
-        lookup = repo.In("first_name", ["John", "Jane"])
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.In(
+            "first_name", ["John", "Jane"], database_model_cls=dao.database_model_cls
+        )
 
         query_dict = lookup.as_expression().to_dict()
         assert query_dict == {"terms": {"first_name.keyword": ["John", "Jane"]}}
@@ -126,8 +126,7 @@ class TestLookupFieldTypeDetection:
         """Test that In lookup doesn't use .keyword subfield for numeric fields"""
         dao = test_domain.repository_for(self.Person)._dao
 
-        lookup = repo.In("age", [25, 30])
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.In("age", [25, 30], database_model_cls=dao.database_model_cls)
 
         query_dict = lookup.as_expression().to_dict()
         assert query_dict == {"terms": {"age": [25, 30]}}
@@ -136,8 +135,9 @@ class TestLookupFieldTypeDetection:
         """Test that Contains lookup uses .keyword subfield for string fields"""
         dao = test_domain.repository_for(self.Person)._dao
 
-        lookup = repo.Contains("first_name", "Jo")
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.Contains(
+            "first_name", "Jo", database_model_cls=dao.database_model_cls
+        )
 
         query_dict = lookup.as_expression().to_dict()
         assert query_dict == {"wildcard": {"first_name.keyword": {"value": "*Jo*"}}}
@@ -146,8 +146,7 @@ class TestLookupFieldTypeDetection:
         """Test that Contains lookup doesn't use .keyword for numeric fields"""
         dao = test_domain.repository_for(self.Person)._dao
 
-        lookup = repo.Contains("age", "2")
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.Contains("age", "2", database_model_cls=dao.database_model_cls)
 
         query_dict = lookup.as_expression().to_dict()
         assert query_dict == {"wildcard": {"age": {"value": "*2*"}}}
@@ -156,8 +155,9 @@ class TestLookupFieldTypeDetection:
         """Test that Startswith lookup uses .keyword subfield for string fields"""
         dao = test_domain.repository_for(self.Person)._dao
 
-        lookup = repo.Startswith("last_name", "Doe")
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.Startswith(
+            "last_name", "Doe", database_model_cls=dao.database_model_cls
+        )
 
         query_dict = lookup.as_expression().to_dict()
         assert query_dict == {"wildcard": {"last_name.keyword": {"value": "Doe*"}}}
@@ -166,8 +166,9 @@ class TestLookupFieldTypeDetection:
         """Test that Endswith lookup uses .keyword subfield for string fields"""
         dao = test_domain.repository_for(self.Person)._dao
 
-        lookup = repo.Endswith("last_name", "son")
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.Endswith(
+            "last_name", "son", database_model_cls=dao.database_model_cls
+        )
 
         query_dict = lookup.as_expression().to_dict()
         assert query_dict == {"wildcard": {"last_name.keyword": {"value": "*son"}}}
@@ -185,8 +186,9 @@ class TestLookupFieldTypeDetection:
         """Test that IExact lookup uses the analyzed field (not .keyword)"""
         dao = test_domain.repository_for(self.Person)._dao
 
-        lookup = repo.IExact("first_name", "John")
-        lookup.database_model_cls = dao.database_model_cls
+        lookup = repo.IExact(
+            "first_name", "John", database_model_cls=dao.database_model_cls
+        )
 
         # IExact should use analyzed field and lowercase the target
         query_dict = lookup.as_expression().to_dict()

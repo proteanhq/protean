@@ -16,7 +16,7 @@ class TestLookups:
         database_model_cls = test_domain.repository_for(GenericPostgres)._database_model
 
         identifier = "foobar"
-        lookup = Any("ids", identifier, database_model_cls)
+        lookup = Any("ids", identifier, database_model_cls=database_model_cls)
         expr = lookup.as_expression()
 
         assert str(expr.compile()) in [
@@ -32,7 +32,7 @@ class TestLookups:
         database_model_cls = test_domain.repository_for(GenericPostgres)._database_model
 
         identifier = ["foo", "bar"]
-        lookup = Contains("ids", identifier, database_model_cls)
+        lookup = Contains("ids", identifier, database_model_cls=database_model_cls)
         expr = lookup.as_expression()
 
         assert str(expr.compile()) == "public.generic_postgres.ids @> :ids_1"
@@ -42,7 +42,7 @@ class TestLookups:
         database_model_cls = test_domain.repository_for(GenericPostgres)._database_model
 
         identifier = ["foo", "bar"]
-        lookup = Overlap("ids", identifier, database_model_cls)
+        lookup = Overlap("ids", identifier, database_model_cls=database_model_cls)
         expr = lookup.as_expression()
 
         assert str(expr.compile()) == "public.generic_postgres.ids && :ids_1"
@@ -52,7 +52,7 @@ class TestLookups:
         database_model_cls = test_domain.repository_for(GenericPostgres)._database_model
 
         target_roles = ["foo", "bar", "baz"]
-        lookup = In("role", target_roles, database_model_cls)
+        lookup = In("role", target_roles, database_model_cls=database_model_cls)
         expr = lookup.as_expression()
 
         assert (
