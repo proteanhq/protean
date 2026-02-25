@@ -724,3 +724,13 @@ class Any(MemoryLookup):
 
     def as_expression(self):
         return f"any(x in {self.process_target()} for x in {self.process_source()})"
+
+
+def register() -> None:
+    """Register MemoryProvider with Protean.
+
+    MemoryProvider is always available as it has no external dependencies.
+    """
+    from protean.port.provider import registry
+
+    registry.register("memory", "protean.adapters.repository.memory.MemoryProvider")

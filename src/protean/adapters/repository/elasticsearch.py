@@ -996,3 +996,22 @@ class Endswith(DefaultLookup):
             "wildcard",
             **{field_name: {"value": f"*{self.process_target()}"}},
         )
+
+
+def register() -> None:
+    """Register Elasticsearch provider with Protean if elasticsearch is available."""
+    from protean.port.provider import registry
+
+    try:
+        import elasticsearch  # noqa: F401
+
+        registry.register(
+            "elasticsearch",
+            "protean.adapters.repository.elasticsearch.ESProvider",
+        )
+        logger.debug("Elasticsearch provider registered successfully")
+    except ImportError as e:
+        logger.debug(
+            f"Elasticsearch provider not registered: "
+            f"elasticsearch package not available ({e})"
+        )

@@ -6,7 +6,8 @@ and configuration error messages.
 
 import pytest
 
-from protean.adapters.repository import DATABASE_PROVIDERS, Providers
+from protean.adapters.repository import Providers
+from protean.port.provider import registry as provider_registry
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import String
@@ -257,7 +258,7 @@ class TestConfigurationErrorMessages:
             error_msg = str(exc_info.value)
             assert "'postgresqll'" in error_msg
             assert "Available providers:" in error_msg
-            for name in sorted(DATABASE_PROVIDERS.keys()):
+            for name in sorted(provider_registry.list().keys()):
                 assert name in error_msg
 
     def test_none_provider_type_raises_with_available_list(self):

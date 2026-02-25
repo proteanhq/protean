@@ -3,9 +3,10 @@
 import logging
 from abc import ABCMeta, abstractmethod
 from enum import Flag, auto
-from typing import Any
+from importlib import import_module, metadata
+from typing import Any, Type
 
-from protean.exceptions import NotSupportedError
+from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils.query import RegisterLookupMixin
 
 logger = logging.getLogger(__name__)
@@ -189,3 +190,106 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     @abstractmethod
     def _drop_database_artifacts(self) -> None:
         """Drop all tables, indices, or storage structures."""
+
+
+class ProviderRegistry:
+    """Registry for database provider implementations.
+
+    Providers can register themselves dynamically, making their presence optional
+    based on whether the required dependencies are installed.
+    """
+
+    _providers: dict[str, str] = {}
+    _initialized: bool = False
+
+    @classmethod
+    def _discover_plugins(cls) -> None:
+        """Discover and load provider plugins using entry points."""
+        if cls._initialized:
+            return
+
+        entry_points = metadata.entry_points()
+        provider_entries = entry_points.select(group="protean.providers")
+
+        for entry_point in provider_entries:
+            try:
+                register_func = entry_point.load()
+                register_func()
+                logger.debug(f"Loaded provider plugin: {entry_point.name}")
+            except Exception as e:
+                logger.debug(
+                    f"Failed to load provider plugin '{entry_point.name}': {e}"
+                )
+
+        cls._initialized = True
+
+    @classmethod
+    def register(cls, name: str, provider_class_path: str) -> None:
+        """Register a provider implementation.
+
+        Args:
+            name: The name/key for the provider (e.g., 'memory', 'postgresql')
+            provider_class_path: Full module path to the provider class
+                                (e.g., 'protean.adapters.repository.memory.MemoryProvider')
+        """
+        if name in cls._providers:
+            logger.warning(f"Provider '{name}' is already registered, overwriting.")
+
+        cls._providers[name] = provider_class_path
+        logger.debug(f"Registered provider '{name}' -> {provider_class_path}")
+
+    @classmethod
+    def get(cls, name: str) -> Type["BaseProvider"]:
+        """Get a provider class by name.
+
+        Args:
+            name: The provider name
+
+        Returns:
+            The provider class
+
+        Raises:
+            ConfigurationError: If provider is not registered or cannot be imported
+        """
+        # Discover plugins on first access
+        cls._discover_plugins()
+
+        if name not in cls._providers:
+            available = (
+                ", ".join(sorted(cls._providers.keys())) if cls._providers else "none"
+            )
+            raise ConfigurationError(
+                f"Unknown database provider '{name}'. "
+                f"Available providers: {available}. "
+                f"Ensure the provider package is installed."
+            )
+
+        provider_path = cls._providers[name]
+        try:
+            module_path, class_name = provider_path.rsplit(".", maxsplit=1)
+            module = import_module(module_path)
+            provider_cls = getattr(module, class_name)
+            return provider_cls
+        except (ImportError, AttributeError) as e:
+            raise ConfigurationError(
+                f"Failed to load provider '{name}' from '{provider_path}': {e}. "
+                f"Ensure the required dependencies are installed."
+            )
+
+    @classmethod
+    def list(cls) -> dict[str, str]:
+        """List all registered providers.
+
+        Returns:
+            Dictionary of provider names to their class paths
+        """
+        return cls._providers.copy()
+
+    @classmethod
+    def clear(cls) -> None:
+        """Clear all registered providers (mainly for testing)."""
+        cls._providers.clear()
+
+
+# Create a global registry instance
+registry = ProviderRegistry()

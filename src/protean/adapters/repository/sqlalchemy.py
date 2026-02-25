@@ -1343,3 +1343,57 @@ class MSSQLEndswith(MSSQLStringLookupMixin, DefaultLookup):
     def as_expression(self):
         """Build the endswith expression with case-sensitive collation for string fields only"""
         return self.process_source().endswith(self.process_target())
+
+
+def register_postgresql() -> None:
+    """Register PostgreSQL provider with Protean if sqlalchemy is available."""
+    from protean.port.provider import registry
+
+    try:
+        import sqlalchemy  # noqa: F401
+
+        registry.register(
+            "postgresql",
+            "protean.adapters.repository.sqlalchemy.PostgresqlProvider",
+        )
+        logger.debug("PostgreSQL provider registered successfully")
+    except ImportError as e:
+        logger.debug(
+            f"PostgreSQL provider not registered: sqlalchemy package not available ({e})"
+        )
+
+
+def register_sqlite() -> None:
+    """Register SQLite provider with Protean if sqlalchemy is available."""
+    from protean.port.provider import registry
+
+    try:
+        import sqlalchemy  # noqa: F401
+
+        registry.register(
+            "sqlite",
+            "protean.adapters.repository.sqlalchemy.SqliteProvider",
+        )
+        logger.debug("SQLite provider registered successfully")
+    except ImportError as e:
+        logger.debug(
+            f"SQLite provider not registered: sqlalchemy package not available ({e})"
+        )
+
+
+def register_mssql() -> None:
+    """Register MSSQL provider with Protean if sqlalchemy is available."""
+    from protean.port.provider import registry
+
+    try:
+        import sqlalchemy  # noqa: F401
+
+        registry.register(
+            "mssql",
+            "protean.adapters.repository.sqlalchemy.MssqlProvider",
+        )
+        logger.debug("MSSQL provider registered successfully")
+    except ImportError as e:
+        logger.debug(
+            f"MSSQL provider not registered: sqlalchemy package not available ({e})"
+        )
