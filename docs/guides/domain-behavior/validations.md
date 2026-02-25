@@ -1,7 +1,6 @@
 # Basic Validations
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 There are many hygiene aspects that need to be enforced in a domain's data
 and behavior, even before we get to the point of defining a domain's rules.

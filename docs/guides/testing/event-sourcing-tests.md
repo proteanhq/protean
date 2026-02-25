@@ -1,7 +1,6 @@
 # Event Sourcing Tests
 
-!!! abstract "Applies to: Event Sourcing"
-
+<span class="pathway-tag pathway-tag-es">ES</span>
 
 Protean provides a fluent test DSL for event-sourced aggregates through the
 `protean.testing` module. It lets you write integration tests that exercise

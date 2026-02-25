@@ -1,7 +1,6 @@
 # Message Tracing
 
-!!! abstract "Applies to: CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 In event-driven systems, a single user action can trigger a chain of commands
 and events that cascade across multiple aggregates and handlers. **Message

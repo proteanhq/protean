@@ -1,7 +1,6 @@
 # Value Objects
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Value Objects represent distinct domain concepts, with attributes, behavior and
 validations built into them. They don't have distinct identities, so they are

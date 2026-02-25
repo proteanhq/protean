@@ -1,7 +1,6 @@
 # Events
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Most applications have a definite state - they reflect past user input and
 interactions in their current state. It is advantageous to model these past

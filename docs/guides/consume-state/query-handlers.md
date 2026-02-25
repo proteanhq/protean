@@ -1,6 +1,6 @@
 # Query Handlers
 
-!!! abstract "Applies to: CQRS"
+<span class="pathway-tag pathway-tag-cqrs">CQRS</span>
 
 Queries carry read intent, and query handlers process them. They receive a
 query, access the right projection through a ReadView, and return the result.

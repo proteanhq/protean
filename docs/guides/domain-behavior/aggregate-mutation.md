@@ -1,7 +1,6 @@
 # Mutating Aggregates
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 The primary mechanism to modify the current state of a domain - to reflect
 some action or event that has happened - is by mutating its state. Since

@@ -1,7 +1,6 @@
 # Aggregates
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 DDD emphasizes on representing domain concepts as closely as possible in code.
 To accomplish this, DDD outlines a set of tactical patterns that we could use

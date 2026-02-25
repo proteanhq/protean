@@ -1,7 +1,6 @@
 # Subscribers
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Subscribers consume messages from external message brokers and other systems
 outside the domain boundary. They bridge external messaging infrastructure and

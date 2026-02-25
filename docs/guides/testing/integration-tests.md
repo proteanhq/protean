@@ -1,7 +1,6 @@
 # Integration Tests
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Integration tests verify that your application works correctly with real
 infrastructure — databases, message brokers, event stores, and caches. They

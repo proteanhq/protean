@@ -1,7 +1,6 @@
 # Commands
 
-!!! abstract "Applies to: CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Why not just call a method on an aggregate directly? In simple cases you can —
 that's the DDD path with [Application Services](./application-services.md).

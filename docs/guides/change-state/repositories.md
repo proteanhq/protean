@@ -1,7 +1,6 @@
 # Repositories
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Repositories provide a collection-oriented interface to persist and retrieve
 [aggregates](../domain-definition/aggregates.md). They hide the details of the

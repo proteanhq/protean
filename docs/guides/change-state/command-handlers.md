@@ -1,7 +1,6 @@
 # Command Handlers
 
-!!! abstract "Applies to: CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Commands carry intent, but someone needs to act on them. Command handlers are
 the "doers" — they receive a command, load the right aggregate, call the

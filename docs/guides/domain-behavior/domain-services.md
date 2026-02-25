@@ -1,7 +1,6 @@
 # Domain Services
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Domain services act as orchestrators, centralizing complex domain logic that
 doesn't neatly fit within an entity or aggregate. They encapsulate business

@@ -1,7 +1,6 @@
 # Set Up the Domain
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 In Protean, the Domain serves as the central composition root of your application, providing a structured way to organize and manage your domain elements, configuration, and adapters.
 

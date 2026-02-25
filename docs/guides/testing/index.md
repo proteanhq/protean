@@ -1,7 +1,6 @@
 # Test Your Application
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Protean is designed with testability at its core. By isolating the domain model
 from infrastructure, you can achieve comprehensive test coverage using fast,
@@ -101,7 +100,7 @@ may diverge.
   entities, value objects, invariants, and domain services.
 - **[Application Tests](./application-tests.md)** — BDD-style testing of
   commands, handlers, and application services.
-- **[Event Sourcing Tests](./event-sourcing-tests.md)** — fluent test DSL
+- **[Event Sourcing Tests](./event-sourcing-tests.md)** <span class="pathway-tag pathway-tag-es">ES</span> — fluent test DSL
   for event-sourced aggregates using `protean.testing.given`.
 - **[Integration Tests](./integration-tests.md)** — end-to-end flows
   with real infrastructure adapters.

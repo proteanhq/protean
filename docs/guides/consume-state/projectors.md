@@ -1,7 +1,6 @@
 # Projectors
 
-!!! abstract "Applies to: CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Projectors are specialized event handlers responsible for maintaining
 [projections](./projections.md) by listening to domain events and updating

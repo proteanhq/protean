@@ -1,7 +1,6 @@
 # Fixtures and Patterns
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 This guide covers reusable pytest fixtures and `conftest.py` recipes for
 Protean projects. A well-organized fixture hierarchy keeps your tests focused,

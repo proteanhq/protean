@@ -1,7 +1,6 @@
 # Unit of Work
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Protean encloses all changes to aggregates in a single transaction
 automatically, within a `UnitOfWork` [context manager](https://docs.python.org/3/library/stdtypes.html#context-manager-types).

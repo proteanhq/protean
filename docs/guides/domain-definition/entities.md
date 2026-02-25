@@ -1,7 +1,6 @@
 # Entities
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Aggregates cluster multiple domain elements together to represent a concept.
 They are usually composed of two kinds of elements - those with unique

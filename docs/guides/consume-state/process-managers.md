@@ -1,6 +1,6 @@
 # Process Managers
 
-!!! abstract "Applies to: CQRS · Event Sourcing"
+<span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Some business processes span multiple aggregates and take multiple steps to
 complete — an order fulfillment flow that moves through payment, inventory

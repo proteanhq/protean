@@ -1,7 +1,6 @@
 # Raising Events
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 An aggregate rarely exists in isolation - it's state changes often mean
 that other parts of the system of the system have to sync up. In DDD, the

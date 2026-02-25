@@ -1,7 +1,6 @@
 # When to compose
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 The `Domain` class in Protean acts as a composition root. It manages external
 dependencies and injects them into objects during application startup.

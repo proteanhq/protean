@@ -1,7 +1,6 @@
 # Temporal Queries
 
-!!! abstract "Applies to: Event Sourcing"
-
+<span class="pathway-tag pathway-tag-es">ES</span>
 
 Event sourcing preserves the complete history of every aggregate as a sequence
 of domain events. Temporal queries let you reconstitute an aggregate at any

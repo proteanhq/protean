@@ -1,6 +1,6 @@
 # Persist Aggregates
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 This guide covers how to persist aggregates through repositories -- from basic
 save operations and transactions to event publishing and updates.

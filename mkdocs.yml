@@ -241,6 +241,9 @@ nav:
       - guides/fastapi/testing-endpoints.md
     - Run the Server:
       - guides/server/index.md
+      - guides/server/production-deployment.md
+      - guides/server/logging.md
+      - guides/server/monitoring.md
     - Test Your Application:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md

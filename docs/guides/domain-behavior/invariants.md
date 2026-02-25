@@ -1,7 +1,6 @@
 # Invariants
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Invariants are business rules or constraints that always need to be true within
 a specific domain concept. They define the fundamental and consistent state of

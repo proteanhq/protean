@@ -1,7 +1,6 @@
 # React to Changes
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 The reactive layer responds to state changes that have already happened. It propagates changes across aggregates, maintains read-optimized views, coordinates multi-step processes, and bridges to external systems — all without coupling back to the code that produced the original change.
 
@@ -19,19 +18,19 @@ Process managers coordinate multi-step business processes that span multiple agg
 
 [Learn more about process managers →](./process-managers.md)
 
-### Projections
+### Projections <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Projections are read-optimized, denormalized views built from domain events. They provide fast query access without loading full aggregate graphs, forming the read side of CQRS.
 
 [Learn more about projections →](./projections.md)
 
-### Projectors
+### Projectors <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Projectors are specialized event handlers responsible for maintaining projections. They listen to domain events and update projection data, bridging the write and read sides of CQRS.
 
 [Learn more about projectors →](./projectors.md)
 
-### Query Handlers
+### Query Handlers <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Query handlers process named read intents (queries) and return results from projections. They are the read-side counterpart of command handlers, dispatched via `domain.dispatch(query)`.
 
@@ -46,4 +45,4 @@ Subscribers consume messages from external message brokers and other systems out
 ## Supporting Topics
 
 - [Stream Categories](../../concepts/async-processing/stream-categories.md) — How messages are organized and routed through named streams.
-- [Event Upcasting](./event-upcasting.md) — Transforming old event schemas to match the current version during replay.
+- [Event Upcasting](./event-upcasting.md) <span class="pathway-tag pathway-tag-es">ES</span> — Transforming old event schemas to match the current version during replay.

@@ -1,7 +1,6 @@
 # Projections
 
-!!! abstract "Applies to: CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Why not just query the aggregate directly? You can — but aggregates are
 designed for consistency, not for read performance. Loading a full aggregate

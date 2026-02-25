@@ -1,7 +1,6 @@
 # Application Services
 
-!!! abstract "Applies to: DDD"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span>
 
 Application services act as a bridge between the external API layer and the
 domain model, orchestrating business logic and use cases without exposing the

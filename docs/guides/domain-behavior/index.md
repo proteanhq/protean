@@ -1,7 +1,6 @@
 # Add Rules and Behavior
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Domain-Driven Design emphasizes the importance of building a rich domain model that accurately captures business rules and behaviors. Protean provides a comprehensive set of mechanisms to define and enforce these rules in your domain model.
 

@@ -1,7 +1,6 @@
 # Application Tests
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Application tests validate the **orchestration layer** — commands, command
 handlers, event handlers, and application services. They naturally follow a

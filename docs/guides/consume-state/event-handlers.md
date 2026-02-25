@@ -1,7 +1,6 @@
 # Event Handlers
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 When an aggregate changes state, other parts of the system often need to
 react — updating a different aggregate, sending a notification, or triggering

@@ -1,7 +1,6 @@
 # Retrieve Aggregates
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 An aggregate can be retrieved with the repository's `get` method, if you know
 its identity:

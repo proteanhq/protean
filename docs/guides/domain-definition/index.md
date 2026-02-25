@@ -1,7 +1,6 @@
 # Define Domain Elements
 
-!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Domain-driven Design (DDD) is all about identifying and naming domain concepts
 and translating them as closely as possible - terminology, structure, and
@@ -56,7 +55,7 @@ Value Objects are characterized by:
 
 Learn more in the [Value Objects](./value-objects.md) guide and [Value Objects](../../concepts/building-blocks/value-objects.md).
 
-## Events
+## Events <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Events are immutable facts that indicate a state change in the domain. They capture what has happened in the system and allow different parts of the application to react accordingly.
 

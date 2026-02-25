@@ -1,7 +1,6 @@
 # Message Enrichment
 
-!!! abstract "Applies to: CQRS · Event Sourcing"
-
+<span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 In event-driven systems, every event and command often needs cross-cutting
 metadata that has nothing to do with the event's business payload -- who
