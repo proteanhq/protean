@@ -1,8 +1,8 @@
 """Tests for the shared ``_entity_to_dict`` helper on ``BaseDatabaseModel``.
 
 The helper is the single implementation behind every adapter's
-``from_entity()`` method — it iterates attributes, handles Reference fields,
-and applies ``referenced_as`` remapping.
+``from_entity()`` method — it iterates attributes, handles value-object
+shadow fields, reference fields, and applies ``referenced_as`` remapping.
 """
 
 import pytest
