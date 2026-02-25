@@ -6,7 +6,6 @@ from unittest.mock import patch, MagicMock
 from protean import UnitOfWork
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String, Integer
-from protean.exceptions import DatabaseError
 from protean.utils.query import Q
 
 
@@ -41,13 +40,9 @@ def test_create_operation_exception_handling_without_uow(test_domain):
         # Make commit raise an exception
         mock_session.commit.side_effect = Exception("Simulated commit error")
 
-        # This should trigger the exception handling in _create
-        with pytest.raises(DatabaseError) as exc_info:
+        # _commit_if_standalone re-raises the original exception
+        with pytest.raises(Exception, match="Simulated commit error"):
             dao._create(model_dict)
-
-        # Verify the exception was properly handled
-        assert "Database error during creation" in str(exc_info.value)
-        assert "Simulated commit error" in str(exc_info.value)
 
         # Verify rollback was called
         mock_session.rollback.assert_called_once()
@@ -78,13 +73,9 @@ def test_update_operation_exception_handling_without_uow(test_domain):
         # Make commit raise an exception
         mock_session.commit.side_effect = Exception("Simulated update commit error")
 
-        # This should trigger the exception handling in _update
-        with pytest.raises(DatabaseError) as exc_info:
+        # _commit_if_standalone re-raises the original exception
+        with pytest.raises(Exception, match="Simulated update commit error"):
             dao._update(model_dict)
-
-        # Verify the exception was properly handled
-        assert "Database error during update" in str(exc_info.value)
-        assert "Simulated update commit error" in str(exc_info.value)
 
         # Verify rollback was called
         mock_session.rollback.assert_called_once()
@@ -126,13 +117,9 @@ def test_update_all_operation_exception_handling_without_uow(test_domain):
                 "Simulated update_all commit error"
             )
 
-            # This should trigger the exception handling in _update_all
-            with pytest.raises(DatabaseError) as exc_info:
+            # _commit_if_standalone re-raises the original exception
+            with pytest.raises(Exception, match="Simulated update_all commit error"):
                 dao._update_all(Q(name="Test1"), value=100)
-
-            # Verify the exception was properly handled
-            assert "Database error during update_all" in str(exc_info.value)
-            assert "Simulated update_all commit error" in str(exc_info.value)
 
             # Verify rollback was called
             mock_session.rollback.assert_called_once()
@@ -160,13 +147,9 @@ def test_delete_operation_exception_handling_without_uow(test_domain):
         # Make commit raise an exception
         mock_session.commit.side_effect = Exception("Simulated delete commit error")
 
-        # This should trigger the exception handling in _delete
-        with pytest.raises(DatabaseError) as exc_info:
+        # _commit_if_standalone re-raises the original exception
+        with pytest.raises(Exception, match="Simulated delete commit error"):
             dao._delete(model_dict)
-
-        # Verify the exception was properly handled
-        assert "Database error during deletion" in str(exc_info.value)
-        assert "Simulated delete commit error" in str(exc_info.value)
 
         # Verify rollback was called
         mock_session.rollback.assert_called_once()
@@ -208,13 +191,9 @@ def test_delete_all_operation_exception_handling_without_uow(test_domain):
                 "Simulated delete_all commit error"
             )
 
-            # This should trigger the exception handling in _delete_all
-            with pytest.raises(DatabaseError) as exc_info:
+            # _commit_if_standalone re-raises the original exception
+            with pytest.raises(Exception, match="Simulated delete_all commit error"):
                 dao._delete_all(Q(name="ToDelete1"))
-
-            # Verify the exception was properly handled
-            assert "Database error during delete_all" in str(exc_info.value)
-            assert "Simulated delete_all commit error" in str(exc_info.value)
 
             # Verify rollback was called
             mock_session.rollback.assert_called_once()
@@ -256,7 +235,7 @@ def test_operations_within_uow_do_not_trigger_exception_handling(test_domain):
 
 
 def test_exception_preserves_original_exception_details(test_domain):
-    """Test that DatabaseError preserves original exception information"""
+    """Test that commit failure re-raises the original exception"""
     dao = test_domain.repository_for(ExceptionTestEntity)._dao
 
     # Create a test entity
@@ -276,9 +255,9 @@ def test_exception_preserves_original_exception_details(test_domain):
         mock_get_session.return_value = mock_session
         mock_session.commit.side_effect = original_exception
 
-        with pytest.raises(DatabaseError) as exc_info:
+        with pytest.raises(ValueError, match="Original error message"):
             dao._create(model_dict)
 
-        # Verify the original exception is preserved
-        assert exc_info.value.original_exception is original_exception
-        assert "Original error message" in str(exc_info.value)
+        # Verify rollback and close were still called
+        mock_session.rollback.assert_called_once()
+        mock_session.close.assert_called_once()
