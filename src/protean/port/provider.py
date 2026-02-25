@@ -84,3 +84,21 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
             the database without any intervention. It is left to the consumer to interpret and
             organize the results correctly.
         """
+
+    @abstractmethod
+    def _data_reset(self) -> None:
+        """Flush all data in the provider's persistence store.
+
+        Useful for clearing data between tests.
+        """
+
+    @abstractmethod
+    def _create_database_artifacts(self) -> None:
+        """Create tables, indices, or other storage structures.
+
+        Should be idempotent — existing structures are left untouched.
+        """
+
+    @abstractmethod
+    def _drop_database_artifacts(self) -> None:
+        """Drop all tables, indices, or storage structures."""
