@@ -1,14 +1,7 @@
 import pytest
 
 from protean.adapters.repository import Providers
-from protean.core.aggregate import BaseAggregate
-from protean.fields import String
 from protean.port.provider import BaseProvider
-
-
-class User(BaseAggregate):
-    name: String(required=True)
-    email: String(required=True)
 
 
 @pytest.mark.database
@@ -136,69 +129,51 @@ class TestLifecycleMethodsAbstractContract:
 class TestLifecycleMethodsIntegration:
     """Test that lifecycle methods work correctly through the domain."""
 
-    def test_data_reset_clears_persisted_data(self, test_domain):
+    def test_data_reset_clears_persisted_data(self, test_domain, user_cls):
         """_data_reset flushes data so previously persisted records
         are no longer retrievable."""
-        test_domain.register(User)
-        test_domain.init(traverse=False)
+        test_domain.repository_for(user_cls).add(
+            user_cls(name="Alice", email="alice@example.com")
+        )
+        assert test_domain.repository_for(user_cls)._dao.query.all().total == 1
 
-        with test_domain.domain_context():
-            test_domain.repository_for(User).add(
-                User(name="Alice", email="alice@example.com")
-            )
-            assert test_domain.repository_for(User)._dao.query.all().total == 1
+        provider = test_domain.providers["default"]
+        provider._data_reset()
 
-            provider = test_domain.providers["default"]
-            provider._data_reset()
-
-            assert test_domain.repository_for(User)._dao.query.all().total == 0
+        assert test_domain.repository_for(user_cls)._dao.query.all().total == 0
 
     def test_create_database_artifacts_is_idempotent(self, test_domain):
         """Calling _create_database_artifacts multiple times does not error."""
-        test_domain.register(User)
-        test_domain.init(traverse=False)
+        provider = test_domain.providers["default"]
+        # Should not raise on repeated calls
+        provider._create_database_artifacts()
+        provider._create_database_artifacts()
 
-        with test_domain.domain_context():
-            provider = test_domain.providers["default"]
-            # Should not raise on repeated calls
-            provider._create_database_artifacts()
-            provider._create_database_artifacts()
-
-    def test_domain_setup_database_delegates_to_provider(self, test_domain):
+    def test_domain_setup_database_delegates_to_provider(self, test_domain, user_cls):
         """domain.setup_database() delegates to provider._create_database_artifacts()."""
-        test_domain.register(User)
-        test_domain.init(traverse=False)
+        # setup_database should succeed without error (idempotent)
+        test_domain.setup_database()
 
-        with test_domain.domain_context():
-            # setup_database should succeed without error
-            test_domain.setup_database()
+        # Verify we can persist and retrieve data afterward
+        test_domain.repository_for(user_cls).add(
+            user_cls(name="Bob", email="bob@example.com")
+        )
+        assert test_domain.repository_for(user_cls)._dao.query.all().total == 1
 
-            # Verify we can persist and retrieve data afterward
-            test_domain.repository_for(User).add(
-                User(name="Bob", email="bob@example.com")
-            )
-            assert test_domain.repository_for(User)._dao.query.all().total == 1
-
-    def test_domain_truncate_database_delegates_to_provider(self, test_domain):
+    def test_domain_truncate_database_delegates_to_provider(
+        self, test_domain, user_cls
+    ):
         """domain.truncate_database() delegates to provider._data_reset()."""
-        test_domain.register(User)
-        test_domain.init(traverse=False)
+        test_domain.repository_for(user_cls).add(
+            user_cls(name="Charlie", email="charlie@example.com")
+        )
+        assert test_domain.repository_for(user_cls)._dao.query.all().total == 1
 
-        with test_domain.domain_context():
-            test_domain.repository_for(User).add(
-                User(name="Charlie", email="charlie@example.com")
-            )
-            assert test_domain.repository_for(User)._dao.query.all().total == 1
+        test_domain.truncate_database()
 
-            test_domain.truncate_database()
-
-            assert test_domain.repository_for(User)._dao.query.all().total == 0
+        assert test_domain.repository_for(user_cls)._dao.query.all().total == 0
 
     def test_domain_drop_database_delegates_to_provider(self, test_domain):
         """domain.drop_database() delegates to provider._drop_database_artifacts()."""
-        test_domain.register(User)
-        test_domain.init(traverse=False)
-
-        with test_domain.domain_context():
-            # Should succeed without error
-            test_domain.drop_database()
+        # Should succeed without error
+        test_domain.drop_database()
