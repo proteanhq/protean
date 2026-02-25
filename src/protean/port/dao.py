@@ -84,6 +84,31 @@ class BaseDAO(metaclass=ABCMeta):
         else:
             return self.provider.get_connection()
 
+    @property
+    def _is_standalone(self) -> bool:
+        """Check if this DAO is operating outside a Unit of Work.
+
+        Returns True when the DAO must manage its own commit/rollback/close
+        lifecycle — either because there is no active UoW, or because the DAO
+        has been explicitly instructed to work outside it.
+        """
+        return not current_uow or self._outside_uow
+
+    def _commit_if_standalone(self, conn) -> None:
+        """Commit the connection if we're not inside a Unit of Work.
+
+        When operating within a UoW, the UoW handles commit/rollback/close.
+        When standalone, we commit immediately and handle errors.
+        """
+        if self._is_standalone:
+            try:
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
     def outside_uow(self):
         """When called, the DAO is instructed to work outside active transactions."""
         self._outside_uow = True

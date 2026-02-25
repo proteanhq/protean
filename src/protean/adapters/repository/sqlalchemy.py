@@ -25,7 +25,6 @@ from protean.core.value_object import BaseValueObject
 from protean.fields.resolved import ResolvedField
 from protean.exceptions import (
     ConfigurationError,
-    DatabaseError as ProteanDatabaseError,
     IncorrectUsageError,
     ObjectNotFoundError,
 )
@@ -487,9 +486,7 @@ class SADAO(BaseDAO):
             logger.error(f"Error while filtering: {exc}")
             raise
         finally:
-            if not current_uow or self._outside_uow:
-                conn.commit()
-                conn.close()
+            self._commit_if_standalone(conn)
 
         return result
 
@@ -499,19 +496,7 @@ class SADAO(BaseDAO):
         assert conn is not None
 
         conn.add(model_obj)
-
-        if not current_uow or self._outside_uow:
-            try:
-                conn.commit()
-            except DatabaseError as exc:
-                logger.error(f"Error while creating: {exc}")
-                conn.rollback()
-                raise ProteanDatabaseError(
-                    f"Database error during creation: {str(exc)}",
-                    original_exception=exc,
-                )
-            finally:
-                conn.close()
+        self._commit_if_standalone(conn)
 
         return model_obj
 
@@ -523,37 +508,27 @@ class SADAO(BaseDAO):
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
 
-        try:
-            # Fetch the record from database
-            identifier = getattr(model_obj, entity_id_field.attribute_name)
-            db_item = conn.get(self.database_model_cls, identifier)
+        # Fetch the record from database
+        identifier = getattr(model_obj, entity_id_field.attribute_name)
+        db_item = conn.get(self.database_model_cls, identifier)
 
-            if db_item is None:
+        if db_item is None:
+            if self._is_standalone:
                 conn.rollback()
-                raise ObjectNotFoundError(
-                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                )
-
-            # Sync DB Record with current changes
-            for attribute in attributes(self.entity_cls):
-                if attribute != entity_id_field.attribute_name and getattr(
-                    model_obj, attribute
-                ) != getattr(db_item, attribute):
-                    setattr(db_item, attribute, getattr(model_obj, attribute))
-
-            if not current_uow or self._outside_uow:
-                conn.commit()
-        except DatabaseError as exc:
-            logger.error(f"Error while updating: {exc}")
-            if not current_uow or self._outside_uow:
-                conn.rollback()
-            raise ProteanDatabaseError(
-                f"Database error during update: {str(exc)}", original_exception=exc
-            )
-        finally:
-            if not current_uow or self._outside_uow:
                 conn.close()
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
+
+        # Sync DB Record with current changes
+        for attribute in attributes(self.entity_cls):
+            if attribute != entity_id_field.attribute_name and getattr(
+                model_obj, attribute
+            ) != getattr(db_item, attribute):
+                setattr(db_item, attribute, getattr(model_obj, attribute))
+
+        self._commit_if_standalone(conn)
 
         return model_obj
 
@@ -574,44 +549,33 @@ class SADAO(BaseDAO):
             logger.error(f"Error while updating all: {exc}")
             raise
         finally:
-            if not current_uow or self._outside_uow:
-                conn.commit()
-                conn.close()
+            self._commit_if_standalone(conn)
 
         return updated_count
 
     def _delete(self, model_obj):
-        """Delete the entity record in the dictionary"""
+        """Delete the entity record in the database"""
         conn = self._get_session()
         assert conn is not None
 
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
 
-        try:
-            # Fetch the record from database
-            identifier = getattr(model_obj, entity_id_field.attribute_name)
-            db_item = conn.get(self.database_model_cls, identifier)
+        # Fetch the record from database
+        identifier = getattr(model_obj, entity_id_field.attribute_name)
+        db_item = conn.get(self.database_model_cls, identifier)
 
-            if db_item is None:
+        if db_item is None:
+            if self._is_standalone:
                 conn.rollback()
-                raise ObjectNotFoundError(
-                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                )
-
-            conn.delete(db_item)
-
-            if not current_uow or self._outside_uow:
-                conn.commit()
-        except DatabaseError as exc:
-            logger.error(f"Error while deleting: {exc}")
-            if not current_uow or self._outside_uow:
-                conn.rollback()
-            raise
-        finally:
-            if not current_uow or self._outside_uow:
                 conn.close()
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
+
+        conn.delete(db_item)
+        self._commit_if_standalone(conn)
 
         return model_obj
 
@@ -634,9 +598,7 @@ class SADAO(BaseDAO):
             logger.error(f"Error while deleting all: {exc}")
             raise
         finally:
-            if not current_uow or self._outside_uow:
-                conn.commit()
-                conn.close()
+            self._commit_if_standalone(conn)
 
         return del_count
 
@@ -665,9 +627,7 @@ class SADAO(BaseDAO):
             logger.error(f"Error while running raw query: {exc}")
             raise
         finally:
-            if not current_uow or self._outside_uow:
-                conn.commit()
-                conn.close()
+            self._commit_if_standalone(conn)
 
         return result
 
