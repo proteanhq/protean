@@ -221,6 +221,31 @@ print(f"Message counts: {health_stats.get('message_counts', {})}")
 
 6. **Consider message size limits** - Different brokers have different message size constraints
 
+## Broker Registry
+
+Brokers register themselves through Python
+[entry points](https://packaging.python.org/en/latest/specifications/entry-points/)
+under the `protean.brokers` group. This means third-party broker packages can
+be pip-installed and automatically discovered by Protean.
+
+Protean's built-in brokers are registered in `pyproject.toml`:
+
+```toml
+[tool.poetry.plugins."protean.brokers"]
+inline = "protean.adapters.broker.inline:register"
+redis = "protean.adapters.broker.redis:register"
+redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
+```
+
+Each entry point maps a broker name to a `register()` function. The function
+is called on first access and registers the broker class path with the
+`BrokerRegistry`. Dependencies are wrapped in `try/except` so that brokers
+with uninstalled optional dependencies are silently skipped.
+
+External packages can register their own brokers the same way. See
+[Custom Brokers](./custom-brokers.md) for a complete guide including a Kafka
+example.
+
 ## Next Steps
 
 - [Configure specific brokers](./inline.md) for your use case

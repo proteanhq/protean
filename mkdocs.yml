@@ -298,8 +298,11 @@ nav:
       - reference/adapters/index.md
       - Database:
         - reference/adapters/database/index.md
+        - reference/adapters/database/memory.md
+        - reference/adapters/database/sqlite.md
         - reference/adapters/database/postgresql.md
         - reference/adapters/database/elasticsearch.md
+        - reference/adapters/database/custom-databases.md
       - Brokers:
         - reference/adapters/broker/index.md
         - reference/adapters/broker/inline.md
@@ -317,6 +320,7 @@ nav:
     - Testing:
       - reference/testing/index.md
       - reference/testing/pytest-plugin.md
+      - reference/testing/conformance.md
     - Migration:
       - reference/migration/index.md
       - reference/migration/v0-15.md

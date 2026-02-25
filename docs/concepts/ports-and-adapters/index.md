@@ -58,7 +58,7 @@ classes for each of these components with its own implementation.
 
 ### Provider
 
-**Base Class**: `protean.port.database.BaseProvider`
+**Base Class**: `protean.port.provider.BaseProvider`
 
 The Provider is the main component responsible for interfacing with the
 specific database technology. It contains the configuration and setup needed
@@ -75,7 +75,7 @@ methods for your database technology.
 
 ### Data Access Object (DAO)
 
-**Base Class**: `protean.port.database.BaseDAO`
+**Base Class**: `protean.port.dao.BaseDAO`
 
 The Data Access Object (DAO) is responsible for encapsulating the details of
 the database interactions. It provides an abstract interface to the database,
@@ -151,6 +151,40 @@ aggregates for examples of lookups. Consult the documentation on your specific
 chosen adapter for more information. The adapter may support specialized
 lookups for efficient or technology-specific queries.
 
+## Capabilities
+
+Both database providers and brokers declare their **capabilities** — a set of
+flags indicating which features the adapter supports. This enables:
+
+- **Capability-gated methods** — Methods like `raw()` automatically check
+  whether the provider supports them, raising `NotSupportedError` if not.
+- **Automatic test selection** — Protean's conformance test suite runs only
+  the tests relevant to each provider's capabilities.
+- **Informed technology decisions** — Compare adapters at a glance using
+  capability matrices.
+
+Database capabilities are orthogonal (providers pick and choose), while broker
+capabilities are organized into hierarchical tiers. See
+[Database Capabilities](../../reference/adapters/database/index.md#database-capabilities)
+and [Broker Capabilities](../../reference/adapters/broker/index.md#broker-capabilities)
+for full details.
+
+## Provider Registry
+
+Providers are discovered dynamically through Python
+[entry points](https://packaging.python.org/en/latest/specifications/entry-points/).
+Built-in adapters register under the `protean.providers` (databases) and
+`protean.brokers` (brokers) entry-point groups. Third-party adapter packages
+register in the same way, making them automatically available after
+`pip install`.
+
+This replaces the earlier hardcoded provider dictionary and enables a true
+plugin ecosystem — external packages can add new database or broker adapters
+without modifying Protean source code. See
+[Building Custom Database Adapters](../../reference/adapters/database/custom-databases.md)
+and [Building Custom Brokers](../../reference/adapters/broker/custom-brokers.md)
+for guides.
+
 ## Initialization
 
 Adapters are initialized as part of Domain initialization. Protean creates
@@ -171,3 +205,6 @@ initialization procedure immediately halts and exits with an error message:
 !!! tip "See also"
     - [Adapter Configuration Reference](../../reference/adapters/index.md) -- Available adapters and their configuration options.
     - [Configuration Reference](../../reference/configuration/index.md) -- How to configure adapters in `domain.toml`.
+    - [Building Custom Database Adapters](../../reference/adapters/database/custom-databases.md) -- Step-by-step guide for third-party database adapters.
+    - [Building Custom Brokers](../../reference/adapters/broker/custom-brokers.md) -- Step-by-step guide for third-party broker adapters.
+    - [Adapter Conformance Testing](../../reference/testing/conformance.md) -- Validate that adapters correctly implement their declared capabilities.

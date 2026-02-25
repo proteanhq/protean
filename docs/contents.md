@@ -250,9 +250,12 @@ dependencies.
 
 ### Database
 
-- [Database Providers](./reference/adapters/database/index.md) -- Overview of supported database adapters.
+- [Database Providers](./reference/adapters/database/index.md) -- Overview of supported database adapters, capabilities, and provider registry.
+- [Memory](./reference/adapters/database/memory.md) -- Default in-memory provider for development and testing.
+- [SQLite](./reference/adapters/database/sqlite.md) -- File-based relational provider using SQLAlchemy.
 - [PostgreSQL](./reference/adapters/database/postgresql.md) -- SQLAlchemy-based adapter for PostgreSQL.
-- [Elasticsearch](./reference/adapters/database/elasticsearch.md) -- Adapter for search and analytics.
+- [Elasticsearch](./reference/adapters/database/elasticsearch.md) -- Document store adapter for search and analytics.
+- [Custom Database Adapters](./reference/adapters/database/custom-databases.md) -- Build your own database adapter with entry-point registration.
 
 ### Brokers
 
@@ -264,12 +267,12 @@ dependencies.
 
 ### Caches
 
-- [Cache Overview](./reference/adapters/cache/index.md) -- Cache providers in Protean.
-- [Redis Cache](./reference/adapters/cache/redis.md) -- Redis as a cache adapter.
+- [Cache Overview](./reference/adapters/cache/index.md) -- Cache port interface, available providers, and configuration.
+- [Redis Cache](./reference/adapters/cache/redis.md) -- Persistent distributed cache with TTL support.
 
 ### Event Stores
 
-- [Event Store Overview](./reference/adapters/eventstore/index.md) -- Event store options in Protean.
+- [Event Store Overview](./reference/adapters/eventstore/index.md) -- Event store port, core operations, temporal queries, and causation tracing.
 - [MessageDB](./reference/adapters/eventstore/message-db.md) -- MessageDB event store adapter.
 
 ---
@@ -343,9 +346,17 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 ---
 
+## Testing
+
+- [Testing Reference](./reference/testing/index.md) -- Testing tools and plugins.
+- [Pytest Plugin](./reference/testing/pytest-plugin.md) -- Protean's pytest integration and fixtures.
+- [Adapter Conformance Testing](./reference/testing/conformance.md) -- Verify that custom adapters correctly implement their declared capabilities using the `protean test test-adapter` CLI and pytest plugin.
+
+---
+
 ## Community
 
 - [Community](./community/index.md) -- Get help and connect with other Protean users.
 - [Development Setup](./community/contributing/setup.md) -- Set up Protean locally for contributing.
 - [Testing Protean](./community/contributing/testing.md) -- Test strategy, fixtures, and running the suite.
-- [Building Adapters](./community/contributing/adapters.md) -- Guidelines for creating custom adapters.
+- [Building Adapters](./community/contributing/adapters.md) -- Overview of creating custom adapters for databases, brokers, event stores, and caches with links to per-port guides.
