@@ -200,6 +200,14 @@ markers = [
     "reliable_messaging: tests for reliable messaging capability (includes ack/nack)",
     "ordered_messaging: tests for ordered messaging capability (includes message ordering)",
     "enterprise_streaming: tests for enterprise streaming capability (includes DLQ, replay, partitioning)",
+    # Capability-based markers for database testing
+    "basic_storage: tests for basic CRUD, filtering, bulk operations, ordering (all providers)",
+    "transactional: tests requiring transaction support (real or simulated commit/rollback)",
+    "atomic_transactions: tests requiring real database-level atomicity (not simulated)",
+    "raw_queries: tests requiring raw query execution capability",
+    "schema_management: tests requiring table/index creation and deletion",
+    "native_json: tests requiring native JSON column support",
+    "native_array: tests requiring native array column support",
 ]
 
 [tool.mypy]
