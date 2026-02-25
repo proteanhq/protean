@@ -12,7 +12,7 @@ from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
 
 from protean.core.database_model import _entity_to_dict
 from protean.core.queryset import ResultSet
-from protean.exceptions import DatabaseError, ObjectNotFoundError
+from protean.exceptions import DatabaseError, NotSupportedError, ObjectNotFoundError
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import IdentityStrategy, IdentityType
@@ -426,12 +426,16 @@ class ElasticsearchDAO(BaseDAO):
         return response.deleted
 
     def _raw(self, query: Any, data: Any = None):
-        """Run raw query on Data source.
+        """Not supported — Elasticsearch does not support raw queries.
 
-        Running a raw query on the data store should always returns entity instance objects. If
-        the results were not synthesizable back into entity objects, an exception should be thrown.
+        This method is never reached because ``QuerySet.raw()`` gates access
+        via provider capability checks. It exists only to satisfy the abstract
+        method contract.
         """
-        raise NotImplementedError
+        raise NotSupportedError(
+            f"Provider '{self.provider.name}' ({self.provider.__class__.__name__}) "
+            "does not support raw queries"
+        )
 
     def has_table(self) -> bool:
         """Check if the index exists in Elasticsearch.
@@ -671,15 +675,17 @@ class ESProvider(BaseProvider):
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls
 
-    def raw(self, query: Any, data: Any = None):
-        """Run raw query directly on the database
+    def _raw(self, query: Any, data: Any = None):
+        """Not supported — Elasticsearch does not support raw queries.
 
-        Query should be executed immediately on the database as a separate unit of work
-            (in a different transaction context). The results should be returned as returned by
-            the database without any intervention. It is left to the consumer to interpret and
-            organize the results correctly.
+        This method is never reached because the base class ``raw()`` gates
+        access via capability checks. It exists only to satisfy the abstract
+        method contract.
         """
-        raise NotImplementedError
+        raise NotSupportedError(
+            f"Provider '{self.name}' ({self.__class__.__name__}) "
+            "does not support raw queries"
+        )
 
     def _data_reset(self):
         """Reset data"""

@@ -261,7 +261,7 @@ class MemoryProvider(BaseProvider):
 
         return results
 
-    def raw(self, query: Any, data: Any = None) -> list:
+    def _raw(self, query: Any, data: Any = None) -> list:
         """Run raw queries on the memory database.
 
         As an example of running ``raw`` queries on a Dict repository, we will run the query
@@ -547,7 +547,7 @@ class DictDAO(BaseDAO):
 
         We will ignore the `data` parameter for this kind of repository.
         """
-        items = self.provider.raw(query, data)
+        items = self.provider._raw(query, data)
         return ResultSet(offset=1, limit=len(items), total=len(items), items=items)
 
     def has_table(self) -> bool:

@@ -8,6 +8,7 @@ from protean.exceptions import (
     InvalidOperationError,
     TransactionError,
 )
+from protean.port.provider import DatabaseCapabilities
 from protean.utils import Processing
 from protean.utils.globals import _uow_context_stack, current_domain
 from protean.utils.reflection import id_field
@@ -91,6 +92,23 @@ class UnitOfWork:
 
     def start(self) -> None:
         """Begin the transaction and push this UnitOfWork onto the context stack."""
+        # Log transaction capability warnings for each configured provider
+        for provider_name, provider in self.domain.providers.items():
+            if not provider.has_capability(DatabaseCapabilities.TRANSACTIONS):
+                if provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
+                    logger.debug(
+                        "Provider '%s' uses simulated transactions. "
+                        "Rollback will not undo persisted changes.",
+                        provider_name,
+                    )
+                else:
+                    logger.warning(
+                        "Provider '%s' does not support transactions. "
+                        "UoW will manage identity map and events "
+                        "but commit/rollback are not atomic.",
+                        provider_name,
+                    )
+
         self._in_progress = True
         _uow_context_stack.push(self)
 

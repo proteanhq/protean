@@ -974,7 +974,7 @@ class SAProvider(BaseProvider):
         """Return a DAO object configured with a live connection"""
         return SADAO(self.domain, self, entity_cls, database_model_cls)
 
-    def raw(self, query: Any, data: Any = None):
+    def _raw(self, query: Any, data: Any = None):
         """Run raw query on Provider"""
         if data is None:
             data = {}
