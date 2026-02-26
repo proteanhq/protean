@@ -19,7 +19,6 @@ from sqlalchemy import inspect
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.database_model import BaseDatabaseModel
-from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.fields.resolved import ResolvedField
@@ -33,7 +32,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities
-from protean.utils import IdentityType
+from protean.utils import IdentityType, fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
@@ -370,18 +369,6 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                 item_dict[key] = attr_obj.as_dict(value)
 
         return cls(**item_dict)
-
-    @classmethod
-    def to_entity(cls, item: "SqlalchemyModel") -> BaseEntity:
-        """Convert the model object to an entity"""
-        item_dict = {}
-        for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
-            referenced_as = getattr(attr_obj, "referenced_as", None)
-            if referenced_as:
-                item_dict[attr_obj.field_name] = getattr(item, referenced_as)
-            else:
-                item_dict[attr_name] = getattr(item, attr_name)
-        return cls.meta_.part_of(**item_dict)
 
 
 class SADAO(BaseDAO):
@@ -872,10 +859,11 @@ class SAProvider(BaseProvider):
 
     def decorate_database_model_class(self, entity_cls, database_model_cls):
         schema_name = database_model_cls.derive_schema_name()
+        cache_key = fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
-        if schema_name in self._database_model_classes:
-            return self._database_model_classes[schema_name]
+        if cache_key in self._database_model_classes:
+            return self._database_model_classes[cache_key]
 
         # If `database_model_cls` is already subclassed from SqlAlchemyModel,
         #   this method call is a no-op
@@ -927,7 +915,7 @@ class SAProvider(BaseProvider):
             )
 
             # Memoize the constructed model class
-            self._database_model_classes[schema_name] = (
+            self._database_model_classes[cache_key] = (
                 decorated_database_database_model_cls
             )
 
@@ -936,12 +924,11 @@ class SAProvider(BaseProvider):
     def construct_database_model_class(self, entity_cls):
         """Return a fully-baked Model class for a given Entity class"""
         database_model_cls = None
+        cache_key = fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
-        if entity_cls.meta_.schema_name in self._database_model_classes:
-            database_model_cls = self._database_model_classes[
-                entity_cls.meta_.schema_name
-            ]
+        if cache_key in self._database_model_classes:
+            database_model_cls = self._database_model_classes[cache_key]
         else:
             # Construct a new Meta object with existing values
             meta_ = Options()
@@ -963,9 +950,7 @@ class SAProvider(BaseProvider):
             )
 
             # Memoize the constructed model class
-            self._database_model_classes[entity_cls.meta_.schema_name] = (
-                database_model_cls
-            )
+            self._database_model_classes[cache_key] = database_model_cls
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls

@@ -10,12 +10,12 @@ from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
 
-from protean.core.database_model import _entity_to_dict
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
 from protean.exceptions import DatabaseError, NotSupportedError, ObjectNotFoundError
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities
-from protean.utils import IdentityStrategy, IdentityType
+from protean.utils import IdentityStrategy, IdentityType, fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
@@ -41,13 +41,13 @@ operators = {
 }
 
 
-class ElasticsearchModel(Document):
+class ElasticsearchModel(Document, BaseDatabaseModel):
     """A database model for the Elasticsearch index"""
 
     @classmethod
     def from_entity(cls, entity) -> "ElasticsearchModel":
         """Convert the entity to a Elasticsearch record"""
-        item_dict = _entity_to_dict(cls, entity)
+        item_dict = cls._entity_to_dict(entity)
 
         # Remap _version → entity_version to avoid conflict with ES _version metadata
         if "_version" in item_dict:
@@ -568,10 +568,11 @@ class ESProvider(BaseProvider):
         schema_name = self.namespaced_schema_name(
             database_model_cls.derive_schema_name()
         )
+        cache_key = fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
-        if schema_name in self._database_model_classes:
-            return self._database_model_classes[schema_name]
+        if cache_key in self._database_model_classes:
+            return self._database_model_classes[cache_key]
 
         # If `database_model_cls` is already subclassed from ElasticsearchModel,
         #   this method call is a no-op
@@ -622,7 +623,7 @@ class ESProvider(BaseProvider):
             decorated_database_database_model_cls._keyword_fields = keyword_fields
 
             # Memoize the constructed model class
-            self._database_model_classes[schema_name] = (
+            self._database_model_classes[cache_key] = (
                 decorated_database_database_model_cls
             )
 
@@ -631,11 +632,12 @@ class ESProvider(BaseProvider):
     def construct_database_model_class(self, entity_cls):
         """Return a fully-baked Model class for a given Entity class"""
         database_model_cls = None
+        cache_key = fully_qualified_name(entity_cls)
         schema_name = self.namespaced_schema_name(entity_cls.meta_.schema_name)
 
         # Return the model class if it was already seen/decorated
-        if schema_name in self._database_model_classes:
-            database_model_cls = self._database_model_classes[schema_name]
+        if cache_key in self._database_model_classes:
+            database_model_cls = self._database_model_classes[cache_key]
         else:
             meta_ = Options()
             meta_.part_of = entity_cls
@@ -670,7 +672,7 @@ class ESProvider(BaseProvider):
             database_model_cls._keyword_fields = keyword_fields
 
             # Memoize the constructed model class
-            self._database_model_classes[schema_name] = database_model_cls
+            self._database_model_classes[cache_key] = database_model_cls
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls
