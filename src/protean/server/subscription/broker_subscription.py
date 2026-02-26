@@ -102,7 +102,10 @@ class BrokerSubscription(BaseSubscription):
             identifier, payload = message
             # Process the message and get a success/failure result
             is_successful = await self.engine.handle_broker_message(
-                self.handler, payload
+                self.handler,
+                payload,
+                message_id=identifier,
+                stream=self.stream_name,
             )
 
             # Handle ack/nack based on processing result

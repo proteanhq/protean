@@ -59,57 +59,44 @@ own commands and events.
 
 ### Subscribers
 
-Protean's `@domain.subscriber` listens to a broker channel and receives
-messages from external domains:
+Protean's `@domain.subscriber` listens to a broker stream and receives
+raw `dict` payloads from external domains:
 
 ```python
-@domain.subscriber(channel="orders")
-class OrderEventsSubscriber(BaseSubscriber):
+@domain.subscriber(stream="orders")
+class OrderEventsSubscriber:
 
-    @handle(ExternalOrderPlaced)
-    def on_order_placed(self, event: ExternalOrderPlaced):
-        # Translate external event into internal command
-        current_domain.process(
-            CreateShipment(
-                order_id=event.order_id,
-                customer_id=event.customer_id,
-                items=[
-                    {"product_id": item["product_id"],
-                     "quantity": item["quantity"]}
-                    for item in event.items
-                ],
-                shipping_priority="standard",
+    def __call__(self, payload: dict) -> None:
+        event_type = payload.get("type")
+
+        if event_type == "OrderPlaced":
+            # Translate external payload into internal command
+            current_domain.process(
+                CreateShipment(
+                    order_id=payload["order_id"],
+                    customer_id=payload["customer_id"],
+                    items=[
+                        {"product_id": item["product_id"],
+                         "quantity": item["quantity"]}
+                        for item in payload["items"]
+                    ],
+                    shipping_priority="standard",
+                )
             )
-        )
 ```
 
 The subscriber:
-1. Receives the external `ExternalOrderPlaced` event from the broker
-2. Extracts the data it needs
-3. Constructs an internal `CreateShipment` command in the Fulfillment domain's language
-4. Dispatches the command for processing by the domain's own handlers
+1. Receives a raw `dict` payload from the broker — **not** a typed domain object
+2. Inspects the payload to determine what kind of message it is
+3. Extracts the data it needs
+4. Constructs an internal `CreateShipment` command in the Fulfillment domain's language
+5. Dispatches the command for processing by the domain's own handlers
 
-### Define Your Own Event Classes
-
-Even though the external domain published the event, your domain defines its
-own class to deserialize it:
-
-```python
-# Your domain's representation of the external event
-# NOT imported from the Order domain
-@domain.event(part_of=Shipment)
-class ExternalOrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float()
-    placed_at: DateTime()
-```
-
-This class mirrors the external event's structure but belongs to **your**
-domain. If the external domain adds fields you don't need, your class ignores
-them. If they change field names, you update this one class -- not your entire
-domain.
+!!!note
+    Subscribers deliberately receive raw `dict` payloads rather than typed
+    domain objects. This is the anti-corruption boundary — your domain does
+    **not** import or depend on the external domain's event classes. The raw
+    dict is the firewall between external and internal models.
 
 ---
 
@@ -117,25 +104,27 @@ domain.
 
 ### Translating to Commands
 
-The most common pattern: translate external events into internal commands.
+The most common pattern: translate external payloads into internal commands.
 This funnels external stimuli through your domain's normal command processing
 pipeline:
 
 ```python
-@domain.subscriber(channel="payments")
-class PaymentEventsSubscriber(BaseSubscriber):
+@domain.subscriber(stream="payments")
+class PaymentEventsSubscriber:
 
-    @handle(ExternalPaymentConfirmed)
-    def on_payment_confirmed(self, event: ExternalPaymentConfirmed):
-        current_domain.process(
-            MarkOrderPaid(
-                order_id=event.reference_id,  # External field name
-                payment_id=event.transaction_id,  # Different naming
-                amount=event.amount,
-                currency=event.currency_code,  # Different naming
-                paid_at=event.confirmed_at,  # Different naming
+    def __call__(self, payload: dict) -> None:
+        event_type = payload.get("type")
+
+        if event_type == "PaymentConfirmed":
+            current_domain.process(
+                MarkOrderPaid(
+                    order_id=payload["reference_id"],     # External field name
+                    payment_id=payload["transaction_id"],  # Different naming
+                    amount=payload["amount"],
+                    currency=payload["currency_code"],     # Different naming
+                    paid_at=payload["confirmed_at"],       # Different naming
+                )
             )
-        )
 ```
 
 Notice the translation: the external domain uses `reference_id`, your domain
@@ -148,20 +137,21 @@ When the external event should trigger reactive processing across your domain
 (not a specific command), translate it into an internal domain event:
 
 ```python
-@domain.subscriber(channel="inventory-external")
-class ExternalInventorySubscriber(BaseSubscriber):
+@domain.subscriber(stream="inventory-external")
+class ExternalInventorySubscriber:
 
-    @handle(ExternalStockDepleted)
-    def on_stock_depleted(self, event: ExternalStockDepleted):
-        # Translate to internal event
-        repo = current_domain.repository_for(Product)
-        product = repo.get(event.sku)
+    def __call__(self, payload: dict) -> None:
+        event_type = payload.get("type")
 
-        product.raise_(ProductBecameUnavailable(
-            product_id=product.product_id,
-            reason="external_stock_depleted",
-        ))
-        repo.add(product)
+        if event_type == "StockDepleted":
+            repo = current_domain.repository_for(Product)
+            product = repo.get(payload["sku"])
+
+            product.raise_(ProductBecameUnavailable(
+                product_id=product.product_id,
+                reason="external_stock_depleted",
+            ))
+            repo.add(product)
 ```
 
 The internal `ProductBecameUnavailable` event triggers your domain's own
@@ -172,14 +162,16 @@ event handlers and projectors, all speaking your domain's language.
 Not every external event is relevant to your domain. The subscriber filters:
 
 ```python
-@domain.subscriber(channel="orders")
-class OrderEventsSubscriber(BaseSubscriber):
+@domain.subscriber(stream="orders")
+class OrderEventsSubscriber:
 
-    @handle(ExternalOrderPlaced)
-    def on_order_placed(self, event: ExternalOrderPlaced):
+    def __call__(self, payload: dict) -> None:
+        if payload.get("type") != "OrderPlaced":
+            return  # Ignore event types we don't care about
+
         # Only create shipments for physical items
         physical_items = [
-            item for item in event.items
+            item for item in payload["items"]
             if item.get("type") != "digital"
         ]
 
@@ -188,8 +180,8 @@ class OrderEventsSubscriber(BaseSubscriber):
 
         current_domain.process(
             CreateShipment(
-                order_id=event.order_id,
-                customer_id=event.customer_id,
+                order_id=payload["order_id"],
+                customer_id=payload["customer_id"],
                 items=physical_items,
             )
         )
@@ -201,22 +193,24 @@ Sometimes your domain needs more context than the external event provides.
 The subscriber can enrich the data from your own domain's state:
 
 ```python
-@domain.subscriber(channel="orders")
-class OrderEventsSubscriber(BaseSubscriber):
+@domain.subscriber(stream="orders")
+class OrderEventsSubscriber:
 
-    @handle(ExternalOrderPlaced)
-    def on_order_placed(self, event: ExternalOrderPlaced):
+    def __call__(self, payload: dict) -> None:
+        if payload.get("type") != "OrderPlaced":
+            return
+
         # Enrich with data from our domain
         customer_repo = current_domain.repository_for(CustomerProfile)
-        customer = customer_repo.get(event.customer_id)
+        customer = customer_repo.get(payload["customer_id"])
 
         current_domain.process(
             CreateShipment(
-                order_id=event.order_id,
-                customer_id=event.customer_id,
+                order_id=payload["order_id"],
+                customer_id=payload["customer_id"],
                 shipping_address=customer.default_shipping_address,
                 shipping_priority=customer.shipping_tier,
-                items=event.items,
+                items=payload["items"],
             )
         )
 ```
@@ -228,37 +222,40 @@ class OrderEventsSubscriber(BaseSubscriber):
 When the external domain changes its event schema, only the subscriber needs
 to update:
 
-### Before: External event v1
+### Before: External payload v1
 
-```python
-class ExternalOrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float()
+```json
+{
+    "type": "OrderPlaced",
+    "order_id": "ord-123",
+    "items": [...],
+    "total": 99.99
+}
 ```
 
-### After: External event v2 (renamed field)
+### After: External payload v2 (renamed field)
 
-```python
-class ExternalOrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    line_items: List(required=True)  # Renamed from 'items'
-    subtotal: Float()                # Renamed from 'total'
-    tax: Float()
-    total: Float()                   # Now includes tax
+```json
+{
+    "type": "OrderPlaced",
+    "order_id": "ord-123",
+    "line_items": [...],
+    "subtotal": 79.99,
+    "tax": 20.00,
+    "total": 99.99
+}
 ```
 
 Only the subscriber changes:
 
 ```python
-@handle(ExternalOrderPlaced)
-def on_order_placed(self, event: ExternalOrderPlaced):
-    # Update the field mapping
-    items = getattr(event, 'line_items', None) or getattr(event, 'items', [])
+def __call__(self, payload: dict) -> None:
+    # Handle both v1 and v2 field names
+    items = payload.get("line_items") or payload.get("items", [])
 
     current_domain.process(
         CreateShipment(
-            order_id=event.order_id,
+            order_id=payload["order_id"],
             items=items,
         )
     )
@@ -275,35 +272,32 @@ External events may be malformed, carry unexpected data, or reference entities
 that don't exist in your domain:
 
 ```python
-@domain.subscriber(channel="orders")
-class OrderEventsSubscriber(BaseSubscriber):
+@domain.subscriber(stream="orders")
+class OrderEventsSubscriber:
 
-    @handle(ExternalOrderPlaced)
-    def on_order_placed(self, event: ExternalOrderPlaced):
+    def __call__(self, payload: dict) -> None:
         # Validate the external data before trusting it
-        if not event.order_id:
-            logger.warning(
-                f"Received OrderPlaced without order_id, skipping"
-            )
+        if not payload.get("order_id"):
+            logger.warning("Received OrderPlaced without order_id, skipping")
             return
 
-        if not event.items:
+        if not payload.get("items"):
             logger.warning(
-                f"Received OrderPlaced with no items for {event.order_id}"
+                f"Received OrderPlaced with no items for {payload['order_id']}"
             )
             return
 
         try:
             current_domain.process(
                 CreateShipment(
-                    order_id=event.order_id,
-                    customer_id=event.customer_id,
-                    items=event.items,
+                    order_id=payload["order_id"],
+                    customer_id=payload["customer_id"],
+                    items=payload["items"],
                 )
             )
         except ValidationError as e:
             logger.error(
-                f"Failed to process OrderPlaced {event.order_id}: {e}"
+                f"Failed to process OrderPlaced {payload['order_id']}: {e}"
             )
             # Don't re-raise -- the external event was received,
             # the error is in our translation or domain rules.
@@ -323,11 +317,10 @@ boundary before passing it into your domain.
 # Anti-pattern: importing from another domain
 from order_domain.events import OrderPlaced
 
-@domain.subscriber(channel="orders")
-class OrderEventsSubscriber(BaseSubscriber):
-
-    @handle(OrderPlaced)  # Direct dependency on external code
-    def on_order_placed(self, event: OrderPlaced):
+@domain.subscriber(stream="orders")
+class OrderEventsSubscriber:
+    def __call__(self, payload: dict) -> None:
+        event = OrderPlaced(**payload)  # Direct dependency on external code
         ...
 ```
 
@@ -338,15 +331,15 @@ Domains](sharing-event-classes-across-domains.md) for alternatives.
 ### Processing External Events Without Translation
 
 ```python
-# Anti-pattern: using external event directly in handler
+# Anti-pattern: using external payload directly in handler
 @domain.event_handler(part_of=Shipment)
 class ShipmentEventHandler(BaseEventHandler):
 
-    @handle(ExternalOrderPlaced)  # External event in an internal handler
-    def on_order_placed(self, event: ExternalOrderPlaced):
+    @handle(SomeInternalEvent)
+    def on_event(self, event):
         shipment = Shipment(
-            order_id=event.order_id,
-            items=event.items,  # External field structure leaks in
+            order_id=external_payload["order_id"],  # External field structure leaks in
+            items=external_payload["items"],
         )
         ...
 ```
@@ -358,11 +351,10 @@ Use a subscriber to translate first.
 
 ```python
 # Anti-pattern: calling external API from subscriber
-@handle(ExternalOrderPlaced)
-def on_order_placed(self, event: ExternalOrderPlaced):
+def __call__(self, payload: dict) -> None:
     # DON'T call back to the Order domain's API
     order_details = requests.get(
-        f"http://order-service/orders/{event.order_id}"
+        f"http://order-service/orders/{payload['order_id']}"
     )
     ...
 ```
@@ -385,9 +377,9 @@ of the external data.
 | Testability | External dependency in tests | Mock external, test internal |
 
 The principle: **subscribers are anti-corruption layers. They receive external
-events, translate them into your domain's language, and dispatch internal
-commands or events. Nothing downstream knows or cares that the stimulus came
-from outside.**
+events as raw dicts, translate them into your domain's language, and dispatch
+internal commands or events. Nothing downstream knows or cares that the
+stimulus came from outside.**
 
 ---
 

@@ -228,6 +228,89 @@ def handle_error(cls, exc: Exception, message: dict) -> None:
 4. Consider implementing retry logic or dead-letter patterns for persistent
    failures.
 
+## Patterns
+
+### Payload Validation
+
+Subscribers receive raw dicts from external systems. Validate shape and types
+before trusting the data:
+
+```python
+@domain.subscriber(stream="payments")
+class PaymentWebhookSubscriber:
+
+    REQUIRED_FIELDS = ("order_id", "status", "amount")
+
+    def __call__(self, payload: dict) -> None:
+        # Validate required fields
+        missing = [f for f in self.REQUIRED_FIELDS if f not in payload]
+        if missing:
+            logger.warning(f"Missing fields {missing}, skipping message")
+            return
+
+        # Validate types
+        if not isinstance(payload["amount"], (int, float)):
+            logger.warning(f"Invalid amount type: {type(payload['amount'])}")
+            return
+
+        # Safe to process
+        current_domain.process(
+            RecordPayment(
+                order_id=payload["order_id"],
+                status=payload["status"],
+                amount=payload["amount"],
+            )
+        )
+```
+
+### Accessing Message Context
+
+The Protean Engine sets `g.message_in_context` during subscriber processing,
+using the same mechanism as event and command handlers. This gives subscribers
+access to the broker message ID and stream name — useful for idempotency
+checks, audit logging, and debugging:
+
+```python
+from protean.utils.globals import g
+
+@domain.subscriber(stream="orders")
+class OrderSubscriber:
+
+    def __call__(self, payload: dict) -> None:
+        msg = g.message_in_context
+
+        # Use the broker message ID for idempotency
+        message_id = msg.metadata.headers.id
+        repo = current_domain.repository_for(ProcessedMessage)
+        if repo.find(message_id=message_id):
+            logger.info(f"Already processed {message_id}, skipping")
+            return
+
+        # Process the message
+        current_domain.process(
+            CreateShipment(order_id=payload["order_id"], items=payload["items"])
+        )
+
+        # Record that we processed this message
+        repo.add(ProcessedMessage(message_id=message_id))
+```
+
+The context `Message` wraps the broker metadata:
+
+| Attribute | Description |
+|-----------|-------------|
+| `msg.metadata.headers.id` | The broker-assigned message identifier |
+| `msg.metadata.headers.stream` | The broker stream from which the message was consumed |
+| `msg.data` | The raw payload `dict` |
+
+Because this is the same `message_in_context` used for domain events and
+commands, any commands dispatched by the subscriber via `domain.process()`
+automatically inherit the broker message ID as their `causation_id`, linking
+the full trace chain back to the original external message.
+
+The context is automatically set before `__call__` is invoked and cleaned up
+afterward — even if the subscriber raises an exception.
+
 ## Subscribers vs. Event Handlers
 
 | Aspect | Event Handler | Subscriber |

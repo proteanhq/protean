@@ -12,7 +12,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.utils.globals import g
-from protean.utils.eventing import Message
+from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
 from protean.utils.processing import processing_priority
 
 from .subscription.broker_subscription import BrokerSubscription
@@ -366,7 +366,12 @@ class Engine:
         )
 
     async def handle_broker_message(
-        self, subscriber_cls: Type[BaseSubscriber], message: dict
+        self,
+        subscriber_cls: Type[BaseSubscriber],
+        message: dict,
+        *,
+        message_id: str | None = None,
+        stream: str | None = None,
     ) -> bool:
         """
         Handle a message received from the broker.
@@ -374,6 +379,8 @@ class Engine:
         Args:
             subscriber_cls (Type[BaseSubscriber]): The subscriber class to handle the message
             message (dict): The message to be handled
+            message_id (str | None): The broker-assigned message identifier
+            stream (str | None): The broker stream from which the message was consumed
 
         Returns:
             bool: True if the message was processed successfully, False otherwise
@@ -383,6 +390,19 @@ class Engine:
             return False  # Skip handling if shutdown is in progress
 
         with self.domain.domain_context():
+            # Set message context so subscribers (and any commands they
+            # dispatch) participate in the same tracing infrastructure
+            # as internal handlers.  Commands processed by the subscriber
+            # will inherit causation_id = message_id automatically.
+            if message_id is not None and stream is not None:
+                g.message_in_context = Message(
+                    data=message,
+                    metadata=Metadata(
+                        headers=MessageHeaders(id=message_id, stream=stream),
+                        domain=DomainMeta(kind="BROKER_MESSAGE"),
+                    ),
+                )
+
             try:
                 subscriber = subscriber_cls()
                 subscriber(message)
@@ -397,6 +417,8 @@ class Engine:
                     logger.exception(f"Error handler failed: {error_exc}")
                 # Continue processing instead of shutting down
                 return False
+            finally:
+                g.pop("message_in_context", None)
 
     async def handle_message(
         self,
