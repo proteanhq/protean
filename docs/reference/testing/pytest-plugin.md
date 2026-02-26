@@ -39,7 +39,7 @@ for final validation in CI. No test code or fixture changes are needed — only
 the adapter configuration changes.
 
 See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md) pattern for
-the full setup guide.
+the full setup.
 
 ## Automatic Fixtures
 

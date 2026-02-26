@@ -244,6 +244,7 @@ nav:
       - guides/server/production-deployment.md
       - guides/server/logging.md
       - guides/server/monitoring.md
+      - guides/server/using-priority-lanes.md
     - Test Your Application:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md
@@ -398,15 +399,15 @@ nav:
       - patterns/validation-layering.md
       - patterns/thin-handlers-rich-domain.md
       - patterns/testing-domain-logic-in-isolation.md
+      - patterns/dual-mode-testing.md
+      - patterns/setting-up-and-tearing-down-database-for-tests.md
     - Identity & Communication:
       - patterns/creating-identities-early.md
       - patterns/connect-concepts-across-domains.md
       - patterns/consuming-events-from-other-domains.md
       - patterns/sharing-event-classes-across-domains.md
-    - Testing & Infrastructure:
-      - patterns/dual-mode-testing.md
-      - patterns/setting-up-and-tearing-down-database-for-tests.md
-      - patterns/running-migration-with-priority-lanes.md
+    - Operations:
+      - patterns/running-data-migrations-with-priority-lanes.md
 
   - API:
     - api/index.md

@@ -1,14 +1,45 @@
-# Patterns & Recipes
+# Patterns
 
-This section contains in-depth guides for recurring patterns in domain-driven
-applications built with Protean. Each pattern goes beyond the basics covered
-in the main guides, providing architectural context, trade-off analysis, and
-concrete implementation strategies.
+Patterns are **prescriptive understanding** -- they explain *what to do* about
+a recurring design problem and *why*, with explicit boundaries on when the
+guidance applies and when it doesn't.
+
+Unlike [guides](../guides/index.md), which walk you through specific tasks, and
+[concepts](../concepts/index.md), which explain how things work, patterns address
+recurring architectural decisions in domain-driven applications. Each pattern
+diagnoses a problem, prescribes a principle, provides worked examples and
+anti-patterns, and states when *not* to apply it.
 
 These patterns **span multiple domain elements** and represent good practices
 that Protean supports but does not enforce. They are the architectural wisdom
 that separates a well-designed DDD system from one that merely uses DDD
 terminology.
+
+## Reading Paths
+
+If you are new to these patterns, these sequences build on each other:
+
+**Aggregate boundaries** -- why small, how they communicate, how events flow:
+:   [Design Small Aggregates](design-small-aggregates.md) →
+    [One Aggregate Per Transaction](one-aggregate-per-transaction.md) →
+    [Design Events for Consumers](design-events-for-consumers.md)
+
+**Behavior placement** -- where logic lives, how to keep handlers thin, how to test:
+:   [Encapsulate State Changes](encapsulate-state-changes.md) →
+    [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md) →
+    [Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md)
+
+**Idempotency** -- from identity generation through command and event deduplication:
+:   [Creating Identities Early](creating-identities-early.md) →
+    [Command Idempotency](command-idempotency.md) →
+    [Idempotent Event Handlers](idempotent-event-handlers.md)
+
+**Cross-domain communication** -- relating, consuming, and contracting across boundaries:
+:   [Connecting Concepts Across Bounded Contexts](connect-concepts-across-domains.md) →
+    [Consuming Events from Other Domains](consuming-events-from-other-domains.md) →
+    [Sharing Event Classes Across Domains](sharing-event-classes-across-domains.md)
+
+---
 
 ## Aggregate Design
 
@@ -93,6 +124,16 @@ terminology.
   handlers, repositories, or infrastructure. Domain unit tests should be the
   majority of your test suite.
 
+- **[Dual-Mode Testing](dual-mode-testing.md)** -- Run the same test suite
+  against in-memory adapters for fast feedback and real infrastructure for
+  final validation. Switch modes with a single configuration flag, zero code
+  changes.
+
+- **[Setting Up and Tearing Down Databases](setting-up-and-tearing-down-database-for-tests.md)**
+  -- Separate the schema lifecycle (create once, drop once) from the data
+  lifecycle (reset after every test). Applies to all infrastructure, not just
+  databases.
+
 ## Identity & Communication
 
 - **[Creating Identities Early](creating-identities-early.md)** -- Generating
@@ -117,20 +158,18 @@ terminology.
   defines its own event classes that conform to the agreed-upon schema. Use
   contract tests to verify compatibility without code dependencies.
 
-## Testing & Infrastructure
+## Operations
 
-- **[Dual-Mode Testing with Memory and Real Adapters](dual-mode-testing.md)**
-  -- Run the same test suite against in-memory adapters (fast, no Docker) and
-  real infrastructure (thorough, with PostgreSQL/Redis/Message DB). Uses
-  `domain.toml` environment overlays and `--protean-env` to switch modes with
-  zero test code changes.
+- **[Running Data Migrations with Priority Lanes](running-data-migrations-with-priority-lanes.md)**
+  -- Route migration events to a separate backfill lane so they do not block
+  production event processing. Covers the migration script pattern, monitoring,
+  and anti-patterns for data backfills.
 
-- **[Setting Up and Tearing Down Databases for Tests](setting-up-and-tearing-down-database-for-tests.md)**
-  -- Manage database schema and test data lifecycles separately. Create schema
-  once per session, reset data after every test, and clean up all infrastructure
-  (providers, brokers, event stores) for fast, isolated integration tests.
+---
 
-- **[Running Migration with Priority Lanes](running-migration-with-priority-lanes.md)**
-  -- Use priority lanes to backfill or migrate large volumes of events without
-  disrupting production traffic. Covers migration scripts, monitoring, and
-  troubleshooting.
+!!! note "Related how-to guides"
+    Procedural guides for testing and infrastructure live in the
+    **Guides** section:
+
+    - [Testing Guide](../guides/testing/index.md) -- Overview of Protean's testing strategy and tools.
+    - [Using Priority Lanes](../guides/server/using-priority-lanes.md) -- Enable and configure priority lanes for background workloads.

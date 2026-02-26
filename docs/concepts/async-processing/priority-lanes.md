@@ -350,8 +350,10 @@ Priority lanes are not appropriate in every situation:
 
 ## Next Steps
 
-- [Running Migrations Without Blocking Production](../../patterns/running-migration-with-priority-lanes.md) --
-  A practical walkthrough of using priority lanes for a data migration.
+- [Using Priority Lanes](../../guides/server/using-priority-lanes.md) --
+  How to enable and configure priority lanes.
+- [Running Data Migrations with Priority Lanes](../../patterns/running-data-migrations-with-priority-lanes.md) --
+  Pattern for running data migrations without blocking production.
 - [Outbox Pattern](./outbox.md) -- How the outbox ensures reliable
   message delivery.
 - [Subscription Types](../../reference/server/subscription-types.md) -- How `StreamSubscription`

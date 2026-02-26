@@ -29,10 +29,15 @@ is aborted.
 
 ### Aggregates enclose business invariants. { data-toc-label="Invariants" }
 
-Aggregates contain invariants that should always be satisfied - they
-are checked before and after every change to the aggregate. Invariants can be
-specified at the level of an aggregate's fields, the entire aggregate cluster,
-individual [entities](./entities.md), or
+Aggregates contain invariants that should always be satisfied. Protean enforces
+an **always-valid guarantee**: invariants are checked automatically before and
+after every field change, not just at persistence time. This means an aggregate
+cluster can never exist in an invalid state once constraints and invariants have
+been defined. See [Invariants](../foundations/invariants.md#the-always-valid-guarantee)
+for the full explanation.
+
+Invariants can be specified at the level of an aggregate's fields, the entire
+aggregate cluster, individual [entities](./entities.md), or
 [domain services](./domain-services.md) that operate on multiple aggregates.
 
 ## Object Graphs

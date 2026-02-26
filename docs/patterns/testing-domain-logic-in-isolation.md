@@ -647,7 +647,7 @@ The principle: **domain logic is the most important code in your system. Test
 it directly, without infrastructure, in isolation. Construct aggregates, call
 methods, assert results. Save integration tests for verifying the plumbing.**
 
-!!!tip "Run all test layers in both modes"
+!!! tip "Run all test layers in both modes"
     Domain unit tests already use in-memory adapters. Integration tests can
     too -- with Protean's [Dual-Mode Testing](dual-mode-testing.md), a single
     `pytest --protean-env memory` flag switches every adapter to its in-memory

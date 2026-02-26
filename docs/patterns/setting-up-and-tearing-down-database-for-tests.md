@@ -194,7 +194,7 @@ def _ctx(app_fixture):
 
 ### Recipe 3: Switch Between In-Memory and Real Database
 
-!!!tip "Prefer `--protean-env` for whole-suite switching"
+!!! tip "Prefer `--protean-env` for whole-suite switching"
     If you want to switch **all** adapters between in-memory and real
     infrastructure at once, Protean's `--protean-env` flag is simpler than
     manual environment variables. Define a `[memory]` overlay in `domain.toml`

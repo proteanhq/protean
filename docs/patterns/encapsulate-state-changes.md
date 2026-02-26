@@ -471,7 +471,7 @@ business operation in different tenses: imperative (command), present
 
 ---
 
-## Common Anti-Patterns
+## Anti-Patterns
 
 ### Setter Methods Disguised as Business Methods
 

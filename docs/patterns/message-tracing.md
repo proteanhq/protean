@@ -266,7 +266,7 @@ assert result2.events[0]._metadata.domain.correlation_id == corr_id
 
 ---
 
-!!! tip "See also"
+!!! tip "Related reading"
     **Guide:** [Message Tracing](../guides/domain-behavior/message-tracing.md) -- How-to guide with code examples for setting up tracing.
 
     **Reference:** [`protean events trace`](../reference/cli/data/events.md) -- CLI command for following causal chains.

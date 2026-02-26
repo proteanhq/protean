@@ -115,7 +115,8 @@ need by what you're trying to accomplish.
 | Configure subscriptions                         | [Server Configuration](./reference/server/configuration.md) |
 | Run multiple workers with the supervisor        | [Supervisor](./reference/server/supervisor.md) |
 | Use priority lanes for event processing         | [Priority Lanes](./concepts/async-processing/priority-lanes.md) |
-| Run a bulk migration with priority lanes        | [Migration with Priority Lanes](./patterns/running-migration-with-priority-lanes.md) |
+| Use priority lanes for background workloads      | [Using Priority Lanes](./guides/server/using-priority-lanes.md) |
+| Run a bulk migration with priority lanes        | [Running Data Migrations with Priority Lanes](./patterns/running-data-migrations-with-priority-lanes.md) |
 
 ## Use the CLI
 

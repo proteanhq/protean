@@ -257,7 +257,7 @@ class OrderPlaced(BaseEvent):
 Even if a consumer doesn't need all of them, including identifiers is cheap
 and enables future consumers without changing the event.
 
-### 2. Include Data Consumers Need to Act
+### 2. Carry Enough Context for Consumers to Act Without Querying Back
 
 Think about what each consumer does with this event:
 

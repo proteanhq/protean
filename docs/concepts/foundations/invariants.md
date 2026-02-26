@@ -16,11 +16,91 @@ Invariants operate at different levels of granularity:
 
 - **Cross-aggregate invariants.** Rules spanning multiple aggregates. An order can only be placed if the customer's credit limit allows it, but the customer and the order are separate aggregates. These invariants cannot be enforced within a single transaction and are handled through eventual consistency via [domain events](../building-blocks/events.md).
 
-## When Invariants Are Checked
+## The Always-Valid Guarantee
 
-Invariants should be validated before and after every state change. Pre-condition checks ensure the operation is valid given the current state ("can this order be cancelled?"). Post-condition checks ensure the resulting state satisfies all rules ("is the order total still consistent with its line items?").
+Protean enforces a strict design principle: **an aggregate cluster can never
+exist in an invalid state.** Once you define field constraints, value object
+rules, or aggregate invariants, Protean ensures they hold at all times -- not
+just when you explicitly ask for validation, but after every single field
+change.
 
-If an invariant is violated, the state change is rejected. The aggregate remains in its previous valid state. This is a hard guarantee -- there is no "partially applied" state change that leaves the aggregate inconsistent.
+This works because Protean intercepts every attribute assignment on aggregates
+and entities. When you write `order.total_amount = 50.0`, the framework
+automatically:
+
+1. **Runs pre-invariants** (`@invariant.pre`) on the aggregate root before
+   the field is set.
+2. **Validates the field value** against its type, constraints (`required`,
+   `max_length`, `min_value`, `choices`), and any custom validators.
+3. **Sets the field.**
+4. **Runs post-invariants** (`@invariant.post`) on the aggregate root after
+   the field is set.
+
+If any check fails, a `ValidationError` is raised and the field is not
+changed. The aggregate stays in its previous valid state.
+
+This enforcement is **recursive across the entire aggregate cluster.** When an
+invariant runs on the aggregate root, Protean also runs invariants on all
+associated entities (via `HasOne` and `HasMany`). A child entity deep within
+the cluster cannot silently violate its own invariants -- they are checked
+whenever the aggregate root's invariants are checked.
+
+```python
+@domain.aggregate
+class Order:
+    total_amount = Float(required=True)
+    items = HasMany("OrderItem")
+
+    @invariant.post
+    def total_must_equal_sum_of_items(self):
+        expected = sum(item.subtotal for item in self.items)
+        if self.total_amount != expected:
+            raise ValidationError(
+                {"_entity": ["Total should be sum of item prices"]}
+            )
+
+# This raises ValidationError -- the invariant fires immediately
+order.total_amount = 50.0  # But items sum to 100.0
+```
+
+### Batching Changes with `atomic_change`
+
+Sometimes you need to make multiple related changes that would individually
+violate an invariant but are collectively valid. Protean provides the
+`atomic_change` context manager for this:
+
+```python
+from protean.core.aggregate import atomic_change
+
+with atomic_change(order):
+    order.total_amount = 120.0               # Would fail invariant alone
+    order.add_items(OrderItem(subtotal=20))   # But together they're consistent
+# Invariants checked ONCE on exit -- both changes are valid together
+```
+
+Inside the block, invariant checks are suspended. A pre-check runs on entry
+and a post-check runs on exit. If the post-check fails, a `ValidationError`
+is raised.
+
+### Why This Matters
+
+The always-valid guarantee means you can mutate aggregates safely anywhere in
+your code without worrying about putting them into an inconsistent state. You
+don't need to remember to call a `validate()` method. You don't need to check
+validity before persisting. The aggregate simply refuses to accept invalid
+changes.
+
+This has several consequences for application design:
+
+- **Named methods on aggregates are safe by default.** A method like
+  `order.place()` can set multiple fields, and invariants will catch any
+  inconsistency on each assignment (or use `atomic_change` for batched
+  mutations).
+- **Handlers can't corrupt domain state.** Even if a command handler sets
+  fields directly rather than using named methods, invariants will still fire.
+- **Testing is simpler.** You can test invariants by directly setting fields
+  and asserting that `ValidationError` is raised -- no need to go through
+  handlers or repositories.
 
 ## Invariants Define Aggregate Boundaries
 

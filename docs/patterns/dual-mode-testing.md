@@ -310,15 +310,16 @@ concerns have leaked into the domain model.
 
 ---
 
-## See Also
+!!! tip "Related reading"
+    **Guides:**
 
-- [Testing Guide](../guides/testing/index.md) -- overview of Protean's testing
-  strategy, including the role of memory adapters
-- [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md) -- the
-  `DomainFixture` and `conftest.py` recipes that work with both modes
-- [Integration Tests](../guides/testing/integration-tests.md) -- writing tests
-  that exercise real infrastructure
-- [Setting Up and Tearing Down Databases](setting-up-and-tearing-down-database-for-tests.md)
-  -- schema and data lifecycle management for real-adapter tests
-- [Configuration](../reference/configuration/index.md) -- full reference for
-  `domain.toml` environment overlays
+    - [Testing Guide](../guides/testing/index.md) -- Overview of Protean's testing strategy.
+    - [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md) -- `DomainFixture` and `conftest.py` recipes that work with both modes.
+    - [Integration Tests](../guides/testing/integration-tests.md) -- Writing tests that exercise real infrastructure.
+
+    **Related patterns:**
+
+    - [Setting Up and Tearing Down Databases](setting-up-and-tearing-down-database-for-tests.md) -- Schema and data lifecycle management for real-adapter tests.
+    - [Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md) -- Test aggregates and domain services without infrastructure.
+
+    **Reference:** [Configuration](../reference/configuration/index.md) -- Full reference for `domain.toml` environment overlays.

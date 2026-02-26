@@ -248,4 +248,4 @@ During graceful shutdown:
 - [Engine Architecture](../../concepts/async-processing/engine.md) — Understand engine internals
 - [Configuration](../../reference/server/configuration.md) — Full configuration reference
 - [Subscription Types](../../reference/server/subscription-types.md) — Choose the right subscription
-- [Priority Lane Migrations](../../patterns/running-migration-with-priority-lanes.md) — Run large data migrations without blocking production
+- [Using Priority Lanes](using-priority-lanes.md) — Route background workloads through the backfill lane

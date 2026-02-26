@@ -91,7 +91,7 @@ Switch modes with a single CLI flag and **zero test code changes**. Add a
 scenario works in both modes automatically.
 
 See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md)
-pattern for the full setup, CI configuration, and guidance on when modes
+guide for the full setup, CI configuration, and guidance on when modes
 may diverge.
 
 ## What's in This Section
