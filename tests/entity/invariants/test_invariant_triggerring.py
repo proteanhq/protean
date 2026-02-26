@@ -329,3 +329,45 @@ class TestEntityPreInvariantsChecks:
         assert exc.value.messages["_entity"] == [
             "Order date must be in the past and status PENDING to update order"
         ]
+
+    def test_add_items_triggers_pre_invariant_without_atomic_change(self, order):
+        """Pre-invariant fires on add_items even without atomic_change."""
+        order.mark_shipped()
+        with pytest.raises(ValidationError) as exc:
+            order.add_items(
+                OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0)
+            )
+
+        assert exc.value.messages["_entity"] == [
+            "Order date must be in the past and status PENDING to update order"
+        ]
+
+    def test_remove_items_triggers_pre_invariant(self, order):
+        """Pre-invariant fires on remove_items."""
+        order.mark_shipped()
+        with pytest.raises(ValidationError) as exc:
+            order.remove_items(order.items[0])
+
+        assert exc.value.messages["_entity"] == [
+            "Order date must be in the past and status PENDING to update order"
+        ]
+
+
+class TestEntityPostInvariantsOnRemove:
+    def test_remove_item_violating_post_invariant(self, order):
+        """Removing an item without adjusting total triggers post-invariant."""
+        with pytest.raises(ValidationError) as exc:
+            order.remove_items(order.items[0])
+
+        assert exc.value.messages["_entity"] == ["Total should be sum of item prices"]
+
+    def test_remove_item_with_atomic_change_and_total_update(self, order):
+        """Removing an item and updating total within atomic_change succeeds."""
+        item_to_remove = order.items[0]
+        new_total = order.total_amount - item_to_remove.subtotal
+        try:
+            with atomic_change(order):
+                order.remove_items(item_to_remove)
+                order.total_amount = new_total
+        except ValidationError:
+            pytest.fail("Failed to remove item with atomic_change")

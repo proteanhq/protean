@@ -100,12 +100,29 @@ In [1]: order = Order(
    ...:         OrderItem(product_id="2", quantity=3, price=20.0, subtotal=60.0),
    ...:     ],
    ...: )
-   ...: 
+   ...:
 
 In [2]: order.total_amount = 140.0
 ...
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
+
+### Adding and Removing Entities
+
+`add_*` and `remove_*` methods on `HasMany` associations also trigger
+invariants. Both pre-invariants and post-invariants fire, just as they do
+for direct attribute assignments.
+
+```shell hl_lines="3 5"
+In [3]: order.mark_shipped()
+
+In [4]: order.add_items(OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0))
+...
+ValidationError: {'_entity': ['Order date must be in the past and status PENDING to update order']}
+```
+
+When adding or removing entities requires coordinated changes (like updating
+a total), use `atomic_change` to batch the mutations.
 
 
 ## Atomic Changes

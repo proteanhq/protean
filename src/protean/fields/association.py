@@ -587,6 +587,10 @@ class HasMany(Association):
         """
         super().__set__(instance, items)
 
+        # Pre-check invariants before mutation
+        if instance._initialized and instance._root is not None:
+            instance._root._precheck()
+
         data = getattr(instance, self.field_name)
 
         # Convert a single item into a list of items, if necessary
@@ -673,7 +677,7 @@ class HasMany(Association):
 
     def remove(self, instance, items) -> None:
         """
-        Available as `add_<HasMany Field Name>` method on the entity instance.
+        Available as `remove_<HasMany Field Name>` method on the entity instance.
 
         Remove one or more linked entities from the source entity.
 
@@ -683,6 +687,10 @@ class HasMany(Association):
             instance (BaseEntity): The source entity instance.
             items (list | BaseEntity): The linked entity or entities to be removed.
         """
+        # Pre-check invariants before mutation
+        if instance._initialized and instance._root is not None:
+            instance._root._precheck()
+
         data = getattr(instance, self.field_name)
 
         # Convert a single item into a list of items, if necessary
