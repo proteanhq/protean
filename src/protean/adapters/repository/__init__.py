@@ -53,7 +53,7 @@ class Providers(collections.abc.MutableMapping):
     def _construct_repository(self, part_of):
         repository_cls = type(part_of.__name__ + "Repository", (BaseRepository,), {})
         repository_cls = repository_factory(
-            repository_cls, self.domain, part_of=part_of
+            repository_cls, self.domain, part_of=part_of, _auto_constructed=True
         )
         return repository_cls
 

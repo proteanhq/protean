@@ -35,6 +35,12 @@ class BaseRepository(Element, OptionsMixin):
 
     Repositories are strictly meant to be used in conjunction with Aggregate elements. It is always prudent to deal
     with persistence at the transaction boundary, which is at an Aggregate's level.
+
+    **Design note: no delete/remove method.**
+    Repositories intentionally do not support hard deletion. Domain state changes — cancellation,
+    deactivation, archival — should be modeled as explicit state transitions via commands and events,
+    not as record erasure. Hard deletion is available at the infrastructure level (``_dao.delete()``)
+    for projection rebuilds, test teardown, and compliance requirements (e.g. GDPR right to erasure).
     """
 
     element_type = DomainObjects.REPOSITORY
@@ -221,12 +227,22 @@ class BaseRepository(Element, OptionsMixin):
         return item
 
     def _sync_children(self, entity):
-        """Recursively sync child entities to the persistence store"""
+        """Recursively sync child entities to the persistence store.
+
+        Cache clearing is deferred until all DAO operations complete successfully.
+        This ensures that if a mid-sync failure triggers a DB rollback, the in-memory
+        temp_cache remains consistent and a retry of ``repo.add()`` will re-attempt
+        all child operations.
+        """
         # If there are HasMany fields in the aggregate, sync child objects added/removed,
         #   but not yet persisted to the database.
         #
         # The details of in-transit child objects are maintained as part of the `has_many_field` itself
         #   in a variable called `_temp_cache`
+
+        # Collect cache clear operations to execute after all DAO operations succeed
+        cache_clears: list[tuple] = []
+
         for field_name, field in association_fields(entity).items():
             ### RECURSIVE SYNC ###
             # Start at the innermost child and work our way up
@@ -252,22 +268,16 @@ class BaseRepository(Element, OptionsMixin):
 
                 for _, item in entity._temp_cache[field_name]["removed"].items():
                     self._domain.repository_for(field.to_cls)._dao.delete(item)
-                entity._temp_cache[field_name][
-                    "removed"
-                ] = {}  # Empty contents of `removed` cache
 
                 for _, item in entity._temp_cache[field_name]["updated"].items():
                     self._domain.repository_for(field.to_cls)._dao.save(item)
-                entity._temp_cache[field_name][
-                    "updated"
-                ] = {}  # Empty contents of `updated` cache
 
                 for _, item in entity._temp_cache[field_name]["added"].items():
                     item.state_.mark_new()
                     self._domain.repository_for(field.to_cls)._dao.save(item)
-                entity._temp_cache[field_name][
-                    "added"
-                ] = {}  # Empty contents of `added` cache
+
+                # Defer cache clearing until all DAO operations succeed
+                cache_clears.append(("has_many", entity, field_name))
 
             if isinstance(field, HasOne):
                 # First, handle direct updates to underlying child objects
@@ -298,9 +308,18 @@ class BaseRepository(Element, OptionsMixin):
                             entity._temp_cache[field_name]["old_value"]
                         )
 
-                    # Reset temporary fields after processing
-                    entity._temp_cache[field_name]["change"] = None
-                    entity._temp_cache[field_name]["old_value"] = None
+                    # Defer cache clearing until all DAO operations succeed
+                    cache_clears.append(("has_one", entity, field_name))
+
+        # Clear all caches atomically after all DAO operations completed successfully
+        for clear_type, ent, fname in cache_clears:
+            if clear_type == "has_many":
+                ent._temp_cache[fname]["removed"] = {}
+                ent._temp_cache[fname]["updated"] = {}
+                ent._temp_cache[fname]["added"] = {}
+            else:  # has_one
+                ent._temp_cache[fname]["change"] = None
+                ent._temp_cache[fname]["old_value"] = None
 
     def get(self, identifier) -> Any:
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
@@ -323,6 +342,12 @@ _T = TypeVar("_T")
 
 
 def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
+    from protean.core.aggregate import BaseAggregate
+
+    # Pop internal flag before passing opts to derive_element_class,
+    # which validates that all options are known element options.
+    auto_constructed = opts.pop("_auto_constructed", False)
+
     element_cls = derive_element_class(element_cls, BaseRepository, **opts)
 
     if not element_cls.meta_.part_of:
@@ -330,11 +355,15 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
             f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
         )
 
-    # FIXME Uncomment
-    # if not issubclass(element_cls.meta_.part_of, BaseAggregate):
-    #     raise IncorrectUsageError(
-    #         {"_entity": [f"Repository `{element_cls.__name__}` can only be associated with an Aggregate"]}
-    #     )
+    # Enforce that user-defined repositories can only be associated with Aggregates.
+    # Auto-constructed repositories (for child entities, projections) are created
+    # internally and bypass this check.
+    if not auto_constructed and not issubclass(
+        element_cls.meta_.part_of, BaseAggregate
+    ):
+        raise IncorrectUsageError(
+            f"Repository `{element_cls.__name__}` can only be associated with an Aggregate"
+        )
 
     # Ensure the value of `database` is among known databases
     if element_cls.meta_.database != "ALL" and element_cls.meta_.database not in [
