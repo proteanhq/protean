@@ -68,6 +68,12 @@ $ python
 '0.14.2'
 ```
 
+## Upgrading from 0.14?
+
+If you're upgrading an existing project, see the
+[Migration Guide](../../reference/migration/v0-15.md) for required
+changes.
+
 -------------------
 
 That's it! You can now get a sneak peek into Protean with a quick tutorial.

@@ -234,4 +234,13 @@ Not sure? Start with DDD — you can evolve later. See
 
     [:material-arrow-right-box: Patterns](./patterns/index.md)
 
+-   __:material-arrow-up-bold-circle-outline: Upgrading to 0.15?__
+
+    ---
+
+    Migration guide with required changes, behavioral differences, and
+    what's new.
+
+    [:material-arrow-right-box: Migration Guide](./reference/migration/v0-15.md)
+
 </div>

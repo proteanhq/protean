@@ -44,6 +44,12 @@ If you're interested in Event Sourcing, work through
 projections, and production tooling. It assumes familiarity with the Bookshelf
 tutorial above.
 
+## Upgrading from 0.14?
+
+If you're migrating an existing project, the
+[Migration Guide](./reference/migration/v0-15.md) covers required
+changes, behavioral differences, and what's new.
+
 ## Core concepts
 
 Get to know the driving principles and core ideas that shape this framework
