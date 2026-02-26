@@ -11,15 +11,15 @@ from typing import Any  # type: ignore[reportAssignmentType]
 from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
-from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.exceptions import ObjectNotFoundError
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.utils import fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
-from protean.utils.reflection import attributes, fields, id_field
+from protean.utils.reflection import fields, id_field
 
 
 class _ReverseCompare:
@@ -66,20 +66,13 @@ class MemoryModel(BaseDatabaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
+    def _get_value(cls, item: dict[str, Any], key: str) -> Any:
+        return item[key]
+
+    @classmethod
     def from_entity(cls, entity) -> dict[str, Any]:
         """Convert the entity to a dictionary record"""
         return cls._entity_to_dict(entity)
-
-    @classmethod
-    def to_entity(cls, item: dict[str, Any]) -> BaseEntity:
-        """Convert the dictionary record to an entity"""
-        item_dict = {}
-        for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
-            if attr_obj.referenced_as:
-                item_dict[attr_obj.field_name] = item[attr_obj.referenced_as]
-            else:
-                item_dict[attr_name] = item[attr_name]
-        return cls.meta_.part_of(**item_dict)
 
 
 class MemorySession:
@@ -171,11 +164,11 @@ class MemoryProvider(BaseProvider):
         pass
 
     def decorate_database_model_class(self, entity_cls, database_model_cls):
-        schema_name = database_model_cls.derive_schema_name()
+        cache_key = fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
-        if schema_name in self._database_model_classes:
-            return self._database_model_classes[schema_name]
+        if cache_key in self._database_model_classes:
+            return self._database_model_classes[cache_key]
 
         # If `database_model_cls` is already subclassed from MemoryModel,
         #   this method call is a no-op
@@ -200,7 +193,7 @@ class MemoryProvider(BaseProvider):
             )
 
             # Memoize the constructed model class
-            self._database_model_classes[schema_name] = (
+            self._database_model_classes[cache_key] = (
                 decorated_database_database_model_cls
             )
 
@@ -209,12 +202,11 @@ class MemoryProvider(BaseProvider):
     def construct_database_model_class(self, entity_cls):
         """Return associated, fully-baked Model class"""
         database_model_cls = None
+        cache_key = fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
-        if entity_cls.meta_.schema_name in self._database_model_classes:
-            database_model_cls = self._database_model_classes[
-                entity_cls.meta_.schema_name
-            ]
+        if cache_key in self._database_model_classes:
+            database_model_cls = self._database_model_classes[cache_key]
         else:
             meta_ = Options()
             meta_.part_of = entity_cls
@@ -228,9 +220,7 @@ class MemoryProvider(BaseProvider):
             )
 
             # Memoize the constructed model class
-            self._database_model_classes[entity_cls.meta_.schema_name] = (
-                database_model_cls
-            )
+            self._database_model_classes[cache_key] = database_model_cls
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls

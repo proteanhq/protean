@@ -17,6 +17,48 @@ from .elements import (
 
 
 @pytest.mark.elasticsearch
+class TestElasticsearchModelInheritance:
+    """B4: ElasticsearchModel now inherits from BaseDatabaseModel."""
+
+    def test_elasticsearch_model_is_subclass_of_base_database_model(self):
+        from protean.core.database_model import BaseDatabaseModel
+
+        assert issubclass(ElasticsearchModel, BaseDatabaseModel)
+
+    def test_auto_constructed_model_is_subclass_of_base_database_model(
+        self, test_domain
+    ):
+        from protean.core.database_model import BaseDatabaseModel
+
+        test_domain.register(Person)
+        database_model_cls = test_domain.repository_for(Person)._database_model
+        assert issubclass(database_model_cls, BaseDatabaseModel)
+
+    def test_custom_model_is_subclass_of_base_database_model(self, test_domain):
+        from protean.core.database_model import BaseDatabaseModel
+
+        test_domain.register(Provider)
+        test_domain.register_database_model(
+            ProviderCustomModel, part_of=Provider, schema_name="providers"
+        )
+
+        database_model_cls = test_domain.repository_for(Provider)._database_model
+        assert issubclass(database_model_cls, BaseDatabaseModel)
+
+    def test_elasticsearch_model_inherits_entity_to_dict(self):
+        assert hasattr(ElasticsearchModel, "_entity_to_dict")
+        assert callable(ElasticsearchModel._entity_to_dict)
+
+    def test_elasticsearch_model_inherits_get_value(self):
+        assert hasattr(ElasticsearchModel, "_get_value")
+        assert callable(ElasticsearchModel._get_value)
+
+    def test_elasticsearch_model_inherits_derive_schema_name(self):
+        assert hasattr(ElasticsearchModel, "derive_schema_name")
+        assert callable(ElasticsearchModel.derive_schema_name)
+
+
+@pytest.mark.elasticsearch
 class TestDefaultModel:
     @pytest.fixture(autouse=True)
     def register_person_aggregate(self, test_domain):

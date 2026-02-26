@@ -20,8 +20,11 @@ class BaseDatabaseModel(Element, OptionsMixin):
     for every aggregate; use ``@domain.model`` only when you need to customize
     the schema mapping (e.g. column names, indexes, JSON serialization).
 
-    Subclasses must implement ``from_entity()`` and ``to_entity()`` for
-    bidirectional conversion between domain objects and database records.
+    Subclasses must implement ``from_entity()`` for converting domain objects
+    to database records. A default ``to_entity()`` is provided that handles
+    the common pattern of iterating attributes with ``referenced_as``
+    remapping; override it only when storage-specific logic is needed
+    (e.g. Elasticsearch's ``meta.id`` extraction).
 
     **Meta Options**
 
@@ -88,16 +91,33 @@ class BaseDatabaseModel(Element, OptionsMixin):
         """
 
     @classmethod
-    @abstractmethod
-    def to_entity(cls, *args: Any, **kwargs: Any) -> "BaseEntity":
+    def _get_value(cls, item: Any, key: str) -> Any:
+        """Extract a single value from a storage record by key.
+
+        Override in adapter subclasses for storage-specific access patterns.
+        The default uses ``getattr()``, which works for object-based records
+        (e.g. SQLAlchemy ORM instances).
+        """
+        return getattr(item, key)
+
+    @classmethod
+    def to_entity(cls, item: Any) -> "BaseEntity":
         """Convert a database record back into a domain entity/aggregate.
 
-        Implementors should reconstruct the domain object from the
-        database-specific representation.
-
-        Returns:
-            BaseEntity: The reconstituted domain entity or aggregate.
+        Iterates entity attributes, applies ``referenced_as`` remapping,
+        and reconstructs the domain object.  Adapters with storage-specific
+        reconstruction needs (e.g. Elasticsearch ``meta.id`` extraction)
+        should override this method entirely.
         """
+        item_dict: dict[str, Any] = {}
+        for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
+            if attr_obj.referenced_as:
+                item_dict[attr_obj.field_name] = cls._get_value(
+                    item, attr_obj.referenced_as
+                )
+            else:
+                item_dict[attr_name] = cls._get_value(item, attr_name)
+        return cls.meta_.part_of(**item_dict)
 
 
 def _entity_to_dict(model_cls: type, entity: Any) -> dict[str, Any]:

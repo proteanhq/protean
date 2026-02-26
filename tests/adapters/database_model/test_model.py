@@ -1,5 +1,8 @@
 import pytest
 
+from protean.core.aggregate import BaseAggregate
+from protean.fields import Integer, String
+
 from tests.adapters.database_model.dict_model.elements import (
     Provider,
     ProviderCustomModel,
@@ -39,3 +42,41 @@ class TestSchemaNameDerivation:
         model1 = test_domain.repository_for(Provider)._database_model
         model2 = test_domain.repository_for(Provider)._database_model
         assert model1 is model2
+
+
+@pytest.mark.database
+class TestModelCacheByFQN:
+    """B3: Model cache uses fully qualified name, not schema_name.
+
+    Two aggregates with the same class name (but different modules) should
+    get distinct model classes, not collide in the provider's cache.
+    """
+
+    def test_same_class_name_different_modules_get_distinct_models(self, test_domain):
+        """Two aggregates named 'Item' defined in different scopes should
+        produce separate model classes in the provider cache."""
+
+        # Define two aggregates with the same class name but different attributes
+        # They will have different fully_qualified_names because they are defined
+        # in different local scopes (different qualnames)
+        class Item(BaseAggregate):
+            name = String(max_length=50)
+
+        class ItemNamespace:
+            """Simulate a different module by nesting the class."""
+
+            class Item(BaseAggregate):
+                code = Integer()
+
+        test_domain.register(Item)
+        test_domain.register(ItemNamespace.Item)
+
+        model1 = test_domain.repository_for(Item)._database_model
+        model2 = test_domain.repository_for(ItemNamespace.Item)._database_model
+
+        # The two model classes should be distinct
+        assert model1 is not model2
+
+        # Verify they map to their respective aggregates
+        assert model1.meta_.part_of is Item
+        assert model2.meta_.part_of is ItemNamespace.Item
