@@ -1,5 +1,6 @@
 import pytest
 
+from protean.core.entity import BaseEntity
 from protean.core.repository import BaseRepository
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import String
@@ -62,20 +63,24 @@ class TestRepositoryRegistration:
         repo = test_domain.repository_for(Person)
         assert repo.__class__.__name__ == "PersonRepository"
 
-    # FIXME Uncomment
-    # def test_that_repositories_can_only_be_associated_with_an_aggregate(
-    #     self, test_domain
-    # ):
-    #     with pytest.raises(IncorrectUsageError) as exc:
+    def test_that_repositories_can_only_be_associated_with_an_aggregate(
+        self, test_domain
+    ):
+        @test_domain.entity(part_of=Person)
+        class Comment(BaseEntity):
+            body: String(max_length=500)
 
-    #         @test_domain.repository(part_of=Comment)
-    #         class CommentRepository:
-    #             def special_method(self):
-    #                 pass
+        with pytest.raises(IncorrectUsageError) as exc:
 
-    #     assert exc.value.messages == {
-    #         "_entity": ["Repositories can only be associated with an Aggregate"]
-    #     }
+            @test_domain.repository(part_of=Comment)
+            class CommentRepository:
+                def special_method(self):
+                    pass
+
+        assert (
+            exc.value.args[0]
+            == "Repository `CommentRepository` can only be associated with an Aggregate"
+        )
 
     def test_retrieving_custom_repository(self, test_domain):
         @test_domain.aggregate

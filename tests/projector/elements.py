@@ -64,7 +64,7 @@ class TokenProjector(BaseProjector):
     @on(LoggedOut)
     def on_logged_out(self, event: LoggedOut):
         token = current_domain.repository_for(Token).get(event.user_id)
-        current_domain.repository_for(Token).delete(token)
+        current_domain.repository_for(Token)._dao.delete(token)
 
 
 class FullUserProjector(BaseProjector):
