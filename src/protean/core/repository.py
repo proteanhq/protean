@@ -15,10 +15,11 @@ from protean.utils import (
 )
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
+from protean.utils.query import Q
 from protean.utils.reflection import association_fields, has_association_fields
 
 if TYPE_CHECKING:
-    from protean.core.queryset import QuerySet
+    from protean.core.queryset import QuerySet, ResultSet
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,35 @@ class BaseRepository(Element, OptionsMixin):
                     return self.find_by(email=email)
         """
         return self._dao.find_by(**kwargs)
+
+    def find(self, criteria: Q) -> "ResultSet":
+        """Find all aggregates matching a Q criteria expression.
+
+        Returns a :class:`~protean.core.queryset.ResultSet` containing
+        the matching aggregates. Accepts composable ``Q`` objects, making
+        it easy to build reusable, domain-named query functions::
+
+            from protean.utils.query import Q
+
+            def overdue_orders() -> Q:
+                return Q(status="pending", due_date__lt=datetime.now())
+
+            results = repo.find(overdue_orders())
+            results = repo.find(overdue_orders() & Q(total__gte=5000))
+        """
+        return self.query.filter(criteria).all()
+
+    def exists(self, criteria: Q) -> bool:
+        """Check if any aggregate matches the given Q criteria.
+
+        Returns ``True`` when at least one aggregate satisfies the
+        criteria, ``False`` otherwise.  Unlike ``find``, this method
+        does not load aggregate objects -- it only checks for existence::
+
+            if repo.exists(Q(email="john@example.com")):
+                raise ValueError("Email already taken")
+        """
+        return self.query.filter(criteria).all().total > 0
 
     def add(self, item: Any) -> Any:  # noqa: C901
         """This method helps persist or update aggregates or projections into the persistence store.

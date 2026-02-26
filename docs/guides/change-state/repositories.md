@@ -35,12 +35,15 @@ In [2]: repo
 Out[2]: <PersonRepository at 0x104f3a1d0>
 ```
 
-The default repository provides two methods:
+The default repository provides these methods:
 
 - **`add(aggregate)`** -- persist or update an aggregate.
 - **`get(identifier)`** -- retrieve an aggregate by its identity.
+- **`find(criteria)`** -- find all aggregates matching a `Q` expression.
+- **`find_by(**kwargs)`** -- find a single aggregate by field values.
+- **`exists(criteria)`** -- check if any aggregate matches a `Q` expression.
 
-For basic CRUD operations, the default repository is all you need.
+For basic operations, the default repository is all you need.
 
 ## Defining a custom repository
 
@@ -99,31 +102,40 @@ Out[3]: [<Person: Person object (id: ...)>]
 
 ## Querying inside repositories
 
-Every repository exposes two convenience methods for building queries:
+Every repository exposes these methods for building queries:
 
 - **`self.query`** -- a [QuerySet](./retrieve-aggregates.md#queryset) for
   building filtered, sorted, paginated queries.
 - **`self.find_by(**kwargs)`** -- find a single aggregate matching the given
   fields. Raises `ObjectNotFoundError` if no match is found, and
   `TooManyObjectsError` if multiple matches are found.
+- **`self.find(criteria)`** -- find all aggregates matching a `Q` expression.
+  Returns a `ResultSet`.
+- **`self.exists(criteria)`** -- check if any aggregate matches a `Q`
+  expression. Returns `True` or `False`.
 
 ```python
+from protean.utils.query import Q
+
 @domain.repository(part_of=Person)
 class PersonRepository:
     def adults_in_country(self, country_code: str) -> list:
-        return self.query.filter(
-            age__gte=18, country=country_code
-        ).all().items
+        return self.find(
+            Q(age__gte=18, country=country_code)
+        ).items
 
     def find_by_email(self, email: str) -> Person:
         return self.find_by(email=email)
+
+    def has_adults(self) -> bool:
+        return self.exists(Q(age__gte=18))
 ```
 
 Internally, these delegate to the repository's Data Access Object (DAO) --
 the layer that talks to the database. The DAO is still accessible as
-`self._dao` for advanced use cases (e.g. `exists()`, `outside_uow()`), but
-for typical custom queries, `self.query` and `self.find_by()` are all you
-need.
+`self._dao` for advanced use cases (e.g. `outside_uow()`), but for typical
+custom queries, `self.query`, `self.find`, `self.find_by()`, and
+`self.exists()` are all you need.
 
 For a comprehensive guide on querying, see
 [Retrieving Aggregates](./retrieve-aggregates.md).

@@ -32,6 +32,10 @@ Beyond `get`, every repository exposes convenience methods for querying:
   queries.
 - **`.find_by(**kwargs)`** -- finds a single aggregate matching the given
   field values.
+- **`.find(criteria)`** -- finds all aggregates matching a `Q` criteria
+  expression. Returns a `ResultSet`.
+- **`.exists(criteria)`** -- checks if any aggregate matches a `Q` criteria
+  expression. Returns `True` or `False` without loading objects.
 
 These are available both on the repository instance returned by
 `domain.repository_for()` and inside custom repository methods via `self`.
@@ -80,33 +84,56 @@ Out[2]: 'Jane Doe'
 `find_by` raises `ObjectNotFoundError` if no aggregates are found, and
 `TooManyObjectsError` when more than one aggregate matches.
 
-### `exists`
+### `find`
 
-Use `exists` to check whether matching aggregates exist without loading them.
-`exists` is available on the DAO layer via `_dao`:
+Use `find` to retrieve all aggregates matching a `Q` criteria expression.
+It accepts composable `Q` objects and returns a `ResultSet`:
+
+```python
+from protean.utils.query import Q
+```
 
 ```shell
-In [1]: repository._dao.exists({}, email="john.doe@example.com")
+In [1]: results = repository.find(Q(country="CA"))
+
+In [2]: results.total
+Out[2]: 5
+
+In [3]: [p.name for p in results.items]
+Out[3]: ['John Doe', 'Jane Doe', 'Baby Doe', 'Boy Doe', 'Girl Doe']
+```
+
+`find` is especially useful with composed criteria:
+
+```shell
+In [1]: results = repository.find(Q(country="CA") & Q(age__gte=18))
+
+In [2]: [p.name for p in results.items]
+Out[2]: ['John Doe', 'Jane Doe']
+```
+
+See [Composable Query Functions](#composable-query-functions) below for
+using `find()` with reusable, domain-named query criteria.
+
+### `exists`
+
+Use `exists` to check whether matching aggregates exist without loading them:
+
+```shell
+In [1]: repository.exists(Q(country="US"))
 Out[1]: True
 
-In [2]: repository._dao.exists({}, email="nobody@example.com")
+In [2]: repository.exists(Q(country="UK"))
 Out[2]: False
 ```
 
-The first argument is a dictionary of exclusion criteria -- records matching
-these criteria are excluded from the check. This is useful for uniqueness
-checks that need to exclude the current record:
+`exists` also accepts composed criteria:
 
 ```python
 # Inside a custom repository method
-def email_taken(self, person_id: str, email: str) -> bool:
-    return self._dao.exists({"id": person_id}, email=email)
+def has_adults_in_country(self, country: str) -> bool:
+    return self.exists(Q(age__gte=18) & Q(country=country))
 ```
-
-!!! note
-    `exists` is one of the advanced DAO operations not yet surfaced as a
-    convenience method. For typical queries, prefer `self.query` and
-    `self.find_by()` — see [Repositories](./repositories.md).
 
 ---
 
@@ -286,6 +313,204 @@ people = repository.query.filter(
     Q(name="John Doe") | Q(age__lt=5), country="CA"
 ).all().items
 ```
+
+## Composable query functions
+
+When the same filter criteria appears in multiple places -- a command handler,
+an event handler, a projector, a scheduled job -- you can extract it into a
+plain Python function that returns a `Q` object. This gives you named,
+reusable, composable query criteria without any framework overhead:
+
+```python
+from protean.utils.query import Q
+from datetime import datetime, timedelta
+from decimal import Decimal
+
+
+def overdue_orders(grace_days: int = 0) -> Q:
+    """Orders past their payment deadline."""
+    deadline = datetime.now() - timedelta(days=grace_days)
+    return Q(status="pending", due_date__lt=deadline)
+
+
+def high_value_orders(min_amount: Decimal = Decimal("1000")) -> Q:
+    """Orders exceeding a monetary threshold."""
+    return Q(total__gte=min_amount)
+
+
+def in_region(region: str) -> Q:
+    """Orders shipping to a specific region."""
+    return Q(shipping_region=region)
+```
+
+These functions compose naturally with `&`, `|`, and `~`:
+
+```python
+repo = domain.repository_for(Order)
+
+# Find all overdue orders
+overdue = repo.find(overdue_orders())
+
+# Compose: overdue AND high-value
+critical = repo.find(overdue_orders(grace_days=3) & high_value_orders(5000))
+
+# Compose: high-value in a specific region
+regional = repo.find(high_value_orders() & in_region("US"))
+
+# Negate: orders that are NOT recent
+stale = repo.find(~recent_orders(within_days=7))
+
+# Check existence
+if repo.exists(overdue_orders() & high_value_orders(5000)):
+    trigger_escalation()
+```
+
+The same functions work with the QuerySet API when you need ordering or
+pagination:
+
+```python
+results = (
+    repo.query
+    .filter(overdue_orders() & in_region("US"))
+    .order_by("-total")
+    .limit(20)
+    .all()
+)
+```
+
+And inside custom repository methods:
+
+```python
+@domain.repository(part_of=Order)
+class OrderRepository:
+    def critical_orders(self) -> list:
+        return self.find(
+            overdue_orders(grace_days=3) & high_value_orders(5000)
+        ).items
+
+    def has_overdue_in_region(self, region: str) -> bool:
+        return self.exists(overdue_orders() & in_region(region))
+```
+
+This pattern gives you most of the formal
+[Specification Pattern](https://martinfowler.com/apsupp/spec.pdf)'s value --
+named, composable, testable query criteria -- with zero framework complexity.
+The Q functions are regular Python: easy to write, easy to test, and easy to
+understand.
+
+### Structuring as specifications
+
+When you need both database queries *and* in-memory evaluation of the same
+business rule -- for example, querying overdue orders from the database and
+also checking whether a single order is overdue inside an event handler --
+you can structure your query criteria as specification classes:
+
+```python
+from abc import ABC, abstractmethod
+from protean.utils.query import Q
+
+
+class Specification(ABC):
+    """Base class for domain query specifications."""
+
+    @abstractmethod
+    def to_query(self) -> Q:
+        """Return Q criteria for database queries."""
+        ...
+
+    @abstractmethod
+    def is_satisfied_by(self, entity) -> bool:
+        """Test whether an entity matches this rule in memory."""
+        ...
+
+    def __and__(self, other: "Specification") -> "Specification":
+        return _And(self, other)
+
+    def __or__(self, other: "Specification") -> "Specification":
+        return _Or(self, other)
+
+    def __invert__(self) -> "Specification":
+        return _Not(self)
+
+
+class _And(Specification):
+    def __init__(self, left, right):
+        self.left, self.right = left, right
+
+    def to_query(self) -> Q:
+        return self.left.to_query() & self.right.to_query()
+
+    def is_satisfied_by(self, entity) -> bool:
+        return self.left.is_satisfied_by(entity) and self.right.is_satisfied_by(entity)
+
+
+class _Or(Specification):
+    def __init__(self, left, right):
+        self.left, self.right = left, right
+
+    def to_query(self) -> Q:
+        return self.left.to_query() | self.right.to_query()
+
+    def is_satisfied_by(self, entity) -> bool:
+        return self.left.is_satisfied_by(entity) or self.right.is_satisfied_by(entity)
+
+
+class _Not(Specification):
+    def __init__(self, spec):
+        self.spec = spec
+
+    def to_query(self) -> Q:
+        return ~self.spec.to_query()
+
+    def is_satisfied_by(self, entity) -> bool:
+        return not self.spec.is_satisfied_by(entity)
+```
+
+With this base class in place, define concrete specifications for your
+domain:
+
+```python
+class OverdueOrders(Specification):
+    def __init__(self, grace_days: int = 0):
+        self.grace_period = timedelta(days=grace_days)
+
+    def to_query(self) -> Q:
+        deadline = datetime.now() - self.grace_period
+        return Q(status="pending", due_date__lt=deadline)
+
+    def is_satisfied_by(self, order) -> bool:
+        deadline = datetime.now() - self.grace_period
+        return order.status == "pending" and order.due_date < deadline
+
+
+class HighValueOrders(Specification):
+    def __init__(self, min_amount: Decimal = Decimal("1000")):
+        self.min_amount = min_amount
+
+    def to_query(self) -> Q:
+        return Q(total__gte=self.min_amount)
+
+    def is_satisfied_by(self, order) -> bool:
+        return order.total >= self.min_amount
+```
+
+Use `to_query()` with `find()` for database queries, and
+`is_satisfied_by()` for in-memory checks:
+
+```python
+# Database query
+critical = OverdueOrders(grace_days=3) & HighValueOrders(min_amount=5000)
+results = repo.find(critical.to_query())
+
+# In-memory check (no database hit)
+if OverdueOrders().is_satisfied_by(order):
+    send_reminder(order)
+```
+
+!!! tip
+    Start with plain Q-returning functions. Graduate to specification
+    classes only when you genuinely need `is_satisfied_by()` for in-memory
+    evaluation alongside database queries.
 
 ## Sorting results
 
