@@ -239,10 +239,8 @@ class MemoryProvider(BaseProvider):
             lookup = lookup_class(record_value[stripped_key], value)
 
             if record_value[stripped_key] is not None:
-                if negated:
-                    match &= not eval(lookup.as_expression())
-                else:
-                    match &= eval(lookup.as_expression())
+                result = lookup.evaluate()
+                match &= not result if negated else result
             else:
                 match = False
 
@@ -545,53 +543,27 @@ class DictDAO(BaseDAO):
         return True
 
 
-operators = {
-    "exact": "==",
-    "iexact": "==",
-    "contains": "in",
-    "icontains": "in",
-    "startswith": "startswith",
-    "endswith": "endswith",
-    "gt": ">",
-    "gte": ">= ",
-    "lt": "<",
-    "lte": "<=",
-    "in": "in",
-    "any": "any",
-}
-
-
 class MemoryLookup(BaseLookup):
-    """Base class with default implementation of expression construction"""
+    """Base class for Memory provider lookups.
 
-    def process_source(self):
-        """Return source with transformations, if any"""
-        if isinstance(self.source, (UUID, datetime, date)):
-            self.source = str(self.source)
+    Subclasses implement ``evaluate()`` which returns a boolean result
+    by comparing ``self.source`` (stored value) against ``self.target``
+    (filter value) directly — no string construction or eval().
+    """
 
-        if isinstance(self.source, str):
-            # Replace single and double quotes with escaped single-quote
-            self.source = self.source.replace("'", "'").replace('"', "'")
-            return '"{source}"'.format(source=self.source)
-        return self.source
+    def _coerce(self, value: Any) -> Any:
+        """Coerce UUID/datetime/date to str for comparison."""
+        if isinstance(value, (UUID, datetime, date)):
+            return str(value)
+        return value
 
-    def process_target(self):
-        """Return target with transformations, if any"""
-        if isinstance(self.target, (UUID, datetime, date)):
-            self.target = str(self.target)
+    def as_expression(self) -> str:
+        """Satisfy BaseLookup ABC — not used by Memory provider."""
+        return ""
 
-        if isinstance(self.target, str):
-            # Replace single and double quotes with escaped single-quote
-            self.target = self.target.replace("'", "'").replace('"', "'")
-            return '"{target}"'.format(target=self.target)
-        return self.target
-
-    def as_expression(self):
-        return "{source} {op} {target}".format(
-            source=self.process_source(),
-            op=operators[self.lookup_name],
-            target=self.process_target(),
-        )
+    def evaluate(self) -> bool:
+        """Evaluate the lookup comparison. Override in subclasses."""
+        raise NotImplementedError
 
 
 @MemoryProvider.register_lookup
@@ -600,62 +572,38 @@ class Exact(MemoryLookup):
 
     lookup_name = "exact"
 
+    def evaluate(self) -> bool:
+        return self._coerce(self.source) == self._coerce(self.target)
+
 
 @MemoryProvider.register_lookup
 class IExact(MemoryLookup):
-    """Exact Case-Insensitive Match Query"""
+    """Case-Insensitive Exact Match Query"""
 
     lookup_name = "iexact"
 
-    def process_source(self):
-        """Return source in lowercase"""
-        assert isinstance(self.source, str)
-        return "%s.lower()" % super().process_source()
-
-    def process_target(self):
-        """Return target in lowercase"""
-        assert isinstance(self.target, str)
-        return "%s.lower()" % super().process_target()
+    def evaluate(self) -> bool:
+        return str(self.source).lower() == str(self.target).lower()
 
 
 @MemoryProvider.register_lookup
 class Contains(MemoryLookup):
-    """Exact Contains Query"""
+    """Contains Query"""
 
     lookup_name = "contains"
 
-    def as_expression(self):
-        """Check for Target string to be in Source string"""
-        return "%s %s %s" % (
-            self.process_target(),
-            operators[self.lookup_name],
-            self.process_source(),
-        )
+    def evaluate(self) -> bool:
+        return self._coerce(self.target) in self._coerce(self.source)
 
 
 @MemoryProvider.register_lookup
 class IContains(MemoryLookup):
-    """Exact Case-Insensitive Contains Query"""
+    """Case-Insensitive Contains Query"""
 
     lookup_name = "icontains"
 
-    def process_source(self):
-        """Return source in lowercase"""
-        assert isinstance(self.source, str)
-        return "%s.lower()" % super().process_source()
-
-    def process_target(self):
-        """Return target in lowercase"""
-        assert isinstance(self.target, str)
-        return "%s.lower()" % super().process_target()
-
-    def as_expression(self):
-        """Check for Target string to be in Source string"""
-        return "%s %s %s" % (
-            self.process_target(),
-            operators[self.lookup_name],
-            self.process_source(),
-        )
+    def evaluate(self) -> bool:
+        return str(self.target).lower() in str(self.source).lower()
 
 
 @MemoryProvider.register_lookup
@@ -664,9 +612,8 @@ class Startswith(MemoryLookup):
 
     lookup_name = "startswith"
 
-    def as_expression(self):
-        """Check if source string starts with target string"""
-        return f"{self.process_source()}.startswith({self.process_target()})"
+    def evaluate(self) -> bool:
+        return str(self._coerce(self.source)).startswith(str(self._coerce(self.target)))
 
 
 @MemoryProvider.register_lookup
@@ -675,9 +622,8 @@ class Endswith(MemoryLookup):
 
     lookup_name = "endswith"
 
-    def as_expression(self):
-        """Check if source string ends with target string"""
-        return f"{self.process_source()}.endswith({self.process_target()})"
+    def evaluate(self) -> bool:
+        return str(self._coerce(self.source)).endswith(str(self._coerce(self.target)))
 
 
 @MemoryProvider.register_lookup
@@ -686,12 +632,18 @@ class GreaterThan(MemoryLookup):
 
     lookup_name = "gt"
 
+    def evaluate(self) -> bool:
+        return self._coerce(self.source) > self._coerce(self.target)
+
 
 @MemoryProvider.register_lookup
 class GreaterThanOrEqual(MemoryLookup):
     """Greater than or Equal Query"""
 
     lookup_name = "gte"
+
+    def evaluate(self) -> bool:
+        return self._coerce(self.source) >= self._coerce(self.target)
 
 
 @MemoryProvider.register_lookup
@@ -700,12 +652,18 @@ class LessThan(MemoryLookup):
 
     lookup_name = "lt"
 
+    def evaluate(self) -> bool:
+        return self._coerce(self.source) < self._coerce(self.target)
+
 
 @MemoryProvider.register_lookup
 class LessThanOrEqual(MemoryLookup):
     """Less than or Equal Query"""
 
     lookup_name = "lte"
+
+    def evaluate(self) -> bool:
+        return self._coerce(self.source) <= self._coerce(self.target)
 
 
 @MemoryProvider.register_lookup
@@ -714,10 +672,11 @@ class In(MemoryLookup):
 
     lookup_name = "in"
 
-    def process_target(self):
-        """Ensure target is a list or tuple"""
-        target = super().process_target()
-        return f"[{target}]" if not isinstance(target, list) else target
+    def evaluate(self) -> bool:
+        target = (
+            self.target if isinstance(self.target, (list, tuple)) else [self.target]
+        )
+        return self._coerce(self.source) in [self._coerce(t) for t in target]
 
 
 @MemoryProvider.register_lookup
@@ -726,18 +685,14 @@ class Any(MemoryLookup):
 
     lookup_name = "any"
 
-    def process_source(self):
-        """Ensure source is a list"""
-        source = super().process_source()
-        return f"[{source}]" if not isinstance(source, list) else source
-
-    def process_target(self):
-        """Ensure target is a list"""
-        target = super().process_target()
-        return f"[{target}]" if not isinstance(target, list) else target
-
-    def as_expression(self):
-        return f"any(x in {self.process_target()} for x in {self.process_source()})"
+    def evaluate(self) -> bool:
+        source = (
+            self.source if isinstance(self.source, (list, tuple)) else [self.source]
+        )
+        target = (
+            self.target if isinstance(self.target, (list, tuple)) else [self.target]
+        )
+        return any(self._coerce(x) in [self._coerce(t) for t in target] for x in source)
 
 
 def register() -> None:

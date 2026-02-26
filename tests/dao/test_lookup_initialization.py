@@ -59,21 +59,21 @@ class TestMemoryLookupInitialization:
         """Memory lookups work without database_model_cls."""
         from protean.adapters.repository.memory import Exact
 
-        lookup = Exact("name", "John")
-        assert lookup.source == "name"
+        lookup = Exact("John", "John")
+        assert lookup.source == "John"
         assert lookup.target == "John"
         assert lookup.database_model_cls is None
-        assert lookup.as_expression() == '"name" == "John"'
+        assert lookup.evaluate() is True
 
     def test_memory_lookup_with_database_model_cls(self):
         """Memory lookups accept database_model_cls (and ignore it)."""
         from protean.adapters.repository.memory import Exact
 
         sentinel = object()
-        lookup = Exact("name", "John", database_model_cls=sentinel)
+        lookup = Exact("John", "John", database_model_cls=sentinel)
         assert lookup.database_model_cls is sentinel
-        # Expression works the same regardless of database_model_cls
-        assert lookup.as_expression() == '"name" == "John"'
+        # evaluate() works the same regardless of database_model_cls
+        assert lookup.evaluate() is True
 
     def test_memory_lookup_database_model_cls_keyword_only(self):
         """Memory lookups reject database_model_cls as positional arg."""

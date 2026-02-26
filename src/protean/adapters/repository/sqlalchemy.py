@@ -184,8 +184,8 @@ _PYTHON_TYPE_TO_SA: dict[type, type] = {
     str: sa_types.String,
     _datetime: sa_types.DateTime,
     _date: sa_types.Date,
-    dict: sa_types.PickleType,
-    list: sa_types.PickleType,
+    dict: sa_types.JSON,
+    list: sa_types.JSON,
 }
 
 

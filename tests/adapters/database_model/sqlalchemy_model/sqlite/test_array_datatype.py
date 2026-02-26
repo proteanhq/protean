@@ -33,7 +33,7 @@ def test_array_data_type_association(test_domain):
     test_domain.register(ArrayUser)
 
     database_model_cls = test_domain.repository_for(ArrayUser)._database_model
-    type(database_model_cls.roles.property.columns[0].type) is sa_types.ARRAY
+    assert isinstance(database_model_cls.roles.property.columns[0].type, sa_types.JSON)
 
 
 @pytest.mark.sqlite
