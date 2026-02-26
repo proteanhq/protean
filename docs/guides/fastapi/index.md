@@ -176,6 +176,119 @@ async def place_order(payload: dict):
     return {"status": "accepted"}
 ```
 
+## Startup and shutdown lifecycle
+
+FastAPI's [lifespan events](https://fastapi.tiangolo.com/advanced/events/)
+let you run setup and teardown logic that wraps the entire application
+lifetime. This is the recommended place to initialize domains, set up
+database schemas, and clean up on shutdown.
+
+### Using the lifespan context manager
+
+```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from protean.integrations.fastapi import (
+    DomainContextMiddleware,
+    register_exception_handlers,
+)
+
+from my_app.domain import domain
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: initialize domain and prepare infrastructure
+    domain.init()
+    with domain.domain_context():
+        domain.setup_database()
+
+    yield
+
+    # Shutdown: release resources
+    with domain.domain_context():
+        # Any cleanup logic here
+        pass
+
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    DomainContextMiddleware,
+    route_domain_map={"/": domain},
+)
+register_exception_handlers(app)
+```
+
+### What belongs in startup vs. middleware
+
+| Concern | Where | Why |
+|---------|-------|-----|
+| `domain.init()` | Startup (lifespan) | Traverses elements, resolves references, connects adapters -- once per process |
+| `domain.setup_database()` | Startup (lifespan) | Creates tables and outbox -- once per deployment |
+| Domain context push/pop | Middleware | Each request needs its own context for thread-local state |
+| Exception mapping | App setup | Registered once at import time |
+
+### Multi-domain startup
+
+When your application serves multiple bounded contexts, initialize each
+domain in the lifespan:
+
+```python
+from my_app.identity import identity_domain
+from my_app.catalogue import catalogue_domain
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize all domains
+    for d in [identity_domain, catalogue_domain]:
+        d.init()
+        with d.domain_context():
+            d.setup_database()
+
+    yield
+
+    # Shutdown
+    for d in [identity_domain, catalogue_domain]:
+        with d.domain_context():
+            pass  # Cleanup if needed
+
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    DomainContextMiddleware,
+    route_domain_map={
+        "/customers": identity_domain,
+        "/products": catalogue_domain,
+    },
+)
+```
+
+### Simple single-domain apps
+
+For simple applications where startup overhead isn't a concern, calling
+`domain.init()` at module level remains a valid approach:
+
+```python
+from my_app.domain import domain
+
+domain.init()  # Called once at import time
+
+app = FastAPI()
+app.add_middleware(
+    DomainContextMiddleware,
+    route_domain_map={"/": domain},
+)
+```
+
+This works well for small applications. Use the lifespan approach when you
+need database setup, graceful shutdown, or multiple domains.
+
+---
+
 ## Next steps
 
 - [Endpoint Tests](./testing-endpoints.md) -- Test your FastAPI endpoints

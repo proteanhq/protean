@@ -194,6 +194,7 @@ nav:
       - guides/pathways/ddd.md
       - guides/pathways/cqrs.md
       - guides/pathways/event-sourcing.md
+      - guides/pathways/migrating-between-architectures.md
     - Set Up the Domain:
       - guides/compose-a-domain/index.md
       - guides/compose-a-domain/register-elements.md
@@ -245,6 +246,10 @@ nav:
       - guides/server/logging.md
       - guides/server/monitoring.md
       - guides/server/using-priority-lanes.md
+    - Multi-Domain Applications:
+      - guides/multi-domain-applications.md
+    - Troubleshooting:
+      - guides/troubleshooting.md
     - Test Your Application:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md
