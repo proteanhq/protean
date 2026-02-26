@@ -37,7 +37,9 @@ need by what you're trying to accomplish.
 | Change aggregate state safely                   | [Aggregate Mutation](./guides/domain-behavior/aggregate-mutation.md) |
 | Raise domain events from an aggregate           | [Raising Events](./guides/domain-behavior/raising-events.md) |
 | Trace the full causal chain of commands and events | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
+| Inject tenant, user, or request context into every event and command | [Message Enrichment](./patterns/message-enrichment.md) |
 | Coordinate logic across multiple aggregates     | [Domain Services](./guides/domain-behavior/domain-services.md) |
+| Model an aggregate's lifecycle as a state machine | [Aggregate State Machines](./patterns/aggregate-state-machines.md) |
 
 ## Handle Requests and Change State
 
@@ -46,15 +48,18 @@ need by what you're trying to accomplish.
 | Handle a user request synchronously             | [Application Services](./guides/change-state/application-services.md) | DDD |
 | Define a command representing user intent       | [Commands](./guides/change-state/commands.md) | CQRS, ES |
 | Process a command and update an aggregate       | [Command Handlers](./guides/change-state/command-handlers.md) | CQRS, ES |
+| Choose between an application service and a command handler | [Application Service vs Command Handler](./patterns/application-service-vs-command-handler.md) | All |
 | Save an aggregate to the database               | [Persist Aggregates](./guides/change-state/persist-aggregates.md) | All |
 | Load an aggregate by ID or query                | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Load an aggregate at a specific version or time | [Temporal Queries](./guides/change-state/temporal-queries.md) | ES |
+| Expose historical state for audit or compliance | [Temporal Queries Pattern](./patterns/temporal-queries.md) | ES |
 | Define a custom repository with domain queries  | [Repositories](./guides/change-state/repositories.md) | All |
 | Query aggregates with complex filters            | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Paginate query results                           | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Use Q objects for AND/OR/NOT queries             | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Perform bulk updates or deletes                  | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Manage transactions                             | [Unit of Work](./guides/change-state/unit-of-work.md) | All |
+| Handle version conflicts (optimistic concurrency) | [Optimistic Concurrency as a Design Tool](./patterns/optimistic-concurrency-as-design-tool.md) | All |
 
 ## React to State Changes
 
@@ -63,12 +68,17 @@ need by what you're trying to accomplish.
 | Run side effects when an event fires            | [Event Handlers](./guides/consume-state/event-handlers.md) |
 | Coordinate a multi-step process across aggregates | [Process Managers](./guides/consume-state/process-managers.md) |
 | Correlate events to a running process           | [Process Managers](./guides/consume-state/process-managers.md) |
+| Design a PM for production (idempotency, compensation, timeouts) | [PM Lifecycle Design](./patterns/process-manager-lifecycle.md) |
 | Build a read-optimized view from events         | [Projections](./guides/consume-state/projections.md) |
+| Decide how many projections to create and what each should contain | [Projection Granularity](./patterns/projection-granularity.md) |
+| Handle the delay between writing and reading in CQRS | [Eventual Consistency in UIs](./patterns/eventual-consistency-in-uis.md) |
 | Define an event handler that maintains a projection | [Projectors](./guides/consume-state/projectors.md) |
 | Process a query and return results              | [Query Handlers](./guides/consume-state/query-handlers.md) |
 | Dispatch a named read intent                    | [Query Handlers](./guides/consume-state/query-handlers.md) |
+| Treat projection rebuilds as a deployment operation | [Projection Rebuilds as Deployment](./patterns/projection-rebuilds-as-deployment.md) |
 | Rebuild a projection from historical events     | [`protean projection rebuild`](./reference/cli/data/projection.md) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
+| Use fact events for cross-context integration   | [Fact Events as Integration Contracts](./patterns/fact-events-as-integration-contracts.md) |
 | Follow the causal chain of a business operation | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
 | Traverse causation chains programmatically      | [Message Tracing](./guides/domain-behavior/message-tracing.md#traversing-the-causation-chain-programmatically) |
 
@@ -117,6 +127,7 @@ need by what you're trying to accomplish.
 | Use priority lanes for event processing         | [Priority Lanes](./concepts/async-processing/priority-lanes.md) |
 | Use priority lanes for background workloads      | [Using Priority Lanes](./guides/server/using-priority-lanes.md) |
 | Run a bulk migration with priority lanes        | [Running Data Migrations with Priority Lanes](./patterns/running-data-migrations-with-priority-lanes.md) |
+| Classify and handle errors in async handlers    | [Classify Async Processing Errors](./patterns/classify-async-processing-errors.md) |
 
 ## Use the CLI
 
@@ -168,6 +179,7 @@ need by what you're trying to accomplish.
 | Test with real databases and brokers             | [Integration Tests](./guides/testing/integration-tests.md) |
 | Set up test fixtures and patterns               | [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md) |
 | Set up databases for integration tests          | [Database Setup/Teardown](./patterns/setting-up-and-tearing-down-database-for-tests.md) |
+| Test a full event-driven flow end-to-end        | [Test Event-Driven Flows](./patterns/testing-event-driven-flows.md) |
 
 ## Use Specific Technologies
 

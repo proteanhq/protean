@@ -384,30 +384,42 @@ nav:
     - Aggregate Design:
       - patterns/design-small-aggregates.md
       - patterns/one-aggregate-per-transaction.md
+      - patterns/optimistic-concurrency-as-design-tool.md
       - patterns/encapsulate-state-changes.md
       - patterns/replace-primitives-with-value-objects.md
       - patterns/factory-methods-for-aggregate-creation.md
+      - patterns/aggregate-state-machines.md
     - Event-Driven Patterns:
       - patterns/design-events-for-consumers.md
       - patterns/idempotent-event-handlers.md
       - patterns/event-versioning-and-evolution.md
       - patterns/command-idempotency.md
       - patterns/coordinating-long-running-processes.md
+      - patterns/process-manager-lifecycle.md
       - patterns/message-tracing.md
+      - patterns/message-enrichment.md
     - Architecture & Quality:
       - patterns/organize-by-domain-concept.md
       - patterns/validation-layering.md
       - patterns/thin-handlers-rich-domain.md
+      - patterns/application-service-vs-command-handler.md
+      - patterns/projection-granularity.md
+      - patterns/projection-rebuilds-as-deployment.md
+      - patterns/eventual-consistency-in-uis.md
       - patterns/testing-domain-logic-in-isolation.md
       - patterns/dual-mode-testing.md
+      - patterns/testing-event-driven-flows.md
       - patterns/setting-up-and-tearing-down-database-for-tests.md
     - Identity & Communication:
       - patterns/creating-identities-early.md
       - patterns/connect-concepts-across-domains.md
       - patterns/consuming-events-from-other-domains.md
       - patterns/sharing-event-classes-across-domains.md
+      - patterns/fact-events-as-integration-contracts.md
     - Operations:
       - patterns/running-data-migrations-with-priority-lanes.md
+      - patterns/classify-async-processing-errors.md
+      - patterns/temporal-queries.md
 
   - API:
     - api/index.md

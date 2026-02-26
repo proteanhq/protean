@@ -287,9 +287,11 @@ Protean supports but does not enforce.
 
 - [Design Small Aggregates](./patterns/design-small-aggregates.md) -- Draw boundaries around consistency requirements, not data relationships.
 - [One Aggregate Per Transaction](./patterns/one-aggregate-per-transaction.md) -- Modify one aggregate per handler; use events for cross-aggregate side effects.
+- [Optimistic Concurrency as a Design Tool](./patterns/optimistic-concurrency-as-design-tool.md) -- Classify version conflicts by business meaning: last-writer-wins, business rejection, or conditional merge.
 - [Encapsulate State Changes](./patterns/encapsulate-state-changes.md) -- Express every state change as a named method capturing business intent.
 - [Replace Primitives with Value Objects](./patterns/replace-primitives-with-value-objects.md) -- Extract strings and numbers into value objects with format rules and operations.
 - [Factory Methods for Aggregate Creation](./patterns/factory-methods-for-aggregate-creation.md) -- Encapsulate complex construction in factory classmethods on the aggregate or standalone factory classes.
+- [Model Aggregate Lifecycle as a State Machine](./patterns/aggregate-state-machines.md) -- Define explicit lifecycle states and guarded transition methods to enforce valid state changes.
 
 ### Event-Driven Patterns
 
@@ -298,13 +300,19 @@ Protean supports but does not enforce.
 - [Event Versioning and Evolution](./patterns/event-versioning-and-evolution.md) -- Evolve event schemas without breaking consumers or the event store.
 - [Command Idempotency](./patterns/command-idempotency.md) -- Ensure processing the same command twice produces the same effect.
 - [Coordinating Long-Running Processes](./patterns/coordinating-long-running-processes.md) -- Use a process manager to coordinate multi-step workflows across aggregates.
+- [Process Manager Lifecycle and Failure Design](./patterns/process-manager-lifecycle.md) -- Design production-resilient PMs with idempotent handlers, compensation, and timeout strategies.
 - [Message Tracing in Event-Driven Systems](./patterns/message-tracing.md) -- Correlation and causation IDs for end-to-end traceability across commands and events.
+- [Enrich Messages with Cross-Cutting Metadata](./patterns/message-enrichment.md) -- Inject tenant IDs, user context, and request trace IDs into events and commands via enrichment hooks, keeping the domain model clean.
 
 ### Architecture & Quality
 
 - [Organize by Domain Concept](./patterns/organize-by-domain-concept.md) -- The folder tree owns domain concepts; the framework carries layer metadata. Organize by aggregate, colocate capabilities, separate projections.
 - [Validation Layering](./patterns/validation-layering.md) -- Different validation belongs at different layers: fields, value objects, invariants, handlers.
 - [Thin Handlers, Rich Domain](./patterns/thin-handlers-rich-domain.md) -- Handlers orchestrate; aggregates and domain services contain all logic.
+- [Choose Between Application Services and Command Handlers](./patterns/application-service-vs-command-handler.md) -- Decision tree for choosing synchronous application services vs async command handlers.
+- [Design Projection Granularity Around Consumer Needs](./patterns/projection-granularity.md) -- Shape projections around UI views and API resources, not domain entities or endpoints.
+- [Treat Projection Rebuilds as a Deployment Strategy](./patterns/projection-rebuilds-as-deployment.md) -- Rebuild projections from the event store instead of migrating database schemas.
+- [Bridge the Eventual Consistency Gap in User Interfaces](./patterns/eventual-consistency-in-uis.md) -- Three strategies (optimistic UI, write-side result, version polling) to handle the CQRS read/write delay.
 - [Testing Domain Logic in Isolation](./patterns/testing-domain-logic-in-isolation.md) -- Test aggregates and value objects directly, without infrastructure.
 
 ### Identity & Communication
@@ -313,10 +321,18 @@ Protean supports but does not enforce.
 - [Connecting Concepts Across Bounded Contexts](./patterns/connect-concepts-across-domains.md) -- Synchronize the same real-world concept across multiple contexts.
 - [Consuming Events from Other Domains](./patterns/consuming-events-from-other-domains.md) -- Subscribers as anti-corruption layers for external events.
 - [Sharing Event Classes Across Domains](./patterns/sharing-event-classes-across-domains.md) -- Share schemas, not code; use contract tests for compatibility.
+- [Use Fact Events as Cross-Context Integration Contracts](./patterns/fact-events-as-integration-contracts.md) -- Publish full aggregate snapshots for external consumers instead of forcing them to reconstruct state from granular deltas.
 
 ### Testing & Infrastructure
 
+- [Test Event-Driven Flows End-to-End](./patterns/testing-event-driven-flows.md) -- Three testing levels for event chains: domain unit tests, sync flow tests, and async E2E tests with the Engine in test mode.
 - [Setting Up and Tearing Down Databases for Tests](./patterns/setting-up-and-tearing-down-database-for-tests.md) -- Manage database schema and test data lifecycles separately for fast, isolated integration tests.
+
+### Operations
+
+- [Running Data Migrations with Priority Lanes](./patterns/running-data-migrations-with-priority-lanes.md) -- Route migration events to a separate backfill lane so they do not block production event processing.
+- [Classify and Handle Async Processing Errors](./patterns/classify-async-processing-errors.md) -- Override `handle_error()` to classify failures as transient, data, or logic errors and route each to the right recovery path.
+- [Temporal Queries for Audit, Debugging, and Compliance](./patterns/temporal-queries.md) -- Use `at_version` and `as_of` on event-sourced repositories for compliance audits, incident investigation, and customer support.
 
 ---
 

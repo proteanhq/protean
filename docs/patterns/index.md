@@ -39,6 +39,16 @@ If you are new to these patterns, these sequences build on each other:
     [Consuming Events from Other Domains](consuming-events-from-other-domains.md) →
     [Sharing Event Classes Across Domains](sharing-event-classes-across-domains.md)
 
+**Read models** -- designing, deploying, and evolving projections:
+:   [Design Projection Granularity](projection-granularity.md) →
+    [Projection Rebuilds as Deployment](projection-rebuilds-as-deployment.md) →
+    [Bridge Eventual Consistency](eventual-consistency-in-uis.md)
+
+**Production resilience** -- errors, concurrency, and operational concerns:
+:   [Classify Async Processing Errors](classify-async-processing-errors.md) →
+    [Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-tool.md) →
+    [Aggregate State Machines](aggregate-state-machines.md)
+
 ---
 
 ## Aggregate Design
@@ -52,6 +62,12 @@ If you are new to these patterns, these sequences build on each other:
   Modify exactly one aggregate per command handler or application service method.
   Cross-aggregate side effects flow through domain events, each processed in
   its own transaction.
+
+- **[Optimistic Concurrency as a Design Tool](optimistic-concurrency-as-design-tool.md)**
+  -- Classify version conflicts by business meaning instead of treating them as
+  generic errors. Last-writer-wins for harmless races, domain-specific
+  exceptions for real contention, and conditional retries for mergeable
+  operations.
 
 - **[Encapsulate State Changes in Named Methods](encapsulate-state-changes.md)**
   -- Express every state change as a named method on the aggregate that captures
@@ -68,6 +84,11 @@ If you are new to these patterns, these sequences build on each other:
   classmethods on the aggregate itself. When construction needs repository
   access or external data translation, extract to a standalone factory class.
   Keeps handlers thin and construction knowledge centralized.
+
+- **[Model Aggregate Lifecycle as a State Machine](aggregate-state-machines.md)**
+  -- Define an explicit enum of lifecycle states and use guarded transition
+  methods to enforce valid state changes. Makes invalid transitions
+  impossible and the aggregate's lifecycle visible in one place.
 
 ## Event-Driven Patterns
 
@@ -96,10 +117,22 @@ If you are new to these patterns, these sequences build on each other:
   multiple aggregates. Declarative correlation, lifecycle management, and
   compensation handling replace ad-hoc event handler chains.
 
+- **[Process Manager Lifecycle and Failure Design](process-manager-lifecycle.md)**
+  -- Design process managers that survive production conditions: idempotent
+  handlers via status guards, explicit compensation for every forward step,
+  out-of-order event handling, external timeout strategies, and minimal
+  state fields.
+
 - **[Message Tracing in Event-Driven Systems](message-tracing.md)** -- Thread
   `correlation_id` and `causation_id` through every command and event in a
   causal chain. Enables end-to-end debugging, auditing, and cross-service
   traceability.
+
+- **[Enrich Messages with Cross-Cutting Metadata](message-enrichment.md)** --
+  Inject tenant IDs, user context, request trace IDs, and feature flags into
+  every event and command via enrichment hooks. Keeps the domain model clean
+  while ensuring all messages carry operational context in
+  `metadata.extensions`.
 
 ## Architecture & Quality
 
@@ -119,6 +152,28 @@ If you are new to these patterns, these sequences build on each other:
   business logic. Prevents the anemic domain model anti-pattern and makes
   domain logic directly testable.
 
+- **[Choose Between Application Services and Command Handlers](application-service-vs-command-handler.md)**
+  -- Application services for synchronous, API-facing operations that return
+  results. Command handlers for async, event-driven processing via
+  `domain.process()`. Never both for the same aggregate operation.
+
+- **[Design Projection Granularity Around Consumer Needs](projection-granularity.md)**
+  -- Shape each projection around a UI view or API resource, not around domain
+  entities or API endpoints. Use cross-aggregate projectors, cache-backed
+  projections for volatile data, and shared projections with optional fields
+  to avoid both the mirror-the-aggregate and per-endpoint anti-patterns.
+
+- **[Treat Projection Rebuilds as a Deployment Strategy](projection-rebuilds-as-deployment.md)**
+  -- Rebuild projections from the event store instead of migrating database
+  schemas. Covers simple rebuilds, blue-green deployment with `schema_name`,
+  monitoring progress with `RebuildResult`, and using priority lanes for
+  background rebuilds.
+
+- **[Bridge the Eventual Consistency Gap in User Interfaces](eventual-consistency-in-uis.md)**
+  -- Three strategies for handling the delay between CQRS writes and reads:
+  optimistic UI for immediate local display, returning write-side results for
+  post-write detail pages, and version polling for critical confirmations.
+
 - **[Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md)**
   -- Test aggregates, value objects, and domain services directly, without
   handlers, repositories, or infrastructure. Domain unit tests should be the
@@ -128,6 +183,11 @@ If you are new to these patterns, these sequences build on each other:
   against in-memory adapters for fast feedback and real infrastructure for
   final validation. Switch modes with a single configuration flag, zero code
   changes.
+
+- **[Test Event-Driven Flows End-to-End](testing-event-driven-flows.md)** --
+  Three testing levels for event chains: domain unit tests for business logic,
+  sync flow tests for wiring verification, and async E2E tests with the Engine
+  in test mode for subscription and priority lane validation.
 
 - **[Setting Up and Tearing Down Databases](setting-up-and-tearing-down-database-for-tests.md)**
   -- Separate the schema lifecycle (create once, drop once) from the data
@@ -158,12 +218,28 @@ If you are new to these patterns, these sequences build on each other:
   defines its own event classes that conform to the agreed-upon schema. Use
   contract tests to verify compatibility without code dependencies.
 
+- **[Use Fact Events as Cross-Context Integration Contracts](fact-events-as-integration-contracts.md)**
+  -- Enable `fact_events=True` on aggregates consumed by other bounded contexts.
+  External consumers receive complete state snapshots instead of reconstructing
+  state from granular deltas. Reserve delta events for internal reactions where
+  semantic meaning is essential.
+
 ## Operations
 
 - **[Running Data Migrations with Priority Lanes](running-data-migrations-with-priority-lanes.md)**
   -- Route migration events to a separate backfill lane so they do not block
   production event processing. Covers the migration script pattern, monitoring,
   and anti-patterns for data backfills.
+
+- **[Classify and Handle Async Processing Errors](classify-async-processing-errors.md)**
+  -- Override `handle_error()` in every production handler. Classify failures as
+  transient (let outbox retry), data errors (route to DLQ), or logic errors
+  (alert immediately). Prevent silent read-model drift.
+
+- **[Temporal Queries for Audit, Debugging, and Compliance](temporal-queries.md)**
+  -- Use `at_version` and `as_of` on event-sourced repositories as first-class
+  operations for compliance audits, incident investigation, and customer support.
+  Returned aggregates are read-only, safe to expose through API endpoints.
 
 ---
 
