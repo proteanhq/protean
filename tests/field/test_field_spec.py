@@ -263,11 +263,11 @@ class TestResolveFieldspecs:
         ns = {"name": spec, "__annotations__": {"name": spec}}
         cls = type("TestCls", (), ns)
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
+        with pytest.warns(
+            UserWarning,
+            match=r"Field 'name' declared in both assignment and annotation",
+        ):
             resolve_fieldspecs(cls)
-            assert len(w) == 1
-            assert "assignment and annotation" in str(w[0].message)
 
 
 # ---------------------------------------------------------------------------
@@ -296,11 +296,17 @@ class TestSanitizeString:
 # ---------------------------------------------------------------------------
 class TestFieldSpecWarning:
     def test_required_with_default_warns(self):
+        with pytest.warns(
+            UserWarning,
+            match=r"required=True.*default.*effectively not required",
+        ):
+            FieldSpec(str, required=True, default="hello")
+
+    def test_required_without_default_no_warning(self):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            FieldSpec(str, required=True, default="hello")
-            assert len(w) == 1
-            assert "required=True" in str(w[0].message)
+            FieldSpec(str, required=True)
+            assert len(w) == 0
 
 
 # ---------------------------------------------------------------------------

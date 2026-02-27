@@ -634,7 +634,9 @@ class TestDAORetrievalFunctionality:
 
         assert people_contains.total == 2
 
-    @pytest.mark.xfail
+    @pytest.mark.xfail(
+        reason="ES adapter does not raise NotImplementedError for unsupported lookup operators"
+    )
     def test_exception_on_usage_of_unsupported_comparison_operator(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
@@ -802,7 +804,9 @@ class TestDAOUpdateFunctionality:
         assert u_person3.last_name == "Fraud"
         assert u_person4.last_name == "Fraud"
 
-    @pytest.mark.xfail
+    @pytest.mark.xfail(
+        reason="ES update_by_query may fail due to near-real-time indexing delays"
+    )
     def test_updating_multiple_records_through_filter_with_arg_value(self, test_domain):
         """Try updating all records satisfying filter in one step, passing a dict"""
         identifier1 = uuid4()
@@ -841,7 +845,9 @@ class TestDAOUpdateFunctionality:
         assert u_person3.last_name == "Fraud"
         assert u_person4.last_name == "Fraud"
 
-    @pytest.mark.xfail
+    @pytest.mark.xfail(
+        reason="ES update_by_query may fail due to near-real-time indexing delays"
+    )
     def test_updating_multiple_records_through_filter_with_kwarg_value(
         self, test_domain
     ):
@@ -893,7 +899,9 @@ class TestDAOValidations:
         test_domain.register(User)
         test_domain.init(traverse=False)
 
-    @pytest.mark.xfail
+    @pytest.mark.xfail(
+        reason="ES near-real-time refresh causes unique constraint checks to miss recent writes"
+    )
     def test_unique(self, test_domain):
         """Test the unique constraints for the entity"""
         test_domain.repository_for(User)._dao.create(

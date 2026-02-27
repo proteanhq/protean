@@ -171,7 +171,6 @@ def test_aggregate_tracks_event_version_after_an_update_with_multiple_events(
     assert refreshed_user._event_position == 2
 
 
-@pytest.mark.xfail
 def test_aggregate_tracks_event_version_after_multiple_updates_with_multiple_events(
     user, test_domain
 ):
@@ -204,7 +203,5 @@ def test_aggregate_tracks_event_version_after_multiple_updates_with_multiple_eve
 
     refreshed_user = test_domain.repository_for(User).get(user.id)
 
-    # FIXME This is a bug. Version and event position should be 3
-    #   The problem is that the aggregate root is not aware of changes within its child entities
     assert refreshed_user._version == 3
     assert refreshed_user._event_position == 3
