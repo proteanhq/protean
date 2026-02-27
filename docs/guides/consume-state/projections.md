@@ -19,6 +19,38 @@ Projections are defined with the `Domain.projection` decorator.
 --8<-- "guides/consume-state/002.py:65:75"
 ```
 
+### Configuration Options
+
+Projections accept several decorator options that control storage, querying,
+and schema behavior:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `provider` | `"default"` | Database provider name |
+| `cache` | `None` | Cache provider — takes precedence over `provider` when set |
+| `schema_name` | `snake_case(cls)` | Table or collection name in the backing store |
+| `order_by` | `()` | Default field ordering for queries (e.g. `("-placed_at",)`) |
+| `limit` | `100` | Default maximum number of results returned by queries |
+| `abstract` | `False` | When `True`, the projection cannot be instantiated — use as a base class |
+| `database_model` | `None` | Custom database model class for advanced schema control |
+
+!!! warning "Default `limit=100` caps query results"
+    All projection queries are capped at `limit` results by default. If your
+    projection has more than 100 records and you query without an explicit
+    `.limit()`, only the first 100 are returned. Override this on the decorator
+    or use `.limit(n)` in queries:
+
+    ```python
+    # Override the default limit on the projection
+    @domain.projection(limit=500)
+    class LargeReport:
+        ...
+
+    # Or override per-query
+    view = domain.view_for(LargeReport)
+    results = view.query.limit(1000).all()
+    ```
+
 ### Storage Options
 
 Projections can be stored in either a database or a cache, but not both
@@ -92,6 +124,23 @@ item = view.find_by(product_id="abc-123")
 total = view.count()
 found = view.exists("abc-123")
 ```
+
+### ReadView API
+
+The `ReadView` returned by `domain.view_for()` exposes these methods:
+
+| Method | Signature | Returns | Description |
+|--------|-----------|---------|-------------|
+| `get` | `get(identifier)` | Projection instance | Look up a single record by its identifier. Raises `ObjectNotFoundError` if not found. |
+| `find_by` | `find_by(**kwargs)` | Projection instance | Look up a single record matching the given field criteria. |
+| `count` | `count()` | `int` | Return the total number of projection records. Accepts no arguments. |
+| `exists` | `exists(identifier)` | `bool` | Check whether a record with the given identifier exists. |
+| `query` | *(property)* | `ReadOnlyQuerySet` | Fluent query builder — supports `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`, and `all()`. |
+
+!!! note "`count()` accepts no arguments"
+    `view.count()` returns the total count of all records. To count records
+    matching specific criteria, use the query builder:
+    `view.query.filter(status="active").all().total`.
 
 The `query` property returns a `ReadOnlyQuerySet` that supports all read
 operations — `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`,
@@ -175,3 +224,8 @@ the cache client.
 
     - [Projectors](./projectors.md) — How to define and configure projectors that maintain projections.
     - [Query Handlers](./query-handlers.md) — How to dispatch structured read intents via `domain.dispatch()`.
+
+    **Patterns:**
+
+    - [Projection Granularity](../../patterns/projection-granularity.md) — How many projections to create and what each should contain.
+    - [Projection Rebuilds as Deployment](../../patterns/projection-rebuilds-as-deployment.md) — Treating projection rebuilds as standard deployment operations.

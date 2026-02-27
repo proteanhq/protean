@@ -13,31 +13,56 @@ Event handlers consume events raised in an aggregate and help sync the state of
 the aggregate with other aggregates and other systems. They are the preferred
 mechanism to update multiple aggregates.
 
+## Choosing the Right Consumer
+
+Protean provides four elements that consume events or messages. Each serves
+a distinct purpose:
+
+| Element | Consumes | Source | Association | Dispatch | Use case |
+|---------|----------|--------|-------------|----------|----------|
+| **Event Handler** | Domain events | Internal event store | `part_of` (aggregate) | `@handle(EventClass)` | Side effects, cross-aggregate sync |
+| **Projector** | Domain events | Internal event store | `projector_for` (projection) | `@on(EventClass)` | Maintain read models (projections) |
+| **Subscriber** | Raw `dict` payloads | External message broker | `stream` (broker stream) | `__call__(payload)` | Anti-corruption layer for external systems |
+| **Query Handler** | Queries | Synchronous dispatch | `part_of` (projection) | `@read(QueryClass)` | Structured read-side access |
+
+Use **event handlers** when you need to react to internal domain events with
+side effects (syncing aggregates, sending notifications, triggering processes).
+Use **projectors** when the reaction is specifically maintaining a read model.
+Use **subscribers** when messages come from outside your bounded context. Use
+**query handlers** when you need structured, validated read access to
+projections.
+
 ## Defining an Event Handler
 
 Event Handlers are defined with the `Domain.event_handler` decorator. Below is
-a simplified example of an Event Handler connected to `Inventory` aggregate
-syncing stock levels corresponding to changes in the `Order` aggregate.
+a simplified example of an Event Handler that syncs stock levels in
+`Inventory` in response to changes in the `Order` aggregate.
 
-```python hl_lines="26-27 44"
+```python hl_lines="26-27 49"
 --8<-- "guides/consume-state/001.py:full"
 ```
 
 1. `Order` aggregate fires `OrderShipped` event on book being shipped.
 
-2. Event handler picks up the event and updates stock levels in `Inventory`
-aggregate.
+2. Event handler is registered with `part_of=Order` so it subscribes to the
+Order aggregate's event stream. In production with async processing, you would
+typically use `part_of=Inventory, stream_category="order"` to keep the handler
+associated with its owning aggregate while listening to another aggregate's
+stream.
 
-Simulating a hypothetical example, we can see that the stock levels were
-decreased in response to the `OrderShipped` event.
+3. Event handler calls `reduce_stock()` on the `Inventory` aggregate —
+delegating to a domain method rather than mutating state directly.
+
+Simulating the example, we can see that the stock levels were decreased in
+response to the `OrderShipped` event.
 
 ```shell hl_lines="21"
-In [1]: order = Order(book_id=1, quantity=10, total_amount=100)
+In [1]: order = Order(book_id="book-1", quantity=10, total_amount=100)
 
 In [2]: domain.repository_for(Order).add(order)
 Out[2]: <Order: Order object (id: 62f8fa8d-2963-4539-bd21-860d3bab639e)>
 
-In [3]: inventory = Inventory(book_id=1, in_stock=100)
+In [3]: inventory = Inventory(book_id="book-1", in_stock=100)
 
 In [4]: domain.repository_for(Inventory).add(inventory)
 Out[4]: <Inventory: Inventory object (id: 9272d70f-b796-417d-8f30-e01302d9f1a9)>
@@ -51,7 +76,7 @@ In [7]: stock = domain.repository_for(Inventory).get(inventory.id)
 
 In [8]: stock.to_dict()
 Out[8]: {
- 'book_id': '1',
+ 'book_id': 'book-1',
  'in_stock': 90,
  'id': '9272d70f-b796-417d-8f30-e01302d9f1a9'
  }
@@ -90,6 +115,48 @@ Out[8]: {
     9. **Event Handler Performs Side Effects**: The event handler may perform additional side effects (sending emails, updating other systems, etc.).
     10. **Event Handler Persists Data and Optionally Raises Events**: The event handler persists the mutated aggregate, which can also raise events.
 
+## The `@handle` Decorator
+
+The `@handle` decorator binds a handler method to a specific event type.
+Import it from `protean`:
+
+```python
+from protean import handle
+```
+
+Each `@handle`-decorated method receives exactly one event class as its
+argument. When that event type arrives, the framework invokes the
+corresponding method with the deserialized event object.
+
+A single event handler class can contain multiple `@handle` methods, each
+processing a different event type:
+
+```python
+@domain.event_handler(part_of=Inventory, stream_category="order")
+class ManageInventory:
+    @handle(OrderShipped)
+    def reduce_stock(self, event: OrderShipped):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.find_by(book_id=event.book_id)
+        inventory.reduce_stock(event.quantity)
+        repo.add(inventory)
+
+    @handle(OrderCancelled)
+    def restore_stock(self, event: OrderCancelled):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.find_by(book_id=event.book_id)
+        inventory.increase_stock(event.quantity)
+        repo.add(inventory)
+```
+
+Each `@handle` method runs within its own Unit of Work. If the handler
+modifies an aggregate and persists it, the changes are committed atomically.
+If an error occurs, the transaction is rolled back.
+
+!!! note "One event class per method"
+    Each `@handle` method accepts exactly one event class. To handle multiple
+    event types, define multiple methods in the same handler class.
+
 ## Return Values from Event Handlers
 
 Event handlers in Protean follow the standard CQRS pattern where event handlers do not return values to the caller. This deliberate design choice ensures:
@@ -118,11 +185,29 @@ category](../../concepts/async-processing/stream-categories.md). The stream cate
     [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
 - **`source_stream`**: When specified, the event handler only consumes events
-generated in response to events or commands from this original stream.
-For example, `EmailNotifications` event handler listening to `OrderShipped`
-events can be configured to generate a `NotificationSent` event only when the
-`OrderShipped` event (in stream `orders`) is generated in response to a
-`ShipOrder` (in stream `manage_order`) command.
+whose `origin_stream` matches this value. This filters events based on what
+originally triggered them — useful when the same event type can be raised from
+different contexts and you only want to react to a specific trigger.
+
+    ```python
+    @domain.event_handler(
+        part_of=Notification,
+        stream_category="order",
+        source_stream="manage_order",
+    )
+    class EmailNotifications:
+        @handle(OrderShipped)
+        def send_shipping_email(self, event: OrderShipped):
+            # Only invoked when OrderShipped was triggered by a command
+            # in the manage_order stream — not by a bulk import or replay.
+            ...
+    ```
+
+!!! note "Required: `part_of`"
+    Every event handler must specify `part_of` — the aggregate it belongs to.
+    This association determines the default stream category. You can override
+    the stream with `stream_category` to listen to a *different* aggregate's
+    events, but `part_of` is always required.
 
 ### Subscription Options
 
@@ -164,6 +249,40 @@ class OrderEventHandler:
     def send_confirmation(self, event):
         ...
 ```
+
+### Retry and Dead Letter Queue (DLQ)
+
+When using Redis Streams (`subscription_type="stream"`), Protean supports
+automatic retries and dead-letter queuing for failed messages:
+
+- **`max_retries`** (default: `3`): The number of times a failed message is
+  re-delivered to the consumer before it is moved to the dead letter queue.
+  Each retry re-delivers the message from the pending entries list (PEL).
+
+- **`enable_dlq`** (default: `False`): When enabled, messages that exhaust
+  their retry budget are moved to a separate dead-letter stream
+  (`<stream>:dlq`) instead of being silently dropped. You can inspect and
+  reprocess DLQ messages manually or with a scheduled job.
+
+```python
+@domain.event_handler(
+    part_of=Order,
+    subscription_config={
+        "max_retries": 5,
+        "enable_dlq": True,
+    }
+)
+class CriticalOrderHandler:
+    @handle(OrderPlaced)
+    def process_order(self, event: OrderPlaced):
+        # If this fails 5 times, the message moves to the DLQ
+        ...
+```
+
+!!! note "Event store subscriptions"
+    Retry and DLQ are only available with `subscription_type="stream"` (Redis
+    Streams). Event store subscriptions track position and re-read on restart
+    but do not have per-message retry semantics.
 
 See [Server → Configuration](../../reference/server/configuration.md) for detailed
 configuration options and the priority hierarchy.
@@ -225,7 +344,13 @@ def handle_error(cls, exc: Exception, message):
 !!! tip "See also"
     **Concept overview:** [Event Handlers](../../concepts/building-blocks/event-handlers.md) — How event handlers consume and react to domain events.
 
+    **Related guides:**
+
+    - [Subscribers](./subscribers.md) — For consuming messages from *external* brokers instead of the internal event store.
+    - [Projectors](./projectors.md) — For maintaining read-optimized projections from domain events.
+
     **Patterns:**
 
     - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring handlers produce correct results even with duplicate delivery.
     - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by delegating to domain logic.
+    - [Testing Event-Driven Flows](../../patterns/testing-event-driven-flows.md) — Strategies for testing event handlers with pytest.

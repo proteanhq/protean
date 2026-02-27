@@ -116,7 +116,7 @@ picks up events via subscriptions and delivers them to:
 - **[Event handlers](../consume-state/event-handlers.md)** — react to events
   and orchestrate side effects (e.g. syncing another aggregate, sending a
   notification).
-- **[Projectors](../consume-state/projections.md)** — maintain read-optimized
+- **[Projectors](../consume-state/projectors.md)** — maintain read-optimized
   projections by processing events into denormalized views.
 - **[Subscribers](../consume-state/subscribers.md)** — consume messages from
   external brokers at the domain boundary.

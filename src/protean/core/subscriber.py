@@ -82,7 +82,7 @@ def subscriber_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
 
     if not element_cls.meta_.stream:
         raise IncorrectUsageError(
-            f"Subscriber `{element_cls.__name__}` needs to be associated with an Event"
+            f"Subscriber `{element_cls.__name__}` needs to be associated with a stream"
         )
 
     if not element_cls.meta_.broker:

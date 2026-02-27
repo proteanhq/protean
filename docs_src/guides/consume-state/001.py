@@ -39,15 +39,18 @@ class Inventory:
     book_id: Identifier(required=True)
     in_stock: Integer(required=True)
 
+    def reduce_stock(self, quantity: int) -> None:
+        self.in_stock -= quantity
 
-@domain.event_handler(part_of=Inventory, stream_category="order")
+
+@domain.event_handler(part_of=Order)  # (2)
 class ManageInventory:
     @handle(OrderShipped)
     def reduce_stock_level(self, event: OrderShipped):
         repo = domain.repository_for(Inventory)
         inventory = repo.find_by(book_id=event.book_id)
 
-        inventory.in_stock -= event.quantity  # (2)
+        inventory.reduce_stock(event.quantity)  # (3)
 
         repo.add(inventory)
 
@@ -55,11 +58,11 @@ class ManageInventory:
 domain.init()
 with domain.domain_context():
     # Persist Order
-    order = Order(book_id=1, quantity=10, total_amount=100)
+    order = Order(book_id="book-1", quantity=10, total_amount=100)
     domain.repository_for(Order).add(order)
 
     # Persist Inventory
-    inventory = Inventory(book_id=1, in_stock=100)
+    inventory = Inventory(book_id="book-1", in_stock=100)
     domain.repository_for(Inventory).add(inventory)
 
     # Ship Order

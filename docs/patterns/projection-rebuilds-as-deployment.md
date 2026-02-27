@@ -16,7 +16,7 @@ separately:
 
 ```python
 @domain.projection
-class OrderSummary(BaseProjection):
+class OrderSummary:
     order_id = Identifier(identifier=True)
     customer_name = String(max_length=100)
     total = Float()          # Original field
@@ -106,7 +106,7 @@ Deploy the updated projector, then rebuild.
 
 ```python
 @domain.projection
-class OrderSummary(BaseProjection):
+class OrderSummary:
     order_id = Identifier(identifier=True)
     customer_name = String(max_length=100)
     total = Float()
@@ -117,7 +117,7 @@ class OrderSummary(BaseProjection):
 
 ```python
 @domain.projection
-class OrderSummary(BaseProjection):
+class OrderSummary:
     order_id = Identifier(identifier=True)
     customer_name = String(max_length=100)
     subtotal = Float()
@@ -130,8 +130,8 @@ class OrderSummary(BaseProjection):
 The projector is updated to populate the new fields:
 
 ```python
-@domain.projector(projection_cls=OrderSummary)
-class OrderSummaryProjector(BaseProjector):
+@domain.projector(projector_for=OrderSummary, aggregates=[Order])
+class OrderSummaryProjector:
 
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
@@ -190,7 +190,7 @@ Keep the old `OrderSummary` running. Deploy a new class alongside it:
 ```python
 # The existing projection -- still serving traffic
 @domain.projection
-class OrderSummary(BaseProjection):
+class OrderSummary:
     order_id = Identifier(identifier=True)
     customer_name = String(max_length=100)
     total = Float()
@@ -199,7 +199,7 @@ class OrderSummary(BaseProjection):
 
 # The new projection -- different schema_name, same data
 @domain.projection(schema_name="order_summary_v2")
-class OrderSummaryV2(BaseProjection):
+class OrderSummaryV2:
     order_id = Identifier(identifier=True)
     customer_name = String(max_length=100)
     subtotal = Float()
@@ -212,8 +212,8 @@ class OrderSummaryV2(BaseProjection):
 **Step 2: Deploy a projector for the new projection.**
 
 ```python
-@domain.projector(projection_cls=OrderSummaryV2)
-class OrderSummaryV2Projector(BaseProjector):
+@domain.projector(projector_for=OrderSummaryV2, aggregates=[Order])
+class OrderSummaryV2Projector:
 
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):

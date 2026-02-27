@@ -8,6 +8,15 @@ state from projections. This separation is fundamental to CQRS: writes flow
 through `domain.process(command)`, reads flow through
 `domain.dispatch(query)`.
 
+**Why not query projections directly?** You can -- and for simple lookups,
+`domain.view_for(Projection).get(id)` is perfectly fine. But as read
+patterns grow in complexity (filtered searches with pagination, access
+control checks, response shaping), that logic needs a home. Scattering it
+across API controllers mixes infrastructure with domain concerns. Query
+handlers give structured reads the same organized treatment that command
+handlers give writes: named intents with validated inputs, routed through
+the domain to a dedicated handler.
+
 ## Facts
 
 ### Query handlers are connected to a projection. { data-toc-label="Connected to Projection" }

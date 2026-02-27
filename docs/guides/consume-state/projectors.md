@@ -7,6 +7,35 @@ Projectors are specialized event handlers responsible for maintaining
 projection data accordingly. They bridge your domain events and read models,
 ensuring projections stay synchronized with changes in your domain.
 
+## How Projectors Work
+
+When an aggregate raises an event, the following sequence occurs:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  Aggregate->>Event Store: Persist event
+  Event Store-->>Engine: New event available
+  Engine->>Engine: Match event to subscribed projectors
+  Engine->>Projector: Invoke @on handler (within UoW)
+  Projector->>Repository: Load/create projection record
+  Projector->>Repository: Persist updated projection
+  Note over Projector,Repository: UoW commits atomically
+```
+
+1. An aggregate raises an event and is persisted. The event is written to the
+   event store.
+2. The Protean Engine's subscription detects the new event.
+3. The engine matches the event to all projectors subscribed to that stream
+   category.
+4. Each matching `@on` handler is invoked within its own Unit of Work.
+5. The handler loads or creates the projection record via
+   `current_domain.repository_for()`.
+6. Changes to the projection are committed atomically when the UoW completes.
+
+If the handler raises an exception, the UoW rolls back and the event may
+be retried depending on the subscription configuration.
+
 ## Defining a Projector
 
 Projectors are defined using the `Domain.projector` decorator and must be
@@ -20,7 +49,12 @@ You must also specify which events to listen to, via either `aggregates` (a
 list of aggregate classes — Protean derives the
 [stream categories](../../concepts/async-processing/stream-categories.md)
 automatically) or `stream_categories` (a list of stream category names for
-more fine-grained control). Use one or the other, not both.
+more fine-grained control). When both are specified, `stream_categories` takes
+precedence.
+
+!!! note "Required: `projector_for`"
+    Every projector must specify `projector_for` — the projection class it
+    maintains. Omitting it raises `IncorrectUsageError`.
 
 ## Event Handling with `@on`
 
@@ -113,18 +147,21 @@ class SystemMetricsProjector:
 Projectors should be idempotent to handle duplicate events gracefully:
 
 ```python
+from protean import current_domain
+from protean.exceptions import ObjectNotFoundError
+
 @domain.projector(projector_for=UserProfile, aggregates=[User])
 class UserProfileProjector:
     @on(UserRegistered)
     def on_user_registered(self, event: UserRegistered):
-        repository = domain.repository_for(UserProfile)
+        repository = current_domain.repository_for(UserProfile)
 
         # Check if profile already exists
         try:
             existing_profile = repository.get(event.user_id)
             # Profile already exists, skip creation
             return
-        except NotFoundError:
+        except ObjectNotFoundError:
             pass  # Expected case - create new profile
 
         profile = UserProfile(
@@ -145,7 +182,7 @@ projectors to handle out-of-order events:
 class OrderStatusProjector:
     @on(OrderCreated)
     def on_order_created(self, event: OrderCreated):
-        repository = domain.repository_for(OrderStatus)
+        repository = current_domain.repository_for(OrderStatus)
 
         # Use event timestamp to handle ordering
         status = OrderStatus(
@@ -157,7 +194,7 @@ class OrderStatusProjector:
 
     @on(OrderShipped)
     def on_order_shipped(self, event: OrderShipped):
-        repository = domain.repository_for(OrderStatus)
+        repository = current_domain.repository_for(OrderStatus)
         status = repository.get(event.order_id)
 
         # Only update if this event is newer
@@ -177,14 +214,14 @@ class ProductInventoryProjector:
     @on(ProductAdded)
     def on_product_added(self, event: ProductAdded):
         try:
-            repository = domain.repository_for(ProductInventory)
+            repository = current_domain.repository_for(ProductInventory)
 
             # Check if inventory already exists
             try:
                 existing = repository.get(event.product_id)
                 # Handle duplicate case
                 return
-            except NotFoundError:
+            except ObjectNotFoundError:
                 pass  # Expected case - create new inventory
 
             inventory = ProductInventory(
@@ -200,6 +237,30 @@ class ProductInventoryProjector:
             # Log error and potentially raise for retry mechanisms
             logger.error(f"Failed to process ProductAdded event: {e}")
             raise
+```
+
+## Handling Deletions
+
+When a projection record should be removed in response to an event, use
+`repository.remove()`:
+
+```python
+@domain.projector(projector_for=ActiveOrder, aggregates=[Order])
+class ActiveOrderProjector:
+    @on(OrderPlaced)
+    def on_order_placed(self, event: OrderPlaced):
+        repository = current_domain.repository_for(ActiveOrder)
+        repository.add(ActiveOrder(
+            order_id=event.order_id,
+            customer_name=event.customer_name,
+            status="placed",
+        ))
+
+    @on(OrderDelivered)
+    def on_order_delivered(self, event: OrderDelivered):
+        repository = current_domain.repository_for(ActiveOrder)
+        order = repository.get(event.order_id)
+        repository.remove(order)
 ```
 
 ## Complete Example
@@ -281,12 +342,12 @@ def test_projector_integration():
         product_repo = domain.repository_for(Product)
         product_repo.add(product)  # This triggers events
 
-        # Verify projections were updated
-        inventory_repo = domain.repository_for(ProductInventory)
-        catalog_repo = domain.repository_for(ProductCatalog)
+        # Verify projections were updated via view_for (read-only)
+        inventory_view = domain.view_for(ProductInventory)
+        catalog_view = domain.view_for(ProductCatalog)
 
-        inventory = inventory_repo.get(product.id)
-        catalog = catalog_repo.get(product.id)
+        inventory = inventory_view.get(product.id)
+        catalog = catalog_view.get(product.id)
 
         assert inventory.name == "Integration Test Product"
         assert catalog.in_stock == "YES"

@@ -10,20 +10,60 @@ CQRS pipeline.
 For background on how query handlers complete the CQRS read pipeline, see
 [Query Handlers concept](../../concepts/building-blocks/query-handlers.md).
 
+## Defining Queries
+
+A query is an immutable DTO representing a read intent. Queries are defined
+with the `@domain.query` decorator and must be associated with a projection
+via `part_of`:
+
+```python
+from protean.fields import Identifier, Integer, String
+
+
+@domain.query(part_of=OrderSummary)
+class GetOrdersByCustomer:
+    customer_id = Identifier(required=True)
+    status = String()
+    page = Integer(default=1)
+    page_size = Integer(default=20)
+```
+
+Queries are immutable once created — attempting to modify a field after
+construction raises `IncorrectUsageError`. Fields support the same validation
+constraints as other domain elements (`required`, `max_length`, `min_value`,
+`max_value`, `choices`). Invalid inputs raise `ValidationError` at
+construction time, before the query reaches the handler.
+
+### Query Naming Conventions
+
+Name queries with the intent they represent — typically starting with `Get`,
+`Find`, `List`, or `Search`:
+
+| Pattern | Example | Use when |
+|---------|---------|----------|
+| `Get<Entity>By<Criteria>` | `GetOrdersByCustomer` | Filtered lookup returning multiple results |
+| `Get<Entity>ById` | `GetOrderById` | Single-record lookup by identifier |
+| `List<Entity>` | `ListActiveProducts` | Listing with optional filters |
+| `Search<Entity>` | `SearchOrders` | Full-text or complex multi-field search |
+
+### Decorator Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| **`part_of`** | — | **Required.** The projection class this query targets |
+| `abstract` | `False` | When `True`, the query cannot be instantiated — use as a base class |
+
 ## Defining a Query Handler
 
 Query handlers are defined with the `@domain.query_handler` decorator:
 
 ```python
 from protean import current_domain, read
-from protean.core.projection import BaseProjection
-from protean.core.query import BaseQuery
-from protean.core.query_handler import BaseQueryHandler
 from protean.fields import Float, Identifier, Integer, String
 
 
 @domain.projection
-class OrderSummary(BaseProjection):
+class OrderSummary:
     order_id = Identifier(identifier=True)
     customer_name = String(max_length=100)
     status = String(max_length=20)
@@ -31,7 +71,7 @@ class OrderSummary(BaseProjection):
 
 
 @domain.query(part_of=OrderSummary)
-class GetOrdersByCustomer(BaseQuery):
+class GetOrdersByCustomer:
     customer_id = Identifier(required=True)
     status = String()
     page = Integer(default=1)
@@ -39,12 +79,12 @@ class GetOrdersByCustomer(BaseQuery):
 
 
 @domain.query(part_of=OrderSummary)
-class GetOrderById(BaseQuery):
+class GetOrderById:
     order_id = Identifier(required=True)
 
 
 @domain.query_handler(part_of=OrderSummary)
-class OrderSummaryQueryHandler(BaseQueryHandler):
+class OrderSummaryQueryHandler:
     @read(GetOrdersByCustomer)
     def get_by_customer(self, query):
         view = current_domain.view_for(OrderSummary)
@@ -148,17 +188,45 @@ database or cache client for technology-specific queries.
 - The query class is not registered in the domain
 - No query handler is registered for the query
 
+Within handler methods, common runtime errors include:
+
+| Exception | When it occurs |
+|-----------|----------------|
+| `ValidationError` | Query field validation fails at construction (missing required field, invalid value) |
+| `ObjectNotFoundError` | `view.get(identifier)` finds no matching record |
+| `NotSupportedError` | `view.query` or `view.find_by()` called on a cache-backed projection |
+
 ```python
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
 
 try:
-    result = domain.dispatch(GetOrdersByCustomer(customer_id="123"))
+    result = domain.dispatch(GetOrderById(order_id="nonexistent"))
+except ObjectNotFoundError:
+    # No projection record with this identifier
+    ...
 except IncorrectUsageError as e:
     # Handle missing handler or unregistered query
     ...
 ```
 
+### `@handle` vs. `@read`
+
+Both decorators route messages to handler methods, but they serve different
+sides of CQRS:
+
+| Aspect | `@handle` | `@read` |
+|--------|-----------|---------|
+| Used in | Command handlers, event handlers | Query handlers only |
+| UoW wrapping | Yes — rolls back on error | No — read-only, no transaction |
+| Side effects | Expected (persist aggregates, raise events) | None — reads only |
+| Parameters | `start`, `correlate`, `end` for lifecycle control | None beyond the query class |
+
 ---
 
 !!! tip "See also"
     **Concept overview:** [Query Handlers](../../concepts/building-blocks/query-handlers.md) — How query handlers process read intents in CQRS.
+
+    **Related guides:**
+
+    - [Projections](./projections.md) — The read models that query handlers operate on.
+    - [Event Handlers](./event-handlers.md) — The write-side consumer counterpart.

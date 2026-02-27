@@ -65,6 +65,17 @@ place for any work that should happen in response to a domain event:
 sending emails, updating caches, calling external APIs, writing audit logs,
 or publishing messages to downstream systems.
 
+## Event Handlers vs. Related Elements
+
+| Aspect | Event Handler | Projector | Subscriber | Query Handler |
+|--------|--------------|-----------|------------|---------------|
+| **Purpose** | Side effects, cross-aggregate sync | Maintain read models | Anti-corruption layer for external messages | Structured read access |
+| **Consumes** | Domain events | Domain events | Raw `dict` payloads | Queries (synchronous) |
+| **Source** | Internal event store | Internal event store | External message broker | `domain.dispatch()` |
+| **Association** | `part_of` (aggregate) | `projector_for` (projection) | `stream` (broker stream) | `part_of` (projection) |
+| **Returns** | Nothing | Nothing | Nothing | Always returns data |
+| **UoW** | Yes (per handler method) | Yes (per handler method) | No | No |
+
 ## Best Practices
 
 ### Keep handlers idempotent. { data-toc-label="Idempotency" }

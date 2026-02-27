@@ -79,7 +79,7 @@ perform better than a single monolithic one.
 
 For practical details on defining and using projectors in Protean, see the guide:
 
-- [Projections](../../guides/consume-state/projections.md) — Projector definition, the @on decorator, error handling, multi-aggregate projectors, and testing.
+- [Projectors](../../guides/consume-state/projectors.md) — Projector definition, the @on decorator, error handling, multi-aggregate projectors, and testing.
 
 For design guidance:
 

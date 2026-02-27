@@ -109,6 +109,10 @@ For practical details on defining and using command handlers in Protean, see the
 
 - [Command Handlers](../../guides/change-state/command-handlers.md) — Defining handlers, workflow, return values, idempotency, and error handling.
 
+For the read-side counterpart:
+
+- [Query Handlers](./query-handlers.md) — Processing structured read intents from projections (the read side of CQRS).
+
 For design guidance:
 
 - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — When to use which, with decision tree and comparison table.

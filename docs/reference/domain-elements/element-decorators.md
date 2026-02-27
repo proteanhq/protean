@@ -213,7 +213,7 @@ explicitly target a projection and can listen to multiple stream categories.
 | `aggregates` | `[]` | Aggregate classes whose events to consume |
 | `stream_categories` | derived from `aggregates` | Stream categories to subscribe to |
 
-Guide: [Projections](../../guides/consume-state/projections.md)
+Guide: [Projectors](../../guides/consume-state/projectors.md)
 
 ### `Domain.process_manager`
 

@@ -19,7 +19,7 @@ class TestSubscriberEdgeCases:
             def __call__(self, payload: dict) -> None:
                 pass
 
-        with pytest.raises(IncorrectUsageError, match="associated with an Event"):
+        with pytest.raises(IncorrectUsageError, match="associated with a stream"):
             test_domain.register(BadSubscriber, stream=None)
             test_domain.init(traverse=False)
 

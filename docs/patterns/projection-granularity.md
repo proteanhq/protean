@@ -234,9 +234,9 @@ class OrderSummaryProjector:
     def on_customer_name_changed(self, event: CustomerNameChanged) -> None:
         """Update all orders for this customer when their name changes."""
         view = current_domain.view_for(OrderSummary)
-        orders = view.find_by(customer_id=event.customer_id)
+        results = view.query.filter(customer_id=event.customer_id).all()
         repo = current_domain.repository_for(OrderSummary)
-        for order in orders:
+        for order in results.items:
             order.customer_name = event.new_name
             repo.add(order)
 ```
@@ -380,7 +380,7 @@ cancelled = (
 )
 
 # Count pending orders
-pending_count = view.count(status="placed")
+pending_count = view.query.filter(status="placed").all().total
 ```
 
 Database-backed projections give you the full `ReadView` query API: `filter()`,
