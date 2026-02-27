@@ -122,7 +122,14 @@ class _DomainRegistry:
 
         element_dict = self._elements[element_cls.element_type.value]
         if element_name in element_dict:
-            logger.debug(f"Element {element_name} was already in the registry")
+            if element_dict[element_name].cls is not element_cls:
+                logger.warning(
+                    f"Replacing Element `{element_name}` in the registry "
+                    f"with a different class object"
+                )
+                element_dict[element_name].cls = element_cls
+            else:
+                logger.debug(f"Element {element_name} was already in the registry")
         else:
             element_record = DomainRecord(
                 name=element_cls.__name__,

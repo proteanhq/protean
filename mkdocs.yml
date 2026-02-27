@@ -248,8 +248,6 @@ nav:
       - guides/server/using-priority-lanes.md
     - Multi-Domain Applications:
       - guides/multi-domain-applications.md
-    - Troubleshooting:
-      - guides/troubleshooting.md
     - Test Your Application:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md
@@ -330,6 +328,8 @@ nav:
     - Migration:
       - reference/migration/index.md
       - reference/migration/v0-15.md
+    - Troubleshooting:
+      - reference/troubleshooting.md
 
   - Concepts:
     - concepts/index.md
