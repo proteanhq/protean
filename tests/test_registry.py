@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from enum import Enum
 
@@ -282,6 +283,31 @@ def test_element_registration_with_same_name():
     # Should still have only one element
     assert len(register._elements[DomainObjects.AGGREGATE.value]) == 1
     assert len(register._elements_by_name["User"]) == 1
+
+
+def test_conflicting_duplicate_registration_replaces_with_warning(caplog):
+    """Test that registering a different class with the same FQN replaces the entry and warns"""
+    register = _DomainRegistry()
+    register.register_element(User)
+
+    # Create a different class object but with the same FQN
+    class ConflictingUser(BaseAggregate):
+        name: String(max_length=50)
+
+    ConflictingUser.__name__ = User.__name__
+    ConflictingUser.__qualname__ = User.__qualname__
+    ConflictingUser.__module__ = User.__module__
+
+    with caplog.at_level(logging.WARNING, logger="protean.domain.registry"):
+        register.register_element(ConflictingUser)
+
+    assert "Replacing Element" in caplog.text
+
+    # The registry should now hold the new class
+    record = register._elements[DomainObjects.AGGREGATE.value][
+        "tests.test_registry.User"
+    ]
+    assert record.cls is ConflictingUser
 
 
 def test_domain_record_default_internal_value():
