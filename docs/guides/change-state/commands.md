@@ -27,7 +27,17 @@ A command is defined with the `Domain.command` decorator:
 ```
 
 A command is always associated with an aggregate class with the `part_of`
-option, as seen in the example above.
+option, as seen in the example above. You can use a class reference or a string
+forward reference (`part_of="Article"`) when the aggregate is defined later in
+the same module.
+
+### Decorator options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `part_of` | class or string | *required* | The aggregate this command targets. |
+| `abstract` | bool | `False` | When `True`, the command serves as a base class and cannot be instantiated directly. |
+| `aggregate_cluster` | class | derived from `part_of` | Explicitly set the aggregate cluster for stream routing. Rarely needed. |
 
 ## Submitting Commands
 
@@ -36,13 +46,28 @@ domain elements, you don't need to identify the appropriate Command Handler
 for your commands.
 
 You can simply submit the command to the domain for processing with
-`domain.process`.
+`domain.process()`:
 
 ```shell
 In [1]: command = PublishArticle(article_id="1")
 
 In [2]: publishing.process(command)
 ```
+
+### `domain.process()` parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `command` | command instance | *required* | The command to process. |
+| `asynchronous` | `bool` or `None` | `None` | Override the domain's default processing mode. `None` uses the `command_processing` config. |
+| `idempotency_key` | `str` or `None` | `None` | Caller-provided key for submission-level deduplication (requires Redis). |
+| `raise_on_duplicate` | `bool` | `False` | When `True`, raises `DuplicateCommandError` on duplicate idempotency keys instead of silently returning the cached result. |
+| `priority` | `int` or `None` | `None` | Processing priority for events produced by this command. When priority lanes are enabled, events below the threshold are routed to a backfill stream. |
+| `correlation_id` | `str` or `None` | `None` | Correlation ID for distributed tracing. Propagated to all commands and events in the causal chain. Auto-generated if not provided. |
+
+Internally, `domain.process()` enriches the command with metadata, writes it
+to the event store, and (for synchronous processing) dispatches it to the
+appropriate command handler immediately.
 
 ---
 
@@ -285,3 +310,12 @@ This flexibility allows you to implement various architectural patterns like CQR
 
 !!! tip "See also"
     **Concept overview:** [Commands](../../concepts/building-blocks/commands.md) — The role of commands as immutable DTOs expressing intent.
+
+    **Related guides:**
+
+    - [Command Handlers](./command-handlers.md) — Processing commands and persisting state changes.
+    - [Application Services](./application-services.md) — An alternative for synchronous use cases.
+
+    **Patterns:**
+
+    - [Command Idempotency](../../patterns/command-idempotency.md) — Ensuring commands can be safely retried without side effects.

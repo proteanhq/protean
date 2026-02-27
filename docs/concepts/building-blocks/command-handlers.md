@@ -1,11 +1,14 @@
 # Command Handlers
 
-Command handlers are responsible for processing commands. They encapsulate the
-logic required to handle a command and ensure that the appropriate actions are
-taken within the domain model.
+When a [command](./commands.md) arrives, something needs to orchestrate the
+response: load the right aggregate, invoke the domain method, persist the
+result, and handle errors. If this orchestration lived in the API controller,
+domain logic would leak into infrastructure code. If it lived in the
+aggregate, the aggregate would need to know about persistence.
 
-Command handlers typically reside in the application layer and serve as a
-bridge between the application's API and the domain model.
+Command handlers solve this by acting as thin orchestrators — they receive a
+command, coordinate the necessary steps, and delegate all business logic to
+the aggregate. The handler itself contains no business rules.
 
 ## Facts
 
@@ -27,7 +30,7 @@ ensures that the command handling logic is focused and manageable.
 ### Handlers should deal only with the associated aggregate. { data-toc-label="Single Aggregate" }
 
 Methods in a command handler should only deal with managing the lifecycle of
-the aggregate associated with it. Any state change beyong an aggregate's
+the aggregate associated with it. Any state change beyond an aggregate's
 boundary should be performed by eventual consistency mechanisms, like raising
 an [event](./events.md) and consuming it in the
 [event handler](./event-handlers.md) of the other aggregate.
@@ -59,7 +62,7 @@ and may need to provide immediate feedback.
 
 By default, command handlers return the position of the command in the command stream back to the caller.
 
-### Handler methdos are enclosed in Unit of Work context. { data-toc-label="Unit of Work"}
+### Handler methods are enclosed in Unit of Work context. { data-toc-label="Unit of Work"}
 
 Each handler method is automatically enclosed within a Unit of Work context.
 This means that all interactions with the infrastructure is packaged into a
@@ -108,5 +111,6 @@ For practical details on defining and using command handlers in Protean, see the
 
 For design guidance:
 
+- [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — When to use which, with decision tree and comparison table.
 - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by pushing logic into the domain model.
 - [Command Idempotency](../../patterns/command-idempotency.md) — Handling duplicate commands safely.

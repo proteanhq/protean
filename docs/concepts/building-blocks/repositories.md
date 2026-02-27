@@ -66,6 +66,21 @@ Domain objects should never interact with the database directly. All reads and
 writes go through the repository, which ensures that invariants are enforced,
 events are collected, and the Unit of Work can track changes.
 
+### Repositories do not support hard deletion. { data-toc-label="No Delete" }
+
+Repositories intentionally have no `delete` or `remove` method. Domain state
+changes — cancellation, deactivation, archival — should be modeled as explicit
+state transitions through commands and events, not as record erasure. Hard
+deletion is available at the infrastructure level (`_dao.delete()`) for
+scenarios like projection rebuilds, test teardown, and compliance requirements.
+
+### Event-sourced aggregates get a different repository. { data-toc-label="Event Sourced" }
+
+When an aggregate is configured with `is_event_sourced=True`,
+`domain.repository_for()` transparently returns an event-sourced repository
+that reconstructs state by replaying events from the aggregate's stream,
+rather than reading from a database table. The calling code does not change.
+
 ## Best Practices
 
 ### Name query methods after domain concepts. { data-toc-label="Domain Naming" }

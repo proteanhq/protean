@@ -227,11 +227,37 @@ HTTP status mapping.
 - Use the API layer for cross-cutting concerns like logging failed operations,
 not the application service itself.
 
+## Testing Application Services
+
+Application services are tested by calling use case methods directly and
+asserting on the return values and persisted state:
+
+```python
+def test_register_user(test_domain):
+    service = UserApplicationServices()
+    user_id = service.register_user(email="jane@example.com", name="Jane Doe")
+
+    assert user_id is not None
+    user = test_domain.repository_for(User).get(user_id)
+    assert user.email == "jane@example.com"
+    assert user.status == "INACTIVE"
+```
+
+Because application services always execute synchronously, no special
+configuration is needed — you call the method and assert on the result.
+
 ---
 
 !!! tip "See also"
     **Concept overview:** [Application Services](../../concepts/building-blocks/application-services.md) — Orchestrating use cases between external callers and the domain model.
 
+    **Related guides:**
+
+    - [Command Handlers](./command-handlers.md) — The async alternative for fire-and-forget command processing.
+    - [Repositories](./repositories.md) — Persisting and retrieving aggregates.
+    - [Unit of Work](./unit-of-work.md) — Transaction management and commit lifecycle.
+
     **Patterns:**
 
+    - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — When to use which, with decision tree and comparison table.
     - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping application services thin by delegating to domain logic.

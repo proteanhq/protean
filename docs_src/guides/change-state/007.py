@@ -36,7 +36,7 @@ class Article:
     status: String(choices=ArticleStatus, default=ArticleStatus.DRAFT.value)
     published_at: DateTime(default=utc_now)
 
-    def publish(self, published_at: DateTime) -> None:
+    def publish(self, published_at: datetime) -> None:
         self.status = ArticleStatus.PUBLISHED.value
         self.published_at = published_at
 
@@ -48,9 +48,9 @@ class Article:
 @publishing.command_handler(part_of=Article)
 class ArticleCommandHandler:
     @handle(PublishArticle)
-    def publish_article(self, command):
+    def publish_article(self, command: PublishArticle) -> None:
         article = current_domain.repository_for(Article).get(command.article_id)
-        article.publish()
+        article.publish(published_at=command.published_at)
         current_domain.repository_for(Article).add(article)
 
 

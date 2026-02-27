@@ -133,9 +133,38 @@ class PersonRepository:
 
 Internally, these delegate to the repository's Data Access Object (DAO) --
 the layer that talks to the database. The DAO is still accessible as
-`self._dao` for advanced use cases (e.g. `outside_uow()`), but for typical
-custom queries, `self.query`, `self.find`, `self.find_by()`, and
-`self.exists()` are all you need.
+`self._dao` for advanced use cases, but for typical custom queries,
+`self.query`, `self.find`, `self.find_by()`, and `self.exists()` are all you
+need.
+
+### Error handling in queries
+
+`get()` and `find_by()` raise exceptions when the expected result is not found:
+
+```python
+from protean.exceptions import ObjectNotFoundError, TooManyObjectsError
+
+repo = domain.repository_for(Person)
+
+# Raises ObjectNotFoundError if no aggregate matches the identity
+try:
+    person = repo.get("nonexistent-id")
+except ObjectNotFoundError:
+    ...
+
+# Raises ObjectNotFoundError if no match, TooManyObjectsError if multiple
+try:
+    person = repo.find_by(email="unknown@example.com")
+except ObjectNotFoundError:
+    ...
+```
+
+`exists()` never raises — it returns `True` or `False`:
+
+```python
+if repo.exists(Q(email="john@example.com")):
+    raise ValueError("Email already taken")
+```
 
 For a comprehensive guide on querying, see
 [Retrieving Aggregates](./retrieve-aggregates.md).
@@ -152,12 +181,71 @@ class PersonReportingRepository:
         return self.query.filter(active=True).all().items
 ```
 
-When no `database` is specified, the repository uses the `default` provider.
+When no `database` is specified, the default value is `"ALL"`, which means
+the repository works with whichever provider the aggregate is assigned to
+(via the aggregate's `provider` option, which itself defaults to the
+`"default"` provider).
 
 !!!note
     A repository can be connected to a specific persistence store by specifying
     the `database` parameter. This is useful when you have separate databases
     for different concerns (e.g., transactional vs. reporting).
+
+## `domain.repository_for()`
+
+`domain.repository_for(AggregateClass)` is the sole entry point for obtaining a
+repository instance. It accepts an aggregate class (not a string) and returns
+the repository associated with that aggregate:
+
+```python
+repo = domain.repository_for(Order)
+order = repo.get(order_id)
+```
+
+How it works:
+
+- If the aggregate has `is_event_sourced=True`, `repository_for()` returns an
+  **event-sourced repository** backed by the event store. The event-sourced
+  repository reconstructs aggregate state by replaying events from the
+  aggregate's stream — it does not read from a database table.
+
+- Otherwise, it returns the aggregate's database-backed repository (custom if
+  one is registered, default if not).
+
+This routing is transparent — you always call `domain.repository_for()` the
+same way, and Protean returns the correct repository based on the aggregate's
+configuration.
+
+## Why there is no `delete` or `remove`
+
+Repositories intentionally do not provide a `delete()` or `remove()` method.
+
+In Domain-Driven Design, "deleting" a business entity is almost always a
+**state transition**, not a record erasure. An order is *cancelled*, a user is
+*deactivated*, a subscription is *archived*. These transitions are meaningful
+domain events that should be modeled explicitly — with commands, aggregate
+methods, and events — not hidden behind a database `DELETE`.
+
+For infrastructure-level record removal (projection rebuilds, test teardown,
+GDPR right-to-erasure compliance), you can access the underlying DAO directly:
+
+```python
+repo = domain.repository_for(Person)
+repo._dao.delete(person)
+```
+
+This is an intentional escape hatch, not a recommended domain operation. Use it
+only when the domain model does not apply (e.g., cleaning up test data).
+
+## Transactions and Unit of Work
+
+Every call to `repository.add()` participates in the enclosing
+[Unit of Work](./unit-of-work.md). Inside a command handler or `@use_case`
+method, this happens automatically — changes are committed when the handler
+completes, or rolled back if an exception is raised.
+
+Outside a handler (e.g., in a shell session or script), `add()` creates a
+temporary UoW, commits immediately, and discards it.
 
 ## When to define a custom repository
 
@@ -187,3 +275,9 @@ You do **not** need a custom repository for:
 
 !!! tip "See also"
     **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md) — The role of repositories in DDD and how Protean implements the pattern.
+
+    **Related guides:**
+
+    - [Retrieving Aggregates](./retrieve-aggregates.md) — QuerySets, filtering, Q objects, and pagination.
+    - [Persist Aggregates](./persist-aggregates.md) — Save and update aggregates through repositories.
+    - [Unit of Work](./unit-of-work.md) — Transaction management and commit lifecycle.

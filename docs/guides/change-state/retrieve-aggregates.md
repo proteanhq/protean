@@ -222,6 +222,8 @@ is assumed.
 - **`iexact`** -- case-insensitive exact match
 - **`contains`** -- substring containment (case-sensitive)
 - **`icontains`** -- substring containment (case-insensitive)
+- **`startswith`** -- starts with a given prefix
+- **`endswith`** -- ends with a given suffix
 - **`gt`** -- greater than
 - **`gte`** -- greater than or equal to
 - **`lt`** -- less than

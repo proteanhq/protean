@@ -39,7 +39,7 @@ class UserApplicationServices:
         return user.id
 
     @use_case
-    def activate_user(sefl, user_id: Identifier) -> None:
+    def activate_user(self, user_id: Identifier) -> None:
         user = current_domain.repository_for(User).get(user_id)
         user.activate()
         current_domain.repository_for(User).add(user)

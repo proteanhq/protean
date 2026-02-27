@@ -1,12 +1,21 @@
 # Commands
 
-Commands are data transfer objects that express an intention to change the
-state of the system. They represent actions that a user or system wants to
-perform. In DDD, commands are an essential part of the application layer,
-where they help to encapsulate and convey user intentions.
+In most applications, the code that *requests* a change (an API controller,
+a background job, a saga) is not the code that *performs* the change (the
+domain model). A command bridges that gap: it captures the caller's intent as
+an explicit, immutable data object that can be validated, serialized, routed,
+retried, and audited — all before any business logic runs.
 
-Commands typically do not return values; instead, they result in events that
-indicate changes in the system.
+Commands and [events](./events.md) are complementary halves of a message-driven
+architecture. They differ in tense and semantics:
+
+| | Command | Event |
+|---|---------|-------|
+| **Tense** | Imperative — *do this* | Past tense — *this happened* |
+| **Meaning** | An intent that may be rejected | A fact that has already occurred |
+| **Naming** | `PlaceOrder`, `CancelReservation` | `OrderPlaced`, `ReservationCancelled` |
+| **Consumers** | Exactly one command handler | Zero or more event handlers |
+| **Outcome** | May succeed or fail | Always represents committed state |
 
 ## Facts
 
@@ -21,9 +30,8 @@ They can only hold simple fields and Value Objects.
 Commands should be designed to be immutable once created. This ensures that the intention they represent cannot be altered after they are sent.
 
 ### Commands trigger domain logic. { data-toc-label="Domain Logic" }
-Commands are handled by [application services](./application-services.md) or
-[command handlers](./command-handlers.md), which then interact with the domain
-model to execute the intended action.
+Commands are processed by [command handlers](./command-handlers.md), which
+interact with the domain model to execute the intended action.
 
 ### Commands are named with verbs. { data-toc-label="Naming" }
 Commands should be named clearly and concisely, typically using verbs to
@@ -38,10 +46,19 @@ Headers and metadata such as timestamps, unique identifiers, and version
 numbers are included in commands for precise tracking of origin and intent.
 
 ### Commands are **versioned**. { data-toc-label="Versioning" }
-Each command is assigned a version number, ensuring that commands can evolve
-over time. Since commands are handled by a single aggregate through a command
-handler, there is seldom a need to support multile versions of commands at
-the same time.
+Each command is assigned a version number (defaulting to `"v1"`), ensuring that
+commands can evolve over time. Set `__version__` on the class to override:
+
+```python
+@domain.command(part_of=Order)
+class PlaceOrder:
+    __version__ = "v2"
+    ...
+```
+
+Since commands are handled by a single aggregate through a command handler,
+there is seldom a need to support multiple versions of commands at the same
+time.
 
 ### Commands are **timestamped**. { data-toc-label="Timestamp" }
 Each command carries a timestamp indicating when the command was initiated,

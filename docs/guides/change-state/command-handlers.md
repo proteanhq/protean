@@ -18,22 +18,43 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 --8<-- "guides/change-state/007.py:full"
 ```
 
-### Stream Category {#stream-category}
+### Decorator options
 
-Command handlers automatically subscribe to commands in their associated aggregate's [stream category](../../concepts/async-processing/stream-categories.md). When a command is processed, it's routed to the appropriate handler based on the command's target aggregate and its stream category.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `part_of` | class or string | *required* | The aggregate this handler processes commands for. |
+| `stream_category` | `str` | derived from `part_of` | Read-only. Always derived from the aggregate's stream category. Cannot be overridden. |
 
-For example, if an `Order` aggregate has a stream category of `order`, its command handler will listen for commands on the `order` stream category. Commands are stored in streams following the pattern `<domain>::<stream_category>-<aggregate_id>`.
+### The `@handle` decorator
 
-You can also configure a command handler to listen to a different stream category using the `stream_category` parameter:
+Each method that processes a command is decorated with `@handle`, imported from
+`protean`:
 
 ```python
-@domain.command_handler(part_of=Order, stream_category="customer_orders")
-class OrderCommandHandler:
-    # Subscribes to commands in the "customer_orders" stream category
-    ...
+from protean import handle
 ```
 
-This is useful for cross-aggregate coordination patterns or when you want multiple aggregates to share a command stream.
+`@handle(CommandClass)` registers the method as the handler for that command
+type. It also wraps the method body in a [Unit of Work](./unit-of-work.md),
+providing automatic transaction management. A single command can only be
+handled by one handler method across the entire domain — Protean enforces
+one-handler-per-command.
+
+### How routing works
+
+When you call `domain.process(command)`, Protean uses the command's `part_of`
+aggregate to find the registered command handler for that aggregate. It then
+looks up the `@handle`-decorated method that matches the command's type and
+invokes it. You never need to wire this routing manually — it is all derived
+from the `part_of` associations on the command and command handler.
+
+### Stream Category {#stream-category}
+
+Command handlers automatically subscribe to commands in their associated aggregate's [stream category](../../concepts/async-processing/stream-categories.md). When a command is processed, it is routed to the appropriate handler based on the command's target aggregate and its stream category.
+
+For example, if an `Order` aggregate has a stream category of `order`, its command handler will listen for commands on the `order:command` stream category. Commands are stored in streams following the pattern `<domain>::<stream_category>-<aggregate_id>`.
+
+Unlike event handlers, command handlers **cannot** override their stream category. The stream category is always derived from the `part_of` aggregate. This ensures that commands are always routed to the single handler responsible for the target aggregate.
 
 Learn more about stream categories and message routing in the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
@@ -42,43 +63,34 @@ Learn more about stream categories and message routing in the [Stream Categories
     ```mermaid
     sequenceDiagram
       autonumber
-      App->>Command Handler: Command object
+      App->>Domain: domain.process(command)
+      Domain->>Event Store: Store command
+      Domain->>Command Handler: Dispatch command
       Command Handler->>Command Handler: Extract data and Load aggregate
       Command Handler->>Aggregate: Invoke method
       Aggregate->>Aggregate: Mutate
-      Aggregate-->>Command Handler: 
+      Aggregate-->>Command Handler:
       Command Handler->>Command Handler: Persist aggregate
     ```
 
-    1. **Domain Sends Command Object to Command Handler**: The domain layer
-    initiates the process by sending a command object to the command handler.
-    This command object encapsulates the intent to perform a specific action or
-    operation within the domain.
+    1. **Application Submits Command**: The application calls `domain.process(command)`,
+    which enriches the command with metadata and writes it to the event store.
 
-    1. **Command Handler Loads Aggregate**: Upon receiving the command object, the
-    command handler begins by loading the necessary aggregate from the repository
-    or data store. The aggregate is the key entity that will be acted upon based
-    on the command.
+    1. **Command is Stored**: The command is persisted to the event store before any
+    processing occurs, ensuring an audit trail exists even if the handler fails.
 
-    1. **Command Handler Extracts Data and Invokes Aggregate Method**: The command
-    handler extracts the relevant data from the command object and invokes the
-    appropriate method on the aggregate. This method call triggers the aggregate
-    to perform the specified operation.
+    1. **Domain Dispatches to Handler**: The domain identifies the correct command
+    handler based on the command's `part_of` aggregate and dispatches it.
 
-    1. **Aggregate Mutates**: Within the aggregate, the invoked method processes
-    the data and performs the necessary business logic, resulting in a change
-    (mutation) of the aggregate's state. This ensures that the operation adheres
-    to the business rules and maintains consistency.
+    1. **Command Handler Loads Aggregate**: The command handler loads the target
+    aggregate from the repository using `current_domain.repository_for()`.
 
-    1. **Aggregate Responds to Command Handler**: After mutating its state, the
-    aggregate completes its operation and returns control to the command handler.
-    The response may include confirmation of the successful operation or any
-    relevant data resulting from the mutation.
+    1. **Aggregate Mutates**: The handler invokes the appropriate method on the
+    aggregate, which applies business rules, validates invariants, and changes
+    its internal state.
 
-    1. **Command Handler Persists Aggregate**: Finally, the command handler
-    persists the modified aggregate back to the repository or data store. This
-    ensures that the changes made to the aggregate's state are saved and reflected
-    in the system's state.
+    1. **Command Handler Persists Aggregate**: The handler persists the modified
+    aggregate back to the repository, committing changes within the Unit of Work.
 
 ## Return Values from Command Handlers
 
@@ -105,13 +117,13 @@ Example of a command handler that returns a value:
 @domain.command_handler(part_of=Account)
 class AccountCommandHandler:
     @handle(RegisterCommand)
-    def register(self, command: RegisterCommand):
+    def register(self, command: RegisterCommand) -> str:
         account = Account(
             email=command.email,
             name=command.name
         )
-        self.repository_for(Account).add(account)
-        
+        current_domain.repository_for(Account).add(account)
+
         # Return the account ID for immediate use
         return account.id
 ```
@@ -191,7 +203,18 @@ For details on how the Unit of Work pattern works, see the
 
 ## Error Handling
 
-Command handlers support custom error handling through the optional `handle_error` method. This method is called when an exception occurs during command processing, allowing you to implement specialized error handling strategies.
+Error handling differs between synchronous and asynchronous command processing:
+
+- **Synchronous** (`asynchronous=False`): Exceptions raised in the handler
+  propagate directly to the caller (the code that called `domain.process()`).
+  The UoW is rolled back automatically. There is no `handle_error` hook —
+  the caller is responsible for catching and handling the exception.
+
+- **Asynchronous** (default): The Protean Engine catches exceptions during
+  background processing and invokes the handler's `handle_error` class method
+  (if defined). The engine then continues processing the next command. Since
+  there is no caller waiting for a response, the `handle_error` hook is the
+  only mechanism for custom error recovery.
 
 ### The `handle_error` Method
 
@@ -248,11 +271,51 @@ def handle_error(cls, exc: Exception, message):
 3. Don't throw exceptions from error handlers unless absolutely necessary.
 4. Consider implementing retry logic for transient failures.
 
+## Testing Command Handlers
+
+The simplest way to test a command handler is to submit a command
+synchronously and verify the resulting state:
+
+```python
+def test_publish_article(test_domain):
+    # Arrange
+    article = Article(article_id="1", status="DRAFT")
+    test_domain.repository_for(Article).add(article)
+
+    # Act
+    test_domain.process(
+        PublishArticle(article_id="1"),
+        asynchronous=False,
+    )
+
+    # Assert
+    refreshed = test_domain.repository_for(Article).get("1")
+    assert refreshed.status == "PUBLISHED"
+```
+
+Key points:
+
+- Use `asynchronous=False` to process the command synchronously in tests, so
+  the handler runs immediately and you can assert on the result.
+- Configure `command_processing = "sync"` in your test domain config to make
+  this the default for all tests.
+- You can also test return values directly:
+  `result = test_domain.process(cmd, asynchronous=False)`.
+
 ---
 
 !!! tip "See also"
     **Concept overview:** [Command Handlers](../../concepts/building-blocks/command-handlers.md) — The role of command handlers in processing commands and persisting state.
 
+    **Related guides:**
+
+    - [Commands](./commands.md) — Defining commands and submitting them for processing.
+    - [Repositories](./repositories.md) — Persisting and retrieving aggregates.
+    - [Application Services](./application-services.md) — An alternative to command handlers for synchronous use cases.
+    - [Unit of Work](./unit-of-work.md) — Transaction management and commit lifecycle.
+
     **Patterns:**
 
+    - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — When to use which, with decision tree and comparison table.
     - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by pushing logic into the domain model.
+    - [Command Idempotency](../../patterns/command-idempotency.md) — Handling duplicate commands safely.
