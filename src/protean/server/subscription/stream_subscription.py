@@ -136,11 +136,9 @@ class StreamSubscription(BaseSubscription):
         self.backfill_stream = f"{self.stream_category}:{self._backfill_suffix}"
         self.backfill_dlq_stream = f"{self.backfill_stream}:dlq"
 
-        # Tracks which stream the current batch of messages came from.
-        # This is used by ACK/NACK/DLQ methods to target the correct stream.
-        # Set to the primary stream by default; overridden when processing
-        # backfill messages.
-        self._active_stream = self.stream_category
+        # Default stream used when callers don't provide an explicit stream
+        # (e.g. standard mode where only one stream exists).
+        self._default_stream = self.stream_category
 
     @classmethod
     def from_config(
@@ -277,11 +275,10 @@ class StreamSubscription(BaseSubscription):
                 if self._lanes_enabled:
                     # PRIORITY LANES MODE
                     # Step 1: Non-blocking read on primary (production) stream
-                    self._active_stream = self.stream_category
                     messages = await self._read_primary_nonblocking()
 
                     if messages:
-                        await self.process_batch(messages)
+                        await self.process_batch(messages, stream=self.stream_category)
                         batches_processed += 1
                         # Loop back immediately to check primary again
                         if batches_processed % 10 == 0:
@@ -289,22 +286,20 @@ class StreamSubscription(BaseSubscription):
                         continue
 
                     # Step 2: Primary empty → blocking read on backfill stream
-                    self._active_stream = self.backfill_stream
                     messages = await self._read_backfill_blocking()
 
                     if messages:
-                        await self.process_batch(messages)
+                        await self.process_batch(messages, stream=self.backfill_stream)
                         batches_processed += 1
 
                     # Yield control before re-checking primary
                     await asyncio.sleep(0)
                 else:
                     # STANDARD MODE: unchanged behavior
-                    self._active_stream = self.stream_category
                     messages = await self.get_next_batch_of_messages()
 
                     if messages:
-                        await self.process_batch(messages)
+                        await self.process_batch(messages, stream=self.stream_category)
                         batches_processed += 1
 
                         # Yield control only after processing a batch
@@ -413,7 +408,11 @@ class StreamSubscription(BaseSubscription):
             logger.error(f"Error reading messages from stream: {e}")
             return []
 
-    async def process_batch(self, messages: List[tuple[str, dict]]) -> int:
+    async def process_batch(
+        self,
+        messages: List[tuple[str, dict]],
+        stream: str | None = None,
+    ) -> int:
         """
         Process a batch of messages.
 
@@ -422,17 +421,21 @@ class StreamSubscription(BaseSubscription):
 
         Args:
             messages (List[tuple[str, dict]]): The batch of messages to process as (id, payload) tuples.
+            stream: The stream these messages came from. Used by ACK/NACK/DLQ
+                operations to target the correct stream. Defaults to the primary stream.
 
         Returns:
             int: The number of messages processed successfully.
         """
+        stream = stream or self._default_stream
+
         logger.debug(
             f"[{self.subscriber_class_name}] Received {len(messages)} message(s)"
         )
         successful_count = 0
 
         for identifier, payload in messages:
-            message = await self._deserialize_message(identifier, payload)
+            message = await self._deserialize_message(identifier, payload, stream)
             if not message:
                 continue  # Message was moved to DLQ during deserialization
 
@@ -449,7 +452,7 @@ class StreamSubscription(BaseSubscription):
             is_successful = await self.engine.handle_message(self.handler, message)
 
             if is_successful:
-                if await self._acknowledge_message(identifier, message):
+                if await self._acknowledge_message(identifier, message, stream):
                     successful_count += 1
                     logger.info(
                         f"[{self.subscriber_class_name}] Completed {message_type} "
@@ -460,32 +463,37 @@ class StreamSubscription(BaseSubscription):
                     f"[{self.subscriber_class_name}] Failed {message_type} "
                     f"(ID: {short_id}...) — retrying"
                 )
-                await self.handle_failed_message(identifier, payload)
+                await self.handle_failed_message(identifier, payload, stream)
 
         return successful_count
 
     async def _deserialize_message(
-        self, identifier: str, payload: dict
+        self, identifier: str, payload: dict, stream: str | None = None
     ) -> Optional[Message]:
         """Deserialize a message payload, handling errors by moving to DLQ."""
         try:
             return Message.deserialize(payload)
         except Exception as e:
             logger.error(f"Deserialization failed for message {identifier}: {e}")
-            await self.move_to_dlq(identifier, payload)
+            await self.move_to_dlq(identifier, payload, stream)
             return None
 
     async def _acknowledge_message(
-        self, identifier: str, message: Optional[Message] = None
+        self,
+        identifier: str,
+        message: Optional[Message] = None,
+        stream: str | None = None,
     ) -> bool:
         """Acknowledge successful message processing.
 
-        Uses ``_active_stream`` to ACK on the correct stream (primary or backfill).
+        Args:
+            identifier: The message identifier to ACK.
+            message: The deserialized message (used for tracing metadata).
+            stream: The stream to ACK on. Defaults to the primary stream.
         """
         assert self.broker is not None, "Broker not initialized"
-        ack_result = self.broker.ack(
-            self._active_stream, identifier, self.consumer_group
-        )
+        stream = stream or self._default_stream
+        ack_result = self.broker.ack(stream, identifier, self.consumer_group)
         if ack_result:
             # Clear retry count if exists
             self.retry_counts.pop(identifier, None)
@@ -494,7 +502,7 @@ class StreamSubscription(BaseSubscription):
             if message and message.metadata:
                 self.engine.emitter.emit(
                     event="message.acked",
-                    stream=self._active_stream,
+                    stream=stream,
                     message_id=message.metadata.headers.id or identifier,
                     message_type=message.metadata.headers.type or "unknown",
                     handler=self.subscriber_class_name,
@@ -505,34 +513,44 @@ class StreamSubscription(BaseSubscription):
             logger.warning(f"Failed to acknowledge message {identifier}")
             return False
 
-    async def handle_failed_message(self, identifier: str, payload: dict) -> None:
+    async def handle_failed_message(
+        self, identifier: str, payload: dict, stream: str | None = None
+    ) -> None:
         """
         Handle a message that failed processing.
 
         Implements retry logic and moves to DLQ after max retries.
 
         Args:
-            identifier (str): The message identifier
-            payload (dict): The message payload
+            identifier: The message identifier.
+            payload: The message payload.
+            stream: The stream the message came from. Defaults to the primary stream.
         """
+        stream = stream or self._default_stream
         retry_count = self._increment_retry_count(identifier)
 
         if retry_count < self.max_retries:
-            await self._retry_message(identifier, retry_count)
+            await self._retry_message(identifier, retry_count, stream)
         else:
-            await self._exhaust_retries(identifier, payload)
+            await self._exhaust_retries(identifier, payload, stream)
 
     def _increment_retry_count(self, identifier: str) -> int:
         """Increment and return the retry count for a message."""
         self.retry_counts[identifier] = self.retry_counts.get(identifier, 0) + 1
         return self.retry_counts[identifier]
 
-    async def _retry_message(self, identifier: str, retry_count: int) -> None:
+    async def _retry_message(
+        self, identifier: str, retry_count: int, stream: str | None = None
+    ) -> None:
         """Retry a failed message after delay.
 
-        Uses ``_active_stream`` for NACK on the correct stream.
+        Args:
+            identifier: The message identifier to NACK.
+            retry_count: Current retry attempt number.
+            stream: The stream to NACK on. Defaults to the primary stream.
         """
         assert self.broker is not None, "Broker not initialized"
+        stream = stream or self._default_stream
         logger.debug(
             f"Retrying message {identifier} (attempt {retry_count}/{self.max_retries}) "
             f"after {self.retry_delay_seconds}s delay"
@@ -541,7 +559,7 @@ class StreamSubscription(BaseSubscription):
         # Emit message.nacked trace
         self.engine.emitter.emit(
             event="message.nacked",
-            stream=self._active_stream,
+            stream=stream,
             message_id=identifier,
             message_type="unknown",
             status="retry",
@@ -552,50 +570,60 @@ class StreamSubscription(BaseSubscription):
         await asyncio.sleep(self.retry_delay_seconds)
 
         # NACK the message to make it available for reprocessing
-        self.broker.nack(self._active_stream, identifier, self.consumer_group)
+        self.broker.nack(stream, identifier, self.consumer_group)
 
-    async def _exhaust_retries(self, identifier: str, payload: dict) -> None:
+    async def _exhaust_retries(
+        self, identifier: str, payload: dict, stream: str | None = None
+    ) -> None:
         """Handle a message that has exhausted all retries.
 
-        Uses ``_active_stream`` for ACK on the correct stream.
+        Args:
+            identifier: The message identifier.
+            payload: The message payload.
+            stream: The stream to ACK on. Defaults to the primary stream.
         """
         assert self.broker is not None, "Broker not initialized"
+        stream = stream or self._default_stream
         logger.warning(
             f"Message {identifier} exhausted retries ({self.max_retries} attempts), moving to DLQ"
         )
-        await self.move_to_dlq(identifier, payload)
+        await self.move_to_dlq(identifier, payload, stream)
 
         # ACK the message to remove it from the pending list
-        self.broker.ack(self._active_stream, identifier, self.consumer_group)
+        self.broker.ack(stream, identifier, self.consumer_group)
 
         # Clear retry count
         self.retry_counts.pop(identifier, None)
 
-    async def move_to_dlq(self, identifier: str, payload: dict) -> None:
+    async def move_to_dlq(
+        self, identifier: str, payload: dict, stream: str | None = None
+    ) -> None:
         """
         Move a failed message to the dead letter queue.
 
-        Uses the appropriate DLQ stream based on ``_active_stream``:
+        Routes to the appropriate DLQ based on the source stream:
         primary messages go to ``stream:dlq``, backfill messages go to
         ``stream:backfill:dlq``.
 
         Args:
-            identifier (str): The original message identifier
-            payload (dict): The message payload
+            identifier: The original message identifier.
+            payload: The message payload.
+            stream: The source stream. Defaults to the primary stream.
         """
         if not self.enable_dlq:
             return
 
         assert self.broker is not None, "Broker not initialized"
+        stream = stream or self._default_stream
 
-        # Use the correct DLQ stream based on active stream
-        if self._active_stream == self.backfill_stream:
+        # Use the correct DLQ stream based on source stream
+        if stream == self.backfill_stream:
             dlq_target = self.backfill_dlq_stream
         else:
             dlq_target = self.dlq_stream
 
         try:
-            dlq_message = self._create_dlq_message(identifier, payload)
+            dlq_message = self._create_dlq_message(identifier, payload, stream)
             self.broker.publish(dlq_target, dlq_message)
             logger.info(f"Moved message {identifier} to DLQ stream {dlq_target}")
 
@@ -605,7 +633,7 @@ class StreamSubscription(BaseSubscription):
             )
             self.engine.emitter.emit(
                 event="message.dlq",
-                stream=self._active_stream,
+                stream=stream,
                 message_id=identifier,
                 message_type=message_type,
                 status="error",
@@ -618,12 +646,15 @@ class StreamSubscription(BaseSubscription):
         except Exception as e:
             logger.exception(f"Failed to move message {identifier} to DLQ: {e}")
 
-    def _create_dlq_message(self, identifier: str, payload: dict) -> dict:
+    def _create_dlq_message(
+        self, identifier: str, payload: dict, stream: str | None = None
+    ) -> dict:
         """Create a DLQ message with failure metadata."""
+        stream = stream or self._default_stream
         return {
             **payload,
             "_dlq_metadata": {
-                "original_stream": self._active_stream,
+                "original_stream": stream,
                 "original_id": identifier,
                 "consumer_group": self.consumer_group,
                 "consumer": self.consumer_name,

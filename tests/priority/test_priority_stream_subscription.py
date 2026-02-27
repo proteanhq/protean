@@ -171,7 +171,7 @@ class TestPriorityReading:
         # Run a single iteration of the poll loop then stop
         processed_batches = []
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             processed_batches.append(messages)
             # Stop the loop after processing one batch
             sub.keep_going = False
@@ -205,7 +205,7 @@ class TestPriorityReading:
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
 
         sub.process_batch = _fake_process_batch
@@ -232,7 +232,7 @@ class TestPriorityReading:
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
 
         sub.process_batch = _fake_process_batch
@@ -264,7 +264,7 @@ class TestPriorityReading:
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
 
         sub.process_batch = _fake_process_batch
@@ -296,7 +296,7 @@ class TestPriorityReading:
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
 
         sub.process_batch = _fake_process_batch
@@ -312,7 +312,7 @@ class TestPriorityReading:
 
 
 class TestACKHandling:
-    """Tests for ACK / NACK / DLQ routing based on _active_stream."""
+    """Tests for ACK / NACK / DLQ routing based on stream parameter."""
 
     @pytest.mark.asyncio
     async def test_ack_primary_message_uses_primary_stream(self):
@@ -322,10 +322,7 @@ class TestACKHandling:
         sub.broker = engine.domain.brokers["default"]
         sub.broker.ack = MagicMock(return_value=True)
 
-        # Simulate active stream pointing to primary
-        sub._active_stream = sub.stream_category
-
-        result = await sub._acknowledge_message("msg-1")
+        result = await sub._acknowledge_message("msg-1", stream=sub.stream_category)
 
         sub.broker.ack.assert_called_once_with("orders", "msg-1", sub.consumer_group)
         assert result is True
@@ -338,10 +335,7 @@ class TestACKHandling:
         sub.broker = engine.domain.brokers["default"]
         sub.broker.ack = MagicMock(return_value=True)
 
-        # Simulate active stream pointing to backfill
-        sub._active_stream = sub.backfill_stream
-
-        result = await sub._acknowledge_message("msg-bf-1")
+        result = await sub._acknowledge_message("msg-bf-1", stream=sub.backfill_stream)
 
         sub.broker.ack.assert_called_once_with(
             "orders:backfill", "msg-bf-1", sub.consumer_group
@@ -355,12 +349,10 @@ class TestACKHandling:
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        sub._active_stream = sub.stream_category
-
         # Use zero delay for test speed
         sub.retry_delay_seconds = 0
 
-        await sub._retry_message("msg-1", retry_count=1)
+        await sub._retry_message("msg-1", retry_count=1, stream=sub.stream_category)
 
         sub.broker.nack.assert_called_once_with("orders", "msg-1", sub.consumer_group)
 
@@ -371,10 +363,9 @@ class TestACKHandling:
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        sub._active_stream = sub.backfill_stream
         sub.retry_delay_seconds = 0
 
-        await sub._retry_message("msg-bf-1", retry_count=1)
+        await sub._retry_message("msg-bf-1", retry_count=1, stream=sub.backfill_stream)
 
         sub.broker.nack.assert_called_once_with(
             "orders:backfill", "msg-bf-1", sub.consumer_group
@@ -387,9 +378,7 @@ class TestACKHandling:
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        sub._active_stream = sub.stream_category
-
-        await sub.move_to_dlq("msg-1", {"data": "fail"})
+        await sub.move_to_dlq("msg-1", {"data": "fail"}, stream=sub.stream_category)
 
         # Publish should target the primary DLQ stream
         sub.broker.publish.assert_called_once()
@@ -403,9 +392,7 @@ class TestACKHandling:
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        sub._active_stream = sub.backfill_stream
-
-        await sub.move_to_dlq("msg-bf-1", {"data": "fail"})
+        await sub.move_to_dlq("msg-bf-1", {"data": "fail"}, stream=sub.backfill_stream)
 
         sub.broker.publish.assert_called_once()
         target_stream = sub.broker.publish.call_args[0][0]
@@ -436,7 +423,7 @@ class TestStandardMode:
 
         processed = []
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             processed.append(messages)
             sub.keep_going = False
 
@@ -457,31 +444,26 @@ class TestStandardMode:
         assert processed[0] == standard_messages
 
     @pytest.mark.asyncio
-    async def test_standard_mode_active_stream_is_primary(self):
-        """In standard mode, _active_stream always points to the primary stream."""
+    async def test_standard_mode_passes_primary_stream_to_process_batch(self):
+        """In standard mode, process_batch always receives the primary stream."""
         engine = _make_engine()
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        active_streams_seen = []
+        sub.broker.read_blocking = MagicMock(return_value=[("msg-1", {"data": "a"})])
 
-        def _read_blocking(stream, **kwargs):
-            active_streams_seen.append(sub._active_stream)
-            return [("msg-1", {"data": "a"})]
+        streams_passed = []
 
-        sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
-
-        async def _fake_process_batch(messages):
-            active_streams_seen.append(sub._active_stream)
+        async def _capture_process_batch(messages, stream=None):
+            streams_passed.append(stream)
             sub.keep_going = False
 
-        sub.process_batch = _fake_process_batch
+        sub.process_batch = _capture_process_batch
 
         await sub.poll()
 
-        # _active_stream should always be the primary stream
-        for stream in active_streams_seen:
-            assert stream == "orders"
+        # process_batch should always receive the primary stream
+        assert streams_passed == ["orders"]
 
 
 # ---------------------------------------------------------------------------
@@ -510,7 +492,7 @@ class TestErrorHandling:
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
 
         sub.process_batch = _fake_process_batch
@@ -546,7 +528,7 @@ class TestErrorHandling:
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
 
         sub.process_batch = _fake_process_batch
@@ -585,18 +567,18 @@ class TestErrorHandling:
         assert call_count > 2
 
     @pytest.mark.asyncio
-    async def test_active_stream_reset_after_backfill_batch_error(self):
+    async def test_after_backfill_batch_error_primary_is_checked_first(self):
         """After a backfill process_batch error, next iteration checks primary first."""
         engine = _make_engine(priority_lanes_config={"enabled": True})
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
         iteration = 0
-        active_at_read_time = []
+        streams_read = []
 
         def _read_blocking(stream, **kwargs):
             nonlocal iteration
-            active_at_read_time.append(sub._active_stream)
+            streams_read.append(stream)
             if stream == "orders":
                 if iteration > 0:
                     # Second primary check: return messages to end the loop
@@ -611,7 +593,7 @@ class TestErrorHandling:
 
         batch_count = 0
 
-        async def _fake_process_batch(messages):
+        async def _fake_process_batch(messages, stream=None):
             nonlocal batch_count
             batch_count += 1
             if batch_count == 1:
@@ -624,11 +606,10 @@ class TestErrorHandling:
 
         await sub.poll()
 
-        # After backfill error, _active_stream should be reset to primary
-        # The third read should be on the primary stream
-        assert active_at_read_time[0] == "orders"  # First primary check
-        assert active_at_read_time[1] == "orders:backfill"  # Backfill read
-        assert active_at_read_time[2] == "orders"  # Re-check primary
+        # After backfill error, the loop should re-check primary first
+        assert streams_read[0] == "orders"  # First primary check
+        assert streams_read[1] == "orders:backfill"  # Backfill read
+        assert streams_read[2] == "orders"  # Re-check primary
 
 
 # ---------------------------------------------------------------------------
@@ -646,9 +627,6 @@ class TestDLQMetadata:
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        # Simulate processing a backfill message
-        sub._active_stream = sub.backfill_stream
-
         captured_payloads = []
         sub.broker.publish = MagicMock(
             side_effect=lambda stream, payload: captured_payloads.append(
@@ -656,7 +634,9 @@ class TestDLQMetadata:
             )
         )
 
-        await sub.move_to_dlq("msg-bf-1", {"data": "failed"})
+        await sub.move_to_dlq(
+            "msg-bf-1", {"data": "failed"}, stream=sub.backfill_stream
+        )
 
         assert len(captured_payloads) == 1
         dlq_stream, dlq_payload = captured_payloads[0]
@@ -672,8 +652,6 @@ class TestDLQMetadata:
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        sub._active_stream = sub.stream_category
-
         captured_payloads = []
         sub.broker.publish = MagicMock(
             side_effect=lambda stream, payload: captured_payloads.append(
@@ -681,7 +659,7 @@ class TestDLQMetadata:
             )
         )
 
-        await sub.move_to_dlq("msg-1", {"data": "failed"})
+        await sub.move_to_dlq("msg-1", {"data": "failed"}, stream=sub.stream_category)
 
         assert len(captured_payloads) == 1
         dlq_stream, dlq_payload = captured_payloads[0]

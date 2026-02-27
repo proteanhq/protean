@@ -277,11 +277,32 @@ class RedisBroker(BaseBroker):
 
         except redis.ResponseError as e:
             if "NOGROUP" in str(e):
-                # Consumer group doesn't exist, create it and retry
+                # Consumer group doesn't exist — invalidate cache and recreate.
+                # Use a single retry to avoid infinite recursion if the group
+                # cannot be created (e.g. stream was flushed while engine runs).
+                group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+                self._created_groups_set.discard(group_key)
                 self._ensure_group(consumer_group, stream)
-                return self._read_blocking(
-                    stream, consumer_group, consumer_name, timeout_ms, count
-                )
+                try:
+                    response = self.redis_instance.xreadgroup(
+                        consumer_group,
+                        consumer_name,
+                        {stream: NEW_MESSAGES_MARK},
+                        count=count,
+                        block=min(timeout_ms, 1000),
+                    )
+                    if not response:
+                        return []
+                    messages = []
+                    for stream_name, stream_messages in response:
+                        for message_id, fields in stream_messages:
+                            redis_id_str = self._decode_if_bytes(message_id)
+                            message = self._deserialize_message(fields)
+                            messages.append((redis_id_str, message))
+                    return messages
+                except Exception as retry_err:
+                    logger.error(f"Retry after NOGROUP failed: {retry_err}")
+                    return []
             logger.error(f"Redis error in _read_blocking: {e}")
             return []
         except Exception as e:

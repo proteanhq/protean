@@ -329,9 +329,13 @@ class TestRedisEdgeCases:
 
         # Should retry after creating group
         assert messages == []
-        # _read_blocking makes 2 calls initially (pending + new), gets error, creates group, then retries with 2 more calls
-        assert call_count[0] >= 3  # At least 3 calls total
-        mock_redis.xgroup_create.assert_called_once()
+        # _read_blocking flow:
+        # 1. _ensure_group at top of method → xgroup_create #1
+        # 2. xreadgroup #1 (pending check) → raises NOGROUP
+        # 3. NOGROUP handler: discard + _ensure_group → xgroup_create #2
+        # 4. xreadgroup #2 (retry) → raises NOGROUP again, caught by inner handler
+        assert call_count[0] == 2
+        assert mock_redis.xgroup_create.call_count == 2
 
     def test_read_blocking_other_response_error(self, test_domain, caplog):
         """Test _read_blocking handling non-NOGROUP ResponseError."""
