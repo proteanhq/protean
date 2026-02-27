@@ -233,7 +233,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         return parts[0], self.get_lookup(op)
 
     @abstractmethod
-    def get_session(self):
+    def get_session(self) -> Any:
         """Establish a new session with the database.
 
         Typically the session factory should be created once per application. Which is then
@@ -249,7 +249,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_connection(self):
+    def get_connection(self) -> Any:
         """Get the connection object for the repository"""
 
     @abstractmethod
@@ -257,7 +257,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Check if the connection is alive"""
 
     @abstractmethod
-    def close(self):
+    def close(self) -> None:
         """Close the provider and clean up any persistent connections or resources.
 
         This method should be called to properly dispose of connections and free up
@@ -268,11 +268,13 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_dao(self, entity_cls, database_model_cls):
+    def get_dao(self, entity_cls: Type, database_model_cls: Type) -> Any:
         """Return a DAO object configured with a live connection"""
 
     @abstractmethod
-    def decorate_database_model_class(self, entity_cls, database_model_cls):
+    def decorate_database_model_class(
+        self, entity_cls: Type, database_model_cls: Type
+    ) -> Type:
         """Enhance a user-defined DatabaseModel class with adapter internals.
 
         Called when the user has defined a custom ``@domain.model`` for an
@@ -283,7 +285,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def construct_database_model_class(self, entity_cls):
+    def construct_database_model_class(self, entity_cls: Type) -> Type:
         """Dynamically build a DatabaseModel class for an entity.
 
         Called when no user-defined ``@domain.model`` exists for the entity.
@@ -294,7 +296,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         ``from_entity()`` and ``to_entity()`` implemented.
         """
 
-    def raw(self, query: Any, data: Any = None):
+    def raw(self, query: Any, data: Any = None) -> Any:
         """Run raw query directly on the database.
 
         Query should be executed immediately on the database as a separate unit of work
@@ -312,7 +314,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         return self._raw(query, data)
 
     @abstractmethod
-    def _raw(self, query: Any, data: Any = None):
+    def _raw(self, query: Any, data: Any = None) -> Any:
         """Internal raw query implementation.
 
         Override in adapters that support RAW_QUERIES capability.

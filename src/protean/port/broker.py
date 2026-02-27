@@ -353,7 +353,7 @@ class BaseBroker(metaclass=ABCMeta):
             All brokers must return a non-empty string identifier.
         """
 
-    def get_next(self, stream: str, consumer_group: str) -> dict | None:
+    def get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
         """Retrieve the next message to process from broker.
 
         Args:
@@ -361,7 +361,7 @@ class BaseBroker(metaclass=ABCMeta):
             consumer_group (str): The consumer group identifier
 
         Returns:
-            dict: The message payload, or None if no messages available
+            tuple[str, dict] | None: A tuple of (identifier, message) or None if no messages available
         """
         # Check if broker supports consumer groups
         if not self.has_capability(BrokerCapabilities.CONSUMER_GROUPS):
@@ -383,7 +383,7 @@ class BaseBroker(metaclass=ABCMeta):
                 raise
 
     @abstractmethod
-    def _get_next(self, stream: str, consumer_group: str) -> dict | None:
+    def _get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
         """Overridden method to retrieve the next message to process from broker."""
 
     def read(

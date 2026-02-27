@@ -24,11 +24,11 @@ class BaseCache(metaclass=ABCMeta):
         self._projections[projection_name] = projection_cls
 
     @abstractmethod
-    def ping(self):
+    def ping(self) -> bool:
         """Healthcheck to verify cache is active and accessible"""
 
     @abstractmethod
-    def get_connection(self):
+    def get_connection(self) -> object:
         """Get the connection object for the cache"""
 
     @abstractmethod
@@ -50,37 +50,39 @@ class BaseCache(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get(self, key):
+    def get(self, key: str) -> Optional[BaseProjection]:
         """Retrieve data by key"""
 
     @abstractmethod
-    def get_all(self, key_pattern, last_position=0, size=25):
+    def get_all(
+        self, key_pattern: str, last_position: int = 0, size: int = 25
+    ) -> list[BaseProjection]:
         """Retrieve data by key pattern"""
 
     @abstractmethod
-    def count(self, key_pattern):
+    def count(self, key_pattern: str) -> int:
         """Retrieve count of data by key pattern"""
 
     @abstractmethod
-    def remove(self, projection):
+    def remove(self, projection: BaseProjection) -> None:
         """Remove a cache record by projection object"""
 
     @abstractmethod
-    def remove_by_key(self, key):
+    def remove_by_key(self, key: str) -> None:
         """Remove a cache record by key"""
 
     @abstractmethod
-    def remove_by_key_pattern(self, key_pattern):
+    def remove_by_key_pattern(self, key_pattern: str) -> None:
         """Remove a cache record by key pattern"""
 
     @abstractmethod
-    def flush_all(self):
+    def flush_all(self) -> None:
         """Remove all entries in Cache"""
 
     @abstractmethod
-    def set_ttl(self, key, ttl):
+    def set_ttl(self, key: str, ttl: Union[int, float]) -> None:
         """Set a TTL explicitly on a key"""
 
     @abstractmethod
-    def get_ttl(self, key):
+    def get_ttl(self, key: str) -> float:
         """Get the TTL set on a key"""

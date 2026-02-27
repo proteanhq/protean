@@ -58,18 +58,18 @@ class RedisCache(BaseCache):
         value = self.r.get(key)
         return projection_cls(json.loads(value)) if value else None
 
-    def get_all(self, key_pattern, last_position=0, count=25):
-        # FIXME Validate count
+    def get_all(self, key_pattern, last_position=0, size=25):
+        # FIXME Validate size
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
         cursor, values = self.r.scan(
-            cursor=last_position, match=key_pattern, count=count
+            cursor=last_position, match=key_pattern, count=size
         )
         return [projection_cls(json.loads(self.r.get(value))) for value in values]
 
-    def count(self, key_pattern, count=25):
-        values = self.r.scan_iter(match=key_pattern, count=count)
+    def count(self, key_pattern):
+        values = self.r.scan_iter(match=key_pattern)
         return len(list(values))
 
     def remove(self, projection):
