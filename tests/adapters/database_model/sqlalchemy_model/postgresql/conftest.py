@@ -26,16 +26,26 @@ def setup_db():
             User,
         )
         from .test_array_datatype import ArrayUser, IntegerArrayUser
+        from .test_fieldspec_array_content_type import (
+            DictListAggregate,
+            FloatListAggregate,
+            IntListAggregate,
+            StringListAggregate,
+        )
         from .test_json_datatype import Event
         from .test_lookups import GenericPostgres
 
         domain.register(ArrayUser)
+        domain.register(DictListAggregate)
+        domain.register(FloatListAggregate)
         domain.register(GenericPostgres)
         domain.register(ComplexUser)
         domain.register(Event)
         domain.register(IntegerArrayUser)
+        domain.register(IntListAggregate)
         domain.register(Person)
         domain.register(Provider)
+        domain.register(StringListAggregate)
         domain.register(User)
         domain.register(ListUser)
         domain.register(IntegerListUser)
@@ -46,12 +56,16 @@ def setup_db():
         domain.init(traverse=False)
 
         domain.repository_for(ArrayUser)._dao
+        domain.repository_for(DictListAggregate)._dao
+        domain.repository_for(FloatListAggregate)._dao
         domain.repository_for(GenericPostgres)._dao
         domain.repository_for(ComplexUser)._dao
         domain.repository_for(Event)._dao
         domain.repository_for(IntegerArrayUser)._dao
+        domain.repository_for(IntListAggregate)._dao
         domain.repository_for(Person)._dao
         domain.repository_for(Provider)._dao
+        domain.repository_for(StringListAggregate)._dao
         domain.repository_for(User)._dao
         domain.repository_for(ListUser)._dao
         domain.repository_for(IntegerListUser)._dao

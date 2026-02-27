@@ -1,6 +1,7 @@
 import pytest
 
 from protean.adapters.repository.memory import MemoryModel
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Text
 
 from .elements import Email, Person, Provider, ProviderCustomModel, Receiver, User
@@ -94,22 +95,16 @@ class TestCustomModel:
             == "ProviderCustomModel"
         )
 
-    def test_that_db_model_can_be_registered_with_domain_annotation(self, test_domain):
-        from protean.fields import Text
-
+    def test_that_db_model_with_extra_fields_raises_error(self, test_domain):
         test_domain.register(Receiver)
 
-        @test_domain.database_model(part_of=Receiver)
-        class ReceiverInlineModel:
-            about = Text()
+        with pytest.raises(IncorrectUsageError) as exc:
 
-        database_model_cls = test_domain.repository_for(Receiver)._database_model
+            @test_domain.database_model(part_of=Receiver)
+            class ReceiverInlineModel:
+                about = Text()
 
-        assert database_model_cls.__name__ == "ReceiverInlineModel"
-
-        # FIXME This test will fail in the future
-        #   when models are validated for fields to be present in corresponding entities/aggregates
-        assert hasattr(database_model_cls, "about")
+        assert "about" in str(exc.value)
 
     def test_explicit_model_is_returned_if_provided(self, test_domain):
         class ProviderCustomMemoryModel(MemoryModel):

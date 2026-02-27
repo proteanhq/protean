@@ -3,7 +3,7 @@ from abc import abstractmethod
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.reflection import attributes
+from protean.utils.reflection import attributes, declared_fields
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
@@ -160,6 +160,24 @@ def database_model_factory(element_cls: type[_T], domain: Any, **opts: Any) -> t
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
             f"Database Model `{element_cls.__name__}` should be associated with an Entity or Aggregate"
+        )
+
+    # Validate that model fields exist in the associated aggregate/entity
+    part_of_cls = element_cls.meta_.part_of
+    entity_field_names = set(declared_fields(part_of_cls).keys())
+
+    _SKIP = {"Meta", "meta_", "element_type"}
+    model_field_names = {
+        name
+        for name, value in vars(element_cls).items()
+        if not name.startswith("_") and name not in _SKIP and not callable(value)
+    }
+
+    extra = model_field_names - entity_field_names
+    if extra:
+        raise IncorrectUsageError(
+            f"Database Model `{element_cls.__name__}` has field(s) "
+            f"{extra} not declared in `{part_of_cls.__name__}`"
         )
 
     return element_cls

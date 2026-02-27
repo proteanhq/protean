@@ -3,7 +3,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.fields import String, Text
+from protean.fields import Integer, String, Text
 from protean.utils import fully_qualified_name
 
 
@@ -39,3 +39,32 @@ class TestDatabaseModelInitialization:
 
         # Check that model is registered with domain
         assert fully_qualified_name(PersonModel) in test_domain.registry.database_models
+
+    def test_database_model_with_subset_of_fields_is_valid(self, test_domain):
+        class Order(BaseAggregate):
+            name = String()
+            amount = Integer()
+
+        class OrderModel(BaseDatabaseModel):
+            name = Text()
+
+        test_domain.register(Order)
+        test_domain.register(OrderModel, part_of=Order)
+
+        assert fully_qualified_name(OrderModel) in test_domain.registry.database_models
+
+    def test_database_model_with_extra_fields_raises_error(self, test_domain):
+        class Order(BaseAggregate):
+            name = String()
+
+        class OrderModel(BaseDatabaseModel):
+            name = Text()
+            bogus = Text()
+
+        test_domain.register(Order)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.register(OrderModel, part_of=Order)
+
+        assert "bogus" in str(exc.value)
+        assert "Order" in str(exc.value)

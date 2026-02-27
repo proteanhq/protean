@@ -22,6 +22,7 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.fields.resolved import ResolvedField
+from protean.fields.spec import FieldSpec
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -277,6 +278,25 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                                         field_mapping_type = psql.JSON
                                     else:
                                         field_mapping_type = sa_types.PickleType
+                                elif isinstance(content_type, FieldSpec):
+                                    # FieldSpec from Dict() / String() etc.
+                                    # Resolve the underlying python_type
+                                    # to pick the right SA column type.
+                                    import types as _types
+                                    import typing as _typing
+
+                                    ct_type = content_type.python_type
+                                    # Unwrap Union types (e.g. dict | list
+                                    # from Dict()) to the first branch.
+                                    origin = _typing.get_origin(ct_type)
+                                    if (
+                                        origin is _types.UnionType
+                                        or origin is _typing.Union
+                                    ):
+                                        ct_type = _typing.get_args(ct_type)[0]
+                                    field_mapping_type = _PYTHON_TYPE_TO_SA.get(
+                                        ct_type, sa_types.String
+                                    )
                                 elif content_type is not None and isinstance(
                                     content_type, type
                                 ):
