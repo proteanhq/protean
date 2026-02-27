@@ -19,6 +19,9 @@ from ..tracing import TRACE_STREAM
 
 logger = logging.getLogger(__name__)
 
+# Internal streams that should be excluded from Observatory metrics
+_INTERNAL_STREAMS = {TRACE_STREAM}
+
 # Window string → milliseconds mapping
 _WINDOW_MS = {
     "5m": 5 * 60 * 1000,
@@ -43,6 +46,33 @@ def _get_redis(domains: List[Domain]):
         except Exception:
             continue
     return None
+
+
+def _discover_streams(redis_conn) -> list:
+    """Discover all application streams in Redis.
+
+    The Observatory process doesn't subscribe to streams itself, so the
+    broker's ``_get_streams_to_check()`` returns an empty set.  Instead we
+    scan Redis for keys of type ``stream`` and filter out internal ones
+    (e.g. the trace stream).
+    """
+    if redis_conn is None:
+        return []
+    try:
+        streams = []
+        cursor = 0
+        while True:
+            cursor, keys = redis_conn.scan(cursor=cursor, count=200, _type="stream")
+            for key in keys:
+                name = key.decode("utf-8") if isinstance(key, bytes) else str(key)
+                if name not in _INTERNAL_STREAMS:
+                    streams.append(name)
+            if cursor == 0:
+                break
+        return sorted(streams)
+    except Exception as e:
+        logger.debug(f"Error discovering streams from Redis: {e}")
+        return []
 
 
 def _outbox_status(domain: Domain) -> dict:
@@ -139,17 +169,37 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.get("/streams")
     async def streams():
         """Stream lengths and consumer group info."""
-        # Use first domain's broker (shared infrastructure)
-        broker_stats = _broker_health(domains[0])
-        broker_info_data = _broker_info(domains[0])
+        redis_conn = _get_redis(domains)
+        stream_names = _discover_streams(redis_conn) if redis_conn else []
 
-        broker_details = broker_stats.get("details", {})
+        message_counts = {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
+        consumer_groups = {}
+
+        for name in stream_names:
+            try:
+                message_counts["total_messages"] += redis_conn.xlen(name)
+                groups_info = redis_conn.xinfo_groups(name)
+                for g in groups_info:
+                    if isinstance(g, dict):
+                        gname = g.get("name") or g.get(b"name")
+                        if isinstance(gname, bytes):
+                            gname = gname.decode("utf-8")
+                        gpending = g.get("pending") or g.get(b"pending") or 0
+                        glag = g.get("lag") or g.get(b"lag") or 0
+                        message_counts["in_flight"] += int(gpending)
+                        consumer_groups[str(gname)] = {
+                            "stream": name,
+                            "pending": int(gpending),
+                            "lag": int(glag),
+                        }
+            except Exception:
+                pass
 
         return JSONResponse(
             content={
-                "message_counts": broker_details.get("message_counts", {}),
-                "streams": broker_details.get("streams", {}),
-                "consumer_groups": broker_info_data.get("consumer_groups", {}),
+                "message_counts": message_counts,
+                "streams": {"count": len(stream_names), "names": stream_names},
+                "consumer_groups": consumer_groups,
             }
         )
 
@@ -181,71 +231,73 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 result["totals"]["outbox_pending"] += counts.get("pending", 0)
                 result["totals"]["outbox_pending"] += counts.get("processing", 0)
 
-        # 2. Per-stream XLEN + per-consumer-group XPENDING
-        for d in domains:
-            try:
-                with d.domain_context():
-                    broker = d.brokers.get("default")
-                    if broker and hasattr(broker, "redis_instance"):
-                        redis_conn = broker.redis_instance
-                        streams_to_check = broker._get_streams_to_check()
+        # 2. Per-stream depth + per-consumer-group lag
+        #    stream_depth  = max lag across all consumer groups per stream
+        #                    (the actual unconsumed backlog, NOT total XLEN)
+        #    consumer_pending = messages delivered but not yet ACK'd (in-flight)
+        redis_conn = _get_redis(domains)
+        if redis_conn:
+            for stream_name in _discover_streams(redis_conn):
+                try:
+                    xlen = redis_conn.xlen(stream_name)
+                    stream_entry = {
+                        "length": xlen,
+                        "consumer_groups": {},
+                    }
+                    max_lag = 0
 
-                        for stream_name in streams_to_check:
-                            try:
-                                xlen = redis_conn.xlen(stream_name)
-                                stream_entry = {
-                                    "length": xlen,
-                                    "consumer_groups": {},
+                    try:
+                        groups = redis_conn.xinfo_groups(stream_name)
+                        for g in groups:
+                            if isinstance(g, dict):
+                                gname = g.get("name") or g.get(b"name")
+                                if isinstance(gname, bytes):
+                                    gname = gname.decode("utf-8")
+                                gpending = g.get("pending") or g.get(b"pending") or 0
+                                glag = g.get("lag") or g.get(b"lag") or 0
+                                stream_entry["consumer_groups"][str(gname)] = {
+                                    "pending": int(gpending),
+                                    "lag": int(glag),
                                 }
-                                result["totals"]["stream_depth"] += xlen
+                                result["totals"]["consumer_pending"] += int(gpending)
+                                max_lag = max(max_lag, int(glag))
+                    except Exception:
+                        pass
 
-                                try:
-                                    groups = redis_conn.xinfo_groups(stream_name)
-                                    for g in groups:
-                                        if isinstance(g, dict):
-                                            gname = broker._get_field_value(g, "name")
-                                            gpending = (
-                                                broker._get_field_value(
-                                                    g,
-                                                    "pending",
-                                                    convert_to_int=True,
-                                                )
-                                                or 0
-                                            )
-                                            stream_entry["consumer_groups"][
-                                                str(gname)
-                                            ] = {"pending": int(gpending)}
-                                            result["totals"]["consumer_pending"] += int(
-                                                gpending
-                                            )
-                                except Exception:
-                                    pass
-
-                                result["streams"][stream_name] = stream_entry
-                            except Exception:
-                                pass
-                        break  # Only need one broker connection
-            except Exception:
-                continue
+                    result["totals"]["stream_depth"] += max_lag
+                    result["streams"][stream_name] = stream_entry
+                except Exception:
+                    pass
 
         return JSONResponse(content=result)
 
     @router.get("/stats")
     async def stats():
         """Aggregated throughput and error rate statistics."""
-        # Combine outbox and stream metrics
         outbox_data = {}
         for domain in domains:
             outbox_data[domain.name] = _outbox_status(domain)
 
-        broker_stats = _broker_health(domains[0])
-        broker_details = broker_stats.get("details", {})
+        redis_conn = _get_redis(domains)
+        stream_names = _discover_streams(redis_conn) if redis_conn else []
+
+        message_counts = {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
+        for name in stream_names:
+            try:
+                message_counts["total_messages"] += redis_conn.xlen(name)
+                groups_info = redis_conn.xinfo_groups(name)
+                for g in groups_info:
+                    if isinstance(g, dict):
+                        gpending = g.get("pending") or g.get(b"pending") or 0
+                        message_counts["in_flight"] += int(gpending)
+            except Exception:
+                pass
 
         return JSONResponse(
             content={
                 "outbox": outbox_data,
-                "message_counts": broker_details.get("message_counts", {}),
-                "streams": broker_details.get("streams", {}),
+                "message_counts": message_counts,
+                "streams": {"count": len(stream_names), "names": stream_names},
             }
         )
 

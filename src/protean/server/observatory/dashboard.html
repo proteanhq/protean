@@ -250,15 +250,17 @@ body {
 }
 
 .pipeline-stage .count-box {
-  width: 80px;
+  min-width: 90px;
+  padding: 0 10px;
   height: 48px;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-code);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 500;
+  white-space: nowrap;
   transition: all 0.3s;
 }
 
@@ -1007,6 +1009,173 @@ body {
 .lag-bar-fill.warn { background: var(--warning); }
 .lag-bar-fill.critical { background: var(--accent); }
 
+/* System Pulse */
+.system-pulse {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.pulse-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.pulse-dot.active {
+  background: var(--success);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.pulse-dot.idle { background: var(--warning); }
+.pulse-dot.disconnected { background: var(--accent); }
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(42, 157, 143, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(42, 157, 143, 0); }
+}
+
+.pulse-label {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.pulse-label.active { color: var(--success); }
+.pulse-label.idle { color: var(--warning); }
+.pulse-label.disconnected { color: var(--accent); }
+
+.pulse-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pulse-detail .metric-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pulse-detail .metric-value {
+  font-family: var(--font-code);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Handler Activity */
+.handler-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 16px;
+}
+
+.handler-domain-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-right: 16px;
+}
+
+.handler-domain-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 4px;
+}
+
+.handler-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-code);
+}
+
+.handler-chip .hdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.handler-chip .hdot.active { background: var(--success); }
+.handler-chip .hdot.idle { background: var(--text-muted); }
+.handler-chip .hdot.lagging { background: var(--accent); }
+
+.handler-chip .hrate {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* Collapsible sections */
+.card-header.collapsible {
+  cursor: pointer;
+  user-select: none;
+}
+
+.card-header.collapsible .collapse-icon {
+  transition: transform 0.2s;
+  display: inline-block;
+  font-size: 10px;
+  margin-right: 6px;
+}
+
+.card-header.collapsible.expanded .collapse-icon {
+  transform: rotate(90deg);
+}
+
+.collapsible-body {
+  display: none;
+}
+
+.collapsible-body.expanded {
+  display: block;
+}
+
+.collapse-summary {
+  font-family: var(--font-code);
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+.collapse-summary.ok { color: var(--success); }
+.collapse-summary.warn { color: #E65100; }
+.collapse-summary.critical { color: var(--accent); }
+
+/* No activity overlay */
+.no-activity-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+  pointer-events: none;
+}
+
+.sparkline-container { position: relative; }
+
 /* New events badge */
 .new-events-badge {
   display: none;
@@ -1046,28 +1215,42 @@ body {
 <!-- Main -->
 <div class="main">
 
-  <!-- Summary Metrics Bar -->
+  <!-- System Pulse + Summary Metrics -->
   <div class="card">
     <div class="summary-bar">
+      <div class="system-pulse">
+        <div class="pulse-status" title="System status based on SSE connection and recent trace events.">
+          <span class="pulse-dot disconnected" id="pulseDot"></span>
+          <span class="pulse-label disconnected" id="pulseLabel">CONNECTING</span>
+        </div>
+        <div class="pulse-detail" title="Time since last trace event was received via SSE.">
+          <span class="metric-label">Last Event</span>
+          <span class="metric-value" id="lastEventTime">--</span>
+        </div>
+        <div class="pulse-detail" title="Number of engine domains with active consumer connections.">
+          <span class="metric-label">Engines</span>
+          <span class="metric-value" id="engineCountValue">--</span>
+        </div>
+      </div>
       <div class="summary-metrics">
-        <div class="summary-metric" title="Total trace events per minute in the selected time window. Includes all event types (published, handler completions, failures).">
+        <div class="summary-metric" title="Total trace events per minute in the selected time window.">
           <span class="metric-label">Throughput</span>
           <span class="metric-value good" id="metricThroughput">--</span>
         </div>
-        <div class="summary-metric" title="Percentage of events that are errors (handler failures, DLQ) out of all events in the selected window.">
+        <div class="summary-metric" title="Percentage of events that are errors (handler failures, DLQ).">
           <span class="metric-label">Error Rate</span>
           <span class="metric-value good" id="metricErrorRate">--</span>
         </div>
-        <div class="summary-metric" title="Average time handlers take to process a message, measured from handler.started to handler.completed.">
+        <div class="summary-metric" title="Average handler processing time.">
           <span class="metric-label">Avg Latency</span>
           <span class="metric-value good" id="metricLatency">--</span>
         </div>
-        <div class="summary-metric" title="Messages that have been published but not yet fully processed by all their handlers. Based on trace events — may include stale entries if engines were restarted.">
+        <div class="summary-metric" title="Messages published but not yet fully processed.">
           <span class="metric-label">In Flight</span>
           <span class="metric-value good" id="metricInFlight">0</span>
         </div>
       </div>
-      <div class="window-selector" title="Time window for summary metrics and pipeline counts. Controls how far back trace events are aggregated.">
+      <div class="window-selector" title="Time window for summary metrics and pipeline counts.">
         <button class="window-btn active" data-window="5m" onclick="setWindow('5m')">5m</button>
         <button class="window-btn" data-window="15m" onclick="setWindow('15m')">15m</button>
         <button class="window-btn" data-window="1h" onclick="setWindow('1h')">1h</button>
@@ -1077,28 +1260,54 @@ body {
     </div>
   </div>
 
+  <!-- Throughput Chart (promoted to position 2) -->
+  <div class="card">
+    <div class="sparkline-container">
+      <div class="sparkline-header">
+        <span class="chart-title" title="Real-time event throughput over the last 5 minutes. Blue bars = publishing rate, green line = handler completions, red dots = errors.">Throughput (5 min)</span>
+        <div class="sparkline-stats">
+          <div title="Events published from outbox to Redis per second."><span class="stat-label">Published:</span> <span class="stat-value" id="ratePublished">0/s</span></div>
+          <div title="Handler completions per second."><span class="stat-label">Processed:</span> <span class="stat-value" id="rateProcessed">0/s</span></div>
+          <div title="Handler failures and DLQ events per second."><span class="stat-label">Errors:</span> <span class="stat-value" id="rateErrors">0/s</span></div>
+        </div>
+      </div>
+      <div style="position:relative">
+        <canvas id="sparkline" width="1000" height="100"></canvas>
+        <div class="no-activity-overlay" id="noActivityOverlay" style="display:none">No activity in the last 5 minutes</div>
+      </div>
+      <div class="time-labels">
+        <span>5m ago</span>
+        <span>4m</span>
+        <span>3m</span>
+        <span>2m</span>
+        <span>1m</span>
+        <span>now</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Pipeline -->
   <div class="card">
     <div class="pipeline">
-      <div class="pipeline-stage" title="Count of outbox.published trace events — messages that the OutboxProcessor has successfully pushed from the database outbox to Redis Streams.">
+      <div class="pipeline-stage" title="Outbox publishing rate — messages pushed from database outbox to Redis Streams.">
         <span class="label">Published</span>
-        <div class="count-box published" id="pipePublished">0</div>
+        <div class="count-box published" id="pipePublished">--</div>
         <span class="rate-label" id="ratePublishedPipe">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage" title="Messages currently being processed by event handlers (handler.started minus handler.completed/failed). Shows 0 when no handlers are actively running.">
+      <div class="pipeline-stage" title="Messages currently being processed by event handlers.">
         <span class="label">Handling</span>
         <div class="count-box handling" id="pipeHandling">0</div>
         <span class="rate-label" id="rateHandling">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage" title="Count of handler.completed trace events — successful handler executions. Higher than Published when each message is processed by multiple handlers (projectors).">
+      <div class="pipeline-stage" title="Handler completion rate — successful handler executions.">
         <span class="label">Done</span>
-        <div class="count-box done" id="pipeDone">0</div>
+        <div class="count-box done" id="pipeDone">--</div>
         <span class="rate-label" id="rateDone">&nbsp;</span>
       </div>
       <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage" title="Count of handler failures, outbox publish failures, and messages sent to the dead-letter queue.">
+      <div class="pipeline-stage" title="Handler failures, outbox publish failures, and dead-letter queue entries.">
         <span class="label">Failed</span>
         <div class="count-box failed" id="pipeFailed">0</div>
         <span class="rate-label" id="rateFailed">&nbsp;</span>
@@ -1106,12 +1315,27 @@ body {
     </div>
   </div>
 
-  <!-- Backpressure -->
-  <div class="card" id="backpressureCard">
+  <!-- Handler Activity -->
+  <div class="card" id="handlerActivityCard">
     <div class="card-header">
-      <span>Backpressure</span>
+      <span title="Live handler activity — which handlers are processing messages and at what rate.">Handler Activity</span>
+    </div>
+    <div class="handler-grid" id="handlerGrid">
+      <span style="color:var(--text-muted);font-size:12px">Waiting for subscription data...</span>
+    </div>
+  </div>
+
+  <!-- Backpressure (collapsible) -->
+  <div class="card" id="backpressureCard">
+    <div class="card-header collapsible" id="backpressureHeader" onclick="toggleBackpressure()">
+      <div>
+        <span class="collapse-icon">&#9654;</span>
+        <span>Backpressure</span>
+        <span class="collapse-summary ok" id="bpSummary">OK</span>
+      </div>
       <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-code)" id="bpLastUpdated"></span>
     </div>
+    <div class="collapsible-body" id="backpressureBody">
     <div class="backpressure-grid">
       <div class="bp-gauge" id="bpOutbox" title="Messages in the PostgreSQL outbox table with PENDING or PROCESSING status, waiting for the OutboxProcessor (engine) to publish them to Redis. If this stays high, the engine may not be running or is falling behind.">
         <span class="bp-label">Outbox Pending</span>
@@ -1129,70 +1353,55 @@ body {
         <span class="bp-subtitle" id="bpConsumerDetail">unacknowledged</span>
       </div>
     </div>
-  </div>
-
-  <!-- Queue Depth Chart -->
-  <div class="card" id="queueDepthCard">
+    <!-- Queue Depth Chart -->
     <div class="queue-chart-container">
       <div class="queue-chart-header">
-        <span class="chart-title" title="Time-series view of queue depth at each stage. During a burst or migration, you'll see a mountain shape — steep rise as events accumulate, gradual decline as handlers drain the backlog.">Queue Depth (5 min)</span>
+        <span class="chart-title">Queue Depth (5 min)</span>
         <div class="queue-legend">
-          <div class="queue-legend-item" title="Messages waiting in the PostgreSQL outbox (PENDING + PROCESSING).">
-            <div class="queue-legend-swatch" style="background:#E76F51"></div>
-            <span>Outbox</span>
-          </div>
-          <div class="queue-legend-item" title="Messages sitting in Redis Streams waiting to be consumed (XLEN).">
-            <div class="queue-legend-swatch" style="background:#457B9D"></div>
-            <span>Stream</span>
-          </div>
-          <div class="queue-legend-item" title="Messages delivered to consumers but not yet acknowledged (XPENDING).">
-            <div class="queue-legend-swatch" style="background:#E9C46A"></div>
-            <span>Consumer Lag</span>
-          </div>
+          <div class="queue-legend-item"><div class="queue-legend-swatch" style="background:#E76F51"></div><span>Outbox</span></div>
+          <div class="queue-legend-item"><div class="queue-legend-swatch" style="background:#457B9D"></div><span>Stream</span></div>
+          <div class="queue-legend-item"><div class="queue-legend-swatch" style="background:#E9C46A"></div><span>Consumer Lag</span></div>
         </div>
       </div>
       <canvas id="queueSparkline" width="1000" height="80"></canvas>
       <div class="time-labels">
-        <span>5m ago</span>
-        <span>4m</span>
-        <span>3m</span>
-        <span>2m</span>
-        <span>1m</span>
-        <span>now</span>
+        <span>5m ago</span><span>4m</span><span>3m</span><span>2m</span><span>1m</span><span>now</span>
       </div>
     </div>
-  </div>
-
-  <!-- Consumer Lag Detail -->
-  <div class="card" id="consumerLagCard">
-    <div class="card-header">
-      <span title="Per-stream, per-consumer-group breakdown of queue depth. Shows exactly which handler is the bottleneck.">Consumer Lag by Stream</span>
-    </div>
+    <!-- Consumer Lag Detail -->
     <div class="card-body" id="consumerLagBody">
       <table class="lag-table" id="lagTable">
         <thead>
           <tr>
-            <th title="Redis Stream name in the format domain::aggregate.">Stream</th>
-            <th title="Total messages in this Redis Stream (XLEN). Includes both consumed and unconsumed messages.">Length</th>
-            <th title="Handler subscribed to this stream via a consumer group. Each handler gets its own independent read position.">Consumer Group</th>
-            <th title="Messages delivered to this consumer group but not yet acknowledged (XPENDING). High values indicate a slow handler.">Pending</th>
-            <th style="width:120px" title="Visual representation of pending count relative to the largest stream length.">Lag</th>
+            <th>Stream</th>
+            <th>Length</th>
+            <th>Consumer Group</th>
+            <th>Lag</th>
+            <th>Pending</th>
+            <th style="width:120px"></th>
           </tr>
         </thead>
         <tbody id="lagTableBody">
-          <tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
+          <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
         </tbody>
       </table>
     </div>
+    </div><!-- end collapsible-body -->
   </div>
 
-  <!-- Subscription Lag -->
+  <!-- Subscription Status (collapsible) -->
   <div class="card" id="subscriptionLagCard">
-    <div class="card-header">
-      <span title="Per-handler subscription lag, pending, and DLQ depth. Covers event store, stream, broker, and outbox subscriptions.">Subscription Status</span>
+    <div class="card-header collapsible" id="subscriptionHeader" onclick="toggleSubscriptions()">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="collapse-icon">&#9654;</span>
+        <span>Subscription Status</span>
+        <span class="collapse-summary ok" id="subSummary"></span>
+        <div id="subDomainTabs" style="display:flex;gap:2px;margin-left:12px"></div>
+      </div>
       <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-code)" id="subLastUpdated"></span>
     </div>
-    <div class="card-body" id="subscriptionLagBody">
+    <div class="collapsible-body" id="subscriptionBody">
+    <div class="card-body" id="subscriptionLagBody" style="max-height:400px;overflow-y:auto">
       <table class="lag-table" id="subTable">
         <thead>
           <tr>
@@ -1210,29 +1419,7 @@ body {
         </tbody>
       </table>
     </div>
-  </div>
-
-  <!-- Throughput Chart -->
-  <div class="card">
-    <div class="sparkline-container">
-      <div class="sparkline-header">
-        <span class="chart-title" title="Real-time event throughput over the last 5 minutes. The blue bars show outbox publishing rate, the green line shows handler completion rate, and red dots mark errors.">Throughput (5 min)</span>
-        <div class="sparkline-stats">
-          <div title="Events published from outbox to Redis per second (outbox.published events)."><span class="stat-label">Published:</span> <span class="stat-value" id="ratePublished">0/s</span></div>
-          <div title="Handler completions per second (handler.completed events)."><span class="stat-label">Processed:</span> <span class="stat-value" id="rateProcessed">0/s</span></div>
-          <div title="Handler failures and DLQ events per second."><span class="stat-label">Errors:</span> <span class="stat-value" id="rateErrors">0/s</span></div>
-        </div>
-      </div>
-      <canvas id="sparkline" width="1000" height="80"></canvas>
-      <div class="time-labels">
-        <span>5m ago</span>
-        <span>4m</span>
-        <span>3m</span>
-        <span>2m</span>
-        <span>1m</span>
-        <span>now</span>
-      </div>
-    </div>
+    </div><!-- end collapsible-body -->
   </div>
 
   <!-- Messages / Events -->
@@ -1381,6 +1568,16 @@ const queueDepth = {
 };
 let latestQueueDepth = { outbox: 0, stream: 0, consumer: 0 };
 let queueDepthDetail = { outbox: {}, streams: {} };
+
+// System Pulse state
+let lastEventTimestamp = 0;
+
+// Handler activity tracking (handler_name -> { count, lastSeen })
+const handlerActivity = new Map();
+
+// Collapsible section state
+let backpressureExpanded = false;
+let subscriptionExpanded = false;
 
 // Event icons for events tab
 const EVENT_ICONS = {
@@ -1618,15 +1815,20 @@ function refreshPipeline() {
   const done = counts['handler.completed'] || 0;
   const failed = errCount;
 
-  document.getElementById('pipePublished').textContent = published;
-  document.getElementById('pipeHandling').textContent = handling;
-  document.getElementById('pipeDone').textContent = done;
-  document.getElementById('pipeFailed').textContent = failed;
+  // Show rates as primary, totals as secondary
+  const pubRate = published > 0 ? Math.round(published / windowMinutes) + '/min' : '--';
+  const doneRate = done > 0 ? Math.round(done / windowMinutes) + '/min' : '--';
+  const failRate = failed > 0 ? Math.round(failed / windowMinutes) + '/min' : '0';
 
-  document.getElementById('ratePublishedPipe').textContent = published > 0 ? '~' + Math.round(published / windowMinutes) + '/min' : '';
-  document.getElementById('rateHandling').textContent = handling > 0 ? '~' + Math.round(handling / windowMinutes) + '/min' : '';
-  document.getElementById('rateDone').textContent = done > 0 ? '~' + Math.round(done / windowMinutes) + '/min' : '';
-  document.getElementById('rateFailed').textContent = failed > 0 ? '~' + Math.round(failed / windowMinutes) + '/min' : '';
+  document.getElementById('pipePublished').textContent = pubRate;
+  document.getElementById('pipeHandling').textContent = handling;
+  document.getElementById('pipeDone').textContent = doneRate;
+  document.getElementById('pipeFailed').textContent = failRate;
+
+  document.getElementById('ratePublishedPipe').textContent = published > 0 ? published.toLocaleString() + ' total' : '';
+  document.getElementById('rateHandling').textContent = '';
+  document.getElementById('rateDone').textContent = done > 0 ? done.toLocaleString() + ' total' : '';
+  document.getElementById('rateFailed').textContent = failed > 0 ? failed.toLocaleString() + ' total' : '';
 }
 
 function scheduleMetricsRefresh() {
@@ -1741,6 +1943,16 @@ function handleTraceEvent(data) {
   if (seenTraceKeys.size > 0) {
     const key = data.message_id + ':' + data.event + ':' + (data.handler || '');
     if (seenTraceKeys.has(key)) return;
+  }
+
+  lastEventTimestamp = Date.now();
+
+  // Track per-handler activity
+  if (data.handler && data.event === 'handler.completed') {
+    const entry = handlerActivity.get(data.handler) || { count: 0, lastSeen: 0 };
+    entry.count++;
+    entry.lastSeen = Date.now();
+    handlerActivity.set(data.handler, entry);
   }
 
   trackTrace(data);
@@ -1861,6 +2073,11 @@ function drawSparkline() {
   const h = canvas.height;
 
   ctx.clearRect(0, 0, w, h);
+
+  // Show/hide no-activity overlay
+  const hasActivity = throughput.published.some(v => v > 0) || throughput.processed.some(v => v > 0);
+  const overlay = document.getElementById('noActivityOverlay');
+  if (overlay) overlay.style.display = hasActivity ? 'none' : 'block';
 
   const maxVal = Math.max(1, ...throughput.published, ...throughput.processed);
   const barWidth = w / THROUGHPUT_SECONDS;
@@ -2675,6 +2892,7 @@ async function pollQueueDepth() {
 
     updateBackpressureGauges();
     updateConsumerLagTable();
+    updateBackpressureSummary();
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
@@ -2816,14 +3034,16 @@ function updateConsumerLagTable() {
   const streamNames = Object.keys(streams).sort();
 
   if (streamNames.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No active streams</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No active streams</td></tr>';
     return;
   }
 
-  // Find max XLEN for lag bar proportions
-  let maxLen = 1;
+  // Find max lag for bar proportions
+  let maxLag = 1;
   for (const name of streamNames) {
-    maxLen = Math.max(maxLen, streams[name].length || 0);
+    for (const gdata of Object.values(streams[name].consumer_groups || {})) {
+      maxLag = Math.max(maxLag, (gdata.lag || 0) + (gdata.pending || 0));
+    }
   }
 
   let html = '';
@@ -2837,21 +3057,26 @@ function updateConsumerLagTable() {
       html += '<td>' + (s.length || 0).toLocaleString() + '</td>';
       html += '<td style="color:var(--text-muted)">--</td>';
       html += '<td>--</td>';
+      html += '<td>--</td>';
       html += '<td><div class="lag-bar-bg"><div class="lag-bar-fill ok" style="width:0%"></div></div></td>';
       html += '</tr>';
     } else {
       for (let i = 0; i < groups.length; i++) {
         const [gname, gdata] = groups[i];
+        const lag = gdata.lag || 0;
         const pending = gdata.pending || 0;
-        const pct = Math.min(100, (pending / maxLen) * 100);
-        const severity = pending >= 1000 ? 'critical' : pending >= 100 ? 'warn' : 'ok';
-        const color = severity === 'critical' ? 'var(--accent)' : severity === 'warn' ? '#E65100' : 'var(--text)';
+        const total = lag + pending;
+        const pct = Math.min(100, (total / maxLag) * 100);
+        const severity = total >= 1000 ? 'critical' : total >= 100 ? 'warn' : 'ok';
+        const lagColor = lag > 0 ? (severity === 'critical' ? 'var(--accent)' : severity === 'warn' ? '#E65100' : 'var(--text)') : 'var(--text)';
+        const pendColor = pending > 0 ? '#E65100' : 'var(--text-muted)';
 
         html += '<tr>';
         html += '<td>' + (i === 0 ? escapeHtml(name) : '') + '</td>';
         html += '<td>' + (i === 0 ? (s.length || 0).toLocaleString() : '') + '</td>';
         html += '<td>' + escapeHtml(gname) + '</td>';
-        html += '<td style="color:' + color + '">' + pending.toLocaleString() + '</td>';
+        html += '<td style="color:' + lagColor + '">' + lag.toLocaleString() + '</td>';
+        html += '<td style="color:' + pendColor + '">' + pending.toLocaleString() + '</td>';
         html += '<td><div class="lag-bar-bg"><div class="lag-bar-fill ' + severity + '" style="width:' + pct.toFixed(1) + '%"></div></div></td>';
         html += '</tr>';
       }
@@ -2869,21 +3094,60 @@ async function pollSubscriptions() {
     const data = await resp.json();
     updateSubscriptionTable(data);
     populateDlqFilter(data);
+    updateEngineStatus(data);
+    renderHandlerActivity();
+    updateSubscriptionSummary();
     const el = document.getElementById('subLastUpdated');
     if (el) el.textContent = new Date().toLocaleTimeString();
   } catch (e) { /* silent */ }
 }
 
+let _subData = {};
+let _activeSubDomain = 'all';
+
+function setSubscriptionDomain(domain) {
+  _activeSubDomain = domain;
+  // Update tab active states
+  document.querySelectorAll('#subDomainTabs .feed-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.domain === domain);
+  });
+  renderSubscriptionRows();
+}
+
 function updateSubscriptionTable(data) {
+  _subData = data;
+
+  // Build domain tabs if not yet built or domains changed
+  const tabContainer = document.getElementById('subDomainTabs');
+  const domains = Object.keys(data).sort();
+  const tabKeys = ['all', ...domains];
+  const existingTabs = Array.from(tabContainer.querySelectorAll('.feed-tab')).map(b => b.dataset.domain);
+
+  if (JSON.stringify(tabKeys) !== JSON.stringify(existingTabs)) {
+    let tabHtml = '';
+    tabHtml += '<button class="feed-tab' + (_activeSubDomain === 'all' ? ' active' : '') + '" data-domain="all" onclick="setSubscriptionDomain(\'all\')">All</button>';
+    for (const d of domains) {
+      const count = (data[d].subscriptions || []).length;
+      const active = _activeSubDomain === d ? ' active' : '';
+      tabHtml += '<button class="feed-tab' + active + '" data-domain="' + escapeHtml(d) + '" onclick="setSubscriptionDomain(\'' + escapeHtml(d) + '\')">';
+      tabHtml += escapeHtml(d) + ' <span style="font-size:10px;color:var(--text-muted)">' + count + '</span></button>';
+    }
+    tabContainer.innerHTML = tabHtml;
+  }
+
+  renderSubscriptionRows();
+}
+
+function renderSubscriptionRows() {
   const tbody = document.getElementById('subTableBody');
   if (!tbody) return;
 
-  // Flatten all domain subscriptions into one list
   let rows = [];
-  for (const [domainName, info] of Object.entries(data)) {
+  for (const [domainName, info] of Object.entries(_subData)) {
     if (info.status !== 'ok' || !info.subscriptions) continue;
+    if (_activeSubDomain !== 'all' && domainName !== _activeSubDomain) continue;
     for (const s of info.subscriptions) {
-      rows.push(s);
+      rows.push({...s, _domain: domainName});
     }
   }
 
@@ -2902,8 +3166,13 @@ function updateSubscriptionTable(data) {
     if (s.status === 'ok') statusColor = 'var(--success)';
     else if (s.status === 'lagging') statusColor = 'var(--accent)';
 
+    // Show domain prefix only in "All" view
+    const handlerLabel = _activeSubDomain === 'all'
+      ? '<span style="color:var(--text-muted);font-size:11px">' + escapeHtml(s._domain) + '.</span>' + escapeHtml(s.handler_name)
+      : escapeHtml(s.handler_name);
+
     html += '<tr>';
-    html += '<td>' + escapeHtml(s.handler_name) + '</td>';
+    html += '<td>' + handlerLabel + '</td>';
     html += '<td style="font-family:var(--font-code);font-size:12px">' + escapeHtml(s.subscription_type) + '</td>';
     html += '<td>' + escapeHtml(s.stream_category) + '</td>';
     html += '<td style="font-family:var(--font-code)">' + lag + '</td>';
@@ -3102,6 +3371,193 @@ function populateDlqFilter(data) {
   select.innerHTML = html;
 }
 
+// --- System Pulse ---
+function updateSystemPulse() {
+  const now = Date.now();
+  const secondsSince = lastEventTimestamp > 0 ? Math.floor((now - lastEventTimestamp) / 1000) : -1;
+
+  const dot = document.getElementById('pulseDot');
+  const label = document.getElementById('pulseLabel');
+  const timeEl = document.getElementById('lastEventTime');
+
+  if (!connected) {
+    dot.className = 'pulse-dot disconnected';
+    label.className = 'pulse-label disconnected';
+    label.textContent = 'DISCONNECTED';
+    timeEl.textContent = '--';
+  } else if (secondsSince < 0 || secondsSince > 30) {
+    dot.className = 'pulse-dot idle';
+    label.className = 'pulse-label idle';
+    label.textContent = 'IDLE';
+    timeEl.textContent = secondsSince < 0 ? 'no events' : formatRelativeTime(secondsSince);
+  } else {
+    dot.className = 'pulse-dot active';
+    label.className = 'pulse-label active';
+    label.textContent = 'ACTIVE';
+    timeEl.textContent = formatRelativeTime(secondsSince);
+  }
+}
+
+function formatRelativeTime(seconds) {
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return seconds + 's ago';
+  const mins = Math.floor(seconds / 60);
+  return mins + 'm ago';
+}
+
+function updateEngineStatus(data) {
+  let connectedCount = 0;
+  let total = 0;
+  for (const [, info] of Object.entries(data)) {
+    total++;
+    if (info.status === 'ok' && info.subscriptions) {
+      const hasConsumers = info.subscriptions.some(s => s.consumer_count > 0);
+      if (hasConsumers) connectedCount++;
+    }
+  }
+  const el = document.getElementById('engineCountValue');
+  if (el) {
+    el.textContent = connectedCount + '/' + total;
+    el.className = 'metric-value ' + (connectedCount === total ? 'good' : connectedCount > 0 ? 'warn' : 'bad');
+  }
+}
+
+// --- Handler Activity ---
+function renderHandlerActivity() {
+  const container = document.getElementById('handlerGrid');
+  if (!container) return;
+
+  const now = Date.now();
+  const windowMs = { '5m': 300000, '15m': 900000, '1h': 3600000, '24h': 86400000, '7d': 604800000 }[currentWindow] || 300000;
+
+  // Merge subscription data with live SSE activity counts
+  const handlers = new Map();
+  for (const [domainName, info] of Object.entries(_subData)) {
+    if (info.status !== 'ok' || !info.subscriptions) continue;
+    for (const s of info.subscriptions) {
+      // Skip outbox processors and command handlers from the chip view
+      if (s.subscription_type === 'outbox' || s.stream_category.endsWith(':command')) continue;
+      handlers.set(s.handler_name, {
+        domain: domainName,
+        status: s.status,
+        lag: s.lag || 0,
+        pending: s.pending || 0,
+        consumer_count: s.consumer_count || 0,
+        rate: 0,
+        lastSeen: 0,
+      });
+    }
+  }
+
+  // Merge SSE activity
+  for (const [name, activity] of handlerActivity) {
+    const existing = handlers.get(name);
+    if (existing) {
+      existing.rate = activity.count;
+      existing.lastSeen = activity.lastSeen;
+    }
+  }
+
+  if (handlers.size === 0) {
+    container.innerHTML = '<span style="color:var(--text-muted);font-size:12px">Waiting for subscription data...</span>';
+    return;
+  }
+
+  // Group by domain
+  const byDomain = new Map();
+  for (const [name, data] of handlers) {
+    if (!byDomain.has(data.domain)) byDomain.set(data.domain, []);
+    byDomain.get(data.domain).push({ name, ...data });
+  }
+
+  let html = '';
+  for (const [domain, domainHandlers] of [...byDomain.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    html += '<div class="handler-domain-group">';
+    html += '<span class="handler-domain-label">' + escapeHtml(domain) + '</span>';
+    for (const h of domainHandlers.sort((a, b) => a.name.localeCompare(b.name))) {
+      const isActive = h.lastSeen > 0 && (now - h.lastSeen) < 60000;
+      const dotClass = h.status === 'lagging' ? 'lagging' : (isActive ? 'active' : 'idle');
+      // Show short handler name (last part after dot)
+      const shortName = h.name.includes('.') ? h.name.split('.').pop() : h.name;
+      const rateStr = h.rate > 0 ? h.rate + '/min' : '';
+      const title = h.name + ': ' + h.status + ', lag=' + h.lag + ', pending=' + h.pending + ', consumers=' + h.consumer_count;
+
+      html += '<div class="handler-chip" title="' + escapeHtml(title) + '">';
+      html += '<span class="hdot ' + dotClass + '"></span>';
+      html += '<span>' + escapeHtml(shortName) + '</span>';
+      if (rateStr) html += ' <span class="hrate">' + rateStr + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+// --- Collapsible Sections ---
+function toggleBackpressure() {
+  backpressureExpanded = !backpressureExpanded;
+  const body = document.getElementById('backpressureBody');
+  const header = document.getElementById('backpressureHeader');
+  if (body) body.classList.toggle('expanded', backpressureExpanded);
+  if (header) header.classList.toggle('expanded', backpressureExpanded);
+}
+
+function toggleSubscriptions() {
+  subscriptionExpanded = !subscriptionExpanded;
+  const body = document.getElementById('subscriptionBody');
+  const header = document.getElementById('subscriptionHeader');
+  if (body) body.classList.toggle('expanded', subscriptionExpanded);
+  if (header) header.classList.toggle('expanded', subscriptionExpanded);
+}
+
+function updateBackpressureSummary() {
+  const { outbox, stream, consumer } = latestQueueDepth;
+  const total = outbox + stream + consumer;
+  const el = document.getElementById('bpSummary');
+  if (!el) return;
+
+  if (total === 0) {
+    el.textContent = 'OK';
+    el.className = 'collapse-summary ok';
+  } else if (total >= 1000) {
+    el.textContent = total.toLocaleString() + ' queued';
+    el.className = 'collapse-summary critical';
+    if (!backpressureExpanded) toggleBackpressure();
+  } else {
+    el.textContent = total.toLocaleString() + ' queued';
+    el.className = 'collapse-summary warn';
+    if (total >= 100 && !backpressureExpanded) toggleBackpressure();
+  }
+}
+
+function updateSubscriptionSummary() {
+  let totalSubs = 0;
+  let okCount = 0;
+  let laggingCount = 0;
+  for (const [, info] of Object.entries(_subData)) {
+    if (info.status !== 'ok' || !info.subscriptions) continue;
+    for (const s of info.subscriptions) {
+      totalSubs++;
+      if (s.status === 'ok') okCount++;
+      else if (s.status === 'lagging') laggingCount++;
+    }
+  }
+  const el = document.getElementById('subSummary');
+  if (!el) return;
+
+  if (totalSubs === 0) {
+    el.textContent = '';
+  } else if (laggingCount > 0) {
+    el.textContent = okCount + '/' + totalSubs + ' ok, ' + laggingCount + ' lagging';
+    el.className = 'collapse-summary warn';
+    if (!subscriptionExpanded) toggleSubscriptions();
+  } else {
+    el.textContent = okCount + '/' + totalSubs + ' ok';
+    el.className = 'collapse-summary ok';
+  }
+}
+
 // --- Init ---
 async function init() {
   initScrollListener();
@@ -3114,12 +3570,14 @@ async function init() {
   pollDlq();
   setInterval(tickThroughput, 1000);
   setInterval(tickQueueDepth, 1000);
+  setInterval(updateSystemPulse, 1000);
   setInterval(() => { loadStats(); pollInfrastructure(); }, 5000);
   setInterval(pollQueueDepth, 2000);
   setInterval(pollSubscriptions, 5000);
   setInterval(pollDlq, 5000);
   drawSparkline();
   drawQueueSparkline();
+  updateSystemPulse();
 }
 init();
 </script>

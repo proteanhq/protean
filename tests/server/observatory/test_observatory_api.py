@@ -15,7 +15,13 @@ from protean.server.observatory import (
     _GracefulShutdownMiddleware,
     create_observatory_app,
 )
-from protean.server.observatory.api import _broker_health, _broker_info, _outbox_status
+from protean.server.observatory.api import (
+    _INTERNAL_STREAMS,
+    _broker_health,
+    _broker_info,
+    _discover_streams,
+    _outbox_status,
+)
 
 
 @pytest.fixture
@@ -336,3 +342,141 @@ class TestObservatoryRun:
             mock_uvicorn.run.assert_called_once_with(
                 observatory.app, host="127.0.0.1", port=8888
             )
+
+
+# --- Tests for _discover_streams (mock-based, no Redis) ---
+
+
+class TestDiscoverStreams:
+    """Unit tests for _discover_streams() stream discovery from Redis."""
+
+    def test_returns_empty_when_redis_is_none(self):
+        """_discover_streams(None) returns an empty list."""
+        assert _discover_streams(None) == []
+
+    def test_discovers_application_streams(self):
+        """Discovers streams from Redis SCAN and returns them."""
+        mock_redis = MagicMock()
+        mock_redis.scan.return_value = (
+            0,
+            [b"identity::customer", b"catalogue::product"],
+        )
+
+        result = _discover_streams(mock_redis)
+
+        assert result == ["catalogue::product", "identity::customer"]
+
+    def test_excludes_internal_trace_stream(self):
+        """Filters out internal streams (e.g. protean:traces)."""
+        from protean.server.tracing import TRACE_STREAM
+
+        mock_redis = MagicMock()
+        mock_redis.scan.return_value = (
+            0,
+            [TRACE_STREAM.encode(), b"identity::customer"],
+        )
+
+        result = _discover_streams(mock_redis)
+
+        assert result == ["identity::customer"]
+        assert TRACE_STREAM in _INTERNAL_STREAMS
+
+    def test_decodes_bytes_keys(self):
+        """Byte keys from Redis are decoded to str."""
+        mock_redis = MagicMock()
+        mock_redis.scan.return_value = (0, [b"ordering::order"])
+
+        result = _discover_streams(mock_redis)
+
+        assert result == ["ordering::order"]
+        assert isinstance(result[0], str)
+
+    def test_handles_string_keys(self):
+        """String keys (non-bytes) are handled correctly."""
+        mock_redis = MagicMock()
+        mock_redis.scan.return_value = (0, ["ordering::order"])
+
+        result = _discover_streams(mock_redis)
+
+        assert result == ["ordering::order"]
+
+    def test_returns_sorted_results(self):
+        """Results are sorted alphabetically."""
+        mock_redis = MagicMock()
+        mock_redis.scan.return_value = (
+            0,
+            [b"z-stream", b"a-stream", b"m-stream"],
+        )
+
+        result = _discover_streams(mock_redis)
+
+        assert result == ["a-stream", "m-stream", "z-stream"]
+
+    def test_returns_empty_on_redis_error(self):
+        """Returns empty list when Redis raises an exception."""
+        mock_redis = MagicMock()
+        mock_redis.scan.side_effect = Exception("connection lost")
+
+        result = _discover_streams(mock_redis)
+
+        assert result == []
+
+    def test_paginates_through_cursor(self):
+        """Follows multi-page SCAN results until cursor returns to 0."""
+        mock_redis = MagicMock()
+        mock_redis.scan.side_effect = [
+            (42, [b"identity::customer"]),  # First page, cursor=42
+            (0, [b"catalogue::product"]),  # Second page, cursor=0 (done)
+        ]
+
+        result = _discover_streams(mock_redis)
+
+        assert result == ["catalogue::product", "identity::customer"]
+        assert mock_redis.scan.call_count == 2
+
+
+# --- Tests for queue-depth endpoint ---
+
+
+@pytest.mark.redis
+class TestQueueDepthEndpoint:
+    """Integration tests for /api/queue-depth."""
+
+    def test_queue_depth_returns_structure(self, client):
+        """Response has expected top-level keys."""
+        response = client.get("/api/queue-depth")
+        assert response.status_code == 200
+        data = response.json()
+        assert "timestamp" in data
+        assert "outbox" in data
+        assert "streams" in data
+        assert "totals" in data
+
+    def test_queue_depth_totals_have_expected_keys(self, client):
+        """totals contains outbox_pending, stream_depth, consumer_pending."""
+        response = client.get("/api/queue-depth")
+        data = response.json()
+        totals = data["totals"]
+        assert "outbox_pending" in totals
+        assert "stream_depth" in totals
+        assert "consumer_pending" in totals
+
+
+class TestQueueDepthWithMockDomain:
+    """Queue-depth endpoint with a mock domain that has no broker."""
+
+    def test_queue_depth_returns_zeros_when_no_broker(self):
+        """totals are all zero when domain has no working broker."""
+        mock_domain = _make_mock_domain("no-broker-domain")
+        mock_domain.brokers.get.return_value = None
+        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+
+        response = client.get("/api/queue-depth")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["totals"]["outbox_pending"] == 0
+        assert data["totals"]["stream_depth"] == 0
+        assert data["totals"]["consumer_pending"] == 0
