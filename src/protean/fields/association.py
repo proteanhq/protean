@@ -190,8 +190,8 @@ class Reference(FieldCacheMixin, Field):
         return reference_obj
 
     def _fetch_objects(self, key, value):
-        """Fetch Multiple linked objects"""
-        return current_domain.repository_for(self.to_cls)._dao.find_by(**{key: value})
+        """Fetch referenced aggregate through its repository's public API"""
+        return current_domain.repository_for(self.to_cls).find_by(**{key: value})
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between relation field and its shadow attribute"""

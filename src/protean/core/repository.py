@@ -298,8 +298,10 @@ class BaseRepository(Element, OptionsMixin):
                                 entity._temp_cache[field_name]["old_value"]
                             )
                         else:
-                            # The same object was updated
-                            # FIXME This should have been automatic with `is_changed` flag in `state_`
+                            # The same object was updated.
+                            # Explicitly mark changed: the entity's is_changed flag may
+                            # have been cleared (e.g. by a prior save) even though
+                            # HasOne.__set__ recorded the mutation in _temp_cache.
                             item.state_.mark_changed()
 
                         to_cls_repo._dao.save(item)

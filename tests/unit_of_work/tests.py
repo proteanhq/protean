@@ -95,27 +95,36 @@ class TestUnitOfWorkAdditionalCoverage:
         # Initially no messages
         assert len(uow._messages_to_dispatch) == 0
 
-        # Register a message
+        # Register a message (no broker name defaults to None)
         uow.register_message("test_stream", {"data": "test"})
 
-        # Check message was registered
+        # Check message was registered as (stream, message, broker_name)
         assert len(uow._messages_to_dispatch) == 1
-        assert uow._messages_to_dispatch[0] == ("test_stream", {"data": "test"})
+        assert uow._messages_to_dispatch[0] == (
+            "test_stream",
+            {"data": "test"},
+            None,
+        )
 
-        # Register another message
-        uow.register_message("another_stream", {"other": "data"})
+        # Register another message with an explicit broker name
+        uow.register_message("another_stream", {"other": "data"}, broker_name="redis")
 
         # Check both messages are registered
         assert len(uow._messages_to_dispatch) == 2
-        assert uow._messages_to_dispatch[1] == ("another_stream", {"other": "data"})
+        assert uow._messages_to_dispatch[1] == (
+            "another_stream",
+            {"other": "data"},
+            "redis",
+        )
 
     def test_message_dispatching_to_brokers(self, test_domain):
-        """Test message dispatching to brokers"""
+        """Test message dispatching routes to the designated broker"""
         uow = UnitOfWork()
         uow.start()
 
-        # Register a message
-        uow.register_message("test_stream", {"data": "test"})
+        # Register messages: one with explicit broker, one without (defaults to "default")
+        uow.register_message("test_stream", {"data": "default"})
+        uow.register_message("test_stream", {"data": "redis"}, broker_name="redis")
 
         # Setup mock brokers
         mock_broker1 = Mock()
@@ -124,12 +133,12 @@ class TestUnitOfWorkAdditionalCoverage:
         mock_broker2._subscribers = {"test_stream": [Mock()]}
         test_domain.brokers = {"default": mock_broker1, "redis": mock_broker2}
 
-        # Commit should dispatch messages to all brokers
+        # Commit should dispatch each message to its designated broker
         uow.commit()
 
-        # Verify both brokers received the message
-        mock_broker1.publish.assert_called_once_with("test_stream", {"data": "test"})
-        mock_broker2.publish.assert_called_once_with("test_stream", {"data": "test"})
+        # Verify each broker received only its intended message
+        mock_broker1.publish.assert_called_once_with("test_stream", {"data": "default"})
+        mock_broker2.publish.assert_called_once_with("test_stream", {"data": "redis"})
 
     def test_sync_event_processing(self, test_domain):
         """Test synchronous event processing"""

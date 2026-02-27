@@ -67,21 +67,20 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
             self._brokers[broker_name].register(subscriber_cls)
 
     def publish(self, stream: str, message: dict[str, Any]) -> None:
-        """Publish a message payload to all registered brokers"""
-        # Follow a naive strategy and dispatch message directly to message broker
-        #   If the operation is enclosed in a Unit of Work, delegate the responsibility
-        #   of publishing the message to the UoW
+        """Publish a message payload to the default broker.
+
+        If called inside a Unit of Work, the message is deferred until commit.
+        """
         if current_uow:
             logger.debug(f"Recording message {message} in {current_uow} for dispatch")
 
             current_uow.register_message(stream, message)
         else:
             logger.debug(
-                f"Publishing message {message} to all brokers registered for stream {stream}"
+                f"Publishing message {message} to default broker for stream {stream}"
             )
 
-            for _, broker in self._brokers.items():
-                broker.publish(stream, message)
+            self._brokers["default"].publish(stream, message)
 
 
 # No exports - this module only provides internal domain infrastructure

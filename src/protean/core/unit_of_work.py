@@ -177,12 +177,13 @@ class UnitOfWork:
                 for event in events:
                     current_domain.event_store.store.append(event)
 
-            # Push messages to all brokers (fallback for compatibility)
-            # FIXME Send message to its designated broker?
-            # FIXME Send messages through domain.brokers.publish?
-            for stream, message in self._messages_to_dispatch:
-                for _, broker in self.domain.brokers.items():
-                    broker.publish(stream, message)
+            # Dispatch messages to their designated broker
+            for stream, message, broker_name in self._messages_to_dispatch:
+                if broker_name and broker_name in self.domain.brokers:
+                    self.domain.brokers[broker_name].publish(stream, message)
+                else:
+                    # No specific broker designated; publish to default
+                    self.domain.brokers["default"].publish(stream, message)
 
             # Iteratively consume all events produced in this session
             if current_domain.config["event_processing"] == Processing.SYNC.value:
@@ -284,5 +285,7 @@ class UnitOfWork:
         else:
             return self._initialize_session(provider_name)
 
-    def register_message(self, stream: str, message: dict[str, Any]):
-        self._messages_to_dispatch.append((stream, message))
+    def register_message(
+        self, stream: str, message: dict[str, Any], broker_name: str | None = None
+    ) -> None:
+        self._messages_to_dispatch.append((stream, message, broker_name))

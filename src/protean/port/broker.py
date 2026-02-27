@@ -182,7 +182,7 @@ class BaseBroker(metaclass=ABCMeta):
         if current_uow:
             logger.debug(f"Recording message {message} in {current_uow} for dispatch")
 
-            current_uow.register_message(stream, message)
+            current_uow.register_message(stream, message, broker_name=self.name)
         else:
             try:
                 identifier = self._publish(stream, message)
