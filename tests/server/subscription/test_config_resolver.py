@@ -704,20 +704,14 @@ class TestConfigResolverHandlerWithNoMeta:
 class TestConfigResolverUnknownProfileAndType:
     """Tests for unknown profile and subscription type resolution."""
 
-    def test_resolve_unknown_profile_string_falls_back(self, test_domain, caplog):
-        """_resolve_profile logs warning and returns PRODUCTION for unknown profile string."""
+    def test_resolve_unknown_profile_string_raises_error(self, test_domain):
+        """_resolve_profile raises ConfigurationError for unknown profile string."""
+        from protean.exceptions import ConfigurationError
+
         resolver = ConfigResolver(test_domain)
 
-        with caplog.at_level(
-            logging.WARNING, logger="protean.server.subscription.config_resolver"
-        ):
-            result = resolver._resolve_profile("nonexistent_profile")
-
-        assert result == SubscriptionProfile.PRODUCTION
-        assert any(
-            "Unknown subscription profile" in record.message
-            for record in caplog.records
-        )
+        with pytest.raises(ConfigurationError, match="Unknown subscription profile"):
+            resolver._resolve_profile("nonexistent_profile")
 
     def test_resolve_non_string_non_enum_profile_falls_back(self, test_domain):
         """_resolve_profile returns PRODUCTION for non-string, non-enum input."""

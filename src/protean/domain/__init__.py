@@ -924,24 +924,30 @@ class Domain:
         """Fetch Domain record with the provided Element name"""
         try:
             elements = self._domain_registry._elements_by_name[element_name]
+            allowed_types = [o.value for o in element_types]
 
-            # There is one element registered with the name and the correct type
-            if len(elements) == 1 and elements[0].class_type in [
-                o.value for o in element_types
-            ]:
-                return elements[0]
+            # Collect all elements matching the requested type(s)
+            matching = [e for e in elements if e.class_type in allowed_types]
+
+            if len(matching) == 1:
+                return matching[0]
+            elif len(matching) > 1:
+                fq_names = ", ".join(e.qualname for e in matching)
+                raise ConfigurationError(
+                    {
+                        "element": (
+                            f"Multiple elements with name '{element_name}' registered in "
+                            f"domain {self.name}: {fq_names}. "
+                            "Use the fully qualified name to disambiguate."
+                        )
+                    }
+                )
             else:
-                # There are multiple elements registered with the name
-                #   Loop to check if one of them has the correct type
-                for element in elements:
-                    if element.class_type in [o.value for o in element_types]:
-                        return element
-                else:
-                    raise ConfigurationError(
-                        {
-                            "element": f"Element {element_name} not registered in domain {self.name}"
-                        }
-                    )
+                raise ConfigurationError(
+                    {
+                        "element": f"Element {element_name} not registered in domain {self.name}"
+                    }
+                )
         except KeyError:
             raise ConfigurationError(
                 {
@@ -1091,6 +1097,52 @@ class Domain:
                     raise IncorrectUsageError(
                         f"`{qh_record.cls.meta_.part_of.__name__}` is not a Projection, "
                         f"or is not registered in domain {self.name}"
+                    )
+
+        # Warn about registered Commands that have no handler
+        all_handled_command_types: set[str] = set()
+        for _, ch_record in self.registry._elements[
+            DomainObjects.COMMAND_HANDLER.value
+        ].items():
+            all_handled_command_types.update(ch_record.cls._handlers.keys())
+
+        for _, cmd_record in self.registry._elements[
+            DomainObjects.COMMAND.value
+        ].items():
+            if (
+                not cmd_record.cls.meta_.abstract
+                and cmd_record.cls.__type__ not in all_handled_command_types
+            ):
+                logger.warning(
+                    "Command `%s` does not have a registered handler",
+                    cmd_record.cls.__name__,
+                )
+
+        # Warn about events on event-sourced aggregates missing @apply handlers
+        for _, agg_record in self.registry._elements[
+            DomainObjects.AGGREGATE.value
+        ].items():
+            if not agg_record.cls.meta_.is_event_sourced:
+                continue
+
+            for _, evt_record in self.registry._elements[
+                DomainObjects.EVENT.value
+            ].items():
+                # Skip fact events — they are auto-generated and not
+                # expected to have @apply handlers.
+                if evt_record.cls.__name__.endswith("FactEvent"):
+                    continue
+
+                if (
+                    evt_record.cls.meta_.part_of == agg_record.cls
+                    and not evt_record.cls.meta_.abstract
+                    and fqn(evt_record.cls) not in agg_record.cls._projections
+                ):
+                    logger.warning(
+                        "Event `%s` on event-sourced aggregate `%s` "
+                        "does not have an @apply handler",
+                        evt_record.cls.__name__,
+                        agg_record.cls.__name__,
                     )
 
     def _assign_aggregate_clusters(self):

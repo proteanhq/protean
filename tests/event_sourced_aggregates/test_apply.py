@@ -1,5 +1,4 @@
 from enum import Enum
-from uuid import uuid4
 
 import pytest
 
@@ -153,16 +152,18 @@ def test_that_apply_decorator_without_event_cls_raises_error():
     )
 
 
-def test_event_to_be_applied_should_have_a_projection(test_domain):
+def test_event_without_apply_handler_warns_at_init(test_domain, caplog):
+    import logging
+
     class UserArchived(BaseEvent):
         user_id: Identifier(required=True)
 
     test_domain.register(UserArchived, part_of=User)
-    test_domain.init(traverse=False)
 
-    user = User(user_id=str(uuid4()), name="<NAME>", email="<EMAIL>")
+    with caplog.at_level(logging.WARNING, logger="protean.domain"):
+        test_domain.init(traverse=False)
 
-    with pytest.raises(NotImplementedError) as exc:
-        user._apply(UserArchived(user_id=user.user_id))
-
-    assert exc.value.args[0].startswith("No handler registered for event")
+    assert any(
+        "UserArchived" in r.message and "@apply handler" in r.message
+        for r in caplog.records
+    )

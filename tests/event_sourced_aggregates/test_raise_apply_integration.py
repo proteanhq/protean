@@ -536,7 +536,28 @@ class TestBackwardCompatibility:
 # Test: missing @apply handler raises NotImplementedError
 # ---------------------------------------------------------------------------
 class TestMissingApplyHandler:
-    def test_raise_without_handler_raises_error(self, test_domain):
+    def test_event_without_apply_handler_warns_at_init(self, test_domain, caplog):
+        """An ES event with no @apply handler triggers a warning at domain init."""
+        import logging
+
+        class OrphanEvent(BaseEvent):
+            data: String()
+
+        class Orphan(BaseAggregate):
+            data: String()
+
+        test_domain.register(Orphan, is_event_sourced=True)
+        test_domain.register(OrphanEvent, part_of=Orphan)
+
+        with caplog.at_level(logging.WARNING, logger="protean.domain"):
+            test_domain.init(traverse=False)
+
+        assert any(
+            "OrphanEvent" in r.message and "@apply handler" in r.message
+            for r in caplog.records
+        )
+
+    def test_raise_without_handler_raises_runtime_error(self, test_domain):
         """Raising an event with no @apply handler is an error for ES aggregates."""
 
         class OrphanEvent(BaseEvent):
