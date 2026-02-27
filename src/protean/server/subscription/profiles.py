@@ -159,11 +159,13 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
     },
 }
 
-# Hardcoded defaults used when no profile is specified
+# Hardcoded defaults used when no profile is specified.
+# tick_interval is 0 because the default subscription type (STREAM) uses
+# blocking reads for pacing, making a tick-based sleep unnecessary.
 DEFAULT_CONFIG: dict[str, Any] = {
     "subscription_type": SubscriptionType.STREAM,
     "messages_per_tick": 10,
-    "tick_interval": 1,
+    "tick_interval": 0,
     "blocking_timeout_ms": 5000,
     "max_retries": 3,
     "retry_delay_seconds": 1,

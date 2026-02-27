@@ -108,7 +108,7 @@ class TestStreamSubscriptionEdgeCases:
             return
 
         # Mock process_batch to avoid processing
-        async def mock_process_batch(messages):
+        async def mock_process_batch(messages, stream=None):
             return len(messages)
 
         subscription.process_batch = mock_process_batch
