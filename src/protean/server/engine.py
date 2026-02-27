@@ -31,7 +31,12 @@ class CommandDispatcher:
     that routes each command to its designated handler.
     """
 
-    def __init__(self, stream_category, handler_map, source_handler_cls):
+    def __init__(
+        self,
+        stream_category: str,
+        handler_map: dict[str, Type[BaseCommandHandler]],
+        source_handler_cls: Type[BaseCommandHandler],
+    ) -> None:
         """
         Args:
             stream_category: The stream category this dispatcher covers.
@@ -41,8 +46,8 @@ class CommandDispatcher:
         """
         self._stream_category = stream_category
         self._handler_map = handler_map
-        self._last_resolved_handler = None
-        self._last_resolved_item = None
+        self._last_resolved_handler: Type[BaseCommandHandler] | None = None
+        self._last_resolved_item: object | None = None
 
         # Identity attributes for fqn() and logging
         self.__name__ = f"Commands:{stream_category}"
@@ -53,7 +58,7 @@ class CommandDispatcher:
         # subscription settings (type, profile, tick interval, etc.)
         self.meta_ = source_handler_cls.meta_
 
-    def _to_domain_object(self, message):
+    def _to_domain_object(self, message: Message | object) -> object:
         """Convert a message to its domain object, using cached result if available."""
         if self._last_resolved_item is not None:
             item = self._last_resolved_item
@@ -61,7 +66,9 @@ class CommandDispatcher:
             return item
         return message.to_domain_object() if isinstance(message, Message) else message
 
-    def resolve_handler(self, message):
+    def resolve_handler(
+        self, message: Message | object
+    ) -> Type[BaseCommandHandler] | None:
         """Look up the specific handler class for a message.
 
         Caches the deserialized domain object so that _handle() can reuse it
@@ -71,13 +78,23 @@ class CommandDispatcher:
             The handler class, or None if no handler is registered for this command type.
         """
         item = message.to_domain_object() if isinstance(message, Message) else message
+        if item is None:
+            logger.warning(
+                f"Failed to deserialize message in stream '{self._stream_category}'"
+            )
+            return None
         self._last_resolved_item = item
         command_type = item.__class__.__type__
         return self._handler_map.get(command_type)
 
-    def _handle(self, message):
+    def _handle(self, message: Message | object) -> object | None:
         """Route the message to the correct command handler."""
         item = self._to_domain_object(message)
+        if item is None:
+            logger.warning(
+                f"Failed to deserialize message in stream '{self._stream_category}'"
+            )
+            return None
         command_type = item.__class__.__type__
         handler_cls = self._handler_map.get(command_type)
         self._last_resolved_handler = handler_cls
@@ -91,7 +108,7 @@ class CommandDispatcher:
 
         return handler_cls._handle(item)
 
-    def handle_error(self, exc, message):
+    def handle_error(self, exc: Exception, message: Message | object) -> None:
         """Delegate error handling to the resolved handler."""
         handler_cls = self._last_resolved_handler
         if handler_cls and hasattr(handler_cls, "handle_error"):
