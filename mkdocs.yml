@@ -415,6 +415,7 @@ nav:
       - patterns/dual-mode-testing.md
       - patterns/testing-event-driven-flows.md
       - patterns/setting-up-and-tearing-down-database-for-tests.md
+      - patterns/multi-tenancy.md
     - Identity & Communication:
       - patterns/creating-identities-early.md
       - patterns/connect-concepts-across-domains.md

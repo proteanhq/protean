@@ -455,7 +455,14 @@ class Engine:
         if self.shutting_down:
             return False  # Skip handling if shutdown is in progress
 
-        with self.domain.domain_context():
+        # Propagate metadata extensions into g so that handlers see the
+        # same context (tenant_id, user_id, etc.) that enrichers injected
+        # when the event/command was originally raised.
+        extensions = {}
+        if message.metadata and message.metadata.extensions:
+            extensions = message.metadata.extensions
+
+        with self.domain.domain_context(**extensions):
             # Set context from current message, so that further processes
             #   carry the metadata forward.
             g.message_in_context = message
