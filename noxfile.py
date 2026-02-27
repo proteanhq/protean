@@ -4,7 +4,7 @@ PYTHON_VERSIONS = ["3.11", "3.12", "3.13", "3.14"]
 
 # Packages with C extensions that must be rebuilt per Python version.
 # Poetry's wheel cache can serve a .so compiled for the wrong interpreter.
-_C_EXT_PACKAGES = ["psycopg2"]
+_C_EXT_PACKAGES = ["psycopg2-binary"]
 
 
 def _install(session: nox.Session) -> None:

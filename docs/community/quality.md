@@ -192,7 +192,7 @@ core framework installs only what's needed for in-memory development.
 Infrastructure dependencies are added when you're ready to deploy:
 
 ```bash
-pip install protean[postgresql]   # Adds SQLAlchemy + psycopg2
+pip install protean[postgresql]   # Adds SQLAlchemy + psycopg2-binary
 pip install protean[redis]        # Adds redis-py
 pip install protean[elasticsearch] # Adds elasticsearch + elasticsearch-dsl
 ```

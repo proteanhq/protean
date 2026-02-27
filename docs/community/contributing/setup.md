@@ -52,7 +52,7 @@ $ poetry install --with dev,test,docs,types --all-extras
 $ pre-commit install --install-hooks
 ```
 
-- If you encounter errors installing `psycopg2`, you are missing dependencies. For example, if you are using macOS and have installed PostgreSQL via Homebrew, you may need to set compilation flags. Follow instructions listed for MacOSX on [Postgresql.org](https://www.postgresql.org/download/macosx/). Once installed, `brew install` will list further settings required in your environment.
+- The `postgresql` extra installs `psycopg2-binary`, which includes pre-compiled binaries and requires no system dependencies. If you prefer to build `psycopg2` from source, install it explicitly with `pip install psycopg2`. See the [psycopg2 installation guide](https://www.psycopg.org/docs/install.html) for system prerequisites.
 
 ## Start coding
 

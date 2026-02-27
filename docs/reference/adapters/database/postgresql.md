@@ -14,11 +14,23 @@ provides real ACID transactions, connection pooling, and schema management.
 
 ```bash
 pip install "protean[postgresql]"
-
-# Or install the driver separately
-pip install psycopg2-binary   # Pre-compiled binary (recommended for development)
-pip install psycopg2          # Compiled from source (recommended for production)
 ```
+
+This installs `psycopg2-binary`, a pre-compiled binary that works out of the box
+with no system dependencies.
+
+For production deployments, you may prefer `psycopg2` (compiled from source
+against your system's `libpq`). To use it, install it explicitly in place of
+`psycopg2-binary`:
+
+```bash
+pip install psycopg2
+```
+
+Both packages provide the same `psycopg2` Python module — only one should be
+installed at a time. See the
+[psycopg2 installation guide](https://www.psycopg.org/docs/install.html) for
+system prerequisites when building from source.
 
 ## Configuration
 
