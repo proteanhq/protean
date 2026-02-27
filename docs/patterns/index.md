@@ -114,14 +114,10 @@ If you are new to these patterns, these sequences build on each other:
 
 - **[Coordinating Long-Running Processes](coordinating-long-running-processes.md)**
   -- Use a process manager to coordinate multi-step workflows that span
-  multiple aggregates. Declarative correlation, lifecycle management, and
-  compensation handling replace ad-hoc event handler chains.
-
-- **[Process Manager Lifecycle and Failure Design](process-manager-lifecycle.md)**
-  -- Design process managers that survive production conditions: idempotent
-  handlers via status guards, explicit compensation for every forward step,
-  out-of-order event handling, external timeout strategies, and minimal
-  state fields.
+  multiple aggregates. Covers declarative correlation, lifecycle management,
+  idempotent handlers via status guards, explicit compensation for every
+  forward step, out-of-order event handling, external timeout strategies,
+  and minimal state fields.
 
 - **[Message Tracing in Event-Driven Systems](message-tracing.md)** -- Thread
   `correlation_id` and `causation_id` through every command and event in a

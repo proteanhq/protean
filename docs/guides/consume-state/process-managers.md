@@ -12,6 +12,70 @@ Process managers coordinate multi-step business processes that span multiple
 aggregates. They react to domain events from different streams, maintain their
 own state, and issue commands to drive other aggregates forward.
 
+## The Event Chain: How Steps Connect
+
+Before looking at the API, it's important to understand *how* a process manager
+chains steps together. The mechanism is a **command-event loop**:
+
+1. An event arrives at the PM from an aggregate's stream.
+2. The PM handler processes the event and issues a command to another aggregate.
+3. That aggregate's command handler processes the command and raises a new event.
+4. The new event arrives at the PM (because the PM subscribes to that
+   aggregate's stream).
+5. The next PM handler runs, potentially issuing another command.
+6. The cycle repeats until the PM reaches a terminal state.
+
+Here is the full loop for a two-step order fulfillment (order → payment →
+shipping):
+
+```
+  Order aggregate                                  Payment aggregate
+  ──────────────                                   ─────────────────
+  raises OrderPlaced ──┐                     ┌──► processes RequestPayment
+                       │                     │     raises PaymentConfirmed ──┐
+                       ▼                     │                              │
+              ┌────────────────────┐         │                              │
+              │ OrderFulfillmentPM │         │                              │
+              │                    │         │                              │
+              │ on_order_placed()  │─────────┘                              │
+              │   issues RequestPayment                                     │
+              │                    │◄───────────────────────────────────────┘
+              │ on_payment_confirmed()
+              │   issues CreateShipment ─────────┐
+              │                    │              │    Shipping aggregate
+              │ on_shipment_delivered()◄──────┐   │    ─────────────────
+              │   mark_as_complete()    │     │   └──► processes CreateShipment
+              └────────────────────┘         │        raises ShipmentDelivered
+                                             └────────────────────────┘
+```
+
+Each arrow crosses an aggregate boundary through the event store. The PM never
+calls aggregate methods directly — it issues commands, and the aggregates'
+command handlers decide how to execute them.
+
+## Why `stream_categories` Must Match the Aggregates You Command
+
+The PM issues commands to `Payment` and `Shipping` aggregates. Those
+aggregates' command handlers raise events on their own streams
+(`ecommerce::payment` and `ecommerce::shipping`). For the PM to see
+`PaymentConfirmed` and `ShipmentDelivered`, it must subscribe to those
+streams.
+
+**Rule of thumb:** if a PM handler issues a command to aggregate X, the PM
+must include aggregate X's stream in its `stream_categories` (or `aggregates`
+list). Otherwise, the PM will never see the response event and the workflow
+will stall.
+
+```python
+# The PM issues commands to Order, Payment, and Shipping aggregates.
+# Therefore, it subscribes to all three streams.
+@domain.process_manager(
+    stream_categories=["ecommerce::order", "ecommerce::payment", "ecommerce::shipping"]
+)
+class OrderFulfillmentPM:
+    ...
+```
+
 ## Defining a Process Manager
 
 Process managers are defined with the `Domain.process_manager` decorator. Each
@@ -33,7 +97,28 @@ lifecycle management and event correlation.
 4. `mark_as_complete()` explicitly marks the PM as complete from within a
    handler.
 
+## Issuing Commands
+
+Process managers drive other aggregates forward by issuing commands:
+
+```python
+--8<-- "guides/consume-state/process-managers/003.py:full"
+```
+
+1. The handler issues `RequestPayment` to the `Payment` aggregate. This
+   command is processed by `Payment`'s command handler, which will raise
+   either `PaymentConfirmed` or `PaymentFailed` — and the PM will see that
+   response event because it subscribes to the `ecommerce::payment` stream.
+
+2. On payment failure, the handler issues `CancelOrder` to compensate,
+   and `end=True` marks the PM as complete.
+
+Commands issued inside a handler are committed atomically as part of the same
+Unit of Work.
+
 ## Process Manager Workflow
+
+Under the hood, this is what happens each time an event is delivered to a PM:
 
 ```mermaid
 sequenceDiagram
@@ -127,23 +212,14 @@ def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
 Once a PM is marked complete, any subsequent events for that correlation value
 are silently skipped. No new transition is persisted and no handler runs.
 
-## Issuing Commands
-
-Process managers drive other aggregates forward by issuing commands:
-
-```python
---8<-- "guides/consume-state/process-managers/003.py:full"
-```
-
-Commands issued inside a handler are committed atomically as part of the same
-Unit of Work.
-
 ## Configuration Options
 
-### Handler Options
+### Stream Sources
 
 - **`stream_categories`**: List of stream categories the PM subscribes to.
-  Events from all listed categories are delivered to the PM's handlers.
+  Include every aggregate stream that the PM needs to see events from —
+  both the stream that triggers the workflow and the streams of aggregates
+  the PM issues commands to.
 
     ```python
     @domain.process_manager(
@@ -206,10 +282,10 @@ PM's state when loading.
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Process Managers](../../concepts/building-blocks/process-managers.md) — Coordinating multi-step business processes across aggregates.
+    **Concept overview:** [Process Managers](../../concepts/building-blocks/process-managers.md) — Why process managers exist, when to use them vs. event handlers, and how the event chain works.
 
     **Patterns:**
 
-    - [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Patterns for orchestrating multi-step workflows.
+    - [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Building resilient process managers with idempotency, compensation, and timeout handling.
 
     **Related guide:** [Message Tracing](../domain-behavior/message-tracing.md) — Correlation and causation IDs that thread through process manager workflows, plus the programmatic causation chain API.

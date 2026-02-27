@@ -299,8 +299,7 @@ Protean supports but does not enforce.
 - [Idempotent Event Handlers](./patterns/idempotent-event-handlers.md) -- Produce the same result whether an event is processed once or many times.
 - [Event Versioning and Evolution](./patterns/event-versioning-and-evolution.md) -- Evolve event schemas without breaking consumers or the event store.
 - [Command Idempotency](./patterns/command-idempotency.md) -- Ensure processing the same command twice produces the same effect.
-- [Coordinating Long-Running Processes](./patterns/coordinating-long-running-processes.md) -- Use a process manager to coordinate multi-step workflows across aggregates.
-- [Process Manager Lifecycle and Failure Design](./patterns/process-manager-lifecycle.md) -- Design production-resilient PMs with idempotent handlers, compensation, and timeout strategies.
+- [Coordinating Long-Running Processes](./patterns/coordinating-long-running-processes.md) -- Use a process manager to coordinate multi-step workflows across aggregates, with idempotent handlers, compensation, and timeout strategies.
 - [Message Tracing in Event-Driven Systems](./patterns/message-tracing.md) -- Correlation and causation IDs for end-to-end traceability across commands and events.
 - [Enrich Messages with Cross-Cutting Metadata](./patterns/message-enrichment.md) -- Inject tenant IDs, user context, and request trace IDs into events and commands via enrichment hooks, keeping the domain model clean.
 

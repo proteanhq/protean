@@ -273,7 +273,7 @@ async def create_order(request: Request, payload: dict):
     )
 ```
 
-See [Message Tracing](./domain-behavior/message-tracing.md) for the full
+See [Message Tracing](../guides/domain-behavior/message-tracing.md) for the full
 guide.
 
 ---

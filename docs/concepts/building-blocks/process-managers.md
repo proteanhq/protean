@@ -1,15 +1,128 @@
 # Process Managers
 
-Process managers coordinate multi-step business processes that span multiple
-[aggregates](./aggregates.md). They react to [domain events](./events.md),
-track the progress of a running process, and issue
-[commands](./commands.md) to drive other aggregates forward — all while
-maintaining their own persisted state.
+## The Problem They Solve
 
-Unlike [event handlers](./event-handlers.md), which are stateless and handle
-each event in isolation, process managers correlate related events to the
-same running instance, making them the right tool for workflows like order
-fulfillment, payment reconciliation, or onboarding sequences.
+Event handlers react to domain events and execute side effects — updating
+another aggregate, sending a notification, syncing a projection. Each handler
+processes one event in isolation, with no memory of what happened before or
+what should happen next.
+
+This works for simple, one-step reactions. But many business processes are
+multi-step workflows that span multiple aggregates:
+
+- **Order fulfillment**: Accept order → reserve inventory → charge payment →
+  create shipment → mark complete.
+- **User onboarding**: Create account → verify email → provision resources →
+  send welcome notification.
+- **Payment reconciliation**: Receive payment → match to invoice → update
+  ledger → notify customer.
+
+These workflows share a common structure: each step produces an event, and
+that event determines what the *next* step should be. If a step fails, earlier
+steps may need to be reversed. The workflow needs to remember where it is.
+
+Event handlers cannot do this. They are stateless — they don't know which step
+they're on, what happened before, or what should happen next. You need
+something that tracks the progress of the entire process, correlates events
+from different aggregates to the same running instance, and decides what to do
+next at each step. That is a process manager.
+
+## When to Use a Process Manager vs. an Event Handler
+
+| | Event Handler | Process Manager |
+|---|---------------|----------------|
+| **State** | Stateless — each event processed in isolation | Stateful — remembers what happened so far |
+| **Steps** | Single reaction to one event | Multi-step workflow across many events |
+| **Scope** | Reacts to events from one aggregate (`part_of`) | Reacts to events from multiple aggregates (`stream_categories`) |
+| **Lifecycle** | No concept of "started" or "done" | Explicit lifecycle with `start`, `end`, `mark_as_complete()` |
+| **Failure handling** | No built-in compensation | Coordinates compensating commands to undo earlier steps |
+| **Correlation** | N/A — each event is independent | Routes events to the correct instance via correlation keys |
+
+**Use an event handler** when a single event triggers a single reaction that
+doesn't depend on past or future events. Examples: "When an order ships,
+decrease inventory." "When a user registers, send a welcome email."
+
+**Use a process manager** when you need to coordinate a sequence of steps
+across multiple aggregates, track progress, and handle failures by unwinding
+earlier steps. Examples: "When an order is placed, reserve inventory, then
+charge payment, then create shipment — and if any step fails, undo the
+previous ones."
+
+## How the Event Chain Works
+
+The core mechanism of a process manager is the **command-event loop**. The PM
+doesn't call aggregate methods directly. Instead, it issues commands, and the
+aggregates that process those commands raise events, which flow back to the PM
+through its stream subscriptions.
+
+Here is the complete round-trip for one step in an order fulfillment workflow:
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │              Event Store                     │
+                    │                                              │
+                    │  ecommerce::order stream                     │
+                    │    └─ OrderPlaced ──────────────────┐        │
+                    │                                     │        │
+                    │  ecommerce::payment stream          │        │
+                    │    └─ PaymentConfirmed ─────────┐   │        │
+                    │                                 │   │        │
+                    │  ecommerce::shipping stream     │   │        │
+                    │    └─ ShipmentDelivered ────┐   │   │        │
+                    └────────────────────────────┼───┼───┼─────────┘
+                                                 │   │   │
+                              ┌──────────────────┘   │   │
+                              │   ┌──────────────────┘   │
+                              │   │   ┌──────────────────┘
+                              ▼   ▼   ▼
+                    ┌─────────────────────────────┐
+                    │    OrderFulfillmentPM        │
+                    │                             │
+                    │  on_order_placed()           │──► RequestPayment command
+                    │  on_payment_confirmed()      │──► CreateShipment command
+                    │  on_shipment_delivered()      │──► mark_as_complete()
+                    └─────────────────────────────┘
+                              │           │
+                              ▼           ▼
+                    ┌─────────────┐ ┌─────────────┐
+                    │   Payment   │ │  Shipping   │
+                    │  aggregate  │ │  aggregate  │
+                    │             │ │             │
+                    │ Processes   │ │ Processes   │
+                    │ command,    │ │ command,    │
+                    │ raises      │ │ raises      │
+                    │ event       │ │ event       │
+                    └─────────────┘ └─────────────┘
+```
+
+Walking through the chain step by step:
+
+1. **`OrderPlaced` event** is raised by the `Order` aggregate and written to
+   the `ecommerce::order` stream.
+
+2. The PM subscribes to `ecommerce::order`, so **the event is delivered to
+   `on_order_placed()`**. The handler issues a `RequestPayment` command.
+
+3. The `RequestPayment` command is processed by the `Payment` aggregate's
+   command handler. The aggregate mutates and raises **`PaymentConfirmed`**,
+   which is written to the `ecommerce::payment` stream.
+
+4. The PM subscribes to `ecommerce::payment`, so **`PaymentConfirmed` is
+   delivered to `on_payment_confirmed()`**. The handler issues a
+   `CreateShipment` command.
+
+5. The `CreateShipment` command is processed by the `Shipping` aggregate's
+   command handler. The aggregate raises **`ShipmentDelivered`**, written to
+   the `ecommerce::shipping` stream.
+
+6. The PM subscribes to `ecommerce::shipping`, so **`ShipmentDelivered` is
+   delivered to `on_shipment_delivered()`**. The handler calls
+   `mark_as_complete()`. The workflow is done.
+
+**This is why the PM subscribes to multiple stream categories.** Each command
+the PM issues targets a different aggregate. That aggregate's response (an
+event) appears on its own stream. The PM must subscribe to all those streams
+to see the results of the commands it issued.
 
 ## Facts
 
@@ -29,10 +142,10 @@ a start event arrives.
 
 ### Process managers listen to multiple streams. { data-toc-label="Multi-Stream" }
 
-A single process manager can subscribe to events from several aggregate
-streams. An order fulfillment process manager, for example, might listen to
-order, payment, and shipping streams, reacting to events from each to drive
-the process forward.
+A single process manager subscribes to events from several aggregate
+streams because the commands it issues cause events on *those other
+aggregates' streams*. The PM needs to see those response events to know when
+to proceed to the next step.
 
 ### Process managers are event-sourced. { data-toc-label="Event-Sourced" }
 
@@ -49,13 +162,12 @@ arrive, and ends when either `mark_as_complete()` is called in a handler or
 a handler is marked with `end=True`. Once complete, subsequent events for
 that instance are skipped.
 
-### Process managers issue commands. { data-toc-label="Issue Commands" }
+### Process managers issue commands, not mutations. { data-toc-label="Issue Commands" }
 
-Handlers in a process manager can issue commands via
-`current_domain.process()` to trigger actions in other aggregates. This is
-the primary mechanism for driving the business process forward — the process
-manager decides *what* should happen next, and the target aggregate's command
-handler decides *how*.
+Handlers in a process manager issue commands via
+`current_domain.process()` to trigger actions in other aggregates. This
+keeps the PM as a pure coordinator — it decides *what* should happen next,
+and the target aggregate's command handler decides *how*.
 
 ### Each handler processes one event type. { data-toc-label="Single Event Type" }
 
@@ -116,4 +228,4 @@ For practical details on defining and using process managers in Protean, see the
 
 For design guidance:
 
-- [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Patterns for orchestrating multi-step workflows across aggregates.
+- [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Patterns for resilient multi-step workflows with idempotency, compensation, and timeout handling.
