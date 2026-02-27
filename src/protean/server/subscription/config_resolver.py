@@ -24,6 +24,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, Type
 
+from protean.exceptions import ConfigurationError
 from protean.server.subscription.profiles import (
     DEFAULT_CONFIG,
     PROFILE_DEFAULTS,
@@ -330,6 +331,9 @@ class ConfigResolver:
 
         Returns:
             The resolved SubscriptionProfile enum value.
+
+        Raises:
+            ConfigurationError: If the profile name is not a valid SubscriptionProfile.
         """
         if isinstance(profile, SubscriptionProfile):
             return profile
@@ -338,12 +342,10 @@ class ConfigResolver:
             try:
                 return SubscriptionProfile(profile.lower())
             except ValueError:
-                logger.warning(
-                    "Unknown subscription profile '%s', using defaults", profile
+                valid = ", ".join(p.value for p in SubscriptionProfile)
+                raise ConfigurationError(
+                    f"Unknown subscription profile '{profile}'. Valid profiles: {valid}"
                 )
-                # Return a default-like behavior by returning PRODUCTION
-                # But we won't apply its defaults since the profile lookup will fail
-                return SubscriptionProfile.PRODUCTION
 
         return SubscriptionProfile.PRODUCTION
 
