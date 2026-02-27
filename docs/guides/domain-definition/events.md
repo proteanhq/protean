@@ -29,6 +29,29 @@ Events are always connected to an Aggregate class, specified with the
 `part_of` param in the decorator. An exception to this rule is when the
 Event class has been marked _Abstract_.
 
+### Abstract Events
+
+Use the `abstract` option to define a base event with shared fields that
+concrete events can inherit:
+
+```python
+@domain.event(abstract=True)
+class BaseOrderEvent:
+    order_id = Identifier(required=True)
+    occurred_at = DateTime(required=True)
+
+@domain.event(part_of=Order)
+class OrderPlaced(BaseOrderEvent):
+    customer_name = String(max_length=100)
+
+@domain.event(part_of=Order)
+class OrderCancelled(BaseOrderEvent):
+    reason = String(max_length=500)
+```
+
+Abstract events cannot be instantiated or raised directly. They don't
+require `part_of` since they are never emitted to a stream.
+
 ---
 
 ## Synchronous vs Asynchronous Processing
@@ -171,6 +194,7 @@ Sample metadata from an event:
     "timestamp": "2024-08-16 15:30:27.977101+00:00",
     "version": "v1",
     "sequence_id": "0",
+    "asynchronous": true,
     "correlation_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
     "causation_id": "test::user:command-411b2ceb-9513-45d7-9e03-bbc0846fae93"
 }
@@ -240,6 +264,14 @@ event would be `3.2`.
 
 If the aggregate is event-sourced, the `sequence_id` is a single integer of the
 position of the event in its stream.
+
+#### `asynchronous`
+
+A boolean flag indicating whether the event should be processed asynchronously
+(`true`) or synchronously (`false`). This is determined by the domain's
+`event_processing` configuration. When `true`, the event is stored and
+processed later by the Protean server; when `false`, event handlers are
+invoked immediately during the same execution flow.
 
 #### `correlation_id`
 
@@ -345,6 +377,53 @@ generated event's metadata:
 --8<-- "guides/domain-definition/events/002.py:full"
 ```
 
+## End-to-End Event Flow
+
+Here is a complete example showing the full lifecycle: defining an event,
+raising it from an aggregate, and handling it in an event handler.
+
+```python
+from protean import Domain, handle
+from protean.fields import Identifier, String, DateTime
+
+domain = Domain(__file__, "Ordering")
+
+# 1. Define the aggregate and event
+@domain.aggregate
+class Order:
+    customer_name: String(max_length=100, required=True)
+    status: String(max_length=20, default="DRAFT")
+
+    def place(self):
+        self.status = "PLACED"
+        self.raise_(OrderPlaced(
+            order_id=str(self.id),
+            customer_name=self.customer_name,
+        ))
+
+@domain.event(part_of=Order)
+class OrderPlaced:
+    order_id = Identifier(required=True)
+    customer_name = String(max_length=100)
+
+# 2. Define a handler that reacts to the event
+@domain.event_handler(part_of=Order)
+class OrderPlacedNotification:
+    @handle(OrderPlaced)
+    def send_confirmation(self, event: OrderPlaced):
+        print(f"Order {event.order_id} placed for {event.customer_name}")
+```
+
+When `order.place()` is called, the `OrderPlaced` event is raised and
+collected in `order._events`. Once the aggregate is persisted (via
+repository or Unit of Work), the event is dispatched to registered handlers
+— either synchronously or asynchronously depending on domain configuration.
+
+See [Raising Events](../domain-behavior/raising-events.md) for details on
+dispatching and the event-sourcing variant, and
+[Event Handlers](../consume-state/event-handlers.md) for the full handler
+guide.
+
 ## Fact Events
 
 A fact event encloses the entire state of the aggregate at that specific point
@@ -362,10 +441,16 @@ they rely on the owning service to compute and produce a fully detailed fact
 event.
 
 Fact events are generated automatically by the framework with the
-`fact_events=True` option in the `domain.aggregate` decorator.
+`fact_events=True` option in the `domain.aggregate` decorator. The
+generated event class is named `<AggregateName>FactEvent` and is written
+to a dedicated stream: `<stream_category>-fact-<aggregate_id>`. This
+separation lets internal consumers subscribe to granular delta events while
+external consumers subscribe to the fact stream for complete state snapshots.
 
 Read about generating fact events in the section on
-[raising events](../domain-behavior/raising-events.md#fact-events).
+[raising events](../domain-behavior/raising-events.md#fact-events). For
+the integration pattern, see
+[Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md).
 
 ## Immutability
 
@@ -385,14 +470,33 @@ IncorrectUsageError: 'Event/Command Objects are immutable and cannot be modified
 
 ---
 
+## Common Errors
+
+| Exception | When it occurs |
+|---|---|
+| `ValidationError` | Event construction fails because a required field is missing or a field value is invalid. |
+| `IncorrectUsageError` | Attempting to modify an event attribute after creation — events are immutable. |
+| `IncorrectUsageError` | Non-abstract event defined without `part_of` — every concrete event must be associated with an aggregate. |
+| `ConfigurationError` | Event raised on an aggregate it is not associated with (`part_of` mismatch). |
+
+---
+
 !!! tip "See also"
     **Concept overview:** [Events](../../concepts/building-blocks/events.md) — Domain events and their role in system communication.
+
+    **Next steps:**
+
+    - [Raising Events](../domain-behavior/raising-events.md) — How to raise events from aggregates and entities, dispatch them, and use event sourcing patterns.
+    - [Event Handlers](../consume-state/event-handlers.md) — Consuming events and performing side effects.
 
     **Guides:**
 
     - [Message Tracing](../domain-behavior/message-tracing.md) — Track the full causal chain of commands and events with correlation and causation IDs.
+    - [Event Upcasting](../consume-state/event-upcasting.md) — Transforming old event payloads to current schemas.
 
     **Patterns:**
 
     - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.
+    - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md) — Using fact events for cross-context communication.
+    - [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) — Managing event schema changes over time.
     - [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md) — Design considerations for correlation and causation tracking.

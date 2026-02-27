@@ -1,5 +1,23 @@
 # Events
 
+## Why Events?
+
+When an `Order` is placed, several things need to happen: inventory must be
+reserved, the customer must be notified, analytics must be updated, and
+billing must be triggered. If the order aggregate calls all these
+services directly, it becomes tightly coupled to every downstream
+concern — and any failure in notification or analytics can block the order
+itself.
+
+Domain events decouple the *thing that happened* from the *reactions to
+it*. The `Order` aggregate simply records the fact that an `OrderPlaced`
+event occurred. Other parts of the system — event handlers, projectors,
+subscribers — independently react to that fact. The aggregate doesn't know
+or care who is listening. This makes the system easier to extend (add a new
+reaction without touching the aggregate), more resilient (a failed handler
+doesn't block the command), and auditable (events form a complete history
+of what happened and when).
+
 Domain events are immutable facts that indicate a state change in the
 business domain. They capture meaningful changes and convey the state
 transitions of aggregates, ensuring that all parts of the system remain
@@ -157,8 +175,10 @@ For practical details on defining and working with events in Protean, see the gu
 
 - [Events](../../guides/domain-definition/events.md) — Defining events, event structure, metadata, versioning, and fact events.
 - [Raising Events](../../guides/domain-behavior/raising-events.md) — Raising events from aggregates and entities, dispatching, and event sourcing patterns.
+- [Event Handlers](../../guides/consume-state/event-handlers.md) — Consuming events and performing side effects.
 
 For design guidance:
 
 - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.
+- [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md) — Using fact events for cross-context communication.
 - [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) — Managing event schema changes over time.

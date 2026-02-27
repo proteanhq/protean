@@ -1,15 +1,25 @@
 # Aggregates
 
+## Why Aggregates?
+
+In most systems, domain objects don't exist in isolation — an `Order` has
+`LineItems`, a `Customer` has `Addresses`, a `Project` has `Tasks`. Without
+clear boundaries, any piece of code can reach in and modify any related
+object, leading to inconsistent state, broken invariants, and tangled
+dependencies. When two concurrent requests modify the same cluster of
+objects, there's no natural place to detect the conflict.
+
+Aggregates solve this by drawing an explicit boundary around a cluster of
+related objects. All changes within that boundary go through a single root
+entity — the **aggregate root** — which enforces business rules, guards
+consistency, and acts as the unit of persistence and concurrency control.
+Outside code never reaches past the root to modify internal objects directly.
+
 An aggregate is a cluster of domain objects that can be treated as a single
-unit for data changes.
-
-Each aggregate has a root entity, known as the aggregate root,
-responsible for enforcing business rules and ensuring the consistency of
-changes within the aggregate. In Protean, **aggregate** and **aggregate root**
-are treated as synonymous.
-
-Aggregates help to maintain the integrity of the data by defining boundaries
-within which invariants must be maintained.
+unit for data changes. Each aggregate has a root entity, known as the
+aggregate root, responsible for enforcing business rules and ensuring the
+consistency of changes within the aggregate. In Protean, **aggregate** and
+**aggregate root** are treated as synonymous.
 
 ## Facts
 
@@ -19,8 +29,9 @@ API. Aggregates, in turn, communicate with the external world through
 [domain events](./events.md).
 
 ### Aggregates are versioned. { data-toc-label="Versioning" }
-The version is a simple incrementing number. Every aggregate instance's version
-starts at 0.
+The version is a simple incrementing number. Every new aggregate instance starts
+with a version of `-1`. The version is incremented to `0` when the aggregate is
+first persisted, and increases by one on each subsequent save.
 
 ### Aggregates have concurrency control. { data-toc-label="Concurrency Control" }
 Aggregates are persisted with optimistic concurrency. If the expected version
@@ -74,13 +85,15 @@ all objects in the aggregates cluster are enclosed in a single transaction
 during persistence. This also means that all objects within an
 aggregate cluster are kept together in the same persistence store.
 
-### Aggregates can enclose up to 500 entities. { data-toc-label="Limits" }
+### Aggregates have configurable entity limits. { data-toc-label="Limits" }
 
-The object graph under an aggregate is loaded eagerly. The number of associations
-under an aggregate is limited to 500. If you expect the number of entities to
-exceed this limit, rethink your aggregate boundary. One way would be to split
-the aggregate into multiple aggregates. Another would be to make the underlying
-entity an aggregate by itself.
+The object graph under an aggregate is loaded eagerly. By default, queries
+return up to **100** associated entities per collection (configurable via
+the `limit` option on the aggregate or entity decorator). If you expect
+a collection to routinely exceed this limit, rethink your aggregate boundary
+— one approach is to split the aggregate into multiple aggregates, or to
+promote the underlying entity to an aggregate by itself. You can also set
+`limit=None` to remove the cap entirely.
 
 ---
 
@@ -90,8 +103,15 @@ For practical details on defining and using aggregates in Protean, see the guide
 
 - [Aggregates](../../guides/domain-definition/aggregates.md) — Defining aggregates, fields, initialization, configuration options, and associations.
 
+Not sure whether your concept should be an aggregate, entity, or value object?
+
+- [Choosing Element Types](./choosing-element-types.md) — Decision guide with checklists and flowcharts.
+
 For design guidance:
 
 - [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Why smaller aggregates lead to better systems.
 - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting aggregate internals with controlled mutation.
+- [Factory Methods for Aggregate Creation](../../patterns/factory-methods-for-aggregate-creation.md) — Encapsulating complex construction logic.
+- [Model Aggregate Lifecycle as a State Machine](../../patterns/aggregate-state-machines.md) — Explicit states and guarded transitions.
+- [Organize by Domain Concept](../../patterns/organize-by-domain-concept.md) — Structuring code around domain concepts rather than technical layers.
 - [One Aggregate Per Transaction](../../patterns/one-aggregate-per-transaction.md) — Keeping transaction boundaries clean.

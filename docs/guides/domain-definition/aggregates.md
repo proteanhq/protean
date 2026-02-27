@@ -191,9 +191,81 @@ class Order:
 # Stream category: "customer_orders"
 ```
 
-By default, it is the snake_case version of the class name. For details on
-`auto_add_id_field`, `schema_name`, `model`, and other options, see
+By default, it is the snake_case version of the class name.
+
+### `fact_events`
+
+When set to `True`, Protean automatically generates a fact event
+(containing the aggregate's full state) every time the aggregate is
+persisted. Fact events are written to a separate stream
+(`<stream_category>-fact-<aggregate_id>`) and are useful for cross-context
+integration where consumers need the complete state rather than individual
+deltas.
+
+```python
+@domain.aggregate(fact_events=True)
+class Customer:
+    name: String(max_length=100)
+    email: String(max_length=255)
+```
+
+See [Fact Events](../domain-behavior/raising-events.md#fact-events) and
+the [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md)
+pattern for details.
+
+### `limit`
+
+The maximum number of records returned by default queries (default: `100`).
+Set to `None` or a negative value to remove the limit:
+
+```python
+@domain.aggregate(limit=500)
+class Product:
+    ...
+
+@domain.aggregate(limit=None)  # No limit
+class AuditLog:
+    ...
+```
+
+### `aggregate_cluster`
+
+Groups an aggregate with other aggregates into a named cluster. This is
+primarily used internally by Protean to organize aggregate-related elements
+and resolve cross-references.
+
+### `is_event_sourced`
+
+When `True`, the aggregate's state is derived entirely from its event
+stream rather than loaded from a database. Business methods must use
+`raise_()` and `@apply` handlers instead of direct mutation. See the
+[Event Sourcing pathway](../pathways/event-sourcing.md) for a complete
+walkthrough.
+
+For details on `auto_add_id_field`, `schema_name`, `database_model`, and
+other options, see
 [element decorators](../../reference/domain-elements/element-decorators.md).
+
+## The `defaults()` Hook
+
+Override the `defaults()` method when an attribute's default depends on
+other attribute values:
+
+```python
+@domain.aggregate
+class Invoice:
+    subtotal: Float(required=True)
+    tax_rate: Float(default=0.1)
+    total: Float()
+
+    def defaults(self):
+        if self.total is None:
+            self.total = self.subtotal * (1 + self.tax_rate)
+```
+
+`defaults()` runs during initialization, after all field values have been
+set but before invariants are checked. Aggregates, entities, and value
+objects all support this hook.
 
 ## Associations
 
@@ -271,13 +343,34 @@ Out[12]: 'e288ee30-e1d5-4fb3-94d8-d8083a6dc9db'
 
 The `Reference` field (`comment.post`) provides access to the full parent object, while the shadow field (`comment.post_id`) contains the foreign key value.
 
+## Common Errors
+
+| Exception | When it occurs |
+|---|---|
+| `ValidationError` | Field validation fails during construction or mutation (e.g. missing `required` field, value exceeds `max_length`). Contains a `messages` dict mapping field names to error lists. |
+| `ValidationError` | An `@invariant.post` or `@invariant.pre` check raises a validation error. |
+| `IncorrectUsageError` | Trying to instantiate an abstract aggregate directly. |
+| `IncorrectUsageError` | Raising an event that is not associated with this aggregate (`part_of` mismatch). |
+| `NotImplementedError` | Event-sourced aggregate raises an event with no matching `@apply` handler. |
+
 ---
 
 !!! tip "See also"
     **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md) — What aggregates are, their core properties, and why they matter.
 
+    **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md) — When to use an aggregate vs. an entity vs. a value object.
+
+    **Related guides:**
+
+    - [Expressing Relationships](./relationships.md) — Full relationship and association documentation.
+    - [Invariants](../domain-behavior/invariants.md) — Enforcing business rules and state guards.
+    - [Raising Events](../domain-behavior/raising-events.md) — Publishing domain events from aggregates.
+    - [Repositories](../change-state/repositories.md) — Persisting and retrieving aggregates.
+
     **Patterns:**
 
     - [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Why smaller aggregates lead to better systems.
     - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting aggregate internals with controlled mutation.
+    - [Factory Methods for Aggregate Creation](../../patterns/factory-methods-for-aggregate-creation.md) — Encapsulating complex construction logic.
+    - [Model Aggregate Lifecycle as a State Machine](../../patterns/aggregate-state-machines.md) — Explicit states and guarded transitions.
     - [One Aggregate Per Transaction](../../patterns/one-aggregate-per-transaction.md) — Keeping transaction boundaries clean.

@@ -1,11 +1,24 @@
 # Value Objects
 
+## Why Value Objects?
+
+Representing domain concepts as raw primitives — a `str` for an email
+address, a `float` for a monetary amount, two `float`s for GPS
+coordinates — is one of the most common sources of bugs in domain code.
+Validation logic gets duplicated everywhere the value is used, invalid
+states slip through because there's no single place that enforces the
+rules, and the code loses expressiveness ("What does this `str` parameter
+actually represent?").
+
+Value objects solve this by wrapping related attributes and their
+validation rules into a single, immutable, self-validating concept.
+An `Email` value object guarantees that every instance is a well-formed
+email address. A `Money` value object keeps amount and currency together
+so you never accidentally add dollars to euros.
+
 Value objects are immutable domain elements that are distinguished by their
 properties rather than their identity. They are used to represent concepts in
 the domain that have no unique identity but are defined by their attributes.
-
-Value objects help to create a rich domain model by encapsulating concepts
-that are often represented as simple types.
 
 ## Facts
 
@@ -57,6 +70,10 @@ and defined solely by their attributes.
 For practical details on defining and using value objects in Protean, see the guide:
 
 - [Value Objects](../../guides/domain-definition/value-objects.md) — Defining value objects, embedding them in aggregates, invariants, and equality semantics.
+
+Not sure whether your concept should be a value object, entity, or aggregate?
+
+- [Choosing Element Types](./choosing-element-types.md) — Decision guide with checklists and flowcharts.
 
 For design guidance:
 

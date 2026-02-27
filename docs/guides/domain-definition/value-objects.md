@@ -56,6 +56,23 @@ ValidationError: {'address': ['Invalid email address']}
     This example was for illustration purposes only. It is far more elegant to
     validate an email address with [regex](https://emailregex.com/).
 
+## Configuration
+
+A value object's behavior can be customized by passing options to the
+`@domain.value_object` decorator.
+
+### `abstract`
+
+Marks a value object as abstract if `True`. Abstract value objects cannot be
+instantiated and are meant to be subclassed. Useful for defining shared
+fields across multiple concrete value object types.
+
+### `part_of`
+
+Associates the value object with a specific aggregate. While optional,
+setting `part_of` registers the value object within the aggregate's cluster
+and ensures it participates in the aggregate's validation lifecycle.
+
 ## Embedding Value Objects
 
 Value Objects can be embedded into Aggregates and Entities with the
@@ -167,6 +184,77 @@ satisfied at all times.
     It is recommended that you always deal with Value Objects by their class.
     Attributes are generally used by Protean during persistence and retrieval.
 
+## Nested Value Objects
+
+Value objects can be composed of other value objects, forming richer domain
+concepts:
+
+```python
+@domain.value_object
+class GeoLocation:
+    latitude: Float(required=True)
+    longitude: Float(required=True)
+
+@domain.value_object
+class Address:
+    street: String(max_length=200)
+    city: String(max_length=100)
+    zip_code: String(max_length=10)
+    location = ValueObject(GeoLocation)
+```
+
+When embedded in an aggregate, nested value objects are flattened for
+persistence. The database columns follow a naming convention that
+concatenates field names with underscores:
+
+| Aggregate field | VO field | Nested VO field | Database column |
+|---|---|---|---|
+| `address` | `street` | — | `address_street` |
+| `address` | `location` | `latitude` | `address_location_latitude` |
+| `address` | `location` | `longitude` | `address_location_longitude` |
+
+You can initialize nested value objects by passing the inner object
+directly or by using flattened attribute names:
+
+```python
+# Using nested objects
+store = Store(
+    name="Downtown",
+    address=Address(
+        street="123 Main St",
+        city="Springfield",
+        zip_code="62701",
+        location=GeoLocation(latitude=39.78, longitude=-89.65),
+    )
+)
+
+# Using flattened attributes (equivalent)
+store = Store(
+    name="Downtown",
+    address_street="123 Main St",
+    address_city="Springfield",
+    address_zip_code="62701",
+    address_location_latitude=39.78,
+    address_location_longitude=-89.65,
+)
+```
+
+## Dict-Based Initialization
+
+Value objects can be initialized from dictionaries, which is especially
+useful when receiving data from APIs or external sources:
+
+```python
+account = Account(
+    balance={"currency": "USD", "amount": 100.0},
+    name="Checking"
+)
+# Protean auto-converts the dict to a Balance value object
+```
+
+This works for nested value objects too — any dict matching the value
+object's field structure will be automatically converted.
+
 ## Invariants
 
 When a validation spans across multiple fields, you can specify it in an
@@ -183,8 +271,44 @@ In [1]: Balance(currency="USD", amount=-100)
 ValidationError: {'balance': ['Balance cannot be negative for USD']}
 ```
 
-Refer to [`invariants`](../domain-behavior/invariants.md) section for a
-deeper explanation of invariants.
+### Field Validators vs. Invariants
+
+Protean offers two ways to validate value object data:
+
+- **Field-level `validators`**: Callable validators attached to individual
+  fields (e.g. `validators=[EmailValidator()]`). Use these for single-field
+  format validation — "is this a valid email?" or "is this a valid phone
+  number?"
+- **`@invariant.post` methods**: Cross-field business rules that span
+  multiple attributes (e.g. "balance cannot be negative for USD"). Use
+  these when validation depends on the combination of two or more fields.
+
+As a rule of thumb: if the rule involves only one field, use a field
+validator; if it involves multiple fields, use an invariant.
+
+Refer to the [Invariants](../domain-behavior/invariants.md) guide for a
+deeper explanation, and [Validation Layering](../../patterns/validation-layering.md)
+for the overall strategy.
+
+## The `defaults()` Hook
+
+Override the `defaults()` method when a value object attribute's default
+depends on other attribute values:
+
+```python
+@domain.value_object
+class Duration:
+    start: DateTime(required=True)
+    end: DateTime(required=True)
+    total_seconds: Float()
+
+    def defaults(self):
+        if self.total_seconds is None and self.start and self.end:
+            self.total_seconds = (self.end - self.start).total_seconds()
+```
+
+`defaults()` runs during initialization, after all field values have been
+set but before invariants are checked.
 
 ## Equality
 
@@ -251,10 +375,36 @@ In [2]: bal1.currency = "CAD"
 IncorrectUsageError: "Value Objects are immutable and cannot be modified once created"
 ```
 
+## Hashability
+
+Because value objects are immutable and define equality by their attributes,
+they are hashable by default. This means you can use them as dictionary
+keys or in sets:
+
+```python
+prices = {
+    Balance(currency="USD", amount=9.99): "budget",
+    Balance(currency="USD", amount=99.99): "premium",
+}
+
+unique_emails = {Email(address="a@b.com"), Email(address="c@d.com")}
+```
+
+## Common Errors
+
+| Exception | When it occurs |
+|---|---|
+| `ValidationError` | Field validation fails during construction (e.g. missing `required` field, invalid format). Contains a `messages` dict. |
+| `ValidationError` | An `@invariant.post` check raises a validation error (e.g. "balance cannot be negative for USD"). |
+| `IncorrectUsageError` | Trying to modify a value object attribute after creation (value objects are immutable). |
+| `IncorrectUsageError` | Defining a field with `unique=True` or `identifier=True` — value objects have no concept of identity. |
+
 ---
 
 !!! tip "See also"
     **Concept overview:** [Value Objects](../../concepts/building-blocks/value-objects.md) — Immutable objects defined by their attributes, not identity.
+
+    **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md) — When to use a value object vs. an entity.
 
     **Patterns:**
 

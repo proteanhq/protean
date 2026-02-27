@@ -1,5 +1,19 @@
 # Entities
 
+## Why Entities?
+
+Not every concept in a domain stands on its own. An `OrderItem` only makes
+sense within an `Order`; a `Reservation` belongs to a `Booking`. These
+objects have their own identity — you need to distinguish one line item from
+another — but they don't manage their own lifecycle. If you modeled every
+identified object as an independent aggregate, you'd lose the ability to
+enforce rules that span the parent and its children (e.g. "an order's total
+must equal the sum of its line items").
+
+Entities are the answer: objects with unique, stable identity that live
+*inside* an aggregate. The aggregate root controls their creation, mutation,
+and deletion, ensuring that cross-object invariants are always satisfied.
+
 Entities are very similar to [Aggregates](./aggregates.md) in nature and
 purpose. In fact, an Aggregate is nothing but an entity chosen to represent
 the entire cluster.
@@ -67,6 +81,11 @@ For practical details on defining and using entities in Protean, see the guide:
 
 - [Entities](../../guides/domain-definition/entities.md) — Defining entities, configuration options, and associations within aggregates.
 
+Not sure whether your concept should be an entity, aggregate, or value object?
+
+- [Choosing Element Types](./choosing-element-types.md) — Decision guide with checklists and flowcharts.
+
 For design guidance:
 
 - [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Drawing the right boundaries between aggregates and entities.
+- [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting internals with controlled mutation.
