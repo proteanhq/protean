@@ -253,8 +253,8 @@ class BaseAggregate(BaseEntity):
         event_name = fqn(event.__class__)
 
         if event_name not in self._projections:
-            raise NotImplementedError(
-                f"No handler registered for event `{event_name}` "
+            raise IncorrectUsageError(
+                f"No @apply handler registered for event `{event_name}` "
                 f"in `{self.__class__.__name__}`"
             )
 
@@ -394,7 +394,16 @@ class BaseAggregate(BaseEntity):
         Creates a blank aggregate via ``_create_for_reconstitution()`` and
         applies all events uniformly through ``_apply()``.  The first event's
         ``@apply`` handler must set ALL fields including identity.
+
+        Raises:
+            IncorrectUsageError: If ``events`` is empty — an aggregate cannot
+                be reconstructed without at least one event.
         """
+        if not events:
+            raise IncorrectUsageError(
+                f"Cannot reconstitute `{cls.__name__}` from an empty event list"
+            )
+
         aggregate = cls._create_for_reconstitution()
 
         for event in events:
