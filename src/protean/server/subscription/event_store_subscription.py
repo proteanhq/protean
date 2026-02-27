@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import secrets
@@ -164,14 +165,16 @@ class EventStoreSubscription(BaseSubscription):
                 "No previous messages - Starting at the beginning of the stream"
             )
 
-    async def fetch_last_position(self):
+    async def fetch_last_position(self) -> int:
         """
         Fetch the last read position from the store.
 
         Returns:
             int: The last read position from the store.
         """
-        message = self.store._read_last_message(self.subscriber_stream_name)
+        message = await asyncio.to_thread(
+            self.store._read_last_message, self.subscriber_stream_name
+        )
         if message:
             return message["data"]["position"]
 
@@ -188,7 +191,7 @@ class EventStoreSubscription(BaseSubscription):
         """
         last_written_position = await self.fetch_last_position()
         if last_written_position < self.current_position:
-            self.write_position(self.current_position)
+            await self.write_position(self.current_position)
 
         return last_written_position
 
@@ -208,11 +211,11 @@ class EventStoreSubscription(BaseSubscription):
         self.messages_since_last_position_write += 1
 
         if self.messages_since_last_position_write >= self.position_update_interval:
-            self.write_position(position)
+            await self.write_position(position)
 
         return self.current_position
 
-    def write_position(self, position: int) -> int:
+    async def write_position(self, position: int) -> int:
         """
         Write the position to the store.
 
@@ -229,7 +232,8 @@ class EventStoreSubscription(BaseSubscription):
 
         self.messages_since_last_position_write = 0  # Reset counter
 
-        return self.store._write(
+        return await asyncio.to_thread(
+            self.store._write,
             self.subscriber_stream_name,
             "Read",
             {"position": position},
@@ -285,7 +289,8 @@ class EventStoreSubscription(BaseSubscription):
         Returns:
             List[Message]: The next batch of messages to process.
         """
-        messages = self.store.read(
+        messages = await asyncio.to_thread(
+            self.store.read,
             self.stream_category,
             position=self.current_position + 1,
             no_of_messages=self.messages_per_tick,
