@@ -14,6 +14,7 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Float, HasMany, Identifier, String, ValueObject
 
 
@@ -533,7 +534,7 @@ class TestBackwardCompatibility:
 
 
 # ---------------------------------------------------------------------------
-# Test: missing @apply handler raises NotImplementedError
+# Test: missing @apply handler raises IncorrectUsageError
 # ---------------------------------------------------------------------------
 class TestMissingApplyHandler:
     def test_event_without_apply_handler_warns_at_init(self, test_domain, caplog):
@@ -571,7 +572,7 @@ class TestMissingApplyHandler:
         test_domain.init(traverse=False)
 
         orphan = Orphan(data="test")
-        with pytest.raises(NotImplementedError, match="No handler registered"):
+        with pytest.raises(IncorrectUsageError, match="No @apply handler registered"):
             orphan.raise_(OrphanEvent(data="boom"))
 
 
@@ -586,5 +587,5 @@ class TestFactEventExclusion:
         # Fact events end with "FactEvent" in name — they are auto-generated
         # by the framework and should not look for @apply handlers.
         # This is tested implicitly: if fact events tried @apply, they'd
-        # get NotImplementedError since no handler exists for them.
+        # get IncorrectUsageError since no handler exists for them.
         assert len(user._events) == 1  # Only the UserRegistered event
