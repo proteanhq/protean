@@ -74,7 +74,7 @@ encapsulate cross-aggregate rules and run invariants for validation.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `part_of` | `None` | Associated aggregate (optional) |
+| **`part_of`** | — | **Required.** List of two or more associated aggregates |
 
 Guide: [Domain Services](../../guides/domain-behavior/domain-services.md)
 

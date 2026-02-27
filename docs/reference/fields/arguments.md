@@ -268,5 +268,5 @@ Now the custom message will be available in `ValidationError`:
 In [1]: Building()
 ERROR: Error during initialization: {'doors': ['Every building needs doors.']}
 ...
-ValidationError: {'doors': ['Every building needs some!']}
+ValidationError: {'doors': ['Every building needs doors.']}
 ```

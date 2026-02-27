@@ -2,9 +2,13 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-An aggregate rarely exists in isolation - it's state changes often mean
-that other parts of the system of the system have to sync up. In DDD, the
-mechanism to accomplish this is through Domain Events.
+An aggregate rarely exists in isolation — its state changes often mean that
+other parts of the system have to sync up. An order being placed needs to
+reserve inventory; a user changing their email needs to update downstream
+projections. Without a mechanism to communicate these changes, aggregates
+become tightly coupled, and the system loses its ability to evolve
+independently. In DDD, the mechanism to accomplish this is through **Domain
+Events**.
 
 ## Delta Events
 
@@ -24,7 +28,7 @@ In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit
 In [2]: account.withdraw(500.0)
 
 In [3]: account.to_dict()
-Out[3]: 
+Out[3]:
 {'account_number': '1234',
  'balance': 500.0,
  'overdraft_limit': 50.0,
@@ -36,10 +40,14 @@ Out[4]: [<AccountWithdrawn: AccountWithdrawn object (
  'amount': 500.0})>]
 ```
 
+Events accumulate in `_events` until the aggregate is persisted. If an
+aggregate is never persisted (e.g. you construct it in a test and don't save
+it), the events remain in memory and are never dispatched.
+
 ## Raising Events from Entities
 
 Any entity in the aggregate cluster can raise events. But the events are
-collected in the aggregate alone. Aggregates are also responisible for
+collected in the aggregate alone. Aggregates are also responsible for
 consuming events and performing state changes on underlying entities, as we
 will see in the future.
 
@@ -52,36 +60,70 @@ aggregate's identity with the help of `_owner` property:
 
 1. `self._owner` here is the owning `Patron` object.
 
+## How `raise_()` Works
+
+When you call `self.raise_(event)`, Protean:
+
+1. **Verifies** the event is associated with this aggregate
+   (`event.meta_.part_of` must match the aggregate class).
+2. **Enriches** the event with metadata — the aggregate's identity, stream
+   name, a monotonically increasing `sequence_id`, and a checksum.
+3. **Appends** the event to `self._events`.
+4. For **event-sourced aggregates**, additionally invokes the corresponding
+   `@apply` handler inside `atomic_change()` to mutate state (see
+   [below](#es-raise-apply)).
+
+Events within a single aggregate are ordered by `sequence_id`, ensuring
+consumers process them in the order they were raised.
+
+!!!note
+    `raise_()` cannot be called on a temporally-loaded aggregate (one loaded
+    with a point-in-time query). Temporal aggregates are read-only.
+
 ## Dispatching Events {#stream-category}
 
-These events are dispatched automatically to registered brokers when the
-aggregate is persisted. See [Repositories](../../guides/change-state/repositories.md)
-for details on persistence. You can also manually publish the events to the
-rest of the system with `domain.publish()`.
+Events are dispatched automatically when the aggregate is persisted through
+a repository. You do not need to publish events manually — when you call
+`domain.repository_for(Aggregate).add(aggregate)` within a Unit of Work,
+Protean persists the aggregate's accumulated events to the event store and
+forwards them to registered brokers.
 
 Events are published to streams based on the aggregate's [stream category](../../concepts/async-processing/stream-categories.md). Each event is stored in a stream named `<domain>::<stream_category>-<aggregate_id>`, ensuring that all events for a specific aggregate instance are grouped together and can be processed in order.
 
 Learn more about how stream categories organize message flows in the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
+```shell hl_lines="5-7 9"
+In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
 
-```shell hl_lines="11 16"
-In [1]: order = Order(
-   ...:         customer_id=1, premium_customer=True,
-   ...:         items=[
-   ...:             OrderItem(product_id=1, quantity=2, price=10.0),
-   ...:             OrderItem(product_id=2, quantity=1, price=20.0),
-   ...:         ]
-   ...:     )
+In [2]: account.withdraw(500.0)
 
-In [2]: order.confirm()
+In [3]: account._events
+Out[3]: [<AccountWithdrawn: AccountWithdrawn object (
+{'account_number': '1234', 'amount': 500.0})>]
 
-In [3]: order._events
-Out[3]: 
-[<OrderConfirmed: OrderConfirmed object ({'order_id': '149b5549-3903-459e-9127-731266372472', 'confirmed_at': '2024-06-10 22:53:25.827101+00:00'})>,
- <OrderDiscountApplied: OrderDiscountApplied object ({'order_id': '149b5549-3903-459e-9127-731266372472', 'customer_id': '1'})>]
-
-In [4]: domain.publish(order._events)
+In [4]: domain.repository_for(Account).add(account)  # Events are dispatched here
 ```
+
+The events accumulated in `account._events` are written to the event store and
+forwarded to brokers as part of the repository's persistence operation. After
+persistence, the event list is cleared.
+
+### What Happens Next
+
+From there, the [async processing engine](../../concepts/async-processing/engine.md)
+picks up events via subscriptions and delivers them to:
+
+- **[Event handlers](../consume-state/event-handlers.md)** — react to events
+  and orchestrate side effects (e.g. syncing another aggregate, sending a
+  notification).
+- **[Projectors](../consume-state/projections.md)** — maintain read-optimized
+  projections by processing events into denormalized views.
+- **[Subscribers](../consume-state/subscribers.md)** — consume messages from
+  external brokers at the domain boundary.
+
+The event store is the **source of truth** for the async processing engine.
+Events are persisted durably before being delivered, so handlers can process
+them even after restarts.
 
 ## Event Sourced Aggregates: `raise_()` and `@apply` {#es-raise-apply}
 
@@ -129,7 +171,7 @@ Key points for ES aggregates:
 - `raise_()` wraps the `@apply` call inside `atomic_change()`, so
   **invariants are checked** before and after the state change.
 - Every event raised **must** have a corresponding `@apply` handler.
-  Raising an event without one throws `NotImplementedError`.
+  Raising an event without one throws `IncorrectUsageError`.
 - Factory methods use `_create_new()` to create a blank aggregate
   with identity. The creation event's `@apply` handler populates
   all remaining state.
@@ -142,7 +184,11 @@ Key points for ES aggregates:
 ## Fact Events
 
 [Fact events](../domain-definition/events.md#fact-events) are automatically
-generated by Protean.
+generated by Protean when an aggregate opts in with `fact_events=True`.
+Unlike delta events (which you raise explicitly in business methods), fact
+events are generated during **repository persistence** — each time the
+aggregate is saved, Protean snapshots the full aggregate state into a fact
+event.
 
 The event name is of the format
 `<AggregateName>FactEvent`, and the stream name will be
@@ -162,9 +208,14 @@ and the output stream is `user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff`
 
     **Related guides:**
 
+    - [Aggregate Mutation](aggregate-mutation.md) — How state changes work inside aggregates.
+    - [Invariants](invariants.md) — Business rules checked before and after state changes.
+    - [Event Handlers](../consume-state/event-handlers.md) — Processing events to orchestrate side effects.
+    - [Projections](../consume-state/projections.md) — Building read models from event streams.
     - [Message Enrichment](message-enrichment.md) — Automatically add custom metadata (user context, tenant ID, audit data) to every event.
     - [Message Tracing](message-tracing.md) — Follow causal chains with correlation and causation IDs.
 
     **Patterns:**
 
     - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.
+    - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md) — Using fact events for cross-domain communication.

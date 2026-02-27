@@ -17,7 +17,7 @@ use [Text](#text).
 - **`max_length`**: The maximum length (in characters) of the field.
 Defaults to 255.
 - **`min_length`**: The minimum length (in characters) of the field.
-Defaults to 255.
+Defaults to `None` (no minimum).
 - **`sanitize`**: Optionally turn off HTML sanitization. Default is `True`.
 
 ## Text

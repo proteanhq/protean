@@ -2,11 +2,27 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-There are many hygiene aspects that need to be enforced in a domain's data
-and behavior, even before we get to the point of defining a domain's rules.
-These basic aspects can be codified in the form of field types and its options,
-using in-build validators, or even defining custom validators and attaching
-them to a field.
+A core DDD principle is that domain objects should be **always valid** — it
+should be impossible to construct or mutate an aggregate, entity, or value
+object into a state that violates its rules. Protean enforces this guarantee
+starting at the field level: every field declaration carries constraints that
+are checked automatically on construction and on every subsequent assignment.
+
+Field-level validation is the **first layer** of a broader validation
+architecture. Protean organizes validation into four layers, each catching
+a different category of invalid state:
+
+| Layer | What it validates | Where it lives |
+|-------|-------------------|----------------|
+| **1 — Field constraints** | Type, format, range, required | Field declarations (this guide) |
+| **2 — Value object invariants** | Concept-level rules (e.g. email format) | [`@invariant.post` on VOs](invariants.md) |
+| **3 — Aggregate invariants** | Business rules, cross-field consistency | [`@invariant` on aggregates](invariants.md) |
+| **4 — Handler/service guards** | Authorization, cross-aggregate checks | [Command handlers](../change-state/command-handlers.md), [domain services](domain-services.md) |
+
+Each layer trusts the layers below it and adds what they don't cover. This
+guide focuses on Layer 1 — field constraints, built-in validators, and custom
+validators. For the complete picture, see the
+[Validation Layering](../../patterns/validation-layering.md) pattern.
 
 ## Field Restrictions
 
@@ -34,12 +50,24 @@ ValidationError: {
 }
 ```
 
-These validations kick-in even on attribute change, not just during
+These validations kick in even on attribute change, not just during
 initialization, thus keeping the aggregate valid at all times.
+
+```shell
+In [1]: account = Account(account_number=1234, account_type="SAVINGS", balance=500.0)
+
+In [2]: account.account_type = "CHECKING"
+...
+ValidationError: {
+    'account_type': [
+        "Value `'CHECKING'` is not a valid choice. Must be among ['SAVINGS', 'CURRENT']"
+    ]
+}
+```
 
 Every Protean field also has options that help constrain the field value.
 For example, we can specify that the field is mandatory with the `required`
-option and stores a unique value  with the `unique` option.
+option and stores a unique value with the `unique` option.
 
 The four options to constrain values are:
 
@@ -47,7 +75,7 @@ The four options to constrain values are:
 `True`, the field is not allowed to be blank. Default is `False`.
 - **`identifier`**: If True, the field is an identifier for the entity. These
 fields are `unique` and `required` by default.
-- **`unique`**: Indicates if the field values must be unique within the 
+- **`unique`**: Indicates if the field values must be unique within the
 repository. If `True`, this field's value is validated to be unique among
 all entities of same category.
 - **`choices`**: A set of allowed choices for the field value, supplied as an
@@ -70,7 +98,7 @@ ERROR: Error during initialization: {'account_number': ['is required']}
 ValidationError: {'account_number': ['is required']}
 ```
 
-A full-list of field types and their options is available in the
+A full list of field types and their options is available in the
 [Fields](../../reference/fields/index.md) section.
 
 ## In-built Validations
@@ -96,13 +124,21 @@ ERROR: Error during initialization:
 ValidationError: {'name': ['value has less than 3 characters'], 'age': ['value is greater than 120']}
 ```
 
-A full-list of in-built validators is available in the
+Under the hood, these parameters create built-in validator instances from
+`protean.fields.validators` — `MinLengthValidator`, `MaxLengthValidator`,
+`MinValueValidator`, `MaxValueValidator`, and `RegexValidator`. You rarely need
+to use them directly, but they are available if you need to compose validators
+programmatically.
+
+A full list of in-built validators is available in the
 [Fields](../../reference/fields/index.md) section under each field.
 
 
 ## Custom Validators
 
-You can also add vaidations at the field level by defining custom validators.
+You can also add validations at the field level by defining custom validators.
+A validator is any callable class that accepts a value and raises `ValueError`
+if the value is invalid:
 
 ```python hl_lines="14-16"
 --8<-- "guides/domain-behavior/005.py:10:26"
@@ -120,9 +156,46 @@ In [2]: Person(name="Jane", email="jane.doe@.gmail.com")
 ValueError: Invalid Email Address - jane.doe@.gmail.com
 ```
 
+You can attach multiple validators to a single field with the `validators`
+list. Protean runs all of them in order, and the first failure stops
+evaluation and raises the error.
+
+For more details on the `validators` field option and the `error_messages`
+option for customizing error text, see the
+[Common Arguments](../../reference/fields/arguments.md#validators) reference.
+
+!!!note
+    For domain-concept validation (e.g. "an email must have a valid format"),
+    consider using a [value object](../domain-definition/value-objects.md) with
+    an invariant (Layer 2) instead of a field-level validator. Value objects are
+    reusable across aggregates and make the concept explicit in your domain
+    model. See [Validation Layering](../../patterns/validation-layering.md) for
+    guidance on choosing the right layer.
+
+## How It Works
+
+Every aggregate, entity, and value object validates field assignments
+automatically:
+
+1. **On construction**: Protean validates all fields when the object is created.
+   After field validation passes, any `@invariant.post` methods run.
+2. **On attribute assignment**: Every `self.field = value` goes through
+   `__setattr__`, which triggers field validation. If the value doesn't match
+   the field's type or constraints, a `ValidationError` is raised immediately
+   — the assignment never takes effect.
+
+This means an aggregate can never hold an invalid field value, even
+momentarily. The "always valid" guarantee is enforced at the Python runtime
+level, not just at persistence time.
+
 ---
 
 !!! tip "See also"
     **Concept overview:** [Invariants](../../concepts/foundations/invariants.md) — The foundational concept of keeping domain objects always valid.
+
+    **Related guides:**
+
+    - [Invariants](invariants.md) — Business rules that enforce cross-field consistency (Layers 2-3).
+    - [Aggregate Mutation](aggregate-mutation.md) — How state changes trigger validation.
 
     **Patterns:** [Validation Layering](../../patterns/validation-layering.md) — Choosing the right validation layer for each kind of rule.
