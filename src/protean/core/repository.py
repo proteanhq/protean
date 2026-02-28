@@ -99,7 +99,28 @@ class BaseRepository(Element, OptionsMixin):
     @property
     @lru_cache()
     def _dao(self) -> BaseDAO:
-        """Retrieve a DAO registered for the Aggregate with a live connection"""
+        """Return the Data Access Object for this repository's aggregate.
+
+        .. warning:: Internal / escape-hatch API
+
+            ``_dao`` is used by the framework for child-entity synchronization,
+            outbox persistence, projection rebuilds, and association resolution.
+
+            Application code should use the public query helpers instead:
+
+            - ``self.query`` – a :class:`QuerySet` for filtered, sorted,
+              paginated queries.
+            - ``self.find_by(**kwargs)`` – find a single aggregate by field
+              values.
+            - ``self.find(criteria)`` – find aggregates matching a ``Q``
+              expression.
+            - ``self.exists(criteria)`` – check if any aggregate matches.
+
+            Direct ``_dao`` access is intentionally available as an escape
+            hatch for infrastructure-level operations (hard deletion, test
+            teardown, GDPR compliance) but should not be used for routine
+            domain queries.
+        """
         # Fixate on Model class at the domain level because an explicit model may have been registered
         return self._provider.get_dao(self.meta_.part_of, self._database_model)  # type: ignore[return-value]
 
