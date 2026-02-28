@@ -33,7 +33,7 @@ def dashboard_html(client):
 
 @pytest.mark.redis
 class TestDashboardStructure:
-    """Verify new dashboard HTML elements are present."""
+    """Verify dashboard HTML elements are present."""
 
     def test_system_pulse_elements_present(self, dashboard_html):
         """System Pulse section has pulse dot, label, last event time, and engine count."""
@@ -42,15 +42,15 @@ class TestDashboardStructure:
         assert 'id="lastEventTime"' in dashboard_html
         assert 'id="engineCountValue"' in dashboard_html
 
-    def test_throughput_chart_promoted(self, dashboard_html):
-        """Throughput chart (sparkline canvas) appears BEFORE the pipeline section."""
-        sparkline_pos = dashboard_html.find('id="sparkline"')
-        pipeline_pos = dashboard_html.find('class="pipeline"')
-        assert sparkline_pos > 0, "sparkline element not found"
-        assert pipeline_pos > 0, "pipeline element not found"
-        assert sparkline_pos < pipeline_pos, (
-            "Throughput chart should appear before the pipeline section"
-        )
+    def test_pipeline_and_backpressure_side_by_side(self, dashboard_html):
+        """Pipeline and Backpressure gauges are in the same side-by-side row."""
+        assert 'class="pipeline-backpressure-row"' in dashboard_html
+        assert 'class="pipeline-divider"' in dashboard_html
+        # Pipeline comes before backpressure in the row
+        row_pos = dashboard_html.find("pipeline-backpressure-row")
+        pipeline_pos = dashboard_html.find('class="pipeline"', row_pos)
+        bp_pos = dashboard_html.find('class="backpressure-grid"', row_pos)
+        assert pipeline_pos < bp_pos
 
     def test_pipeline_elements_present(self, dashboard_html):
         """Pipeline section has Published, Done count boxes and Done rate label."""
@@ -58,13 +58,35 @@ class TestDashboardStructure:
         assert 'id="pipeDone"' in dashboard_html
         assert 'id="rateDone"' in dashboard_html
 
-    def test_handler_activity_section_present(self, dashboard_html):
-        """Handler Activity card and grid are present."""
-        assert 'id="handlerActivityCard"' in dashboard_html
-        assert 'id="handlerGrid"' in dashboard_html
+    def test_backpressure_gauges_present(self, dashboard_html):
+        """Backpressure gauges are present with correct IDs."""
+        assert 'id="bpOutboxValue"' in dashboard_html
+        assert 'id="bpStreamValue"' in dashboard_html
+        assert 'id="bpConsumerValue"' in dashboard_html
 
-    def test_backpressure_collapsible(self, dashboard_html):
-        """Backpressure section is collapsible with correct IDs and click handler."""
+    def test_throughput_chart_after_pipeline(self, dashboard_html):
+        """Throughput chart appears AFTER the pipeline+backpressure row."""
+        pipeline_row_pos = dashboard_html.find("pipeline-backpressure-row")
+        sparkline_pos = dashboard_html.find('id="sparkline"')
+        assert pipeline_row_pos > 0
+        assert sparkline_pos > 0
+        assert sparkline_pos > pipeline_row_pos
+
+    def test_queue_depth_chart_after_throughput(self, dashboard_html):
+        """Queue Depth chart appears after Throughput chart, stacked vertically."""
+        sparkline_pos = dashboard_html.find('id="sparkline"')
+        queue_pos = dashboard_html.find('id="queueSparkline"')
+        assert sparkline_pos > 0
+        assert queue_pos > 0
+        assert queue_pos > sparkline_pos
+
+    def test_no_handler_activity_section(self, dashboard_html):
+        """Handler Activity section has been removed."""
+        assert 'id="handlerActivityCard"' not in dashboard_html
+        assert 'id="handlerGrid"' not in dashboard_html
+
+    def test_stream_lag_detail_collapsible(self, dashboard_html):
+        """Stream Lag Detail section is collapsible with correct IDs."""
         assert 'id="backpressureHeader"' in dashboard_html
         assert 'id="backpressureBody"' in dashboard_html
         assert 'onclick="toggleBackpressure()"' in dashboard_html
@@ -74,6 +96,12 @@ class TestDashboardStructure:
         assert 'id="subscriptionHeader"' in dashboard_html
         assert 'id="subscriptionBody"' in dashboard_html
         assert 'onclick="toggleSubscriptions()"' in dashboard_html
+
+    def test_messages_collapsible(self, dashboard_html):
+        """Messages section is collapsible with correct IDs and click handler."""
+        assert 'id="messagesHeader"' in dashboard_html
+        assert 'id="messagesBody"' in dashboard_html
+        assert 'onclick="toggleMessages()"' in dashboard_html
 
     def test_no_activity_overlay_present(self, dashboard_html):
         """No-activity overlay exists for the throughput chart."""
@@ -90,14 +118,11 @@ class TestDashboardJavaScript:
         assert "function formatRelativeTime(" in dashboard_html
         assert "function updateEngineStatus(" in dashboard_html
 
-    def test_handler_activity_functions_defined(self, dashboard_html):
-        """Handler Activity rendering function is defined."""
-        assert "function renderHandlerActivity()" in dashboard_html
-
     def test_collapsible_functions_defined(self, dashboard_html):
         """Collapsible toggle and summary update functions are defined."""
         assert "function toggleBackpressure()" in dashboard_html
         assert "function toggleSubscriptions()" in dashboard_html
+        assert "function toggleMessages()" in dashboard_html
         assert "function updateBackpressureSummary()" in dashboard_html
         assert "function updateSubscriptionSummary()" in dashboard_html
 
@@ -105,6 +130,7 @@ class TestDashboardJavaScript:
         """System pulse is polled every second via setInterval."""
         assert "setInterval(updateSystemPulse, 1000)" in dashboard_html
 
-    def test_handler_activity_tracking_in_sse(self, dashboard_html):
-        """SSE handler updates the handlerActivity map."""
-        assert "handlerActivity.set(data.handler" in dashboard_html
+    def test_no_handler_activity_tracking(self, dashboard_html):
+        """Handler activity tracking has been removed."""
+        assert "handlerActivity.set(" not in dashboard_html
+        assert "function renderHandlerActivity()" not in dashboard_html

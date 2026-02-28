@@ -217,6 +217,42 @@ body {
   border-color: var(--secondary);
 }
 
+/* Pipeline + Backpressure side-by-side */
+.pipeline-backpressure-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 16px;
+}
+
+.pipeline-backpressure-row .pipeline {
+  flex: 1;
+}
+
+.pipeline-backpressure-row .backpressure-grid {
+  flex: 1;
+  padding: 4px 0;
+}
+
+.pipeline-divider {
+  width: 1px;
+  background: var(--border);
+  margin: 0 16px;
+  align-self: stretch;
+}
+
+@media (max-width: 900px) {
+  .pipeline-backpressure-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .pipeline-divider {
+    width: auto;
+    height: 1px;
+    margin: 0;
+  }
+}
+
 /* Pipeline */
 .pipeline {
   display: flex;
@@ -1075,58 +1111,6 @@ body {
 }
 
 /* Handler Activity */
-.handler-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 12px 16px;
-}
-
-.handler-domain-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  margin-right: 16px;
-}
-
-.handler-domain-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-right: 4px;
-}
-
-.handler-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 11px;
-  font-family: var(--font-code);
-}
-
-.handler-chip .hdot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.handler-chip .hdot.active { background: var(--success); }
-.handler-chip .hdot.idle { background: var(--text-muted); }
-.handler-chip .hdot.lagging { background: var(--accent); }
-
-.handler-chip .hrate {
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
 /* Collapsible sections */
 .card-header.collapsible {
   cursor: pointer;
@@ -1175,6 +1159,8 @@ body {
 }
 
 .sparkline-container { position: relative; }
+.sparkline-container canvas,
+.queue-chart-container canvas { width: 100%; display: block; }
 
 /* New events badge */
 .new-events-badge {
@@ -1260,7 +1246,56 @@ body {
     </div>
   </div>
 
-  <!-- Throughput Chart (promoted to position 2) -->
+  <!-- Pipeline + Backpressure (side-by-side) -->
+  <div class="card">
+    <div class="pipeline-backpressure-row">
+      <div class="pipeline">
+        <div class="pipeline-stage" title="Outbox publishing rate — messages pushed from database outbox to Redis Streams.">
+          <span class="label">Published</span>
+          <div class="count-box published" id="pipePublished">--</div>
+          <span class="rate-label" id="ratePublishedPipe">&nbsp;</span>
+        </div>
+        <span class="pipeline-arrow">&#9654;</span>
+        <div class="pipeline-stage" title="Messages currently being processed by event handlers.">
+          <span class="label">Handling</span>
+          <div class="count-box handling" id="pipeHandling">0</div>
+          <span class="rate-label" id="rateHandling">&nbsp;</span>
+        </div>
+        <span class="pipeline-arrow">&#9654;</span>
+        <div class="pipeline-stage" title="Handler completion rate — successful handler executions.">
+          <span class="label">Done</span>
+          <div class="count-box done" id="pipeDone">--</div>
+          <span class="rate-label" id="rateDone">&nbsp;</span>
+        </div>
+        <span class="pipeline-arrow">&#9654;</span>
+        <div class="pipeline-stage" title="Handler failures, outbox publish failures, and dead-letter queue entries.">
+          <span class="label">Failed</span>
+          <div class="count-box failed" id="pipeFailed">0</div>
+          <span class="rate-label" id="rateFailed">&nbsp;</span>
+        </div>
+      </div>
+      <div class="pipeline-divider"></div>
+      <div class="backpressure-grid">
+        <div class="bp-gauge" id="bpOutbox" title="Messages in the PostgreSQL outbox table with PENDING or PROCESSING status, waiting for the OutboxProcessor (engine) to publish them to Redis. If this stays high, the engine may not be running or is falling behind.">
+          <span class="bp-label">Outbox Pending</span>
+          <span class="bp-value ok" id="bpOutboxValue">0</span>
+          <span class="bp-subtitle" id="bpOutboxDetail">waiting to publish</span>
+        </div>
+        <div class="bp-gauge" id="bpStream" title="Total messages sitting in Redis Streams (XLEN) across all streams. These have been published but not yet read by consumer groups. Grows when the outbox publishes faster than handlers can consume.">
+          <span class="bp-label">Stream Depth</span>
+          <span class="bp-value ok" id="bpStreamValue">0</span>
+          <span class="bp-subtitle" id="bpStreamDetail">in Redis Streams</span>
+        </div>
+        <div class="bp-gauge" id="bpConsumer" title="Messages delivered to consumer groups but not yet acknowledged (XPENDING). These are actively being processed or waiting for retry. High values indicate slow handlers or a downstream bottleneck.">
+          <span class="bp-label">Consumer Lag</span>
+          <span class="bp-value ok" id="bpConsumerValue">0</span>
+          <span class="bp-subtitle" id="bpConsumerDetail">unacknowledged</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Throughput Chart -->
   <div class="card">
     <div class="sparkline-container">
       <div class="sparkline-header">
@@ -1286,74 +1321,8 @@ body {
     </div>
   </div>
 
-  <!-- Pipeline -->
+  <!-- Queue Depth Chart -->
   <div class="card">
-    <div class="pipeline">
-      <div class="pipeline-stage" title="Outbox publishing rate — messages pushed from database outbox to Redis Streams.">
-        <span class="label">Published</span>
-        <div class="count-box published" id="pipePublished">--</div>
-        <span class="rate-label" id="ratePublishedPipe">&nbsp;</span>
-      </div>
-      <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage" title="Messages currently being processed by event handlers.">
-        <span class="label">Handling</span>
-        <div class="count-box handling" id="pipeHandling">0</div>
-        <span class="rate-label" id="rateHandling">&nbsp;</span>
-      </div>
-      <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage" title="Handler completion rate — successful handler executions.">
-        <span class="label">Done</span>
-        <div class="count-box done" id="pipeDone">--</div>
-        <span class="rate-label" id="rateDone">&nbsp;</span>
-      </div>
-      <span class="pipeline-arrow">&#9654;</span>
-      <div class="pipeline-stage" title="Handler failures, outbox publish failures, and dead-letter queue entries.">
-        <span class="label">Failed</span>
-        <div class="count-box failed" id="pipeFailed">0</div>
-        <span class="rate-label" id="rateFailed">&nbsp;</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Handler Activity -->
-  <div class="card" id="handlerActivityCard">
-    <div class="card-header">
-      <span title="Live handler activity — which handlers are processing messages and at what rate.">Handler Activity</span>
-    </div>
-    <div class="handler-grid" id="handlerGrid">
-      <span style="color:var(--text-muted);font-size:12px">Waiting for subscription data...</span>
-    </div>
-  </div>
-
-  <!-- Backpressure (collapsible) -->
-  <div class="card" id="backpressureCard">
-    <div class="card-header collapsible" id="backpressureHeader" onclick="toggleBackpressure()">
-      <div>
-        <span class="collapse-icon">&#9654;</span>
-        <span>Backpressure</span>
-        <span class="collapse-summary ok" id="bpSummary">OK</span>
-      </div>
-      <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-code)" id="bpLastUpdated"></span>
-    </div>
-    <div class="collapsible-body" id="backpressureBody">
-    <div class="backpressure-grid">
-      <div class="bp-gauge" id="bpOutbox" title="Messages in the PostgreSQL outbox table with PENDING or PROCESSING status, waiting for the OutboxProcessor (engine) to publish them to Redis. If this stays high, the engine may not be running or is falling behind.">
-        <span class="bp-label">Outbox Pending</span>
-        <span class="bp-value ok" id="bpOutboxValue">0</span>
-        <span class="bp-subtitle" id="bpOutboxDetail">waiting to publish</span>
-      </div>
-      <div class="bp-gauge" id="bpStream" title="Total messages sitting in Redis Streams (XLEN) across all streams. These have been published but not yet read by consumer groups. Grows when the outbox publishes faster than handlers can consume.">
-        <span class="bp-label">Stream Depth</span>
-        <span class="bp-value ok" id="bpStreamValue">0</span>
-        <span class="bp-subtitle" id="bpStreamDetail">in Redis Streams</span>
-      </div>
-      <div class="bp-gauge" id="bpConsumer" title="Messages delivered to consumer groups but not yet acknowledged (XPENDING). These are actively being processed or waiting for retry. High values indicate slow handlers or a downstream bottleneck.">
-        <span class="bp-label">Consumer Lag</span>
-        <span class="bp-value ok" id="bpConsumerValue">0</span>
-        <span class="bp-subtitle" id="bpConsumerDetail">unacknowledged</span>
-      </div>
-    </div>
-    <!-- Queue Depth Chart -->
     <div class="queue-chart-container">
       <div class="queue-chart-header">
         <span class="chart-title">Queue Depth (5 min)</span>
@@ -1368,7 +1337,19 @@ body {
         <span>5m ago</span><span>4m</span><span>3m</span><span>2m</span><span>1m</span><span>now</span>
       </div>
     </div>
-    <!-- Consumer Lag Detail -->
+  </div>
+
+  <!-- Stream Lag Detail (collapsible) -->
+  <div class="card" id="backpressureCard">
+    <div class="card-header collapsible" id="backpressureHeader" onclick="toggleBackpressure()">
+      <div>
+        <span class="collapse-icon">&#9654;</span>
+        <span>Stream Lag Detail</span>
+        <span class="collapse-summary ok" id="bpSummary">OK</span>
+      </div>
+      <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-code)" id="bpLastUpdated"></span>
+    </div>
+    <div class="collapsible-body" id="backpressureBody">
     <div class="card-body" id="consumerLagBody">
       <table class="lag-table" id="lagTable">
         <thead>
@@ -1422,9 +1403,17 @@ body {
     </div><!-- end collapsible-body -->
   </div>
 
-  <!-- Messages / Events -->
-  <div class="card">
-    <div class="card-header">
+  <!-- Messages / Events (collapsible) -->
+  <div class="card" id="messagesCard">
+    <div class="card-header collapsible" id="messagesHeader" onclick="toggleMessages()">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="collapse-icon">&#9654;</span>
+        <span>Messages</span>
+        <span class="collapse-summary" id="msgSummary"></span>
+      </div>
+    </div>
+    <div class="collapsible-body" id="messagesBody">
+    <div class="card-header" style="border-top:1px solid var(--border)">
       <div style="display:flex; align-items:center; gap:8px;">
         <button class="feed-tab active" id="tabMessages" onclick="setViewTab('messages')" title="Messages grouped by message ID, showing the full lifecycle of each event across all handlers.">Messages</button>
         <button class="feed-tab" id="tabEvents" onclick="setViewTab('events')" title="Chronological stream of individual trace events (published, started, completed, failed, acked).">Events</button>
@@ -1476,6 +1465,7 @@ body {
         </tbody>
       </table>
     </div>
+    </div><!-- end collapsible-body messages -->
   </div>
 
   <!-- Infrastructure -->
@@ -1572,12 +1562,11 @@ let queueDepthDetail = { outbox: {}, streams: {} };
 // System Pulse state
 let lastEventTimestamp = 0;
 
-// Handler activity tracking (handler_name -> { count, lastSeen })
-const handlerActivity = new Map();
 
 // Collapsible section state
 let backpressureExpanded = false;
 let subscriptionExpanded = false;
+let messagesExpanded = false;
 
 // Event icons for events tab
 const EVENT_ICONS = {
@@ -1715,10 +1704,45 @@ function updateThroughputFromHistory(trace) {
   if (trace.event === 'handler.failed' || trace.event === 'message.dlq') throughput.errors[bucketIndex]++;
 }
 
+// --- Throughput Rebuild (backfill gaps after SSE reconnect) ---
+async function rebuildThroughput() {
+  try {
+    const res = await fetch('/api/traces?count=1000');
+    if (!res.ok) return;
+    const data = await res.json();
+    const traces = data.traces || [];
+
+    // Reset throughput buckets
+    throughput.published.fill(0);
+    throughput.processed.fill(0);
+    throughput.errors.fill(0);
+
+    // Replay all traces into buckets
+    for (const trace of traces) {
+      updateThroughputFromHistory(trace);
+      // Also dedup for SSE
+      const key = trace.message_id + ':' + trace.event + ':' + (trace.handler || '');
+      seenTraceKeys.add(key);
+    }
+  } catch (e) {
+    console.error('Failed to rebuild throughput:', e);
+  }
+}
+
 // --- In-Flight Computation ---
 function computeInFlight() {
+  const windowMs = {
+    '5m': 5 * 60000, '15m': 15 * 60000, '1h': 60 * 60000,
+    '24h': 24 * 3600000, '7d': 7 * 86400000
+  }[currentWindow] || 5 * 60000;
+  const cutoff = Date.now() - windowMs;
+
   let count = 0;
   for (const [id, msg] of messageById) {
+    // Only count messages within the active time window
+    const msgTime = new Date(msg.first_ts).getTime();
+    if (msgTime < cutoff) continue;
+
     const stages = msg.stages;
     const isPublished = stages.some(s => s.event === 'outbox.published');
     if (!isPublished) continue;
@@ -1846,7 +1870,9 @@ function setWindow(w) {
   document.querySelectorAll('.window-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.window === w);
   });
+
   loadStats();
+  refreshPipeline();
 }
 
 // --- Trace Tracking ---
@@ -1927,9 +1953,12 @@ function connectSSE() {
 
   eventSource.onopen = () => {
     connected = true;
+    const wasDisconnected = sseConnectedAt > 0; // not the first connect
     sseConnectedAt = Date.now();
     document.getElementById('statusDot').className = 'status-dot connected';
     setTimeout(() => seenTraceKeys.clear(), 5000);
+    // Backfill throughput gaps after reconnect
+    if (wasDisconnected) rebuildThroughput();
   };
 
   eventSource.onerror = () => {
@@ -1946,14 +1975,6 @@ function handleTraceEvent(data) {
   }
 
   lastEventTimestamp = Date.now();
-
-  // Track per-handler activity
-  if (data.handler && data.event === 'handler.completed') {
-    const entry = handlerActivity.get(data.handler) || { count: 0, lastSeen: 0 };
-    entry.count++;
-    entry.lastSeen = Date.now();
-    handlerActivity.set(data.handler, entry);
-  }
 
   trackTrace(data);
   updateThroughput(data);
@@ -3095,7 +3116,6 @@ async function pollSubscriptions() {
     updateSubscriptionTable(data);
     populateDlqFilter(data);
     updateEngineStatus(data);
-    renderHandlerActivity();
     updateSubscriptionSummary();
     const el = document.getElementById('subLastUpdated');
     if (el) el.textContent = new Date().toLocaleTimeString();
@@ -3422,78 +3442,6 @@ function updateEngineStatus(data) {
   }
 }
 
-// --- Handler Activity ---
-function renderHandlerActivity() {
-  const container = document.getElementById('handlerGrid');
-  if (!container) return;
-
-  const now = Date.now();
-  const windowMs = { '5m': 300000, '15m': 900000, '1h': 3600000, '24h': 86400000, '7d': 604800000 }[currentWindow] || 300000;
-
-  // Merge subscription data with live SSE activity counts
-  const handlers = new Map();
-  for (const [domainName, info] of Object.entries(_subData)) {
-    if (info.status !== 'ok' || !info.subscriptions) continue;
-    for (const s of info.subscriptions) {
-      // Skip outbox processors and command handlers from the chip view
-      if (s.subscription_type === 'outbox' || s.stream_category.endsWith(':command')) continue;
-      handlers.set(s.handler_name, {
-        domain: domainName,
-        status: s.status,
-        lag: s.lag || 0,
-        pending: s.pending || 0,
-        consumer_count: s.consumer_count || 0,
-        rate: 0,
-        lastSeen: 0,
-      });
-    }
-  }
-
-  // Merge SSE activity
-  for (const [name, activity] of handlerActivity) {
-    const existing = handlers.get(name);
-    if (existing) {
-      existing.rate = activity.count;
-      existing.lastSeen = activity.lastSeen;
-    }
-  }
-
-  if (handlers.size === 0) {
-    container.innerHTML = '<span style="color:var(--text-muted);font-size:12px">Waiting for subscription data...</span>';
-    return;
-  }
-
-  // Group by domain
-  const byDomain = new Map();
-  for (const [name, data] of handlers) {
-    if (!byDomain.has(data.domain)) byDomain.set(data.domain, []);
-    byDomain.get(data.domain).push({ name, ...data });
-  }
-
-  let html = '';
-  for (const [domain, domainHandlers] of [...byDomain.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    html += '<div class="handler-domain-group">';
-    html += '<span class="handler-domain-label">' + escapeHtml(domain) + '</span>';
-    for (const h of domainHandlers.sort((a, b) => a.name.localeCompare(b.name))) {
-      const isActive = h.lastSeen > 0 && (now - h.lastSeen) < 60000;
-      const dotClass = h.status === 'lagging' ? 'lagging' : (isActive ? 'active' : 'idle');
-      // Show short handler name (last part after dot)
-      const shortName = h.name.includes('.') ? h.name.split('.').pop() : h.name;
-      const rateStr = h.rate > 0 ? h.rate + '/min' : '';
-      const title = h.name + ': ' + h.status + ', lag=' + h.lag + ', pending=' + h.pending + ', consumers=' + h.consumer_count;
-
-      html += '<div class="handler-chip" title="' + escapeHtml(title) + '">';
-      html += '<span class="hdot ' + dotClass + '"></span>';
-      html += '<span>' + escapeHtml(shortName) + '</span>';
-      if (rateStr) html += ' <span class="hrate">' + rateStr + '</span>';
-      html += '</div>';
-    }
-    html += '</div>';
-  }
-
-  container.innerHTML = html;
-}
-
 // --- Collapsible Sections ---
 function toggleBackpressure() {
   backpressureExpanded = !backpressureExpanded;
@@ -3511,6 +3459,14 @@ function toggleSubscriptions() {
   if (header) header.classList.toggle('expanded', subscriptionExpanded);
 }
 
+function toggleMessages() {
+  messagesExpanded = !messagesExpanded;
+  const body = document.getElementById('messagesBody');
+  const header = document.getElementById('messagesHeader');
+  if (body) body.classList.toggle('expanded', messagesExpanded);
+  if (header) header.classList.toggle('expanded', messagesExpanded);
+}
+
 function updateBackpressureSummary() {
   const { outbox, stream, consumer } = latestQueueDepth;
   const total = outbox + stream + consumer;
@@ -3523,11 +3479,9 @@ function updateBackpressureSummary() {
   } else if (total >= 1000) {
     el.textContent = total.toLocaleString() + ' queued';
     el.className = 'collapse-summary critical';
-    if (!backpressureExpanded) toggleBackpressure();
   } else {
     el.textContent = total.toLocaleString() + ' queued';
     el.className = 'collapse-summary warn';
-    if (total >= 100 && !backpressureExpanded) toggleBackpressure();
   }
 }
 
@@ -3551,7 +3505,6 @@ function updateSubscriptionSummary() {
   } else if (laggingCount > 0) {
     el.textContent = okCount + '/' + totalSubs + ' ok, ' + laggingCount + ' lagging';
     el.className = 'collapse-summary warn';
-    if (!subscriptionExpanded) toggleSubscriptions();
   } else {
     el.textContent = okCount + '/' + totalSubs + ' ok';
     el.className = 'collapse-summary ok';
