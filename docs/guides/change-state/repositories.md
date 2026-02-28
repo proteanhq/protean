@@ -132,10 +132,14 @@ class PersonRepository:
 ```
 
 Internally, these delegate to the repository's Data Access Object (DAO) --
-the layer that talks to the database. The DAO is still accessible as
-`self._dao` for advanced use cases, but for typical custom queries,
-`self.query`, `self.find`, `self.find_by()`, and `self.exists()` are all you
-need.
+the layer that talks to the database.
+
+!!!warning "Avoid direct `_dao` access"
+    The underlying DAO is accessible as `self._dao`, but it is an internal
+    API intended for framework use and infrastructure-level escape hatches
+    (hard deletion, test teardown, GDPR compliance). For custom repository
+    queries, always prefer `self.query`, `self.find`, `self.find_by()`, and
+    `self.exists()`.
 
 ### Error handling in queries
 

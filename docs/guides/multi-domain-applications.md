@@ -354,8 +354,8 @@ def test_customer_registration_creates_recipient(
     # Verify effect in the fulfillment domain
     with fulfillment_fixture.domain_context():
         repo = fulfillment_domain.repository_for(Recipient)
-        recipients = repo._dao.query.filter(name="Alice").all()
-        assert len(recipients) == 1
+        recipients = repo.find(Q(name="Alice"))
+        assert recipients.total == 1
 ```
 
 ### Testing FastAPI endpoints across domains
