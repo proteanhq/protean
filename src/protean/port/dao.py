@@ -203,22 +203,24 @@ class BaseDAO(metaclass=ABCMeta):
 
     @abstractmethod
     def _update_all(self, criteria: Q, *args, **kwargs):
-        """Perform a bulk update on the persistent store. Concrete implementation will be provided by
-        the database DAO class.
+        """Perform a bulk update on the persistent store.
 
-        Method invocation should update all objects satisfying `criteria` with attributes specified in
-        `args` and `kwargs`.
+        Concrete implementation will be provided by the database DAO class.
+        Updates all objects satisfying ``criteria`` with attributes specified
+        in ``args`` (a dict) and/or ``kwargs``.
 
-        This method is invoked by Queryset's `update_all()` method and should not be called directly.
+        .. warning::
 
-        .. warning:: The `update_all()` method is a “bulk” operation, which bypasses ORM/ODM unit-of-work automation
-            in favor of greater performance.
+            This is an **internal framework method** reserved for
+            infrastructure needs (outbox, projection rebuilds).  It bypasses
+            domain validation, invariants, and the Unit of Work.  Do not call
+            it from domain-level code.
 
         Returns the count of rows matched for the provided criteria.
 
-        :param criteria: A Q object wrapping one or more levels of criteria/filters
-        :param args: A dictionary object containing attribute data to be updated
-        :param kwargs: Keyword args specifying attribute data to be updated
+        :param criteria: A ``Q`` object wrapping one or more filter conditions.
+        :param args: A dictionary of attribute data to be updated.
+        :param kwargs: Keyword args specifying attribute data to be updated.
         """
 
     @abstractmethod
@@ -237,20 +239,22 @@ class BaseDAO(metaclass=ABCMeta):
 
     @abstractmethod
     def _delete_all(self, criteria: Q = None):
-        """Perform a bulk delete on the persistent store. Concrete implementation will be provided by
-        the database DAO class.
+        """Perform a bulk delete on the persistent store.
 
-        Method invocation should update all objects satisfying `criteria`.
+        Concrete implementation will be provided by the database DAO class.
+        Deletes all objects satisfying ``criteria``.
 
-        This method is invoked by Queryset's `delete_all()` method and should not be called directly.
+        .. warning::
 
-        .. warning:: The `delete_all()` method is a “bulk” operation, which bypasses ORM/ODM unit-of-work automation
-            in favor of greater performance.
+            This is an **internal framework method** reserved for
+            infrastructure needs (outbox, projection rebuilds, table cleanup).
+            It bypasses domain validation, invariants, and the Unit of Work.
+            Do not call it from domain-level code.
 
         Returns the count of rows matched for the provided criteria.
 
-        :param criteria: A Q object wrapping one or more levels of criteria/filters. If no criteria is provided,
-                         then all records of the table/document are removed.
+        :param criteria: A ``Q`` object wrapping one or more filter conditions.
+            If ``None``, all records of the table/document are removed.
         """
 
     @abstractmethod

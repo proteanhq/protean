@@ -10,6 +10,7 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.utils.eventing import Metadata
+from protean.utils.query import Q
 
 
 PAGE_SIZE = 50  # Default page size for fetching messages
@@ -381,10 +382,11 @@ class OutboxRepository(BaseRepository):
         now = datetime.now(timezone.utc)
         locked_until = now + timedelta(minutes=lock_duration_minutes)
 
-        claimed_count = self._dao.query.filter(
-            id=message.id,
-            status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value],
-        ).update_all(
+        claimed_count = self._dao._update_all(
+            Q(
+                id=message.id,
+                status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value],
+            ),
             status=OutboxStatus.PROCESSING.value,
             locked_by=worker_id,
             locked_until=locked_until,
@@ -628,16 +630,16 @@ class OutboxRepository(BaseRepository):
         """
         threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
 
-        query = self._dao.query.filter(
+        criteria = Q(
             status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time
         )
 
         # Get count before deletion
-        messages_to_delete = query.all()
+        messages_to_delete = self._dao.query.filter(criteria).all()
         count = len(messages_to_delete)
 
         # Delete the messages
-        query.delete_all()
+        self._dao._delete_all(criteria)
 
         return count
 
@@ -655,16 +657,16 @@ class OutboxRepository(BaseRepository):
         """
         threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
 
-        query = self._dao.query.filter(
+        criteria = Q(
             status=OutboxStatus.ABANDONED.value, last_processed_at__lt=threshold_time
         )
 
         # Get count before deletion
-        messages_to_delete = query.all()
+        messages_to_delete = self._dao.query.filter(criteria).all()
         count = len(messages_to_delete)
 
         # Delete the messages
-        query.delete_all()
+        self._dao._delete_all(criteria)
 
         return count
 

@@ -77,17 +77,12 @@ class TestReadOnlyQuerySetMutationBlocking:
         with pytest.raises(NotSupportedError, match="Deletes are not allowed"):
             qs.delete()
 
-    def test_update_all_raises_not_supported(self, test_domain):
+    def test_bulk_operations_not_available(self, test_domain):
+        """update_all/delete_all were removed from QuerySet entirely."""
         qs = test_domain.view_for(PersonProjection).query
 
-        with pytest.raises(NotSupportedError, match="Bulk updates are not allowed"):
-            qs.update_all(first_name="X")
-
-    def test_delete_all_raises_not_supported(self, test_domain):
-        qs = test_domain.view_for(PersonProjection).query
-
-        with pytest.raises(NotSupportedError, match="Bulk deletes are not allowed"):
-            qs.delete_all()
+        assert not hasattr(qs, "update_all")
+        assert not hasattr(qs, "delete_all")
 
     def test_error_messages_guide_user(self, test_domain):
         qs = test_domain.view_for(PersonProjection).query
@@ -97,12 +92,6 @@ class TestReadOnlyQuerySetMutationBlocking:
 
         with pytest.raises(NotSupportedError, match="domain.repository_for"):
             qs.delete()
-
-        with pytest.raises(NotSupportedError, match="domain.repository_for"):
-            qs.update_all(first_name="X")
-
-        with pytest.raises(NotSupportedError, match="domain.repository_for"):
-            qs.delete_all()
 
 
 # ---------------------------------------------------------------------------

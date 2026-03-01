@@ -658,21 +658,6 @@ count = repository.query.filter(country="CA", age__lt=18).update(country="XX")
 
 Returns the number of objects matched.
 
-### `update_all`
-
-Sends the update directly to the database without loading entities:
-
-```python
-count = repository.query.filter(country="CA", age__lt=18).update_all(country="XX")
-```
-
-Returns the number of objects matched.
-
-!!! warning
-    `update_all` bypasses entity instantiation, callbacks, and validations.
-    Use it only when you are certain no business logic needs to run during
-    the operation.
-
 ### `delete`
 
 Deletes each matching object individually -- loads every entity first:
@@ -682,21 +667,6 @@ count = repository.query.filter(country="XX").delete()
 ```
 
 Returns the number of objects deleted.
-
-### `delete_all`
-
-Sends the delete directly to the database without loading entities:
-
-```python
-count = repository.query.filter(country="XX").delete_all()
-```
-
-Returns the number of objects deleted.
-
-!!! warning
-    `delete_all` bypasses entity instantiation, callbacks, and validations.
-    Use it only when you are certain no business logic needs to run during
-    the operation.
 
 ## ResultSet
 
