@@ -131,6 +131,24 @@ class UnitOfWork:
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
 
+        # Warn if multiple aggregate *classes* raised events in this UoW.
+        # DDD prescribes one aggregate per transaction; modifying multiple
+        # aggregates is a design smell (consider using domain events for
+        # cross-aggregate coordination instead).
+        aggregate_classes_with_events: set[type] = set()
+        for identity_map in self._identity_map.values():
+            for item in identity_map.values():
+                if item._events:
+                    aggregate_classes_with_events.add(type(item))
+        if len(aggregate_classes_with_events) > 1:
+            class_names = sorted(cls.__name__ for cls in aggregate_classes_with_events)
+            logger.warning(
+                "Multiple aggregate types modified in a single UnitOfWork: %s. "
+                "Consider limiting each transaction to one aggregate and using "
+                "domain events for cross-aggregate coordination.",
+                ", ".join(class_names),
+            )
+
         # Read the processing priority from the current context.
         # This is set by domain.process() or by a processing_priority() context manager.
         priority = current_priority()
