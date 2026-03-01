@@ -265,3 +265,50 @@ class TestHasManyFetchObjectsState:
 
         for member in existing:
             assert not member.state_.is_changed
+
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
+class TestPersistChildAndRemoveChild:
+    """Tests for the _persist_child / _remove_child helper methods
+    introduced to encapsulate child DAO access in _sync_children."""
+
+    def test_persist_child_saves_entity(self, test_domain):
+        """_persist_child should persist a child entity via its DAO."""
+        post = test_domain.repository_for(Post).add(
+            Post(title="PC Test", slug="pc-test", content="body")
+        )
+        comment = Comment(content="persisted via helper")
+        comment.post_id = post.id
+        comment.state_.mark_new()
+
+        repo = test_domain.repository_for(Post)
+        repo._persist_child(Comment, comment)
+
+        saved = test_domain.repository_for(Comment)._dao.get(comment.id)
+        assert saved is not None
+        assert saved.content == "persisted via helper"
+
+    def test_remove_child_deletes_entity(self, test_domain):
+        """_remove_child should delete a child entity via its DAO."""
+        post = test_domain.repository_for(Post).add(
+            Post(title="RC Test", slug="rc-test", content="body")
+        )
+        comment = Comment(content="to be removed")
+        comment.post_id = post.id
+        comment.state_.mark_new()
+
+        repo = test_domain.repository_for(Post)
+        repo._persist_child(Comment, comment)
+
+        # Verify it exists
+        saved = test_domain.repository_for(Comment)._dao.get(comment.id)
+        assert saved is not None
+
+        # Now remove
+        repo._remove_child(Comment, comment)
+
+        from protean.exceptions import ObjectNotFoundError
+
+        with pytest.raises(ObjectNotFoundError):
+            test_domain.repository_for(Comment)._dao.get(comment.id)

@@ -243,6 +243,22 @@ class BaseRepository(Element, OptionsMixin):
 
         return item
 
+    def _persist_child(self, child_cls: type, item: Any) -> None:
+        """Persist a child entity through its repository's DAO.
+
+        This is an internal helper used by ``_sync_children`` to keep the
+        child-persistence plumbing in one place.  Application code should
+        never need to call this directly.
+        """
+        self._domain.repository_for(child_cls)._dao.save(item)
+
+    def _remove_child(self, child_cls: type, item: Any) -> None:
+        """Delete a child entity through its repository's DAO.
+
+        Internal counterpart to ``_persist_child`` for removals.
+        """
+        self._domain.repository_for(child_cls)._dao.delete(item)
+
     def _sync_children(self, entity):
         """Recursively sync child entities to the persistence store.
 
@@ -281,17 +297,17 @@ class BaseRepository(Element, OptionsMixin):
                         # If the item was changed directly AND added via `add`, then
                         #   we give preference to the object in the cache
                         if item not in entity._temp_cache[field_name]["updated"]:
-                            self._domain.repository_for(field.to_cls)._dao.save(item)
+                            self._persist_child(field.to_cls, item)
 
                 for _, item in entity._temp_cache[field_name]["removed"].items():
-                    self._domain.repository_for(field.to_cls)._dao.delete(item)
+                    self._remove_child(field.to_cls, item)
 
                 for _, item in entity._temp_cache[field_name]["updated"].items():
-                    self._domain.repository_for(field.to_cls)._dao.save(item)
+                    self._persist_child(field.to_cls, item)
 
                 for _, item in entity._temp_cache[field_name]["added"].items():
                     item.state_.mark_new()
-                    self._domain.repository_for(field.to_cls)._dao.save(item)
+                    self._persist_child(field.to_cls, item)
 
                 # Defer cache clearing until all DAO operations succeed
                 cache_clears.append(("has_many", entity, field_name))
@@ -301,18 +317,18 @@ class BaseRepository(Element, OptionsMixin):
                 #   These are ones whose attributes have been changed directly
                 #   instead of being routed via `add`/`remove`
                 item = getattr(entity, field_name)
-                to_cls_repo = self._domain.repository_for(field.to_cls)
                 if item is not None and item.state_.is_changed:
-                    to_cls_repo._dao.save(item)
+                    self._persist_child(field.to_cls, item)
                 # Or a new instance has been assigned
                 elif entity._temp_cache[field_name]["change"]:
                     if entity._temp_cache[field_name]["change"] == "ADDED":
-                        to_cls_repo._dao.save(item)
+                        self._persist_child(field.to_cls, item)
                     elif entity._temp_cache[field_name]["change"] == "UPDATED":
                         if entity._temp_cache[field_name]["old_value"] is not None:
                             # The object was replaced, so delete the old record
-                            to_cls_repo._dao.delete(
-                                entity._temp_cache[field_name]["old_value"]
+                            self._remove_child(
+                                field.to_cls,
+                                entity._temp_cache[field_name]["old_value"],
                             )
                         else:
                             # The same object was updated.
@@ -321,10 +337,11 @@ class BaseRepository(Element, OptionsMixin):
                             # HasOne.__set__ recorded the mutation in _temp_cache.
                             item.state_.mark_changed()
 
-                        to_cls_repo._dao.save(item)
+                        self._persist_child(field.to_cls, item)
                     elif entity._temp_cache[field_name]["change"] == "DELETED":
-                        to_cls_repo._dao.delete(
-                            entity._temp_cache[field_name]["old_value"]
+                        self._remove_child(
+                            field.to_cls,
+                            entity._temp_cache[field_name]["old_value"],
                         )
 
                     # Defer cache clearing until all DAO operations succeed
