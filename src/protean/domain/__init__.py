@@ -1005,19 +1005,38 @@ class Domain:
                 }
             )
 
-        # Confirm `HasOne` and `HasMany` fields are linked to entities and not aggregates
-        for _, aggregate in self.registry.aggregates.items():
-            for _, field_obj in declared_fields(aggregate.cls).items():
+        # Validate `HasOne` and `HasMany` fields on aggregates and entities:
+        #   1. Target must be resolved (not a dangling string reference)
+        #   2. Target must be an Entity (not an Aggregate)
+        #   3. Target must belong to the same aggregate cluster as the owner
+        owner_elements = list(self.registry.aggregates.items()) + list(
+            self.registry._elements[DomainObjects.ENTITY.value].items()
+        )
+        for _, element in owner_elements:
+            owner_cls = element.cls
+            for _, field_obj in declared_fields(owner_cls).items():
                 if isinstance(field_obj, (HasOne, HasMany)):
                     if isinstance(field_obj.to_cls, str):
                         raise IncorrectUsageError(
                             f"Unresolved target `{field_obj.to_cls}` for field "
-                            f"`{aggregate.__name__}:{field_obj.name}`"
+                            f"`{element.__name__}:{field_obj.name}`"
                         )
                     if field_obj.to_cls.element_type != DomainObjects.ENTITY:
                         raise IncorrectUsageError(
-                            f"Field `{field_obj.field_name}` in `{aggregate.cls.__name__}` "
+                            f"Field `{field_obj.field_name}` in `{owner_cls.__name__}` "
                             "is not linked to an Entity class"
+                        )
+                    if (
+                        field_obj.to_cls.meta_.aggregate_cluster
+                        != owner_cls.meta_.aggregate_cluster
+                    ):
+                        raise IncorrectUsageError(
+                            f"Field `{field_obj.field_name}` in `{owner_cls.__name__}` "
+                            f"points to `{field_obj.to_cls.__name__}` which belongs to "
+                            f"a different aggregate "
+                            f"`{field_obj.to_cls.meta_.aggregate_cluster.__name__}`. "
+                            f"HasOne/HasMany associations must target entities within "
+                            f"the same aggregate cluster."
                         )
 
         # Check that no two event sourced aggregates have the same event class in their
