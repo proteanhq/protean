@@ -366,6 +366,10 @@ class Domain:
         # Resolve all pending references
         self._resolve_references()
 
+        # Fail fast if any references remain unresolved — later steps
+        # (e.g. _assign_aggregate_clusters) assume resolved classes.
+        self._check_for_unresolved_references()
+
         # Assign Aggregate Clusters
         self._assign_aggregate_clusters()
 
@@ -795,62 +799,73 @@ class Domain:
         """Resolve pending class references in association fields.
 
         Called by the domain context when domain is activated.
+
+        References that cannot be resolved (target not registered) are left
+        in ``_pending_class_resolutions`` so that ``_validate_domain()`` can
+        report them with contextual error messages.
         """
         for name in list(self._pending_class_resolutions.keys()):
+            resolved = True
             for resolution_type, params in self._pending_class_resolutions[name]:
-                match resolution_type:
-                    case "Association":
-                        field_obj, owner_cls = params
-                        to_cls = self.fetch_element_cls_from_registry(
-                            field_obj.to_cls,
-                            (
-                                DomainObjects.AGGREGATE,
-                                DomainObjects.ENTITY,
-                            ),
-                        )
-                        field_obj._resolve_to_cls(self, to_cls, owner_cls)
-                    case "ValueObject":
-                        field_obj, owner_cls = params
-                        to_cls = self.fetch_element_cls_from_registry(
-                            field_obj.value_object_cls,
-                            (DomainObjects.VALUE_OBJECT,),
-                        )
-                        field_obj._resolve_to_cls(self, to_cls, owner_cls)
-                    case "AggregateCls":
-                        cls = params
-                        to_cls = self.fetch_element_cls_from_registry(
-                            cls.meta_.part_of,
-                            (DomainObjects.AGGREGATE,),
-                        )
-                        cls.meta_.part_of = to_cls
-                    case "ProjectionCls":
-                        cls = params
-                        to_cls = self.fetch_element_cls_from_registry(
-                            cls.meta_.projector_for,
-                            (DomainObjects.PROJECTION,),
-                        )
-                        cls.meta_.projector_for = to_cls
-                    case "QueryProjectionCls":
-                        cls = params
-                        to_cls = self.fetch_element_cls_from_registry(
-                            cls.meta_.part_of,
-                            (DomainObjects.PROJECTION,),
-                        )
-                        cls.meta_.part_of = to_cls
-                    case "QueryHandlerProjectionCls":
-                        cls = params
-                        to_cls = self.fetch_element_cls_from_registry(
-                            cls.meta_.part_of,
-                            (DomainObjects.PROJECTION,),
-                        )
-                        cls.meta_.part_of = to_cls
-                    case _:
-                        raise NotSupportedError(
-                            f"Resolution Type {resolution_type} not supported"
-                        )
+                try:
+                    match resolution_type:
+                        case "Association":
+                            field_obj, owner_cls = params
+                            to_cls = self.fetch_element_cls_from_registry(
+                                field_obj.to_cls,
+                                (
+                                    DomainObjects.AGGREGATE,
+                                    DomainObjects.ENTITY,
+                                ),
+                            )
+                            field_obj._resolve_to_cls(self, to_cls, owner_cls)
+                        case "ValueObject":
+                            field_obj, owner_cls = params
+                            to_cls = self.fetch_element_cls_from_registry(
+                                field_obj.value_object_cls,
+                                (DomainObjects.VALUE_OBJECT,),
+                            )
+                            field_obj._resolve_to_cls(self, to_cls, owner_cls)
+                        case "AggregateCls":
+                            cls = params
+                            to_cls = self.fetch_element_cls_from_registry(
+                                cls.meta_.part_of,
+                                (DomainObjects.AGGREGATE,),
+                            )
+                            cls.meta_.part_of = to_cls
+                        case "ProjectionCls":
+                            cls = params
+                            to_cls = self.fetch_element_cls_from_registry(
+                                cls.meta_.projector_for,
+                                (DomainObjects.PROJECTION,),
+                            )
+                            cls.meta_.projector_for = to_cls
+                        case "QueryProjectionCls":
+                            cls = params
+                            to_cls = self.fetch_element_cls_from_registry(
+                                cls.meta_.part_of,
+                                (DomainObjects.PROJECTION,),
+                            )
+                            cls.meta_.part_of = to_cls
+                        case "QueryHandlerProjectionCls":
+                            cls = params
+                            to_cls = self.fetch_element_cls_from_registry(
+                                cls.meta_.part_of,
+                                (DomainObjects.PROJECTION,),
+                            )
+                            cls.meta_.part_of = to_cls
+                        case _:
+                            raise NotSupportedError(
+                                f"Resolution Type {resolution_type} not supported"
+                            )
+                except ConfigurationError:
+                    # Target not found in registry — leave in pending list
+                    # so _validate_domain() can report it with context.
+                    resolved = False
 
-            # Remove from pending list now that the class has been resolved
-            del self._pending_class_resolutions[name]
+            if resolved:
+                # Remove from pending list now that all entries are resolved
+                del self._pending_class_resolutions[name]
 
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
@@ -985,6 +1000,58 @@ class Domain:
             aggregate_record.qualname
         ].cls = new_element_cls
 
+    def _check_for_unresolved_references(self) -> None:
+        """Raise a ``ConfigurationError`` if any string references remain unresolved.
+
+        Called right after ``_resolve_references()`` to fail fast with
+        contextual error messages before later init steps (like
+        ``_assign_aggregate_clusters``) assume all references are resolved.
+        """
+        if not self._pending_class_resolutions:
+            return
+
+        details: list[str] = []
+        for target_name, pending_list in self._pending_class_resolutions.items():
+            for resolution_type, params in pending_list:
+                match resolution_type:
+                    case "Association":
+                        field_obj, owner_cls = params
+                        details.append(
+                            f"`{owner_cls.__name__}.{field_obj.field_name}` "
+                            f"references `{target_name}` via "
+                            f"{type(field_obj).__name__}"
+                        )
+                    case "ValueObject":
+                        field_obj, owner_cls = params
+                        details.append(
+                            f"`{owner_cls.__name__}.{field_obj.field_name}` "
+                            f"references `{target_name}` via ValueObject"
+                        )
+                    case "AggregateCls":
+                        cls = params
+                        details.append(
+                            f"`{cls.__name__}` references `{target_name}` via part_of"
+                        )
+                    case "ProjectionCls":
+                        cls = params
+                        details.append(
+                            f"`{cls.__name__}` references `{target_name}` "
+                            f"via projector_for"
+                        )
+                    case "QueryProjectionCls" | "QueryHandlerProjectionCls":
+                        cls = params
+                        details.append(
+                            f"`{cls.__name__}` references `{target_name}` via part_of"
+                        )
+        raise ConfigurationError(
+            {
+                "element": (
+                    f"Unresolved references in domain `{self.name}`: "
+                    + "; ".join(details)
+                ),
+            }
+        )
+
     def _validate_domain(self):
         """A method to validate the domain for correctness, called just before the domain is activated."""
         # Check `identity_function` is provided if `identity_strategy` is `function`
@@ -995,15 +1062,6 @@ class Domain:
                         "element": "Identity Strategy is set to `function`, but no Identity Function is provided"
                     }
                 )
-
-        # Check if all references are resolved
-        if self._pending_class_resolutions:
-            raise ConfigurationError(
-                {
-                    "element": f"Unresolved references in domain {self.name}",
-                    "unresolved": self._pending_class_resolutions,
-                }
-            )
 
         # Validate `HasOne` and `HasMany` fields on aggregates and entities:
         #   1. Target must be resolved (not a dangling string reference)
@@ -1019,7 +1077,7 @@ class Domain:
                     if isinstance(field_obj.to_cls, str):
                         raise IncorrectUsageError(
                             f"Unresolved target `{field_obj.to_cls}` for field "
-                            f"`{element.__name__}:{field_obj.name}`"
+                            f"`{owner_cls.__name__}:{field_obj.name}`"
                         )
                     if field_obj.to_cls.element_type != DomainObjects.ENTITY:
                         raise IncorrectUsageError(
