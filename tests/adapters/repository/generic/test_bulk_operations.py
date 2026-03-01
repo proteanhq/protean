@@ -1,6 +1,6 @@
 """Generic bulk operation tests that run against all database providers.
 
-Covers update_all(), delete_all(), and filtered bulk operations
+Covers _update_all(), _delete_all(), and filtered bulk operations
 on the DAO layer.
 """
 
@@ -87,9 +87,9 @@ class TestBulkDeleteOperations:
             first_name="d'Artagnan", last_name="Musketeer", age=5
         )
 
-        # Perform update
-        deleted_count = (
-            test_domain.repository_for(Person)._dao.query.filter(age__gt=3).delete_all()
+        # Perform delete
+        deleted_count = test_domain.repository_for(Person)._dao._delete_all(
+            Q(age__gt=3)
         )
 
         # Query and check if only the relevant records have been deleted
@@ -191,10 +191,8 @@ class TestBulkUpdateOperations:
         )
 
         # Perform update
-        updated_count = (
-            test_domain.repository_for(Person)
-            ._dao.query.filter(age__gt=3)
-            .update_all({"last_name": "Fraud"})
+        updated_count = test_domain.repository_for(Person)._dao._update_all(
+            Q(age__gt=3), {"last_name": "Fraud"}
         )
 
         # Query and check if only the relevant records have been updated
@@ -227,10 +225,8 @@ class TestBulkUpdateOperations:
         )
 
         # Perform update
-        updated_count = (
-            test_domain.repository_for(Person)
-            ._dao.query.filter(age__gt=3)
-            .update_all(last_name="Fraud")
+        updated_count = test_domain.repository_for(Person)._dao._update_all(
+            Q(age__gt=3), last_name="Fraud"
         )
 
         # Query and check if only the relevant records have been updated

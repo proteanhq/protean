@@ -155,9 +155,9 @@ class TestDAODeleteFunctionality:
             id=identifier4, first_name="d'Artagnan", last_name="Musketeer", age=5
         )
 
-        # Perform update
-        deleted_count = (
-            test_domain.repository_for(Person)._dao.query.filter(age__gt=3).delete_all()
+        # Perform delete
+        deleted_count = test_domain.repository_for(Person)._dao._delete_all(
+            Q(age__gt=3)
         )
 
         # Query and check if only the relevant records have been deleted
@@ -827,10 +827,8 @@ class TestDAOUpdateFunctionality:
         )
 
         # Perform update
-        updated_count = (
-            test_domain.repository_for(Person)
-            ._dao.query.filter(age__gt=3)
-            .update_all({"last_name": "Fraud"})
+        updated_count = test_domain.repository_for(Person)._dao._update_all(
+            Q(age__gt=3), {"last_name": "Fraud"}
         )
 
         # Query and check if only the relevant records have been updated
@@ -870,10 +868,8 @@ class TestDAOUpdateFunctionality:
         )
 
         # Perform update
-        updated_count = (
-            test_domain.repository_for(Person)
-            ._dao.query.filter(age__gt=3)
-            .update_all(last_name="Fraud")
+        updated_count = test_domain.repository_for(Person)._dao._update_all(
+            Q(age__gt=3), last_name="Fraud"
         )
 
         # Query and check if only the relevant records have been updated

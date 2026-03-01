@@ -348,46 +348,6 @@ class QuerySet:
 
         return deleted_item_count
 
-    def update_all(self, *args, **kwargs):
-        """Updates all objects with details given if they match a set of conditions supplied.
-
-        This method forwards filters and updates directly to the repository. It does not
-        instantiate entities and it does not trigger Entity callbacks or validations.
-
-        Update values can be specified either as a dict, or keyword arguments.
-
-        Returns the number of objects matched (which may not be equal to the number of objects
-            updated if objects rows already have the new value).
-        """
-        updated_item_count = 0
-
-        try:
-            updated_item_count = self._owner_dao._update_all(
-                self._criteria, *args, **kwargs
-            )
-        except Exception:
-            # FIXME Log Exception
-            raise
-
-        return updated_item_count
-
-    def delete_all(self, *args, **kwargs):
-        """Deletes objects that match a set of conditions supplied.
-
-        This method forwards filters directly to the repository. It does not instantiate entities and
-        it does not trigger Entity callbacks or validations.
-
-        Returns the number of objects matched and deleted.
-        """
-        deleted_item_count = 0
-        try:
-            deleted_item_count = self._owner_dao._delete_all(self._criteria)
-        except Exception:
-            # FIXME Log Exception
-            raise
-
-        return deleted_item_count
-
     ###############################
     # Python Magic method support #
     ###############################
@@ -498,18 +458,6 @@ class ReadOnlyQuerySet(QuerySet):
     def delete(self) -> int:
         raise NotSupportedError(
             "Deletes are not allowed on a read-only query. "
-            "Use domain.repository_for() if you need to mutate projections."
-        )
-
-    def update_all(self, *args: Any, **kwargs: Any) -> int:
-        raise NotSupportedError(
-            "Bulk updates are not allowed on a read-only query. "
-            "Use domain.repository_for() if you need to mutate projections."
-        )
-
-    def delete_all(self, *args: Any, **kwargs: Any) -> int:
-        raise NotSupportedError(
-            "Bulk deletes are not allowed on a read-only query. "
             "Use domain.repository_for() if you need to mutate projections."
         )
 

@@ -97,9 +97,9 @@ class TestDAODeleteFunctionality:
             id=4, first_name="d'Artagnan", last_name="Musketeer", age=5
         )
 
-        # Perform update
-        deleted_count = (
-            test_domain.repository_for(Person)._dao.query.filter(age__gt=3).delete_all()
+        # Perform delete
+        deleted_count = test_domain.repository_for(Person)._dao._delete_all(
+            Q(age__gt=3)
         )
 
         # Query and check if only the relevant records have been deleted

@@ -1,6 +1,7 @@
 import pytest
 
 from protean.exceptions import ObjectNotFoundError
+from protean.utils.query import Q
 
 from .elements import Person, PersonRepository, User
 
@@ -120,10 +121,8 @@ class TestDAOUpdateFunctionality:
         )
 
         # Perform update
-        updated_count = (
-            test_domain.repository_for(Person)
-            ._dao.query.filter(age__gt=3)
-            .update_all({"last_name": "Fraud"})
+        updated_count = test_domain.repository_for(Person)._dao._update_all(
+            Q(age__gt=3), {"last_name": "Fraud"}
         )
 
         # Query and check if only the relevant records have been updated
@@ -156,10 +155,8 @@ class TestDAOUpdateFunctionality:
         )
 
         # Perform update
-        updated_count = (
-            test_domain.repository_for(Person)
-            ._dao.query.filter(age__gt=3)
-            .update_all(last_name="Fraud")
+        updated_count = test_domain.repository_for(Person)._dao._update_all(
+            Q(age__gt=3), last_name="Fraud"
         )
 
         # Query and check if only the relevant records have been updated
