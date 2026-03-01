@@ -87,27 +87,27 @@ jobs:
       - name: Start service containers
         run: |
           docker run -d --name postgres \
-            -p 5432:5432 \
+            -p 55432:5432 \
             -e POSTGRES_PASSWORD=postgres \
             postgres:16
 
           docker run -d --name redis \
-            -p 6379:6379 \
+            -p 56379:6379 \
             redis:7
 
           docker run -d --name message-db \
-            -p 5433:5432 \
+            -p 55433:5432 \
             ethangarofolo/message-db:1.2.6
 
           docker run -d --name mssql \
-            -p 1433:1433 \
+            -p 51433:1433 \
             -e ACCEPT_EULA=Y \
             -e "SA_PASSWORD=Protean123!" \
             mcr.microsoft.com/mssql/server:2022-latest
 
           docker run -d --name elasticsearch \
-            -p 9200:9200 \
-            -p 9300:9300 \
+            -p 59200:9200 \
+            -p 59300:9300 \
             -e "discovery.type=single-node" \
             -e "xpack.security.enabled=false" \
             -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
@@ -132,7 +132,7 @@ jobs:
           echo "MSSQL is ready!"
 
           echo "Waiting for Elasticsearch..."
-          timeout 60 bash -c 'until curl -s http://localhost:9200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
+          timeout 60 bash -c 'until curl -s http://localhost:59200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
           echo "Elasticsearch is ready!"
 
           echo "All services are ready!"
@@ -173,13 +173,13 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_PORT: 5432
+          POSTGRES_PORT: 55432
           PGPASSWORD: postgres
           REDIS_HOST: localhost
-          REDIS_PORT: 6379
+          REDIS_PORT: 56379
           MSSQL_PASSWORD: Protean123!
           MSSQL_USER: sa
-          MSSQL_PORT: 1433
+          MSSQL_PORT: 51433
           MSSQL_HOST: localhost
 
       - name: CodeCOV

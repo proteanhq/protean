@@ -1,4 +1,4 @@
 [brokers.default]
 provider = "redis_pubsub"
-URI = "redis://127.0.0.1:6379/3"
+URI = "redis://127.0.0.1:56379/3"
 IS_ASYNC = true

@@ -7,6 +7,7 @@ from protean import Domain
 from protean.adapters.repository.sqlalchemy import MssqlProvider
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String, Integer, Dict, List
+from tests.shared import MSSQL_URI
 
 
 @pytest.mark.mssql
@@ -24,7 +25,7 @@ class TestMSSQLSchemaHandling:
         domain = Domain("Test MSSQL Custom Schema")
         domain.config["databases"]["custom_schema"] = {
             "provider": "mssql",
-            "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
+            "database_uri": MSSQL_URI,
             "schema": "test_mssql_schema",
         }
         domain.init(traverse=False)
@@ -41,7 +42,7 @@ class TestMSSQLSchemaHandling:
         domain = Domain("Test MSSQL Default Schema")
         domain.config["databases"]["default_schema"] = {
             "provider": "mssql",
-            "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
+            "database_uri": MSSQL_URI,
         }
         domain.init(traverse=False)
 
@@ -72,7 +73,7 @@ class TestMSSQLSchemaHandling:
         domain = Domain("MSSQL Schema Test Domain")
         domain.config["databases"]["default"] = {
             "provider": "mssql",
-            "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
+            "database_uri": MSSQL_URI,
             "schema": "dbo",
         }
 
@@ -112,7 +113,7 @@ class TestMSSQLSchemaHandling:
         domain = Domain("MSSQL Custom Schema Test Domain")
         domain.config["databases"]["default"] = {
             "provider": "mssql",
-            "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
+            "database_uri": MSSQL_URI,
             "schema": "dbo",
         }
 
@@ -150,7 +151,7 @@ class TestMSSQLSchemaHandling:
         domain = Domain("MSSQL JSON Test Domain")
         domain.config["databases"]["default"] = {
             "provider": "mssql",
-            "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
+            "database_uri": MSSQL_URI,
             "schema": "dbo",
         }
 
@@ -203,7 +204,7 @@ class TestMSSQLSchemaHandling:
         domain = Domain("Test MSSQL Schema Isolation")
 
         # Configure two providers with different schemas
-        base_uri = "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
+        base_uri = MSSQL_URI
 
         domain.config["databases"]["mssql_schema1"] = {
             "provider": "mssql",

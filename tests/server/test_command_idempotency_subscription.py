@@ -20,10 +20,11 @@ from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
 )
 from protean.utils.mixins import handle
+from tests.shared import REDIS_URI
 
 pytestmark = pytest.mark.redis
 
-REDIS_IDEMPOTENCY_URL = "redis://localhost:6379/5"
+REDIS_IDEMPOTENCY_URL = f"{REDIS_URI}/5"
 
 
 # ---------------------------------------------------------------------------

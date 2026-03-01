@@ -35,6 +35,7 @@ from protean.server import Engine
 from protean.utils import Processing
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
+from tests.shared import MESSAGE_DB_URI
 
 
 class Order(BaseAggregate):
@@ -167,7 +168,7 @@ def test_domain():
 
     test_domain.config["event_store"] = {
         "provider": "message_db",
-        "database_uri": "postgresql://message_store@localhost:5433/message_store",
+        "database_uri": MESSAGE_DB_URI,
     }
     test_domain.config["command_processing"] = Processing.ASYNC.value
     test_domain.config["event_processing"] = Processing.ASYNC.value
@@ -196,7 +197,7 @@ def shipment_domain():
 
     shipment_domain.config["event_store"] = {
         "provider": "message_db",
-        "database_uri": "postgresql://message_store@localhost:5433/message_store",
+        "database_uri": MESSAGE_DB_URI,
     }
     shipment_domain.config["command_processing"] = Processing.ASYNC.value
     shipment_domain.config["event_processing"] = Processing.ASYNC.value

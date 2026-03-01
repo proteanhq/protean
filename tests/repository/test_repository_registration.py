@@ -5,6 +5,7 @@ from protean.core.repository import BaseRepository
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import String
 from protean.utils import fully_qualified_name
+from tests.shared import ELASTICSEARCH_URI
 
 from .elements import Person, PersonRepository
 
@@ -110,7 +111,7 @@ class TestRepositoryRegistration:
     def test_retrieving_the_database_specific_repository(self, test_domain):
         test_domain.config["databases"]["secondary"] = {
             "provider": "elasticsearch",
-            "database_uri": '{"hosts": ["localhost"]}',
+            "database_uri": ELASTICSEARCH_URI,
         }
         test_domain._initialize()
 

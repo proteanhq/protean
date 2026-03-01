@@ -17,6 +17,7 @@ from protean.adapters.repository.sqlalchemy import (
 )
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String, Integer
+from tests.shared import POSTGRES_URI
 
 
 class DummyEntity(BaseAggregate):
@@ -82,7 +83,7 @@ class TestConnectionLifecyclePostgresql:
         domain = Domain("PG Connection Lifecycle Tests")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
         domain.init(traverse=False)
 
@@ -262,7 +263,7 @@ class TestProviderClose:
         domain = Domain("PG Close Test")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
         domain.init(traverse=False)
 
@@ -292,7 +293,7 @@ class TestPoolConfiguration:
         domain = Domain("PG Pool Defaults Test")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
         domain.init(traverse=False)
 
@@ -316,7 +317,7 @@ class TestPoolConfiguration:
         domain = Domain("PG Pool Override Test")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
             "pool_size": 3,
             "max_overflow": 8,
         }
@@ -342,7 +343,7 @@ class TestPoolConfiguration:
         domain = Domain("PG Pre-Ping Test")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
         domain.init(traverse=False)
 
@@ -379,7 +380,7 @@ class TestIsAliveConnectionHandling:
         domain = Domain("PG IsAlive Test")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
         domain.init(traverse=False)
 

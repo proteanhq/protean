@@ -15,9 +15,10 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import DuplicateCommandError
 from protean.fields import Identifier, String
 from protean.utils.mixins import handle
+from tests.shared import REDIS_URI
 
 # Use a dedicated Redis database for idempotency tests (db 5)
-REDIS_IDEMPOTENCY_URL = "redis://localhost:6379/5"
+REDIS_IDEMPOTENCY_URL = f"{REDIS_URI}/5"
 
 pytestmark = pytest.mark.redis
 
