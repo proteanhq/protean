@@ -615,9 +615,15 @@ class atomic_change:
 
 
 def apply(fn):
-    """Event-Sourcing Functionality
+    """Decorator to mark event-application methods on Event-Sourced Aggregates.
 
-    Decorator to mark methods in EventHandler classes.
+    Each ``@apply`` method handles one event type and mutates aggregate state
+    accordingly.  The method must accept a single argument annotated with the
+    event class::
+
+        @apply
+        def deposited(self, event: Deposited) -> None:
+            self.balance += event.amount
     """
 
     if len(typing.get_type_hints(fn)) > 2:
