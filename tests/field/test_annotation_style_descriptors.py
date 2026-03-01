@@ -205,17 +205,24 @@ class TestAnnotationStyleHasManyOnAggregate:
     def test_annotation_style_has_many_equivalence_with_assignment(self, test_domain):
         """Annotation and assignment styles produce equivalent HasMany behavior."""
 
+        class AddressAssign(BaseEntity):
+            street = String(max_length=100, required=True)
+
+        class AddressAnnot(BaseEntity):
+            street = String(max_length=100, required=True)
+
         class OrderAssign(BaseAggregate):
             name = String(max_length=50, required=True)
-            items = HasMany(Address)
+            items = HasMany(AddressAssign)
 
         class OrderAnnot(BaseAggregate):
             name = String(max_length=50, required=True)
-            items: HasMany(Address)
+            items: HasMany(AddressAnnot)
 
         test_domain.register(OrderAssign)
+        test_domain.register(AddressAssign, part_of=OrderAssign)
         test_domain.register(OrderAnnot)
-        test_domain.register(Address, part_of=OrderAssign)
+        test_domain.register(AddressAnnot, part_of=OrderAnnot)
         test_domain.init(traverse=False)
 
         assert "items" in declared_fields(OrderAssign)
