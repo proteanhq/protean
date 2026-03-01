@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.exceptions import ConfigurationError
+from protean.exceptions import IncorrectUsageError
 from protean.fields import HasOne, Reference, String
 from protean.utils.reflection import attributes, declared_fields
 
@@ -44,12 +44,11 @@ class TestHasOneField:
             author = HasOne("Book")
 
         test_domain.register(InvalidAggregate)
-        with pytest.raises(ConfigurationError) as exc:
+        # Resolve the "Book" reference so _validate_domain sees the class
+        test_domain._resolve_references()
+        with pytest.raises(IncorrectUsageError, match="is not linked to an Entity"):
             # The `author` HasOne field is invalid because it is linked to an Aggregate
             test_domain._validate_domain()
-
-        assert exc.value.args[0]["element"] == "Unresolved references in domain Test"
-        assert "Book" in exc.value.args[0]["unresolved"]
 
 
 class TestHasOnePersistence:

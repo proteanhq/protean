@@ -291,10 +291,9 @@ class TestDomainLevelClassResolution:
             with pytest.raises(ConfigurationError) as exc:
                 domain.init(traverse=False)
 
-            assert (
-                exc.value.args[0]["element"]
-                == "Element Foo not registered in domain Inline Domain"
-            )
+            assert "Unresolved references" in exc.value.args[0]["element"]
+            assert "Foo" in exc.value.args[0]["element"]
+            assert "Comment.foo" in exc.value.args[0]["element"]
 
             # Remove domain context manually, as we lost it when the exception was raised
             from protean.utils.globals import _domain_context_stack
