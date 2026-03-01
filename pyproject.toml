@@ -201,6 +201,7 @@ markers = [
     "eventstore",
     "no_test_domain",
     "fastapi",
+    "asyncio: mark test as an asyncio coroutine (registered by pytest-asyncio)",
     # Capability-based markers for broker testing
     "basic_pubsub: tests for basic pub/sub capability (publish/subscribe only)",
     "simple_queuing: tests for simple queuing capability (includes consumer groups)",
