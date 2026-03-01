@@ -3,6 +3,7 @@ import pytest
 from protean import Domain
 from protean.adapters.event_store.message_db import MessageDBStore
 from protean.exceptions import ConfigurationError
+from tests.shared import MESSAGE_DB_PORT
 
 
 @pytest.mark.message_db
@@ -20,7 +21,7 @@ class TestMessageDBEventStore:
         domain = Domain()
         domain.config["event_store"]["provider"] = "message_db"
         domain.config["event_store"]["database_uri"] = (
-            "postgresql://message_store@localhost:5433/dummy"
+            f"postgresql://message_store@localhost:{MESSAGE_DB_PORT}/dummy"
         )
         domain.init(traverse=False)
 

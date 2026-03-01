@@ -12,8 +12,9 @@ from protean.exceptions import DuplicateCommandError
 from protean.fields import Identifier, String
 from protean.utils.idempotency import IdempotencyStore
 from protean.utils.mixins import handle
+from tests.shared import REDIS_URI
 
-REDIS_IDEMPOTENCY_URL = "redis://localhost:6379/5"
+REDIS_IDEMPOTENCY_URL = f"{REDIS_URI}/5"
 
 
 class User(BaseAggregate):

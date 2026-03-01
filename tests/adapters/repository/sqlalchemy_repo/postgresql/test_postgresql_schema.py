@@ -7,6 +7,7 @@ from protean import Domain
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String, Integer
+from tests.shared import POSTGRES_URI
 
 
 @pytest.mark.postgresql
@@ -24,7 +25,7 @@ class TestPostgreSQLSchemaHandling:
         domain = Domain("Test Custom Schema")
         domain.config["databases"]["custom_schema"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
             "schema": "test_schema",
         }
         domain.init(traverse=False)
@@ -41,7 +42,7 @@ class TestPostgreSQLSchemaHandling:
         domain = Domain("Test Default Schema")
         domain.config["databases"]["default_schema"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
         domain.init(traverse=False)
 
@@ -73,7 +74,7 @@ class TestPostgreSQLSchemaHandling:
         domain = Domain("Schema Test Domain")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
 
         # Define test entity with a unique name to avoid conflicts
@@ -111,7 +112,7 @@ class TestPostgreSQLSchemaHandling:
         domain = Domain("Custom Schema Test Domain")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
 
         # Define test entity with custom schema name
@@ -148,12 +149,12 @@ class TestPostgreSQLSchemaHandling:
         # Configure two providers with different schemas
         domain.config["databases"]["schema1"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
             "schema": "schema_one",
         }
         domain.config["databases"]["schema2"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
             "schema": "schema_two",
         }
         domain.init(traverse=False)
@@ -202,7 +203,7 @@ class TestPostgreSQLSchemaHandling:
         domain = Domain("Drop Test Domain")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
-            "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+            "database_uri": POSTGRES_URI,
         }
 
         # Define test entity

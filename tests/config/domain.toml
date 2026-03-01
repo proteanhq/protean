@@ -47,7 +47,7 @@ command_processing = "async"
 
 [prod.databases.default]
 provider = "postgresql"
-database_url = "postgresql://postgres:postgres@localhost:5432/postgres"
+database_url = "postgresql://postgres:postgres@localhost:55432/postgres"
 
 [prod.brokers.default]
 provider = "redis_pubsub"
@@ -56,7 +56,7 @@ TTL = 30
 
 [prod.event_store]
 provider = "message_db"
-database_uri = "postgresql://message_store@localhost:5433/message_store"
+database_uri = "postgresql://message_store@localhost:55433/message_store"
 
 [prod.custom]
 foo = "quux"

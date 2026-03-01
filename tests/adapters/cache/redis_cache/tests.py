@@ -7,6 +7,7 @@ from redis import Redis
 from protean.adapters.cache.redis import RedisCache
 from protean.core.projection import BaseProjection
 from protean.fields import Identifier, String
+from tests.shared import REDIS_URI
 
 
 class Token(BaseProjection):
@@ -18,9 +19,7 @@ class Token(BaseProjection):
 @pytest.mark.redis
 class TestCacheInitialization:
     def test_that_a_concrete_cache_can_be_initialized_successfully(self, test_domain):
-        cache = RedisCache(
-            "dummy_name", test_domain, {"URI": "redis://127.0.0.1:6379/4"}
-        )
+        cache = RedisCache("dummy_name", test_domain, {"URI": f"{REDIS_URI}/4"})
         assert cache is not None
 
     def test_that_domain_initializes_cache_from_config(self, test_domain):

@@ -8,6 +8,7 @@ import pytest
 import redis
 
 from protean.adapters.broker.redis import RedisBroker
+from tests.shared import REDIS_URI
 
 
 @pytest.mark.redis
@@ -16,9 +17,7 @@ class TestRedisEdgeCases:
 
     def test_get_next_handle_redis_error_other_than_nogroup(self, test_domain):
         """Test _get_next handling of non-NOGROUP Redis errors."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance to raise a non-NOGROUP error
         mock_redis = MagicMock()
@@ -39,9 +38,7 @@ class TestRedisEdgeCases:
 
     def test_get_next_response_with_empty_inner_messages(self, test_domain):
         """Test _get_next when response has empty inner messages."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance to return response with empty messages
         mock_redis = MagicMock()
@@ -59,9 +56,7 @@ class TestRedisEdgeCases:
 
     def test_read_with_fields_none(self, test_domain):
         """Test _read when response contains None fields."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -95,9 +90,7 @@ class TestRedisEdgeCases:
 
     def test_read_pending_with_none_fields(self, test_domain):
         """Test _read with pending messages having None fields."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -135,9 +128,7 @@ class TestRedisEdgeCases:
 
     def test_read_respects_message_limit(self, test_domain):
         """Test _read stops when reaching message limit."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -180,9 +171,7 @@ class TestRedisEdgeCases:
 
     def test_read_avoids_duplicates(self, test_domain):
         """Test _read avoids duplicate message IDs."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -227,9 +216,7 @@ class TestRedisEdgeCases:
 
     def test_read_blocking_with_pending_messages(self, test_domain):
         """Test _read_blocking returns pending messages first."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -265,9 +252,7 @@ class TestRedisEdgeCases:
 
     def test_read_blocking_pending_with_none_fields(self, test_domain):
         """Test _read_blocking skips pending messages with None fields."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -301,9 +286,7 @@ class TestRedisEdgeCases:
 
     def test_read_blocking_nogroup_error(self, test_domain, caplog):
         """Test _read_blocking handling NOGROUP error."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -339,9 +322,7 @@ class TestRedisEdgeCases:
 
     def test_read_blocking_other_response_error(self, test_domain, caplog):
         """Test _read_blocking handling non-NOGROUP ResponseError."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -364,9 +345,7 @@ class TestRedisEdgeCases:
 
     def test_read_blocking_unexpected_error(self, test_domain, caplog):
         """Test _read_blocking handling unexpected exceptions."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -387,9 +366,7 @@ class TestRedisEdgeCases:
 
     def test_ensure_group_existing_group_tracking(self, test_domain):
         """Test _ensure_group tracks creation time for existing groups."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -412,9 +389,7 @@ class TestRedisEdgeCases:
 
     def test_get_streams_to_check_with_no_separator(self, test_domain):
         """Test _get_streams_to_check skips entries without separator."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Add some entries to _created_groups, including invalid ones
         broker._created_groups_set.add("test-stream:test-group")  # Valid
@@ -440,9 +415,7 @@ class TestRedisEdgeCases:
 
     def test_extract_group_data_non_dict(self, test_domain):
         """Test _extract_group_data skips non-dict entries."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -474,9 +447,7 @@ class TestRedisEdgeCases:
 
     def test_get_field_value_conversion_failure(self, test_domain, caplog):
         """Test _get_field_value when int conversion fails."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Test with non-numeric value
         info_dict = {"pending": "not-a-number"}
@@ -490,9 +461,7 @@ class TestRedisEdgeCases:
 
     def test_calculate_message_counts_xinfo_groups_error(self, test_domain):
         """Test _calculate_message_counts when xinfo_groups fails."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -512,9 +481,7 @@ class TestRedisEdgeCases:
 
     def test_calculate_streams_info_stream_doesnt_exist(self, test_domain):
         """Test _calculate_streams_info when xlen fails for non-existent stream."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
         mock_redis = MagicMock()
@@ -544,9 +511,7 @@ class TestRedisEdgeCases:
 
     def test_calculate_consumer_groups_info_no_separator(self, test_domain):
         """Test _calculate_consumer_groups_info skips entries without separator."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Add entries to _created_groups
         broker._created_groups_set.add("stream1:group1")  # Valid
@@ -564,9 +529,7 @@ class TestRedisEdgeCases:
 
     def test_ensure_connection_reconnect_failure(self, test_domain, caplog):
         """Test _ensure_connection when reconnection fails."""
-        broker = RedisBroker(
-            "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
-        )
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance that always fails ping
         mock_redis = MagicMock()

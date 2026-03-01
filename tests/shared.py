@@ -9,6 +9,32 @@ import pytest
 
 from protean.domain import Domain
 
+# ---------------------------------------------------------------------------
+# Service ports for Protean's Docker development environment
+#
+# Non-standard ports (5-prefix) avoid clashing with other projects that use
+# default ports on the same machine. When changing these, also update:
+#   - docker-compose.yml
+#   - .github/workflows/ci.yml
+#   - tests/**/domain.toml  (static config files cannot import Python constants)
+# ---------------------------------------------------------------------------
+POSTGRES_PORT = 55432
+MESSAGE_DB_PORT = 55433
+REDIS_PORT = 56379
+ELASTICSEARCH_PORT = 59200
+MSSQL_PORT = 51433
+
+# Pre-built connection URIs
+POSTGRES_URI = f"postgresql://postgres:postgres@localhost:{POSTGRES_PORT}/postgres"
+MESSAGE_DB_URI = f"postgresql://message_store@localhost:{MESSAGE_DB_PORT}/message_store"
+REDIS_URI = f"redis://localhost:{REDIS_PORT}"
+MSSQL_URI = (
+    f"mssql+pyodbc://sa:Protean123!@localhost:{MSSQL_PORT}/master"
+    "?driver=ODBC+Driver+18+for+SQL+Server"
+    "&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
+)
+ELASTICSEARCH_URI: dict = {"hosts": [f"localhost:{ELASTICSEARCH_PORT}"]}
+
 
 def initialize_domain(name="Tests", root_path=None):
     """Initialize a Protean Domain with configuration from a file"""

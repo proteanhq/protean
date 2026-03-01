@@ -5,7 +5,7 @@ default_subscription_type = "stream"
 
 [brokers.default]
 provider = "redis"
-URI = "redis://127.0.0.1:6379/2"
+URI = "redis://127.0.0.1:56379/2"
 IS_ASYNC = true
 
 [outbox]

@@ -3,4 +3,4 @@ identity_type = "uuid"
 [databases.default]
 provider = "elasticsearch"
 database = "elasticsearch"
-database_uri = '{"hosts": ["localhost"]}'
+database_uri = '{"hosts": ["localhost:59200"]}'

@@ -7,6 +7,14 @@ import sys
 
 import pytest
 
+from tests.shared import (
+    ELASTICSEARCH_URI,
+    MESSAGE_DB_URI,
+    MSSQL_URI,
+    POSTGRES_URI,
+    REDIS_URI,
+)
+
 
 def pytest_configure(config):
     # Insert the docs_src path into sys.path so that we can import elements from there
@@ -186,7 +194,7 @@ def store_config(request):
             },
             "MESSAGE_DB": {
                 "provider": "message_db",
-                "database_uri": "postgresql://message_store@localhost:5433/message_store",
+                "database_uri": MESSAGE_DB_URI,
             },
         }[request.config.getoption("--store", "MEMORY")]
     except KeyError as e:
@@ -202,14 +210,14 @@ def db_config(request):
             "MEMORY": {"provider": "memory"},
             "POSTGRESQL": {
                 "provider": "postgresql",
-                "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+                "database_uri": POSTGRES_URI,
                 "pool_size": 1,
                 "max_overflow": 2,
             },
             "ELASTICSEARCH": {
                 "provider": "elasticsearch",
                 "database": "elasticsearch",
-                "database_uri": {"hosts": ["localhost"]},
+                "database_uri": ELASTICSEARCH_URI,
             },
             "SQLITE": {
                 "provider": "sqlite",
@@ -217,7 +225,7 @@ def db_config(request):
             },
             "MSSQL": {
                 "provider": "mssql",
-                "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
+                "database_uri": MSSQL_URI,
                 "pool_size": 1,
                 "max_overflow": 2,
             },
@@ -242,12 +250,12 @@ def broker_config(request):
         "INLINE": {"provider": "inline"},
         "REDIS": {
             "provider": "redis",
-            "URI": "redis://localhost:6379/2",
+            "URI": f"{REDIS_URI}/2",
             "TTL": 300,
         },
         "REDIS_PUBSUB": {
             "provider": "redis_pubsub",
-            "URI": "redis://localhost:6379/3",
+            "URI": f"{REDIS_URI}/3",
             "TTL": 300,
         },
     }[request.config.getoption("--broker", "INLINE")]

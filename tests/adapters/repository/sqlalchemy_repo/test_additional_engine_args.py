@@ -1,4 +1,5 @@
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider, SqliteProvider
+from tests.shared import POSTGRES_URI
 
 
 class TestAdditionalEngineArgs:
@@ -10,7 +11,7 @@ class TestAdditionalEngineArgs:
             domain=test_domain,
             conn_info={
                 "provider": "postgresql",
-                "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+                "database_uri": POSTGRES_URI,
                 "echo": True,
                 "pool_size": 10,
                 "pool_recycle": 1800,
@@ -56,7 +57,7 @@ class TestAdditionalEngineArgs:
             domain=test_domain,
             conn_info={
                 "provider": "postgresql",
-                "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+                "database_uri": POSTGRES_URI,
                 "schema": "test_schema",
                 "echo": True,
             },
@@ -75,7 +76,7 @@ class TestAdditionalEngineArgs:
             domain=test_domain,
             conn_info={
                 "provider": "postgresql",
-                "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+                "database_uri": POSTGRES_URI,
                 "echo": True,
             },
         )
@@ -94,7 +95,7 @@ class TestAdditionalEngineArgs:
             domain=test_domain,
             conn_info={
                 "provider": "postgresql",
-                "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+                "database_uri": POSTGRES_URI,
                 "isolation_level": "SERIALIZABLE",
                 "echo": True,
             },

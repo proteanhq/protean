@@ -2,7 +2,7 @@ identity_type = "uuid"
 
 [databases.default]
 provider = "mssql"
-database_uri = "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
+database_uri = "mssql+pyodbc://sa:Protean123!@localhost:51433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
 schema = "dbo"
 pool_size = 1
 max_overflow = 2

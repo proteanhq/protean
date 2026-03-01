@@ -50,19 +50,35 @@ from protean.port.provider import DatabaseCapabilities
 
 # ---------------------------------------------------------------------------
 # Built-in provider configurations (mirrors tests/conftest.py)
+#
+# Port constants come from tests.shared when running inside Protean's own
+# repository.  External adapter packages that load this plugin won't have
+# tests.shared, but they always override `db_config` in their conftest
+# anyway — the BUILTIN_DB_CONFIGS dict is never reached.
 # ---------------------------------------------------------------------------
+try:
+    from tests.shared import ELASTICSEARCH_URI, MSSQL_URI, POSTGRES_URI
+except ModuleNotFoundError:
+    POSTGRES_URI = "postgresql://postgres:postgres@localhost:5432/postgres"
+    ELASTICSEARCH_URI: dict = {"hosts": ["localhost"]}  # type: ignore[no-redef]
+    MSSQL_URI = (
+        "mssql+pyodbc://sa:Protean123!@localhost:1433/master"
+        "?driver=ODBC+Driver+18+for+SQL+Server"
+        "&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
+    )
+
 BUILTIN_DB_CONFIGS: dict[str, dict[str, Any]] = {
     "MEMORY": {"provider": "memory"},
     "POSTGRESQL": {
         "provider": "postgresql",
-        "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+        "database_uri": POSTGRES_URI,
         "pool_size": 1,
         "max_overflow": 2,
     },
     "ELASTICSEARCH": {
         "provider": "elasticsearch",
         "database": "elasticsearch",
-        "database_uri": {"hosts": ["localhost"]},
+        "database_uri": ELASTICSEARCH_URI,
     },
     "SQLITE": {
         "provider": "sqlite",
@@ -70,11 +86,7 @@ BUILTIN_DB_CONFIGS: dict[str, dict[str, Any]] = {
     },
     "MSSQL": {
         "provider": "mssql",
-        "database_uri": (
-            "mssql+pyodbc://sa:Protean123!@localhost:1433/master"
-            "?driver=ODBC+Driver+18+for+SQL+Server"
-            "&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
-        ),
+        "database_uri": MSSQL_URI,
         "pool_size": 1,
         "max_overflow": 2,
     },
