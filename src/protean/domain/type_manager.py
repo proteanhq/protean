@@ -102,4 +102,9 @@ class TypeManager:
         for _, element in registry._elements[DomainObjects.AGGREGATE.value].items():
             if element.cls.meta_.fact_events:
                 event_cls = element_to_fact_event(element.cls)
-                self._domain.register(event_cls, part_of=element.cls)
+                self._domain.register(
+                    event_cls,
+                    auto_generated=True,
+                    part_of=element.cls,
+                    is_fact_event=True,
+                )

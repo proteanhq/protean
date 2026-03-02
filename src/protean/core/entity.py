@@ -309,7 +309,10 @@ class BaseEntity(BaseModel, OptionsMixin):
                 "id",
                 PydanticField(
                     default_factory=generate_identity,
-                    json_schema_extra={"identifier": True},
+                    json_schema_extra={
+                        "identifier": True,
+                        "_auto_generated": True,
+                    },
                 ),
             )
 
@@ -937,6 +940,7 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
         if reference_field is None:
             # If no explicit Reference field is present, create one
             reference_field = Reference(element_cls.meta_.part_of)
+            reference_field._auto_generated = True
 
             # If part_of is a string, set field name to inflection.underscore(part_of)
             #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)

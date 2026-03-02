@@ -272,7 +272,7 @@ class DomainValidator:
             for _, evt_record in registry._elements[DomainObjects.EVENT.value].items():
                 # Skip fact events — they are auto-generated and not
                 # expected to have @apply handlers.
-                if evt_record.cls.__name__.endswith("FactEvent"):
+                if evt_record.cls.meta_.is_fact_event:
                     continue
 
                 if (

@@ -100,8 +100,12 @@ class TestLoadingTOML:
             domain.config["custom"]["FOO"] = "baz"
 
     @pytest.mark.no_test_domain
+    @pytest.mark.filterwarnings("always::UserWarning")
     def test_warning_if_config_file_not_found(self):
         change_working_directory_to("test19")
+
+        # Clean cached module so the Domain is freshly created
+        sys.modules.pop("domain19", None)
 
         with pytest.warns(UserWarning, match="No configuration file found in"):
             derive_domain("domain19")

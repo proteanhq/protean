@@ -248,6 +248,7 @@ class BaseMessageType(BaseModel, OptionsMixin):
             ("abstract", False),
             ("aggregate_cluster", None),
             ("part_of", None),
+            ("is_fact_event", False),
         ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -758,7 +759,7 @@ class Message(BaseModel, OptionsMixin):
         if (
             message_object._metadata.domain
             and message_object._metadata.domain.kind == MessageType.EVENT.value
-            and not message_object.__class__.__name__.endswith("FactEvent")
+            and not message_object.__class__.meta_.is_fact_event
         ):
             return message_object._expected_version  # type: ignore[union-attr]
         return None

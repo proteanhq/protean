@@ -20,6 +20,8 @@ class FieldBase:
     For now, this is a marker class to support later attribute discovery.
     """
 
+    _auto_generated: bool = False
+
 
 class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     """

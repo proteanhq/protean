@@ -161,13 +161,13 @@ class BaseAggregate(BaseEntity):
         identifier = getattr(self, id_field_name) if id_field_name else None
 
         # Set Fact Event stream to be `<aggregate_stream_name>-fact`
-        if event.__class__.__name__.endswith("FactEvent"):
+        if event.__class__.meta_.is_fact_event:
             stream = f"{self.meta_.stream_category}-fact-{identifier}"
         else:
             stream = f"{self.meta_.stream_category}-{identifier}"
 
         if self.meta_.is_event_sourced:
-            if not event.__class__.__name__.endswith("FactEvent"):
+            if not event.__class__.meta_.is_fact_event:
                 self._version += 1
 
             event_identity = f"{stream}-{self._version}"
@@ -237,8 +237,7 @@ class BaseAggregate(BaseEntity):
         # We use atomic_change so that invariants are checked before and
         # after the handler runs, preserving the "always valid" guarantee.
         if self.meta_.is_event_sourced:
-            is_fact_event = event.__class__.__name__.endswith("FactEvent")
-            if not is_fact_event:
+            if not event.__class__.meta_.is_fact_event:
                 with atomic_change(self):
                     self._apply_handler(event_with_metadata)
 

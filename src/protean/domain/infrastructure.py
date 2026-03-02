@@ -53,6 +53,7 @@ class InfrastructureManager:
                     domain.register(
                         new_cls,
                         internal=True,
+                        auto_generated=True,
                         schema_name="outbox",
                         provider=provider_name,
                     )
@@ -61,7 +62,12 @@ class InfrastructureManager:
                     new_repo_name = f"{camelize(provider_name)}OutboxRepository"
                     new_repo_cls = clone_class(OutboxRepository, new_repo_name)
 
-                    domain.register(new_repo_cls, internal=True, part_of=new_cls)
+                    domain.register(
+                        new_repo_cls,
+                        internal=True,
+                        auto_generated=True,
+                        part_of=new_cls,
+                    )
                     domain.providers._register_repository(new_cls, new_repo_cls)
 
                     outbox_repo = domain.repository_for(new_cls)

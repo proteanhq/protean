@@ -752,6 +752,7 @@ class Domain:
         element_type: DomainObjects,
         element_cls: type[_T],
         internal: bool = False,
+        auto_generated: bool = False,
         **opts: Any,
     ) -> type[_T]:  # noqa: C901
         """Register class into the domain"""
@@ -774,7 +775,7 @@ class Domain:
             self._database_models[fqn(new_cls.meta_.part_of)] = new_cls
 
         # Register element with domain
-        self._domain_registry.register_element(new_cls, internal)
+        self._domain_registry.register_element(new_cls, internal, auto_generated)
 
         # Resolve or record elements to be resolved
 
@@ -888,7 +889,13 @@ class Domain:
             DomainObjects.DATABASE_MODEL, database_model_cls, internal, **kwargs
         )
 
-    def register(self, element_cls: Any, internal: bool = False, **kwargs: dict) -> Any:
+    def register(
+        self,
+        element_cls: Any,
+        internal: bool = False,
+        auto_generated: bool = False,
+        **kwargs: dict,
+    ) -> Any:
         """Register an element with the domain.
 
         Returns the fully-formed domain element, subclassed and associated with
@@ -904,7 +911,7 @@ class Domain:
             )
 
         return self._register_element(
-            element_cls.element_type, element_cls, internal, **kwargs
+            element_cls.element_type, element_cls, internal, auto_generated, **kwargs
         )
 
     def fetch_element_cls_from_registry(

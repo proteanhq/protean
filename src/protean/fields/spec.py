@@ -91,6 +91,7 @@ class FieldSpec:
         self.sanitize = sanitize
         self.validators = list(validators)
         self.error_messages = error_messages
+        self._auto_generated = False
 
         # Warn if required=True with an explicit default
         if self.required and self.default is not _UNSET:
@@ -230,6 +231,8 @@ class FieldSpec:
             json_extra["_validators"] = list(self.validators)
         if self.error_messages:
             json_extra["_error_messages"] = self.error_messages
+        if self._auto_generated:
+            json_extra["_auto_generated"] = True
 
         if json_extra:
             kwargs["json_schema_extra"] = json_extra

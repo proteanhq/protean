@@ -35,8 +35,7 @@ collects events without calling handlers.
 ```python
 # Inside raise_(), for ES aggregates:
 if self.meta_.is_event_sourced:
-    is_fact_event = event.__class__.__name__.endswith("FactEvent")
-    if not is_fact_event:
+    if not event.__class__.meta_.is_fact_event:
         with atomic_change(self):
             self._apply_handler(event_with_metadata)
 ```

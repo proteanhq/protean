@@ -81,6 +81,7 @@ class ResolvedField:
             self.field_kind = extra.get("field_kind", "standard")
             self._validators = extra.get("_validators", [])
             self._error_messages = extra.get("_error_messages", {})
+            self._auto_generated = extra.get("_auto_generated", False)
         else:
             self.identifier = False
             self.referenced_as = None
@@ -90,6 +91,7 @@ class ResolvedField:
             self.field_kind = "standard"
             self._validators = []
             self._error_messages = {}
+            self._auto_generated = False
 
         # Identifiers are always unique (matching legacy Field behavior)
         if self.identifier:

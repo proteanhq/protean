@@ -212,6 +212,9 @@ explicitly target a projection and can listen to multiple stream categories.
 | `projector_for` | `None` | Target projection class |
 | `aggregates` | `[]` | Aggregate classes whose events to consume |
 | `stream_categories` | derived from `aggregates` | Stream categories to subscribe to |
+| `subscription_type` | `None` | Subscription behavior enum |
+| `subscription_profile` | `None` | Subscription profile enum |
+| `subscription_config` | `{}` | Custom subscription configuration |
 
 Guide: [Projectors](../../guides/consume-state/projectors.md)
 

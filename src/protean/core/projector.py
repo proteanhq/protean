@@ -82,6 +82,10 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
             ("projector_for", projector_for),
             ("aggregates", aggregates),
             ("stream_categories", stream_categories),
+            # Subscription configuration options (parity with event handlers and PMs)
+            ("subscription_type", None),
+            ("subscription_profile", None),
+            ("subscription_config", {}),
         ]
 
     def __new__(cls, *args, **kwargs):

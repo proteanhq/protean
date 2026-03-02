@@ -343,7 +343,10 @@ def _prepare_pydantic_namespace(
             annots["id"] = str | int | UUID
             new_dict["id"] = PydanticField(
                 default_factory=generate_identity,
-                json_schema_extra={"identifier": True},
+                json_schema_extra={
+                    "identifier": True,
+                    "_auto_generated": True,
+                },
             )
 
     new_dict["__annotations__"] = annots

@@ -11,7 +11,44 @@ from protean.utils.domain_discovery import derive_domain
 from tests.shared import change_working_directory_to
 
 
+def _purge_test_modules(*prefixes: str) -> None:
+    """Remove cached test-domain modules from sys.modules.
+
+    When different tests in the same session import modules from
+    ``tests/support/domains/``, Python caches them.  Later tests that
+    re-import the same module name (possibly from a different directory)
+    receive the stale cached version.  Purging by prefix avoids this.
+    """
+    to_delete = [
+        name
+        for name in sys.modules
+        if any(name.startswith(p) or name == p for p in prefixes)
+    ]
+    for name in to_delete:
+        del sys.modules[name]
+
+
 class TestDomainTraversal:
+    # Module prefixes to purge — includes both the full package path
+    # (``tests.support.domains.test7.post7``) and the short relative
+    # path used by ``Domain._traverse()`` (``test7.post7``).
+    _MODULE_PREFIXES = (
+        "tests.support.domains.test6",
+        "tests.support.domains.test7",
+        "tests.support.domains.test13",
+        # _traverse() registers modules with relative names
+        "test6.",
+        "test7.",
+        "test13.",
+    )
+
+    @pytest.fixture(autouse=True)
+    def clean_modules(self):
+        """Purge test-domain modules before and after each test."""
+        _purge_test_modules(*self._MODULE_PREFIXES)
+        yield
+        _purge_test_modules(*self._MODULE_PREFIXES)
+
     @pytest.mark.no_test_domain
     def test_loading_domain_without_init(self):
         from tests.support.domains.test6 import publishing6
@@ -44,12 +81,17 @@ class TestDomainTraversal:
 class TestMultiFolderStructureTraversal:
     @pytest.fixture(autouse=True)
     def reset_path(self):
-        """Reset sys.path after every test run"""
+        """Reset sys.path, cwd, and cached test modules after every test run."""
         original_path = sys.path[:]
         cwd = Path.cwd()
 
+        # Purge cached test modules before the test
+        _purge_test_modules("publishing20", "publishing21", "test20", "test21")
+
         yield
 
+        # Restore environment and purge modules after the test
+        _purge_test_modules("publishing20", "publishing21", "test20", "test21")
         sys.path[:] = original_path
         os.chdir(cwd)
 

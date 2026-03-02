@@ -246,6 +246,7 @@ class HandlerConfigurator:
             DomainObjects.EVENT,
             transition_cls,
             internal=True,
+            auto_generated=True,
             part_of=pm_cls,
         )
 
