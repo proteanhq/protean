@@ -1,5 +1,52 @@
 """This module implements the central domain object, along with decorators
 to register Domain Elements.
+
+Architecture
+~~~~~~~~~~~~
+
+The ``Domain`` class is the **composition root** of a Protean application.
+Every domain element (aggregates, entities, commands, events, handlers, etc.)
+is registered with — and orchestrated by — a single ``Domain`` instance.
+
+**Composition over Inheritance**
+
+Rather than packing all logic into a single monolithic class, ``Domain``
+follows the *composition* pattern: cohesive groups of internal behavior are
+extracted into dedicated helper classes that ``Domain`` owns and delegates to.
+This keeps each class focused on a single responsibility (SRP) while
+``Domain`` remains the stable public facade.
+
+Current composed helpers:
+
+* ``CommandProcessor``     — enriches, deduplicates, and dispatches commands
+  to their handlers.  (``command_processor.py``)
+* ``HandlerConfigurator``  — wires ``@handle`` / ``@read`` decorated methods
+  into handler maps for command handlers, event handlers, projectors,
+  process managers, and query handlers.  (``handler_setup.py``)
+* ``InfrastructureManager`` — manages database and outbox lifecycle (setup,
+  truncate, drop).  (``infrastructure.py``)
+* ``QueryProcessor``      — dispatches queries to their registered handlers.
+  (``query_processor.py``)
+* ``ElementResolver``     — resolves string-based references between domain
+  elements and assigns aggregate clusters.  (``resolver.py``)
+* ``TypeManager``         — assigns type strings to events/commands, manages
+  upcaster chains, fact events, and external event registration.
+  (``type_manager.py``)
+* ``DomainValidator``     — validates domain configuration, checks for
+  unresolved references, and warns about missing handlers.
+  (``validation.py``)
+
+Each helper receives a reference to the ``Domain`` instance at construction
+time and accesses the domain's registry, config, and other state through
+that reference.  The ``Domain`` class retains thin delegate methods (e.g.
+``_setup_command_handlers``) so that existing tests and call sites continue
+to work without modification.
+
+Supporting classes (in the same package):
+
+* ``_DomainRegistry``   — element catalog keyed by type and FQN (``registry.py``)
+* ``Config2``           — TOML-based configuration with env-var substitution (``config.py``)
+* ``DomainContext``     — thread-local context binding (``context.py``)
 """
 
 import inspect
@@ -27,13 +74,11 @@ from typing import (
 if TYPE_CHECKING:
     from protean.core.view import ReadView
     from protean.utils.projection_rebuilder import RebuildResult
-from uuid import uuid4
 
-from inflection import parameterize, titleize, transliterate, underscore, camelize
+from inflection import parameterize, titleize, transliterate, underscore
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
-from protean.core.aggregate import element_to_fact_event
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.database_model import BaseDatabaseModel
@@ -43,7 +88,6 @@ from protean.core.repository import BaseRepository
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
     ConfigurationError,
-    DuplicateCommandError,
     IncorrectUsageError,
     NotSupportedError,
 )
@@ -51,25 +95,22 @@ from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.basic import ValueObjectList
 from protean.utils import (
     DomainObjects,
-    Processing,
+    Processing as Processing,
     fqn,
-    clone_class,
 )
 from protean.utils.container import Element
-from protean.utils.eventing import (
-    Metadata,
-    MessageEnvelope,
-    MessageHeaders,
-    DomainMeta,
-    new_correlation_id,
-)
-from protean.utils.globals import g
 from protean.utils.idempotency import IdempotencyStore
-from protean.utils.outbox import Outbox, OutboxRepository
-from protean.utils.reflection import declared_fields, has_fields, id_field
+from protean.utils.reflection import declared_fields, has_fields
 
 from .config import Config2, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
+from .command_processor import CommandProcessor
+from .handler_setup import HandlerConfigurator
+from .infrastructure import InfrastructureManager
+from .query_processor import QueryProcessor
+from .resolver import ElementResolver
+from .type_manager import TypeManager
+from .validation import DomainValidator
 
 logger = logging.getLogger(__name__)
 
@@ -244,21 +285,21 @@ class Domain:
         self._database_models: Dict[str, BaseDatabaseModel] = {}
         self._constructed_models: Dict[str, BaseDatabaseModel] = {}
 
-        # Cache for holding events and commands by their types
-        self._events_and_commands: Dict[str, Union[BaseCommand, BaseEvent]] = {}
-
-        # Upcaster infrastructure (lightweight, not full domain elements)
-        from protean.utils.upcasting import UpcasterChain
-
-        self._upcasters: list[type] = []
-        self._upcaster_chain: UpcasterChain = UpcasterChain()
-
         # Message enricher hooks — callables that add custom metadata to events/commands.
         # Event enrichers receive (event, aggregate) and return dict[str, Any].
         # Command enrichers receive (command,) and return dict[str, Any].
         # Results are merged into metadata.extensions.
         self._event_enrichers: List[Callable] = []
         self._command_enrichers: List[Callable] = []
+
+        # Composed helpers — see handler_setup.py, validation.py, etc.
+        self._command_processor = CommandProcessor(self)
+        self._handler_configurator = HandlerConfigurator(self)
+        self._infrastructure = InfrastructureManager(self)
+        self._query_processor = QueryProcessor(self)
+        self._resolver = ElementResolver(self)
+        self._type_manager = TypeManager(self)
+        self._validator = DomainValidator(self)
 
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
@@ -269,11 +310,28 @@ class Domain:
         # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
-        # Store outbox DAOs per provider
-        self._outbox_repos = {}
-
         # Lazy-initialized idempotency store
         self._idempotency_store = None
+
+    # ------------------------------------------------------------------
+    # Property proxies for composed helper state (backward compatibility)
+    # ------------------------------------------------------------------
+
+    @property
+    def _events_and_commands(self) -> Dict[str, Union[BaseCommand, BaseEvent]]:
+        return self._type_manager.events_and_commands
+
+    @property
+    def _upcasters(self) -> list[type]:
+        return self._type_manager.upcasters
+
+    @property
+    def _upcaster_chain(self):
+        return self._type_manager.upcaster_chain
+
+    @property
+    def _outbox_repos(self) -> dict:
+        return self._infrastructure.outbox_repos
 
     @property
     def has_outbox(self) -> bool:
@@ -795,77 +853,9 @@ class Domain:
 
         return new_cls
 
-    def _resolve_references(self):
-        """Resolve pending class references in association fields.
-
-        Called by the domain context when domain is activated.
-
-        References that cannot be resolved (target not registered) are left
-        in ``_pending_class_resolutions`` so that ``_validate_domain()`` can
-        report them with contextual error messages.
-        """
-        for name in list(self._pending_class_resolutions.keys()):
-            resolved = True
-            for resolution_type, params in self._pending_class_resolutions[name]:
-                try:
-                    match resolution_type:
-                        case "Association":
-                            field_obj, owner_cls = params
-                            to_cls = self.fetch_element_cls_from_registry(
-                                field_obj.to_cls,
-                                (
-                                    DomainObjects.AGGREGATE,
-                                    DomainObjects.ENTITY,
-                                ),
-                            )
-                            field_obj._resolve_to_cls(self, to_cls, owner_cls)
-                        case "ValueObject":
-                            field_obj, owner_cls = params
-                            to_cls = self.fetch_element_cls_from_registry(
-                                field_obj.value_object_cls,
-                                (DomainObjects.VALUE_OBJECT,),
-                            )
-                            field_obj._resolve_to_cls(self, to_cls, owner_cls)
-                        case "AggregateCls":
-                            cls = params
-                            to_cls = self.fetch_element_cls_from_registry(
-                                cls.meta_.part_of,
-                                (DomainObjects.AGGREGATE,),
-                            )
-                            cls.meta_.part_of = to_cls
-                        case "ProjectionCls":
-                            cls = params
-                            to_cls = self.fetch_element_cls_from_registry(
-                                cls.meta_.projector_for,
-                                (DomainObjects.PROJECTION,),
-                            )
-                            cls.meta_.projector_for = to_cls
-                        case "QueryProjectionCls":
-                            cls = params
-                            to_cls = self.fetch_element_cls_from_registry(
-                                cls.meta_.part_of,
-                                (DomainObjects.PROJECTION,),
-                            )
-                            cls.meta_.part_of = to_cls
-                        case "QueryHandlerProjectionCls":
-                            cls = params
-                            to_cls = self.fetch_element_cls_from_registry(
-                                cls.meta_.part_of,
-                                (DomainObjects.PROJECTION,),
-                            )
-                            cls.meta_.part_of = to_cls
-                        case _:
-                            raise NotSupportedError(
-                                f"Resolution Type {resolution_type} not supported"
-                            )
-                except ConfigurationError:
-                    # Target not found in registry — leave in pending list
-                    # so _validate_domain() can report it with context.
-                    resolved = False
-
-            if resolved:
-                # Remove from pending list now that all entries are resolved
-                del self._pending_class_resolutions[name]
+    def _resolve_references(self) -> None:
+        """Resolve pending class references in association fields."""
+        self._resolver.resolve_references()
 
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
@@ -1001,607 +991,59 @@ class Domain:
         ].cls = new_element_cls
 
     def _check_for_unresolved_references(self) -> None:
-        """Raise a ``ConfigurationError`` if any string references remain unresolved.
+        """Raise a ``ConfigurationError`` if any string references remain unresolved."""
+        self._validator.check_unresolved_references()
 
-        Called right after ``_resolve_references()`` to fail fast with
-        contextual error messages before later init steps (like
-        ``_assign_aggregate_clusters``) assume all references are resolved.
-        """
-        if not self._pending_class_resolutions:
-            return
+    def _validate_domain(self) -> None:
+        """Validate the domain for correctness, called just before activation."""
+        self._validator.validate()
 
-        details: list[str] = []
-        for target_name, pending_list in self._pending_class_resolutions.items():
-            for resolution_type, params in pending_list:
-                match resolution_type:
-                    case "Association":
-                        field_obj, owner_cls = params
-                        details.append(
-                            f"`{owner_cls.__name__}.{field_obj.field_name}` "
-                            f"references `{target_name}` via "
-                            f"{type(field_obj).__name__}"
-                        )
-                    case "ValueObject":
-                        field_obj, owner_cls = params
-                        details.append(
-                            f"`{owner_cls.__name__}.{field_obj.field_name}` "
-                            f"references `{target_name}` via ValueObject"
-                        )
-                    case "AggregateCls":
-                        cls = params
-                        details.append(
-                            f"`{cls.__name__}` references `{target_name}` via part_of"
-                        )
-                    case "ProjectionCls":
-                        cls = params
-                        details.append(
-                            f"`{cls.__name__}` references `{target_name}` "
-                            f"via projector_for"
-                        )
-                    case "QueryProjectionCls" | "QueryHandlerProjectionCls":
-                        cls = params
-                        details.append(
-                            f"`{cls.__name__}` references `{target_name}` via part_of"
-                        )
-        raise ConfigurationError(
-            {
-                "element": (
-                    f"Unresolved references in domain `{self.name}`: "
-                    + "; ".join(details)
-                ),
-            }
-        )
+    def _assign_aggregate_clusters(self) -> None:
+        """Assign Aggregate Clusters to all relevant elements."""
+        self._resolver.assign_aggregate_clusters()
 
-    def _validate_domain(self):
-        """A method to validate the domain for correctness, called just before the domain is activated."""
-        # Check `identity_function` is provided if `identity_strategy` is `function`
-        if self.config["identity_strategy"] == self.IdentityStrategy.FUNCTION.value:
-            if not self._identity_function:
-                raise ConfigurationError(
-                    {
-                        "element": "Identity Strategy is set to `function`, but no Identity Function is provided"
-                    }
-                )
+    def _set_aggregate_cluster_options(self) -> None:
+        """Propagate aggregate-level options to child entities."""
+        self._resolver.set_aggregate_cluster_options()
 
-        # Validate `HasOne` and `HasMany` fields on aggregates and entities:
-        #   1. Target must be resolved (not a dangling string reference)
-        #   2. Target must be an Entity (not an Aggregate)
-        #   3. Target must belong to the same aggregate cluster as the owner
-        owner_elements = list(self.registry.aggregates.items()) + list(
-            self.registry._elements[DomainObjects.ENTITY.value].items()
-        )
-        for _, element in owner_elements:
-            owner_cls = element.cls
-            for _, field_obj in declared_fields(owner_cls).items():
-                if isinstance(field_obj, (HasOne, HasMany)):
-                    if isinstance(field_obj.to_cls, str):
-                        raise IncorrectUsageError(
-                            f"Unresolved target `{field_obj.to_cls}` for field "
-                            f"`{owner_cls.__name__}:{field_obj.name}`"
-                        )
-                    if field_obj.to_cls.element_type != DomainObjects.ENTITY:
-                        raise IncorrectUsageError(
-                            f"Field `{field_obj.field_name}` in `{owner_cls.__name__}` "
-                            "is not linked to an Entity class"
-                        )
-                    if (
-                        field_obj.to_cls.meta_.aggregate_cluster
-                        != owner_cls.meta_.aggregate_cluster
-                    ):
-                        raise IncorrectUsageError(
-                            f"Field `{field_obj.field_name}` in `{owner_cls.__name__}` "
-                            f"points to `{field_obj.to_cls.__name__}` which belongs to "
-                            f"a different aggregate "
-                            f"`{field_obj.to_cls.meta_.aggregate_cluster.__name__}`. "
-                            f"HasOne/HasMany associations must target entities within "
-                            f"the same aggregate cluster."
-                        )
-
-        # Check that no two event sourced aggregates have the same event class in their
-        #   `_events_cls_map`.
-        event_sourced_aggregates = {
-            name: record
-            for (name, record) in self.registry._elements[
-                DomainObjects.AGGREGATE.value
-            ].items()
-            if record.cls.meta_.is_event_sourced is True
-        }
-        # Collect all event class names from `_events_cls_map` of all event sourced aggregates
-        event_class_names = list()
-        for event_sourced_aggregate in event_sourced_aggregates.values():
-            event_class_names.extend(event_sourced_aggregate.cls._events_cls_map.keys())
-        # Check for duplicates
-        duplicate_event_class_names = set(
-            [
-                event_class_name
-                for event_class_name in event_class_names
-                if event_class_names.count(event_class_name) > 1
-            ]
-        )
-        if len(duplicate_event_class_names) != 0:
-            raise IncorrectUsageError(
-                f"Events are associated with multiple event sourced aggregates: "
-                f"{', '.join(duplicate_event_class_names)}"
-            )
-
-        # Check that entities have the same provider as the aggregate
-        for _, entity in self.registry._elements[DomainObjects.ENTITY.value].items():
-            if (
-                entity.cls.meta_.aggregate_cluster.meta_.provider
-                != entity.cls.meta_.provider
-            ):
-                raise IncorrectUsageError(
-                    f"Entity `{entity.cls.__name__}` has a different provider "
-                    f"than its aggregate `{entity.cls.meta_.aggregate_cluster.__name__}`"
-                )
-
-        # Check that projections associated with projectors are registered
-        for _, projector in self.registry._elements[
-            DomainObjects.PROJECTOR.value
-        ].items():
-            if projector.cls.meta_.projector_for:
-                if (
-                    fqn(projector.cls.meta_.projector_for)
-                    not in self.registry._elements[DomainObjects.PROJECTION.value]
-                ):
-                    raise IncorrectUsageError(
-                        f"`{projector.cls.meta_.projector_for.__name__}` is not a Projection, or is not registered in domain {self.name}"
-                    )
-
-        # Check that queries are associated with registered projections
-        for _, query_record in self.registry._elements[
-            DomainObjects.QUERY.value
-        ].items():
-            if query_record.cls.meta_.part_of:
-                if (
-                    fqn(query_record.cls.meta_.part_of)
-                    not in self.registry._elements[DomainObjects.PROJECTION.value]
-                ):
-                    raise IncorrectUsageError(
-                        f"`{query_record.cls.meta_.part_of.__name__}` is not a Projection, "
-                        f"or is not registered in domain {self.name}"
-                    )
-
-        # Check that query handlers are associated with registered projections
-        for _, qh_record in self.registry._elements[
-            DomainObjects.QUERY_HANDLER.value
-        ].items():
-            if qh_record.cls.meta_.part_of:
-                if (
-                    fqn(qh_record.cls.meta_.part_of)
-                    not in self.registry._elements[DomainObjects.PROJECTION.value]
-                ):
-                    raise IncorrectUsageError(
-                        f"`{qh_record.cls.meta_.part_of.__name__}` is not a Projection, "
-                        f"or is not registered in domain {self.name}"
-                    )
-
-        # Warn about registered Commands that have no handler
-        all_handled_command_types: set[str] = set()
-        for _, ch_record in self.registry._elements[
-            DomainObjects.COMMAND_HANDLER.value
-        ].items():
-            all_handled_command_types.update(ch_record.cls._handlers.keys())
-
-        for _, cmd_record in self.registry._elements[
-            DomainObjects.COMMAND.value
-        ].items():
-            if (
-                not cmd_record.cls.meta_.abstract
-                and cmd_record.cls.__type__ not in all_handled_command_types
-            ):
-                logger.warning(
-                    "Command `%s` does not have a registered handler",
-                    cmd_record.cls.__name__,
-                )
-
-        # Warn about events on event-sourced aggregates missing @apply handlers
-        for _, agg_record in self.registry._elements[
-            DomainObjects.AGGREGATE.value
-        ].items():
-            if not agg_record.cls.meta_.is_event_sourced:
-                continue
-
-            for _, evt_record in self.registry._elements[
-                DomainObjects.EVENT.value
-            ].items():
-                # Skip fact events — they are auto-generated and not
-                # expected to have @apply handlers.
-                if evt_record.cls.__name__.endswith("FactEvent"):
-                    continue
-
-                if (
-                    evt_record.cls.meta_.part_of == agg_record.cls
-                    and not evt_record.cls.meta_.abstract
-                    and fqn(evt_record.cls) not in agg_record.cls._projections
-                ):
-                    logger.warning(
-                        "Event `%s` on event-sourced aggregate `%s` "
-                        "does not have an @apply handler",
-                        evt_record.cls.__name__,
-                        agg_record.cls.__name__,
-                    )
-
-    def _assign_aggregate_clusters(self):
-        """Assign Aggregate Clusters to all relevant elements"""
-        from protean.core.aggregate import BaseAggregate
-        from protean.core.process_manager import BaseProcessManager
-
-        # Assign Aggregates, EventSourcedAggregates, and Process Managers to their own cluster
-        for element_type in [
-            DomainObjects.AGGREGATE,
-            DomainObjects.PROCESS_MANAGER,
-        ]:
-            for _, element in self.registry._elements[element_type.value].items():
-                element.cls.meta_.aggregate_cluster = element.cls
-
-        # Derive root aggregate for other elements and assign as aggregate_cluster
-        for element_type in [
-            DomainObjects.ENTITY,
-            DomainObjects.EVENT,
-            DomainObjects.COMMAND,
-        ]:
-            for _, element in self.registry._elements[element_type.value].items():
-                part_of = element.cls.meta_.part_of
-                if part_of:
-                    # Traverse up the graph tree to find the root aggregate
-                    # (or process manager, for transition events)
-                    while not issubclass(part_of, BaseAggregate) and not issubclass(
-                        part_of, BaseProcessManager
-                    ):
-                        part_of = part_of.meta_.part_of
-
-                element.cls.meta_.aggregate_cluster = part_of
-
-    def _set_aggregate_cluster_options(self):
-        for element_type in [DomainObjects.ENTITY]:
-            for _, element in self.registry._elements[element_type.value].items():
-                if not hasattr(element.cls.meta_, "provider"):
-                    setattr(
-                        element.cls.meta_,
-                        "provider",
-                        element.cls.meta_.aggregate_cluster.meta_.provider,
-                    )
-
-    def _set_and_record_event_and_command_type(self):
-        for element_type in [DomainObjects.EVENT, DomainObjects.COMMAND]:
-            for _, element in self.registry._elements[element_type.value].items():
-                # Type is <Domain Name>.<Event or Command Name>.<Version>
-                # E.g. `Authentication.UserRegistered.v1`, `Ecommerce.OrderPlaced.v1`
-                type_string = (
-                    f"{self.camel_case_name}."
-                    # f"{element.cls.meta_.aggregate_cluster.__class__.__name__}."
-                    f"{element.cls.__name__}."
-                    f"{element.cls.__version__}"
-                )
-
-                setattr(element.cls, "__type__", type_string)
-
-                self._events_and_commands[type_string] = element.cls
+    def _set_and_record_event_and_command_type(self) -> None:
+        self._type_manager.set_and_record_types()
 
     def _build_upcaster_chains(self) -> None:
-        """Build upcaster chains from registered upcasters.
+        self._type_manager.build_upcaster_chains()
 
-        Called during ``init()`` after ``_set_and_record_event_and_command_type``
-        so that event type strings are available for chain validation.
-        """
-        for upcaster_cls in self._upcasters:
-            event_type = upcaster_cls.meta_.event_type
-
-            # Compute event_base_type: "DomainName.EventName"
-            event_base_type = f"{self.camel_case_name}.{event_type.__name__}"
-
-            self._upcaster_chain.register_upcaster(
-                event_base_type=event_base_type,
-                from_version=upcaster_cls.meta_.from_version,
-                to_version=upcaster_cls.meta_.to_version,
-                upcaster_cls=upcaster_cls,
-            )
-
-        self._upcaster_chain.build_chains(self._events_and_commands)
-
-    def register_external_event(self, event_cls: Type[BaseEvent], type_string: str):
+    def register_external_event(
+        self, event_cls: Type[BaseEvent], type_string: str
+    ) -> None:
         """Register an external event with the domain.
 
-        When we are consuming an event generated by another Protean domain, we only want
-        to map the event type to a class. We don't want to add the event to this domain's
-        registry, since we won't do anything else with this event other than consuming it.
-        This method simply maps the external event type manually to the event class,
-        bypassing the type string construction process.
+        Maps an external event type string to an event class without
+        adding it to the domain registry.
         """
-        # Ensure class is an event
-        if (
-            not issubclass(event_cls, BaseEvent)
-            or event_cls.element_type != DomainObjects.EVENT
-        ):
-            raise IncorrectUsageError(f"Class `{event_cls.__name__}` is not an Event")
+        self._type_manager.register_external_event(event_cls, type_string)
 
-        self._events_and_commands[type_string] = event_cls
+    def _setup_command_handlers(self) -> None:
+        self._handler_configurator.setup_command_handlers()
 
-        # Set __type__ on the event class so ProcessManagers and other
-        # infrastructure can resolve the type string from the class itself.
-        setattr(event_cls, "__type__", type_string)
+    def _setup_event_handlers(self) -> None:
+        self._handler_configurator.setup_event_handlers()
 
-    def _setup_command_handlers(self):
-        for element_type in [DomainObjects.COMMAND_HANDLER]:
-            for _, element in self.registry._elements[element_type.value].items():
-                # Iterate through methods marked as `@handle` and construct a handler map
-                if not element.cls._handlers:  # Protect against re-registration
-                    methods = inspect.getmembers(
-                        element.cls, predicate=inspect.isroutine
-                    )
-                    for method_name, method in methods:
-                        if not (
-                            method_name.startswith("__") and method_name.endswith("__")
-                        ) and hasattr(method, "_target_cls"):
-                            # Throw error if target_cls is not a Command
-                            if not inspect.isclass(
-                                method._target_cls
-                            ) or not issubclass(method._target_cls, BaseCommand):
-                                raise IncorrectUsageError(
-                                    f"Method `{method_name}` in Command Handler `{element.cls.__name__}` "
-                                    "is not associated with a command"
-                                )
+    def _setup_projectors(self) -> None:
+        self._handler_configurator.setup_projectors()
 
-                            # Throw error if target_cls is not associated with an aggregate
-                            if not method._target_cls.meta_.part_of:
-                                raise IncorrectUsageError(
-                                    f"Command `{method._target_cls.__name__}` in Command Handler `{element.cls.__name__}` "
-                                    "is not associated with an aggregate"
-                                )
-
-                            if (
-                                method._target_cls.meta_.part_of
-                                != element.cls.meta_.part_of
-                            ):
-                                raise IncorrectUsageError(
-                                    f"Command `{method._target_cls.__name__}` in Command Handler `{element.cls.__name__}` "
-                                    "is not associated with the same aggregate as the Command Handler"
-                                )
-
-                            command_type = (
-                                method._target_cls.__type__
-                                if issubclass(
-                                    method._target_cls,
-                                    BaseCommand,
-                                )
-                                else method._target_cls
-                            )
-
-                            # Do not allow multiple handlers per command
-                            if (
-                                command_type in element.cls._handlers
-                                and len(element.cls._handlers[command_type]) != 0
-                            ):
-                                raise NotSupportedError(
-                                    f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
-                                )
-
-                            # `_handlers` maps the command to its handler method
-                            element.cls._handlers[command_type].add(method)
-
-    def _setup_event_handlers(self):
-        for element_type in [DomainObjects.EVENT_HANDLER]:
-            for _, element in self.registry._elements[element_type.value].items():
-                # Iterate through methods marked as `@handle` and construct a handler map
-                #
-                # Also, if `_target_cls` is an event, associate it with the event handler's
-                #   aggregate or stream
-                methods = inspect.getmembers(element.cls, predicate=inspect.isroutine)
-                for method_name, method in methods:
-                    if not (
-                        method_name.startswith("__") and method_name.endswith("__")
-                    ) and hasattr(method, "_target_cls"):
-                        # `_handlers` is a dictionary mapping the event to the handler method.
-                        if method._target_cls == "$any":
-                            # This replaces any existing `$any` handler, by design. An Event Handler
-                            # can have only one `$any` handler method.
-                            element.cls._handlers["$any"] = {method}
-                        else:
-                            # Target could be an event or an event type string
-                            event_type = (
-                                method._target_cls.__type__
-                                if inspect.isclass(method._target_cls)
-                                and issubclass(method._target_cls, BaseEvent)
-                                else method._target_cls
-                            )
-                            element.cls._handlers[event_type].add(method)
-
-    def _setup_projectors(self):
-        for element_type in [DomainObjects.PROJECTOR]:
-            for _, element in self.registry._elements[element_type.value].items():
-                # Iterate through methods marked as `@handle` and construct a handler map
-                if not element.cls._handlers:  # Protect against re-registration
-                    methods = inspect.getmembers(
-                        element.cls, predicate=inspect.isroutine
-                    )
-                    for method_name, method in methods:
-                        if not (
-                            method_name.startswith("__") and method_name.endswith("__")
-                        ) and hasattr(method, "_target_cls"):
-                            # Throw error if target_cls is not an Event
-                            if not inspect.isclass(
-                                method._target_cls
-                            ) or not issubclass(method._target_cls, BaseEvent):
-                                raise IncorrectUsageError(
-                                    f"Projector method `{method_name}` in `{element.cls.__name__}` "
-                                    "is not associated with an event"
-                                )
-
-                            event_type = (
-                                method._target_cls.__type__
-                                if issubclass(method._target_cls, BaseEvent)
-                                else method._target_cls
-                            )
-
-                            # `_handlers` maps the command to its handler method
-                            element.cls._handlers[event_type].add(method)
-
-    def _setup_process_managers(self):
-        from protean.core.process_manager import _generate_pm_transition_event
-
-        for _, element in self.registry._elements[
-            DomainObjects.PROCESS_MANAGER.value
-        ].items():
-            pm_cls = element.cls
-
-            # Iterate through methods marked as `@handle` and construct a handler map
-            if not pm_cls._handlers:  # Protect against re-registration
-                has_start = False
-
-                methods = inspect.getmembers(pm_cls, predicate=inspect.isroutine)
-                for method_name, method in methods:
-                    if not (
-                        method_name.startswith("__") and method_name.endswith("__")
-                    ) and hasattr(method, "_target_cls"):
-                        # Validate target is an Event
-                        if not inspect.isclass(method._target_cls) or not issubclass(
-                            method._target_cls, BaseEvent
-                        ):
-                            raise IncorrectUsageError(
-                                f"Process Manager method `{method_name}` in `{pm_cls.__name__}` "
-                                "is not associated with an event"
-                            )
-
-                        # Validate correlate is specified
-                        if not getattr(method, "_correlate", None):
-                            raise IncorrectUsageError(
-                                f"Handler `{method_name}` in Process Manager "
-                                f"`{pm_cls.__name__}` must specify a `correlate` parameter"
-                            )
-
-                        if getattr(method, "_start", False):
-                            has_start = True
-
-                        event_type = (
-                            method._target_cls.__type__
-                            if issubclass(method._target_cls, BaseEvent)
-                            else method._target_cls
-                        )
-
-                        pm_cls._handlers[event_type].add(method)
-
-                if not has_start:
-                    raise IncorrectUsageError(
-                        f"Process Manager `{pm_cls.__name__}` must have at least "
-                        f"one handler with `start=True`"
-                    )
-
-            # Generate transition event class
-            transition_cls = _generate_pm_transition_event(pm_cls)
-
-            # Register transition event with domain
-            self._register_element(
-                DomainObjects.EVENT,
-                transition_cls,
-                internal=True,
-                part_of=pm_cls,
-            )
-
-            # Set __type__ on the transition event
-            type_string = (
-                f"{self.camel_case_name}."
-                f"{transition_cls.__name__}."
-                f"{getattr(transition_cls, '__version__', 'v1')}"
-            )
-            setattr(transition_cls, "__type__", type_string)
-            self._events_and_commands[type_string] = transition_cls
-
-            # Store transition event class on PM
-            pm_cls._transition_event_cls = transition_cls
-
-            # If stream_categories is empty, infer from handled events' aggregates
-            if not pm_cls.meta_.stream_categories:
-                inferred_categories = set()
-                for method_name, method in methods:
-                    if hasattr(method, "_target_cls") and inspect.isclass(
-                        method._target_cls
-                    ):
-                        target = method._target_cls
-                        if hasattr(target, "meta_") and hasattr(
-                            target.meta_, "part_of"
-                        ):
-                            part_of = target.meta_.part_of
-                            if part_of and hasattr(part_of, "meta_"):
-                                inferred_categories.add(part_of.meta_.stream_category)
-
-                pm_cls.meta_.stream_categories = list(inferred_categories)
+    def _setup_process_managers(self) -> None:
+        self._handler_configurator.setup_process_managers()
 
     def _set_query_type(self) -> None:
         """Set ``__type__`` on registered queries so HandlerMixin._handle() can route them."""
-        for _, element in self.registry._elements[DomainObjects.QUERY.value].items():
-            # Simpler than events/commands: no version (queries are not persisted)
-            type_string = f"{self.camel_case_name}.{element.cls.__name__}"
-            setattr(element.cls, "__type__", type_string)
+        self._handler_configurator.set_query_type()
 
     def _setup_query_handlers(self) -> None:
-        """Build the handler map for all registered query handlers.
+        """Build the handler map for all registered query handlers."""
+        self._handler_configurator.setup_query_handlers()
 
-        For each query handler, discovers methods decorated with ``@read``
-        and maps query types to their handler methods.
-        """
-        from protean.core.query import BaseQuery
-
-        for _, element in self.registry._elements[
-            DomainObjects.QUERY_HANDLER.value
-        ].items():
-            # Iterate through methods marked with `@read` and construct a handler map
-            if not element.cls._handlers:  # Protect against re-registration
-                methods = inspect.getmembers(element.cls, predicate=inspect.isroutine)
-                for method_name, method in methods:
-                    if not (
-                        method_name.startswith("__") and method_name.endswith("__")
-                    ) and hasattr(method, "_target_cls"):
-                        # Validate target is a Query
-                        if not inspect.isclass(method._target_cls) or not issubclass(
-                            method._target_cls, BaseQuery
-                        ):
-                            raise IncorrectUsageError(
-                                f"Method `{method_name}` in Query Handler "
-                                f"`{element.cls.__name__}` is not associated with a query"
-                            )
-
-                        # Validate query is associated with a projection
-                        if not method._target_cls.meta_.part_of:
-                            raise IncorrectUsageError(
-                                f"Query `{method._target_cls.__name__}` in Query Handler "
-                                f"`{element.cls.__name__}` is not associated with a projection"
-                            )
-
-                        # Validate query's projection matches handler's projection
-                        if (
-                            method._target_cls.meta_.part_of
-                            != element.cls.meta_.part_of
-                        ):
-                            raise IncorrectUsageError(
-                                f"Query `{method._target_cls.__name__}` in Query Handler "
-                                f"`{element.cls.__name__}` is not associated with the same "
-                                f"projection as the Query Handler"
-                            )
-
-                        query_type = method._target_cls.__type__
-
-                        # Do not allow multiple handlers per query
-                        if (
-                            query_type in element.cls._handlers
-                            and len(element.cls._handlers[query_type]) != 0
-                        ):
-                            raise NotSupportedError(
-                                f"Query {method._target_cls.__name__} cannot be handled "
-                                f"by multiple handlers"
-                            )
-
-                        # Map query type to handler method
-                        element.cls._handlers[query_type].add(method)
-
-    def _generate_fact_event_classes(self):
-        """Generate FactEvent classes for all aggregates with `fact_events` enabled"""
-        for _, element in self.registry._elements[
-            DomainObjects.AGGREGATE.value
-        ].items():
-            if element.cls.meta_.fact_events:
-                event_cls = element_to_fact_event(element.cls)
-                self.register(event_cls, part_of=element.cls)
+    def _generate_fact_event_classes(self) -> None:
+        self._type_manager.generate_fact_event_classes()
 
     ######################
     # Element Decorators #
@@ -2011,97 +1453,13 @@ class Domain:
         priority: int = 0,
         correlation_id: Optional[str] = None,
     ) -> BaseCommand:
-        # Enrich Command
-        identifier = None
-        identity_field = id_field(command)
-        if identity_field:
-            identifier = getattr(command, identity_field.field_name)
-        else:
-            identifier = str(uuid4())
-
-        stream = f"{command.meta_.part_of.meta_.stream_category}:command-{identifier}"
-
-        origin_stream = None
-        inherited_correlation_id = correlation_id  # Caller-provided takes precedence
-        causation_id = None
-
-        if hasattr(g, "message_in_context"):
-            msg_ctx = g.message_in_context
-            if msg_ctx.metadata.domain.kind == "EVENT":
-                origin_stream = msg_ctx.metadata.headers.stream
-            # Inherit correlation_id from parent message (if not caller-provided)
-            if inherited_correlation_id is None and msg_ctx.metadata.domain:
-                inherited_correlation_id = msg_ctx.metadata.domain.correlation_id
-            # Set causation_id = parent message's ID
-            if msg_ctx.metadata.headers:
-                causation_id = msg_ctx.metadata.headers.id
-
-        # Generate new correlation_id if this is a root entry point
-        if inherited_correlation_id is None:
-            inherited_correlation_id = new_correlation_id()
-
-        headers = MessageHeaders(
-            id=identifier,  # FIXME Double check command ID format and construction
-            type=command.__class__.__type__,
-            stream=stream,
-            time=command._metadata.headers.time
-            if (command._metadata.headers and command._metadata.headers.time)
-            else None,
+        return self._command_processor.enrich(
+            command,
+            asynchronous,
             idempotency_key=idempotency_key,
-        )
-
-        # Compute envelope with checksum for integrity validation
-        envelope = MessageEnvelope.build(command.payload)
-
-        # Build domain metadata
-        domain_meta = DomainMeta(
-            fqn=command._metadata.domain.fqn
-            if command._metadata.domain
-            else command._metadata.fqn
-            if hasattr(command._metadata, "fqn")
-            else None,
-            kind="COMMAND",
-            origin_stream=origin_stream,
-            version=command._metadata.domain.version
-            if command._metadata.domain
-            else command._metadata.version
-            if hasattr(command._metadata, "version")
-            else None,
-            sequence_id=None,
-            asynchronous=asynchronous,
             priority=priority,
-            correlation_id=inherited_correlation_id,
-            causation_id=causation_id,
+            correlation_id=correlation_id,
         )
-
-        metadata = Metadata(
-            headers=headers,
-            envelope=envelope,
-            domain=domain_meta,
-        )
-
-        # Run command enrichers
-        if self._command_enrichers:
-            extensions = dict(metadata.extensions)
-            for enricher in self._command_enrichers:
-                result = enricher(command)
-                if result:
-                    extensions.update(result)
-            if extensions:
-                metadata = Metadata(
-                    headers=metadata.headers,
-                    envelope=metadata.envelope,
-                    domain=metadata.domain,
-                    event_store=metadata.event_store,
-                    extensions=extensions,
-                )
-
-        command_with_metadata = command.__class__(
-            command.to_dict(),
-            _metadata=metadata,
-        )
-
-        return command_with_metadata
 
     def process(
         self,
@@ -2128,105 +1486,23 @@ class Domain:
                 when a duplicate idempotency key is detected. If ``False`` (default),
                 silently returns the cached result.
             priority (int, optional): Processing priority for events produced by this command.
-                When priority lanes are enabled, events with priority below the configured
-                threshold are routed to a backfill stream and processed only when the
-                primary stream is empty. Use ``Priority`` enum values from
-                ``protean.utils.processing``. If not specified, uses the value from
-                the current ``processing_priority()`` context, or ``Priority.NORMAL`` (0).
             correlation_id (str, optional): Correlation ID for distributed tracing.
-                When provided (e.g. from a frontend or API gateway), this ID is propagated
-                to all commands and events in the causal chain. If not provided, a new
-                UUID is auto-generated.
 
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
-        from protean.utils.eventing import Message
-        from protean.utils.processing import current_priority, processing_priority
-
-        # If asynchronous is not specified, use the command_processing setting from config
-        if asynchronous is None:
-            asynchronous = self.config["command_processing"] == Processing.ASYNC.value
-
-        if (
-            fqn(command.__class__)
-            not in self.registry._elements[DomainObjects.COMMAND.value]
-        ):
-            raise IncorrectUsageError(
-                f"Element {command.__class__.__name__} is not registered in domain {self.name}"
-            )
-
-        # --- Idempotency: check for existing result ---
-        store = self.idempotency_store
-        if idempotency_key and store.is_active:
-            existing = store.check(idempotency_key)
-            if existing and existing.get("status") == "success":
-                cached_result = existing.get("result")
-                if raise_on_duplicate:
-                    raise DuplicateCommandError(
-                        f"Command with idempotency key '{idempotency_key}' "
-                        f"has already been processed",
-                        original_result=cached_result,
-                    )
-                return cached_result
-
-        # Resolve priority: explicit param > context var > default (0)
-        resolved_priority = priority if priority is not None else current_priority()
-
-        command_with_metadata = self._enrich_command(
+        return self._command_processor.process(
             command,
-            asynchronous,
+            asynchronous=asynchronous,
             idempotency_key=idempotency_key,
-            priority=resolved_priority,
+            raise_on_duplicate=raise_on_duplicate,
+            priority=priority,
             correlation_id=correlation_id,
         )
-        position = self.event_store.store.append(command_with_metadata)
-
-        if (
-            not asynchronous
-            or self.config["command_processing"] == Processing.SYNC.value
-        ):
-            handler_class = self.command_handler_for(command)
-            if handler_class:
-                try:
-                    # Build a Message for context propagation so that events
-                    # raised during sync handling inherit trace IDs.
-                    command_message = Message.from_domain_object(command_with_metadata)
-                    g.message_in_context = command_message
-
-                    # Set the processing priority context so that UoW.commit()
-                    # can read it when creating outbox records
-                    with processing_priority(resolved_priority):
-                        result = handler_class._handle(command_with_metadata)
-                except Exception:
-                    # Record failure with short TTL to allow retry
-                    if idempotency_key and store.is_active:
-                        store.record_error(idempotency_key, "handler_failed")
-                    raise
-                finally:
-                    g.pop("message_in_context", None)
-
-                # Record success
-                if idempotency_key and store.is_active:
-                    store.record_success(idempotency_key, result)
-                return result
-
-        # Async path: cache the position as the result
-        if idempotency_key and store.is_active:
-            store.record_success(idempotency_key, position)
-
-        return position
 
     def command_handler_for(self, command: Any) -> Optional[BaseCommandHandler]:
-        """Return Command Handler for a specific command.
-
-        Args:
-            command: Command to process (instance of a ``@domain.command``-decorated class)
-
-        Returns:
-            Optional[BaseCommandHandler]: Command Handler registered to process the command
-        """
-        return self.event_store.command_handler_for(command)
+        """Return Command Handler for a specific command."""
+        return self._command_processor.handler_for(command)
 
     ###################
     # Handling Events #
@@ -2322,62 +1598,11 @@ class Domain:
         return ReadView(self, projection_cls)
 
     def dispatch(self, query: Any) -> Any:
-        """Dispatch a query to its registered QueryHandler and return results.
-
-        This is the read-side counterpart of :meth:`process` (which handles
-        commands on the write side).  Unlike ``process()``, ``dispatch()``
-        is always synchronous, never wraps in a ``UnitOfWork``, and always
-        returns the handler's return value.
-
-        Args:
-            query: Query to dispatch (instance of a ``@domain.query``-decorated class).
-
-        Returns:
-            Any: Return value from the query handler method.
-
-        Raises:
-            IncorrectUsageError: If *query* is not a registered query or
-                no handler is registered.
-
-        Example::
-
-            result = domain.dispatch(
-                GetOrdersByCustomer(customer_id="123", status="shipped")
-            )
-        """
-        from protean.core.query import BaseQuery
-
-        if not isinstance(query, BaseQuery):
-            raise IncorrectUsageError(f"`{query.__class__.__name__}` is not a Query")
-
-        if (
-            fqn(query.__class__)
-            not in self.registry._elements[DomainObjects.QUERY.value]
-        ):
-            raise IncorrectUsageError(
-                f"Query `{query.__class__.__name__}` is not registered "
-                f"in domain {self.name}"
-            )
-
-        handler_cls = self._query_handler_for(query)
-        if handler_cls is None:
-            raise IncorrectUsageError(
-                f"No Query Handler registered for `{query.__class__.__name__}`"
-            )
-
-        return handler_cls._handle(query)
+        """Dispatch a query to its registered QueryHandler and return results."""
+        return self._query_processor.dispatch(query)
 
     def _query_handler_for(self, query: Any) -> type | None:
-        """Find the QueryHandler class registered to handle *query*.
-
-        Returns ``None`` when no handler is registered.
-        """
-        for _, record in self.registry._elements[
-            DomainObjects.QUERY_HANDLER.value
-        ].items():
-            if query.__class__.__type__ in record.cls._handlers:
-                return record.cls
-        return None
+        return self._query_processor.handler_for(query)
 
     #######################
     # Cache Functionality #
@@ -2580,133 +1805,28 @@ class Domain:
 
         return values
 
-    def _initialize_outbox(self):
-        """Initialize outbox repositories for all configured providers.
-
-        This method constructs and stores outbox repositories for each provider,
-        verifying that the outbox table exists in the database.
-        """
-
-        # Create outbox repositories for each provider
-        # Check if providers are available and initialized
-        if (
-            hasattr(self.providers, "_providers")
-            and self.providers._providers is not None
-        ):
-            for provider_name in self.providers._providers.keys():
-                try:
-                    # Synthesize new outbox class specific to this provider
-                    new_name = f"{camelize(provider_name)}Outbox"
-                    new_cls = clone_class(Outbox, new_name)
-
-                    self.register(
-                        new_cls,
-                        internal=True,
-                        schema_name="outbox",
-                        provider=provider_name,
-                    )
-
-                    # Synthesize new repository class specific to this provider
-                    new_repo_name = f"{camelize(provider_name)}OutboxRepository"
-                    new_repo_cls = clone_class(OutboxRepository, new_repo_name)
-
-                    # Register the repository manually into the domain registry
-                    # This is necessary to ensure the repository is available for the outbox class
-                    # Add repository to registry
-                    self.register(new_repo_cls, internal=True, part_of=new_cls)
-                    # Connect the explicitly defined repository to the outbox class
-                    self.providers._register_repository(
-                        new_cls, new_repo_cls
-                    )  # Associate
-
-                    outbox_repo = self.repository_for(new_cls)
-
-                    # Store the repository for later use
-                    self._outbox_repos[provider_name] = outbox_repo
-
-                except Exception as e:
-                    raise ConfigurationError(
-                        f"Failed to initialize outbox for provider '{provider_name}': {str(e)}"
-                    )
-        else:
-            # No providers configured - outbox repositories will be created lazily when needed
-            logger.debug(
-                "No providers configured during domain initialization. Outbox repositories will be created lazily."
-            )
+    def _initialize_outbox(self) -> None:
+        self._infrastructure.initialize_outbox()
 
     def _get_outbox_repo(self, provider_name: str):
-        """Get outbox repository for a specific provider."""
-        # This check is largely unnecessary because `domain.init()` is mandatory,
-        #   and it initializes the outbox repositories.
-        #   This is largely a safeguard for tests to execute without calling `domain.init()`.
-        if not self._outbox_repos:
-            self._initialize_outbox()
-
-        return self._outbox_repos[provider_name]
+        return self._infrastructure.get_outbox_repo(provider_name)
 
     # ------------------------------------------------------------------
     # Public database lifecycle API
     # ------------------------------------------------------------------
 
     def setup_database(self) -> None:
-        """Create all database tables (aggregates, entities, projections, outbox).
-
-        Must be called after ``domain.init()`` and within ``domain.domain_context()``.
-        Delegates to each provider's ``_create_database_artifacts()`` which is
-        idempotent — existing tables are left untouched.
-        """
-        for _, provider in self.providers.items():
-            provider._create_database_artifacts()
+        """Create all database tables (aggregates, entities, projections, outbox)."""
+        self._infrastructure.setup_database()
 
     def setup_outbox(self) -> None:
-        """Create only outbox tables.
-
-        Useful when migrating from event-store to stream subscriptions where
-        aggregate tables already exist.  Must be called after ``domain.init()``
-        and within ``domain.domain_context()``.
-
-        Raises ``ConfigurationError`` if the outbox
-        is not enabled.
-        """
-        if not self.has_outbox:
-            raise ConfigurationError(
-                "Outbox is not enabled. Set "
-                "'server.default_subscription_type = \"stream\"' "
-                "in your domain configuration."
-            )
-        # Force DAO creation for outbox repos, then create pending tables
-        for _provider_name, outbox_repo in self._outbox_repos.items():
-            outbox_repo._dao  # noqa: B018
-        for _, provider in self.providers.items():
-            provider._create_database_artifacts()  # Idempotent
+        """Create only outbox tables."""
+        self._infrastructure.setup_outbox()
 
     def truncate_database(self) -> None:
-        """Delete all rows from every table without dropping the tables.
-
-        Clears aggregate/projection tables in all providers and the event
-        store messages table.  Useful for resetting development data while
-        preserving the schema.
-
-        Broker state (Redis streams) is not cleared — streams are transient
-        and will drain naturally.  This allows truncation while engines are
-        still running.
-
-        Must be called after ``domain.init()`` and within
-        ``domain.domain_context()``.
-        """
-        # Ensure provider metadata is populated (idempotent — no-op if tables exist)
-        self.setup_database()
-
-        for _, provider in self.providers.items():
-            provider._data_reset()
-
-        self.event_store.store._data_reset()
+        """Delete all rows from every table without dropping the tables."""
+        self._infrastructure.truncate_database()
 
     def drop_database(self) -> None:
-        """Drop all database tables.
-
-        Must be called after ``domain.init()`` and within
-        ``domain.domain_context()``.
-        """
-        for _, provider in self.providers.items():
-            provider._drop_database_artifacts()
+        """Drop all database tables."""
+        self._infrastructure.drop_database()
