@@ -354,9 +354,26 @@ def auto_set_and_close_loop():
 
     yield
 
-    # Close the loop after the test
-    if not loop.is_closed():
-        loop.close()
+    # Cancel any pending tasks and close all loops that may have been created
+    # during the test (e.g. Engine creates its own loop).
+    try:
+        current_loop = asyncio.get_event_loop()
+    except RuntimeError:
+        current_loop = None
+
+    for active_loop in {loop, current_loop} - {None}:
+        if active_loop.is_closed():
+            continue
+        pending = [t for t in asyncio.all_tasks(active_loop) if not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending and not active_loop.is_running():
+            active_loop.run_until_complete(
+                asyncio.gather(*pending, return_exceptions=True)
+            )
+        if not active_loop.is_running():
+            active_loop.close()
+
     asyncio.set_event_loop(None)  # Explicitly unset the loop
 
 

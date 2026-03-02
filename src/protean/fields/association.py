@@ -11,6 +11,7 @@ from protean.utils.reflection import (
 
 from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
+from .tempdata import HasManyChanges, HasOneChanges
 
 
 class _ReferenceField(Field):
@@ -317,7 +318,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
             # __set__/add().  This avoids a DB round-trip for items that
             # were just added but whose cache was cleared by add().
             temp = instance._temp_cache.get(self.field_name)
-            added = temp.get("added", {}) if temp else {}
+            added = temp.added if isinstance(temp, HasManyChanges) else {}
             if added:
                 reference_obj = list(added.values())
                 self.set_cached_value(instance, reference_obj)
@@ -465,30 +466,29 @@ class HasOne(Association):
             value_id = getattr(value, value_id_fld.field_name)
         else:
             value_id = None
+        cache = instance._temp_cache.setdefault(self.field_name, HasOneChanges())
         if current_value is None:
             # Entity was not associated earlier
-            instance._temp_cache[self.field_name]["change"] = "ADDED"
+            cache.change = "ADDED"
         elif value is None:
             # Entity was associated earlier, but now being removed
-            instance._temp_cache[self.field_name]["change"] = "DELETED"
-            instance._temp_cache[self.field_name]["old_value"] = current_value
+            cache.change = "DELETED"
+            cache.old_value = current_value
         elif current_value_id != value_id:
             # A New Entity is being associated replacing the old one
-            instance._temp_cache[self.field_name]["change"] = "UPDATED"
-            instance._temp_cache[self.field_name]["old_value"] = current_value
+            cache.change = "UPDATED"
+            cache.old_value = current_value
         elif current_value_id == value_id and value.state_.is_changed:
             # Entity was associated earlier, but now being updated
-            instance._temp_cache[self.field_name]["change"] = "UPDATED"
+            cache.change = "UPDATED"
         else:
-            instance._temp_cache[self.field_name]["change"] = (
-                None  # The same object has been assigned, No-Op
-            )
+            cache.change = None  # The same object has been assigned, No-Op
 
         self._set_own_value(instance, value)
 
         # 3. Go Recursive and remove child entities if they are associated with the old value
-        if instance._temp_cache[self.field_name]["change"] == "DELETED":
-            old_value = instance._temp_cache[self.field_name]["old_value"]
+        if cache.change == "DELETED":
+            old_value = cache.old_value
             if has_association_fields(old_value):
                 for field_name, field_obj in association_fields(old_value).items():
                     if isinstance(field_obj, HasMany):
@@ -626,12 +626,13 @@ class HasMany(Association):
         except KeyError:
             new_data = list(data)
 
+        cache = instance._temp_cache.setdefault(self.field_name, HasManyChanges())
         for item in items:
             # Items to add
             identity = getattr(item, entity_id_fld.field_name)
             if identity not in current_value_ids:
                 # If the same item is added multiple times, the last item added will win
-                instance._temp_cache[self.field_name]["added"][identity] = item
+                cache.added[identity] = item
 
                 setattr(
                     item,
@@ -658,7 +659,7 @@ class HasMany(Association):
                 # Temporarily set linkage to parent in child entity
                 setattr(item, self._linked_reference(type(instance)), instance)
 
-                instance._temp_cache[self.field_name]["updated"][identity] = item
+                cache.updated[identity] = item
 
                 # Replace updated item in the working copy
                 for i, existing in enumerate(new_data):
@@ -712,12 +713,13 @@ class HasMany(Association):
 
         current_value_ids = [getattr(value, entity_id_fld.field_name) for value in data]
 
+        cache = instance._temp_cache.setdefault(self.field_name, HasManyChanges())
         removed_ids = set()
         for item in items:
             identity = getattr(item, entity_id_fld.field_name)
             if identity in current_value_ids:
-                if identity not in instance._temp_cache[self.field_name]["removed"]:
-                    instance._temp_cache[self.field_name]["removed"][identity] = item
+                if identity not in cache.removed:
+                    cache.removed[identity] = item
                     removed_ids.add(identity)
 
             # Remove child entities
@@ -765,24 +767,27 @@ class HasMany(Association):
         for item in data:
             item.__dict__[key] = value
 
+        # Merge with pending in-memory changes
+        cache = instance._temp_cache.get(self.field_name)
+        if cache is None:
+            cache = HasManyChanges()
+
         # Add objects in temporary cache
-        for _, item in instance._temp_cache[self.field_name]["added"].items():
+        for _, item in cache.added.items():
             data.append(item)
 
         # Update objects from temporary cache if present
         updated_objects = []
         for value in data:
             identity = getattr(value, entity_id_fld.field_name)
-            if identity in instance._temp_cache[self.field_name]["updated"]:
-                updated_objects.append(
-                    instance._temp_cache[self.field_name]["updated"][identity]
-                )
+            if identity in cache.updated:
+                updated_objects.append(cache.updated[identity])
             else:
                 updated_objects.append(value)
         data = updated_objects
 
         # Remove objects marked as removed in temporary cache
-        for _, item in instance._temp_cache[self.field_name]["removed"].items():
+        for _, item in cache.removed.items():
             # Retain data that is not among deleted items
             data[:] = [
                 value

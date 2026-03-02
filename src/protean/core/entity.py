@@ -27,6 +27,7 @@ from protean.fields import (
 from protean.fields.basic import ValueObjectList
 from protean.fields.spec import FieldSpec
 from protean.fields.association import Association, _ReferenceField
+from protean.fields.tempdata import AssociationCache
 from protean.fields.embedded import _ShadowField
 from protean.utils import (
     DomainObjects,
@@ -179,9 +180,7 @@ class BaseEntity(BaseModel, OptionsMixin):
     _state: _EntityState = PrivateAttr(default_factory=_EntityState)
     _root: Any = PrivateAttr(default=None)
     _owner: Any = PrivateAttr(default=None)
-    _temp_cache: Any = PrivateAttr(
-        default_factory=lambda: defaultdict(lambda: defaultdict(dict))
-    )
+    _temp_cache: AssociationCache = PrivateAttr(default_factory=AssociationCache)
     _events: list = PrivateAttr(default_factory=list)
     _disable_invariant_checks: bool = PrivateAttr(default=False)
 

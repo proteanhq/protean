@@ -718,10 +718,6 @@ class Engine:
         def handle_exception(loop, context):
             msg = context.get("exception", context["message"])
 
-            print(
-                f"Exception caught: {msg}"
-            )  # Debugging line to ensure this code path runs
-
             # Print the stack trace
             if "exception" in context and context["exception"]:
                 traceback.print_exception(
@@ -814,5 +810,7 @@ class Engine:
         finally:
             # Clean up signal handlers before closing the loop
             self._cleanup_signal_handlers()
-            self.loop.close()
+
+            if not self.loop.is_running():
+                self.loop.close()
             logger.info("Engine stopped")

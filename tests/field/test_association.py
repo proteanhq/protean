@@ -79,8 +79,8 @@ class TestHasOneSetEdgeCases:
 
         # Re-assign same entity (no state change) -> No-Op
         blog.meta = meta
-        cache = blog._temp_cache.get("meta", {})
-        assert cache.get("change") is None
+        cache = blog._temp_cache.get("meta")
+        assert cache is None or cache.change is None
 
     def test_has_one_set_updated_entity(self, test_domain):
         """Assigning same entity with changed state -> UPDATED."""
@@ -98,8 +98,9 @@ class TestHasOneSetEdgeCases:
         assert meta.state_.is_changed is True
 
         blog.meta = meta
-        cache = blog._temp_cache.get("meta", {})
-        assert cache.get("change") == "UPDATED"
+        cache = blog._temp_cache.get("meta")
+        assert cache is not None
+        assert cache.change == "UPDATED"
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ from typing import Any, TYPE_CHECKING, TypeVar
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
+from protean.fields.tempdata import HasManyChanges, HasOneChanges
 from protean.port.dao import BaseDAO
 from protean.port.provider import BaseProvider
 from protean.utils import (
@@ -150,7 +151,9 @@ class BaseRepository(Element, OptionsMixin):
                 def find_by_email(self, email: str) -> Person:
                     return self.find_by(email=email)
         """
-        return self._dao.find_by(**kwargs)
+        item = self._dao.find_by(**kwargs)
+        self._prewarm_associations(item)
+        return item
 
     def find(self, criteria: Q) -> "ResultSet":
         """Find all aggregates matching a Q criteria expression.
@@ -289,6 +292,10 @@ class BaseRepository(Element, OptionsMixin):
             ### RECURSIVE SYNC ###
 
             if isinstance(field, HasMany):
+                cache = entity._temp_cache.get(field_name)
+                if cache is None:
+                    cache = HasManyChanges()
+
                 # First, handle direct updates to underlying child objects
                 #   These are ones whose attributes have been changed directly
                 #   instead of being routed via `add`/`remove`
@@ -296,23 +303,27 @@ class BaseRepository(Element, OptionsMixin):
                     if item.state_.is_changed:
                         # If the item was changed directly AND added via `add`, then
                         #   we give preference to the object in the cache
-                        if item not in entity._temp_cache[field_name]["updated"]:
+                        if item not in cache.updated:
                             self._persist_child(field.to_cls, item)
 
-                for _, item in entity._temp_cache[field_name]["removed"].items():
+                for _, item in cache.removed.items():
                     self._remove_child(field.to_cls, item)
 
-                for _, item in entity._temp_cache[field_name]["updated"].items():
+                for _, item in cache.updated.items():
                     self._persist_child(field.to_cls, item)
 
-                for _, item in entity._temp_cache[field_name]["added"].items():
+                for _, item in cache.added.items():
                     item.state_.mark_new()
                     self._persist_child(field.to_cls, item)
 
                 # Defer cache clearing until all DAO operations succeed
-                cache_clears.append(("has_many", entity, field_name))
+                cache_clears.append((entity, field_name))
 
             if isinstance(field, HasOne):
+                cache = entity._temp_cache.get(field_name)
+                if cache is None:
+                    cache = HasOneChanges()
+
                 # First, handle direct updates to underlying child objects
                 #   These are ones whose attributes have been changed directly
                 #   instead of being routed via `add`/`remove`
@@ -320,16 +331,13 @@ class BaseRepository(Element, OptionsMixin):
                 if item is not None and item.state_.is_changed:
                     self._persist_child(field.to_cls, item)
                 # Or a new instance has been assigned
-                elif entity._temp_cache[field_name]["change"]:
-                    if entity._temp_cache[field_name]["change"] == "ADDED":
+                elif cache.change:
+                    if cache.change == "ADDED":
                         self._persist_child(field.to_cls, item)
-                    elif entity._temp_cache[field_name]["change"] == "UPDATED":
-                        if entity._temp_cache[field_name]["old_value"] is not None:
+                    elif cache.change == "UPDATED":
+                        if cache.old_value is not None:
                             # The object was replaced, so delete the old record
-                            self._remove_child(
-                                field.to_cls,
-                                entity._temp_cache[field_name]["old_value"],
-                            )
+                            self._remove_child(field.to_cls, cache.old_value)
                         else:
                             # The same object was updated.
                             # Explicitly mark changed: the entity's is_changed flag may
@@ -338,24 +346,31 @@ class BaseRepository(Element, OptionsMixin):
                             item.state_.mark_changed()
 
                         self._persist_child(field.to_cls, item)
-                    elif entity._temp_cache[field_name]["change"] == "DELETED":
-                        self._remove_child(
-                            field.to_cls,
-                            entity._temp_cache[field_name]["old_value"],
-                        )
+                    elif cache.change == "DELETED":
+                        self._remove_child(field.to_cls, cache.old_value)
 
                     # Defer cache clearing until all DAO operations succeed
-                    cache_clears.append(("has_one", entity, field_name))
+                    cache_clears.append((entity, field_name))
 
         # Clear all caches atomically after all DAO operations completed successfully
-        for clear_type, ent, fname in cache_clears:
-            if clear_type == "has_many":
-                ent._temp_cache[fname]["removed"] = {}
-                ent._temp_cache[fname]["updated"] = {}
-                ent._temp_cache[fname]["added"] = {}
-            else:  # has_one
-                ent._temp_cache[fname]["change"] = None
-                ent._temp_cache[fname]["old_value"] = None
+        for ent, fname in cache_clears:
+            cache = ent._temp_cache.get(fname)
+            if cache is not None:
+                cache.clear()
+
+    def _prewarm_associations(self, aggregate: Any) -> None:
+        """Eagerly load all association fields into the field cache.
+
+        In DDD, loading an aggregate should return the complete aggregate
+        boundary.  This method triggers the descriptor ``__get__`` on each
+        HasMany / HasOne field, which fetches child entities from the data
+        store and caches them so that subsequent access does not incur an
+        additional database round-trip.
+        """
+        if not has_association_fields(aggregate):
+            return
+        for field_name in association_fields(aggregate):
+            getattr(aggregate, field_name)
 
     def get(self, identifier) -> Any:
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
@@ -371,6 +386,7 @@ class BaseRepository(Element, OptionsMixin):
         domain-friendly design patterns like the `Specification` pattern.
         """
         item = self._dao.get(identifier)
+        self._prewarm_associations(item)
         return item
 
 

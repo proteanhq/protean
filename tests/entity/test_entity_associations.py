@@ -154,7 +154,7 @@ class TestHasMany:
         order.add_items(item)
 
         assert "items" in order._temp_cache
-        assert "added" in order._temp_cache["items"]
+        assert hasattr(order._temp_cache["items"], "added")
 
     def test_add_updates_cache_instead_of_deleting(self):
         """Adding items should update the field cache in-place rather than
@@ -342,8 +342,9 @@ class TestStateTracking:
 
         # HasMany.add tracks changes in _temp_cache
         assert "items" in order._temp_cache
-        assert "added" in order._temp_cache["items"]
-        assert len(order._temp_cache["items"]["added"]) == 1
+        cache = order._temp_cache["items"]
+        assert hasattr(cache, "added")
+        assert len(cache.added) == 1
 
     def test_setting_has_one_marks_changed(self):
         order = Order(order_number="ORD-031")

@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Optional, TypeVar, cast
 from pydantic import PrivateAttr
 
 from protean.core.entity import BaseEntity
+from protean.fields.tempdata import AssociationCache
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.fields.resolved import ResolvedField
@@ -305,7 +306,7 @@ class BaseAggregate(BaseEntity):
             "_state": _EntityState(),
             "_root": None,
             "_owner": None,
-            "_temp_cache": defaultdict(lambda: defaultdict(dict)),
+            "_temp_cache": AssociationCache(),
             "_events": [],
             "_disable_invariant_checks": True,  # Suppress during replay
             "_invariants": defaultdict(dict),
