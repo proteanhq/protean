@@ -39,6 +39,11 @@ If you are new to these patterns, these sequences build on each other:
     [Consuming Events from Other Domains](consuming-events-from-other-domains.md) →
     [Sharing Event Classes Across Domains](sharing-event-classes-across-domains.md)
 
+**Cross-system integration** -- publishing, consuming, and contracting across system boundaries:
+:   [Consuming Events from Other Domains](consuming-events-from-other-domains.md) →
+    [Fact Events as Integration Contracts](fact-events-as-integration-contracts.md) →
+    [CloudEvents as a Boundary Contract](cloudevents-interoperability.md)
+
 **Read models** -- designing, deploying, and evolving projections:
 :   [Design Projection Granularity](projection-granularity.md) →
     [Projection Rebuilds as Deployment](projection-rebuilds-as-deployment.md) →
@@ -129,6 +134,12 @@ If you are new to these patterns, these sequences build on each other:
   every event and command via enrichment hooks. Keeps the domain model clean
   while ensuring all messages carry operational context in
   `metadata.extensions`.
+
+- **[CloudEvents as a Boundary Contract](cloudevents-interoperability.md)** --
+  Serialize Protean events to the CloudEvents v1.0 standard at system
+  boundaries. Keep internal metadata DDD-native; use `to_cloudevent()` and
+  `from_cloudevent()` as an anti-corruption layer for interoperability with
+  external systems, Kafka topics, and webhooks.
 
 ## Architecture & Quality
 

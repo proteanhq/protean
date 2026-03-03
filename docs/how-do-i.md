@@ -81,6 +81,8 @@ need by what you're trying to accomplish.
 | Use fact events for cross-context integration   | [Fact Events as Integration Contracts](./patterns/fact-events-as-integration-contracts.md) |
 | Follow the causal chain of a business operation | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
 | Traverse causation chains programmatically      | [Message Tracing](./guides/domain-behavior/message-tracing.md#traversing-the-causation-chain-programmatically) |
+| Serialize events to CloudEvents v1.0 for external systems | [CloudEvents Interoperability](./guides/consume-state/cloudevents.md) |
+| Consume CloudEvents from external systems       | [CloudEvents Interoperability](./guides/consume-state/cloudevents.md#consuming-cloudevents) |
 
 ## Set Up and Configure
 

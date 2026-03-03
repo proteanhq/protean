@@ -42,6 +42,12 @@ Subscribers consume messages from external message brokers and other systems out
 
 [Learn more about subscribers →](./subscribers.md)
 
+### CloudEvents Interoperability <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
+
+When events need to cross system boundaries — external APIs, Kafka topics, webhooks, or other Protean domains — CloudEvents serialization translates between Protean's internal metadata and the standard format. Protean is a compliant CloudEvents v1.0 producer and consumer.
+
+[Learn more about CloudEvents interoperability →](./cloudevents.md)
+
 ## Supporting Topics
 
 - [Stream Categories](../../concepts/async-processing/stream-categories.md) — How messages are organized and routed through named streams.

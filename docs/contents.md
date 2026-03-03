@@ -130,6 +130,7 @@ specific area.
 - [Projectors](./guides/consume-state/projectors.md) -- Define event handlers that maintain projections.
 - [Query Handlers](./guides/consume-state/query-handlers.md) -- Process queries and return results from projections.
 - [Subscribers](./guides/consume-state/subscribers.md) -- Consume messages from external brokers.
+- [CloudEvents Interoperability](./guides/consume-state/cloudevents.md) -- Serialize events to CloudEvents v1.0 for external systems, and consume CloudEvents from external sources.
 - [Stream Categories](./concepts/async-processing/stream-categories.md) -- How messages are organized and routed.
 - [Event Upcasting](./guides/consume-state/event-upcasting.md) -- Transforming old event schemas to match the current version during replay.
 
@@ -302,6 +303,7 @@ Protean supports but does not enforce.
 - [Coordinating Long-Running Processes](./patterns/coordinating-long-running-processes.md) -- Use a process manager to coordinate multi-step workflows across aggregates, with idempotent handlers, compensation, and timeout strategies.
 - [Message Tracing in Event-Driven Systems](./patterns/message-tracing.md) -- Correlation and causation IDs for end-to-end traceability across commands and events.
 - [Enrich Messages with Cross-Cutting Metadata](./patterns/message-enrichment.md) -- Inject tenant IDs, user context, and request trace IDs into events and commands via enrichment hooks, keeping the domain model clean.
+- [CloudEvents as a Boundary Contract](./patterns/cloudevents-interoperability.md) -- Serialize Protean events to the CloudEvents v1.0 standard at system boundaries; use `to_cloudevent()` and `from_cloudevent()` as an anti-corruption layer for interoperability.
 
 ### Architecture & Quality
 

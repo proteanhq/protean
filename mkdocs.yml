@@ -236,6 +236,7 @@ nav:
       - guides/consume-state/projectors.md
       - guides/consume-state/query-handlers.md
       - guides/consume-state/subscribers.md
+      - guides/consume-state/cloudevents.md
       - guides/consume-state/event-upcasting.md
     - Expose Your Domain:
       - guides/fastapi/index.md
@@ -403,6 +404,7 @@ nav:
       - patterns/process-manager-lifecycle.md
       - patterns/message-tracing.md
       - patterns/message-enrichment.md
+      - patterns/cloudevents-interoperability.md
     - Architecture & Quality:
       - patterns/organize-by-domain-concept.md
       - patterns/validation-layering.md

@@ -26,6 +26,7 @@ def _default_config():
         "testing": None,
         "debug": None,
         "secret_key": None,
+        "source_uri": None,
         "identity_strategy": IdentityStrategy.UUID.value,
         "identity_type": IdentityType.STRING.value,
         "databases": {

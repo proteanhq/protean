@@ -814,3 +814,411 @@ class Message(BaseModel, OptionsMixin):
             data=message_object.payload,
             metadata=metadata_with_envelope,
         )
+
+    # ── CloudEvents v1.0 serialization ───────────────────────────────
+
+    def _derive_source(self) -> str:
+        """Derive the CloudEvents ``source`` URI-reference.
+
+        Fallback chain:
+        1. ``current_domain.config["source_uri"]`` if configured.
+        2. Domain name extracted from ``metadata.domain.stream_category``
+           (format ``<domain>::<aggregate>``) → ``urn:protean:<domain>``.
+        3. ``"urn:protean:unknown"`` as a last resort.
+        """
+        # 1. Configured source_uri
+        try:
+            source_uri = current_domain.config.get("source_uri")
+            if source_uri:
+                return source_uri
+            # Fall back to domain name
+            return f"urn:protean:{current_domain.normalized_name}"
+        except Exception:
+            pass
+
+        # 2. Extract from stream_category
+        if (
+            self.metadata
+            and self.metadata.domain
+            and self.metadata.domain.stream_category
+        ):
+            parts = self.metadata.domain.stream_category.split("::")
+            if parts[0]:
+                return f"urn:protean:{parts[0]}"
+
+        # 3. Last resort
+        return "urn:protean:unknown"
+
+    def _extract_subject(self) -> str | None:
+        """Extract the aggregate identifier from the stream name.
+
+        Stream name formats:
+        - Event:      ``<category>-<id>``
+        - Fact event:  ``<category>-fact-<id>``
+        - Command:     ``<category>:command-<id>``
+
+        Returns ``None`` when stream or stream_category is unavailable.
+        """
+        if not self.metadata or not self.metadata.headers:
+            return None
+
+        stream = self.metadata.headers.stream
+        if not stream:
+            return None
+
+        category = (
+            self.metadata.domain.stream_category if self.metadata.domain else None
+        )
+
+        if category:
+            # Fact event: <category>-fact-<id>
+            fact_prefix = f"{category}-fact-"
+            if stream.startswith(fact_prefix):
+                return stream[len(fact_prefix) :]
+
+            # Command: <category>:command-<id>
+            cmd_prefix = f"{category}:command-"
+            if stream.startswith(cmd_prefix):
+                return stream[len(cmd_prefix) :]
+
+            # Regular event: <category>-<id>
+            evt_prefix = f"{category}-"
+            if stream.startswith(evt_prefix):
+                return stream[len(evt_prefix) :]
+
+        # Fallback: parse stream name without category.
+        # Command format: <anything>:command-<id>
+        cmd_marker = ":command-"
+        if cmd_marker in stream:
+            return stream.split(cmd_marker, 1)[1]
+
+        # Event format: last segment after final "-"
+        # Only attempt if stream contains "-"
+        if "-" in stream:
+            # Handle <category>-fact-<id>
+            if "-fact-" in stream:
+                return stream.split("-fact-", 1)[1]
+            # Handle <category>-<id>  (take everything after first "-")
+            _, _, subject = stream.partition("-")
+            return subject if subject else None
+
+        return None
+
+    def to_cloudevent(self) -> dict[str, Any]:
+        """Serialize this message as a CloudEvents v1.0 JSON object.
+
+        Protean is a compliant CloudEvents producer: every required and
+        optional context attribute is derived from existing metadata at
+        serialization time — no internal metadata classes are modified.
+
+        **Required attributes** (always present):
+
+        ============= ============================================
+        CE Attribute  Derived from
+        ============= ============================================
+        specversion   Literal ``"1.0"``
+        id            ``metadata.headers.id``
+        type          ``metadata.headers.type``
+        source        ``source_uri`` config, or ``urn:protean:<domain>``
+        ============= ============================================
+
+        **Optional attributes** (included when available):
+
+        ================= ============================================
+        CE Attribute      Derived from
+        ================= ============================================
+        time              ``metadata.headers.time`` (RFC 3339)
+        subject           Aggregate ID parsed from stream name
+        datacontenttype   Literal ``"application/json"``
+        ================= ============================================
+
+        **Protean extensions** (``protean``-namespaced):
+
+        ======================= ============================================
+        CE Extension            Derived from
+        ======================= ============================================
+        traceparent             ``metadata.headers.traceparent`` (W3C)
+        sequence                ``metadata.domain.sequence_id``
+        proteansequencetype     ``"Integer"`` or ``"DotNotation"``
+        proteancorrelationid    ``metadata.domain.correlation_id``
+        proteancausationid      ``metadata.domain.causation_id``
+        proteanchecksum         ``metadata.envelope.checksum``
+        proteankind             ``metadata.domain.kind``
+        ======================= ============================================
+
+        User-supplied extensions from ``metadata.extensions`` (populated
+        via event/command enrichers) are merged into the top level.
+
+        Returns:
+            A dict conforming to the CloudEvents v1.0 JSON format.
+            Keys with ``None`` values are omitted.
+
+        Example::
+
+            message = Message.from_domain_object(event)
+            ce = message.to_cloudevent()
+            # {
+            #     "specversion": "1.0",
+            #     "id": "myapp::order-abc123-1",
+            #     "type": "MyApp.OrderPlaced.v1",
+            #     "source": "https://orders.example.com",
+            #     "time": "2026-03-02T10:30:00+00:00",
+            #     "subject": "abc123",
+            #     "datacontenttype": "application/json",
+            #     "proteankind": "EVENT",
+            #     "data": {"order_id": "abc123", ...},
+            # }
+
+        .. seealso::
+            `CloudEvents v1.0.2 Specification
+            <https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md>`_
+        """
+        assert self.metadata is not None, "Message must have metadata"
+
+        headers = self.metadata.headers
+        domain = self.metadata.domain
+        envelope = self.metadata.envelope
+
+        # Required attributes
+        ce: dict[str, Any] = {
+            "specversion": "1.0",
+            "id": headers.id if headers else None,
+            "type": headers.type if headers else None,
+            "source": self._derive_source(),
+        }
+
+        # Optional context attributes
+        if headers and headers.time:
+            ce["time"] = headers.time.isoformat()
+        subject = self._extract_subject()
+        if subject:
+            ce["subject"] = subject
+        ce["datacontenttype"] = "application/json"
+
+        # Data
+        ce["data"] = self.data
+
+        # ── Extensions ──
+
+        # W3C Trace Context
+        if headers and headers.traceparent:
+            ce["traceparent"] = headers.traceparent.to_w3c()
+
+        # Protean-namespaced extensions
+        if domain:
+            if domain.sequence_id is not None:
+                ce["sequence"] = domain.sequence_id
+                ce["proteansequencetype"] = (
+                    "DotNotation" if "." in domain.sequence_id else "Integer"
+                )
+            if domain.correlation_id is not None:
+                ce["proteancorrelationid"] = domain.correlation_id
+            if domain.causation_id is not None:
+                ce["proteancausationid"] = domain.causation_id
+            if domain.kind is not None:
+                ce["proteankind"] = domain.kind
+
+        if envelope and envelope.checksum:
+            ce["proteanchecksum"] = envelope.checksum
+
+        # User extensions from enrichers
+        if self.metadata.extensions:
+            ce.update(self.metadata.extensions)
+
+        # Strip None values
+        return {k: v for k, v in ce.items() if v is not None}
+
+    @classmethod
+    def from_cloudevent(cls, cloudevent: dict[str, Any]) -> "Message":
+        """Construct a Protean ``Message`` from a CloudEvents v1.0 JSON object.
+
+        Protean is a compliant CloudEvents consumer: this method accepts
+        any valid CloudEvents v1.0 structured-mode JSON object and maps
+        its attributes into Protean's internal metadata structure.
+
+        **Required CE attributes** → Protean mapping:
+
+        ============= ============================================
+        CE Attribute  Protean Destination
+        ============= ============================================
+        specversion   ``envelope.specversion`` (must be ``"1.0"``)
+        id            ``headers.id``
+        type          ``headers.type``
+        source        ``extensions["ce_source"]``
+        ============= ============================================
+
+        **Optional CE attributes** → Protean mapping:
+
+        ================= ============================================
+        CE Attribute      Protean Destination
+        ================= ============================================
+        time              ``headers.time``
+        subject           ``extensions["ce_subject"]``
+        datacontenttype   ``extensions["ce_datacontenttype"]`` (if not JSON)
+        dataschema        ``extensions["ce_dataschema"]``
+        ================= ============================================
+
+        **Protean extensions** (round-trip preservation):
+
+        ======================= ============================================
+        CE Extension            Protean Destination
+        ======================= ============================================
+        traceparent             ``headers.traceparent``
+        proteancorrelationid    ``domain.correlation_id``
+        proteancausationid      ``domain.causation_id``
+        proteanchecksum         ``envelope.checksum``
+        proteankind             ``domain.kind``
+        sequence                ``domain.sequence_id``
+        ======================= ============================================
+
+        All other CloudEvents extension attributes are preserved in
+        ``metadata.extensions``.
+
+        Args:
+            cloudevent: A dict conforming to the CloudEvents v1.0 JSON
+                format (structured content mode).
+
+        Returns:
+            A ``Message`` ready for dispatch, persistence, or conversion
+            to a domain object via ``to_domain_object()``.
+
+        Raises:
+            ValueError: If required CloudEvents attributes are missing
+                or ``specversion`` is not ``"1.0"``.
+
+        Example — consuming an external CloudEvent in a subscriber::
+
+            @domain.subscriber(stream="orders")
+            class OrderEventsSubscriber:
+                def __call__(self, payload: dict) -> None:
+                    message = Message.from_cloudevent(payload)
+                    # Access data
+                    order_id = message.data["order_id"]
+
+        Example — round-tripping a Protean CloudEvent::
+
+            original = Message.from_domain_object(event)
+            ce = original.to_cloudevent()
+            restored = Message.from_cloudevent(ce)
+            domain_event = restored.to_domain_object()
+
+        .. seealso::
+            `CloudEvents v1.0.2 Specification
+            <https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md>`_
+        """
+        # ── Validate required attributes ──
+        missing = [
+            attr
+            for attr in ("specversion", "id", "type", "source")
+            if attr not in cloudevent
+        ]
+        if missing:
+            raise ValueError(
+                f"CloudEvent is missing required attribute(s): {', '.join(missing)}"
+            )
+
+        specversion = cloudevent["specversion"]
+        if specversion != "1.0":
+            raise ValueError(
+                f"Unsupported CloudEvents specversion '{specversion}'; "
+                f"only '1.0' is supported"
+            )
+
+        # ── Extract known attributes ──
+        ce_id: str = cloudevent["id"]
+        ce_type: str = cloudevent["type"]
+        ce_source: str = cloudevent["source"]
+        ce_time_raw = cloudevent.get("time")
+        ce_data: dict = cloudevent.get("data", {})
+        ce_subject = cloudevent.get("subject")
+        ce_datacontenttype = cloudevent.get("datacontenttype")
+        ce_dataschema = cloudevent.get("dataschema")
+
+        # Protean extensions
+        traceparent_raw = cloudevent.get("traceparent")
+        correlation_id = cloudevent.get("proteancorrelationid")
+        causation_id = cloudevent.get("proteancausationid")
+        checksum = cloudevent.get("proteanchecksum")
+        kind = cloudevent.get("proteankind", MessageType.EVENT.value)
+        sequence_id = cloudevent.get("sequence")
+
+        # ── Parse time ──
+        ce_time: datetime | None = None
+        if ce_time_raw:
+            if isinstance(ce_time_raw, datetime):
+                ce_time = ce_time_raw
+            elif isinstance(ce_time_raw, str):
+                ce_time = datetime.fromisoformat(ce_time_raw)
+
+        # ── Parse traceparent ──
+        traceparent: TraceParent | None = None
+        if traceparent_raw and isinstance(traceparent_raw, str):
+            traceparent = TraceParent.build(traceparent_raw)
+
+        # ── Build headers ──
+        headers = MessageHeaders(
+            id=ce_id,
+            type=ce_type,
+            time=ce_time,
+            traceparent=traceparent,
+        )
+
+        # ── Build envelope ──
+        envelope = MessageEnvelope(
+            specversion=specversion,
+            checksum=checksum or MessageEnvelope.compute_checksum(ce_data),
+        )
+
+        # ── Build domain meta ──
+        domain_meta = DomainMeta(
+            kind=kind,
+            correlation_id=correlation_id,
+            causation_id=causation_id,
+            sequence_id=sequence_id,
+        )
+
+        # ── Collect extensions ──
+        # Known CE/Protean attribute names to exclude from extensions
+        _known_attrs = {
+            "specversion",
+            "id",
+            "type",
+            "source",
+            "time",
+            "subject",
+            "datacontenttype",
+            "dataschema",
+            "data",
+            "traceparent",
+            "proteancorrelationid",
+            "proteancausationid",
+            "proteanchecksum",
+            "proteankind",
+            "sequence",
+            "proteansequencetype",
+        }
+        extensions: dict[str, Any] = {}
+
+        # Preserve CE-specific attributes that have no internal field
+        extensions["ce_source"] = ce_source
+        if ce_subject is not None:
+            extensions["ce_subject"] = ce_subject
+        if ce_datacontenttype and ce_datacontenttype != "application/json":
+            extensions["ce_datacontenttype"] = ce_datacontenttype
+        if ce_dataschema:
+            extensions["ce_dataschema"] = ce_dataschema
+
+        # Collect unknown CE extensions
+        for key, value in cloudevent.items():
+            if key not in _known_attrs:
+                extensions[key] = value
+
+        # ── Assemble metadata ──
+        metadata = Metadata(
+            headers=headers,
+            envelope=envelope,
+            domain=domain_meta,
+            extensions=extensions,
+        )
+
+        return cls(data=ce_data, metadata=metadata)

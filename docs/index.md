@@ -55,6 +55,16 @@ infrastructure and zero boilerplate.
     PostgreSQL, Redis, Elasticsearch, MessageDB, and MSSQL across
     Python 3.11-3.14.
 
+-   __:material-cloud-check-outline: CloudEvents Compliant__
+
+    ---
+
+    Every event and command can be serialized to the
+    [CloudEvents v1.0](https://cloudevents.io/) standard for
+    cross-system interoperability. Protean's rich DDD metadata —
+    causal chains, sequence tracking, message integrity — rides
+    alongside as namespaced extensions.
+
 </div>
 
 ---
