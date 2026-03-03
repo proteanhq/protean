@@ -249,6 +249,7 @@ class BaseMessageType(BaseModel, OptionsMixin):
             ("aggregate_cluster", None),
             ("part_of", None),
             ("is_fact_event", False),
+            ("published", False),
         ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

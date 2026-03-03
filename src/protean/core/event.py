@@ -47,6 +47,7 @@ class BaseEvent(BaseMessageType):
     | Option | Type | Description |
     |--------|------|-------------|
     | ``part_of`` | ``type`` | The aggregate class that raises this event. Required. |
+    | ``published`` | ``bool`` | Whether this event is part of the bounded context's published language. Default ``False``. |
     """
 
     element_type: ClassVar[str] = DomainObjects.EVENT
@@ -230,6 +231,12 @@ def domain_event_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
     if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
         raise IncorrectUsageError(
             f"Event `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
+        )
+
+    if not isinstance(element_cls.meta_.published, bool):
+        raise IncorrectUsageError(
+            f"Event `{element_cls.__name__}` has invalid `published` option "
+            f"`{element_cls.meta_.published}`. Must be True or False."
         )
 
     return element_cls

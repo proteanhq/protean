@@ -52,3 +52,33 @@ def test_that_part_of_is_resolved_correctly():
 
 def test_aggregate_cluster_of_event():
     assert UserLoggedIn.meta_.aggregate_cluster == User
+
+
+class TestPublishedOption:
+    def test_published_defaults_to_false(self):
+        assert UserLoggedIn.meta_.published is False
+
+    def test_published_true_is_accepted(self, test_domain):
+        class OrderPlaced(BaseEvent):
+            order_id: Identifier(identifier=True)
+
+        test_domain.register(OrderPlaced, part_of=User, published=True)
+
+        assert OrderPlaced.meta_.published is True
+
+    def test_published_false_is_accepted(self, test_domain):
+        class InternalEvent(BaseEvent):
+            data: String()
+
+        test_domain.register(InternalEvent, part_of=User, published=False)
+
+        assert InternalEvent.meta_.published is False
+
+    def test_invalid_published_raises_error(self, test_domain):
+        class BadEvent(BaseEvent):
+            data: String()
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.register(BadEvent, part_of=User, published="yes")
+
+        assert "invalid `published` option" in exc.value.args[0]
