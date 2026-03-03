@@ -458,6 +458,43 @@ class Message(BaseModel, OptionsMixin):
         return bool(self.data) or bool(self.metadata)
 
     @classmethod
+    def _migrate_legacy_metadata(cls, metadata_dict: dict) -> None:
+        """Migrate legacy flat metadata format to nested structure.
+
+        Old Protean versions stored metadata as flat keys (id, fqn, kind,
+        type, stream, timestamp, sequence_id, etc.).  Current versions use
+        nested sub-objects (headers, domain, envelope).  This method detects
+        the old format and reshapes it in-place so that the normal
+        _build_* helpers and the Metadata constructor work unchanged.
+        """
+        # Detect legacy format: has flat keys like 'fqn' but no 'headers'
+        if "fqn" not in metadata_dict or "headers" in metadata_dict:
+            return
+
+        metadata_dict["headers"] = {
+            "id": metadata_dict.pop("id", None),
+            "time": metadata_dict.pop("timestamp", None),
+            "type": metadata_dict.pop("type", None),
+            "stream": metadata_dict.pop("stream", None),
+        }
+
+        metadata_dict["domain"] = {
+            "fqn": metadata_dict.pop("fqn", None),
+            "kind": metadata_dict.pop("kind", None),
+            "version": metadata_dict.pop("version", None),
+            "sequence_id": metadata_dict.pop("sequence_id", None),
+            "asynchronous": metadata_dict.pop("asynchronous", True),
+            "origin_stream": metadata_dict.pop("origin_stream", None),
+        }
+
+        # Old payload_hash is incompatible with new SHA-256 checksum; discard it
+        metadata_dict.pop("payload_hash", None)
+        metadata_dict["envelope"] = {
+            "specversion": "1.0",
+            "checksum": None,
+        }
+
+    @classmethod
     def _build_envelope(cls, metadata_dict: dict, message: dict) -> None:
         """Build envelope within metadata if not present."""
         if "envelope" not in metadata_dict:
@@ -569,6 +606,9 @@ class Message(BaseModel, OptionsMixin):
         """Deserialize a message from its dictionary representation."""
         try:
             metadata_dict = message["metadata"]
+
+            # Migrate legacy flat metadata to nested structure
+            cls._migrate_legacy_metadata(metadata_dict)
 
             # Build metadata components
             cls._build_envelope(metadata_dict, message)

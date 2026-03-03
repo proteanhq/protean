@@ -89,11 +89,17 @@ class MessageDBStore(BaseEventStore):
         Any changes to configuration will need to updated here.
         """
         parsed = urlparse(self.domain.config["event_store"]["database_uri"])
+        query_params = (
+            dict(param.split("=") for param in parsed.query.split("&"))
+            if parsed.query
+            else {}
+        )
         conn = psycopg2.connect(
             dbname=parsed.path[1:],
             user="postgres",
             port=parsed.port,
             host=parsed.hostname,
+            sslmode=query_params.get("sslmode", "disable"),
         )
 
         cursor = conn.cursor()

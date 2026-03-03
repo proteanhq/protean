@@ -26,7 +26,7 @@ MSSQL_PORT = 51433
 
 # Pre-built connection URIs
 POSTGRES_URI = f"postgresql://postgres:postgres@localhost:{POSTGRES_PORT}/postgres"
-MESSAGE_DB_URI = f"postgresql://message_store@localhost:{MESSAGE_DB_PORT}/message_store"
+MESSAGE_DB_URI = f"postgresql://message_store@localhost:{MESSAGE_DB_PORT}/message_store?sslmode=disable"
 REDIS_URI = f"redis://localhost:{REDIS_PORT}"
 MSSQL_URI = (
     f"mssql+pyodbc://sa:Protean123!@localhost:{MSSQL_PORT}/master"
