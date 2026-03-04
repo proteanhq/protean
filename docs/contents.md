@@ -347,6 +347,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 - [Query System](./concepts/internals/query-system.md) -- How the Repository → DAO → QuerySet → Provider chain works, Q object expression trees, lookup resolution, and lazy evaluation.
 - [Event Sourcing](./concepts/internals/event-sourcing.md) -- How `raise_()` invokes `@apply` handlers, aggregate reconstitution, version tracking, causation chain traversal algorithms, and projection rebuilding.
 - [Event Upcasting](./concepts/internals/event-upcasting.md) -- How old event payloads are transparently transformed to the current schema during deserialization.
+- [IR Specification](./concepts/internals/ir-specification.md) -- The portable JSON schema capturing domain model topology.
 
 ---
 

@@ -26,6 +26,7 @@ from protean.cli.dlq import app as dlq_app
 from protean.cli.docs import app as docs_app
 from protean.cli.events import app as events_app
 from protean.cli.generate import app as generate_app
+from protean.cli.ir import app as ir_app
 from protean.cli.new import new
 from protean.cli.observatory import observatory
 from protean.cli.shell import shell
@@ -51,6 +52,7 @@ app.add_typer(db_app, name="db")
 app.add_typer(dlq_app, name="dlq")
 app.add_typer(events_app, name="events")
 app.add_typer(generate_app, name="generate")
+app.add_typer(ir_app, name="ir")
 app.add_typer(docs_app, name="docs")
 app.add_typer(projection_app, name="projection")
 app.add_typer(snapshot_app, name="snapshot")

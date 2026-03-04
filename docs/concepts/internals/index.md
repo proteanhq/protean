@@ -28,3 +28,6 @@ shaped it.
   transparently transformed to the current schema during deserialization,
   chain building algorithm, validation, and integration with
   `Message.to_domain_object()`.
+- [Intermediate Representation (IR)](./ir-specification.md) -- The portable
+  JSON format that captures domain model topology -- elements, their shape,
+  and how they connect.
