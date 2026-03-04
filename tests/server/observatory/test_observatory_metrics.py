@@ -103,6 +103,65 @@ def _make_mock_domain(name: str = "mock-domain") -> MagicMock:
     return mock
 
 
+@pytest.mark.redis
+class TestPerConsumerMetrics:
+    """Integration tests for per-consumer Prometheus metrics."""
+
+    def test_consumer_metrics_appear_after_xreadgroup(self, test_domain):
+        """Per-consumer metrics appear once a consumer reads from a stream."""
+        broker = test_domain.brokers.get("default")
+        redis_conn = broker.redis_instance
+
+        stream = "metrics-test::consumer-gauges"
+        group = "MetricsConsumerGroup"
+        consumer_name = "MetricsHandler-metricshost-9876-aabbcc"
+
+        redis_conn.xadd(stream, {"data": "metrics-msg"})
+        try:
+            redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
+        except Exception:
+            pass
+        redis_conn.xreadgroup(group, consumer_name, {stream: ">"}, count=1)
+
+        observatory = Observatory(domains=[test_domain])
+        client = TestClient(observatory.app)
+        response = client.get("/metrics")
+        body = response.text
+
+        assert "protean_consumer_pending" in body
+        assert "protean_consumer_idle_ms" in body
+        # Check labels contain our consumer/group/stream
+        assert consumer_name in body
+        assert group in body
+        assert stream in body
+
+    def test_consumer_metrics_help_and_type(self, test_domain):
+        """Per-consumer metrics have HELP and TYPE annotations."""
+        broker = test_domain.brokers.get("default")
+        redis_conn = broker.redis_instance
+
+        stream = "metrics-test::consumer-help"
+        group = "HelpTestGroup"
+        consumer = "HelpHandler-host-1-abc"
+
+        redis_conn.xadd(stream, {"data": "msg"})
+        try:
+            redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
+        except Exception:
+            pass
+        redis_conn.xreadgroup(group, consumer, {stream: ">"}, count=1)
+
+        observatory = Observatory(domains=[test_domain])
+        client = TestClient(observatory.app)
+        response = client.get("/metrics")
+        body = response.text
+
+        assert "# HELP protean_consumer_pending" in body
+        assert "# TYPE protean_consumer_pending gauge" in body
+        assert "# HELP protean_consumer_idle_ms" in body
+        assert "# TYPE protean_consumer_idle_ms gauge" in body
+
+
 class TestMetricsErrorPaths:
     def test_metrics_when_outbox_query_fails(self):
         """Metrics endpoint handles outbox query exceptions gracefully."""

@@ -522,6 +522,64 @@ class RedisBroker(BaseBroker):
                 f"Error ensuring consumer group {group_name} for stream {stream}: {e}"
             )
 
+    def _cleanup_stale_consumers(
+        self, stream: str, group_name: str, current_consumer_name: str
+    ) -> int:
+        """Remove stale consumers from a consumer group.
+
+        When an engine restarts with the same hostname and PID, old consumer
+        entries persist in Redis.  This method identifies consumers that share
+        the same ``{ClassName}-{hostname}-{pid}`` prefix as
+        *current_consumer_name* but have a different random-hex suffix, and
+        deletes them via ``XGROUP DELCONSUMER``.
+
+        Consumers with pending (un-ACKed) messages are skipped so they can
+        drain naturally.
+
+        Returns the number of stale consumers removed.
+        """
+        # Extract prefix: everything before the last "-" (the random hex)
+        last_dash = current_consumer_name.rfind("-")
+        if last_dash == -1:
+            return 0
+        current_prefix = current_consumer_name[:last_dash]
+
+        removed = 0
+        try:
+            consumers_info = self.redis_instance.xinfo_consumers(stream, group_name)
+            for c in consumers_info:
+                if not isinstance(c, dict):
+                    continue
+                name = self._get_field_value(c, "name")
+                if name is None or name == current_consumer_name:
+                    continue
+
+                # Same class-hostname-pid prefix but different random hex?
+                name_last_dash = name.rfind("-")
+                if name_last_dash == -1 or name[:name_last_dash] != current_prefix:
+                    continue
+
+                pending = self._get_field_value(c, "pending", convert_to_int=True) or 0
+                if pending > 0:
+                    logger.debug(
+                        f"Skipping stale consumer {name} "
+                        f"with {pending} pending message(s)"
+                    )
+                    continue
+
+                try:
+                    self.redis_instance.xgroup_delconsumer(stream, group_name, name)
+                    removed += 1
+                    logger.debug(f"Removed stale consumer {name} from {group_name}")
+                except Exception as e:
+                    logger.debug(f"Failed to remove stale consumer {name}: {e}")
+        except Exception as e:
+            logger.debug(
+                f"Error cleaning stale consumers for {group_name} on {stream}: {e}"
+            )
+
+        return removed
+
     def _info(self) -> dict:
         """Get information about consumer groups and consumers"""
         info = {"consumer_groups": {}}

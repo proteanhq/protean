@@ -239,6 +239,97 @@ class TestEmitterEmit:
             pubsub.close()
 
 
+@pytest.mark.redis
+class TestEmitterWorkerIdPropagation:
+    """Tests that worker_id is propagated through emit() to published traces."""
+
+    def test_emit_includes_worker_id_in_published_trace(self, redis_domain):
+        """worker_id appears in the JSON message published to Pub/Sub."""
+        emitter = TraceEmitter(redis_domain)
+        emitter._ensure_initialized()
+
+        pubsub = emitter._redis.pubsub()
+        pubsub.subscribe(TRACE_CHANNEL)
+        pubsub.get_message(timeout=1.0)
+
+        try:
+            emitter._last_subscriber_check = 0.0
+
+            emitter.emit(
+                event="handler.completed",
+                stream="test::order",
+                message_id="msg-w1",
+                message_type="OrderPlaced",
+                handler="OrderProjector",
+                duration_ms=8.0,
+                worker_id="OrderProjector-host1-1234-abcdef",
+            )
+
+            message = pubsub.get_message(timeout=2.0)
+            assert message is not None
+            data = json.loads(message["data"])
+            assert data["worker_id"] == "OrderProjector-host1-1234-abcdef"
+        finally:
+            pubsub.unsubscribe(TRACE_CHANNEL)
+            pubsub.close()
+
+    def test_emit_worker_id_defaults_to_none_in_published_trace(self, redis_domain):
+        """When worker_id is not passed, it appears as null in the published JSON."""
+        emitter = TraceEmitter(redis_domain)
+        emitter._ensure_initialized()
+
+        pubsub = emitter._redis.pubsub()
+        pubsub.subscribe(TRACE_CHANNEL)
+        pubsub.get_message(timeout=1.0)
+
+        try:
+            emitter._last_subscriber_check = 0.0
+
+            emitter.emit(
+                event="handler.started",
+                stream="test::user",
+                message_id="msg-w2",
+                message_type="UserRegistered",
+            )
+
+            message = pubsub.get_message(timeout=2.0)
+            assert message is not None
+            data = json.loads(message["data"])
+            assert data["worker_id"] is None
+        finally:
+            pubsub.unsubscribe(TRACE_CHANNEL)
+            pubsub.close()
+
+    def test_emit_persists_worker_id_to_trace_stream(self, redis_domain):
+        """worker_id is persisted in the Redis trace stream for dashboard history."""
+        from protean.server.tracing import TRACE_STREAM
+
+        emitter = TraceEmitter(redis_domain, trace_retention_days=1)
+        emitter._ensure_initialized()
+
+        # Clean trace stream
+        emitter._redis.delete(TRACE_STREAM)
+
+        emitter.emit(
+            event="handler.completed",
+            stream="test::order",
+            message_id="msg-persist-w",
+            message_type="OrderPlaced",
+            handler="OrderProjector",
+            worker_id="OrderProjector-pod42-9999-aabb00",
+        )
+
+        # Read back from stream
+        entries = emitter._redis.xrange(TRACE_STREAM)
+        assert len(entries) >= 1
+        last_entry = entries[-1]
+        data_raw = last_entry[1].get(b"data") or last_entry[1].get("data")
+        if isinstance(data_raw, bytes):
+            data_raw = data_raw.decode("utf-8")
+        data = json.loads(data_raw)
+        assert data["worker_id"] == "OrderProjector-pod42-9999-aabb00"
+
+
 class TestEmitterInitializationEdgeCases:
     """Unit tests for _ensure_initialized error paths (no Redis needed)."""
 

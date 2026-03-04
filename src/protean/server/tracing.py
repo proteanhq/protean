@@ -46,6 +46,7 @@ class MessageTrace:
     error: Optional[str] = None  # Error message for failures
     metadata: Optional[dict] = field(default_factory=dict)  # Extra context
     payload: Optional[dict] = None  # Message payload (event/command data)
+    worker_id: Optional[str] = None  # Subscription instance that processed this message
     timestamp: str = ""  # ISO 8601, filled automatically
 
     def __post_init__(self) -> None:
@@ -137,6 +138,7 @@ class TraceEmitter:
         error: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
         payload: Optional[dict[str, Any]] = None,
+        worker_id: Optional[str] = None,
     ) -> None:
         """Emit a trace event. No-op when nobody is listening and persistence is off."""
         has_subscribers = self._check_subscribers()
@@ -163,6 +165,7 @@ class TraceEmitter:
                 error=error,
                 metadata=metadata or {},
                 payload=payload,
+                worker_id=worker_id,
             )
             json_str = trace.to_json()
 

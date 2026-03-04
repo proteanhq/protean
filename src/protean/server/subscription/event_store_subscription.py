@@ -361,7 +361,9 @@ class EventStoreSubscription(BaseSubscription):
                     continue
 
             # Process the message and get a success/failure result
-            is_successful = await self.engine.handle_message(self.handler, message)
+            is_successful = await self.engine.handle_message(
+                self.handler, message, worker_id=self.subscription_id
+            )
 
             # Always update position to avoid reprocessing the message
             await self.update_read_position(position)

@@ -389,6 +389,7 @@ class Engine:
         *,
         message_id: str | None = None,
         stream: str | None = None,
+        worker_id: str | None = None,
     ) -> bool:
         """
         Handle a message received from the broker.
@@ -441,6 +442,7 @@ class Engine:
         self,
         handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]],
         message: Message,
+        worker_id: str | None = None,
     ) -> bool:
         """
         Handle a message by invoking the appropriate handler class.
@@ -495,6 +497,7 @@ class Engine:
                     message_type=message_type,
                     handler=handler_name,
                     payload=message.data,
+                    worker_id=worker_id,
                 )
 
                 start_time = time.monotonic()
@@ -523,6 +526,7 @@ class Engine:
                     message_type=message_type,
                     handler=handler_name,
                     duration_ms=round(duration_ms, 2),
+                    worker_id=worker_id,
                 )
 
                 return True
@@ -543,6 +547,7 @@ class Engine:
                     handler=handler_name,
                     duration_ms=round(duration_ms, 2),
                     error=str(exc),
+                    worker_id=worker_id,
                 )
 
                 try:

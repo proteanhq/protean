@@ -8,7 +8,7 @@ dashboard and can be consumed by external monitoring tools.
 import json
 import logging
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -33,6 +33,46 @@ _WINDOW_MS = {
 
 # Error event types for error rate calculation
 _ERROR_EVENTS = {"handler.failed", "message.dlq"}
+
+# Worker throughput settings
+_WORKER_THROUGHPUT_WINDOW_S = 300  # 5 minutes
+_WORKER_THROUGHPUT_BUCKET_S = 10  # 10-second buckets
+
+# Worker status thresholds (milliseconds)
+_WORKER_ACTIVE_THRESHOLD_MS = 5 * 60 * 1000  # 5 min
+_WORKER_IDLE_THRESHOLD_MS = 30 * 60 * 1000  # 30 min
+
+
+def _parse_worker_key(consumer_name: str) -> Tuple[str, str]:
+    """Extract (hostname, pid) from a consumer name.
+
+    Consumer names follow the pattern: {ClassName}-{hostname}-{pid}-{random_hex}
+    where:
+    - ClassName: subscriber class (no hyphens)
+    - hostname: Docker container ID or hostname (may contain hyphens)
+    - pid: numeric process ID
+    - random_hex: 6 hex characters
+
+    Strategy: split from the right — last segment is random_hex,
+    second-to-last is pid (numeric), remaining middle is hostname.
+    """
+    parts = consumer_name.rsplit("-", 2)
+    if len(parts) >= 3:
+        prefix = parts[0]  # ClassName-hostname (possibly with hyphens)
+        pid = parts[1]
+        # random_hex = parts[2]
+
+        # pid must be numeric; if not, fall back
+        if pid.isdigit():
+            # prefix = "ClassName-hostname" — strip the class name
+            # Class name is the first segment before the first hyphen
+            first_hyphen = prefix.find("-")
+            if first_hyphen != -1:
+                hostname = prefix[first_hyphen + 1 :]
+                return (hostname, pid)
+
+    # Fallback: use entire consumer name as worker_id
+    return (consumer_name, "0")
 
 
 def _get_redis(domains: List[Domain]):
@@ -200,6 +240,247 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 "message_counts": message_counts,
                 "streams": {"count": len(stream_names), "names": stream_names},
                 "consumer_groups": consumer_groups,
+            }
+        )
+
+    @router.get("/consumers")
+    async def consumers():
+        """Per-consumer breakdown across all streams and consumer groups.
+
+        Calls ``XINFO CONSUMERS`` for each (stream, group) pair to show
+        per-worker pending counts and idle time — the key data needed to
+        verify that multiple worker instances are sharing the load.
+        """
+        redis_conn = _get_redis(domains)
+        if not redis_conn:
+            return JSONResponse(
+                content={
+                    "consumers": [],
+                    "count": 0,
+                    "error": "Redis not available",
+                },
+                status_code=503,
+            )
+
+        stream_names = _discover_streams(redis_conn)
+        result = []
+
+        for stream_name in stream_names:
+            try:
+                groups = redis_conn.xinfo_groups(stream_name)
+                for g in groups:
+                    if not isinstance(g, dict):
+                        continue
+                    gname = g.get("name") or g.get(b"name")
+                    if isinstance(gname, bytes):
+                        gname = gname.decode("utf-8")
+                    if not gname:
+                        continue
+
+                    try:
+                        consumers_info = redis_conn.xinfo_consumers(stream_name, gname)
+                        for c in consumers_info:
+                            if not isinstance(c, dict):
+                                continue
+                            cname = c.get("name") or c.get(b"name")
+                            if isinstance(cname, bytes):
+                                cname = cname.decode("utf-8")
+                            cpending = c.get("pending") or c.get(b"pending") or 0
+                            cidle = c.get("idle") or c.get(b"idle") or 0
+                            result.append(
+                                {
+                                    "consumer_name": str(cname),
+                                    "group": str(gname),
+                                    "stream": stream_name,
+                                    "pending": int(cpending),
+                                    "idle_ms": int(cidle),
+                                }
+                            )
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        return JSONResponse(content={"consumers": result, "count": len(result)})
+
+    @router.get("/workers")
+    async def workers():
+        """Engine worker (pod) overview with per-worker throughput sparklines.
+
+        Groups Redis consumers by engine instance (hostname + pid) and computes
+        per-worker throughput from the trace stream. Each worker represents one
+        engine process (container/pod) that may run multiple subscriptions.
+        """
+        redis_conn = _get_redis(domains)
+        if not redis_conn:
+            return JSONResponse(
+                content={
+                    "workers": [],
+                    "count": 0,
+                    "error": "Redis not available",
+                },
+                status_code=503,
+            )
+
+        # 1. Collect all consumers (same logic as /api/consumers)
+        stream_names = _discover_streams(redis_conn)
+        all_consumers = []
+
+        for stream_name in stream_names:
+            try:
+                groups = redis_conn.xinfo_groups(stream_name)
+                for g in groups:
+                    if not isinstance(g, dict):
+                        continue
+                    gname = g.get("name") or g.get(b"name")
+                    if isinstance(gname, bytes):
+                        gname = gname.decode("utf-8")
+                    if not gname:
+                        continue
+
+                    try:
+                        consumers_info = redis_conn.xinfo_consumers(stream_name, gname)
+                        for c in consumers_info:
+                            if not isinstance(c, dict):
+                                continue
+                            cname = c.get("name") or c.get(b"name")
+                            if isinstance(cname, bytes):
+                                cname = cname.decode("utf-8")
+                            cpending = c.get("pending") or c.get(b"pending") or 0
+                            cidle = c.get("idle") or c.get(b"idle") or 0
+                            all_consumers.append(
+                                {
+                                    "consumer_name": str(cname),
+                                    "group": str(gname),
+                                    "stream": stream_name,
+                                    "pending": int(cpending),
+                                    "idle_ms": int(cidle),
+                                }
+                            )
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # 2. Group consumers by worker key (hostname, pid)
+        worker_map: dict[str, dict] = {}
+        for consumer in all_consumers:
+            hostname, pid = _parse_worker_key(consumer["consumer_name"])
+            worker_id = f"{hostname}-{pid}"
+
+            if worker_id not in worker_map:
+                worker_map[worker_id] = {
+                    "worker_id": worker_id,
+                    "hostname": hostname,
+                    "pid": int(pid) if pid.isdigit() else 0,
+                    "subscriptions": [],
+                    "subscription_count": 0,
+                    "total_pending": 0,
+                    "min_idle_ms": float("inf"),
+                    "_domains": set(),
+                    "_streams": set(),
+                }
+
+            w = worker_map[worker_id]
+            w["subscriptions"].append(consumer)
+            w["subscription_count"] += 1
+            w["total_pending"] += consumer["pending"]
+            w["min_idle_ms"] = min(w["min_idle_ms"], consumer["idle_ms"])
+
+            # Extract engine domain from group (module path), e.g.
+            # "inventory.projections.inventory_level.InventoryLevelProjector" → "inventory"
+            # "protean.server.engine.Commands:..." → skip (command dispatcher)
+            group = consumer["group"]
+            if not group.startswith("protean."):
+                engine_domain = group.split(".")[0]
+                w["_domains"].add(engine_domain)
+            w["_streams"].add(consumer["stream"])
+
+        # 3. Finalize domain and streams
+        for w in worker_map.values():
+            w["domain"] = ", ".join(sorted(w.pop("_domains")))
+            w["streams"] = sorted(w.pop("_streams"))
+
+        # 4. Compute per-worker throughput from trace stream
+        now_ms = int(time.time() * 1000)
+        window_ms = _WORKER_THROUGHPUT_WINDOW_S * 1000
+        bucket_ms = _WORKER_THROUGHPUT_BUCKET_S * 1000
+        bucket_count = _WORKER_THROUGHPUT_WINDOW_S // _WORKER_THROUGHPUT_BUCKET_S
+        min_id = str(now_ms - window_ms)
+
+        # Initialize throughput buckets per worker
+        throughput: dict[str, list[int]] = {}
+        for wid in worker_map:
+            throughput[wid] = [0] * bucket_count
+
+        try:
+            raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
+            for stream_id, fields in raw_entries:
+                try:
+                    data_raw = fields.get(b"data") or fields.get("data")
+                    if not data_raw:
+                        continue
+                    if isinstance(data_raw, bytes):
+                        data_raw = data_raw.decode("utf-8")
+                    trace = json.loads(data_raw)
+
+                    if trace.get("event") != "handler.completed":
+                        continue
+
+                    trace_worker_id = trace.get("worker_id")
+                    if not trace_worker_id:
+                        continue
+
+                    # Map trace worker_id (subscription ID) to worker key
+                    t_hostname, t_pid = _parse_worker_key(trace_worker_id)
+                    t_worker_id = f"{t_hostname}-{t_pid}"
+
+                    if t_worker_id not in throughput:
+                        continue
+
+                    # Determine bucket from stream ID timestamp
+                    sid = _decode_stream_id(stream_id)
+                    ts_ms = int(sid.split("-")[0])
+                    bucket_idx = (ts_ms - (now_ms - window_ms)) // bucket_ms
+                    if 0 <= bucket_idx < bucket_count:
+                        throughput[t_worker_id][bucket_idx] += 1
+                except (json.JSONDecodeError, TypeError, ValueError, IndexError):
+                    continue
+        except Exception as e:
+            logger.debug(f"Error reading traces for worker throughput: {e}")
+
+        # 5. Merge throughput into worker objects and compute status
+        for wid, w in worker_map.items():
+            counts = throughput.get(wid, [0] * bucket_count)
+            total = sum(counts)
+            w["throughput"] = {
+                "window_seconds": _WORKER_THROUGHPUT_WINDOW_S,
+                "bucket_seconds": _WORKER_THROUGHPUT_BUCKET_S,
+                "counts": counts,
+                "total": total,
+            }
+
+            # Status: use throughput as primary signal (if processing, it's active),
+            # fall back to idle_ms from XINFO CONSUMERS
+            if total > 0:
+                w["status"] = "active"
+            elif w["min_idle_ms"] < _WORKER_ACTIVE_THRESHOLD_MS:
+                w["status"] = "active"
+            elif w["min_idle_ms"] < _WORKER_IDLE_THRESHOLD_MS:
+                w["status"] = "idle"
+            else:
+                w["status"] = "offline"
+
+        workers_list = sorted(
+            worker_map.values(),
+            key=lambda w: (w["domain"], w["status"] != "active", w["hostname"]),
+        )
+
+        return JSONResponse(
+            content={
+                "workers": workers_list,
+                "count": len(workers_list),
+                "timestamp": now_ms,
             }
         )
 

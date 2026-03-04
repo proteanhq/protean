@@ -165,3 +165,82 @@ class TestMessageTraceSerialization:
         data = json.loads(trace.to_json())
         assert data["error"] == "Something broke"
         assert data["status"] == "error"
+
+
+class TestMessageTraceWorkerIdField:
+    """Tests for the worker_id field on MessageTrace."""
+
+    def test_worker_id_defaults_to_none(self):
+        """worker_id defaults to None when not provided."""
+        trace = MessageTrace(
+            event="handler.started",
+            domain="test",
+            stream="test::user",
+            message_id="abc",
+            message_type="Foo",
+            status="ok",
+        )
+        assert trace.worker_id is None
+
+    def test_worker_id_set_explicitly(self):
+        """worker_id can be set to a subscription identity string."""
+        trace = MessageTrace(
+            event="handler.completed",
+            domain="test",
+            stream="test::order",
+            message_id="msg-1",
+            message_type="OrderPlaced",
+            status="ok",
+            worker_id="OrderProjector-worker01-12345-ab12cd",
+        )
+        assert trace.worker_id == "OrderProjector-worker01-12345-ab12cd"
+
+    def test_worker_id_serialized_in_json(self):
+        """worker_id appears in JSON output when set."""
+        trace = MessageTrace(
+            event="handler.completed",
+            domain="test",
+            stream="test::order",
+            message_id="msg-1",
+            message_type="OrderPlaced",
+            status="ok",
+            worker_id="CustomerProjector-host1-999-deadbe",
+        )
+        data = json.loads(trace.to_json())
+        assert data["worker_id"] == "CustomerProjector-host1-999-deadbe"
+
+    def test_worker_id_null_in_json_when_not_set(self):
+        """worker_id is null in JSON output when not provided."""
+        trace = MessageTrace(
+            event="handler.started",
+            domain="test",
+            stream="test::user",
+            message_id="abc",
+            message_type="Foo",
+            status="ok",
+        )
+        data = json.loads(trace.to_json())
+        assert data["worker_id"] is None
+
+    def test_worker_id_with_all_other_fields(self):
+        """worker_id works alongside all other optional fields."""
+        trace = MessageTrace(
+            event="handler.failed",
+            domain="identity",
+            stream="identity::customer",
+            message_id="uuid-456",
+            message_type="CustomerRegistered",
+            status="error",
+            handler="CustomerProjector",
+            duration_ms=42.0,
+            error="connection lost",
+            metadata={"attempt": 2},
+            payload={"name": "Alice"},
+            worker_id="CustomerProjector-docker-abc123-7890-ff00ee",
+            timestamp="2026-01-01T00:00:00+00:00",
+        )
+        assert trace.worker_id == "CustomerProjector-docker-abc123-7890-ff00ee"
+        data = json.loads(trace.to_json())
+        assert data["worker_id"] == "CustomerProjector-docker-abc123-7890-ff00ee"
+        assert data["handler"] == "CustomerProjector"
+        assert data["payload"] == {"name": "Alice"}

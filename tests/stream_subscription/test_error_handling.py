@@ -180,7 +180,7 @@ async def test_message_deserialization_failure_continues_processing(
         processed_messages = []
         original_handle = engine.handle_message
 
-        async def track_handle_message(handler, message):
+        async def track_handle_message(handler, message, worker_id=None):
             processed_messages.append(message)
             return True
 

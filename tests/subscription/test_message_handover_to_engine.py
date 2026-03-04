@@ -82,4 +82,6 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     subscription = EventStoreSubscription(engine, "test::user", UserEventHandler)
     await subscription.tick()
 
-    mock_handle_message.assert_called_once_with(UserEventHandler, TypeMatcher(Message))
+    mock_handle_message.assert_called_once_with(
+        UserEventHandler, TypeMatcher(Message), worker_id=mock.ANY
+    )

@@ -106,6 +106,7 @@ class BrokerSubscription(BaseSubscription):
                 payload,
                 message_id=identifier,
                 stream=self.stream_name,
+                worker_id=self.subscription_id,
             )
 
             # Handle ack/nack based on processing result

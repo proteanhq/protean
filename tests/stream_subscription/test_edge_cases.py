@@ -224,7 +224,7 @@ class TestStreamSubscriptionEdgeCases:
         # Mock handle_message to track calls
         handle_message_calls = []
 
-        async def mock_handle_message(handler, message):
+        async def mock_handle_message(handler, message, worker_id=None):
             handle_message_calls.append(message)
             return True
 

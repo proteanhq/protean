@@ -230,6 +230,19 @@ class StreamSubscription(BaseSubscription):
             logger.error(f"Failed to ensure consumer group {self.consumer_group}: {e}")
             raise
 
+        # Clean up stale consumers from previous engine runs
+        try:
+            removed = self.broker._cleanup_stale_consumers(
+                self.stream_category, self.consumer_group, self.subscription_id
+            )
+            if removed > 0:
+                logger.info(
+                    f"Cleaned up {removed} stale consumer(s) for "
+                    f"{self.subscriber_name} on '{self.stream_category}'"
+                )
+        except Exception:
+            pass  # Non-critical — don't fail startup over cleanup
+
         # If priority lanes are enabled, also ensure consumer group for backfill stream
         if self._lanes_enabled:
             try:
@@ -240,6 +253,19 @@ class StreamSubscription(BaseSubscription):
                     f"{self.consumer_group} on {self.backfill_stream}: {e}"
                 )
                 raise
+
+            # Clean up stale consumers on backfill stream too
+            try:
+                removed = self.broker._cleanup_stale_consumers(
+                    self.backfill_stream, self.consumer_group, self.subscription_id
+                )
+                if removed > 0:
+                    logger.info(
+                        f"Cleaned up {removed} stale consumer(s) for "
+                        f"{self.subscriber_name} on '{self.backfill_stream}'"
+                    )
+            except Exception:
+                pass
 
             logger.debug(
                 f"Initialized priority lanes for {self.subscriber_name}: "
@@ -449,7 +475,9 @@ class StreamSubscription(BaseSubscription):
             )
 
             # Process the message
-            is_successful = await self.engine.handle_message(self.handler, message)
+            is_successful = await self.engine.handle_message(
+                self.handler, message, worker_id=self.subscription_id
+            )
 
             if is_successful:
                 if await self._acknowledge_message(identifier, message, stream):
@@ -506,6 +534,7 @@ class StreamSubscription(BaseSubscription):
                     message_id=message.metadata.headers.id or identifier,
                     message_type=message.metadata.headers.type or "unknown",
                     handler=self.subscriber_class_name,
+                    worker_id=self.subscription_id,
                 )
 
             return True
@@ -565,6 +594,7 @@ class StreamSubscription(BaseSubscription):
             status="retry",
             handler=self.subscriber_class_name,
             metadata={"retry_count": retry_count, "max_retries": self.max_retries},
+            worker_id=self.subscription_id,
         )
 
         await asyncio.sleep(self.retry_delay_seconds)
@@ -642,6 +672,7 @@ class StreamSubscription(BaseSubscription):
                     "dlq_stream": dlq_target,
                     "retry_count": self.retry_counts.get(identifier, self.max_retries),
                 },
+                worker_id=self.subscription_id,
             )
         except Exception as e:
             logger.exception(f"Failed to move message {identifier} to DLQ: {e}")

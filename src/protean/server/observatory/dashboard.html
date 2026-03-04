@@ -1027,6 +1027,23 @@ body {
 
 .lag-table tr:last-child td { border-bottom: none; }
 
+/* Worker rows */
+.worker-row { cursor: pointer; height: 36px; }
+.worker-row td { height: 36px; line-height: 36px; padding-top: 0 !important; padding-bottom: 0 !important; vertical-align: middle; box-sizing: border-box; }
+.worker-row:hover { background: var(--bg); }
+.worker-expand-icon { display: inline-block; font-size: 10px; color: var(--text-muted); transition: transform 0.15s; }
+.worker-expand-icon.expanded { transform: rotate(90deg); }
+.worker-detail-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+.worker-detail-table { width: 100%; border-collapse: collapse; background: var(--bg); }
+.worker-detail-table th { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; text-align: left; padding: 4px 12px 4px 24px; border-bottom: 1px solid var(--border); }
+.worker-detail-table td { font-family: var(--font-code); font-size: 11px; padding: 3px 12px 3px 24px; border-bottom: 1px solid var(--border); }
+.worker-detail-table tr:last-child td { border-bottom: none; }
+
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.status-dot.active { background: var(--success); }
+.status-dot.idle { background: var(--warning); }
+.status-dot.offline { background: var(--text-muted); }
+
 .lag-bar-bg {
   background: var(--bg);
   border-radius: 3px;
@@ -1403,6 +1420,39 @@ body {
     </div><!-- end collapsible-body -->
   </div>
 
+  <!-- Workers (collapsible) -->
+  <div class="card" id="workersCard">
+    <div class="card-header collapsible" id="workersHeader" onclick="toggleWorkers()">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="collapse-icon">&#9654;</span>
+        <span>Workers</span>
+        <span class="collapse-summary ok" id="workersSummary"></span>
+      </div>
+      <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-code)" id="workersLastUpdated"></span>
+    </div>
+    <div class="collapsible-body" id="workersBody">
+    <div class="card-body" id="workersTableBody" style="max-height:600px;overflow-y:auto">
+      <table class="lag-table" id="workersTable">
+        <thead>
+          <tr>
+            <th style="width:24px"></th>
+            <th title="Bounded context this engine serves.">Domain</th>
+            <th title="Engine instance identified by hostname and PID.">Worker</th>
+            <th title="Number of subscriptions managed by this engine instance.">Subs</th>
+            <th title="Total pending messages across all subscriptions.">Pending</th>
+            <th title="Worker status: active (processing), idle, or offline.">Status</th>
+            <th title="Messages processed in the last 5 minutes (10s buckets)." style="width:140px">Throughput</th>
+            <th title="Total messages processed in the last 5 minutes." style="font-family:var(--font-code)">Msgs/5m</th>
+          </tr>
+        </thead>
+        <tbody id="workersRows">
+          <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    </div><!-- end collapsible-body -->
+  </div>
+
   <!-- Messages / Events (collapsible) -->
   <div class="card" id="messagesCard">
     <div class="card-header collapsible" id="messagesHeader" onclick="toggleMessages()">
@@ -1566,7 +1616,12 @@ let lastEventTimestamp = 0;
 // Collapsible section state
 let backpressureExpanded = false;
 let subscriptionExpanded = false;
+let workersExpanded = false;
 let messagesExpanded = false;
+
+// Worker state: track which workers are expanded and their throughput data
+const expandedWorkers = new Set();
+const workerThroughputData = {};  // worker_id → {counts: [...], total: N}
 
 // Event icons for events tab
 const EVENT_ICONS = {
@@ -1987,6 +2042,11 @@ function handleTraceEvent(data) {
     latencyDeltaCount++;
   }
   scheduleMetricsRefresh();
+
+  // Increment per-worker throughput sparkline on handler.completed
+  if (data.event === 'handler.completed' && data.worker_id) {
+    incrementWorkerSparkline(data.worker_id);
+  }
 
   if (paused) {
     pauseBuffer.push(data);
@@ -3459,6 +3519,194 @@ function toggleSubscriptions() {
   if (header) header.classList.toggle('expanded', subscriptionExpanded);
 }
 
+function toggleWorkers() {
+  workersExpanded = !workersExpanded;
+  const body = document.getElementById('workersBody');
+  const header = document.getElementById('workersHeader');
+  if (body) body.classList.toggle('expanded', workersExpanded);
+  if (header) header.classList.toggle('expanded', workersExpanded);
+}
+
+function formatIdleTime(ms) {
+  if (ms == null) return '-';
+  if (ms < 1000) return ms + 'ms';
+  if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+  return (ms / 60000).toFixed(1) + 'm';
+}
+
+function drawWorkerSparkline(canvas, dataPoints, color) {
+  if (!canvas || !dataPoints || dataPoints.length === 0) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = 120;
+  const h = 28;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  const max = Math.max(...dataPoints, 1);
+  const step = w / (dataPoints.length - 1 || 1);
+
+  // Fill area
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  for (let i = 0; i < dataPoints.length; i++) {
+    const x = i * step;
+    const y = h - (dataPoints[i] / max) * (h - 2);
+    if (i === 0) ctx.lineTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fillStyle = color + '20';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  for (let i = 0; i < dataPoints.length; i++) {
+    const x = i * step;
+    const y = h - (dataPoints[i] / max) * (h - 2);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function _parseWorkerKey(consumerId) {
+  // Mirror of backend _parse_worker_key: {ClassName}-{hostname}-{pid}-{random_hex}
+  const parts = consumerId.split('-');
+  if (parts.length >= 4) {
+    const randomHex = parts[parts.length - 1];
+    const pid = parts[parts.length - 2];
+    if (/^\d+$/.test(pid) && /^[0-9a-f]+$/.test(randomHex)) {
+      // hostname is everything between first part (class) and pid
+      const hostname = parts.slice(1, parts.length - 2).join('-');
+      return hostname + '-' + pid;
+    }
+  }
+  return consumerId + '-0';
+}
+
+function incrementWorkerSparkline(subscriptionId) {
+  const workerId = _parseWorkerKey(subscriptionId);
+  const td = workerThroughputData[workerId];
+  if (!td || !td.counts || td.counts.length === 0) return;
+
+  // Increment the last bucket (current time window)
+  td.counts[td.counts.length - 1]++;
+  td.total++;
+
+  // Redraw sparkline
+  const canvas = document.getElementById('spark-' + workerId);
+  if (canvas) {
+    drawWorkerSparkline(canvas, td.counts, '#2A9D8F');
+  }
+
+  // Update msgs/5m counter
+  // Find the row's last td (msgs/5m column) — it's the 7th column
+  const row = canvas && canvas.closest('tr');
+  if (row && row.cells.length >= 7) {
+    row.cells[6].textContent = td.total.toLocaleString();
+  }
+}
+
+function toggleWorkerDetail(workerId) {
+  if (expandedWorkers.has(workerId)) {
+    expandedWorkers.delete(workerId);
+  } else {
+    expandedWorkers.add(workerId);
+  }
+  const detailRow = document.getElementById('worker-detail-' + workerId);
+  const icon = document.getElementById('worker-icon-' + workerId);
+  if (detailRow) detailRow.style.display = expandedWorkers.has(workerId) ? '' : 'none';
+  if (icon) icon.classList.toggle('expanded', expandedWorkers.has(workerId));
+}
+
+async function pollWorkers() {
+  try {
+    const resp = await fetch('/api/workers');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const tbody = document.getElementById('workersRows');
+    if (!tbody) return;
+
+    const workers = data.workers || [];
+    const summary = document.getElementById('workersSummary');
+    const ts = document.getElementById('workersLastUpdated');
+
+    if (workers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">No active workers</td></tr>';
+      if (summary) { summary.textContent = ''; summary.className = 'collapse-summary'; }
+      if (ts) ts.textContent = new Date().toLocaleTimeString();
+      return;
+    }
+
+    const activeCount = workers.filter(w => w.status === 'active').length;
+    if (summary) {
+      summary.textContent = activeCount + '/' + workers.length + ' pods active';
+      summary.className = 'collapse-summary ok';
+    }
+
+    let html = '';
+    for (const w of workers) {
+      const wid = w.worker_id;
+      const isExpanded = expandedWorkers.has(wid);
+      const shortHost = w.hostname.length > 12 ? w.hostname.substring(0, 12) : w.hostname;
+
+      // Store throughput data for SSE increments
+      if (w.throughput) {
+        workerThroughputData[wid] = { counts: [...w.throughput.counts], total: w.throughput.total };
+      }
+
+      // Worker summary row
+      html += '<tr class="worker-row" onclick="toggleWorkerDetail(\'' + escapeHtml(wid) + '\')">';
+      html += '<td style="width:24px;text-align:center"><span class="worker-expand-icon' + (isExpanded ? ' expanded' : '') + '" id="worker-icon-' + escapeHtml(wid) + '">&#9654;</span></td>';
+      html += '<td style="font-weight:600">' + escapeHtml(w.domain || 'unknown') + '</td>';
+      html += '<td style="font-family:var(--font-code);font-size:12px" title="' + escapeHtml(w.hostname) + ':' + w.pid + '">' + escapeHtml(shortHost) + ':' + w.pid + '</td>';
+      html += '<td style="text-align:center">' + w.subscription_count + '</td>';
+      html += '<td style="font-family:var(--font-code)">' + (w.total_pending || 0).toLocaleString() + '</td>';
+      html += '<td><span class="status-dot ' + w.status + '"></span>' + w.status + '</td>';
+      html += '<td style="width:120px;height:36px"><canvas id="spark-' + escapeHtml(wid) + '" width="120" height="28" style="display:block;margin:4px 0"></canvas></td>';
+      html += '<td style="font-family:var(--font-code);text-align:right">' + (w.throughput ? w.throughput.total.toLocaleString() : '0') + '</td>';
+      html += '</tr>';
+
+      // Expandable detail row with subscriptions
+      html += '<tr class="worker-detail-row" id="worker-detail-' + escapeHtml(wid) + '" style="display:' + (isExpanded ? '' : 'none') + '">';
+      html += '<td colspan="8"><table class="worker-detail-table">';
+      html += '<thead><tr><th>Consumer</th><th>Group</th><th>Stream</th><th>Pending</th><th>Idle</th></tr></thead><tbody>';
+      for (const s of (w.subscriptions || [])) {
+        html += '<tr>';
+        html += '<td>' + escapeHtml(s.consumer_name) + '</td>';
+        html += '<td>' + escapeHtml(s.group) + '</td>';
+        html += '<td>' + escapeHtml(s.stream) + '</td>';
+        html += '<td>' + (s.pending || 0).toLocaleString() + '</td>';
+        html += '<td>' + formatIdleTime(s.idle_ms) + '</td>';
+        html += '</tr>';
+      }
+      html += '</tbody></table></td></tr>';
+    }
+    tbody.innerHTML = html;
+
+    // Draw sparklines after DOM update
+    requestAnimationFrame(() => {
+      for (const w of workers) {
+        if (w.throughput && w.throughput.counts) {
+          const canvas = document.getElementById('spark-' + w.worker_id);
+          const color = w.status === 'active' ? '#2A9D8F' : (w.status === 'idle' ? '#E9C46A' : '#6C757D');
+          drawWorkerSparkline(canvas, w.throughput.counts, color);
+        }
+      }
+    });
+
+    if (ts) ts.textContent = new Date().toLocaleTimeString();
+  } catch (e) { /* silent */ }
+}
+
 function toggleMessages() {
   messagesExpanded = !messagesExpanded;
   const body = document.getElementById('messagesBody');
@@ -3520,6 +3768,7 @@ async function init() {
   pollInfrastructure();
   pollQueueDepth();
   pollSubscriptions();
+  pollWorkers();
   pollDlq();
   setInterval(tickThroughput, 1000);
   setInterval(tickQueueDepth, 1000);
@@ -3527,6 +3776,7 @@ async function init() {
   setInterval(() => { loadStats(); pollInfrastructure(); }, 5000);
   setInterval(pollQueueDepth, 2000);
   setInterval(pollSubscriptions, 5000);
+  setInterval(pollWorkers, 5000);
   setInterval(pollDlq, 5000);
   drawSparkline();
   drawQueueSparkline();

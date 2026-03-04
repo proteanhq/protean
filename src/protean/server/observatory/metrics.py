@@ -210,6 +210,67 @@ def create_metrics_endpoint(domains: List[Domain]):
         except Exception as e:
             logger.debug(f"Metrics: subscription status import failed: {e}")
 
+        # --- Per-consumer metrics (via XINFO CONSUMERS) ---
+        try:
+            from protean.server.observatory.api import _discover_streams, _get_redis
+
+            redis_conn = _get_redis(domains)
+            if redis_conn:
+                lines.append("")
+                lines.append(
+                    "# HELP protean_consumer_pending Per-consumer unacknowledged messages"
+                )
+                lines.append("# TYPE protean_consumer_pending gauge")
+                lines.append("")
+                lines.append(
+                    "# HELP protean_consumer_idle_ms Per-consumer idle time in milliseconds"
+                )
+                lines.append("# TYPE protean_consumer_idle_ms gauge")
+
+                for stream_name in _discover_streams(redis_conn):
+                    try:
+                        groups = redis_conn.xinfo_groups(stream_name)
+                        for grp in groups:
+                            if not isinstance(grp, dict):
+                                continue
+                            gname = grp.get("name") or grp.get(b"name")
+                            if isinstance(gname, bytes):
+                                gname = gname.decode("utf-8")
+                            if not gname:
+                                continue
+
+                            try:
+                                consumers_info = redis_conn.xinfo_consumers(
+                                    stream_name, gname
+                                )
+                                for c in consumers_info:
+                                    if not isinstance(c, dict):
+                                        continue
+                                    cname = c.get("name") or c.get(b"name")
+                                    if isinstance(cname, bytes):
+                                        cname = cname.decode("utf-8")
+                                    cpending = (
+                                        c.get("pending") or c.get(b"pending") or 0
+                                    )
+                                    cidle = c.get("idle") or c.get(b"idle") or 0
+                                    labels = (
+                                        f'consumer="{cname}",'
+                                        f'group="{gname}",'
+                                        f'stream="{stream_name}"'
+                                    )
+                                    lines.append(
+                                        f"protean_consumer_pending{{{labels}}} {int(cpending)}"
+                                    )
+                                    lines.append(
+                                        f"protean_consumer_idle_ms{{{labels}}} {int(cidle)}"
+                                    )
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug(f"Metrics: consumer metrics failed: {e}")
+
         lines.append("")  # Trailing newline
         return Response(
             content="\n".join(lines),
