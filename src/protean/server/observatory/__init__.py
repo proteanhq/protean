@@ -24,17 +24,20 @@ from typing import List
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from protean.domain import Domain
 
 from .api import create_api_router
 from .metrics import create_metrics_endpoint
+from .routes import create_all_routes
 from .sse import create_sse_endpoint
 
 logger = logging.getLogger(__name__)
 
-_DASHBOARD_HTML_PATH = Path(__file__).parent / "dashboard.html"
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 class _GracefulShutdownMiddleware:
@@ -82,14 +85,16 @@ class Observatory:
     """Dedicated observability server for Protean applications.
 
     Provides:
-    - GET /                    — Embedded HTML dashboard
+    - GET /                    — Overview dashboard (Jinja2-rendered)
+    - GET /handlers            — Handler monitoring view
+    - GET /flows               — Event flow visualization
+    - GET /processes           — Process manager monitoring
+    - GET /eventstore          — Event store health
+    - GET /infrastructure      — Infrastructure status
     - GET /stream              — SSE real-time trace events
-    - GET /api/health          — Infrastructure health
-    - GET /api/outbox          — Outbox status per domain
-    - GET /api/streams         — Redis stream info
-    - GET /api/subscriptions   — Subscription lag status per domain
-    - GET /api/stats           — Throughput/error rate stats
+    - GET /api/*               — REST API endpoints
     - GET /metrics             — Prometheus text exposition
+    - GET /static/*            — Vendored CSS/JS assets
     """
 
     def __init__(
@@ -103,6 +108,9 @@ class Observatory:
         self.title = title
         self.enable_cors = enable_cors
         self.cors_origins = cors_origins or ["*"]
+
+        # Jinja2 templates
+        self.templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
         # Create FastAPI app
         self.app = FastAPI(
@@ -130,19 +138,21 @@ class Observatory:
         self.app.add_middleware(_GracefulShutdownMiddleware)
 
     def _setup_routes(self) -> None:
-        # Dashboard (root)
-        @self.app.get("/", response_class=HTMLResponse, include_in_schema=False)
-        async def dashboard():
-            if _DASHBOARD_HTML_PATH.exists():
-                return HTMLResponse(content=_DASHBOARD_HTML_PATH.read_text())
-            return HTMLResponse(
-                content="<h1>Protean Observatory</h1><p>Dashboard HTML not found.</p>",
-                status_code=500,
-            )
+        # Static files (vendored CSS/JS assets)
+        self.app.mount(
+            "/static",
+            StaticFiles(directory=str(_STATIC_DIR)),
+            name="static",
+        )
 
-        # REST API endpoints
+        # Page routes (Jinja2-rendered views)
+        page_router, new_api_router = create_all_routes(self.domains, self.templates)
+        self.app.include_router(page_router)
+
+        # REST API endpoints (existing + new)
         api_router = create_api_router(self.domains)
         self.app.include_router(api_router, prefix="/api")
+        self.app.include_router(new_api_router, prefix="/api")
 
         # SSE streaming endpoint
         sse_endpoint = create_sse_endpoint(self.domains)

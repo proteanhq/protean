@@ -1,0 +1,70 @@
+/* Observatory custom styles — minimal overrides on top of Tailwind/DaisyUI */
+
+/* Monospace font for metric values */
+.font-mono-metric {
+  font-family: 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status indicator animations */
+.status-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Sparkline containers */
+.sparkline-container {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.sparkline-container svg {
+  display: block;
+}
+
+/* Handler health grid tiles — fixed height for uniform grid */
+.handler-tile {
+  min-height: 120px;
+}
+
+/* Flow graph node styles */
+.flow-node {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.flow-node:hover {
+  opacity: 0.8;
+}
+
+.flow-edge {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+/* Table row expansion animation */
+.row-detail {
+  animation: slide-down 0.15s ease-out;
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+  }
+}
+
+/* Compact table cells for data-dense views */
+.table-compact th,
+.table-compact td {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+}

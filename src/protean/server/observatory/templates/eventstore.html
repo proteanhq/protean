@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Event Store{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Event Store</h1>
+  <div class="text-sm text-base-content/50">Monitor event store health and stream statistics</div>
+</div>
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body p-6">
+    <div class="flex items-center justify-center py-16 text-base-content/40">
+      <div class="text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" class="w-12 h-12 mx-auto mb-3 opacity-30">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+        </svg>
+        <p class="text-lg font-medium">Coming Soon</p>
+        <p class="text-sm mt-1">Stream statistics, outbox monitoring, and snapshot health tracking.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Event Flows{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Event Flows</h1>
+  <div class="text-sm text-base-content/50">Visualize runtime message flow through the system</div>
+</div>
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body p-6">
+    <div class="flex items-center justify-center py-16 text-base-content/40">
+      <div class="text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" class="w-12 h-12 mx-auto mb-3 opacity-30">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+        </svg>
+        <p class="text-lg font-medium">Coming Soon</p>
+        <p class="text-sm mt-1">D3-powered directed graph of event flows, causation tracing, and message lifecycle.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

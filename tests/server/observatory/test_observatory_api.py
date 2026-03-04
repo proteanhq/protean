@@ -258,17 +258,15 @@ class TestObservatoryConfiguration:
         response = client.get("/api/health")
         assert response.status_code == 200
 
-    def test_dashboard_fallback_when_html_missing(self, test_domain):
-        """Dashboard returns 500 with fallback message when HTML file is missing."""
-        # Patch before Observatory is created so the route closure captures the mock
-        with patch("protean.server.observatory._DASHBOARD_HTML_PATH") as mock_path:
-            mock_path.exists.return_value = False
-            observatory = Observatory(domains=[test_domain])
-            client = TestClient(observatory.app)
-            response = client.get("/")
-
-        assert response.status_code == 500
-        assert "Dashboard HTML not found" in response.text
+    def test_root_renders_overview_template(self, test_domain):
+        """GET / renders the Jinja2 overview template (not the old monolithic HTML)."""
+        observatory = Observatory(domains=[test_domain])
+        client = TestClient(observatory.app)
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        # The overview template extends base.html which has the Observatory title
+        assert "Observatory" in response.text
 
 
 class TestGracefulShutdownMiddleware:
