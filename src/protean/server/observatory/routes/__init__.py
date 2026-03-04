@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from protean.domain import Domain
 
+from .handlers import create_handlers_router
 from .pages import create_page_router
 
 
@@ -27,7 +28,6 @@ def create_all_routes(
     """
     page_router = create_page_router(domains, templates)
 
-    # Additional API routes will be added here as they are implemented
-    api_router = APIRouter()
+    api_router = create_handlers_router(domains)
 
     return page_router, api_router
