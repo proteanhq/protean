@@ -1052,6 +1052,20 @@ class Domain:
     def _generate_fact_event_classes(self) -> None:
         self._type_manager.generate_fact_event_classes()
 
+    # ------------------------------------------------------------------
+    # IR Generation
+    # ------------------------------------------------------------------
+
+    def to_ir(self) -> dict[str, Any]:
+        """Build and return the Intermediate Representation for this domain.
+
+        The domain must be initialised (``init()`` called) before invoking
+        this method.
+        """
+        from protean.ir.builder import IRBuilder
+
+        return IRBuilder(self).build()
+
     ######################
     # Element Decorators #
     ######################

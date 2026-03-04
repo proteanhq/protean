@@ -10,7 +10,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-__all__ = ["SCHEMA_VERSION", "SCHEMA_PATH", "EXAMPLES_DIR", "load_schema"]
+__all__ = [
+    "SCHEMA_VERSION",
+    "SCHEMA_PATH",
+    "EXAMPLES_DIR",
+    "IRBuilder",
+    "load_schema",
+]
 
 SCHEMA_VERSION = "0.1.0"
 
@@ -22,3 +28,12 @@ EXAMPLES_DIR = _IR_DIR / "examples"
 def load_schema() -> dict[str, Any]:
     """Load and return the IR JSON Schema as a Python dict."""
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+# Deferred import to avoid circular dependencies
+def __getattr__(name: str) -> Any:
+    if name == "IRBuilder":
+        from protean.ir.builder import IRBuilder
+
+        return IRBuilder
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
