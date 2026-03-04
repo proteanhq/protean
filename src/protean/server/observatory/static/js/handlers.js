@@ -300,6 +300,44 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Deep Linking
+  // ---------------------------------------------------------------------------
+
+  function _readURL() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('type')) _currentTab = params.get('type');
+    if (params.has('status')) _statusFilter = params.get('status');
+    if (params.has('q')) _searchQuery = params.get('q');
+    if (params.has('sort')) _sortKey = params.get('sort');
+    if (params.has('asc')) _sortAsc = params.get('asc') !== '0';
+  }
+
+  function _updateURL() {
+    const params = new URLSearchParams();
+    if (_currentTab !== 'all') params.set('type', _currentTab);
+    if (_statusFilter !== 'all') params.set('status', _statusFilter);
+    if (_searchQuery) params.set('q', _searchQuery);
+    if (_sortKey !== 'name') params.set('sort', _sortKey);
+    if (!_sortAsc) params.set('asc', '0');
+    const qs = params.toString();
+    const url = window.location.pathname + (qs ? '?' + qs : '');
+    history.replaceState(null, '', url);
+  }
+
+  function _syncUIFromState() {
+    // Sync tab UI
+    if ($tabs) {
+      $tabs.querySelectorAll('[role="tab"]').forEach(t => {
+        t.classList.toggle('tab-active', t.getAttribute('data-type') === _currentTab);
+      });
+    }
+    // Sync search input
+    if ($search && _searchQuery) $search.value = _searchQuery;
+    // Sync status filter
+    if ($statusFilter) $statusFilter.value = _statusFilter;
+  }
+
+  // ---------------------------------------------------------------------------
   // Event Binding
   // ---------------------------------------------------------------------------
 
@@ -313,6 +351,7 @@
         // Update active state
         $tabs.querySelectorAll('[role="tab"]').forEach(t => t.classList.remove('tab-active'));
         tab.classList.add('tab-active');
+        _updateURL();
         _renderTable();
       });
     }
@@ -324,6 +363,7 @@
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           _searchQuery = $search.value.trim();
+          _updateURL();
           _renderTable();
         }, 200);
       });
@@ -333,6 +373,7 @@
     if ($statusFilter) {
       $statusFilter.addEventListener('change', () => {
         _statusFilter = $statusFilter.value;
+        _updateURL();
         _renderTable();
       });
     }
@@ -347,6 +388,7 @@
           _sortKey = key;
           _sortAsc = true;
         }
+        _updateURL();
         _renderTable();
       });
     });
@@ -356,6 +398,33 @@
     if ($closeBtn) {
       $closeBtn.addEventListener('click', _closeDetail);
     }
+
+    // CSV export
+    const $exportBtn = document.getElementById('export-csv');
+    if ($exportBtn) {
+      $exportBtn.addEventListener('click', _exportCSV);
+    }
+  }
+
+  function _exportCSV() {
+    const list = _sorted(_filtered());
+    const headers = ['Name', 'Type', 'Aggregate', 'Processed', 'Avg Latency (ms)', 'Lag', 'Errors', 'DLQ', 'Status'];
+    const rows = list.map(h => {
+      const m = h.metrics || {};
+      const s = h.subscription || {};
+      return [
+        h.name || '',
+        h.type || '',
+        h.aggregate || '',
+        m.processed != null ? m.processed : '',
+        m.avg_latency_ms != null ? m.avg_latency_ms : '',
+        s.lag != null ? s.lag : '',
+        m.failed != null ? m.failed : '',
+        s.dlq_depth != null ? s.dlq_depth : '',
+        (s.status || 'unknown'),
+      ];
+    });
+    Observatory.exportCSV('handlers.csv', headers, rows);
   }
 
   // ---------------------------------------------------------------------------
@@ -369,6 +438,9 @@
     $statusFilter = document.getElementById('status-filter');
     $detailPanel = document.getElementById('handler-detail');
 
+    // Read URL params for deep linking
+    _readURL();
+    _syncUIFromState();
     _bindEvents();
 
     // Register poller for handler data
