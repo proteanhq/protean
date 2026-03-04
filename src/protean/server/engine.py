@@ -9,6 +9,7 @@ from typing import Type, Union
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.utils.globals import g
@@ -528,6 +529,24 @@ class Engine:
                     duration_ms=round(duration_ms, 2),
                     worker_id=worker_id,
                 )
+
+                # Emit pm.transition trace for process managers
+                if issubclass(handler_cls, BaseProcessManager):
+                    self.emitter.emit(
+                        event="pm.transition",
+                        stream=stream,
+                        message_id=message_id,
+                        message_type=message_type,
+                        handler=handler_name,
+                        metadata={
+                            "pm_type": handler_cls.__name__,
+                            "pm_stream_category": getattr(
+                                handler_cls.meta_, "stream_category", None
+                            ),
+                        },
+                        duration_ms=round(duration_ms, 2),
+                        worker_id=worker_id,
+                    )
 
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`

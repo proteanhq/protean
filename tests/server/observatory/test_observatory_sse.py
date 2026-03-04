@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
-from protean.server.observatory.sse import _format_sse
+from protean.server.observatory.sse import _format_sse, create_sse_endpoint
 
 
 class TestFormatSSE:
@@ -179,3 +179,223 @@ class TestSSEEndpointNoRedis:
                     data = json.loads(line[len("data: ") :])
                     assert "error" in data
                     break
+
+
+@pytest.mark.no_test_domain
+class TestSSEStreamingLogic:
+    """Test SSE event_generator logic by calling the endpoint function directly.
+
+    We patch asyncio.to_thread to run synchronously and asyncio.sleep to be
+    a no-op to avoid deadlocks and delays.
+    """
+
+    def _make_mock_domain_with_redis(self, pubsub_messages):
+        """Create mock domain with Redis that yields controlled pubsub messages."""
+        mock_domain = _make_mock_domain("sse-test")
+        mock_redis = MagicMock()
+        mock_pubsub = MagicMock()
+
+        call_idx = [0]
+
+        def get_message(ignore_subscribe_messages=True, timeout=1.0):
+            idx = call_idx[0]
+            if idx < len(pubsub_messages):
+                call_idx[0] += 1
+                return pubsub_messages[idx]
+            return None
+
+        mock_pubsub.get_message = get_message
+        mock_redis.pubsub.return_value = mock_pubsub
+
+        mock_broker = MagicMock()
+        mock_broker.redis_instance = mock_redis
+        mock_domain.brokers.get.return_value = mock_broker
+
+        return mock_domain, mock_pubsub
+
+    async def _run_sse(
+        self, domains, max_events=5, disconnect_after=2, **endpoint_kwargs
+    ):
+        """Run the SSE endpoint and collect events.
+
+        Patches asyncio.to_thread (sync) and asyncio.sleep (no-op) to avoid
+        deadlocks and delays in tests.
+
+        Note: FastAPI Query() defaults are FieldInfo objects (truthy), not None.
+        When calling the endpoint directly, we must pass explicit None for all
+        filter parameters to avoid false filter matches.
+        """
+        import asyncio as _asyncio
+
+        yield_count = [0]
+        mock_request = MagicMock()
+
+        async def is_disconnected():
+            return yield_count[0] >= disconnect_after
+
+        mock_request.is_disconnected = is_disconnected
+
+        async def sync_to_thread(fn, /, *args, **kwargs):
+            return fn(*args, **kwargs)
+
+        async def noop_sleep(_t):
+            pass
+
+        endpoint_fn = create_sse_endpoint(domains)
+
+        # Fill in None defaults for Query() params not explicitly passed
+        endpoint_kwargs.setdefault("domain", None)
+        endpoint_kwargs.setdefault("stream", None)
+        endpoint_kwargs.setdefault("event", None)
+        endpoint_kwargs.setdefault("type", None)
+
+        # Patch asyncio functions globally (sse.py uses `import asyncio`)
+        orig_to_thread = _asyncio.to_thread
+        orig_sleep = _asyncio.sleep
+        _asyncio.to_thread = sync_to_thread
+        _asyncio.sleep = noop_sleep
+        try:
+            response = await endpoint_fn(mock_request, **endpoint_kwargs)
+            events = []
+            async for chunk in response.body_iterator:
+                events.append(chunk)
+                yield_count[0] += 1
+                if len(events) >= max_events:
+                    break
+        finally:
+            _asyncio.to_thread = orig_to_thread
+            _asyncio.sleep = orig_sleep
+
+        return events
+
+    @pytest.mark.asyncio
+    async def test_streams_valid_trace_event(self):
+        """event_generator yields formatted SSE for valid trace messages."""
+        trace = {"domain": "test", "event": "handler.started", "handler": "MyH"}
+        mock_domain, mock_pubsub = self._make_mock_domain_with_redis(
+            [
+                {"type": "message", "data": json.dumps(trace)},
+            ]
+        )
+
+        events = await self._run_sse([mock_domain])
+
+        trace_events = [e for e in events if "handler.started" in e]
+        assert len(trace_events) >= 1
+        mock_pubsub.unsubscribe.assert_called()
+        mock_pubsub.close.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_keepalive_on_no_message(self):
+        """event_generator yields keepalive comment when no pubsub message."""
+        mock_domain, _ = self._make_mock_domain_with_redis([None])
+
+        events = await self._run_sse([mock_domain])
+
+        keepalives = [e for e in events if ": keepalive" in e]
+        assert len(keepalives) >= 1
+
+    @pytest.mark.asyncio
+    async def test_json_decode_error_skipped(self):
+        """event_generator skips invalid JSON and continues."""
+        valid = {"event": "handler.completed"}
+        mock_domain, _ = self._make_mock_domain_with_redis(
+            [
+                {"type": "message", "data": "not-json{{{"},
+                {"type": "message", "data": json.dumps(valid)},
+            ]
+        )
+
+        events = await self._run_sse([mock_domain], disconnect_after=3)
+
+        data_events = [e for e in events if "handler.completed" in e]
+        assert len(data_events) >= 1
+
+    @pytest.mark.asyncio
+    async def test_domain_filter_applied(self):
+        """event_generator filters by domain query parameter."""
+        wrong = {"domain": "other", "event": "handler.started"}
+        right = {"domain": "myapp", "event": "handler.completed"}
+        mock_domain, _ = self._make_mock_domain_with_redis(
+            [
+                {"type": "message", "data": json.dumps(wrong)},
+                {"type": "message", "data": json.dumps(right)},
+            ]
+        )
+
+        events = await self._run_sse([mock_domain], disconnect_after=3, domain="myapp")
+
+        assert any("myapp" in e for e in events)
+
+    @pytest.mark.asyncio
+    async def test_stream_filter_applied(self):
+        """event_generator filters by stream query parameter."""
+        wrong = {"stream": "other::stream", "event": "handler.started"}
+        right = {"stream": "myapp::orders", "event": "handler.completed"}
+        mock_domain, _ = self._make_mock_domain_with_redis(
+            [
+                {"type": "message", "data": json.dumps(wrong)},
+                {"type": "message", "data": json.dumps(right)},
+            ]
+        )
+
+        events = await self._run_sse(
+            [mock_domain], disconnect_after=3, stream="myapp::orders"
+        )
+
+        assert any("myapp::orders" in e for e in events)
+        assert not any("other::stream" in e for e in events)
+
+    @pytest.mark.asyncio
+    async def test_event_filter_applied(self):
+        """event_generator filters by event glob pattern."""
+        wrong = {"event": "outbox.published"}
+        right = {"event": "handler.completed"}
+        mock_domain, _ = self._make_mock_domain_with_redis(
+            [
+                {"type": "message", "data": json.dumps(wrong)},
+                {"type": "message", "data": json.dumps(right)},
+            ]
+        )
+
+        events = await self._run_sse(
+            [mock_domain], disconnect_after=3, event="handler.*"
+        )
+
+        assert any("handler.completed" in e for e in events)
+        assert not any("outbox.published" in e for e in events)
+
+    @pytest.mark.asyncio
+    async def test_type_filter_applied(self):
+        """event_generator filters by message type glob pattern."""
+        wrong = {"message_type": "OrderPlaced", "event": "handler.started"}
+        right = {"message_type": "UserRegistered", "event": "handler.started"}
+        mock_domain, _ = self._make_mock_domain_with_redis(
+            [
+                {"type": "message", "data": json.dumps(wrong)},
+                {"type": "message", "data": json.dumps(right)},
+            ]
+        )
+
+        events = await self._run_sse([mock_domain], disconnect_after=3, type="User*")
+
+        assert any("UserRegistered" in e for e in events)
+        assert not any("OrderPlaced" in e for e in events)
+
+    @pytest.mark.asyncio
+    async def test_redis_found_from_second_domain(self):
+        """event_generator finds Redis from second domain when first fails."""
+        mock_domain1 = _make_mock_domain("fail")
+        mock_domain1.brokers.get.side_effect = RuntimeError("nope")
+
+        trace = {"event": "handler.started"}
+        mock_domain2, _ = self._make_mock_domain_with_redis(
+            [
+                {"type": "message", "data": json.dumps(trace)},
+            ]
+        )
+
+        events = await self._run_sse([mock_domain1, mock_domain2])
+
+        data_events = [e for e in events if "handler.started" in e]
+        assert len(data_events) >= 1

@@ -752,3 +752,255 @@ class TestFlowsRouteWiring:
         """Verify flows routes are wired into the Observatory app."""
         resp = client.get("/api/flows/graph")
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# _add_node — duplicate node prevention (line 100)
+# ---------------------------------------------------------------------------
+
+
+class TestAddNodeDuplicatePrevention:
+    def test_duplicate_node_not_added(self):
+        """Line 100: calling _add_node with the same node_id twice should
+        only produce one node in the graph. Verified via ir_to_graph with
+        an IR that would produce a duplicate node_id."""
+        # Create an IR where a command's __type__ is the same as an event's __type__
+        # This forces _add_node to be called twice with the same id
+        ir = {
+            "clusters": {
+                "myapp.Order": {
+                    "aggregate": {"fqn": "myapp.Order", "name": "Order"},
+                    "commands": {
+                        "myapp.PlaceOrder": {
+                            "__type__": "Shared.Message.v1",
+                            "name": "PlaceOrder",
+                        }
+                    },
+                    "events": {
+                        "myapp.OrderPlaced": {
+                            "__type__": "Shared.Message.v1",
+                            "name": "OrderPlaced",
+                        }
+                    },
+                    "command_handlers": {},
+                    "event_handlers": {},
+                    "entities": {},
+                    "value_objects": {},
+                    "repositories": {},
+                    "application_services": {},
+                    "database_models": {},
+                }
+            },
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "projections": {},
+        }
+        graph = ir_to_graph(ir)
+        # Count how many nodes have the id "Shared.Message.v1"
+        matching_nodes = [n for n in graph["nodes"] if n["id"] == "Shared.Message.v1"]
+        assert len(matching_nodes) == 1  # duplicate prevented
+
+    def test_duplicate_aggregate_node_not_added(self):
+        """Another duplicate scenario: aggregate fqn reused as a handler fqn."""
+        ir = {
+            "clusters": {
+                "myapp.Order": {
+                    "aggregate": {"fqn": "myapp.Order", "name": "Order"},
+                    "commands": {},
+                    "events": {},
+                    "command_handlers": {
+                        "myapp.Order": {
+                            "fqn": "myapp.Order",
+                            "name": "OrderHandler",
+                            "handlers": {},
+                        }
+                    },
+                    "event_handlers": {},
+                    "entities": {},
+                    "value_objects": {},
+                    "repositories": {},
+                    "application_services": {},
+                    "database_models": {},
+                }
+            },
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "projections": {},
+        }
+        graph = ir_to_graph(ir)
+        matching = [n for n in graph["nodes"] if n["id"] == "myapp.Order"]
+        # Only one node even though both aggregate and command_handler share the id
+        assert len(matching) == 1
+
+
+# ---------------------------------------------------------------------------
+# _find_element_by_fqn — scalar section (line 244-248)
+# ---------------------------------------------------------------------------
+
+
+class TestFindElementByFqnScalarSection:
+    def test_find_scalar_section_element(self):
+        """Line 244-248: scalar section (a dict with 'fqn' key) is matched.
+        The 'aggregate' section is a scalar section in the sample IR."""
+        ir = _sample_ir()
+        # Find the aggregate which is stored as a scalar section (dict with 'fqn')
+        result = _find_element_by_fqn(ir, "myapp.Order")
+        assert result is not None
+        assert result["name"] == "Order"
+        assert result["fqn"] == "myapp.Order"
+
+    def test_scalar_section_non_matching_fqn(self):
+        """Scalar section found but fqn doesn't match -- should continue search."""
+        ir = {
+            "clusters": {
+                "myapp.Order": {
+                    "aggregate": {
+                        "fqn": "myapp.Order",
+                        "name": "Order",
+                    },
+                    "commands": {},
+                    "events": {},
+                    "command_handlers": {},
+                    "event_handlers": {},
+                    "entities": {},
+                    "value_objects": {},
+                    "repositories": {},
+                    "application_services": {},
+                    "database_models": {},
+                }
+            },
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "projections": {},
+        }
+        # Search for something that doesn't match the aggregate's fqn
+        result = _find_element_by_fqn(ir, "myapp.NonExistent")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _find_element_by_fqn — dict section (lines 249-252)
+# ---------------------------------------------------------------------------
+
+
+class TestFindElementByFqnDictSection:
+    def test_find_dict_section_element(self):
+        """Lines 249-252: dict section (fqn -> element) is matched.
+        Commands, events, handlers are all dict sections."""
+        ir = _sample_ir()
+        result = _find_element_by_fqn(ir, "myapp.PlaceOrder")
+        assert result is not None
+        assert result["name"] == "PlaceOrder"
+
+    def test_find_event_handler_in_dict_section(self):
+        """Another dict section match -- event_handlers."""
+        ir = _sample_ir()
+        result = _find_element_by_fqn(ir, "myapp.OrderEventHandler")
+        assert result is not None
+        assert result["name"] == "OrderEventHandler"
+
+    def test_find_element_in_empty_dict_section(self):
+        """Dict section is empty, element is not found there."""
+        ir = {
+            "clusters": {
+                "myapp.Order": {
+                    "aggregate": {"fqn": "myapp.Order", "name": "Order"},
+                    "commands": {},
+                    "events": {},
+                    "command_handlers": {},
+                    "event_handlers": {},
+                    "entities": {},
+                    "value_objects": {},
+                    "repositories": {},
+                    "application_services": {},
+                    "database_models": {},
+                }
+            },
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "projections": {},
+        }
+        result = _find_element_by_fqn(ir, "myapp.SomeCommand")
+        assert result is None
+
+    def test_find_in_none_section(self):
+        """Line 244: section is None (via cluster.get returning None), continue."""
+        ir = {
+            "clusters": {
+                "myapp.Order": {
+                    "aggregate": {"fqn": "myapp.Order", "name": "Order"},
+                    # Explicitly set some sections to None
+                    "commands": None,
+                    "events": None,
+                    "command_handlers": {},
+                    "event_handlers": {},
+                    "entities": {},
+                    "value_objects": {},
+                    "repositories": {},
+                    "application_services": {},
+                    "database_models": {},
+                }
+            },
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "projections": {},
+        }
+        # Should still find the aggregate despite None sections
+        result = _find_element_by_fqn(ir, "myapp.Order")
+        assert result is not None
+        assert result["name"] == "Order"
+
+    def test_find_query_handler_in_projection(self):
+        """Test finding element in projection's query_handlers sub-section."""
+        ir = {
+            "clusters": {},
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "projections": {
+                "myapp.OrderView": {
+                    "projection": {
+                        "fqn": "myapp.OrderView",
+                        "name": "OrderView",
+                    },
+                    "projectors": {},
+                    "queries": {},
+                    "query_handlers": {
+                        "myapp.OrderQueryHandler": {
+                            "fqn": "myapp.OrderQueryHandler",
+                            "name": "OrderQueryHandler",
+                        }
+                    },
+                }
+            },
+        }
+        result = _find_element_by_fqn(ir, "myapp.OrderQueryHandler")
+        assert result is not None
+        assert result["name"] == "OrderQueryHandler"
+
+
+class TestFindElementWithMissingSections:
+    """Test _find_element_by_fqn when cluster sections are absent (line 244)."""
+
+    def test_missing_sections_skipped(self):
+        """Clusters with missing sections don't crash the search."""
+        ir = {
+            "clusters": {
+                "myapp.Order": {
+                    # Only aggregate — all other sections missing
+                    "aggregate": {"fqn": "myapp.Order", "name": "Order"},
+                }
+            },
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "projections": {},
+        }
+        result = _find_element_by_fqn(ir, "myapp.Order")
+        assert result is not None
+        assert result["name"] == "Order"
+
+    def test_missing_sections_returns_none_for_unfound(self):
+        """Search through cluster with missing sections returns None."""
+        ir = {
+            "clusters": {
+                "myapp.Order": {
+                    "aggregate": {"fqn": "myapp.Order", "name": "Order"},
+                }
+            },
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "projections": {},
+        }
+        result = _find_element_by_fqn(ir, "myapp.SomeOtherThing")
+        assert result is None

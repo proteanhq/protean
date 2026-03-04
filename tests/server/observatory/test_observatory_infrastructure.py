@@ -444,3 +444,140 @@ class TestInfrastructureRouteWiring:
         """Verify the page route exists."""
         routes = [r.path for r in observatory.app.routes]
         assert "/infrastructure" in routes
+
+
+# ---------------------------------------------------------------------------
+# Config objects without .get() method (lines 117-122, 146-151, 198-201, 225-230)
+# ---------------------------------------------------------------------------
+
+
+class TestDatabaseStatusConfigWithoutGet:
+    def test_database_config_without_get_method(self):
+        """Lines 117-122: databases config is a non-dict object (no .get()),
+        provider stays at 'none'."""
+        domain = MagicMock()
+        domain.name = "TestDomain"
+        # Return a non-dict object (e.g., a string) for databases config
+        domain.config = MagicMock()
+        domain.config.get = lambda key, default=None: {
+            "databases": "some_string_value"
+        }.get(key, default)
+
+        domain.providers = {"default": MagicMock()}
+
+        result = _database_status(domain)
+        assert result["provider"] == "none"
+        assert result["status"] == "healthy"
+
+    def test_database_default_config_without_get_method(self):
+        """Lines 119-120: default sub-config has no .get(), provider stays 'none'."""
+        domain = MagicMock()
+        domain.name = "TestDomain"
+        # databases has .get() but default value is not a dict
+        domain.config = MagicMock()
+        domain.config.get = lambda key, default=None: {
+            "databases": {"default": "not-a-dict"}
+        }.get(key, default)
+
+        domain.providers = {"default": MagicMock()}
+
+        result = _database_status(domain)
+        assert result["provider"] == "none"
+        assert result["status"] == "healthy"
+
+
+class TestBrokerStatusConfigWithoutGet:
+    def test_broker_config_without_get_method(self):
+        """Lines 146-151: brokers config is a non-dict object (no .get()),
+        provider stays at 'none'."""
+        domain = MagicMock()
+        domain.name = "TestDomain"
+        domain.config = MagicMock()
+        domain.config.get = lambda key, default=None: {"brokers": "string_config"}.get(
+            key, default
+        )
+
+        domain.brokers = {"default": None}
+
+        result = _broker_status(domain)
+        assert result["provider"] == "none"
+
+    def test_broker_default_config_without_get_method(self):
+        """Lines 148-149: default broker sub-config has no .get()."""
+        domain = MagicMock()
+        domain.name = "TestDomain"
+        domain.config = MagicMock()
+        domain.config.get = lambda key, default=None: {
+            "brokers": {"default": 42}  # int has no .get()
+        }.get(key, default)
+
+        domain.brokers = {"default": None}
+
+        result = _broker_status(domain)
+        assert result["provider"] == "none"
+
+
+class TestEventStoreStatusConfigWithoutGet:
+    def test_event_store_config_without_get_method(self):
+        """Lines 198-201: event_store config is a non-dict object,
+        provider stays at 'none'."""
+        domain = MagicMock()
+        domain.name = "TestDomain"
+        domain.config = MagicMock()
+        domain.config.get = lambda key, default=None: {"event_store": "not-a-dict"}.get(
+            key, default
+        )
+
+        domain.event_store.store = MagicMock()
+
+        result = _event_store_status(domain)
+        assert result["provider"] == "none"
+        assert result["status"] == "healthy"
+
+
+class TestCacheStatusConfigWithoutGet:
+    def test_cache_config_without_get_method(self):
+        """Lines 225-230: caches config is a non-dict object,
+        provider stays at 'none'."""
+        domain = MagicMock()
+        domain.name = "TestDomain"
+        domain.config = MagicMock()
+        domain.config.get = lambda key, default=None: {"caches": "not-a-dict"}.get(
+            key, default
+        )
+
+        cache = MagicMock(spec=[])
+        domain.caches = {"default": cache}
+
+        result = _cache_status(domain)
+        assert result["provider"] == "none"
+        assert result["status"] == "healthy"
+
+    def test_cache_default_config_without_get_method(self):
+        """Lines 227-228: default cache sub-config has no .get()."""
+        domain = MagicMock()
+        domain.name = "TestDomain"
+        domain.config = MagicMock()
+        domain.config.get = lambda key, default=None: {
+            "caches": {"default": True}  # bool has no .get()
+        }.get(key, default)
+
+        cache = MagicMock(spec=[])
+        domain.caches = {"default": cache}
+
+        result = _cache_status(domain)
+        assert result["provider"] == "none"
+
+    def test_cache_is_none(self):
+        """Lines 239-240: caches.get('default') returns None."""
+        domain = MagicMock()
+        domain.name = "TestDomain"
+        domain.config = MagicMock()
+        domain.config.get = lambda key, default=None: {
+            "caches": {"default": {"provider": "redis"}}
+        }.get(key, default)
+
+        domain.caches = {"default": None}
+
+        result = _cache_status(domain)
+        assert result["status"] == "not_configured"
