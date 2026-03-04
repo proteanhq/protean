@@ -367,6 +367,132 @@ const Observatory = (() => {
   }
 
   // ---------------------------------------------------------------------------
+  // Keyboard Navigation
+  // ---------------------------------------------------------------------------
+
+  const _NAV_SHORTCUTS = {
+    'o': '/',
+    'h': '/handlers',
+    'f': '/flows',
+    'p': '/processes',
+    'e': '/eventstore',
+    'i': '/infrastructure',
+  };
+
+  let _chordPrefix = null;
+  let _chordTimer = null;
+
+  function _initKeyboard() {
+    document.addEventListener('keydown', (e) => {
+      // Ignore when typing in inputs/textareas
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+        // Escape blurs the focused input
+        if (e.key === 'Escape') e.target.blur();
+        return;
+      }
+
+      // Chord: g + <key>
+      if (_chordPrefix === 'g') {
+        _chordPrefix = null;
+        clearTimeout(_chordTimer);
+        const dest = _NAV_SHORTCUTS[e.key];
+        if (dest) {
+          e.preventDefault();
+          window.location.href = dest;
+          return;
+        }
+      }
+
+      if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        _chordPrefix = 'g';
+        clearTimeout(_chordTimer);
+        _chordTimer = setTimeout(() => { _chordPrefix = null; }, 800);
+        return;
+      }
+
+      // Single-key shortcuts
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const search = document.querySelector('[data-search-input]');
+        if (search) search.focus();
+        return;
+      }
+
+      if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        _refreshAllPollers();
+        return;
+      }
+
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        _toggleShortcutsModal();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        const modal = document.getElementById('shortcuts-modal');
+        if (modal) modal.close();
+      }
+    });
+  }
+
+  function _refreshAllPollers() {
+    for (const [name, p] of Object.entries(_pollers)) {
+      (async () => {
+        try {
+          const data = await fetchJSON(p.url);
+          p.callback(data);
+        } catch (e) {
+          console.warn(`Refresh '${name}' failed:`, e.message);
+        }
+      })();
+    }
+  }
+
+  function _toggleShortcutsModal() {
+    const modal = document.getElementById('shortcuts-modal');
+    if (!modal) return;
+    if (modal.open) {
+      modal.close();
+    } else {
+      modal.showModal();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // CSV Export
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Export table data as a CSV file download.
+   * @param {string} filename - Name of the downloaded file
+   * @param {string[]} headers - Column header labels
+   * @param {Array<Array<string|number>>} rows - Row data
+   */
+  function exportCSV(filename, headers, rows) {
+    const escape = (val) => {
+      const s = val == null ? '' : String(val);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    };
+    const lines = [headers.map(escape).join(',')];
+    for (const row of rows) {
+      lines.push(row.map(escape).join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------------------------------------------------------------------------
   // Initialization
   // ---------------------------------------------------------------------------
 
@@ -377,6 +503,9 @@ const Observatory = (() => {
     if (toggle) {
       toggle.checked = state.theme === 'dark';
     }
+
+    // Initialize keyboard shortcuts
+    _initKeyboard();
 
     // Connect SSE
     sse.connect(state.domain);
@@ -405,6 +534,7 @@ const Observatory = (() => {
     statusClass,
     badgeClass,
     escapeHtml,
+    exportCSV,
     init,
   };
 })();

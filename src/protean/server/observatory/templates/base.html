@@ -175,6 +175,34 @@
     </div>
   </div>
 
+  <!-- Keyboard Shortcuts Modal -->
+  <dialog id="shortcuts-modal" class="modal">
+    <div class="modal-box max-w-md">
+      <h3 class="font-bold text-lg mb-4">Keyboard Shortcuts</h3>
+      <div class="overflow-x-auto">
+        <table class="table table-sm">
+          <thead><tr><th>Keys</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">o</kbd></td><td>Go to Overview</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">h</kbd></td><td>Go to Handlers</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">f</kbd></td><td>Go to Event Flows</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">p</kbd></td><td>Go to Processes</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">e</kbd></td><td>Go to Event Store</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">i</kbd></td><td>Go to Infrastructure</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">/</kbd></td><td>Focus search</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">r</kbd></td><td>Refresh data</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">?</kbd></td><td>Toggle this help</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">Esc</kbd></td><td>Close panel / modal</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-action">
+        <form method="dialog"><button class="btn btn-sm">Close</button></form>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -234,6 +234,34 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Deep Linking
+  // ---------------------------------------------------------------------------
+
+  function _readURL() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('status')) _statusFilter = params.get('status');
+    if (params.has('q')) _searchQuery = params.get('q');
+    if (params.has('sort')) _sortKey = params.get('sort');
+    if (params.has('asc')) _sortAsc = params.get('asc') !== '0';
+  }
+
+  function _updateURL() {
+    const params = new URLSearchParams();
+    if (_statusFilter !== 'all') params.set('status', _statusFilter);
+    if (_searchQuery) params.set('q', _searchQuery);
+    if (_sortKey !== 'name') params.set('sort', _sortKey);
+    if (!_sortAsc) params.set('asc', '0');
+    const qs = params.toString();
+    const url = window.location.pathname + (qs ? '?' + qs : '');
+    history.replaceState(null, '', url);
+  }
+
+  function _syncUIFromState() {
+    if ($search && _searchQuery) $search.value = _searchQuery;
+    if ($statusFilter) $statusFilter.value = _statusFilter;
+  }
+
+  // ---------------------------------------------------------------------------
   // Event Binding
   // ---------------------------------------------------------------------------
 
@@ -245,6 +273,7 @@
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           _searchQuery = $search.value.trim();
+          _updateURL();
           _renderTable();
         }, 200);
       });
@@ -254,6 +283,7 @@
     if ($statusFilter) {
       $statusFilter.addEventListener('change', () => {
         _statusFilter = $statusFilter.value;
+        _updateURL();
         _renderTable();
       });
     }
@@ -268,6 +298,7 @@
           _sortKey = key;
           _sortAsc = true;
         }
+        _updateURL();
         _renderTable();
       });
     });
@@ -277,6 +308,33 @@
     if ($closeBtn) {
       $closeBtn.addEventListener('click', _closeInstances);
     }
+
+    // CSV export
+    const $exportBtn = document.getElementById('export-csv');
+    if ($exportBtn) {
+      $exportBtn.addEventListener('click', _exportCSV);
+    }
+  }
+
+  function _exportCSV() {
+    const list = _sorted(_filtered());
+    const headers = ['Name', 'Instances', 'Processed', 'Errors', 'Avg Latency (ms)', 'Lag', 'DLQ', 'Streams', 'Status'];
+    const rows = list.map(p => {
+      const m = p.metrics || {};
+      const s = p.subscription || {};
+      return [
+        p.name || '',
+        p.instance_count != null ? p.instance_count : '',
+        m.processed != null ? m.processed : '',
+        m.failed != null ? m.failed : '',
+        m.avg_latency_ms != null ? m.avg_latency_ms : '',
+        s.lag != null ? s.lag : '',
+        s.dlq_depth != null ? s.dlq_depth : '',
+        (p.stream_categories || []).join('; '),
+        (s.status || 'unknown'),
+      ];
+    });
+    Observatory.exportCSV('processes.csv', headers, rows);
   }
 
   // ---------------------------------------------------------------------------
@@ -289,6 +347,9 @@
     $statusFilter = document.getElementById('process-status-filter');
     $instanceExplorer = document.getElementById('instance-explorer');
 
+    // Read URL params for deep linking
+    _readURL();
+    _syncUIFromState();
     _bindEvents();
 
     // Register poller for process data

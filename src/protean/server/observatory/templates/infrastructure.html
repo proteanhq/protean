@@ -8,17 +8,115 @@
   <div class="text-sm text-base-content/50">Monitor infrastructure dependencies and connections</div>
 </div>
 
-<div class="card bg-base-100 shadow-sm">
-  <div class="card-body p-6">
-    <div class="flex items-center justify-center py-16 text-base-content/40">
-      <div class="text-center">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" class="w-12 h-12 mx-auto mb-3 opacity-30">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 0 6h13.5a3 3 0 1 0 0-6m-16.5-3a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3m-19.5 0a4.5 4.5 0 0 1 .9-2.7L5.737 5.1a3.375 3.375 0 0 1 2.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 0 1 .9 2.7m0 0a3 3 0 0 1-3 3m0 3h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Zm-3 6h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Z" />
-        </svg>
-        <p class="text-lg font-medium">Coming Soon</p>
-        <p class="text-sm mt-1">Database connections, broker health, cache stats, and server process info.</p>
+<!-- Connection Health Tiles -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div id="tile-database" class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex items-center gap-2 mb-1">
+        <span id="tile-database-dot" class="badge badge-xs badge-ghost"></span>
+        <span class="text-xs font-semibold uppercase text-base-content/60">Database</span>
+      </div>
+      <div id="tile-database-provider" class="text-lg font-bold">--</div>
+      <div id="tile-database-status" class="text-xs text-base-content/50">--</div>
+    </div>
+  </div>
+  <div id="tile-broker" class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex items-center gap-2 mb-1">
+        <span id="tile-broker-dot" class="badge badge-xs badge-ghost"></span>
+        <span class="text-xs font-semibold uppercase text-base-content/60">Broker</span>
+      </div>
+      <div id="tile-broker-provider" class="text-lg font-bold">--</div>
+      <div id="tile-broker-status" class="text-xs text-base-content/50">--</div>
+    </div>
+  </div>
+  <div id="tile-event-store" class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex items-center gap-2 mb-1">
+        <span id="tile-event-store-dot" class="badge badge-xs badge-ghost"></span>
+        <span class="text-xs font-semibold uppercase text-base-content/60">Event Store</span>
+      </div>
+      <div id="tile-event-store-provider" class="text-lg font-bold">--</div>
+      <div id="tile-event-store-status" class="text-xs text-base-content/50">--</div>
+    </div>
+  </div>
+  <div id="tile-cache" class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex items-center gap-2 mb-1">
+        <span id="tile-cache-dot" class="badge badge-xs badge-ghost"></span>
+        <span class="text-xs font-semibold uppercase text-base-content/60">Cache</span>
+      </div>
+      <div id="tile-cache-provider" class="text-lg font-bold">--</div>
+      <div id="tile-cache-status" class="text-xs text-base-content/50">--</div>
+    </div>
+  </div>
+</div>
+
+<!-- Broker Detail Card -->
+<div id="broker-detail" class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <h2 class="card-title text-lg mb-4">Broker Details</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div>
+        <div class="text-xs text-base-content/60">Redis Version</div>
+        <div id="broker-redis-version" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Connected Clients</div>
+        <div id="broker-connected-clients" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Memory Usage</div>
+        <div id="broker-memory" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Uptime</div>
+        <div id="broker-uptime" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Ops/sec</div>
+        <div id="broker-ops-per-sec" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Streams</div>
+        <div id="broker-stream-count" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Consumer Groups</div>
+        <div id="broker-consumer-groups" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Hit Rate</div>
+        <div id="broker-hit-rate" class="text-sm font-mono font-medium">--</div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Server Info Card -->
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <h2 class="card-title text-lg mb-4">Server Information</h2>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+      <div>
+        <div class="text-xs text-base-content/60">Python Version</div>
+        <div id="server-python-version" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Protean Version</div>
+        <div id="server-protean-version" class="text-sm font-mono font-medium">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/60">Platform</div>
+        <div id="server-platform" class="text-sm font-mono font-medium">--</div>
+      </div>
+    </div>
+    <h3 class="text-sm font-semibold text-base-content/70 mb-2">Domain Configuration</h3>
+    <div id="server-domains" class="text-base-content/50">Loading...</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/infrastructure.js" defer></script>
 {% endblock %}
