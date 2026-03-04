@@ -41,7 +41,7 @@ class IRBuilder:
         ir: dict[str, Any] = {
             "$schema": f"https://protean.dev/ir/v{SCHEMA_VERSION}/schema.json",
             "checksum": "",
-            "clusters": {},
+            "clusters": self._build_clusters(),
             "contracts": {"events": []},
             "diagnostics": [],
             "domain": self._build_domain_metadata(),
@@ -320,6 +320,224 @@ class IRBuilder:
         if python_type is not None:
             return _CONTENT_TYPE_MAP.get(python_type, python_type.__name__)
         return "String"
+
+    # ------------------------------------------------------------------
+    # Element extractors
+    # ------------------------------------------------------------------
+
+    def _extract_invariants(self, cls: type) -> dict[str, list[str]]:
+        """Extract pre/post invariant method names as sorted lists."""
+        invariants = getattr(cls, "_invariants", {})
+        return {
+            "post": sorted(invariants.get("post", {}).keys()),
+            "pre": sorted(invariants.get("pre", {}).keys()),
+        }
+
+    def _extract_aggregate(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract aggregate IR dict."""
+        from protean.utils import fqn
+        from protean.utils.reflection import _ID_FIELD_NAME
+
+        entry: dict[str, Any] = {}
+
+        # Apply handlers (ES aggregates only)
+        if cls.meta_.is_event_sourced:
+            projections = getattr(cls, "_projections", {})
+            if projections:
+                apply_handlers: dict[str, str] = {}
+                for event_fqn, methods in sorted(projections.items()):
+                    for method in methods:
+                        apply_handlers[event_fqn] = method.__name__
+                entry["apply_handlers"] = dict(sorted(apply_handlers.items()))
+
+        # Description from docstring
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
+        entry["element_type"] = "AGGREGATE"
+        entry["fields"] = self._extract_fields(cls)
+        entry["fqn"] = fqn(cls)
+        entry["identity_field"] = getattr(cls, _ID_FIELD_NAME, "id")
+        entry["invariants"] = self._extract_invariants(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        entry["options"] = dict(
+            sorted(
+                {
+                    "auto_add_id_field": cls.meta_.auto_add_id_field,
+                    "fact_events": cls.meta_.fact_events,
+                    "is_event_sourced": cls.meta_.is_event_sourced,
+                    "limit": cls.meta_.limit,
+                    "provider": cls.meta_.provider,
+                    "schema_name": cls.meta_.schema_name,
+                    "stream_category": cls.meta_.stream_category,
+                }.items()
+            )
+        )
+
+        return dict(sorted(entry.items()))
+
+    def _extract_entity(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract entity IR dict."""
+        from protean.utils import fqn
+        from protean.utils.reflection import _ID_FIELD_NAME
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "ENTITY"
+        entry["fields"] = self._extract_fields(cls)
+        entry["fqn"] = fqn(cls)
+        entry["identity_field"] = getattr(cls, _ID_FIELD_NAME, "id")
+        entry["invariants"] = self._extract_invariants(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        entry["options"] = dict(
+            sorted(
+                {
+                    "auto_add_id_field": cls.meta_.auto_add_id_field,
+                    "limit": cls.meta_.limit,
+                    "provider": cls.meta_.provider,
+                    "schema_name": cls.meta_.schema_name,
+                }.items()
+            )
+        )
+
+        agg_cls = getattr(cls.meta_, "aggregate_cluster", None)
+        if agg_cls is not None:
+            entry["part_of"] = fqn(agg_cls)
+
+        return dict(sorted(entry.items()))
+
+    def _extract_value_object(
+        self, cls: type, record: Any, aggregate_fqn: str | None = None
+    ) -> dict[str, Any]:
+        """Extract value object IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
+        entry["element_type"] = "VALUE_OBJECT"
+        entry["fields"] = self._extract_fields(cls)
+        entry["fqn"] = fqn(cls)
+        entry["invariants"] = self._extract_invariants(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        if aggregate_fqn is not None:
+            entry["part_of"] = aggregate_fqn
+
+        return dict(sorted(entry.items()))
+
+    # ------------------------------------------------------------------
+    # Cluster assembly
+    # ------------------------------------------------------------------
+
+    def _build_vo_cluster_map(self) -> dict[str, type]:
+        """Build a mapping of VO FQN → aggregate class by scanning fields.
+
+        Value objects don't get ``aggregate_cluster`` set by the resolver,
+        so we derive it from which aggregate/entity embeds them via
+        ``ValueObject`` or ``ValueObjectList`` fields.
+        """
+        from protean.fields.basic import ValueObjectList
+        from protean.fields.embedded import ValueObject
+        from protean.utils import fqn
+        from protean.utils.reflection import declared_fields
+
+        registry = self._domain._domain_registry
+        vo_map: dict[str, type] = {}
+
+        # Scan aggregates and entities for VO field references
+        for element_type in ("AGGREGATE", "ENTITY"):
+            for record in registry._elements.get(element_type, {}).values():
+                owner_cls = record.cls
+                # For entities, use their aggregate cluster; for aggregates, use self
+                agg_cls = getattr(owner_cls.meta_, "aggregate_cluster", owner_cls)
+
+                for _name, field_obj in declared_fields(owner_cls).items():
+                    if isinstance(field_obj, ValueObject):
+                        vo_fqn = fqn(field_obj.value_object_cls)
+                        if vo_fqn not in vo_map:
+                            vo_map[vo_fqn] = agg_cls
+                    elif isinstance(field_obj, ValueObjectList):
+                        if isinstance(field_obj.content_type, ValueObject):
+                            vo_fqn = fqn(field_obj.content_type.value_object_cls)
+                        else:
+                            vo_fqn = fqn(field_obj.content_type)
+                        if vo_fqn not in vo_map:
+                            vo_map[vo_fqn] = agg_cls
+
+        # Also check VOs that have explicit part_of
+        for record in registry._elements.get("VALUE_OBJECT", {}).values():
+            vo_fqn = fqn(record.cls)
+            if vo_fqn not in vo_map:
+                part_of = getattr(record.cls.meta_, "part_of", None)
+                if part_of is not None:
+                    vo_map[vo_fqn] = part_of
+
+        return vo_map
+
+    def _build_clusters(self) -> dict[str, Any]:
+        """Build cluster dict keyed by aggregate FQN."""
+        from protean.utils import fqn
+
+        registry = self._domain._domain_registry
+        clusters: dict[str, Any] = {}
+
+        # Build aggregate entries
+        for record in registry._elements.get("AGGREGATE", {}).values():
+            agg_cls = record.cls
+            agg_fqn = fqn(agg_cls)
+
+            clusters[agg_fqn] = {
+                "aggregate": self._extract_aggregate(agg_cls, record),
+                "application_services": {},
+                "command_handlers": {},
+                "commands": {},
+                "database_models": {},
+                "entities": {},
+                "event_handlers": {},
+                "events": {},
+                "repositories": {},
+                "value_objects": {},
+            }
+
+        # Populate entities
+        for record in registry._elements.get("ENTITY", {}).values():
+            cls = record.cls
+            agg_cls = getattr(cls.meta_, "aggregate_cluster", None)
+            if agg_cls is not None:
+                agg_fqn = fqn(agg_cls)
+                if agg_fqn in clusters:
+                    clusters[agg_fqn]["entities"][fqn(cls)] = self._extract_entity(
+                        cls, record
+                    )
+
+        # Populate value objects (derive cluster from field references)
+        vo_cluster_map = self._build_vo_cluster_map()
+        for record in registry._elements.get("VALUE_OBJECT", {}).values():
+            cls = record.cls
+            vo_fqn = fqn(cls)
+            agg_cls = vo_cluster_map.get(vo_fqn)
+            if agg_cls is not None:
+                agg_fqn = fqn(agg_cls)
+                if agg_fqn in clusters:
+                    clusters[agg_fqn]["value_objects"][vo_fqn] = (
+                        self._extract_value_object(cls, record, agg_fqn)
+                    )
+
+        # Sort entity/VO dicts within each cluster, and sort clusters by key
+        for cluster in clusters.values():
+            cluster["entities"] = dict(sorted(cluster["entities"].items()))
+            cluster["value_objects"] = dict(sorted(cluster["value_objects"].items()))
+
+        return dict(sorted(clusters.items()))
 
     # ------------------------------------------------------------------
     # Checksum
