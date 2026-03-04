@@ -26,6 +26,17 @@ Invariants are business rules that must always hold true within your domain mode
 
 [Learn more about invariants →](invariants.md)
 
+### Status Transitions
+
+Most aggregates are state machines. The `Status` field makes lifecycle rules explicit and automatically enforced:
+
+- **Declarative transitions** - Define allowed state-to-state moves in the field declaration
+- **Automatic enforcement** - Illegal transitions raise `ValidationError`
+- **Terminal states** - States with no outgoing transitions are implicit
+- **Programmatic checking** - `can_transition_to()` checks without raising
+
+[Learn more about status transitions →](status-transitions.md)
+
 ### Aggregate Mutation
 
 Aggregates encapsulate the state and behavior of your domain. Mutating their state is how you implement business operations:

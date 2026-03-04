@@ -598,20 +598,91 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
 
 
 class atomic_change:
-    """Context manager to temporarily disable invariant checks on aggregate"""
+    """Context manager to temporarily disable invariant checks on aggregate.
 
-    def __init__(self, aggregate):
+    Also captures status field snapshots on entry and validates the
+    overall start-to-end transition on exit — so batched mutations
+    (and ``@apply`` handlers in ES aggregates) are validated as a single
+    logical transition.
+    """
+
+    def __init__(self, aggregate: BaseAggregate) -> None:
         self.aggregate = aggregate
+        self._status_snapshots: dict[str, Any] = {}
 
-    def __enter__(self):
+    def __enter__(self) -> None:
+        # Capture status field snapshots BEFORE precheck
+        self._capture_status_snapshots()
         # Temporary disable invariant checks
         self.aggregate._precheck()
         self.aggregate._disable_invariant_checks = True
 
-    def __exit__(self, *args):
-        # Validate on exit to trigger invariant checks
+    def __exit__(self, exc_type: Any, *args: Any) -> None:
+        # Re-enable invariant checks
         self.aggregate._disable_invariant_checks = False
+
+        # Validate status transitions (start -> end) before post-invariants.
+        # Only validate when no exception is being propagated.
+        if exc_type is None:
+            self._validate_status_transitions()
+
         self.aggregate._postcheck()
+
+    def _capture_status_snapshots(self) -> None:
+        """Snapshot all status fields with transition rules."""
+        fields_dict = getattr(self.aggregate.__class__, _FIELDS, {})
+        for fname, fobj in fields_dict.items():
+            if isinstance(fobj, ResolvedField) and getattr(fobj, "transitions", None):
+                self._status_snapshots[fname] = getattr(self.aggregate, fname, None)
+
+    def _validate_status_transitions(self) -> None:
+        """Validate start-to-end status transitions within the atomic block."""
+        from enum import Enum
+
+        from protean.exceptions import ValidationError
+
+        fields_dict = getattr(self.aggregate.__class__, _FIELDS, {})
+
+        for fname, start_value in self._status_snapshots.items():
+            fobj = fields_dict.get(fname)
+            if fobj is None or not isinstance(fobj, ResolvedField):
+                continue
+
+            end_value = getattr(self.aggregate, fname, None)
+
+            start = start_value.value if isinstance(start_value, Enum) else start_value
+            end = end_value.value if isinstance(end_value, Enum) else end_value
+
+            if start == end or start is None:
+                continue
+
+            transitions = fobj.transitions
+            if transitions is None:
+                continue
+
+            if start not in transitions:
+                raise ValidationError(
+                    {
+                        fname: [
+                            f"Invalid status transition from '{start}'. "
+                            f"'{start}' is a terminal state with no "
+                            f"allowed transitions"
+                        ]
+                    }
+                )
+
+            allowed = transitions[start]
+            if end not in allowed:
+                allowed_str = ", ".join(allowed)
+                raise ValidationError(
+                    {
+                        fname: [
+                            f"Invalid status transition from '{start}' "
+                            f"to '{end}'. "
+                            f"Allowed transitions: {allowed_str}"
+                        ]
+                    }
+                )
 
 
 def apply(fn):

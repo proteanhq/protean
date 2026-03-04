@@ -12,6 +12,7 @@ from .simple import (
     Float,
     Identifier,
     Integer,
+    Status,
     String,
     Text,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "Identifier",
     "Integer",
     "List",
+    "Status",
     "String",
     "Text",
     # FieldSpec class

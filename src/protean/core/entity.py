@@ -686,6 +686,103 @@ class BaseEntity(BaseModel, OptionsMixin):
         return self._run_invariants("post", return_errors=return_errors)
 
     # ------------------------------------------------------------------
+    # Status transition validation
+    # ------------------------------------------------------------------
+    def _validate_status_transition(self, field_name: str, new_value: Any) -> None:
+        """Validate that a status field transition is legal.
+
+        Called from ``__setattr__`` when invariant checks are active.
+        Skipped during ``atomic_change`` (deferred to ``__exit__``),
+        ``from_events`` replay, and initial construction.
+        """
+        from enum import Enum
+
+        fields_dict = getattr(self.__class__, _FIELDS, {})
+        field_obj = fields_dict.get(field_name)
+        if field_obj is None or not isinstance(field_obj, ResolvedField):
+            return
+        if not getattr(field_obj, "transitions", None):
+            return
+
+        current_value = getattr(self, field_name, None)
+
+        # Normalize to string values
+        target = new_value.value if isinstance(new_value, Enum) else new_value
+        current = (
+            current_value.value if isinstance(current_value, Enum) else current_value
+        )
+
+        # Same-value assignment is always allowed (no-op)
+        if current == target:
+            return
+
+        # None -> any value is allowed (initial assignment / reconstitution)
+        if current is None:
+            return
+
+        transitions = field_obj.transitions
+
+        if current not in transitions:
+            raise ValidationError(
+                {
+                    field_name: [
+                        f"Invalid status transition from '{current}'. "
+                        f"'{current}' is a terminal state with no allowed transitions"
+                    ]
+                }
+            )
+
+        allowed = transitions[current]
+        if target not in allowed:
+            allowed_str = ", ".join(allowed)
+            raise ValidationError(
+                {
+                    field_name: [
+                        f"Invalid status transition from '{current}' to '{target}'. "
+                        f"Allowed transitions: {allowed_str}"
+                    ]
+                }
+            )
+
+    def can_transition_to(self, field_name: str, target_value: Any) -> bool:
+        """Check whether a status field can transition to the given value.
+
+        Returns ``True`` if the transition is valid, ``False`` otherwise.
+        Always returns ``True`` for non-status fields or status fields
+        without a transitions map.
+
+        Example::
+
+            if order.can_transition_to("status", OrderStatus.SHIPPED):
+                order.ship(tracking_number="ABC123")
+        """
+        from enum import Enum
+
+        fields_dict = getattr(self.__class__, _FIELDS, {})
+        field_obj = fields_dict.get(field_name)
+        if field_obj is None or not isinstance(field_obj, ResolvedField):
+            return True
+        if not getattr(field_obj, "transitions", None):
+            return True
+
+        current_value = getattr(self, field_name, None)
+        target = target_value.value if isinstance(target_value, Enum) else target_value
+        current = (
+            current_value.value if isinstance(current_value, Enum) else current_value
+        )
+
+        if current == target:
+            return True
+        if current is None:
+            return True
+
+        transitions = field_obj.transitions
+        if current not in transitions:
+            return False
+
+        return target in transitions[current]
+
+    # ------------------------------------------------------------------
     # Mutation with validation + invariant checks
     # ------------------------------------------------------------------
     def __setattr__(self, name: str, value: Any) -> None:
@@ -701,6 +798,10 @@ class BaseEntity(BaseModel, OptionsMixin):
 
             # Determine the target for invariant checks: aggregate root or self
             target = self._root if self._root is not None else self
+
+            # Status transition validation (only when invariant checks are active)
+            if not target._disable_invariant_checks:
+                self._validate_status_transition(name, value)
 
             # Pre-check invariants
             target._precheck()

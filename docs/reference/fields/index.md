@@ -48,6 +48,10 @@ models. Options like `max_length` for `String` or `max_value` and `min_value` fo
 numeric fields like `Integer` and `Float` allow you to specify constraints
 directly in the model's definition.
 
+The `Status` field is a specialized simple field for modeling aggregate lifecycle
+states with optional transition enforcement. See
+[Status](./simple-fields.md#status) for details.
+
 ### Container fields
 
 [Container fields](./container-fields.md) are used for data types that hold multiple values, such as

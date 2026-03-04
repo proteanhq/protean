@@ -117,6 +117,55 @@ def Auto(
     return spec
 
 
+def Status(
+    enum_cls: type,
+    *,
+    transitions: dict | None = None,
+    **kwargs: Any,
+) -> FieldSpec:
+    """A status field constrained to an Enum's values with optional transition enforcement.
+
+    Requires an Enum class as the first argument.  Valid values are the
+    Enum members' ``value`` attributes (via Pydantic ``Literal`` validation).
+
+    When ``transitions`` is provided, the framework automatically prevents
+    illegal state changes.  Only transitions defined in the map are allowed.
+    States not appearing as keys are terminal (no outgoing transitions).
+
+    Example::
+
+        class OrderStatus(Enum):
+            DRAFT = "DRAFT"
+            PLACED = "PLACED"
+            CONFIRMED = "CONFIRMED"
+
+        status = Status(OrderStatus, transitions={
+            OrderStatus.DRAFT: [OrderStatus.PLACED],
+            OrderStatus.PLACED: [OrderStatus.CONFIRMED],
+        })
+    """
+    from enum import Enum as _Enum
+
+    from protean.exceptions import IncorrectUsageError
+
+    if not (isinstance(enum_cls, type) and issubclass(enum_cls, _Enum)):
+        raise IncorrectUsageError(
+            "Status() requires an Enum class as the first argument"
+        )
+
+    # Normalize default if it's an Enum member
+    if "default" in kwargs and isinstance(kwargs["default"], _Enum):
+        kwargs["default"] = kwargs["default"].value
+
+    return FieldSpec(
+        str,
+        field_kind="status",
+        choices=enum_cls,
+        transitions=transitions,
+        **kwargs,
+    )
+
+
 # ---------------------------------------------------------------------------
 # TYPE_CHECKING overrides — static type checkers see resolved Python types
 # instead of FieldSpec, matching what the mypy plugin does at analysis time.
@@ -160,5 +209,12 @@ if TYPE_CHECKING:
         identity_strategy: str | None = None,
         identity_function: str | Callable | None = None,
         identity_type: str | None = None,
+        **kwargs: Any,
+    ) -> str: ...
+
+    def Status(  # type: ignore[misc]
+        enum_cls: type,
+        *,
+        transitions: dict | None = None,
         **kwargs: Any,
     ) -> str: ...

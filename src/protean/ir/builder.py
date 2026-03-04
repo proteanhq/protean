@@ -198,6 +198,10 @@ class IRBuilder:
                 choices_list = sorted(str(c) for c in choices)
             entry["choices"] = choices_list
 
+        # Transitions — from ResolvedField
+        if getattr(field, "transitions", None) is not None:
+            entry["transitions"] = field.transitions
+
         # Default — from FieldSpec for accurate representation
         if spec is not None:
             from protean.fields.spec import _UNSET
@@ -288,6 +292,7 @@ class IRBuilder:
             (str, "standard"): "String",
             (str, "text"): "Text",
             (str, "identifier"): "Identifier",
+            (str, "status"): "Status",
             (str, "auto"): "Auto",
             (int, "standard"): "Integer",
             (int, "auto"): "Auto",

@@ -12,6 +12,7 @@ from protean.fields.simple import (
     Float,
     Identifier,
     Integer,
+    Status,
     String,
     Text,
 )
@@ -314,4 +315,34 @@ def build_published_event_domain() -> Domain:
     # Manually mark AccountCreated as published
     AccountCreated.meta_.published = True
 
+    return domain
+
+
+def build_status_field_domain() -> Domain:
+    """Build a domain with Status fields for IR extraction tests."""
+    from enum import Enum
+
+    domain = Domain(name="StatusTest", root_path=".")
+
+    class OrderStatus(Enum):
+        DRAFT = "DRAFT"
+        PLACED = "PLACED"
+        CONFIRMED = "CONFIRMED"
+        SHIPPED = "SHIPPED"
+        CANCELLED = "CANCELLED"
+
+    @domain.aggregate
+    class Order:
+        status = Status(
+            OrderStatus,
+            default="DRAFT",
+            transitions={
+                OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.CANCELLED],
+                OrderStatus.PLACED: [OrderStatus.CONFIRMED],
+                OrderStatus.CONFIRMED: [OrderStatus.SHIPPED],
+            },
+        )
+        category = Status(OrderStatus, default="DRAFT")
+
+    domain.init(traverse=False)
     return domain

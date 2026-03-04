@@ -73,6 +73,9 @@ class FieldSpec:
         validators: Iterable[Callable] = (),  # Per-field validator callables
         # Error messages
         error_messages: dict[str, str] | None = None,
+        # Status transitions
+        transitions: dict
+        | None = None,  # For Status fields — {state: [allowed_targets]}
     ) -> None:
         self.python_type = python_type
         self.field_kind = field_kind
@@ -91,6 +94,9 @@ class FieldSpec:
         self.sanitize = sanitize
         self.validators = list(validators)
         self.error_messages = error_messages
+        self.transitions = (
+            self._normalize_transitions(transitions) if transitions else None
+        )
         self._auto_generated = False
 
         # Warn if required=True with an explicit default
@@ -233,6 +239,8 @@ class FieldSpec:
             json_extra["_error_messages"] = self.error_messages
         if self._auto_generated:
             json_extra["_auto_generated"] = True
+        if self.transitions is not None:
+            json_extra["transitions"] = self.transitions
 
         if json_extra:
             kwargs["json_schema_extra"] = json_extra
@@ -311,6 +319,24 @@ class FieldSpec:
             ]
         return Annotated[resolved_type, pydantic_field]
 
+    @staticmethod
+    def _normalize_transitions(transitions: dict) -> dict[str, list[str]]:
+        """Normalize Enum members in a transition map to string values.
+
+        Accepts both Enum members and raw strings as keys/values::
+
+            {OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.CANCELLED]}
+            # becomes
+            {"DRAFT": ["PLACED", "CANCELLED"]}
+        """
+        normalized: dict[str, list[str]] = {}
+        for source, targets in transitions.items():
+            key = source.value if isinstance(source, Enum) else str(source)
+            normalized[key] = [
+                t.value if isinstance(t, Enum) else str(t) for t in targets
+            ]
+        return normalized
+
     def __repr__(self) -> str:
         import datetime as _dt
 
@@ -319,6 +345,7 @@ class FieldSpec:
             (str, "standard"): "String",
             (str, "text"): "Text",
             (str, "identifier"): "Identifier",
+            (str, "status"): "Status",
             (str, "auto"): "Auto",
             (int, "auto"): "Auto",
             (int, "standard"): "Integer",
@@ -370,6 +397,10 @@ class FieldSpec:
         # Show increment for Auto fields
         if factory_name == "Auto" and getattr(self, "_increment", False):
             parts.append("increment=True")
+        # Show transition count for Status fields
+        if factory_name == "Status" and self.transitions:
+            n_rules = sum(len(v) for v in self.transitions.values())
+            parts.append(f"transitions=<{n_rules} rules>")
         return f"{factory_name}({', '.join(parts)})"
 
 

@@ -33,6 +33,7 @@ _FIELD_FIXTURE_FILES = [
     "container_fields.py",
     "identifier_fields.py",
     "class_fields.py",
+    "status_field.py",
 ]
 
 # Decorator fixture files (new tests)
@@ -185,6 +186,20 @@ class TestIdentifierFields:
             "builtins.str",  # Identifier(identifier=True) - not Optional
             "builtins.str",  # Auto(identifier=True) - not Optional
             "builtins.str | None",  # Identifier() - Optional
+        ]
+        assert not errors
+
+
+class TestStatusField:
+    """Status field factory resolves to str."""
+
+    def test_status_fields_resolve_to_str(self) -> None:
+        notes, errors = _get_field_results("status_field.py")
+        types = _extract_revealed_types(notes)
+        assert types == [
+            "builtins.str",  # Status(OrderStatus, required=True)
+            "builtins.str",  # Status(OrderStatus, default="DRAFT")
+            "builtins.str | None",  # Status(OrderStatus, transitions=...) - optional
         ]
         assert not errors
 

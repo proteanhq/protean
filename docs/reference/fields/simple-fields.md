@@ -215,3 +215,77 @@ Out[2]: {'user_id': 1, 'name': 'John Doe', 'subscribed': False}
 
 Refer to [Identity](../domain-elements/identity.md) section for a deep dive into identities
 in Protean.
+
+## Status
+
+A status field for modeling aggregate lifecycle states with enforced transitions.
+Requires an Enum class as the first argument. Valid values are the Enum members'
+`value` attributes.
+
+```python
+from enum import Enum
+from protean.fields import Status
+
+class OrderStatus(Enum):
+    DRAFT = "DRAFT"
+    PLACED = "PLACED"
+    CONFIRMED = "CONFIRMED"
+    SHIPPED = "SHIPPED"
+    DELIVERED = "DELIVERED"
+    CANCELLED = "CANCELLED"
+
+@domain.aggregate
+class Order:
+    status = Status(OrderStatus, default="DRAFT")
+```
+
+Without `transitions`, `Status` behaves like `String(choices=Enum)` — it constrains
+values but does not enforce transition rules.
+
+### Enforcing transitions
+
+Pass a `transitions` dict mapping each state to its allowed next states:
+
+```python
+@domain.aggregate
+class Order:
+    status = Status(OrderStatus, default="DRAFT", transitions={
+        OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.CANCELLED],
+        OrderStatus.PLACED: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+        OrderStatus.CONFIRMED: [OrderStatus.SHIPPED],
+        OrderStatus.SHIPPED: [OrderStatus.DELIVERED],
+        # DELIVERED and CANCELLED are terminal — absent from keys
+    })
+```
+
+States not appearing as keys in the transitions dict are **terminal states** — no
+outgoing transitions are allowed from them.
+
+```shell hl_lines="6 11"
+In [1]: order = Order()
+
+In [2]: order.status = "PLACED"  # DRAFT → PLACED: allowed
+
+In [3]: order.status = "SHIPPED"
+ERROR: ...
+ValidationError: {'status': ["Invalid status transition from 'PLACED' to 'SHIPPED'. Allowed transitions: CONFIRMED, CANCELLED"]}
+```
+
+### Programmatic checking
+
+Use `can_transition_to()` to check whether a transition is valid without raising:
+
+```python
+order.can_transition_to("status", OrderStatus.SHIPPED)  # False
+order.can_transition_to("status", OrderStatus.CONFIRMED)  # True
+```
+
+**Optional Arguments**
+
+- **`transitions`**: A dict mapping each status to a list of allowed target
+statuses. When provided, the framework prevents illegal transitions. Accepts
+both Enum members and raw strings as keys/values.
+
+Refer to the [Status Transitions](../../guides/domain-behavior/status-transitions.md)
+guide for detailed usage patterns including `atomic_change` and event-sourced
+aggregates.

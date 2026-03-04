@@ -82,6 +82,9 @@ class ResolvedField:
             self._validators = extra.get("_validators", [])
             self._error_messages = extra.get("_error_messages", {})
             self._auto_generated = extra.get("_auto_generated", False)
+            self.transitions: dict[str, list[str]] | None = extra.get(
+                "transitions", None
+            )
         else:
             self.identifier = False
             self.referenced_as = None
@@ -92,6 +95,7 @@ class ResolvedField:
             self._validators = []
             self._error_messages = {}
             self._auto_generated = False
+            self.transitions = None
 
         # Identifiers are always unique (matching legacy Field behavior)
         if self.identifier:

@@ -76,6 +76,7 @@ FIELD_TYPE_MAP: dict[str, str] = {
     "protean.fields.simple.DateTime": "datetime.datetime",
     "protean.fields.simple.Identifier": "builtins.str",
     "protean.fields.simple.Auto": "builtins.str",
+    "protean.fields.simple.Status": "builtins.str",
     # Container fields (protean.fields.containers)
     "protean.fields.containers.List": "builtins.list",
     "protean.fields.containers.Dict": "builtins.dict",

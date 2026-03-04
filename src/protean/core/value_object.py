@@ -110,6 +110,11 @@ class BaseValueObject(BaseModel, OptionsMixin):
                     f"Value Objects cannot contain fields marked 'identifier' "
                     f"(field '{name}')"
                 )
+            if getattr(value, "transitions", None) is not None:
+                raise IncorrectUsageError(
+                    f"Value Objects are immutable and cannot have status "
+                    f"fields with transitions (field '{name}')"
+                )
 
         for name, value in list(vars(cls).items()):
             if isinstance(value, FieldSpec):

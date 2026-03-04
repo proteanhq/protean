@@ -4,7 +4,11 @@ import pytest
 
 from protean.ir.builder import IRBuilder
 
-from .elements import build_extended_field_test_domain, build_field_test_domain
+from .elements import (
+    build_extended_field_test_domain,
+    build_field_test_domain,
+    build_status_field_domain,
+)
 
 
 @pytest.fixture
@@ -227,3 +231,60 @@ class TestFieldDescription:
     def test_description_absent_when_not_set(self, catalog_fields):
         f = catalog_fields["items_cache"]
         assert "description" not in f
+
+
+# ---------------------------------------------------------------------------
+# Status field IR extraction tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def status_fields():
+    """Return extracted fields for the Order aggregate with Status fields."""
+    domain = build_status_field_domain()
+    builder = IRBuilder(domain)
+    order_cls = None
+    for record in domain._domain_registry._elements["AGGREGATE"].values():
+        if record.cls.__name__ == "Order":
+            order_cls = record.cls
+            break
+    assert order_cls is not None
+    return builder._extract_fields(order_cls)
+
+
+@pytest.mark.no_test_domain
+class TestStatusFieldExtraction:
+    """Verify Status field kind, type, and transitions in IR."""
+
+    def test_status_kind(self, status_fields):
+        f = status_fields["status"]
+        assert f["kind"] == "status"
+
+    def test_status_type(self, status_fields):
+        f = status_fields["status"]
+        assert f["type"] == "Status"
+
+    def test_status_transitions_present(self, status_fields):
+        f = status_fields["status"]
+        assert "transitions" in f
+        assert f["transitions"] == {
+            "DRAFT": ["PLACED", "CANCELLED"],
+            "PLACED": ["CONFIRMED"],
+            "CONFIRMED": ["SHIPPED"],
+        }
+
+    def test_status_choices_present(self, status_fields):
+        f = status_fields["status"]
+        assert "choices" in f
+        assert "DRAFT" in f["choices"]
+
+    def test_status_without_transitions(self, status_fields):
+        """Status field without transitions should not have transitions key."""
+        f = status_fields["category"]
+        assert f["kind"] == "status"
+        assert f["type"] == "Status"
+        assert "transitions" not in f
+
+    def test_status_default(self, status_fields):
+        f = status_fields["status"]
+        assert f["default"] == "DRAFT"

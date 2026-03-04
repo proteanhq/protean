@@ -278,6 +278,7 @@ and reported together.
     **Related guides:**
 
     - [Validations](validations.md) — Field-level constraints (Layer 1).
+    - [Status Transitions](status-transitions.md) — Enforcing state machine rules with the `Status` field.
     - [Aggregate Mutation](aggregate-mutation.md) — The `__setattr__` mechanism that triggers invariants.
     - [Domain Services](domain-services.md) — Cross-aggregate invariants in domain services.
 
