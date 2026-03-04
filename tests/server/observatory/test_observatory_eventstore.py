@@ -636,3 +636,135 @@ class TestEventStoreRouteWiring:
         """Verify the page route exists."""
         routes = [r.path for r in observatory.app.routes]
         assert "/eventstore" in routes
+
+
+# ---------------------------------------------------------------------------
+# Endpoint: enrich_with_event_store_stats exception (lines 258-259)
+# ---------------------------------------------------------------------------
+
+
+class TestEventStoreStreamsEndpointEnrichException:
+    def test_enrich_exception_does_not_break_endpoint(self):
+        """Lines 258-259: enrich_with_event_store_stats raises at the
+        endpoint level, endpoint catches and continues."""
+        from unittest.mock import patch
+
+        from fastapi import FastAPI
+
+        agg_cls = _make_mock_agg_cls(name="Order", stream_category="test::order")
+        record = _make_mock_domain_record("Order", "myapp.Order", agg_cls)
+        domain = _make_mock_domain(aggregates={"myapp.Order": record})
+
+        router = create_eventstore_router([domain])
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        test_client = TestClient(app)
+
+        with (
+            patch(
+                "protean.server.observatory.routes.eventstore.enrich_with_event_store_stats",
+                side_effect=Exception("unexpected enrich error"),
+            ),
+            patch(
+                "protean.server.observatory.routes.eventstore.collect_outbox_status",
+                return_value={},
+            ),
+        ):
+            response = test_client.get("/api/eventstore/streams")
+            assert response.status_code == 200
+            data = response.json()
+            assert "aggregates" in data
+            assert "summary" in data
+
+
+# ---------------------------------------------------------------------------
+# Endpoint: get_stream_instances exception (lines 300-306)
+# ---------------------------------------------------------------------------
+
+
+class TestEventStoreStreamDetailGetInstancesException:
+    def test_get_stream_instances_raises_at_endpoint(self):
+        """Lines 300-306: get_stream_instances raises inside the endpoint handler,
+        the endpoint catches and returns empty instances list."""
+        from unittest.mock import patch
+
+        from fastapi import FastAPI
+
+        agg_cls = _make_mock_agg_cls(name="Order", stream_category="test::order")
+        record = _make_mock_domain_record("Order", "myapp.Order", agg_cls)
+        domain = _make_mock_domain(aggregates={"myapp.Order": record})
+
+        # Mock event store for the stats call (lines 311-317)
+        store = MagicMock()
+        store._stream_identifiers.return_value = ["id1"]
+        store._stream_head_position.return_value = 5
+        domain.event_store.store = store
+
+        router = create_eventstore_router([domain])
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        test_client = TestClient(app)
+
+        with patch(
+            "protean.server.observatory.routes.eventstore.get_stream_instances",
+            side_effect=Exception("instance retrieval error"),
+        ):
+            response = test_client.get("/api/eventstore/streams/test::order")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["instances"] == []
+            assert data["stream_category"] == "test::order"
+
+
+# ---------------------------------------------------------------------------
+# Endpoint: stream_detail stats exception (lines 318-319)
+# ---------------------------------------------------------------------------
+
+
+class TestEventStoreStreamDetailStatsException:
+    def test_stats_exception_does_not_break_endpoint(self):
+        """Lines 318-319: _stream_identifiers or _stream_head_position
+        raises inside the stats block, endpoint catches and continues."""
+        from unittest.mock import patch
+
+        from fastapi import FastAPI
+
+        agg_cls = _make_mock_agg_cls(name="Order", stream_category="test::order")
+        record = _make_mock_domain_record("Order", "myapp.Order", agg_cls)
+        domain = _make_mock_domain(aggregates={"myapp.Order": record})
+
+        # Make domain_context raise in the stats block
+        domain.domain_context.side_effect = Exception("store unavailable")
+
+        router = create_eventstore_router([domain])
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        test_client = TestClient(app)
+
+        with (
+            patch(
+                "protean.server.observatory.routes.eventstore.get_stream_instances",
+                return_value=[],
+            ),
+            patch(
+                "protean.server.observatory.routes.eventstore.collect_aggregate_stream_metadata",
+                return_value=[
+                    {
+                        "name": "Order",
+                        "qualname": "myapp.Order",
+                        "domain": "TestDomain",
+                        "stream_category": "test::order",
+                        "is_event_sourced": False,
+                        "instance_count": None,
+                        "head_position": None,
+                        "_domain": domain,
+                    }
+                ],
+            ),
+        ):
+            response = test_client.get("/api/eventstore/streams/test::order")
+            assert response.status_code == 200
+            data = response.json()
+            # total should fall back to len(instances) and head_position is None
+            assert data["total"] == 0
+            assert data["head_position"] is None

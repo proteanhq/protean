@@ -14,8 +14,9 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.process_manager import BaseProcessManager
 from protean import apply
-from protean.fields import Identifier, String
+from protean.fields import Float, Identifier, String
 from protean.server import Engine
 from protean.server.engine import CommandDispatcher
 from protean.utils.eventing import Message
@@ -246,6 +247,142 @@ class TestMessageContextCleanup:
 
         with test_domain.domain_context():
             assert not hasattr(g, "message_in_context") or g.message_in_context is None
+
+
+# --- Process Manager elements ---
+
+
+class Order(BaseAggregate):
+    customer_id: Identifier()
+    total: Float()
+    status: String(default="new")
+
+
+class OrderPlaced(BaseEvent):
+    order_id: Identifier()
+    customer_id: Identifier()
+    total: Float()
+
+
+class Payment(BaseAggregate):
+    order_id: Identifier()
+    amount: Float()
+
+
+class PaymentConfirmed(BaseEvent):
+    payment_id: Identifier()
+    order_id: Identifier()
+    amount: Float()
+
+
+class OrderFulfillmentPM(BaseProcessManager):
+    order_id: Identifier()
+    status: String(default="new")
+
+    @handle(OrderPlaced, start=True, correlate="order_id")
+    def on_order_placed(self, event: OrderPlaced) -> None:
+        self.order_id = event.order_id
+        self.status = "awaiting_payment"
+
+    @handle(PaymentConfirmed, correlate="order_id")
+    def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
+        self.status = "paid"
+
+
+class TestPMTransitionTrace:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(Payment)
+        test_domain.register(PaymentConfirmed, part_of=Payment)
+        test_domain.register(
+            OrderFulfillmentPM,
+            stream_categories=["test::order", "test::payment"],
+        )
+        test_domain.init(traverse=False)
+
+    def _make_order_placed_message(self, test_domain):
+        identifier = str(uuid4())
+        order = Order(id=identifier, customer_id="cust-1", total=99.0)
+        order.raise_(OrderPlaced(order_id=identifier, customer_id="cust-1", total=99.0))
+        return Message.from_domain_object(order._events[-1])
+
+    @pytest.mark.asyncio
+    async def test_pm_transition_emitted_on_success(self, test_domain):
+        """handle_message emits pm.transition for process managers."""
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine.emitter = Mock()
+
+        message = self._make_order_placed_message(test_domain)
+        result = await engine.handle_message(OrderFulfillmentPM, message)
+
+        assert result is True
+
+        pm_calls = [
+            c
+            for c in engine.emitter.emit.call_args_list
+            if c.kwargs.get("event") == "pm.transition"
+        ]
+        assert len(pm_calls) == 1
+        call = pm_calls[0]
+        assert call.kwargs["handler"] == "OrderFulfillmentPM"
+        assert call.kwargs["message_type"] is not None
+        assert call.kwargs["metadata"]["pm_type"] == "OrderFulfillmentPM"
+
+    @pytest.mark.asyncio
+    async def test_pm_transition_has_duration(self, test_domain):
+        """pm.transition trace includes duration_ms."""
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine.emitter = Mock()
+
+        message = self._make_order_placed_message(test_domain)
+        await engine.handle_message(OrderFulfillmentPM, message)
+
+        pm_calls = [
+            c
+            for c in engine.emitter.emit.call_args_list
+            if c.kwargs.get("event") == "pm.transition"
+        ]
+        assert pm_calls[0].kwargs["duration_ms"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_pm_transition_not_emitted_for_regular_handler(self, test_domain):
+        """Regular event handlers do NOT emit pm.transition."""
+        # Register a regular event handler for the same event
+        test_domain.register(UserEventHandler, part_of=User)
+        test_domain.init(traverse=False)
+
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine.emitter = Mock()
+
+        message = _make_event_message(test_domain)
+        await engine.handle_message(UserEventHandler, message)
+
+        pm_calls = [
+            c
+            for c in engine.emitter.emit.call_args_list
+            if c.kwargs.get("event") == "pm.transition"
+        ]
+        assert len(pm_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_pm_transition_includes_stream_category(self, test_domain):
+        """pm.transition metadata includes the PM's own stream category."""
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine.emitter = Mock()
+
+        message = self._make_order_placed_message(test_domain)
+        await engine.handle_message(OrderFulfillmentPM, message)
+
+        pm_calls = [
+            c
+            for c in engine.emitter.emit.call_args_list
+            if c.kwargs.get("event") == "pm.transition"
+        ]
+        meta = pm_calls[0].kwargs["metadata"]
+        assert "pm_stream_category" in meta
+        assert meta["pm_stream_category"] is not None
 
 
 class TestShutdownSkip:
