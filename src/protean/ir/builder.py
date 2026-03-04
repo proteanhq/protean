@@ -481,6 +481,118 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
+    def _extract_handler_map(self, cls: type) -> dict[str, list[str]]:
+        """Extract handler map as {__type__: sorted([method_names])}."""
+        handlers = getattr(cls, "_handlers", {})
+        result: dict[str, list[str]] = {}
+        for type_key, methods in sorted(handlers.items()):
+            if methods:
+                result[type_key] = sorted(m.__name__ for m in methods)
+        return result
+
+    def _extract_subscription(self, cls: type) -> dict[str, Any]:
+        """Extract subscription config as {type, profile, config}."""
+        sub_type = getattr(cls.meta_, "subscription_type", None)
+        sub_profile = getattr(cls.meta_, "subscription_profile", None)
+        sub_config = getattr(cls.meta_, "subscription_config", {})
+        return {
+            "config": sub_config if sub_config else {},
+            "profile": sub_profile.value if sub_profile else None,
+            "type": sub_type.value if sub_type else None,
+        }
+
+    def _extract_command_handler(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract command handler IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "COMMAND_HANDLER"
+        entry["fqn"] = fqn(cls)
+        entry["handlers"] = self._extract_handler_map(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        agg_cls = self._resolve_aggregate_cls(cls)
+        if agg_cls is not None:
+            entry["part_of"] = fqn(agg_cls)
+
+        entry["stream_category"] = getattr(cls.meta_, "stream_category", None)
+        entry["subscription"] = self._extract_subscription(cls)
+
+        return dict(sorted(entry.items()))
+
+    def _extract_event_handler(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract event handler IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "EVENT_HANDLER"
+        entry["fqn"] = fqn(cls)
+        entry["handlers"] = self._extract_handler_map(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        agg_cls = self._resolve_aggregate_cls(cls)
+        if agg_cls is not None:
+            entry["part_of"] = fqn(agg_cls)
+
+        entry["source_stream"] = getattr(cls.meta_, "source_stream", None)
+        entry["stream_category"] = getattr(cls.meta_, "stream_category", None)
+        entry["subscription"] = self._extract_subscription(cls)
+
+        return dict(sorted(entry.items()))
+
+    def _extract_application_service(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract application service IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "APPLICATION_SERVICE"
+        entry["fqn"] = fqn(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        agg_cls = self._resolve_aggregate_cls(cls)
+        if agg_cls is not None:
+            entry["part_of"] = fqn(agg_cls)
+
+        return dict(sorted(entry.items()))
+
+    def _extract_repository(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract repository IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "REPOSITORY"
+        entry["fqn"] = fqn(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        agg_cls = self._resolve_aggregate_cls(cls)
+        if agg_cls is not None:
+            entry["part_of"] = fqn(agg_cls)
+
+        return dict(sorted(entry.items()))
+
+    def _extract_database_model(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract database model IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["database"] = getattr(cls.meta_, "database", None)
+        entry["element_type"] = "DATABASE_MODEL"
+        entry["fqn"] = fqn(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        agg_cls = self._resolve_aggregate_cls(cls)
+        if agg_cls is not None:
+            entry["part_of"] = fqn(agg_cls)
+
+        entry["schema_name"] = getattr(cls.meta_, "schema_name", None)
+
+        return dict(sorted(entry.items()))
+
     # ------------------------------------------------------------------
     # Cluster assembly
     # ------------------------------------------------------------------
@@ -591,6 +703,21 @@ class IRBuilder:
         _place_in_cluster("ENTITY", "entities", self._extract_entity)
         _place_in_cluster("COMMAND", "commands", self._extract_command)
         _place_in_cluster("EVENT", "events", self._extract_event)
+        _place_in_cluster(
+            "COMMAND_HANDLER", "command_handlers", self._extract_command_handler
+        )
+        _place_in_cluster(
+            "EVENT_HANDLER", "event_handlers", self._extract_event_handler
+        )
+        _place_in_cluster(
+            "APPLICATION_SERVICE",
+            "application_services",
+            self._extract_application_service,
+        )
+        _place_in_cluster("REPOSITORY", "repositories", self._extract_repository)
+        _place_in_cluster(
+            "DATABASE_MODEL", "database_models", self._extract_database_model
+        )
 
         # Populate value objects (derive cluster from field references)
         vo_cluster_map = self._build_vo_cluster_map()
@@ -608,9 +735,14 @@ class IRBuilder:
         # Sort all inner dicts within each cluster, and sort clusters by key
         for cluster in clusters.values():
             for section in (
+                "application_services",
+                "command_handlers",
                 "commands",
+                "database_models",
                 "entities",
+                "event_handlers",
                 "events",
+                "repositories",
                 "value_objects",
             ):
                 cluster[section] = dict(sorted(cluster[section].items()))

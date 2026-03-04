@@ -1,6 +1,6 @@
 """Shared test domain elements for IR builder tests."""
 
-from protean import Domain, invariant
+from protean import Domain, handle, invariant
 from protean.fields import HasMany, ValueObject as VOField
 
 from protean.fields.containers import Dict, List
@@ -115,6 +115,48 @@ def build_command_event_test_domain() -> Domain:
     class Order:
         customer_name = String(max_length=100, required=True)
         total = Float(min_value=0.0)
+
+    domain.init(traverse=False)
+    return domain
+
+
+def build_handler_test_domain() -> Domain:
+    """Build a domain with command handlers, event handlers, and services."""
+    domain = Domain(name="HandlerTest", root_path=".")
+
+    @domain.command(part_of="Account")
+    class OpenAccount:
+        holder_name = String(max_length=100, required=True)
+
+    @domain.event(part_of="Account")
+    class AccountOpened:
+        account_id = Identifier(required=True)
+        holder_name = String(required=True)
+
+    @domain.aggregate
+    class Account:
+        holder_name = String(max_length=100, required=True)
+        balance = Float(default=0.0)
+
+    @domain.command_handler(part_of=Account)
+    class AccountCommandHandler:
+        @handle(OpenAccount)
+        def handle_open_account(self, command):
+            pass
+
+    @domain.event_handler(part_of=Account)
+    class AccountEventHandler:
+        @handle(AccountOpened)
+        def on_account_opened(self, event):
+            pass
+
+    @domain.application_service(part_of=Account)
+    class AccountService:
+        pass
+
+    @domain.repository(part_of=Account)
+    class AccountRepository:
+        pass
 
     domain.init(traverse=False)
     return domain
