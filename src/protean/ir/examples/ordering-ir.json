@@ -1,0 +1,751 @@
+{
+  "$schema": "https://protean.dev/ir/v0.1.0/schema.json",
+  "checksum": "sha256:dd319674ffc19cdab0381133606dc8c1df4900c978e6daf0914839700785cdd4",
+  "clusters": {
+    "ecommerce.ordering.Order": {
+      "aggregate": {
+        "description": "Root aggregate for customer orders with line items and shipping.",
+        "element_type": "AGGREGATE",
+        "fields": {
+          "customer_name": {
+            "kind": "standard",
+            "max_length": 100,
+            "required": true,
+            "sanitize": true,
+            "type": "String"
+          },
+          "id": {
+            "auto_generated": true,
+            "identifier": true,
+            "kind": "auto",
+            "type": "Auto",
+            "unique": true
+          },
+          "items": {
+            "kind": "has_many",
+            "target": "ecommerce.ordering.OrderItem"
+          },
+          "placed_at": {
+            "kind": "standard",
+            "type": "DateTime"
+          },
+          "shipping_address": {
+            "kind": "value_object",
+            "target": "ecommerce.ordering.Address"
+          },
+          "status": {
+            "choices": [
+              "CANCELLED",
+              "CONFIRMED",
+              "PENDING",
+              "SHIPPED"
+            ],
+            "default": "PENDING",
+            "kind": "standard",
+            "max_length": 20,
+            "type": "String"
+          },
+          "total_amount": {
+            "kind": "standard",
+            "min_value": 0.0,
+            "type": "Float"
+          }
+        },
+        "fqn": "ecommerce.ordering.Order",
+        "identity_field": "id",
+        "invariants": {
+          "post": [
+            "must_have_positive_total"
+          ],
+          "pre": []
+        },
+        "module": "ecommerce.ordering",
+        "name": "Order",
+        "options": {
+          "auto_add_id_field": true,
+          "fact_events": true,
+          "is_event_sourced": false,
+          "limit": 100,
+          "provider": "default",
+          "schema_name": "order",
+          "stream_category": "ordering::order"
+        }
+      },
+      "application_services": {},
+      "command_handlers": {
+        "ecommerce.ordering.OrderCommandHandler": {
+          "element_type": "COMMAND_HANDLER",
+          "fqn": "ecommerce.ordering.OrderCommandHandler",
+          "handlers": {
+            "Ordering.CancelOrder.v1": [
+              "handle_cancel_order"
+            ],
+            "Ordering.PlaceOrder.v1": [
+              "handle_place_order"
+            ]
+          },
+          "module": "ecommerce.ordering",
+          "name": "OrderCommandHandler",
+          "part_of": "ecommerce.ordering.Order",
+          "stream_category": "ordering::order:command",
+          "subscription": {
+            "config": {},
+            "profile": null,
+            "type": null
+          }
+        }
+      },
+      "commands": {
+        "ecommerce.ordering.CancelOrder": {
+          "__type__": "Ordering.CancelOrder.v1",
+          "__version__": "v1",
+          "element_type": "COMMAND",
+          "fields": {
+            "order_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "reason": {
+              "kind": "standard",
+              "max_length": 500,
+              "type": "String"
+            }
+          },
+          "fqn": "ecommerce.ordering.CancelOrder",
+          "module": "ecommerce.ordering",
+          "name": "CancelOrder",
+          "part_of": "ecommerce.ordering.Order"
+        },
+        "ecommerce.ordering.PlaceOrder": {
+          "__type__": "Ordering.PlaceOrder.v1",
+          "__version__": "v1",
+          "element_type": "COMMAND",
+          "fields": {
+            "customer_name": {
+              "kind": "standard",
+              "max_length": 100,
+              "required": true,
+              "type": "String"
+            },
+            "items": {
+              "content_type": "dict",
+              "kind": "list",
+              "required": true,
+              "type": "List"
+            }
+          },
+          "fqn": "ecommerce.ordering.PlaceOrder",
+          "module": "ecommerce.ordering",
+          "name": "PlaceOrder",
+          "part_of": "ecommerce.ordering.Order"
+        }
+      },
+      "database_models": {},
+      "entities": {
+        "ecommerce.ordering.OrderItem": {
+          "element_type": "ENTITY",
+          "fields": {
+            "id": {
+              "auto_generated": true,
+              "identifier": true,
+              "kind": "auto",
+              "type": "Auto",
+              "unique": true
+            },
+            "order_id": {
+              "auto_generated": true,
+              "kind": "reference",
+              "linked_attribute": "id",
+              "target": "ecommerce.ordering.Order"
+            },
+            "product_name": {
+              "kind": "standard",
+              "max_length": 255,
+              "required": true,
+              "type": "String"
+            },
+            "quantity": {
+              "kind": "standard",
+              "min_value": 1,
+              "required": true,
+              "type": "Integer"
+            },
+            "unit_price": {
+              "kind": "standard",
+              "min_value": 0.0,
+              "required": true,
+              "type": "Float"
+            }
+          },
+          "fqn": "ecommerce.ordering.OrderItem",
+          "identity_field": "id",
+          "invariants": {
+            "post": [],
+            "pre": []
+          },
+          "module": "ecommerce.ordering",
+          "name": "OrderItem",
+          "options": {
+            "auto_add_id_field": true,
+            "limit": 100,
+            "provider": "default",
+            "schema_name": "order_item"
+          },
+          "part_of": "ecommerce.ordering.Order"
+        }
+      },
+      "event_handlers": {
+        "ecommerce.ordering.OrderNotificationHandler": {
+          "element_type": "EVENT_HANDLER",
+          "fqn": "ecommerce.ordering.OrderNotificationHandler",
+          "handlers": {
+            "Ordering.OrderPlaced.v1": [
+              "send_confirmation"
+            ]
+          },
+          "module": "ecommerce.ordering",
+          "name": "OrderNotificationHandler",
+          "part_of": "ecommerce.ordering.Order",
+          "source_stream": null,
+          "stream_category": "ordering::order",
+          "subscription": {
+            "config": {},
+            "profile": null,
+            "type": null
+          }
+        }
+      },
+      "events": {
+        "ecommerce.ordering.OrderCancelled": {
+          "__type__": "Ordering.OrderCancelled.v1",
+          "__version__": "v1",
+          "element_type": "EVENT",
+          "fields": {
+            "order_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "reason": {
+              "kind": "standard",
+              "type": "String"
+            }
+          },
+          "fqn": "ecommerce.ordering.OrderCancelled",
+          "is_fact_event": false,
+          "module": "ecommerce.ordering",
+          "name": "OrderCancelled",
+          "part_of": "ecommerce.ordering.Order",
+          "published": true
+        },
+        "ecommerce.ordering.OrderPlaced": {
+          "__type__": "Ordering.OrderPlaced.v1",
+          "__version__": "v1",
+          "element_type": "EVENT",
+          "fields": {
+            "customer_name": {
+              "kind": "standard",
+              "required": true,
+              "type": "String"
+            },
+            "order_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "total_amount": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            }
+          },
+          "fqn": "ecommerce.ordering.OrderPlaced",
+          "is_fact_event": false,
+          "module": "ecommerce.ordering",
+          "name": "OrderPlaced",
+          "part_of": "ecommerce.ordering.Order",
+          "published": true
+        }
+      },
+      "repositories": {
+        "ecommerce.ordering.OrderRepository": {
+          "element_type": "REPOSITORY",
+          "fqn": "ecommerce.ordering.OrderRepository",
+          "module": "ecommerce.ordering",
+          "name": "OrderRepository",
+          "part_of": "ecommerce.ordering.Order"
+        }
+      },
+      "value_objects": {
+        "ecommerce.ordering.Address": {
+          "description": "Shipping or billing address as an immutable value object.",
+          "element_type": "VALUE_OBJECT",
+          "fields": {
+            "city": {
+              "kind": "standard",
+              "max_length": 100,
+              "required": true,
+              "type": "String"
+            },
+            "street": {
+              "kind": "standard",
+              "max_length": 255,
+              "required": true,
+              "type": "String"
+            },
+            "zip_code": {
+              "kind": "standard",
+              "max_length": 10,
+              "required": true,
+              "type": "String"
+            }
+          },
+          "fqn": "ecommerce.ordering.Address",
+          "invariants": {
+            "post": [
+              "validate_zip_format"
+            ],
+            "pre": []
+          },
+          "module": "ecommerce.ordering",
+          "name": "Address",
+          "part_of": "ecommerce.ordering.Order"
+        }
+      }
+    },
+    "ecommerce.payments.Payment": {
+      "aggregate": {
+        "element_type": "AGGREGATE",
+        "fields": {
+          "amount": {
+            "kind": "standard",
+            "min_value": 0.01,
+            "required": true,
+            "type": "Float"
+          },
+          "id": {
+            "auto_generated": true,
+            "identifier": true,
+            "kind": "auto",
+            "type": "Auto",
+            "unique": true
+          },
+          "order_id": {
+            "kind": "identifier",
+            "required": true,
+            "type": "Identifier"
+          },
+          "status": {
+            "choices": [
+              "CONFIRMED",
+              "FAILED",
+              "PENDING"
+            ],
+            "default": "PENDING",
+            "kind": "standard",
+            "max_length": 20,
+            "type": "String"
+          }
+        },
+        "fqn": "ecommerce.payments.Payment",
+        "identity_field": "id",
+        "invariants": {
+          "post": [],
+          "pre": []
+        },
+        "module": "ecommerce.payments",
+        "name": "Payment",
+        "options": {
+          "auto_add_id_field": true,
+          "fact_events": false,
+          "is_event_sourced": false,
+          "limit": 100,
+          "provider": "default",
+          "schema_name": "payment",
+          "stream_category": "ordering::payment"
+        }
+      },
+      "application_services": {},
+      "command_handlers": {
+        "ecommerce.payments.PaymentCommandHandler": {
+          "element_type": "COMMAND_HANDLER",
+          "fqn": "ecommerce.payments.PaymentCommandHandler",
+          "handlers": {
+            "Ordering.ConfirmPayment.v1": [
+              "handle_confirm"
+            ]
+          },
+          "module": "ecommerce.payments",
+          "name": "PaymentCommandHandler",
+          "part_of": "ecommerce.payments.Payment",
+          "stream_category": "ordering::payment:command",
+          "subscription": {
+            "config": {},
+            "profile": null,
+            "type": null
+          }
+        }
+      },
+      "commands": {
+        "ecommerce.payments.ConfirmPayment": {
+          "__type__": "Ordering.ConfirmPayment.v1",
+          "__version__": "v1",
+          "element_type": "COMMAND",
+          "fields": {
+            "amount": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            },
+            "order_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            }
+          },
+          "fqn": "ecommerce.payments.ConfirmPayment",
+          "module": "ecommerce.payments",
+          "name": "ConfirmPayment",
+          "part_of": "ecommerce.payments.Payment"
+        }
+      },
+      "database_models": {},
+      "entities": {},
+      "event_handlers": {},
+      "events": {
+        "ecommerce.payments.PaymentConfirmed": {
+          "__type__": "Ordering.PaymentConfirmed.v1",
+          "__version__": "v1",
+          "element_type": "EVENT",
+          "fields": {
+            "amount": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            },
+            "order_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "payment_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            }
+          },
+          "fqn": "ecommerce.payments.PaymentConfirmed",
+          "is_fact_event": false,
+          "module": "ecommerce.payments",
+          "name": "PaymentConfirmed",
+          "part_of": "ecommerce.payments.Payment",
+          "published": true
+        },
+        "ecommerce.payments.PaymentFailed": {
+          "__type__": "Ordering.PaymentFailed.v1",
+          "__version__": "v1",
+          "element_type": "EVENT",
+          "fields": {
+            "order_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "payment_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "reason": {
+              "kind": "standard",
+              "type": "String"
+            }
+          },
+          "fqn": "ecommerce.payments.PaymentFailed",
+          "is_fact_event": false,
+          "module": "ecommerce.payments",
+          "name": "PaymentFailed",
+          "part_of": "ecommerce.payments.Payment"
+        }
+      },
+      "repositories": {},
+      "value_objects": {}
+    }
+  },
+  "contracts": {
+    "events": [
+      {
+        "__type__": "Ordering.OrderCancelled.v1",
+        "fqn": "ecommerce.ordering.OrderCancelled"
+      },
+      {
+        "__type__": "Ordering.OrderPlaced.v1",
+        "fqn": "ecommerce.ordering.OrderPlaced"
+      },
+      {
+        "__type__": "Ordering.PaymentConfirmed.v1",
+        "fqn": "ecommerce.payments.PaymentConfirmed"
+      }
+    ]
+  },
+  "diagnostics": [],
+  "domain": {
+    "camel_case_name": "Ordering",
+    "command_processing": "async",
+    "event_processing": "async",
+    "identity_strategy": "uuid",
+    "identity_type": "string",
+    "name": "Ordering",
+    "normalized_name": "ordering"
+  },
+  "elements": {
+    "AGGREGATE": [
+      "ecommerce.ordering.Order",
+      "ecommerce.payments.Payment"
+    ],
+    "APPLICATION_SERVICE": [],
+    "COMMAND": [
+      "ecommerce.ordering.CancelOrder",
+      "ecommerce.ordering.PlaceOrder",
+      "ecommerce.payments.ConfirmPayment"
+    ],
+    "COMMAND_HANDLER": [
+      "ecommerce.ordering.OrderCommandHandler",
+      "ecommerce.payments.PaymentCommandHandler"
+    ],
+    "DATABASE_MODEL": [],
+    "DOMAIN_SERVICE": [],
+    "ENTITY": [
+      "ecommerce.ordering.OrderItem"
+    ],
+    "EVENT": [
+      "ecommerce.fulfillment._OrderFulfillmentPMTransition",
+      "ecommerce.ordering.OrderCancelled",
+      "ecommerce.ordering.OrderPlaced",
+      "ecommerce.payments.PaymentConfirmed",
+      "ecommerce.payments.PaymentFailed"
+    ],
+    "EVENT_HANDLER": [
+      "ecommerce.ordering.OrderNotificationHandler"
+    ],
+    "PROCESS_MANAGER": [
+      "ecommerce.fulfillment.OrderFulfillmentPM"
+    ],
+    "PROJECTION": [
+      "ecommerce.reporting.OrderDashboard"
+    ],
+    "PROJECTOR": [
+      "ecommerce.reporting.OrderDashboardProjector"
+    ],
+    "QUERY": [
+      "ecommerce.reporting.GetDashboardByCustomer"
+    ],
+    "QUERY_HANDLER": [
+      "ecommerce.reporting.DashboardQueryHandler"
+    ],
+    "REPOSITORY": [
+      "ecommerce.ordering.OrderRepository"
+    ],
+    "SUBSCRIBER": [
+      "ecommerce.integrations.StripeWebhookSubscriber"
+    ],
+    "VALUE_OBJECT": [
+      "ecommerce.ordering.Address"
+    ]
+  },
+  "flows": {
+    "domain_services": {},
+    "process_managers": {
+      "ecommerce.fulfillment.OrderFulfillmentPM": {
+        "element_type": "PROCESS_MANAGER",
+        "fields": {
+          "id": {
+            "auto_generated": true,
+            "identifier": true,
+            "kind": "auto",
+            "type": "Auto",
+            "unique": true
+          },
+          "order_id": {
+            "kind": "identifier",
+            "type": "Identifier"
+          },
+          "payment_id": {
+            "kind": "identifier",
+            "type": "Identifier"
+          },
+          "status": {
+            "default": "new",
+            "kind": "standard",
+            "type": "String"
+          }
+        },
+        "fqn": "ecommerce.fulfillment.OrderFulfillmentPM",
+        "handlers": {
+          "Ordering.OrderPlaced.v1": {
+            "correlate": "order_id",
+            "end": false,
+            "methods": [
+              "on_order_placed"
+            ],
+            "start": true
+          },
+          "Ordering.PaymentConfirmed.v1": {
+            "correlate": "order_id",
+            "end": false,
+            "methods": [
+              "on_payment_confirmed"
+            ],
+            "start": false
+          },
+          "Ordering.PaymentFailed.v1": {
+            "correlate": "order_id",
+            "end": true,
+            "methods": [
+              "on_payment_failed"
+            ],
+            "start": false
+          }
+        },
+        "identity_field": "id",
+        "module": "ecommerce.fulfillment",
+        "name": "OrderFulfillmentPM",
+        "stream_categories": [
+          "ordering::order",
+          "ordering::payment"
+        ],
+        "stream_category": "ordering::order_fulfillment_pm",
+        "subscription": {
+          "config": {},
+          "profile": null,
+          "type": null
+        },
+        "transition_event": {
+          "__type__": "Ordering._OrderFulfillmentPMTransition.v1",
+          "fqn": "ecommerce.fulfillment._OrderFulfillmentPMTransition"
+        }
+      }
+    },
+    "subscribers": {
+      "ecommerce.integrations.StripeWebhookSubscriber": {
+        "broker": "default",
+        "element_type": "SUBSCRIBER",
+        "fqn": "ecommerce.integrations.StripeWebhookSubscriber",
+        "module": "ecommerce.integrations",
+        "name": "StripeWebhookSubscriber",
+        "stream": "stripe_webhooks"
+      }
+    }
+  },
+  "generated_at": "2026-03-01T12:00:00Z",
+  "ir_version": "0.1.0",
+  "projections": {
+    "ecommerce.reporting.OrderDashboard": {
+      "projection": {
+        "element_type": "PROJECTION",
+        "fields": {
+          "customer_name": {
+            "kind": "standard",
+            "max_length": 100,
+            "type": "String"
+          },
+          "order_id": {
+            "identifier": true,
+            "kind": "identifier",
+            "type": "Identifier"
+          },
+          "payment_status": {
+            "kind": "standard",
+            "max_length": 20,
+            "type": "String"
+          },
+          "status": {
+            "kind": "standard",
+            "max_length": 20,
+            "type": "String"
+          },
+          "total_amount": {
+            "kind": "standard",
+            "type": "Float"
+          }
+        },
+        "fqn": "ecommerce.reporting.OrderDashboard",
+        "identity_field": "order_id",
+        "module": "ecommerce.reporting",
+        "name": "OrderDashboard",
+        "options": {
+          "cache": null,
+          "limit": 100,
+          "order_by": [],
+          "provider": "default",
+          "schema_name": "order_dashboard"
+        }
+      },
+      "projectors": {
+        "ecommerce.reporting.OrderDashboardProjector": {
+          "aggregates": [
+            "ecommerce.ordering.Order",
+            "ecommerce.payments.Payment"
+          ],
+          "element_type": "PROJECTOR",
+          "fqn": "ecommerce.reporting.OrderDashboardProjector",
+          "handlers": {
+            "Ordering.OrderCancelled.v1": [
+              "on_order_cancelled"
+            ],
+            "Ordering.OrderPlaced.v1": [
+              "on_order_placed"
+            ],
+            "Ordering.PaymentConfirmed.v1": [
+              "on_payment_confirmed"
+            ]
+          },
+          "module": "ecommerce.reporting",
+          "name": "OrderDashboardProjector",
+          "projector_for": "ecommerce.reporting.OrderDashboard",
+          "stream_categories": [
+            "ordering::order",
+            "ordering::payment"
+          ],
+          "subscription": {
+            "config": {},
+            "profile": "projection",
+            "type": "event_store"
+          }
+        }
+      },
+      "queries": {
+        "ecommerce.reporting.GetDashboardByCustomer": {
+          "__type__": "Ordering.GetDashboardByCustomer",
+          "element_type": "QUERY",
+          "fields": {
+            "customer_name": {
+              "kind": "standard",
+              "required": true,
+              "type": "String"
+            }
+          },
+          "fqn": "ecommerce.reporting.GetDashboardByCustomer",
+          "module": "ecommerce.reporting",
+          "name": "GetDashboardByCustomer",
+          "part_of": "ecommerce.reporting.OrderDashboard"
+        }
+      },
+      "query_handlers": {
+        "ecommerce.reporting.DashboardQueryHandler": {
+          "element_type": "QUERY_HANDLER",
+          "fqn": "ecommerce.reporting.DashboardQueryHandler",
+          "handlers": {
+            "Ordering.GetDashboardByCustomer": [
+              "by_customer"
+            ]
+          },
+          "module": "ecommerce.reporting",
+          "name": "DashboardQueryHandler",
+          "part_of": "ecommerce.reporting.OrderDashboard"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,495 @@
+{
+  "$schema": "https://protean.dev/ir/v0.1.0/schema.json",
+  "checksum": "sha256:98ff070680f0832bc122de92e44ffe0e4538a8b44c42bc38259ef528e3739e8f",
+  "clusters": {
+    "banking.accounts.Account": {
+      "aggregate": {
+        "apply_handlers": {
+          "banking.accounts.AccountClosed": "on_account_closed",
+          "banking.accounts.AccountOpened": "on_account_opened",
+          "banking.accounts.DepositMade": "on_deposit_made",
+          "banking.accounts.WithdrawalMade": "on_withdrawal_made"
+        },
+        "description": "Event-sourced bank account tracking balance through domain events.",
+        "element_type": "AGGREGATE",
+        "fields": {
+          "account_number": {
+            "kind": "standard",
+            "max_length": 20,
+            "required": true,
+            "type": "String"
+          },
+          "balance": {
+            "default": 0.0,
+            "kind": "standard",
+            "type": "Float"
+          },
+          "holder_name": {
+            "kind": "standard",
+            "max_length": 100,
+            "required": true,
+            "type": "String"
+          },
+          "id": {
+            "auto_generated": true,
+            "identifier": true,
+            "kind": "auto",
+            "type": "Auto",
+            "unique": true
+          },
+          "status": {
+            "choices": [
+              "ACTIVE",
+              "CLOSED"
+            ],
+            "default": "ACTIVE",
+            "kind": "standard",
+            "max_length": 20,
+            "type": "String"
+          }
+        },
+        "fqn": "banking.accounts.Account",
+        "identity_field": "id",
+        "invariants": {
+          "post": [
+            "balance_must_not_be_negative"
+          ],
+          "pre": []
+        },
+        "module": "banking.accounts",
+        "name": "Account",
+        "options": {
+          "auto_add_id_field": true,
+          "fact_events": false,
+          "is_event_sourced": true,
+          "limit": 100,
+          "provider": "default",
+          "schema_name": "account",
+          "stream_category": "fidelis::account"
+        }
+      },
+      "application_services": {},
+      "command_handlers": {
+        "banking.accounts.AccountCommandHandler": {
+          "element_type": "COMMAND_HANDLER",
+          "fqn": "banking.accounts.AccountCommandHandler",
+          "handlers": {
+            "Fidelis.CloseAccount.v1": [
+              "handle_close_account"
+            ],
+            "Fidelis.MakeDeposit.v1": [
+              "handle_make_deposit"
+            ],
+            "Fidelis.MakeWithdrawal.v1": [
+              "handle_make_withdrawal"
+            ],
+            "Fidelis.OpenAccount.v1": [
+              "handle_open_account"
+            ]
+          },
+          "module": "banking.accounts",
+          "name": "AccountCommandHandler",
+          "part_of": "banking.accounts.Account",
+          "stream_category": "fidelis::account:command",
+          "subscription": {
+            "config": {},
+            "profile": null,
+            "type": null
+          }
+        }
+      },
+      "commands": {
+        "banking.accounts.CloseAccount": {
+          "__type__": "Fidelis.CloseAccount.v1",
+          "__version__": "v1",
+          "element_type": "COMMAND",
+          "fields": {
+            "account_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "reason": {
+              "kind": "standard",
+              "type": "String"
+            }
+          },
+          "fqn": "banking.accounts.CloseAccount",
+          "module": "banking.accounts",
+          "name": "CloseAccount",
+          "part_of": "banking.accounts.Account"
+        },
+        "banking.accounts.MakeDeposit": {
+          "__type__": "Fidelis.MakeDeposit.v1",
+          "__version__": "v1",
+          "element_type": "COMMAND",
+          "fields": {
+            "account_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "amount": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            },
+            "reference": {
+              "kind": "standard",
+              "type": "String"
+            }
+          },
+          "fqn": "banking.accounts.MakeDeposit",
+          "module": "banking.accounts",
+          "name": "MakeDeposit",
+          "part_of": "banking.accounts.Account"
+        },
+        "banking.accounts.MakeWithdrawal": {
+          "__type__": "Fidelis.MakeWithdrawal.v1",
+          "__version__": "v1",
+          "element_type": "COMMAND",
+          "fields": {
+            "account_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "amount": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            },
+            "reference": {
+              "kind": "standard",
+              "type": "String"
+            }
+          },
+          "fqn": "banking.accounts.MakeWithdrawal",
+          "module": "banking.accounts",
+          "name": "MakeWithdrawal",
+          "part_of": "banking.accounts.Account"
+        },
+        "banking.accounts.OpenAccount": {
+          "__type__": "Fidelis.OpenAccount.v1",
+          "__version__": "v1",
+          "element_type": "COMMAND",
+          "fields": {
+            "account_number": {
+              "kind": "standard",
+              "required": true,
+              "type": "String"
+            },
+            "holder_name": {
+              "kind": "standard",
+              "required": true,
+              "type": "String"
+            },
+            "opening_deposit": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            }
+          },
+          "fqn": "banking.accounts.OpenAccount",
+          "module": "banking.accounts",
+          "name": "OpenAccount",
+          "part_of": "banking.accounts.Account"
+        }
+      },
+      "database_models": {},
+      "entities": {},
+      "event_handlers": {
+        "banking.compliance.ComplianceAlertHandler": {
+          "element_type": "EVENT_HANDLER",
+          "fqn": "banking.compliance.ComplianceAlertHandler",
+          "handlers": {
+            "Fidelis.DepositMade.v1": [
+              "on_large_deposit"
+            ],
+            "Fidelis.WithdrawalMade.v1": [
+              "on_large_withdrawal"
+            ]
+          },
+          "module": "banking.compliance",
+          "name": "ComplianceAlertHandler",
+          "part_of": "banking.accounts.Account",
+          "source_stream": null,
+          "stream_category": "fidelis::account",
+          "subscription": {
+            "config": {},
+            "profile": null,
+            "type": null
+          }
+        }
+      },
+      "events": {
+        "banking.accounts.AccountClosed": {
+          "__type__": "Fidelis.AccountClosed.v1",
+          "__version__": "v1",
+          "element_type": "EVENT",
+          "fields": {
+            "account_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "reason": {
+              "kind": "standard",
+              "type": "String"
+            }
+          },
+          "fqn": "banking.accounts.AccountClosed",
+          "is_fact_event": false,
+          "module": "banking.accounts",
+          "name": "AccountClosed",
+          "part_of": "banking.accounts.Account"
+        },
+        "banking.accounts.AccountOpened": {
+          "__type__": "Fidelis.AccountOpened.v1",
+          "__version__": "v1",
+          "element_type": "EVENT",
+          "fields": {
+            "account_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "account_number": {
+              "kind": "standard",
+              "required": true,
+              "type": "String"
+            },
+            "holder_name": {
+              "kind": "standard",
+              "required": true,
+              "type": "String"
+            },
+            "opening_deposit": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            }
+          },
+          "fqn": "banking.accounts.AccountOpened",
+          "is_fact_event": false,
+          "module": "banking.accounts",
+          "name": "AccountOpened",
+          "part_of": "banking.accounts.Account",
+          "published": true
+        },
+        "banking.accounts.DepositMade": {
+          "__type__": "Fidelis.DepositMade.v1",
+          "__version__": "v1",
+          "element_type": "EVENT",
+          "fields": {
+            "account_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "amount": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            },
+            "reference": {
+              "kind": "standard",
+              "type": "String"
+            }
+          },
+          "fqn": "banking.accounts.DepositMade",
+          "is_fact_event": false,
+          "module": "banking.accounts",
+          "name": "DepositMade",
+          "part_of": "banking.accounts.Account",
+          "published": true
+        },
+        "banking.accounts.WithdrawalMade": {
+          "__type__": "Fidelis.WithdrawalMade.v1",
+          "__version__": "v1",
+          "element_type": "EVENT",
+          "fields": {
+            "account_id": {
+              "kind": "identifier",
+              "required": true,
+              "type": "Identifier"
+            },
+            "amount": {
+              "kind": "standard",
+              "required": true,
+              "type": "Float"
+            },
+            "reference": {
+              "kind": "standard",
+              "type": "String"
+            }
+          },
+          "fqn": "banking.accounts.WithdrawalMade",
+          "is_fact_event": false,
+          "module": "banking.accounts",
+          "name": "WithdrawalMade",
+          "part_of": "banking.accounts.Account",
+          "published": true
+        }
+      },
+      "repositories": {},
+      "value_objects": {}
+    }
+  },
+  "contracts": {
+    "events": [
+      {
+        "__type__": "Fidelis.AccountOpened.v1",
+        "fqn": "banking.accounts.AccountOpened"
+      },
+      {
+        "__type__": "Fidelis.DepositMade.v1",
+        "fqn": "banking.accounts.DepositMade"
+      },
+      {
+        "__type__": "Fidelis.WithdrawalMade.v1",
+        "fqn": "banking.accounts.WithdrawalMade"
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "UNHANDLED_EVENT",
+      "element": "banking.accounts.AccountClosed",
+      "level": "warning",
+      "message": "Event AccountClosed has no registered handler"
+    }
+  ],
+  "domain": {
+    "camel_case_name": "Fidelis",
+    "command_processing": "async",
+    "event_processing": "async",
+    "identity_strategy": "uuid",
+    "identity_type": "string",
+    "name": "Fidelis",
+    "normalized_name": "fidelis"
+  },
+  "elements": {
+    "AGGREGATE": [
+      "banking.accounts.Account"
+    ],
+    "APPLICATION_SERVICE": [],
+    "COMMAND": [
+      "banking.accounts.CloseAccount",
+      "banking.accounts.MakeDeposit",
+      "banking.accounts.MakeWithdrawal",
+      "banking.accounts.OpenAccount"
+    ],
+    "COMMAND_HANDLER": [
+      "banking.accounts.AccountCommandHandler"
+    ],
+    "DATABASE_MODEL": [],
+    "DOMAIN_SERVICE": [],
+    "ENTITY": [],
+    "EVENT": [
+      "banking.accounts.AccountClosed",
+      "banking.accounts.AccountOpened",
+      "banking.accounts.DepositMade",
+      "banking.accounts.WithdrawalMade"
+    ],
+    "EVENT_HANDLER": [
+      "banking.compliance.ComplianceAlertHandler"
+    ],
+    "PROCESS_MANAGER": [],
+    "PROJECTION": [
+      "banking.reporting.AccountSummary"
+    ],
+    "PROJECTOR": [
+      "banking.reporting.AccountSummaryProjector"
+    ],
+    "QUERY": [],
+    "QUERY_HANDLER": [],
+    "REPOSITORY": [],
+    "SUBSCRIBER": [],
+    "VALUE_OBJECT": []
+  },
+  "flows": {
+    "domain_services": {},
+    "process_managers": {},
+    "subscribers": {}
+  },
+  "generated_at": "2026-03-01T12:00:00Z",
+  "ir_version": "0.1.0",
+  "projections": {
+    "banking.reporting.AccountSummary": {
+      "projection": {
+        "element_type": "PROJECTION",
+        "fields": {
+          "account_id": {
+            "identifier": true,
+            "kind": "identifier",
+            "type": "Identifier"
+          },
+          "account_number": {
+            "kind": "standard",
+            "max_length": 20,
+            "type": "String"
+          },
+          "balance": {
+            "kind": "standard",
+            "type": "Float"
+          },
+          "holder_name": {
+            "kind": "standard",
+            "max_length": 100,
+            "type": "String"
+          },
+          "transaction_count": {
+            "default": 0,
+            "kind": "standard",
+            "type": "Integer"
+          }
+        },
+        "fqn": "banking.reporting.AccountSummary",
+        "identity_field": "account_id",
+        "module": "banking.reporting",
+        "name": "AccountSummary",
+        "options": {
+          "cache": null,
+          "limit": 100,
+          "order_by": [],
+          "provider": "default",
+          "schema_name": "account_summary"
+        }
+      },
+      "projectors": {
+        "banking.reporting.AccountSummaryProjector": {
+          "aggregates": [
+            "banking.accounts.Account"
+          ],
+          "element_type": "PROJECTOR",
+          "fqn": "banking.reporting.AccountSummaryProjector",
+          "handlers": {
+            "Fidelis.AccountOpened.v1": [
+              "on_account_opened"
+            ],
+            "Fidelis.DepositMade.v1": [
+              "on_deposit_made"
+            ],
+            "Fidelis.WithdrawalMade.v1": [
+              "on_withdrawal_made"
+            ]
+          },
+          "module": "banking.reporting",
+          "name": "AccountSummaryProjector",
+          "projector_for": "banking.reporting.AccountSummary",
+          "stream_categories": [
+            "fidelis::account"
+          ],
+          "subscription": {
+            "config": {},
+            "profile": "projection",
+            "type": "event_store"
+          }
+        }
+      },
+      "queries": {},
+      "query_handlers": {}
+    }
+  }
+}

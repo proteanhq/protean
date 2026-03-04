@@ -384,6 +384,7 @@ nav:
       - concepts/internals/query-system.md
       - concepts/internals/event-sourcing.md
       - concepts/internals/event-upcasting.md
+      - concepts/internals/ir-specification.md
 
   - Patterns & Recipes:
     - patterns/index.md
