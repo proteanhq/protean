@@ -46,14 +46,10 @@ class IRBuilder:
             "diagnostics": [],
             "domain": self._build_domain_metadata(),
             "elements": {},
-            "flows": {
-                "domain_services": {},
-                "process_managers": {},
-                "subscribers": {},
-            },
+            "flows": self._build_flows(),
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "ir_version": SCHEMA_VERSION,
-            "projections": {},
+            "projections": self._build_projections(),
         }
 
         # Attach collected diagnostics
@@ -592,6 +588,272 @@ class IRBuilder:
         entry["schema_name"] = getattr(cls.meta_, "schema_name", None)
 
         return dict(sorted(entry.items()))
+
+    # ------------------------------------------------------------------
+    # Projection extractors
+    # ------------------------------------------------------------------
+
+    def _extract_projection(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract projection IR dict."""
+        from protean.utils import fqn
+        from protean.utils.reflection import _ID_FIELD_NAME
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "PROJECTION"
+        entry["fields"] = self._extract_fields(cls)
+        entry["fqn"] = fqn(cls)
+        entry["identity_field"] = getattr(cls, _ID_FIELD_NAME, None)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        order_by = getattr(cls.meta_, "order_by", ())
+        entry["options"] = dict(
+            sorted(
+                {
+                    "cache": getattr(cls.meta_, "cache", None),
+                    "limit": getattr(cls.meta_, "limit", 100),
+                    "order_by": list(order_by) if order_by else [],
+                    "provider": getattr(cls.meta_, "provider", "default"),
+                    "schema_name": getattr(cls.meta_, "schema_name", None),
+                }.items()
+            )
+        )
+
+        return dict(sorted(entry.items()))
+
+    def _extract_projector(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract projector IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+
+        aggregates = getattr(cls.meta_, "aggregates", [])
+        entry["aggregates"] = sorted(fqn(a) for a in aggregates) if aggregates else []
+
+        entry["element_type"] = "PROJECTOR"
+        entry["fqn"] = fqn(cls)
+        entry["handlers"] = self._extract_handler_map(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        projector_for = getattr(cls.meta_, "projector_for", None)
+        if projector_for is not None:
+            entry["projector_for"] = fqn(projector_for)
+
+        entry["stream_categories"] = sorted(getattr(cls.meta_, "stream_categories", []))
+        entry["subscription"] = self._extract_subscription(cls)
+
+        return dict(sorted(entry.items()))
+
+    def _extract_query(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract query IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["__type__"] = getattr(cls, "__type__", "")
+        entry["element_type"] = "QUERY"
+        entry["fields"] = self._extract_fields(cls)
+        entry["fqn"] = fqn(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        part_of = getattr(cls.meta_, "part_of", None)
+        if part_of is not None:
+            entry["part_of"] = fqn(part_of)
+
+        return dict(sorted(entry.items()))
+
+    def _extract_query_handler(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract query handler IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "QUERY_HANDLER"
+        entry["fqn"] = fqn(cls)
+        entry["handlers"] = self._extract_handler_map(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        part_of = getattr(cls.meta_, "part_of", None)
+        if part_of is not None:
+            entry["part_of"] = fqn(part_of)
+
+        return dict(sorted(entry.items()))
+
+    def _build_projections(self) -> dict[str, Any]:
+        """Build projections dict keyed by projection FQN."""
+        from protean.utils import fqn
+
+        registry = self._domain._domain_registry
+        projections: dict[str, Any] = {}
+
+        # Build projection entries
+        for record in registry._elements.get("PROJECTION", {}).values():
+            proj_cls = record.cls
+            proj_fqn = fqn(proj_cls)
+            projections[proj_fqn] = {
+                "projection": self._extract_projection(proj_cls, record),
+                "projectors": {},
+                "queries": {},
+                "query_handlers": {},
+            }
+
+        # Populate projectors
+        for record in registry._elements.get("PROJECTOR", {}).values():
+            cls = record.cls
+            proj_for = getattr(cls.meta_, "projector_for", None)
+            if proj_for is not None:
+                proj_fqn = fqn(proj_for)
+                if proj_fqn in projections:
+                    projections[proj_fqn]["projectors"][fqn(cls)] = (
+                        self._extract_projector(cls, record)
+                    )
+
+        # Populate queries
+        for record in registry._elements.get("QUERY", {}).values():
+            cls = record.cls
+            part_of = getattr(cls.meta_, "part_of", None)
+            if part_of is not None:
+                proj_fqn = fqn(part_of)
+                if proj_fqn in projections:
+                    projections[proj_fqn]["queries"][fqn(cls)] = self._extract_query(
+                        cls, record
+                    )
+
+        # Populate query handlers
+        for record in registry._elements.get("QUERY_HANDLER", {}).values():
+            cls = record.cls
+            part_of = getattr(cls.meta_, "part_of", None)
+            if part_of is not None:
+                proj_fqn = fqn(part_of)
+                if proj_fqn in projections:
+                    projections[proj_fqn]["query_handlers"][fqn(cls)] = (
+                        self._extract_query_handler(cls, record)
+                    )
+
+        # Sort inner dicts
+        for proj in projections.values():
+            for section in ("projectors", "queries", "query_handlers"):
+                proj[section] = dict(sorted(proj[section].items()))
+
+        return dict(sorted(projections.items()))
+
+    # ------------------------------------------------------------------
+    # Flow extractors
+    # ------------------------------------------------------------------
+
+    def _extract_domain_service(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract domain service IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "DOMAIN_SERVICE"
+        entry["fqn"] = fqn(cls)
+        entry["invariants"] = self._extract_invariants(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        part_of = getattr(cls.meta_, "part_of", None)
+        if part_of is not None:
+            if isinstance(part_of, (list, tuple)):
+                entry["part_of"] = sorted(fqn(a) for a in part_of)
+            else:
+                entry["part_of"] = [fqn(part_of)]
+
+        return dict(sorted(entry.items()))
+
+    def _extract_process_manager(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract process manager IR dict."""
+        from protean.utils import fqn
+        from protean.utils.reflection import _ID_FIELD_NAME
+
+        entry: dict[str, Any] = {}
+        entry["element_type"] = "PROCESS_MANAGER"
+        entry["fields"] = self._extract_fields(cls)
+        entry["fqn"] = fqn(cls)
+
+        # PM handler format: {__type__: {methods, start, end, correlate}}
+        handlers = getattr(cls, "_handlers", {})
+        pm_handlers: dict[str, Any] = {}
+        for type_key, methods in sorted(handlers.items()):
+            if methods:
+                method_entry: dict[str, Any] = {}
+                first_method = next(iter(methods))
+                correlate = getattr(first_method, "_correlate", None)
+                if isinstance(correlate, dict):
+                    method_entry["correlate"] = correlate
+                elif correlate:
+                    method_entry["correlate"] = str(correlate)
+                method_entry["end"] = getattr(first_method, "_end", False)
+                method_entry["methods"] = sorted(m.__name__ for m in methods)
+                method_entry["start"] = getattr(first_method, "_start", False)
+                pm_handlers[type_key] = method_entry
+        entry["handlers"] = pm_handlers
+
+        entry["identity_field"] = getattr(cls, _ID_FIELD_NAME, "id")
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        entry["stream_categories"] = sorted(getattr(cls.meta_, "stream_categories", []))
+        entry["stream_category"] = getattr(cls.meta_, "stream_category", None)
+        entry["subscription"] = self._extract_subscription(cls)
+
+        # Transition event
+        transition_cls = getattr(cls, "_transition_event_cls", None)
+        if transition_cls is not None:
+            entry["transition_event"] = {
+                "__type__": getattr(transition_cls, "__type__", ""),
+                "fqn": fqn(transition_cls),
+            }
+
+        return dict(sorted(entry.items()))
+
+    def _extract_subscriber(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract subscriber IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["broker"] = getattr(cls.meta_, "broker", "default")
+        entry["element_type"] = "SUBSCRIBER"
+        entry["fqn"] = fqn(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+        entry["stream"] = getattr(cls.meta_, "stream", None)
+
+        return dict(sorted(entry.items()))
+
+    def _build_flows(self) -> dict[str, Any]:
+        """Build flows dict with domain_services, process_managers, subscribers."""
+        from protean.utils import fqn
+
+        registry = self._domain._domain_registry
+        flows: dict[str, Any] = {
+            "domain_services": {},
+            "process_managers": {},
+            "subscribers": {},
+        }
+
+        for record in registry._elements.get("DOMAIN_SERVICE", {}).values():
+            cls = record.cls
+            flows["domain_services"][fqn(cls)] = self._extract_domain_service(
+                cls, record
+            )
+
+        for record in registry._elements.get("PROCESS_MANAGER", {}).values():
+            cls = record.cls
+            flows["process_managers"][fqn(cls)] = self._extract_process_manager(
+                cls, record
+            )
+
+        for record in registry._elements.get("SUBSCRIBER", {}).values():
+            cls = record.cls
+            flows["subscribers"][fqn(cls)] = self._extract_subscriber(cls, record)
+
+        # Sort each section
+        for section in flows:
+            flows[section] = dict(sorted(flows[section].items()))
+
+        return flows
 
     # ------------------------------------------------------------------
     # Cluster assembly
