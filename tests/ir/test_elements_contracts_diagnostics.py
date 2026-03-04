@@ -6,6 +6,8 @@ from protean import Domain
 from protean.fields.simple import Float, Identifier, String
 from protean.ir.builder import IRBuilder
 
+from .elements import build_published_event_domain
+
 
 def build_diagnostics_test_domain() -> Domain:
     """Build a domain with an unhandled event for diagnostics testing."""
@@ -152,3 +154,30 @@ class TestContracts:
         ir = IRBuilder(domain).build()
         assert "events" in ir["contracts"]
         assert isinstance(ir["contracts"]["events"], list)
+
+
+@pytest.mark.no_test_domain
+class TestPublishedContracts:
+    """Verify published events appear in the contracts section."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        domain = build_published_event_domain()
+        self.ir = IRBuilder(domain).build()
+
+    def test_published_event_in_contracts(self):
+        events = self.ir["contracts"]["events"]
+        assert len(events) == 1
+
+    def test_published_event_has_fqn(self):
+        event = self.ir["contracts"]["events"][0]
+        assert "AccountCreated" in event["fqn"]
+
+    def test_published_event_has_type(self):
+        event = self.ir["contracts"]["events"][0]
+        assert "__type__" in event
+
+    def test_unpublished_event_excluded(self):
+        """AccountUpdated is not published and should not appear."""
+        fqns = [e["fqn"] for e in self.ir["contracts"]["events"]]
+        assert not any("AccountUpdated" in f for f in fqns)

@@ -4,7 +4,7 @@ import pytest
 
 from protean.ir.builder import IRBuilder
 
-from .elements import build_field_test_domain
+from .elements import build_extended_field_test_domain, build_field_test_domain
 
 
 @pytest.fixture
@@ -172,3 +172,58 @@ class TestFieldsSorted:
     def test_field_names_sorted(self, product_fields):
         names = list(product_fields.keys())
         assert names == sorted(names)
+
+
+# ---------------------------------------------------------------------------
+# Extended field tests — HasOne, callable default, description
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def catalog_fields():
+    """Return extracted fields for the Catalog aggregate."""
+    domain = build_extended_field_test_domain()
+    builder = IRBuilder(domain)
+    catalog_cls = None
+    for record in domain._domain_registry._elements["AGGREGATE"].values():
+        if record.cls.__name__ == "Catalog":
+            catalog_cls = record.cls
+            break
+    assert catalog_cls is not None
+    return builder._extract_fields(catalog_cls)
+
+
+@pytest.mark.no_test_domain
+class TestHasOneField:
+    """Verify HasOne field extraction."""
+
+    def test_has_one_kind(self, catalog_fields):
+        f = catalog_fields["featured"]
+        assert f["kind"] == "has_one"
+
+    def test_has_one_target(self, catalog_fields):
+        f = catalog_fields["featured"]
+        assert "target" in f
+        assert "FeaturedItem" in f["target"]
+
+
+@pytest.mark.no_test_domain
+class TestCallableDefault:
+    """Verify callable defaults serialize as '<callable>'."""
+
+    def test_callable_default_is_string(self, catalog_fields):
+        f = catalog_fields["items_cache"]
+        assert f["default"] == "<callable>"
+
+
+@pytest.mark.no_test_domain
+class TestFieldDescription:
+    """Verify description attribute extraction."""
+
+    def test_description_present(self, catalog_fields):
+        f = catalog_fields["name"]
+        assert f["description"] == "Catalog name"
+
+    def test_description_absent_when_not_set(self, catalog_fields):
+        f = catalog_fields["items_cache"]
+        assert "description" not in f

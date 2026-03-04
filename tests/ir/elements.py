@@ -1,7 +1,8 @@
 """Shared test domain elements for IR builder tests."""
 
 from protean import Domain, handle, invariant
-from protean.fields import HasMany, ValueObject as VOField
+from protean.core.aggregate import apply
+from protean.fields import HasMany, HasOne, ValueObject as VOField
 
 from protean.fields.containers import Dict, List
 from protean.fields.simple import (
@@ -47,6 +48,24 @@ def build_field_test_domain() -> Domain:
         variants = HasMany(Variant)
         status = String(max_length=20, choices=["ACTIVE", "INACTIVE", "ARCHIVED"])
         score = Float(default=0.0)
+
+    domain.init(traverse=False)
+    return domain
+
+
+def build_extended_field_test_domain() -> Domain:
+    """Build a domain with HasOne, Reference, callable defaults, descriptions."""
+    domain = Domain(name="ExtFieldTest", root_path=".")
+
+    @domain.entity(part_of="Catalog")
+    class FeaturedItem:
+        title = String(max_length=200, required=True)
+
+    @domain.aggregate
+    class Catalog:
+        name = String(max_length=100, required=True, description="Catalog name")
+        items_cache = List(content_type=str, default=lambda: [])
+        featured = HasOne(FeaturedItem)
 
     domain.init(traverse=False)
     return domain
@@ -159,4 +178,140 @@ def build_handler_test_domain() -> Domain:
         pass
 
     domain.init(traverse=False)
+    return domain
+
+
+def build_es_aggregate_domain() -> Domain:
+    """Build a domain with an event-sourced aggregate and @apply handlers."""
+    domain = Domain(name="Banking", root_path=".")
+
+    @domain.event(part_of="BankAccount")
+    class AccountOpened:
+        account_id = Identifier(required=True)
+        holder_name = String(required=True)
+
+    @domain.event(part_of="BankAccount")
+    class DepositMade:
+        account_id = Identifier(required=True)
+        amount = Float(required=True)
+
+    @domain.aggregate(is_event_sourced=True)
+    class BankAccount:
+        holder_name = String(max_length=100, required=True)
+        balance = Float(default=0.0)
+
+        @apply
+        def opened(self, event: AccountOpened) -> None:
+            self.holder_name = event.holder_name
+
+        @apply
+        def deposited(self, event: DepositMade) -> None:
+            self.balance += event.amount
+
+    domain.init(traverse=False)
+    return domain
+
+
+def build_domain_service_domain() -> Domain:
+    """Build a domain with a domain service spanning multiple aggregates."""
+    domain = Domain(name="Fulfillment", root_path=".")
+
+    @domain.aggregate
+    class Order:
+        customer_name = String(max_length=100, required=True)
+        total = Float(default=0.0)
+
+    @domain.aggregate
+    class Inventory:
+        product_name = String(max_length=100, required=True)
+        quantity = Integer(default=0)
+
+    @domain.domain_service(part_of=[Order, Inventory])
+    class PlaceOrderService:
+        @invariant.pre
+        def inventory_must_have_stock(self):
+            pass
+
+    domain.init(traverse=False)
+    return domain
+
+
+def build_process_manager_domain() -> Domain:
+    """Build a domain with a process manager with start/end/correlate."""
+    domain = Domain(name="OrderFlow", root_path=".")
+
+    @domain.event(part_of="FlowOrder")
+    class FlowOrderPlaced:
+        order_id = Identifier(required=True)
+        total = Float(required=True)
+
+    @domain.event(part_of="FlowPayment")
+    class FlowPaymentConfirmed:
+        payment_id = Identifier(required=True)
+        order_id = Identifier(required=True)
+
+    @domain.event(part_of="FlowPayment")
+    class FlowPaymentFailed:
+        order_id = Identifier(required=True)
+        reason = String()
+
+    @domain.aggregate
+    class FlowOrder:
+        total = Float(default=0.0)
+
+    @domain.aggregate
+    class FlowPayment:
+        order_id = Identifier()
+        amount = Float()
+
+    @domain.process_manager(stream_categories=["flow_order", "flow_payment"])
+    class OrderFulfillment:
+        order_id = Identifier()
+        status = String(default="new")
+
+        @handle(FlowOrderPlaced, start=True, correlate="order_id")
+        def on_order_placed(self, event: FlowOrderPlaced) -> None:
+            self.order_id = event.order_id
+            self.status = "awaiting_payment"
+
+        @handle(FlowPaymentConfirmed, correlate="order_id")
+        def on_payment_confirmed(self, event: FlowPaymentConfirmed) -> None:
+            self.status = "completed"
+            self.mark_as_complete()
+
+        @handle(FlowPaymentFailed, correlate="order_id", end=True)
+        def on_payment_failed(self, event: FlowPaymentFailed) -> None:
+            self.status = "cancelled"
+
+    domain.init(traverse=False)
+    return domain
+
+
+def build_published_event_domain() -> Domain:
+    """Build a domain with published events for contract testing.
+
+    The ``published`` Meta option was added in a separate commit on main.
+    We set the attribute manually here so this builder works regardless
+    of whether the branch has been rebased onto that commit.
+    """
+    domain = Domain(name="PublishedTest", root_path=".")
+
+    @domain.event(part_of="Account")
+    class AccountCreated:
+        account_id = Identifier(required=True)
+        holder_name = String(required=True)
+
+    @domain.event(part_of="Account")
+    class AccountUpdated:
+        account_id = Identifier(required=True)
+
+    @domain.aggregate
+    class Account:
+        holder_name = String(max_length=100, required=True)
+
+    domain.init(traverse=False)
+
+    # Manually mark AccountCreated as published
+    AccountCreated.meta_.published = True
+
     return domain
