@@ -141,12 +141,14 @@ class TestCreateAllRoutes:
         page_router, _ = create_all_routes([test_domain], templates)
         assert len(page_router.routes) == 6
 
-    def test_api_router_is_initially_empty(self, test_domain):
+    def test_api_router_includes_handler_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
         _, api_router = create_all_routes([test_domain], templates)
-        assert len(api_router.routes) == 0
+        api_paths = [r.path for r in api_router.routes]
+        assert "/handlers" in api_paths
+        assert "/handlers/{name}" in api_paths
 
 
 # ---------------------------------------------------------------------------

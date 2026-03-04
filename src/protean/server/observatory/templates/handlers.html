@@ -3,22 +3,205 @@
 {% block title %}Handlers{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold">Handlers</h1>
-  <div class="text-sm text-base-content/50">Detailed operational view of every message handler</div>
+<!-- Summary Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Total Handlers</div>
+      <div class="stat-value text-lg font-mono-metric" id="summary-total">--</div>
+    </div>
+  </div>
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Healthy</div>
+      <div class="stat-value text-lg font-mono-metric text-success" id="summary-healthy">--</div>
+    </div>
+  </div>
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Lagging</div>
+      <div class="stat-value text-lg font-mono-metric text-warning" id="summary-lagging">--</div>
+    </div>
+  </div>
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Error Rate</div>
+      <div class="stat-value text-lg font-mono-metric text-error" id="summary-error-rate">--</div>
+    </div>
+  </div>
 </div>
 
-<div class="card bg-base-100 shadow-sm">
-  <div class="card-body p-6">
-    <div class="flex items-center justify-center py-16 text-base-content/40">
-      <div class="text-center">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor" class="w-12 h-12 mx-auto mb-3 opacity-30">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+<!-- Tabs + Filter Bar -->
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <!-- Tab Bar -->
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <div role="tablist" class="tabs tabs-boxed" id="handler-tabs">
+        <a role="tab" class="tab tab-active" data-type="all">
+          All <span class="badge badge-sm badge-ghost ml-1" id="tab-count-all">0</span>
+        </a>
+        <a role="tab" class="tab" data-type="command_handler">
+          Commands <span class="badge badge-sm badge-ghost ml-1" id="tab-count-command_handler">0</span>
+        </a>
+        <a role="tab" class="tab" data-type="event_handler">
+          Events <span class="badge badge-sm badge-ghost ml-1" id="tab-count-event_handler">0</span>
+        </a>
+        <a role="tab" class="tab" data-type="projector">
+          Projectors <span class="badge badge-sm badge-ghost ml-1" id="tab-count-projector">0</span>
+        </a>
+        <a role="tab" class="tab" data-type="subscriber">
+          Subscribers <span class="badge badge-sm badge-ghost ml-1" id="tab-count-subscriber">0</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+      <label class="input input-sm input-bordered flex items-center gap-2 w-64">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4 opacity-70">
+          <path fill-rule="evenodd" d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" clip-rule="evenodd" />
         </svg>
-        <p class="text-lg font-medium">Coming Soon</p>
-        <p class="text-sm mt-1">Handler monitoring with per-handler metrics, filtering, and DLQ management.</p>
+        <input type="text" class="grow" placeholder="Search handlers..." id="handler-search" />
+      </label>
+      <select class="select select-sm select-bordered" id="status-filter">
+        <option value="all">All Statuses</option>
+        <option value="ok">Healthy</option>
+        <option value="lagging">Lagging</option>
+        <option value="unknown">Unknown</option>
+      </select>
+    </div>
+
+    <!-- Handler Table -->
+    <div class="overflow-x-auto">
+      <table class="table table-sm table-compact">
+        <thead>
+          <tr>
+            <th class="w-8"></th>
+            <th class="cursor-pointer hover:text-primary" data-sort="name">
+              Handler
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 inline-block ml-0.5 opacity-30 sort-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15 12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+              </svg>
+            </th>
+            <th>Type</th>
+            <th>Aggregate</th>
+            <th class="cursor-pointer hover:text-primary text-right" data-sort="throughput">
+              Processed
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 inline-block ml-0.5 opacity-30 sort-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15 12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+              </svg>
+            </th>
+            <th class="cursor-pointer hover:text-primary text-right" data-sort="latency">
+              Avg Latency
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 inline-block ml-0.5 opacity-30 sort-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15 12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+              </svg>
+            </th>
+            <th class="cursor-pointer hover:text-primary text-right" data-sort="lag">
+              Lag
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 inline-block ml-0.5 opacity-30 sort-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15 12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+              </svg>
+            </th>
+            <th class="cursor-pointer hover:text-primary text-right" data-sort="errors">
+              Errors
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 inline-block ml-0.5 opacity-30 sort-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15 12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+              </svg>
+            </th>
+            <th class="cursor-pointer hover:text-primary text-right" data-sort="dlq">
+              DLQ
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 inline-block ml-0.5 opacity-30 sort-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15 12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+              </svg>
+            </th>
+            <th class="w-24">Trend</th>
+          </tr>
+        </thead>
+        <tbody id="handlers-tbody">
+          <tr>
+            <td colspan="10" class="text-center text-base-content/50 py-8">
+              <span class="loading loading-spinner loading-sm"></span>
+              Loading handlers...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Handler Detail Panel (hidden by default) -->
+<div class="card bg-base-100 shadow-sm mb-6 hidden" id="handler-detail">
+  <div class="card-body p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="card-title text-sm font-semibold">
+        <span id="detail-name">--</span>
+        <span class="badge badge-sm" id="detail-type">--</span>
+      </h2>
+      <button class="btn btn-sm btn-ghost" id="detail-close" aria-label="Close detail panel">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Handler Identity -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <div class="text-xs text-base-content/50 mb-1">Fully Qualified Name</div>
+        <div class="text-sm font-mono" id="detail-qualname">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/50 mb-1">Aggregate</div>
+        <div class="text-sm" id="detail-aggregate">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/50 mb-1">Stream Categories</div>
+        <div class="text-sm" id="detail-streams">--</div>
+      </div>
+      <div>
+        <div class="text-xs text-base-content/50 mb-1">Domain</div>
+        <div class="text-sm" id="detail-domain">--</div>
+      </div>
+    </div>
+
+    <!-- Handled Message Types -->
+    <div class="mb-4">
+      <div class="text-xs text-base-content/50 mb-1">Handled Messages</div>
+      <div class="flex flex-wrap gap-1" id="detail-messages">
+        <span class="text-sm text-base-content/50">--</span>
+      </div>
+    </div>
+
+    <!-- Recent Messages -->
+    <div>
+      <h3 class="text-xs font-semibold mb-2 text-base-content/70">Recent Messages</h3>
+      <div class="overflow-x-auto">
+        <table class="table table-xs">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Message Type</th>
+              <th class="text-right">Duration</th>
+              <th>Stream</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="detail-recent-tbody">
+            <tr>
+              <td colspan="5" class="text-center text-base-content/50 py-4">
+                Select a handler to view recent messages.
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/handlers.js" defer></script>
 {% endblock %}
