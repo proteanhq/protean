@@ -85,3 +85,36 @@ def build_cluster_test_domain() -> Domain:
 
     domain.init(traverse=False)
     return domain
+
+
+def build_command_event_test_domain() -> Domain:
+    """Build a domain with commands, events, and fact events."""
+    domain = Domain(name="Ordering", root_path=".")
+
+    @domain.command(part_of="Order")
+    class PlaceOrder:
+        customer_name = String(max_length=100, required=True)
+
+    @domain.command(part_of="Order")
+    class CancelOrder:
+        order_id = Identifier(required=True)
+        reason = String(max_length=500)
+
+    @domain.event(part_of="Order")
+    class OrderPlaced:
+        order_id = Identifier(required=True)
+        customer_name = String(required=True)
+        total_amount = Float(required=True)
+
+    @domain.event(part_of="Order")
+    class OrderCancelled:
+        order_id = Identifier(required=True)
+        reason = String()
+
+    @domain.aggregate(fact_events=True)
+    class Order:
+        customer_name = String(max_length=100, required=True)
+        total = Float(min_value=0.0)
+
+    domain.init(traverse=False)
+    return domain

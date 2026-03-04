@@ -434,9 +434,77 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
+    def _extract_command(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract command IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["__type__"] = getattr(cls, "__type__", "")
+        entry["__version__"] = getattr(cls, "__version__", "v1")
+        entry["element_type"] = "COMMAND"
+        entry["fields"] = self._extract_fields(cls)
+        entry["fqn"] = fqn(cls)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        agg_cls = self._resolve_aggregate_cls(cls)
+        if agg_cls is not None:
+            entry["part_of"] = fqn(agg_cls)
+
+        return dict(sorted(entry.items()))
+
+    def _extract_event(self, cls: type, record: Any) -> dict[str, Any]:
+        """Extract event IR dict."""
+        from protean.utils import fqn
+
+        entry: dict[str, Any] = {}
+        entry["__type__"] = getattr(cls, "__type__", "")
+        entry["__version__"] = getattr(cls, "__version__", "v1")
+
+        if record.auto_generated:
+            entry["auto_generated"] = True
+
+        entry["element_type"] = "EVENT"
+        entry["fields"] = self._extract_fields(cls)
+        entry["fqn"] = fqn(cls)
+        entry["is_fact_event"] = getattr(cls.meta_, "is_fact_event", False)
+        entry["module"] = cls.__module__
+        entry["name"] = cls.__name__
+
+        agg_cls = self._resolve_aggregate_cls(cls)
+        if agg_cls is not None:
+            entry["part_of"] = fqn(agg_cls)
+
+        # Sparse: only emit published when true
+        if getattr(cls.meta_, "published", False):
+            entry["published"] = True
+
+        return dict(sorted(entry.items()))
+
     # ------------------------------------------------------------------
     # Cluster assembly
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_aggregate_cls(cls: type) -> type | None:
+        """Resolve the root aggregate class for an element.
+
+        Tries ``aggregate_cluster`` first (set by resolver for entities,
+        commands, events), then falls back to traversing ``part_of``
+        (needed for fact events generated after cluster assignment).
+        """
+        from protean.core.aggregate import BaseAggregate
+
+        agg = getattr(cls.meta_, "aggregate_cluster", None)
+        if agg is not None:
+            return agg
+
+        part_of = getattr(cls.meta_, "part_of", None)
+        while part_of is not None:
+            if isinstance(part_of, type) and issubclass(part_of, BaseAggregate):
+                return part_of
+            part_of = getattr(getattr(part_of, "meta_", None), "part_of", None)
+        return None
 
     def _build_vo_cluster_map(self) -> dict[str, type]:
         """Build a mapping of VO FQN → aggregate class by scanning fields.
@@ -508,16 +576,21 @@ class IRBuilder:
                 "value_objects": {},
             }
 
-        # Populate entities
-        for record in registry._elements.get("ENTITY", {}).values():
-            cls = record.cls
-            agg_cls = getattr(cls.meta_, "aggregate_cluster", None)
-            if agg_cls is not None:
-                agg_fqn = fqn(agg_cls)
-                if agg_fqn in clusters:
-                    clusters[agg_fqn]["entities"][fqn(cls)] = self._extract_entity(
-                        cls, record
-                    )
+        # Helper to place an element into its aggregate's cluster section
+        def _place_in_cluster(
+            element_type_key: str, section: str, extractor: Any
+        ) -> None:
+            for record in registry._elements.get(element_type_key, {}).values():
+                cls = record.cls
+                agg_cls = self._resolve_aggregate_cls(cls)
+                if agg_cls is not None:
+                    agg_fqn = fqn(agg_cls)
+                    if agg_fqn in clusters:
+                        clusters[agg_fqn][section][fqn(cls)] = extractor(cls, record)
+
+        _place_in_cluster("ENTITY", "entities", self._extract_entity)
+        _place_in_cluster("COMMAND", "commands", self._extract_command)
+        _place_in_cluster("EVENT", "events", self._extract_event)
 
         # Populate value objects (derive cluster from field references)
         vo_cluster_map = self._build_vo_cluster_map()
@@ -532,10 +605,15 @@ class IRBuilder:
                         self._extract_value_object(cls, record, agg_fqn)
                     )
 
-        # Sort entity/VO dicts within each cluster, and sort clusters by key
+        # Sort all inner dicts within each cluster, and sort clusters by key
         for cluster in clusters.values():
-            cluster["entities"] = dict(sorted(cluster["entities"].items()))
-            cluster["value_objects"] = dict(sorted(cluster["value_objects"].items()))
+            for section in (
+                "commands",
+                "entities",
+                "events",
+                "value_objects",
+            ):
+                cluster[section] = dict(sorted(cluster[section].items()))
 
         return dict(sorted(clusters.items()))
 
