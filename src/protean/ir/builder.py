@@ -42,15 +42,18 @@ class IRBuilder:
             "$schema": f"https://protean.dev/ir/v{SCHEMA_VERSION}/schema.json",
             "checksum": "",
             "clusters": self._build_clusters(),
-            "contracts": {"events": []},
+            "contracts": self._build_contracts(),
             "diagnostics": [],
             "domain": self._build_domain_metadata(),
-            "elements": {},
+            "elements": self._build_elements_index(),
             "flows": self._build_flows(),
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "ir_version": SCHEMA_VERSION,
             "projections": self._build_projections(),
         }
+
+        # Collect diagnostics (must run after clusters are built)
+        self._collect_diagnostics(ir)
 
         # Attach collected diagnostics
         ir["diagnostics"] = sorted(self._diagnostics, key=lambda d: d.get("code", ""))
@@ -1010,6 +1013,103 @@ class IRBuilder:
                 cluster[section] = dict(sorted(cluster[section].items()))
 
         return dict(sorted(clusters.items()))
+
+    # ------------------------------------------------------------------
+    # Elements index
+    # ------------------------------------------------------------------
+
+    def _build_elements_index(self) -> dict[str, list[str]]:
+        """Build elements index: {element_type: sorted([FQN, ...])}."""
+        from protean.utils import fqn
+
+        registry = self._domain._domain_registry
+        # Element types to include (skip internal types)
+        element_types = [
+            "AGGREGATE",
+            "APPLICATION_SERVICE",
+            "COMMAND",
+            "COMMAND_HANDLER",
+            "DATABASE_MODEL",
+            "DOMAIN_SERVICE",
+            "ENTITY",
+            "EVENT",
+            "EVENT_HANDLER",
+            "PROCESS_MANAGER",
+            "PROJECTION",
+            "PROJECTOR",
+            "QUERY",
+            "QUERY_HANDLER",
+            "REPOSITORY",
+            "SUBSCRIBER",
+            "VALUE_OBJECT",
+        ]
+
+        elements: dict[str, list[str]] = {}
+        for etype in element_types:
+            records = registry._elements.get(etype, {})
+            elements[etype] = sorted(fqn(r.cls) for r in records.values())
+
+        return elements
+
+    # ------------------------------------------------------------------
+    # Contracts
+    # ------------------------------------------------------------------
+
+    def _build_contracts(self) -> dict[str, list[dict[str, str]]]:
+        """Build contracts section — published events sorted by __type__."""
+        from protean.utils import fqn
+
+        registry = self._domain._domain_registry
+        published_events: list[dict[str, str]] = []
+
+        for record in registry._elements.get("EVENT", {}).values():
+            cls = record.cls
+            if getattr(cls.meta_, "published", False):
+                published_events.append(
+                    {
+                        "__type__": getattr(cls, "__type__", ""),
+                        "fqn": fqn(cls),
+                    }
+                )
+
+        return {"events": sorted(published_events, key=lambda e: e.get("__type__", ""))}
+
+    # ------------------------------------------------------------------
+    # Diagnostics
+    # ------------------------------------------------------------------
+
+    def _collect_diagnostics(self, ir: dict[str, Any]) -> None:
+        """Collect diagnostic warnings from the built IR."""
+        # UNHANDLED_EVENT: events with no registered handler
+        handled_event_types: set[str] = set()
+
+        # Collect all handled event types from event handlers in clusters
+        for cluster in ir["clusters"].values():
+            for eh in cluster["event_handlers"].values():
+                handled_event_types.update(eh.get("handlers", {}).keys())
+
+        # Collect from projectors
+        for proj in ir["projections"].values():
+            for projector in proj["projectors"].values():
+                handled_event_types.update(projector.get("handlers", {}).keys())
+
+        # Collect from process managers
+        for pm in ir["flows"]["process_managers"].values():
+            handled_event_types.update(pm.get("handlers", {}).keys())
+
+        # Check each event
+        for cluster in ir["clusters"].values():
+            for event in cluster["events"].values():
+                event_type = event.get("__type__", "")
+                if event_type and event_type not in handled_event_types:
+                    self._diagnostics.append(
+                        {
+                            "code": "UNHANDLED_EVENT",
+                            "element": event["fqn"],
+                            "level": "warning",
+                            "message": f"Event {event['name']} has no registered handler",
+                        }
+                    )
 
     # ------------------------------------------------------------------
     # Checksum
