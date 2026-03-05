@@ -233,6 +233,7 @@ const Observatory = (() => {
     /** Format a percentage that's already in 0-100 range */
     pct(n) {
       if (n == null) return '—';
+      if (n > 0 && n < 0.1) return '< 0.1%';
       return n.toFixed(1) + '%';
     },
 
@@ -275,6 +276,7 @@ const Observatory = (() => {
    */
   function setWindow(w) {
     state.window = w;
+    loading.start();
     // Update button styles
     document.querySelectorAll('#window-selector button').forEach(btn => {
       if (btn.dataset.window === w) {
@@ -375,6 +377,7 @@ const Observatory = (() => {
     'p': '/processes',
     'e': '/eventstore',
     'i': '/infrastructure',
+    'm': '/messages',
   };
 
   let _chordPrefix = null;
@@ -460,6 +463,36 @@ const Observatory = (() => {
   }
 
   // ---------------------------------------------------------------------------
+  // Loading Indicator
+  // ---------------------------------------------------------------------------
+
+  let _loadingTimer = null;
+
+  const loading = {
+    /** Show the progress bar and fade KPI values. */
+    start() {
+      const bar = document.getElementById('loading-bar');
+      if (bar) {
+        bar.classList.add('active');
+      }
+      document.querySelectorAll('[data-kpi]').forEach(el => el.classList.add('loading-fade'));
+      // Safety timeout — auto-done after 10s
+      clearTimeout(_loadingTimer);
+      _loadingTimer = setTimeout(() => loading.done(), 10000);
+    },
+
+    /** Hide the progress bar and restore KPI values. */
+    done() {
+      clearTimeout(_loadingTimer);
+      const bar = document.getElementById('loading-bar');
+      if (bar) {
+        bar.classList.remove('active');
+      }
+      document.querySelectorAll('[data-kpi]').forEach(el => el.classList.remove('loading-fade'));
+    },
+  };
+
+  // ---------------------------------------------------------------------------
   // CSV Export
   // ---------------------------------------------------------------------------
 
@@ -523,6 +556,7 @@ const Observatory = (() => {
     state,
     sse,
     poller,
+    loading,
     fetchJSON,
     fetchWithWindow,
     fmt,

@@ -668,74 +668,23 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     async def traces_stats(
         window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
     ):
-        """Aggregated trace statistics for a time window."""
-        window_ms = _WINDOW_MS.get(window)
-        if window_ms is None:
-            valid = ", ".join(_WINDOW_MS.keys())
-            return JSONResponse(
-                content={"error": f"Invalid window: {window}. Use {valid}."},
-                status_code=400,
-            )
+        """Aggregated trace statistics for a time window.
 
-        redis_conn = _get_redis(domains)
-        if not redis_conn:
-            return JSONResponse(
-                content={"error": "Redis not available"}, status_code=503
-            )
-
-        # Redis stream IDs are timestamp-based: <ms>-<seq>
-        min_id = str(int(time.time() * 1000) - window_ms)
-
-        try:
-            raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-        except Exception as e:
-            logger.error(f"Error reading trace stream for stats: {e}", exc_info=True)
-            return JSONResponse(
-                content={"error": "Failed to read traces"}, status_code=500
-            )
-
-        counts: dict[str, int] = {}
-        error_count = 0
-        total = 0
-        latency_sum = 0.0
-        latency_count = 0
-
-        for _, fields in raw_entries:
-            try:
-                data_raw = fields.get(b"data") or fields.get("data")
-                if not data_raw:
-                    continue
-                if isinstance(data_raw, bytes):
-                    data_raw = data_raw.decode("utf-8")
-                trace = json.loads(data_raw)
-
-                event_type = trace.get("event", "unknown")
-                counts[event_type] = counts.get(event_type, 0) + 1
-                total += 1
-
-                if event_type in _ERROR_EVENTS:
-                    error_count += 1
-
-                duration = trace.get("duration_ms")
-                if event_type == "handler.completed" and duration is not None:
-                    latency_sum += float(duration)
-                    latency_count += 1
-            except (json.JSONDecodeError, TypeError, ValueError):
-                continue
-
-        error_rate = round((error_count / total * 100), 2) if total > 0 else 0.0
-        avg_latency_ms = (
-            round(latency_sum / latency_count, 2) if latency_count > 0 else 0.0
-        )
-
+        Delegates to the combined /traces/overview endpoint and returns
+        only the stats portion for backward compatibility.
+        """
+        overview = await traces_overview(window=window)
+        body = json.loads(overview.body.decode())
+        if "error" in body:
+            return overview
         return JSONResponse(
             content={
-                "window": window,
-                "counts": counts,
-                "error_count": error_count,
-                "error_rate": error_rate,
-                "avg_latency_ms": avg_latency_ms,
-                "total": total,
+                "window": body["window"],
+                "counts": body["counts"],
+                "error_count": body["error_count"],
+                "error_rate": body["error_rate"],
+                "avg_latency_ms": body["avg_latency_ms"],
+                "total": body["total"],
             }
         )
 
@@ -745,9 +694,38 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     ):
         """Pre-aggregated activity timeline buckets for the full time window.
 
-        Returns ~24-30 data points with adaptive bucket widths, covering the
-        entire requested window.  Each bucket contains total, success, and
-        error counts for the activity timeline chart.
+        Delegates to the combined /traces/overview endpoint and returns
+        only the timeline portion for backward compatibility.
+        """
+        overview = await traces_overview(window=window)
+        body = json.loads(overview.body.decode())
+        if "error" in body:
+            return overview
+        return JSONResponse(
+            content={
+                "window": body["window"],
+                "bucket_ms": body["bucket_ms"],
+                "buckets": body["buckets"],
+            }
+        )
+
+    # Cache for the combined overview scan to avoid redundant XRANGE calls.
+    # TTL is half the poller interval (5s) so data stays fresh but back-to-back
+    # requests (e.g. window change triggering multiple pollers) are served instantly.
+    _overview_cache: dict[str, Tuple[float, dict]] = {}
+    _OVERVIEW_CACHE_TTL_S = 3.0
+
+    @router.get("/traces/overview")
+    async def traces_overview(
+        window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
+    ):
+        """Combined stats + timeline in a single XRANGE scan.
+
+        Returns event counts, error rate, avg latency, AND pre-aggregated
+        timeline buckets.  The frontend calls this once instead of two
+        separate endpoints, halving Redis scan time for large windows.
+        Results are cached for 2 seconds to avoid redundant scans from
+        near-simultaneous requests.
         """
         window_ms = _WINDOW_MS.get(window)
         if window_ms is None:
@@ -757,7 +735,11 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 status_code=400,
             )
 
-        bucket_ms = _TIMELINE_BUCKET_MS[window]
+        # Check cache
+        now = time.time()
+        cached = _overview_cache.get(window)
+        if cached and (now - cached[0]) < _OVERVIEW_CACHE_TTL_S:
+            return JSONResponse(content=cached[1])
 
         redis_conn = _get_redis(domains)
         if not redis_conn:
@@ -765,18 +747,26 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 content={"error": "Redis not available"}, status_code=503
             )
 
-        now_ms = int(time.time() * 1000)
+        now_ms = int(now * 1000)
         min_id = str(now_ms - window_ms)
+        bucket_ms = _TIMELINE_BUCKET_MS[window]
 
         try:
             raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
         except Exception as e:
-            logger.error(f"Error reading trace stream for timeline: {e}", exc_info=True)
+            logger.error(f"Error reading trace stream: {e}", exc_info=True)
             return JSONResponse(
                 content={"error": "Failed to read traces"}, status_code=500
             )
 
-        # Pre-initialize dense bucket array covering the full window
+        # --- Stats accumulators ---
+        counts: dict[str, int] = {}
+        error_count = 0
+        total = 0
+        latency_sum = 0.0
+        latency_count = 0
+
+        # --- Timeline buckets ---
         window_start = (now_ms - window_ms) // bucket_ms * bucket_ms
         buckets: dict[int, dict] = {}
         t = window_start
@@ -784,7 +774,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             buckets[t] = {"time_ms": t, "total": 0, "success": 0, "errors": 0}
             t += bucket_ms
 
-        # Aggregate traces into buckets
+        # Single pass over all entries
         for stream_id, fields in raw_entries:
             try:
                 data_raw = fields.get(b"data") or fields.get("data")
@@ -794,33 +784,189 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                     data_raw = data_raw.decode("utf-8")
                 trace = json.loads(data_raw)
 
-                # Derive timestamp from Redis stream ID (authoritative)
+                event_type = trace.get("event", "unknown")
+
+                # Stats
+                counts[event_type] = counts.get(event_type, 0) + 1
+                total += 1
+                if event_type in _ERROR_EVENTS:
+                    error_count += 1
+                duration = trace.get("duration_ms")
+                if event_type == "handler.completed" and duration is not None:
+                    latency_sum += float(duration)
+                    latency_count += 1
+
+                # Timeline bucket
                 sid = _decode_stream_id(stream_id)
                 ts_ms = int(sid.split("-")[0])
                 bucket_key = ts_ms // bucket_ms * bucket_ms
-
                 bucket = buckets.get(bucket_key)
-                if bucket is None:
-                    continue  # Outside window due to alignment
-
-                event_type = trace.get("event", "")
-                bucket["total"] += 1
-                if event_type in _SUCCESS_EVENTS:
-                    bucket["success"] += 1
-                elif event_type in _ERROR_EVENTS:
-                    bucket["errors"] += 1
+                if bucket is not None:
+                    bucket["total"] += 1
+                    if event_type in _SUCCESS_EVENTS:
+                        bucket["success"] += 1
+                    elif event_type in _ERROR_EVENTS:
+                        bucket["errors"] += 1
             except (json.JSONDecodeError, TypeError, ValueError):
                 continue
 
+        error_rate = round((error_count / total * 100), 2) if total > 0 else 0.0
+        avg_latency_ms = (
+            round(latency_sum / latency_count, 2) if latency_count > 0 else 0.0
+        )
         timeline = sorted(buckets.values(), key=lambda b: b["time_ms"])
 
-        return JSONResponse(
-            content={
-                "window": window,
-                "bucket_ms": bucket_ms,
-                "buckets": timeline,
-            }
-        )
+        result = {
+            "window": window,
+            # Stats
+            "counts": counts,
+            "error_count": error_count,
+            "error_rate": error_rate,
+            "avg_latency_ms": avg_latency_ms,
+            "total": total,
+            # Timeline
+            "bucket_ms": bucket_ms,
+            "buckets": timeline,
+        }
+
+        # Update cache (use current time, not the pre-scan `now`)
+        _overview_cache[window] = (time.time(), result)
+
+        return JSONResponse(content=result)
+
+    @router.get("/traces/failed")
+    async def traces_failed(
+        window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
+        handler: Optional[str] = Query(None, description="Filter by handler name"),
+        message_type: Optional[str] = Query(None, description="Filter by message type"),
+        limit: int = Query(25, ge=1, le=200, description="Page size"),
+        offset: int = Query(0, ge=0, description="Number of entries to skip"),
+        start: Optional[str] = Query(None, description="Custom range start (ISO 8601)"),
+        end: Optional[str] = Query(None, description="Custom range end (ISO 8601)"),
+    ):
+        """Failed and DLQ traces filtered by time window.
+
+        Returns only handler.failed and message.dlq trace events,
+        with optional filtering by handler name and message type.
+        Supports offset-based pagination via offset/limit params.
+        """
+        redis_conn = _get_redis(domains)
+        if not redis_conn:
+            return JSONResponse(
+                content={
+                    "traces": [],
+                    "total_count": 0,
+                    "error": "Redis not available",
+                },
+                status_code=503,
+            )
+
+        # Determine time range
+        if start and end:
+            # Custom range: parse ISO 8601 timestamps
+            from datetime import datetime
+
+            try:
+                start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                min_id = str(int(start_dt.timestamp() * 1000))
+                max_id = str(int(end_dt.timestamp() * 1000))
+            except (ValueError, TypeError):
+                return JSONResponse(
+                    content={"error": "Invalid date format. Use ISO 8601."},
+                    status_code=400,
+                )
+        else:
+            window_ms = _WINDOW_MS.get(window)
+            if window_ms is None:
+                valid = ", ".join(_WINDOW_MS.keys())
+                return JSONResponse(
+                    content={"error": f"Invalid window: {window}. Use {valid}."},
+                    status_code=400,
+                )
+            min_id = str(int(time.time() * 1000) - window_ms)
+            max_id = "+"
+
+        try:
+            raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id, max=max_id)
+        except Exception as e:
+            logger.error(
+                f"Error reading trace stream for failed traces: {e}", exc_info=True
+            )
+            return JSONResponse(
+                content={
+                    "traces": [],
+                    "total_count": 0,
+                    "error": "Failed to read traces",
+                },
+                status_code=500,
+            )
+
+        # Collect all matching entries (for total count + pagination)
+        all_matches = []
+        for stream_id, fields in raw_entries:
+            try:
+                data_raw = fields.get(b"data") or fields.get("data")
+                if not data_raw:
+                    continue
+                if isinstance(data_raw, bytes):
+                    data_raw = data_raw.decode("utf-8")
+                trace = json.loads(data_raw)
+
+                event_type = trace.get("event", "")
+                if event_type not in _ERROR_EVENTS:
+                    continue
+
+                # Apply optional filters
+                if handler and trace.get("handler") != handler:
+                    continue
+                if message_type and trace.get("message_type") != message_type:
+                    continue
+
+                trace["_stream_id"] = _decode_stream_id(stream_id)
+                all_matches.append(trace)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # Sort newest first, then paginate
+        all_matches.reverse()
+        total_count = len(all_matches)
+        page = all_matches[offset : offset + limit]
+
+        return JSONResponse(content={"traces": page, "total_count": total_count})
+
+    @router.get("/traces/{stream_id}")
+    async def trace_detail(stream_id: str):
+        """Fetch a single trace event by its Redis stream ID."""
+        redis_conn = _get_redis(domains)
+        if not redis_conn:
+            return JSONResponse(
+                content={"error": "Redis not available"}, status_code=503
+            )
+
+        try:
+            entries = redis_conn.xrange(TRACE_STREAM, min=stream_id, max=stream_id)
+        except Exception as e:
+            logger.error(f"Error reading trace {stream_id}: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to read trace"}, status_code=500
+            )
+
+        if not entries:
+            return JSONResponse(content={"error": "Trace not found"}, status_code=404)
+
+        _, fields = entries[0]
+        try:
+            data_raw = fields.get(b"data") or fields.get("data")
+            if isinstance(data_raw, bytes):
+                data_raw = data_raw.decode("utf-8")
+            trace = json.loads(data_raw)
+            trace["_stream_id"] = stream_id
+            return JSONResponse(content=trace)
+        except (json.JSONDecodeError, TypeError):
+            return JSONResponse(
+                content={"error": "Failed to parse trace data"}, status_code=500
+            )
 
     @router.get("/subscriptions")
     async def subscriptions():
@@ -869,9 +1015,13 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         subscription: Optional[str] = Query(
             None, description="Filter by stream category"
         ),
-        limit: int = Query(100, ge=1, le=1000, description="Maximum entries"),
+        limit: int = Query(25, ge=1, le=200, description="Page size"),
+        offset: int = Query(0, ge=0, description="Number of entries to skip"),
     ):
-        """List DLQ messages across all subscriptions."""
+        """List DLQ messages across all subscriptions.
+
+        Supports offset-based pagination via offset/limit params.
+        """
         from protean.port.broker import BrokerCapabilities
         from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
 
@@ -906,7 +1056,11 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 else:
                     dlq_streams = collect_dlq_streams(domain)
 
-                entries = broker.dlq_list(dlq_streams, limit=limit)
+                # Fetch all entries (broker sorts newest first)
+                all_entries = broker.dlq_list(dlq_streams, limit=10000)
+                total_count = len(all_entries)
+                page = all_entries[offset : offset + limit]
+
                 return JSONResponse(
                     content={
                         "entries": [
@@ -920,9 +1074,9 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                                 "retry_count": e.retry_count,
                                 "dlq_stream": e.dlq_stream,
                             }
-                            for e in entries
+                            for e in page
                         ],
-                        "count": len(entries),
+                        "total_count": total_count,
                     }
                 )
         except Exception as e:

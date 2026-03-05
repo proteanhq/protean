@@ -17,7 +17,7 @@
   <div class="stats shadow-sm bg-base-100">
     <div class="stat px-4 py-3">
       <div class="stat-title text-xs">Total Processed</div>
-      <div class="stat-value text-lg font-mono-metric" id="kpi-total">--</div>
+      <div class="stat-value text-lg font-mono-metric" data-kpi id="kpi-total">--</div>
       <div class="stat-desc">
         <span class="sparkline-container" id="spark-total"></span>
       </div>
@@ -28,7 +28,7 @@
   <div class="stats shadow-sm bg-base-100">
     <div class="stat px-4 py-3">
       <div class="stat-title text-xs">Throughput</div>
-      <div class="stat-value text-lg font-mono-metric" id="kpi-throughput">--</div>
+      <div class="stat-value text-lg font-mono-metric" data-kpi id="kpi-throughput">--</div>
       <div class="stat-desc text-xs" id="kpi-throughput-unit">/sec</div>
     </div>
   </div>
@@ -37,7 +37,7 @@
   <div class="stats shadow-sm bg-base-100">
     <div class="stat px-4 py-3">
       <div class="stat-title text-xs">Avg Latency</div>
-      <div class="stat-value text-lg font-mono-metric" id="kpi-latency">--</div>
+      <div class="stat-value text-lg font-mono-metric" data-kpi id="kpi-latency">--</div>
       <div class="stat-desc">
         <span class="sparkline-container" id="spark-latency"></span>
       </div>
@@ -45,39 +45,62 @@
   </div>
 
   <!-- Error Rate -->
-  <div class="stats shadow-sm bg-base-100">
+  <a href="/messages" class="stats shadow-sm bg-base-100 hover:shadow-md transition-shadow cursor-pointer">
     <div class="stat px-4 py-3">
       <div class="stat-title text-xs">Error Rate</div>
-      <div class="stat-value text-lg font-mono-metric" id="kpi-error-rate">--</div>
+      <div class="stat-value text-lg font-mono-metric" data-kpi id="kpi-error-rate">--</div>
       <div class="stat-desc">
         <span class="sparkline-container" id="spark-errors"></span>
       </div>
     </div>
-  </div>
+  </a>
 
   <!-- In Flight -->
   <div class="stats shadow-sm bg-base-100">
     <div class="stat px-4 py-3">
       <div class="stat-title text-xs">In Flight</div>
-      <div class="stat-value text-lg font-mono-metric" id="kpi-inflight">--</div>
+      <div class="stat-value text-lg font-mono-metric" data-kpi id="kpi-inflight">--</div>
       <div class="stat-desc text-xs">pending messages</div>
     </div>
   </div>
 
   <!-- DLQ Depth -->
-  <div class="stats shadow-sm bg-base-100">
+  <a href="/messages?tab=dlq" class="stats shadow-sm bg-base-100 hover:shadow-md transition-shadow cursor-pointer">
     <div class="stat px-4 py-3">
       <div class="stat-title text-xs">DLQ Depth</div>
-      <div class="stat-value text-lg font-mono-metric" id="kpi-dlq">--</div>
+      <div class="stat-value text-lg font-mono-metric" data-kpi id="kpi-dlq">--</div>
       <div class="stat-desc">
         <span class="sparkline-container" id="spark-dlq"></span>
+      </div>
+    </div>
+  </a>
+</div>
+
+<!-- Activity Timeline -->
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <h2 class="card-title text-sm font-semibold mb-3">Activity Timeline</h2>
+    <div id="activity-chart" style="height: 200px;" class="w-full">
+      <div class="flex items-center justify-center h-full text-base-content/50">
+        <span class="loading loading-spinner loading-sm mr-2"></span>
+        Loading activity data...
       </div>
     </div>
   </div>
 </div>
 
+<!-- Event Breakdown -->
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <h2 class="card-title text-sm font-semibold mb-3">Event Breakdown</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3" id="event-breakdown">
+      <!-- Filled by JS -->
+    </div>
+  </div>
+</div>
+
 <!-- Subscription Health + Recent Errors -->
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
   <!-- Subscription Health Summary -->
   <div class="card bg-base-100 shadow-sm">
@@ -139,30 +162,7 @@
           <span id="error-dlq" class="font-mono-metric">--</span> DLQ
         </div>
       </div>
-      <a href="/handlers" class="link link-primary text-xs">View handler details &rarr;</a>
-    </div>
-  </div>
-</div>
-
-<!-- Activity Timeline -->
-<div class="card bg-base-100 shadow-sm mb-6">
-  <div class="card-body p-4">
-    <h2 class="card-title text-sm font-semibold mb-3">Activity Timeline</h2>
-    <div id="activity-chart" style="height: 200px;" class="w-full">
-      <div class="flex items-center justify-center h-full text-base-content/50">
-        <span class="loading loading-spinner loading-sm mr-2"></span>
-        Loading activity data...
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Event Breakdown -->
-<div class="card bg-base-100 shadow-sm">
-  <div class="card-body p-4">
-    <h2 class="card-title text-sm font-semibold mb-3">Event Breakdown</h2>
-    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3" id="event-breakdown">
-      <!-- Filled by JS -->
+      <a href="/messages" class="link link-primary text-xs">View message details &rarr;</a>
     </div>
   </div>
 </div>
