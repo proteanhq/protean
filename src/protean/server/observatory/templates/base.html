@@ -41,18 +41,11 @@
           </label>
         </div>
 
-        <!-- Domain info -->
+        <!-- SSE connection status -->
         <div class="flex-1 flex items-center gap-3">
-          <div class="flex items-center gap-2">
-            <span id="sse-status" class="badge badge-sm badge-ghost">
-              <span class="status status-xs" id="sse-dot"></span>
-            </span>
-            <span class="text-sm font-medium text-base-content/70">
-              {% for d in domains %}
-                <span class="badge badge-outline badge-sm">{{ d }}</span>
-              {% endfor %}
-            </span>
-          </div>
+          <span id="sse-status" class="badge badge-sm badge-ghost">
+            <span class="status status-xs" id="sse-dot"></span>
+          </span>
         </div>
 
         <!-- Header controls -->
@@ -133,14 +126,6 @@
               </a>
             </li>
             <li>
-              <a href="/flows" class="{% if active_page == 'flows' %}active{% endif %}">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-                </svg>
-                Event Flows
-              </a>
-            </li>
-            <li>
               <a href="/processes" class="{% if active_page == 'processes' %}active{% endif %}">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 0 0-3.7-3.7 48.678 48.678 0 0 0-7.324 0 4.006 4.006 0 0 0-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 0 0 3.7 3.7 48.656 48.656 0 0 0 7.324 0 4.006 4.006 0 0 0 3.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3-3 3" />
@@ -185,7 +170,6 @@
           <tbody>
             <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">o</kbd></td><td>Go to Overview</td></tr>
             <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">h</kbd></td><td>Go to Handlers</td></tr>
-            <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">f</kbd></td><td>Go to Event Flows</td></tr>
             <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">p</kbd></td><td>Go to Processes</td></tr>
             <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">e</kbd></td><td>Go to Event Store</td></tr>
             <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">i</kbd></td><td>Go to Infrastructure</td></tr>

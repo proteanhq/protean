@@ -12,7 +12,6 @@ from fastapi.templating import Jinja2Templates
 from protean.domain import Domain
 
 from .eventstore import create_eventstore_router
-from .flows import create_flows_router
 from .handlers import create_handlers_router
 from .infrastructure import create_infrastructure_router
 from .pages import create_page_router
@@ -34,7 +33,6 @@ def create_all_routes(
 
     api_router = APIRouter()
     api_router.include_router(create_handlers_router(domains))
-    api_router.include_router(create_flows_router(domains))
     api_router.include_router(create_processes_router(domains))
     api_router.include_router(create_eventstore_router(domains))
     api_router.include_router(create_infrastructure_router(domains))

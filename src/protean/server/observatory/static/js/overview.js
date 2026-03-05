@@ -5,6 +5,7 @@
  *   /api/traces/stats   → KPI cards + event breakdown
  *   /api/subscriptions   → subscription health table
  *   /api/stats           → in-flight / DLQ counts
+ *   /api/traces/timeline → activity timeline (pre-aggregated buckets)
  *   /api/traces          → recent errors panel
  *
  * SSE:
@@ -32,6 +33,9 @@
   const activityData = [];
   const MAX_ACTIVITY = 60;
 
+  // Current bucket width in ms (updated from server response, default 10s)
+  let _currentBucketMs = 10000;
+
   // ── KPI Cards ──────────────────────────────────────────────────
   function updateKPIs(data) {
     const total = data.total || 0;
@@ -46,7 +50,7 @@
 
     document.getElementById('kpi-total').textContent = Observatory.fmt.number(total);
     document.getElementById('kpi-throughput').textContent = Observatory.fmt.number(throughput);
-    document.getElementById('kpi-latency').textContent = Observatory.fmt.duration(avgLatency);
+    document.getElementById('kpi-latency').textContent = total > 0 ? Observatory.fmt.duration(avgLatency) : '—';
     document.getElementById('kpi-error-rate').textContent = Observatory.fmt.percent(errorRate);
 
     // Push to sparkline history
@@ -105,10 +109,11 @@
     Charts.sparkline('#spark-dlq', history.dlq, { width: 80, height: 20, color: '#f59e0b' });
   }
 
-  // ── Subscription Health Table ──────────────────────────────────
+  // ── Subscription Health Summary ───────────────────────────────
   function updateSubscriptions(data) {
     const tbody = document.getElementById('subscriptions-tbody');
     const countBadge = document.getElementById('sub-count');
+    const unhealthyContainer = document.getElementById('sub-unhealthy');
     if (!tbody) return;
 
     // Flatten all domains' subscriptions
@@ -123,21 +128,47 @@
 
     countBadge.textContent = rows.length;
 
-    if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-base-content/50 py-8">No subscriptions found</td></tr>';
+    // Categorize
+    let healthy = 0;
+    let lagging = 0;
+    let dlqCount = 0;
+    const unhealthy = [];
+    for (const sub of rows) {
+      const isLagging = sub.status === 'lagging';
+      const hasDlq = (sub.dlq_depth || 0) > 0;
+      if (isLagging) lagging++;
+      if (hasDlq) dlqCount++;
+      if (isLagging || hasDlq) {
+        unhealthy.push(sub);
+      } else {
+        healthy++;
+      }
+    }
+
+    // Update summary counters
+    document.getElementById('sub-healthy').textContent = healthy;
+    document.getElementById('sub-lagging').textContent = lagging;
+    document.getElementById('sub-dlq').textContent = dlqCount;
+
+    // Show unhealthy table only when there are issues
+    if (unhealthy.length === 0) {
+      unhealthyContainer.classList.add('hidden');
+      tbody.innerHTML = '';
       return;
     }
 
-    // Sort: unhealthy first, then by lag descending
-    rows.sort((a, b) => {
+    unhealthyContainer.classList.remove('hidden');
+
+    // Sort: lagging first, then by DLQ depth descending
+    unhealthy.sort((a, b) => {
       const statusOrder = { lagging: 0, unknown: 1, ok: 2 };
       const sa = statusOrder[a.status] ?? 1;
       const sb = statusOrder[b.status] ?? 1;
       if (sa !== sb) return sa - sb;
-      return (b.lag || 0) - (a.lag || 0);
+      return (b.dlq_depth || 0) - (a.dlq_depth || 0);
     });
 
-    tbody.innerHTML = rows.map(sub => {
+    tbody.innerHTML = unhealthy.map(sub => {
       const statusClass = Observatory.statusClass(sub.status);
       return `<tr class="hover">
         <td><span class="status ${statusClass}"></span></td>
@@ -154,42 +185,32 @@
     }).join('');
   }
 
-  // ── Recent Errors ──────────────────────────────────────────────
+  // ── Recent Errors Summary ─────────────────────────────────────
   function updateRecentErrors(data) {
-    const container = document.getElementById('recent-errors');
     const countBadge = document.getElementById('error-count');
-    if (!container) return;
 
     const traces = data.traces || [];
     countBadge.textContent = traces.length;
 
-    if (traces.length === 0) {
-      container.innerHTML = '<div class="text-center text-base-content/50 py-4 text-sm">No recent errors</div>';
-      return;
+    let failed = 0;
+    let dlq = 0;
+    for (const t of traces) {
+      if (t.event === 'message.dlq') dlq++;
+      else failed++;
     }
 
-    container.innerHTML = traces.map(t => {
-      const ts = t.timestamp ? Observatory.fmt.timeAgo(new Date(t.timestamp * 1000)) : '--';
-      const handler = t.handler || t.subscription || '--';
-      const msgType = t.message_type || '--';
-      const errorType = t.event === 'message.dlq' ? 'DLQ' : 'Failed';
-      const badgeClass = t.event === 'message.dlq' ? 'badge-warning' : 'badge-error';
-      return `<div class="flex items-start gap-2 p-2 rounded-lg bg-base-200/50 text-sm">
-        <span class="badge ${badgeClass} badge-xs mt-1">${errorType}</span>
-        <div class="flex-1 min-w-0">
-          <div class="font-medium truncate">${Observatory.escapeHtml(handler)}</div>
-          <div class="text-xs text-base-content/60 truncate">${Observatory.escapeHtml(msgType)}</div>
-        </div>
-        <span class="text-xs text-base-content/40 whitespace-nowrap">${ts}</span>
-      </div>`;
-    }).join('');
+    document.getElementById('error-failed').textContent = failed;
+    document.getElementById('error-dlq').textContent = dlq;
   }
 
-  // ── Activity Timeline (SSE-driven) ─────────────────────────────
-  function appendActivityPoint(trace) {
-    const now = Date.now();
-    // Bucket into 10-second intervals
-    const bucket = Math.floor(now / 10000) * 10000;
+  // ── Activity Timeline (SSE-driven + historical bootstrap) ──────
+
+  /**
+   * Bucket a single SSE trace into the activityData array.
+   * Uses the server-provided bucket width for consistency.
+   */
+  function _bucketTrace(tsMs, trace) {
+    const bucket = Math.floor(tsMs / _currentBucketMs) * _currentBucketMs;
 
     let last = activityData[activityData.length - 1];
     if (!last || last.time !== bucket) {
@@ -204,8 +225,61 @@
     } else if (trace.event === 'handler.failed' || trace.event === 'message.dlq') {
       last.errors++;
     }
+  }
 
+  function appendActivityPoint(trace) {
+    _bucketTrace(Date.now(), trace);
     renderActivityChart();
+  }
+
+  /**
+   * Rebuild the activity timeline from pre-aggregated server data.
+   * Used as a poller callback so it re-runs on window changes and periodically.
+   *
+   * @param {object|null} data - Response from /api/traces/timeline, or null (setWindow signal).
+   */
+  function rebuildActivityTimeline(data) {
+    // null is the "clearing" signal from setWindow — just clear, the re-fetch follows
+    if (!data) {
+      activityData.length = 0;
+      return;
+    }
+
+    activityData.length = 0;
+
+    const buckets = data.buckets || [];
+    if (buckets.length === 0) {
+      _showNoActivity();
+      return;
+    }
+
+    // Update bucket width to match the server's adaptive width
+    _currentBucketMs = data.bucket_ms || 10000;
+
+    // Map server buckets directly into activityData
+    for (const b of buckets) {
+      activityData.push({
+        time: b.time_ms,
+        total: b.total,
+        success: b.success,
+        errors: b.errors,
+      });
+    }
+
+    if (activityData.length >= 2) {
+      renderActivityChart();
+    } else {
+      _showNoActivity();
+    }
+  }
+
+  function _showNoActivity() {
+    const container = document.getElementById('activity-chart');
+    if (container) {
+      container.innerHTML =
+        '<div class="flex items-center justify-center h-full text-base-content/50 text-sm">' +
+        'No recent activity</div>';
+    }
   }
 
   function renderActivityChart() {
@@ -215,17 +289,17 @@
       {
         name: 'Total',
         color: '#3b82f6',
-        values: activityData.map(d => ({ x: new Date(d.time), y: d.total })),
+        data: activityData.map(d => ({ x: new Date(d.time), y: d.total })),
       },
       {
         name: 'Success',
         color: '#22c55e',
-        values: activityData.map(d => ({ x: new Date(d.time), y: d.success })),
+        data: activityData.map(d => ({ x: new Date(d.time), y: d.success })),
       },
       {
         name: 'Errors',
         color: '#ef4444',
-        values: activityData.map(d => ({ x: new Date(d.time), y: d.errors })),
+        data: activityData.map(d => ({ x: new Date(d.time), y: d.errors })),
       },
     ];
 
@@ -294,10 +368,9 @@
     });
     Observatory.poller.register('recent-errors', '/api/traces?event=handler.failed&count=10', 10000, updateRecentErrors);
 
-    // Start polling
-    Observatory.poller.startAll();
-
-    // SSE for activity timeline
+    // Activity timeline: server returns pre-aggregated buckets for the full window.
+    // SSE appends live points between poller refreshes.
+    Observatory.poller.register('activity-timeline', '/api/traces/timeline', 30000, rebuildActivityTimeline);
     Observatory.sse.onTrace(appendActivityPoint);
   }
 

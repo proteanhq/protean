@@ -87,7 +87,6 @@ class Observatory:
     Provides:
     - GET /                    — Overview dashboard (Jinja2-rendered)
     - GET /handlers            — Handler monitoring view
-    - GET /flows               — Event flow visualization
     - GET /processes           — Process manager monitoring
     - GET /eventstore          — Event store health
     - GET /infrastructure      — Infrastructure status

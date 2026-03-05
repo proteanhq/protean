@@ -123,7 +123,7 @@ const Observatory = (() => {
       const poll = async () => {
         if (state.paused) return;
         try {
-          const data = await fetchJSON(url);
+          const data = await fetchWithWindow(url);
           callback(data);
         } catch (e) {
           console.warn(`Poller '${name}' failed:`, e.message);
@@ -171,7 +171,6 @@ const Observatory = (() => {
 
   /**
    * Fetch JSON from an API endpoint with error handling.
-   * Appends the current window parameter if the URL has no explicit window.
    */
   async function fetchJSON(url) {
     const response = await fetch(url);
@@ -284,14 +283,14 @@ const Observatory = (() => {
         btn.className = 'join-item btn btn-xs btn-ghost';
       }
     });
-    // Trigger a refresh of all pollers
+    // Trigger a refresh of all pollers with updated window
     for (const [name, p] of Object.entries(_pollers)) {
       p.callback(null); // Signal to re-fetch
       clearInterval(p.timerId);
       const poll = async () => {
         if (state.paused) return;
         try {
-          const data = await fetchJSON(p.url);
+          const data = await fetchWithWindow(p.url);
           p.callback(data);
         } catch (e) {
           console.warn(`Poller '${name}' failed:`, e.message);
@@ -373,7 +372,6 @@ const Observatory = (() => {
   const _NAV_SHORTCUTS = {
     'o': '/',
     'h': '/handlers',
-    'f': '/flows',
     'p': '/processes',
     'e': '/eventstore',
     'i': '/infrastructure',
@@ -442,7 +440,7 @@ const Observatory = (() => {
     for (const [name, p] of Object.entries(_pollers)) {
       (async () => {
         try {
-          const data = await fetchJSON(p.url);
+          const data = await fetchWithWindow(p.url);
           p.callback(data);
         } catch (e) {
           console.warn(`Refresh '${name}' failed:`, e.message);

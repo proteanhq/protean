@@ -46,11 +46,6 @@ def create_page_router(
         """Handlers — Detailed operational view of every message handler."""
         return templates.TemplateResponse(request, "handlers.html", _ctx("handlers"))
 
-    @router.get("/flows")
-    async def flows(request: Request):
-        """Event Flows — Visualize runtime message flow through the system."""
-        return templates.TemplateResponse(request, "flows.html", _ctx("flows"))
-
     @router.get("/processes")
     async def processes(request: Request):
         """Processes — Monitor long-running process managers and sagas."""

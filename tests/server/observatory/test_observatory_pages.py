@@ -1,7 +1,7 @@
 """Tests for Observatory page routes, Jinja2 template rendering, and static asset serving.
 
 Covers:
-- routes/pages.py: All 6 page routes, _get_domain_names, _ctx helper
+- routes/pages.py: All 5 page routes, _get_domain_names, _ctx helper
 - routes/__init__.py: create_all_routes composition
 - __init__.py: Jinja2Templates + StaticFiles integration, _TEMPLATES_DIR, _STATIC_DIR
 """
@@ -96,7 +96,7 @@ class TestCreatePageRouter:
         router = create_page_router([test_domain], templates)
         assert isinstance(router, APIRouter)
 
-    def test_registers_six_routes(self, test_domain):
+    def test_registers_five_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -105,7 +105,6 @@ class TestCreatePageRouter:
         assert paths == {
             "/",
             "/handlers",
-            "/flows",
             "/processes",
             "/eventstore",
             "/infrastructure",
@@ -139,7 +138,7 @@ class TestCreateAllRoutes:
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
         page_router, _ = create_all_routes([test_domain], templates)
-        assert len(page_router.routes) == 6
+        assert len(page_router.routes) == 5
 
     def test_api_router_includes_handler_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
@@ -239,10 +238,30 @@ class TestOverviewPage:
         html = client.get("/").text
         assert "health-banner" in html
         assert "kpi-total" in html
-        assert "subscriptions-tbody" in html
+        assert "sub-summary" in html
+        assert "error-summary" in html
         assert "activity-chart" in html
         assert "event-breakdown" in html
-        assert "recent-errors" in html
+
+    def test_contains_subscription_summary_counters(self, client):
+        """Subscription health shows compact summary, not full table."""
+        html = client.get("/").text
+        assert 'id="sub-healthy"' in html
+        assert 'id="sub-lagging"' in html
+        assert 'id="sub-dlq"' in html
+
+    def test_contains_error_summary_counters(self, client):
+        """Recent errors shows compact summary with link to handlers."""
+        html = client.get("/").text
+        assert 'id="error-failed"' in html
+        assert 'id="error-dlq"' in html
+        assert 'href="/handlers"' in html
+
+    def test_unhealthy_table_hidden_by_default(self, client):
+        """Unhealthy subscription table starts hidden."""
+        html = client.get("/").text
+        assert 'id="sub-unhealthy"' in html
+        assert "hidden" in html
 
     def test_overview_nav_is_active(self, client):
         """The overview nav link should have the 'active' class."""
@@ -275,10 +294,10 @@ class TestOverviewPage:
         assert "In Flight" in html
         assert "DLQ Depth" in html
 
-    def test_contains_domain_badge(self, client, test_domain):
-        """Domain name should appear as a badge in the header."""
+    def test_contains_sse_status_indicator(self, client):
+        """SSE connection status dot should be in the header."""
         html = client.get("/").text
-        assert test_domain.name in html
+        assert 'id="sse-dot"' in html
 
 
 class TestHandlersPage:
@@ -303,23 +322,6 @@ class TestHandlersPage:
         html = client.get("/handlers").text
         assert "Observatory" in html
         assert "drawer" in html
-
-
-class TestFlowsPage:
-    def test_returns_200(self, client):
-        response = client.get("/flows")
-        assert response.status_code == 200
-
-    def test_returns_html(self, client):
-        assert "text/html" in client.get("/flows").headers["content-type"]
-
-    def test_contains_page_heading(self, client):
-        html = client.get("/flows").text
-        assert "Event Flows" in html
-
-    def test_extends_base_template(self, client):
-        html = client.get("/flows").text
-        assert "Observatory" in html
 
 
 class TestProcessesPage:
@@ -391,9 +393,6 @@ class TestNavigationLinks:
     def test_has_link_to_handlers(self, overview_html):
         assert 'href="/handlers"' in overview_html
 
-    def test_has_link_to_flows(self, overview_html):
-        assert 'href="/flows"' in overview_html
-
     def test_has_link_to_processes(self, overview_html):
         assert 'href="/processes"' in overview_html
 
@@ -410,7 +409,6 @@ class TestActivePageHighlighting:
     PAGES = [
         ("/", "overview"),
         ("/handlers", "handlers"),
-        ("/flows", "flows"),
         ("/processes", "processes"),
         ("/eventstore", "eventstore"),
         ("/infrastructure", "infrastructure"),
@@ -432,23 +430,60 @@ class TestActivePageHighlighting:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Activity Timeline Bootstrap
+# ---------------------------------------------------------------------------
+
+
+class TestActivityTimelineBootstrap:
+    """The activity timeline should bootstrap with historical data, not just SSE."""
+
+    def test_overview_js_contains_rebuild_function(self, client):
+        js = client.get("/static/js/overview.js").text
+        assert "rebuildActivityTimeline" in js
+
+    def test_timeline_registered_as_poller(self, client):
+        """Timeline uses a poller so setWindow() triggers a re-fetch."""
+        js = client.get("/static/js/overview.js").text
+        assert "activity-timeline" in js
+        assert "/api/traces/timeline" in js
+
+    def test_timeline_poller_before_sse(self, client):
+        js = client.get("/static/js/overview.js").text
+        poller_pos = js.index("'activity-timeline'")
+        on_trace_pos = js.index("Observatory.sse.onTrace(appendActivityPoint)")
+        assert poller_pos < on_trace_pos
+
+    def test_overview_js_has_no_activity_fallback(self, client):
+        js = client.get("/static/js/overview.js").text
+        assert "_showNoActivity" in js
+        assert "No recent activity" in js
+
+    def test_overview_js_uses_server_buckets(self, client):
+        """Timeline uses pre-aggregated server buckets, not client-side bucketing."""
+        js = client.get("/static/js/overview.js").text
+        assert "data.buckets" in js
+        assert "data.bucket_ms" in js
+        assert "_currentBucketMs" in js
+
+
 class TestMultiDomainContext:
-    def test_multiple_domains_shown_in_header(self, test_domain):
+    def test_multiple_domains_accepted(self, test_domain):
+        """Observatory should accept multiple domains without error."""
         from protean.domain import Domain
 
         d2 = Domain(name="second-domain")
         d2.init(traverse=False)
         obs = Observatory(domains=[test_domain, d2])
         client = TestClient(obs.app)
-        html = client.get("/").text
-        assert test_domain.name in html
-        assert "second-domain" in html
+        response = client.get("/")
+        assert response.status_code == 200
 
-    def test_single_domain_shown_in_header(self, test_domain):
+    def test_single_domain_accepted(self, test_domain):
         obs = Observatory(domains=[test_domain])
         client = TestClient(obs.app)
-        html = client.get("/").text
-        assert test_domain.name in html
+        response = client.get("/")
+        assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -482,7 +517,6 @@ class TestBaseTemplateElements:
     def test_has_nav_sidebar(self, html):
         assert "Overview" in html
         assert "Handlers" in html
-        assert "Event Flows" in html
         assert "Processes" in html
         assert "Event Store" in html
         assert "Infrastructure" in html

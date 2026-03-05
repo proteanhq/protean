@@ -2,7 +2,7 @@
  * Event Store View Module
  *
  * Fetches aggregate stream data from /api/eventstore/streams, renders the
- * stream table, and provides a detail panel for individual stream categories.
+ * stream table, and outbox status.
  */
 (function () {
   'use strict';
@@ -14,10 +14,9 @@
   let _searchQuery = '';
   let _sortKey = 'name';
   let _sortAsc = true;
-  let _selectedStream = null;
 
   // DOM refs
-  let $tbody, $search, $detailPanel;
+  let $tbody, $search;
 
   // ---------------------------------------------------------------------------
   // Filtering & Sorting
@@ -79,14 +78,14 @@
     const rows = list.map(a => {
       const name = Observatory.escapeHtml(a.name);
       const instances = a.instance_count != null ? Observatory.fmt.number(a.instance_count) : '--';
-      const headPos = a.head_position != null ? Observatory.fmt.number(a.head_position) : '--';
+      const headPos = a.head_position != null ? a.head_position.toLocaleString() : '--';
       const stream = Observatory.escapeHtml(a.stream_category || '--');
       const domain = Observatory.escapeHtml(a.domain || '--');
       const esBadge = a.is_event_sourced
         ? '<span class="badge badge-xs badge-primary">ES</span>'
         : '<span class="badge badge-xs badge-ghost">No</span>';
 
-      return `<tr class="hover cursor-pointer stream-row" data-stream="${Observatory.escapeHtml(a.stream_category || '')}">
+      return `<tr class="hover">
         <td class="font-medium">${name}</td>
         <td class="text-center">${esBadge}</td>
         <td class="text-right font-mono-metric">${instances}</td>
@@ -97,14 +96,6 @@
     });
 
     $tbody.innerHTML = rows.join('');
-
-    // Attach row click handlers
-    $tbody.querySelectorAll('.stream-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const stream = row.getAttribute('data-stream');
-        if (stream) _showStreamDetail(stream);
-      });
-    });
   }
 
   function _updateSummary(summary, outbox) {
@@ -130,92 +121,33 @@
   }
 
   function _renderOutbox(outbox) {
-    const $content = document.getElementById('outbox-content');
-    if (!$content) return;
+    const $tbody = document.getElementById('outbox-tbody');
+    if (!$tbody) return;
 
     if (!outbox || Object.keys(outbox).length === 0) {
-      $content.innerHTML = '<span class="text-base-content/50">No outbox data available.</span>';
+      $tbody.innerHTML = '<tr><td colspan="6" class="text-center text-base-content/50 py-4">No outbox data available.</td></tr>';
       return;
     }
 
     const rows = Object.entries(outbox).map(([domainName, data]) => {
       if (data.status === 'error') {
-        return `<div class="flex items-center gap-2 p-2 bg-error/10 rounded">
-          <span class="font-medium">${Observatory.escapeHtml(domainName)}</span>
-          <span class="text-error text-sm">${Observatory.escapeHtml(data.error || 'Error')}</span>
-        </div>`;
+        return `<tr><td class="font-medium">${Observatory.escapeHtml(domainName)}</td>
+          <td colspan="5" class="text-error text-sm">${Observatory.escapeHtml(data.error || 'Error')}</td></tr>`;
       }
-      const counts = data.counts || {};
-      const items = Object.entries(counts)
-        .map(([status, count]) => `<span class="badge badge-sm badge-ghost">${Observatory.escapeHtml(status)}: ${count}</span>`)
-        .join(' ');
-      return `<div class="flex items-center gap-2 p-2">
-        <span class="font-medium">${Observatory.escapeHtml(domainName)}</span>
-        <div class="flex flex-wrap gap-1">${items || '<span class="text-base-content/40">empty</span>'}</div>
-      </div>`;
+      const c = data.counts || {};
+      const failed = c.failed || 0;
+      const abandoned = c.abandoned || 0;
+      return `<tr class="hover">
+        <td class="font-medium">${Observatory.escapeHtml(domainName)}</td>
+        <td class="text-right font-mono-metric">${c.pending || 0}</td>
+        <td class="text-right font-mono-metric">${c.processing || 0}</td>
+        <td class="text-right font-mono-metric">${c.published || 0}</td>
+        <td class="text-right font-mono-metric ${failed > 0 ? 'text-error font-semibold' : ''}">${failed}</td>
+        <td class="text-right font-mono-metric ${abandoned > 0 ? 'text-warning font-semibold' : ''}">${abandoned}</td>
+      </tr>`;
     });
 
-    $content.innerHTML = rows.join('');
-  }
-
-  // ---------------------------------------------------------------------------
-  // Stream Detail Panel
-  // ---------------------------------------------------------------------------
-
-  async function _showStreamDetail(streamCategory) {
-    _selectedStream = streamCategory;
-    if (!$detailPanel) return;
-
-    $detailPanel.classList.remove('hidden');
-    const $name = document.getElementById('detail-aggregate-name');
-    if ($name) $name.textContent = streamCategory;
-
-    const $itbody = document.getElementById('detail-instances-tbody');
-    if ($itbody) {
-      $itbody.innerHTML = '<tr><td colspan="5" class="text-center text-base-content/50 py-4">' +
-        '<span class="loading loading-spinner loading-sm"></span> Loading instances...</td></tr>';
-    }
-
-    try {
-      const data = await Observatory.fetchJSON(`/api/eventstore/streams/${encodeURIComponent(streamCategory)}`);
-      if (data && data.instances) {
-        _renderInstances(data.instances);
-      }
-    } catch (e) {
-      console.warn('Failed to fetch stream instances:', e.message);
-      _renderInstances([]);
-    }
-  }
-
-  function _renderInstances(instances) {
-    const $itbody = document.getElementById('detail-instances-tbody');
-    if (!$itbody) return;
-
-    if (instances.length === 0) {
-      $itbody.innerHTML = '<tr><td colspan="5" class="text-center text-base-content/50 py-4">No instances found.</td></tr>';
-      return;
-    }
-
-    $itbody.innerHTML = instances.map(inst => {
-      const id = Observatory.escapeHtml(inst.instance_id || '--');
-      const events = inst.event_count != null ? inst.event_count : '--';
-      const firstTime = inst.first_event_time ? Observatory.fmt.timeAgo(inst.first_event_time) : '--';
-      const lastTime = inst.last_event_time ? Observatory.fmt.timeAgo(inst.last_event_time) : '--';
-      const lastType = Observatory.escapeHtml(inst.last_event_type || '--');
-
-      return `<tr>
-        <td class="font-mono text-xs">${id}</td>
-        <td class="text-right font-mono-metric">${events}</td>
-        <td class="text-xs text-base-content/60">${firstTime}</td>
-        <td class="text-xs text-base-content/60">${lastTime}</td>
-        <td class="text-xs">${lastType}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  function _closeDetail() {
-    _selectedStream = null;
-    if ($detailPanel) $detailPanel.classList.add('hidden');
+    $tbody.innerHTML = rows.join('');
   }
 
   // ---------------------------------------------------------------------------
@@ -292,12 +224,6 @@
       });
     });
 
-    // Detail panel close
-    const $closeBtn = document.getElementById('detail-close');
-    if ($closeBtn) {
-      $closeBtn.addEventListener('click', _closeDetail);
-    }
-
     // CSV export
     const $exportBtn = document.getElementById('export-csv');
     if ($exportBtn) {
@@ -326,7 +252,6 @@
   function init() {
     $tbody = document.getElementById('streams-tbody');
     $search = document.getElementById('stream-search');
-    $detailPanel = document.getElementById('stream-detail');
 
     // Read URL params for deep linking
     _readURL();
