@@ -7,6 +7,7 @@ sync/async dispatch, and command handler resolution.
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import uuid4
 
@@ -227,6 +228,30 @@ class CommandProcessor:
         ):
             handler_class = self.handler_for(command)
             if handler_class:
+                # Extract trace metadata from the enriched command
+                cmd_meta = command_with_metadata._metadata
+                message_id = cmd_meta.headers.id if cmd_meta.headers else "unknown"
+                message_type = cmd_meta.headers.type if cmd_meta.headers else "unknown"
+                stream = getattr(
+                    command.meta_.part_of.meta_,
+                    "stream_category",
+                    "unknown",
+                )
+                handler_name = handler_class.__name__
+
+                emitter = domain.trace_emitter
+
+                # Emit handler.started trace
+                emitter.emit(
+                    event="handler.started",
+                    stream=stream,
+                    message_id=message_id,
+                    message_type=message_type,
+                    handler=handler_name,
+                    worker_id="api",
+                )
+
+                start_time = time.monotonic()
                 try:
                     # Build a Message for context propagation so that events
                     # raised during sync handling inherit trace IDs.
@@ -237,13 +262,41 @@ class CommandProcessor:
                     # can read it when creating outbox records
                     with processing_priority(resolved_priority):
                         result = handler_class._handle(command_with_metadata)
-                except Exception:
+                except Exception as exc:
+                    duration_ms = (time.monotonic() - start_time) * 1000
+
+                    # Emit handler.failed trace
+                    emitter.emit(
+                        event="handler.failed",
+                        stream=stream,
+                        message_id=message_id,
+                        message_type=message_type,
+                        status="error",
+                        handler=handler_name,
+                        duration_ms=round(duration_ms, 2),
+                        error=str(exc),
+                        worker_id="api",
+                    )
+
                     # Record failure with short TTL to allow retry
                     if idempotency_key and store.is_active:
                         store.record_error(idempotency_key, "handler_failed")
                     raise
                 finally:
                     g.pop("message_in_context", None)
+
+                duration_ms = (time.monotonic() - start_time) * 1000
+
+                # Emit handler.completed trace
+                emitter.emit(
+                    event="handler.completed",
+                    stream=stream,
+                    message_id=message_id,
+                    message_type=message_type,
+                    handler=handler_name,
+                    duration_ms=round(duration_ms, 2),
+                    worker_id="api",
+                )
 
                 # Record success
                 if idempotency_key and store.is_active:

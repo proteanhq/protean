@@ -13,8 +13,7 @@ Data sources:
    via ``count_by_status()``.
 
 Endpoints:
-    GET /eventstore/streams                     — All aggregate streams + outbox
-    GET /eventstore/streams/{stream_category}   — Instances for a stream category
+    GET /eventstore/streams — All aggregate streams + outbox
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 if TYPE_CHECKING:
@@ -34,30 +33,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _extract_time(message: Any) -> str | None:
-    """Extract a timestamp string from a message object."""
-    t = getattr(message, "time", None)
-    if t is not None:
-        return str(t)
-    metadata = getattr(message, "metadata", None)
-    if metadata and hasattr(metadata, "timestamp"):
-        return str(metadata.timestamp)
-    return None
-
-
-def _extract_message_type(message: Any) -> str | None:
-    """Extract the message type string from a message object."""
-    # Try type attribute first
-    t = getattr(message, "type", None)
-    if t is not None:
-        return str(t)
-    # Fall back to class name
-    cls = type(message)
-    if cls.__name__ != "dict":
-        return cls.__name__
-    return None
 
 
 def collect_aggregate_stream_metadata(
@@ -159,58 +134,6 @@ def collect_outbox_status(domains: list["Domain"]) -> dict[str, dict[str, Any]]:
     return result
 
 
-def get_stream_instances(
-    domain: "Domain",
-    stream_category: str,
-    limit: int = 50,
-) -> list[dict[str, Any]]:
-    """Enumerate instances within a stream category from the event store.
-
-    For each instance (up to *limit*), reads events and extracts
-    instance_id, event_count, first/last event timestamps, and last event type.
-    """
-    try:
-        with domain.domain_context():
-            store = domain.event_store.store
-            identifiers = store._stream_identifiers(stream_category)
-    except Exception:
-        logger.debug(
-            "Failed to enumerate instances for %s",
-            stream_category,
-            exc_info=True,
-        )
-        return []
-
-    instances: list[dict[str, Any]] = []
-    for instance_id in identifiers[:limit]:
-        stream_name = f"{stream_category}-{instance_id}"
-        try:
-            with domain.domain_context():
-                store = domain.event_store.store
-                messages = store.read(stream_name)
-        except Exception:
-            logger.debug("Failed to read stream %s", stream_name, exc_info=True)
-            continue
-
-        if not messages:
-            continue
-
-        first_msg = messages[0]
-        last_msg = messages[-1]
-
-        instances.append(
-            {
-                "instance_id": instance_id,
-                "event_count": len(messages),
-                "first_event_time": _extract_time(first_msg),
-                "last_event_time": _extract_time(last_msg),
-                "last_event_type": _extract_message_type(last_msg),
-            }
-        )
-
-    return instances
-
-
 def _build_eventstore_summary(
     aggregates: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -269,66 +192,6 @@ def create_eventstore_router(domains: list["Domain"]) -> APIRouter:
                 "aggregates": [_serialize_aggregate(a) for a in aggregates],
                 "summary": summary,
                 "outbox": outbox,
-            }
-        )
-
-    @router.get("/eventstore/streams/{stream_category:path}")
-    async def stream_detail(
-        stream_category: str = Path(description="Stream category name"),
-        limit: int = Query(50, description="Maximum number of instances to return"),
-    ) -> JSONResponse:
-        """Instances for a specific aggregate stream category."""
-        # Find the aggregate by stream_category
-        aggregates = collect_aggregate_stream_metadata(domains)
-        target = None
-        for agg in aggregates:
-            if agg.get("stream_category") == stream_category:
-                target = agg
-                break
-
-        if target is None:
-            return JSONResponse(
-                content={"error": f"Stream category '{stream_category}' not found"},
-                status_code=404,
-            )
-
-        # Get instances from event store
-        try:
-            instances = get_stream_instances(
-                target["_domain"], stream_category, limit=limit
-            )
-        except Exception:
-            logger.debug(
-                "Failed to get instances for %s",
-                stream_category,
-                exc_info=True,
-            )
-            instances = []
-
-        # Get total count and head position
-        total: int | None = None
-        head_position: int | None = None
-        try:
-            with target["_domain"].domain_context():
-                store = target["_domain"].event_store.store
-                identifiers = store._stream_identifiers(stream_category)
-                total = len(identifiers)
-                head = store._stream_head_position(stream_category)
-                head_position = head if head >= 0 else None
-        except Exception:
-            logger.debug(
-                "Failed to get stream stats for %s",
-                stream_category,
-                exc_info=True,
-            )
-
-        return JSONResponse(
-            content={
-                "stream_category": stream_category,
-                "aggregate": target["name"],
-                "instances": instances,
-                "total": total if total is not None else len(instances),
-                "head_position": head_position,
             }
         )
 

@@ -64,39 +64,27 @@
   </div>
 </div>
 
-<!-- Stream Detail Panel (hidden by default) -->
-<div id="stream-detail" class="card bg-base-100 shadow-sm mb-6 hidden">
-  <div class="card-body p-4">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="card-title text-lg">
-        Instances: <span id="detail-aggregate-name" class="font-mono"></span>
-      </h2>
-      <button id="detail-close" class="btn btn-ghost btn-xs">Close</button>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="table table-sm">
-        <thead>
-          <tr class="text-xs uppercase text-base-content/60">
-            <th>Instance ID</th>
-            <th class="text-right">Events</th>
-            <th>First Event</th>
-            <th>Last Event</th>
-            <th>Last Event Type</th>
-          </tr>
-        </thead>
-        <tbody id="detail-instances-tbody">
-          <tr><td colspan="5" class="text-center text-base-content/50 py-4">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
 <!-- Outbox Status -->
 <div class="card bg-base-100 shadow-sm mb-6">
   <div class="card-body p-4">
     <h2 class="card-title text-lg mb-4">Outbox Status</h2>
-    <div id="outbox-content" class="text-base-content/50">Loading...</div>
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead>
+          <tr class="text-xs uppercase text-base-content/60">
+            <th>Domain</th>
+            <th class="text-right">Pending</th>
+            <th class="text-right">Processing</th>
+            <th class="text-right">Published</th>
+            <th class="text-right">Failed</th>
+            <th class="text-right">Abandoned</th>
+          </tr>
+        </thead>
+        <tbody id="outbox-tbody">
+          <tr><td colspan="6" class="text-center text-base-content/50 py-4">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endblock %}

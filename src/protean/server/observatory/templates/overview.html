@@ -76,17 +76,33 @@
   </div>
 </div>
 
-<!-- Two-column layout: Subscriptions + Recent Errors -->
-<div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+<!-- Subscription Health + Recent Errors -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
 
-  <!-- Subscription Health Table (2/3 width) -->
-  <div class="xl:col-span-2">
-    <div class="card bg-base-100 shadow-sm">
-      <div class="card-body p-4">
-        <h2 class="card-title text-sm font-semibold mb-3">
-          Subscription Health
-          <span class="badge badge-sm badge-ghost" id="sub-count">0</span>
-        </h2>
+  <!-- Subscription Health Summary -->
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <h2 class="card-title text-sm font-semibold mb-3">
+        Subscription Health
+        <span class="badge badge-sm badge-ghost" id="sub-count">0</span>
+      </h2>
+      <!-- Summary counters -->
+      <div class="flex gap-4 mb-2" id="sub-summary">
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="status status-success status-xs"></span>
+          <span id="sub-healthy" class="font-mono-metric">--</span> healthy
+        </div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="status status-warning status-xs"></span>
+          <span id="sub-lagging" class="font-mono-metric">--</span> lagging
+        </div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="status status-error status-xs"></span>
+          <span id="sub-dlq" class="font-mono-metric">--</span> DLQ
+        </div>
+      </div>
+      <!-- Unhealthy rows (only shown when there are issues) -->
+      <div id="sub-unhealthy" class="hidden">
         <div class="overflow-x-auto">
           <table class="table table-sm table-compact">
             <thead>
@@ -99,35 +115,31 @@
                 <th class="text-right">DLQ</th>
               </tr>
             </thead>
-            <tbody id="subscriptions-tbody">
-              <tr>
-                <td colspan="6" class="text-center text-base-content/50 py-8">
-                  <span class="loading loading-spinner loading-sm"></span>
-                  Loading subscriptions...
-                </td>
-              </tr>
-            </tbody>
+            <tbody id="subscriptions-tbody"></tbody>
           </table>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Recent Errors (1/3 width) -->
-  <div>
-    <div class="card bg-base-100 shadow-sm">
-      <div class="card-body p-4">
-        <h2 class="card-title text-sm font-semibold mb-3">
-          Recent Errors
-          <span class="badge badge-sm badge-error" id="error-count">0</span>
-        </h2>
-        <div class="space-y-2" id="recent-errors">
-          <div class="text-center text-base-content/50 py-8">
-            <span class="loading loading-spinner loading-sm"></span>
-            Loading...
-          </div>
+  <!-- Recent Errors Summary -->
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <h2 class="card-title text-sm font-semibold mb-3">
+        Recent Errors
+        <span class="badge badge-sm badge-error" id="error-count">0</span>
+      </h2>
+      <div class="flex gap-4 mb-2" id="error-summary">
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="status status-error status-xs"></span>
+          <span id="error-failed" class="font-mono-metric">--</span> failed
+        </div>
+        <div class="flex items-center gap-1.5 text-sm">
+          <span class="status status-warning status-xs"></span>
+          <span id="error-dlq" class="font-mono-metric">--</span> DLQ
         </div>
       </div>
+      <a href="/handlers" class="link link-primary text-xs">View handler details &rarr;</a>
     </div>
   </div>
 </div>

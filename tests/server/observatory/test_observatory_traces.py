@@ -903,3 +903,264 @@ class TestTracesEdgeCases:
         data = response.json()
         assert data["total"] == 1
         assert data["avg_latency_ms"] == 25.0
+
+
+# ===== /api/traces/timeline endpoint tests =====
+
+
+def _seed_traces_at(redis_conn, entries: list[tuple[int, dict]]) -> None:
+    """Write trace dicts to Redis with explicit timestamps via stream IDs.
+
+    Args:
+        entries: List of (timestamp_ms, trace_dict) tuples.
+    """
+    for ts_ms, trace in entries:
+        stream_id = f"{ts_ms}-0"
+        redis_conn.xadd(TRACE_STREAM, {"data": json.dumps(trace)}, id=stream_id)
+
+
+@pytest.mark.redis
+class TestTracesTimelineEndpoint:
+    def test_timeline_returns_dense_buckets_when_no_data(self, client, redis_conn):
+        """GET /api/traces/timeline returns dense zero-filled buckets when no traces."""
+        response = client.get("/api/traces/timeline?window=5m")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["window"] == "5m"
+        assert data["bucket_ms"] == 10_000
+        buckets = data["buckets"]
+        # Should have ~30 buckets for 5m window with 10s buckets
+        assert len(buckets) >= 28
+        assert len(buckets) <= 32
+        # All buckets should be zero
+        for b in buckets:
+            assert b["total"] == 0
+            assert b["success"] == 0
+            assert b["errors"] == 0
+
+    def test_timeline_buckets_are_time_ordered(self, client, redis_conn):
+        """Buckets are sorted by time_ms ascending."""
+        response = client.get("/api/traces/timeline?window=5m")
+        data = response.json()
+        buckets = data["buckets"]
+        times = [b["time_ms"] for b in buckets]
+        assert times == sorted(times)
+
+    def test_timeline_aggregates_traces_correctly(self, client, redis_conn):
+        """Traces are bucketed with correct total/success/errors counts."""
+        import time as _time
+
+        now_ms = int(_time.time() * 1000)
+        # Place all traces in the same bucket (within 10s)
+        ts = now_ms - 5000  # 5 seconds ago
+
+        entries = [
+            (ts, _make_trace(event="handler.completed", message_id="msg-1")),
+            (ts + 1, _make_trace(event="handler.completed", message_id="msg-2")),
+            (ts + 2, _make_trace(event="handler.failed", message_id="msg-3")),
+            (ts + 3, _make_trace(event="message.dlq", message_id="msg-4")),
+            (ts + 4, _make_trace(event="message.handled", message_id="msg-5")),
+            (ts + 5, _make_trace(event="handler.started", message_id="msg-6")),
+        ]
+        _seed_traces_at(redis_conn, entries)
+
+        response = client.get("/api/traces/timeline?window=5m")
+        data = response.json()
+        buckets = data["buckets"]
+
+        # Sum across all buckets (traces should be in one or two adjacent buckets)
+        total = sum(b["total"] for b in buckets)
+        success = sum(b["success"] for b in buckets)
+        errors = sum(b["errors"] for b in buckets)
+
+        assert total == 6
+        assert success == 3  # 2 handler.completed + 1 message.handled
+        assert errors == 2  # 1 handler.failed + 1 message.dlq
+
+    def test_timeline_neutral_events_count_total_only(self, client, redis_conn):
+        """Neutral events (handler.started, outbox.published) count as total only."""
+        import time as _time
+
+        now_ms = int(_time.time() * 1000)
+        ts = now_ms - 5000
+
+        entries = [
+            (ts, _make_trace(event="handler.started", message_id="msg-1")),
+            (ts + 1, _make_trace(event="outbox.published", message_id="msg-2")),
+        ]
+        _seed_traces_at(redis_conn, entries)
+
+        response = client.get("/api/traces/timeline?window=5m")
+        data = response.json()
+        buckets = data["buckets"]
+
+        total = sum(b["total"] for b in buckets)
+        success = sum(b["success"] for b in buckets)
+        errors = sum(b["errors"] for b in buckets)
+
+        assert total == 2
+        assert success == 0
+        assert errors == 0
+
+    def test_timeline_rejects_invalid_window(self, client):
+        """Invalid window parameter returns 400."""
+        response = client.get("/api/traces/timeline?window=10m")
+        assert response.status_code == 400
+        assert "Invalid window" in response.json()["error"]
+
+    def test_timeline_supports_all_windows(self, client, redis_conn):
+        """All valid windows return 200 with correct bucket_ms."""
+        expected_bucket_ms = {
+            "5m": 10_000,
+            "15m": 30_000,
+            "1h": 120_000,
+            "24h": 3_600_000,
+            "7d": 21_600_000,
+        }
+        for window, bucket_ms in expected_bucket_ms.items():
+            response = client.get(f"/api/traces/timeline?window={window}")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["window"] == window
+            assert data["bucket_ms"] == bucket_ms
+
+    def test_timeline_bucket_count_per_window(self, client, redis_conn):
+        """Each window produces a reasonable number of buckets."""
+        expected_ranges = {
+            "5m": (28, 32),  # ~30
+            "15m": (28, 32),  # ~30
+            "1h": (28, 32),  # ~30
+            "24h": (22, 26),  # ~24
+            "7d": (26, 30),  # ~28
+        }
+        for window, (lo, hi) in expected_ranges.items():
+            response = client.get(f"/api/traces/timeline?window={window}")
+            data = response.json()
+            bucket_count = len(data["buckets"])
+            assert lo <= bucket_count <= hi, (
+                f"window={window}: expected {lo}-{hi} buckets, got {bucket_count}"
+            )
+
+    def test_timeline_covers_full_window_with_sparse_data(self, client, redis_conn):
+        """Dense buckets span the full window even when traces are sparse."""
+        import time as _time
+
+        now_ms = int(_time.time() * 1000)
+        # Put one trace at the very start of the 5m window
+        ts = now_ms - 4 * 60 * 1000  # 4 minutes ago
+
+        _seed_traces_at(
+            redis_conn,
+            [
+                (ts, _make_trace(event="handler.completed", message_id="msg-sparse")),
+            ],
+        )
+
+        response = client.get("/api/traces/timeline?window=5m")
+        data = response.json()
+        buckets = data["buckets"]
+
+        # Should still have ~30 buckets covering the full 5m
+        assert len(buckets) >= 28
+
+        # Only one bucket should have a non-zero total
+        non_zero = [b for b in buckets if b["total"] > 0]
+        assert len(non_zero) == 1
+        assert non_zero[0]["total"] == 1
+        assert non_zero[0]["success"] == 1
+
+    def test_timeline_default_window_is_5m(self, client, redis_conn):
+        """GET /api/traces/timeline without window param defaults to 5m."""
+        response = client.get("/api/traces/timeline")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["window"] == "5m"
+        assert data["bucket_ms"] == 10_000
+
+
+@pytest.mark.no_test_domain
+class TestTracesTimelineNoRedis:
+    """Test timeline error paths without Redis."""
+
+    def test_timeline_returns_503_when_no_redis(self):
+        """GET /api/traces/timeline returns 503 when Redis is unavailable."""
+        mock_domain = MagicMock()
+        mock_domain.name = "mock"
+        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
+        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_broker = MagicMock(spec=[])
+        mock_domain.brokers.get.return_value = mock_broker
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+
+        response = client.get("/api/traces/timeline?window=5m")
+        assert response.status_code == 503
+        assert response.json()["error"] == "Redis not available"
+
+    def test_timeline_returns_500_when_xrange_fails(self):
+        """GET /api/traces/timeline returns 500 when Redis XRANGE fails."""
+        mock_domain = MagicMock()
+        mock_domain.name = "mock"
+        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
+        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_redis = MagicMock()
+        mock_redis.xrange.side_effect = Exception("Redis connection lost")
+        mock_broker = MagicMock()
+        mock_broker.redis_instance = mock_redis
+        mock_domain.brokers.get.return_value = mock_broker
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+
+        response = client.get("/api/traces/timeline?window=5m")
+        assert response.status_code == 500
+        assert response.json()["error"] == "Failed to read traces"
+
+
+@pytest.mark.no_test_domain
+class TestTracesTimelineEdgeCases:
+    """Test edge cases in timeline trace processing."""
+
+    def _make_mock_redis_domain(self, mock_redis: MagicMock) -> MagicMock:
+        mock_domain = MagicMock()
+        mock_domain.name = "mock"
+        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
+        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_broker = MagicMock()
+        mock_broker.redis_instance = mock_redis
+        mock_domain.brokers.get.return_value = mock_broker
+        return mock_domain
+
+    def test_timeline_skips_entries_with_no_data_field(self):
+        """Timeline skips entries without a 'data' field."""
+        mock_redis = MagicMock()
+        mock_redis.xrange.return_value = [
+            (b"1700000000000-0", {b"other": b"value"}),
+        ]
+        mock_domain = self._make_mock_redis_domain(mock_redis)
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+
+        response = client.get("/api/traces/timeline?window=7d")
+        data = response.json()
+        # All buckets should be zero (the entry was skipped)
+        total = sum(b["total"] for b in data["buckets"])
+        assert total == 0
+
+    def test_timeline_skips_malformed_json(self):
+        """Timeline skips entries with invalid JSON."""
+        mock_redis = MagicMock()
+        mock_redis.xrange.return_value = [
+            (b"1700000000000-0", {b"data": b"{{invalid-json"}),
+        ]
+        mock_domain = self._make_mock_redis_domain(mock_redis)
+
+        observatory = Observatory(domains=[mock_domain])
+        client = TestClient(observatory.app)
+
+        response = client.get("/api/traces/timeline?window=7d")
+        data = response.json()
+        total = sum(b["total"] for b in data["buckets"])
+        assert total == 0

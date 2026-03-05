@@ -34,6 +34,18 @@ _WINDOW_MS = {
 # Error event types for error rate calculation
 _ERROR_EVENTS = {"handler.failed", "message.dlq"}
 
+# Success event types for timeline aggregation
+_SUCCESS_EVENTS = {"handler.completed", "message.handled"}
+
+# Window → bucket width in milliseconds for timeline aggregation
+_TIMELINE_BUCKET_MS = {
+    "5m": 10_000,  # 10s  → 30 buckets
+    "15m": 30_000,  # 30s  → 30 buckets
+    "1h": 120_000,  # 2min → 30 buckets
+    "24h": 3_600_000,  # 1hr  → 24 buckets
+    "7d": 21_600_000,  # 6hr  → 28 buckets
+}
+
 # Worker throughput settings
 _WORKER_THROUGHPUT_WINDOW_S = 300  # 5 minutes
 _WORKER_THROUGHPUT_BUCKET_S = 10  # 10-second buckets
@@ -724,6 +736,89 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 "error_rate": error_rate,
                 "avg_latency_ms": avg_latency_ms,
                 "total": total,
+            }
+        )
+
+    @router.get("/traces/timeline")
+    async def traces_timeline(
+        window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
+    ):
+        """Pre-aggregated activity timeline buckets for the full time window.
+
+        Returns ~24-30 data points with adaptive bucket widths, covering the
+        entire requested window.  Each bucket contains total, success, and
+        error counts for the activity timeline chart.
+        """
+        window_ms = _WINDOW_MS.get(window)
+        if window_ms is None:
+            valid = ", ".join(_WINDOW_MS.keys())
+            return JSONResponse(
+                content={"error": f"Invalid window: {window}. Use {valid}."},
+                status_code=400,
+            )
+
+        bucket_ms = _TIMELINE_BUCKET_MS[window]
+
+        redis_conn = _get_redis(domains)
+        if not redis_conn:
+            return JSONResponse(
+                content={"error": "Redis not available"}, status_code=503
+            )
+
+        now_ms = int(time.time() * 1000)
+        min_id = str(now_ms - window_ms)
+
+        try:
+            raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
+        except Exception as e:
+            logger.error(f"Error reading trace stream for timeline: {e}", exc_info=True)
+            return JSONResponse(
+                content={"error": "Failed to read traces"}, status_code=500
+            )
+
+        # Pre-initialize dense bucket array covering the full window
+        window_start = (now_ms - window_ms) // bucket_ms * bucket_ms
+        buckets: dict[int, dict] = {}
+        t = window_start
+        while t <= now_ms:
+            buckets[t] = {"time_ms": t, "total": 0, "success": 0, "errors": 0}
+            t += bucket_ms
+
+        # Aggregate traces into buckets
+        for stream_id, fields in raw_entries:
+            try:
+                data_raw = fields.get(b"data") or fields.get("data")
+                if not data_raw:
+                    continue
+                if isinstance(data_raw, bytes):
+                    data_raw = data_raw.decode("utf-8")
+                trace = json.loads(data_raw)
+
+                # Derive timestamp from Redis stream ID (authoritative)
+                sid = _decode_stream_id(stream_id)
+                ts_ms = int(sid.split("-")[0])
+                bucket_key = ts_ms // bucket_ms * bucket_ms
+
+                bucket = buckets.get(bucket_key)
+                if bucket is None:
+                    continue  # Outside window due to alignment
+
+                event_type = trace.get("event", "")
+                bucket["total"] += 1
+                if event_type in _SUCCESS_EVENTS:
+                    bucket["success"] += 1
+                elif event_type in _ERROR_EVENTS:
+                    bucket["errors"] += 1
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+
+        timeline = sorted(buckets.values(), key=lambda b: b["time_ms"])
+
+        return JSONResponse(
+            content={
+                "window": window,
+                "bucket_ms": bucket_ms,
+                "buckets": timeline,
             }
         )
 

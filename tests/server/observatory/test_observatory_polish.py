@@ -42,7 +42,6 @@ class TestKeyboardShortcutsModal:
         html = client.get("/").text
         assert "Go to Overview" in html
         assert "Go to Handlers" in html
-        assert "Go to Event Flows" in html
         assert "Go to Processes" in html
         assert "Go to Event Store" in html
         assert "Go to Infrastructure" in html
@@ -57,7 +56,6 @@ class TestKeyboardShortcutsModal:
         for path in [
             "/",
             "/handlers",
-            "/flows",
             "/processes",
             "/eventstore",
             "/infrastructure",
@@ -82,10 +80,6 @@ class TestSearchInputAttribute:
 
     def test_eventstore_search_has_attribute(self, client):
         html = client.get("/eventstore").text
-        assert "data-search-input" in html
-
-    def test_flows_search_has_attribute(self, client):
-        html = client.get("/flows").text
         assert "data-search-input" in html
 
 

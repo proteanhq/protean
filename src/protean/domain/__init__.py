@@ -313,6 +313,9 @@ class Domain:
         # Lazy-initialized idempotency store
         self._idempotency_store = None
 
+        # Lazy-initialized trace emitter for command processing observability
+        self._trace_emitter = None
+
     # ------------------------------------------------------------------
     # Property proxies for composed helper state (backward compatibility)
     # ------------------------------------------------------------------
@@ -363,6 +366,29 @@ class Domain:
                 error_ttl=idem_config.get("error_ttl", 60),
             )
         return self._idempotency_store
+
+    @property
+    def trace_emitter(self):
+        """Lazily initialize and return a TraceEmitter for command tracing.
+
+        Used by CommandProcessor to emit handler.started/completed/failed
+        traces during synchronous command processing, making commands visible
+        in the Observatory dashboard.
+        """
+        if self._trace_emitter is None:
+            from protean.server.tracing import TraceEmitter
+
+            observatory_config = self.config.get("observatory", {})
+            try:
+                trace_retention_days = int(
+                    observatory_config.get("trace_retention_days", 7)
+                )
+            except (TypeError, ValueError):
+                trace_retention_days = 7
+            self._trace_emitter = TraceEmitter(
+                self, trace_retention_days=trace_retention_days
+            )
+        return self._trace_emitter
 
     @property
     @lru_cache()
