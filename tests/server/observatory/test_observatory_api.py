@@ -1336,7 +1336,7 @@ class TestDLQListEndpoint:
             assert response.status_code == 200
             data = response.json()
 
-            assert data["count"] == 2
+            assert data["total_count"] == 2
             assert data["entries"][0]["dlq_id"] == "1-0"
             assert data["entries"][1]["dlq_id"] == "2-0"
             assert data["entries"][0]["failure_reason"] == "ValueError: bad data"
@@ -1363,7 +1363,7 @@ class TestDLQListEndpoint:
             response = client.get("/api/dlq?subscription=orders::order")
             assert response.status_code == 200
             data = response.json()
-            assert data["count"] == 1
+            assert data["total_count"] == 1
 
     def test_dlq_list_with_subscription_filter_includes_backfill(self):
         """DLQ list includes backfill DLQ stream when present."""
