@@ -51,7 +51,7 @@
     document.getElementById('kpi-total').textContent = Observatory.fmt.number(total);
     document.getElementById('kpi-throughput').textContent = Observatory.fmt.number(throughput);
     document.getElementById('kpi-latency').textContent = total > 0 ? Observatory.fmt.duration(avgLatency) : '—';
-    document.getElementById('kpi-error-rate').textContent = Observatory.fmt.percent(errorRate);
+    document.getElementById('kpi-error-rate').textContent = Observatory.fmt.pct(errorRate);
 
     // Push to sparkline history
     pushHistory('total', total);

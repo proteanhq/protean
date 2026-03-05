@@ -53,6 +53,20 @@ The subscriber is the **only place** in your domain that knows about the
 external event's structure. Everything downstream works with your domain's
 own commands and events.
 
+!!!note "Co-located domains have a second option"
+    This pattern applies to **distributed domains** — separate services
+    communicating through a broker, or external systems you don't control.
+
+    When multiple domains live in the **same repository and share the same
+    event store**, Protean also supports `register_external_event()`, which
+    gives your domain typed access to another domain's events without raw
+    dict parsing. This is especially useful for process managers coordinating
+    cross-domain workflows.
+
+    See [Multi-Domain Applications — Cross-domain
+    communication](../guides/multi-domain-applications.md#cross-domain-communication)
+    for guidance on choosing between the two approaches.
+
 ---
 
 ## How Protean Supports This
@@ -314,7 +328,7 @@ boundary before passing it into your domain.
 ### Importing Event Classes from the External Domain
 
 ```python
-# Anti-pattern: importing from another domain
+# Anti-pattern: importing from another domain's package
 from order_domain.events import OrderPlaced
 
 @domain.subscriber(stream="orders")
@@ -327,6 +341,14 @@ class OrderEventsSubscriber:
 This creates a code-level dependency. Your domain can't deploy without the
 Order domain's code. See [Sharing Event Classes Across
 Domains](sharing-event-classes-across-domains.md) for alternatives.
+
+!!!note
+    This anti-pattern is about **importing classes from another domain's
+    package**, creating a code dependency. It is distinct from
+    `register_external_event()`, where you define your own event class in
+    your domain and register it with the external event's type string.
+    With `register_external_event`, there is no import dependency —
+    the shared contract is the type string, not the class.
 
 ### Processing External Events Without Translation
 

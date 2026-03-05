@@ -309,6 +309,32 @@ bounded contexts), sharing event classes adds no deployment coupling because
 they're already coupled. The overhead of maintaining separate classes may not
 be worth it.
 
+Protean supports this scenario with `register_external_event()`. Each
+domain defines its own event class and registers it with the external
+event's type string — there is no code-level import between domains,
+but you get typed events and IDE support:
+
+```python
+# Fulfillment domain's own class, not imported from Billing
+class PaymentReceived(BaseEvent):
+    payment_id = Identifier(required=True)
+    order_id = Identifier(required=True)
+    amount = Float()
+
+# Register with the type string the Billing domain publishes
+fulfillment_domain.register_external_event(
+    PaymentReceived, "Billing.PaymentReceived.v1"
+)
+```
+
+This gives you the benefits of typed events (validation, autocomplete,
+handler signatures) while keeping the shared contract at the schema
+level (the type string), not the code level (a shared import).
+
+See [Multi-Domain Applications — Cross-domain
+communication](../guides/multi-domain-applications.md#cross-domain-communication)
+for the full guidance on when to use this approach vs. subscribers.
+
 ### Protobuf / Avro Definitions
 
 When using schema-first serialization formats (Protocol Buffers, Avro), the

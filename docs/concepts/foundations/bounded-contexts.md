@@ -41,6 +41,25 @@ Recognizing where one context ends and another begins is a modeling skill that i
 
 ## Bounded Contexts and Protean
 
-Each `Domain` instance in Protean can represent a bounded context. Events flow between domains via subscribers, and each domain maintains its own configuration, adapters, and domain elements independently.
+Each `Domain` instance in Protean can represent a bounded context. Each
+domain maintains its own configuration, adapters, and domain elements
+independently.
 
-For patterns on cross-context communication, see [Connecting Concepts Across Bounded Contexts](../../patterns/connect-concepts-across-domains.md) and [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md).
+Cross-context communication uses events, with two integration paths
+depending on the relationship between contexts:
+
+- **Co-located contexts** (same repo, same event store) can use
+  `register_external_event()` to give one domain typed access to another
+  domain's events. This enables process managers and event handlers to
+  react to cross-domain events directly — following the Conformist or
+  Published Language strategic patterns.
+- **Distributed contexts** (separate services, independent brokers) use
+  subscribers as anti-corruption layers, translating raw external
+  payloads into internal commands. This keeps each domain's model
+  insulated from upstream schema changes.
+
+For practical guidance on choosing between these paths, see
+[Multi-Domain Applications](../../guides/multi-domain-applications.md#cross-domain-communication).
+For design patterns, see
+[Connecting Concepts Across Bounded Contexts](../../patterns/connect-concepts-across-domains.md)
+and [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md).
