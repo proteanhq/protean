@@ -147,6 +147,17 @@ streams because the commands it issues cause events on *those other
 aggregates' streams*. The PM needs to see those response events to know when
 to proceed to the next step.
 
+### Process managers can span bounded contexts. { data-toc-label="Cross-Domain" }
+
+When multiple domains are co-located in the same repository and share the
+same event store, a process manager can handle events from other bounded
+contexts using `register_external_event()`. This gives the PM typed access
+to external events without importing from the other domain's package. When
+domains are distributed as independent services, use subscribers to
+translate external messages into internal commands or events that the PM
+reacts to. See [Multi-Domain Applications](../../guides/multi-domain-applications.md#cross-domain-communication)
+for guidance on choosing between the two approaches.
+
 ### Process managers are event-sourced. { data-toc-label="Event-Sourced" }
 
 State is persisted as a sequence of auto-generated transition events in the

@@ -250,6 +250,79 @@ Process managers support the same subscription configuration as
 
 See [Server → Configuration](../../reference/server/configuration.md) for details.
 
+## Handling Events from Other Domains
+
+Process managers often coordinate workflows that span multiple bounded
+contexts — for example, an order fulfillment PM that reacts to events from
+Billing and Inventory domains in addition to its own Order domain.
+
+When multiple domains are **co-located in the same repository** and share
+the same event store, use `register_external_event()` to give the PM typed
+access to external events:
+
+```python
+from protean.core.event import BaseEvent
+from protean.fields import Float, Identifier
+
+# Define external event classes in YOUR domain (no imports from other packages)
+class PaymentReceived(BaseEvent):
+    payment_id = Identifier(required=True)
+    order_id = Identifier(required=True)
+    amount = Float()
+
+
+class InventoryReserved(BaseEvent):
+    order_id = Identifier(required=True)
+    product_id = Identifier(required=True)
+
+
+# Register them with the type strings used by the publishing domains
+domain.register_external_event(PaymentReceived, "Billing.PaymentReceived.v1")
+domain.register_external_event(InventoryReserved, "Inventory.InventoryReserved.v1")
+```
+
+Then reference these events in the PM's handlers and include the external
+streams in `stream_categories`:
+
+```python
+@domain.process_manager(
+    stream_categories=[
+        "ecommerce::order",              # Own domain
+        "billing::payment",              # External domain
+        "inventory::inventory_item",     # External domain
+    ]
+)
+class OrderFulfillmentPM:
+    order_id = Identifier()
+    status = String(default="new")
+
+    @handle(OrderPlaced, start=True, correlate="order_id")
+    def on_order_placed(self, event: OrderPlaced) -> None:
+        self.order_id = event.order_id
+        self.status = "awaiting_payment"
+
+    @handle(PaymentReceived, correlate="order_id")
+    def on_payment_received(self, event: PaymentReceived) -> None:
+        if self.status != "awaiting_payment":
+            return
+        self.status = "awaiting_inventory"
+        current_domain.process(ReserveInventory(order_id=self.order_id))
+
+    @handle(InventoryReserved, correlate="order_id")
+    def on_inventory_reserved(self, event: InventoryReserved) -> None:
+        if self.status != "awaiting_inventory":
+            return
+        self.status = "completed"
+        self.mark_as_complete()
+```
+
+When domains are **distributed as independent services**, use subscribers
+instead. The subscriber acts as an anti-corruption layer, translating raw
+broker payloads into internal commands or events that your PM can react to.
+See [Multi-Domain Applications — Cross-domain
+communication](../../guides/multi-domain-applications.md#cross-domain-communication)
+for guidance on choosing between the two approaches.
+
 ## Error Handling
 
 Process managers can define a `handle_error` class method for custom error

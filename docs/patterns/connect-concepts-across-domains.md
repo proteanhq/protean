@@ -220,8 +220,19 @@ keeping consumers simple and resilient to schema evolution in the source context
 ## Step 3: Consume Events and Build Local Models
 
 Each consuming context listens to the source context's events and maintains its
-own representation. The mechanism depends on whether the contexts share the same
-Protean domain or communicate through an external broker.
+own representation. The mechanism depends on the deployment relationship between
+the contexts.
+
+!!!tip "Choosing the right integration mechanism"
+    **Same domain / co-located domains:** Use event handlers with
+    `stream_category` for simple state sync, or `register_external_event()`
+    with process managers for multi-step cross-domain workflows.
+
+    **Distributed domains:** Use subscribers as anti-corruption layers.
+
+    See [Multi-Domain Applications — Cross-domain
+    communication](../guides/multi-domain-applications.md#cross-domain-communication)
+    for the full decision framework.
 
 ### Same Domain: Event Handlers with Cross-Aggregate Streams
 

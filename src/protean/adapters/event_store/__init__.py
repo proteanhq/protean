@@ -107,14 +107,41 @@ class EventStore:
         return repository_cls(self.domain)
 
     def handlers_for(self, event: Any) -> set:
-        """Return all handlers configured to run on the given event."""
+        """Return all handlers configured to run on the given event.
+
+        For internal events (events with a ``part_of`` aggregate), looks up
+        handlers by the aggregate's stream category.  External events (those
+        registered via ``register_external_event``) have no ``part_of``
+        aggregate, so the lookup falls back to scanning all registered stream
+        categories for handlers that match the event's ``__type__``.
+        """
         # Gather handlers configured to run on all events
         all_stream_handlers = self._event_streams.get("$all", set())
 
-        # Gather all handlers configured to run on this event
-        stream_handlers = self._event_streams.get(
-            event.meta_.part_of.meta_.stream_category, set()
+        # Determine stream category from the event's aggregate
+        part_of = (
+            getattr(event.meta_, "part_of", None) if hasattr(event, "meta_") else None
         )
+        if part_of is not None:
+            stream_category = getattr(part_of.meta_, "stream_category", None)
+        else:
+            stream_category = None
+
+        if stream_category is not None:
+            # Fast path: internal event — look up by aggregate stream category
+            stream_handlers = self._event_streams.get(stream_category, set())
+        else:
+            # Slow path: external event (no part_of) — scan all registered
+            # stream categories for handlers that match the event's __type__.
+            stream_handlers = set()
+            event_type = getattr(event.__class__, "__type__", None)
+            if event_type:
+                for handlers_set in self._event_streams.values():
+                    for handler in handlers_set:
+                        if event_type in handler._handlers:
+                            stream_handlers.add(handler)
+                return set.union(stream_handlers, all_stream_handlers)
+
         configured_stream_handlers = set()
         for stream_handler in stream_handlers:
             if event.__class__.__type__ in stream_handler._handlers:

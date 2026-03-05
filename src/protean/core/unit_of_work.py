@@ -153,13 +153,27 @@ class UnitOfWork:
         # This is set by domain.process() or by a processing_priority() context manager.
         priority = current_priority()
 
-        # Store events in the outbox as part of the transaction
-        for provider_name, session in self._sessions.items():
-            if self.domain.has_outbox:
-                # Get the provider's repository for outbox
+        # Store events in the outbox as part of the transaction.
+        #
+        # Iterate over providers that have events (not over sessions) because
+        # event-sourced aggregates are added to the identity map without
+        # opening a database session — their state lives in the event store,
+        # not in a relational table.  We still need a session for the outbox
+        # INSERT, so one is lazily initialised here when missing.
+        if self.domain.has_outbox:
+            for provider_name, events in all_events.items():
+                if not events:
+                    continue
+
+                # Ensure a database session exists for this provider.
+                # For event-sourced aggregates no DAO call was made during
+                # persistence, so the session may not have been created yet.
+                if provider_name not in self._sessions:
+                    self._initialize_session(provider_name)
+
                 outbox_repo = self.domain._get_outbox_repo(provider_name)
 
-                for event in all_events[provider_name]:
+                for event in events:
                     # Extract trace context for outbox denormalized fields
                     correlation_id = None
                     causation_id = None

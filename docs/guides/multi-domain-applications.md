@@ -160,18 +160,111 @@ a domain context.
 ## Cross-domain communication
 
 Domains communicate through events, never by importing each other's
-aggregates or calling each other's services directly. There are two
-mechanisms depending on whether the domains share a process or run
-separately.
+aggregates or calling each other's services directly. Protean supports
+two integration paths, and the right choice depends on the **strategic
+relationship** between the bounded contexts.
 
-### Same-process: Event handlers across stream categories
+### Choosing the right integration path
 
-When two aggregates live in different domains but share the same event
-infrastructure, use an event handler that subscribes to the source
-aggregate's stream category:
+| | Co-located domains | Distributed domains |
+|---|---|---|
+| **Deployment** | Same repo, same process | Separate services, independent deploys |
+| **Schema ownership** | You control both sides; changes are visible in one codebase | Upstream can change independently |
+| **Integration mechanism** | `register_external_event()` with typed event classes | Subscribers as anti-corruption layers (raw `dict` payloads) |
+| **Best for** | Process managers coordinating cross-domain workflows; event handlers syncing state across co-located contexts | Independent services, external systems, webhook ingestion |
+| **DDD pattern** | Conformist / Published Language | Anti-Corruption Layer |
+
+!!!tip
+    This is not an either-or choice at the project level. A single application
+    can use both paths — `register_external_event` for tightly coordinated
+    domains in the same repo, and subscribers for external systems you don't
+    control.
+
+### Co-located domains: Registered external events
+
+When multiple domains live in the same repository and share the same event
+store, use `register_external_event()` to give your domain typed access to
+another domain's events. This is especially useful for **process managers**
+that coordinate workflows spanning multiple bounded contexts.
 
 ```python
-# In the fulfillment domain, react to Order events
+from protean.core.event import BaseEvent
+from protean.fields import Float, Identifier, String
+
+# Define the external event class in your domain.
+# This is YOUR domain's representation of the external event —
+# it does not import from the other domain's package.
+class PaymentReceived(BaseEvent):
+    payment_id = Identifier(required=True)
+    order_id = Identifier(required=True)
+    amount = Float()
+
+
+class StockReserved(BaseEvent):
+    order_id = Identifier(required=True)
+    inventory_item_id = Identifier(required=True)
+    quantity = Float()
+
+
+# Register external events with their type strings
+fulfillment_domain.register_external_event(
+    PaymentReceived, "Billing.PaymentReceived.v1"
+)
+fulfillment_domain.register_external_event(
+    StockReserved, "Inventory.StockReserved.v1"
+)
+```
+
+Now process managers and event handlers can use these typed events directly:
+
+```python
+@fulfillment_domain.process_manager(
+    stream_categories=[
+        "fulfillment::order",          # Own domain
+        "billing::payment",            # External domain stream
+        "inventory::inventory_item",   # External domain stream
+    ]
+)
+class OrderFulfillmentPM:
+    order_id = Identifier()
+    status = String(default="new")
+
+    @handle(OrderPlaced, start=True, correlate="order_id")
+    def on_order_placed(self, event: OrderPlaced) -> None:
+        self.order_id = event.order_id
+        self.status = "awaiting_payment"
+
+    @handle(PaymentReceived, correlate="order_id")
+    def on_payment_received(self, event: PaymentReceived) -> None:
+        if self.status != "awaiting_payment":
+            return
+        self.status = "awaiting_stock"
+
+    @handle(StockReserved, correlate="order_id")
+    def on_stock_reserved(self, event: StockReserved) -> None:
+        if self.status != "awaiting_stock":
+            return
+        self.status = "completed"
+        self.mark_as_complete()
+```
+
+**Why this works for co-located domains:**
+
+- You control both sides of the schema — changes are visible in one
+  codebase and can be coordinated in a single pull request.
+- Typed events give you IDE support, static analysis, and deserialization
+  validation — no parsing raw dicts.
+- The PM subscribes to external streams directly, keeping the coordination
+  logic concise and traceable.
+
+**Important:** The external event class is defined *in your domain*, not
+imported from the other domain's package. You own the class; the type
+string (`"Billing.PaymentReceived.v1"`) is the shared contract.
+
+For syncing state across co-located contexts (without a process manager),
+you can also use event handlers with `stream_category`:
+
+```python
 @fulfillment_domain.event_handler(
     part_of=Shipment,
     stream_category="identity::customer",
@@ -186,11 +279,12 @@ class CustomerSyncHandler:
         current_domain.repository_for(Recipient).add(recipient)
 ```
 
-### Separate processes: Subscribers as anti-corruption layers
+### Distributed domains: Subscribers as anti-corruption layers
 
-When domains run as independent services with separate brokers, use
-subscribers to consume external messages. Subscribers receive raw `dict`
-payloads and translate them into your domain's language:
+When domains run as independent services with separate brokers — or when
+you consume events from external systems you don't control — use
+subscribers. Subscribers receive raw `dict` payloads and translate them
+into your domain's language, acting as an anti-corruption layer:
 
 ```python
 @fulfillment_domain.subscriber(stream="identity_customer_events")
@@ -209,6 +303,17 @@ class CustomerEventSubscriber:
                 )
             )
 ```
+
+**Why this works for distributed domains:**
+
+- **Schema isolation.** Your domain doesn't depend on the external
+  domain's event classes. If the upstream renames a field, only the
+  subscriber changes.
+- **Translation at the boundary.** External field names, types, and
+  concepts are mapped to your domain's language before entering the
+  domain.
+- **Independent evolution.** The upstream can deploy schema changes
+  without coordinating with you. The subscriber absorbs the difference.
 
 Key principles:
 
