@@ -1,7 +1,7 @@
 """Tests for Observatory page routes, Jinja2 template rendering, and static asset serving.
 
 Covers:
-- routes/pages.py: All 5 page routes, _get_domain_names, _ctx helper
+- routes/pages.py: All 6 page routes, _get_domain_names, _ctx helper
 - routes/__init__.py: create_all_routes composition
 - __init__.py: Jinja2Templates + StaticFiles integration, _TEMPLATES_DIR, _STATIC_DIR
 """
@@ -96,7 +96,7 @@ class TestCreatePageRouter:
         router = create_page_router([test_domain], templates)
         assert isinstance(router, APIRouter)
 
-    def test_registers_five_routes(self, test_domain):
+    def test_registers_six_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -108,6 +108,7 @@ class TestCreatePageRouter:
             "/processes",
             "/eventstore",
             "/infrastructure",
+            "/messages",
         }
 
     def test_all_routes_are_get(self, test_domain):
@@ -138,7 +139,7 @@ class TestCreateAllRoutes:
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
         page_router, _ = create_all_routes([test_domain], templates)
-        assert len(page_router.routes) == 5
+        assert len(page_router.routes) == 6
 
     def test_api_router_includes_handler_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
@@ -445,12 +446,12 @@ class TestActivityTimelineBootstrap:
     def test_timeline_registered_as_poller(self, client):
         """Timeline uses a poller so setWindow() triggers a re-fetch."""
         js = client.get("/static/js/overview.js").text
-        assert "activity-timeline" in js
-        assert "/api/traces/timeline" in js
+        assert "traces-overview" in js
+        assert "/api/traces/overview" in js
 
     def test_timeline_poller_before_sse(self, client):
         js = client.get("/static/js/overview.js").text
-        poller_pos = js.index("'activity-timeline'")
+        poller_pos = js.index("'traces-overview'")
         on_trace_pos = js.index("Observatory.sse.onTrace(appendActivityPoint)")
         assert poller_pos < on_trace_pos
 
