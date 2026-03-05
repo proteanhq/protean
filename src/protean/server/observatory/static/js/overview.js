@@ -2,10 +2,9 @@
  * Overview page — live KPI cards, subscription health, recent errors, activity timeline.
  *
  * Polls:
- *   /api/traces/stats   → KPI cards + event breakdown
+ *   /api/traces/overview → KPI cards + event breakdown + activity timeline (single scan)
  *   /api/subscriptions   → subscription health table
  *   /api/stats           → in-flight / DLQ counts
- *   /api/traces/timeline → activity timeline (pre-aggregated buckets)
  *   /api/traces          → recent errors panel
  *
  * SSE:
@@ -332,10 +331,10 @@
     if (lagging > 0 || totalDlq > 0) {
       if (totalDlq > 10 || lagging > totalSubs * 0.5) {
         banner.classList.add('alert-error');
-        text.textContent = `${lagging} subscription(s) lagging, ${totalDlq} DLQ messages — attention needed`;
+        text.innerHTML = `${lagging} subscription(s) lagging, <a href="/messages?tab=dlq" class="link font-semibold">${totalDlq} DLQ messages</a> — attention needed`;
       } else {
         banner.classList.add('alert-warning');
-        text.textContent = `${lagging} subscription(s) lagging, ${totalDlq} DLQ messages`;
+        text.innerHTML = `${lagging} subscription(s) lagging, <a href="/messages?tab=dlq" class="link">${totalDlq} DLQ messages</a>`;
       }
     } else {
       banner.classList.add('alert-success');
@@ -358,8 +357,13 @@
   let latestSubsData = {};
 
   function init() {
-    // Register pollers
-    Observatory.poller.register('traces-stats', '/api/traces/stats', 5000, updateKPIs);
+    // Combined overview poller: single XRANGE scan returns both stats + timeline
+    Observatory.poller.register('traces-overview', '/api/traces/overview', 5000, function (data) {
+      if (!data) return; // clearing signal from setWindow
+      updateKPIs(data);
+      rebuildActivityTimeline(data);
+      Observatory.loading.done();
+    });
     Observatory.poller.register('stats', '/api/stats', 10000, updateStats);
     Observatory.poller.register('subscriptions', '/api/subscriptions', 10000, function (data) {
       latestSubsData = data;
@@ -368,9 +372,7 @@
     });
     Observatory.poller.register('recent-errors', '/api/traces?event=handler.failed&count=10', 10000, updateRecentErrors);
 
-    // Activity timeline: server returns pre-aggregated buckets for the full window.
-    // SSE appends live points between poller refreshes.
-    Observatory.poller.register('activity-timeline', '/api/traces/timeline', 30000, rebuildActivityTimeline);
+    // SSE appends live points between poller refreshes
     Observatory.sse.onTrace(appendActivityPoint);
   }
 

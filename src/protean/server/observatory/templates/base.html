@@ -84,6 +84,9 @@
         </div>
       </header>
 
+      <!-- Loading progress bar -->
+      <div id="loading-bar"></div>
+
       <!-- Page content -->
       <main class="flex-1 p-4 lg:p-6">
         {% block content %}{% endblock %}
@@ -142,6 +145,15 @@
               </a>
             </li>
             <li>
+              <a href="/messages" class="{% if active_page == 'messages' %}active{% endif %}">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+                Messages
+                <span class="badge badge-xs badge-error" id="nav-messages-badge" style="display:none"></span>
+              </a>
+            </li>
+            <li>
               <a href="/infrastructure" class="{% if active_page == 'infrastructure' %}active{% endif %}">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 0 6h13.5a3 3 0 1 0 0-6m-16.5-3a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3m-19.5 0a4.5 4.5 0 0 1 .9-2.7L5.737 5.1a3.375 3.375 0 0 1 2.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 0 1 .9 2.7m0 0a3 3 0 0 1-3 3m0 3h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Zm-3 6h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Z" />
@@ -153,8 +165,13 @@
         </nav>
 
         <!-- Footer -->
-        <div class="px-4 py-3 border-t border-base-300 text-xs text-base-content/40">
-          Protean Observatory
+        <div class="px-4 py-3 border-t border-base-300 text-xs text-base-content/40 flex items-center justify-between">
+          <span>Protean Observatory</span>
+          <button class="btn btn-xs btn-ghost" onclick="document.getElementById('shortcuts-modal').showModal()" title="Keyboard shortcuts (?)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+            </svg>
+          </button>
         </div>
       </aside>
     </div>
@@ -173,6 +190,7 @@
             <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">p</kbd></td><td>Go to Processes</td></tr>
             <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">e</kbd></td><td>Go to Event Store</td></tr>
             <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">i</kbd></td><td>Go to Infrastructure</td></tr>
+            <tr><td><kbd class="kbd kbd-sm">g</kbd> then <kbd class="kbd kbd-sm">m</kbd></td><td>Go to Messages</td></tr>
             <tr><td><kbd class="kbd kbd-sm">/</kbd></td><td>Focus search</td></tr>
             <tr><td><kbd class="kbd kbd-sm">r</kbd></td><td>Refresh data</td></tr>
             <tr><td><kbd class="kbd kbd-sm">?</kbd></td><td>Toggle this help</td></tr>

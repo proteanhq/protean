@@ -65,4 +65,9 @@ def create_page_router(
             request, "infrastructure.html", _ctx("infrastructure")
         )
 
+    @router.get("/messages")
+    async def messages(request: Request):
+        """Messages — Inspect failed and dead-letter queue messages."""
+        return templates.TemplateResponse(request, "messages.html", _ctx("messages"))
+
     return router

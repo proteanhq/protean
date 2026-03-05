@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<!-- Summary Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Failed</div>
+      <div class="stat-value text-lg font-mono-metric text-error" id="summary-failed">--</div>
+      <div class="stat-desc text-xs">handler errors</div>
+    </div>
+  </div>
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">DLQ</div>
+      <div class="stat-value text-lg font-mono-metric text-warning" id="summary-dlq">--</div>
+      <div class="stat-desc text-xs">dead-lettered</div>
+    </div>
+  </div>
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Top Failing Handler</div>
+      <div class="stat-value text-sm font-mono-metric truncate" id="summary-top-handler" title="">--</div>
+      <div class="stat-desc text-xs" id="summary-top-handler-count"></div>
+    </div>
+  </div>
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Oldest DLQ</div>
+      <div class="stat-value text-sm font-mono-metric" id="summary-oldest-dlq">--</div>
+      <div class="stat-desc text-xs" id="summary-oldest-dlq-stream"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content Card -->
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body p-4">
+    <!-- Tab bar -->
+    <div role="tablist" class="tabs tabs-boxed mb-4">
+      <a role="tab" class="tab tab-active" data-tab="failed">
+        Failed <span class="badge badge-sm badge-error ml-1" id="tab-failed-count">0</span>
+      </a>
+      <a role="tab" class="tab" data-tab="dlq">
+        DLQ <span class="badge badge-sm badge-warning ml-1" id="tab-dlq-count">0</span>
+      </a>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+      <input type="text" placeholder="Search handler, message type, ID..."
+             class="input input-sm input-bordered w-64" id="msg-search" data-search-input />
+
+      <!-- Time window selector (local override) -->
+      <div class="join" id="msg-window-selector">
+        <button class="join-item btn btn-xs btn-primary" data-window="5m">5m</button>
+        <button class="join-item btn btn-xs btn-ghost" data-window="15m">15m</button>
+        <button class="join-item btn btn-xs btn-ghost" data-window="1h">1h</button>
+        <button class="join-item btn btn-xs btn-ghost" data-window="24h">24h</button>
+        <button class="join-item btn btn-xs btn-ghost" data-window="7d">7d</button>
+        <button class="join-item btn btn-xs btn-ghost" data-window="custom">Custom</button>
+      </div>
+
+      <!-- Custom date range (hidden by default) -->
+      <div id="custom-range" class="flex gap-2 hidden">
+        <input type="datetime-local" class="input input-xs input-bordered" id="range-start" />
+        <span class="self-center text-sm">to</span>
+        <input type="datetime-local" class="input input-xs input-bordered" id="range-end" />
+        <button class="btn btn-xs btn-primary" id="btn-apply-range">Apply</button>
+      </div>
+    </div>
+
+    <!-- Failed messages panel -->
+    <div id="panel-failed">
+      <div class="overflow-x-auto">
+        <table class="table table-sm table-zebra">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Handler</th>
+              <th>Message Type</th>
+              <th>Error</th>
+              <th class="text-right">Duration</th>
+              <th>Message ID</th>
+            </tr>
+          </thead>
+          <tbody id="failed-tbody"></tbody>
+        </table>
+      </div>
+      <div id="failed-empty" class="text-center py-8 text-base-content/40 hidden">
+        No failed messages in this time window
+      </div>
+      <div id="failed-pagination"></div>
+    </div>
+
+    <!-- DLQ messages panel -->
+    <div id="panel-dlq" class="hidden">
+      <div class="overflow-x-auto">
+        <table class="table table-sm table-zebra">
+          <thead>
+            <tr>
+              <th>Failed At</th>
+              <th>Stream</th>
+              <th>Consumer Group</th>
+              <th class="text-right">Retries</th>
+              <th>Error</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="dlq-tbody"></tbody>
+        </table>
+      </div>
+      <div id="dlq-empty" class="text-center py-8 text-base-content/40 hidden">
+        No DLQ messages
+      </div>
+      <div id="dlq-pagination"></div>
+      <!-- Bulk actions (shown when DLQ has entries) -->
+      <div class="flex justify-end gap-2 mt-4 hidden" id="dlq-actions">
+        <button class="btn btn-sm btn-warning" id="btn-replay-all">Replay All</button>
+        <button class="btn btn-sm btn-error btn-outline" id="btn-purge-all">Purge All</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Failed Trace Detail Modal -->
+<dialog id="trace-detail-modal" class="modal">
+  <div class="modal-box max-w-3xl">
+    <h3 class="font-bold text-lg">Trace Detail</h3>
+    <div class="py-4">
+      <div class="grid grid-cols-2 gap-2 text-sm mb-4" id="trace-detail-meta"></div>
+      <h4 class="font-semibold text-sm mb-2">Error</h4>
+      <div class="bg-error/10 rounded-lg p-3 text-xs max-h-48 overflow-auto font-mono whitespace-pre-wrap text-error" id="trace-detail-error"></div>
+      <h4 class="font-semibold text-sm mb-2 mt-4">Payload</h4>
+      <div class="bg-base-200 rounded-lg p-3 text-xs max-h-96 overflow-auto font-mono whitespace-pre-wrap" id="trace-detail-payload"></div>
+    </div>
+    <div class="modal-action">
+      <form method="dialog"><button class="btn btn-sm">Close</button></form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- DLQ Message Detail Modal -->
+<dialog id="dlq-detail-modal" class="modal">
+  <div class="modal-box max-w-3xl">
+    <h3 class="font-bold text-lg">DLQ Message Detail</h3>
+    <div class="py-4">
+      <div class="grid grid-cols-2 gap-2 text-sm mb-4" id="dlq-detail-meta"></div>
+      <h4 class="font-semibold text-sm mb-2">Payload</h4>
+      <div class="bg-base-200 rounded-lg p-3 text-xs max-h-96 overflow-auto font-mono whitespace-pre-wrap" id="dlq-detail-payload"></div>
+    </div>
+    <div class="modal-action">
+      <button class="btn btn-sm btn-warning" id="btn-replay-one">Replay</button>
+      <form method="dialog"><button class="btn btn-sm">Close</button></form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Confirm Dialog -->
+<dialog id="confirm-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg" id="confirm-title">Confirm</h3>
+    <p class="py-4" id="confirm-message"></p>
+    <div class="modal-action">
+      <button class="btn btn-sm" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-sm btn-warning" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/messages.js" defer></script>
+{% endblock %}

@@ -614,8 +614,8 @@ class OutboxRepository(BaseRepository):
         counts = {}
 
         for status in OutboxStatus:
-            results = self._dao.query.filter(status=status.value).all()
-            counts[status.value] = len(results)
+            results = self._dao.query.filter(status=status.value).limit(1).all()
+            counts[status.value] = results.total
 
         return counts
 
