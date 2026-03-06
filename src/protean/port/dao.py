@@ -80,7 +80,7 @@ class BaseDAO(metaclass=ABCMeta):
         #: Tracks whether the DAO needs to operate outside any active Unit of Work transactions.
         self._outside_uow = False
 
-    def _get_session(self):
+    def _get_session(self) -> Any:
         """Returns an active connection to the persistence store.
 
         - If there is an active transaction, the connection associated with the transaction (in the UoW) is returned
@@ -331,7 +331,7 @@ class BaseDAO(metaclass=ABCMeta):
         # Return the first result, because `filter` would have returned an array
         return results.first
 
-    def find_by(self, **kwargs) -> "BaseEntity":
+    def find_by(self, **kwargs: Any) -> "BaseEntity":
         """Find a specific entity record that matches one or more criteria.
 
         This method internally uses the `filter` method to fetch records.
@@ -451,7 +451,7 @@ class BaseDAO(metaclass=ABCMeta):
         #   we can safely update the version to the next version.
         entity_obj._version = entity_obj._next_version
 
-    def save(self, entity_obj):
+    def save(self, entity_obj: Any) -> Any:
         """Create or update an entity in the data store, depending on its state. An identity for entity record is
         generated, if not already present.
 
@@ -576,7 +576,7 @@ class BaseDAO(metaclass=ABCMeta):
                     value=lookup_value,
                 )
 
-    def delete(self, entity_obj):
+    def delete(self, entity_obj: Any) -> None:
         """Delete a record in the data store.
 
         Performs validations before data deletion.

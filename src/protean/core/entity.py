@@ -5,7 +5,7 @@ import logging
 import threading
 from collections import defaultdict
 from functools import partial
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, TypeVar, dataclass_transform
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
@@ -122,6 +122,9 @@ class _EntityState:
 # ---------------------------------------------------------------------------
 # BaseEntity
 # ---------------------------------------------------------------------------
+@dataclass_transform(
+    field_specifiers=(FieldSpec, HasMany, HasOne, Reference, ValueObject)
+)
 class BaseEntity(BaseModel, OptionsMixin):
     """Base class for entities -- domain objects with unique identity that live
     within an aggregate.

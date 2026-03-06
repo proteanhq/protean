@@ -74,7 +74,7 @@ class QuerySet:
         else:
             self._order_by = []
 
-    def _clone(self):
+    def _clone(self) -> "QuerySet":
         """
         Return a copy of the current QuerySet.
         """
@@ -93,25 +93,25 @@ class QuerySet:
     # Query support methods #
     #########################
 
-    def _add_q(self, q_object):
+    def _add_q(self, q_object: Q) -> None:
         """Add a Q-object to the current filter."""
         self._criteria = self._criteria._combine(q_object, q_object.connector)
 
-    def filter(self, *args, **kwargs):
+    def filter(self, *args: Any, **kwargs: Any) -> "QuerySet":
         """
         Return a new QuerySet instance with the args ANDed to the existing
         set.
         """
         return self._filter_or_exclude(False, *args, **kwargs)
 
-    def exclude(self, *args, **kwargs):
+    def exclude(self, *args: Any, **kwargs: Any) -> "QuerySet":
         """
         Return a new QuerySet instance with NOT (args) ANDed to the existing
         set.
         """
         return self._filter_or_exclude(True, *args, **kwargs)
 
-    def _filter_or_exclude(self, negate, *args, **kwargs):
+    def _filter_or_exclude(self, negate: bool, *args: Any, **kwargs: Any) -> "QuerySet":
         clone = self._clone()
 
         # Parse kwarg keys and replace field names with referenced_as if present
@@ -149,7 +149,7 @@ class QuerySet:
             clone._add_q(Q(*args, **new_kwargs))
         return clone
 
-    def limit(self, limit):
+    def limit(self, limit: int | None) -> "QuerySet":
         """Limit number of records"""
         clone = self._clone()
 
@@ -159,7 +159,7 @@ class QuerySet:
 
         return clone
 
-    def offset(self, offset):
+    def offset(self, offset: int) -> "QuerySet":
         """Fetch results after `offset` value"""
         clone = self._clone()
 
@@ -250,7 +250,7 @@ class QuerySet:
 
         return results
 
-    def update(self, *data, **kwargs):
+    def update(self, *data: Any, **kwargs: Any) -> int:
         """Updates all objects with details given if they match a set of conditions supplied.
 
         This method updates each object individually, to fire callback methods and ensure
@@ -273,7 +273,7 @@ class QuerySet:
 
         return updated_item_count
 
-    def raw(self, query: Any, data: Any = None):
+    def raw(self, query: Any, data: Any = None) -> "ResultSet":
         """Runs raw query directly on the database and returns Entity objects
 
         Note that this method will raise an exception if the returned objects
@@ -325,7 +325,7 @@ class QuerySet:
 
         return results
 
-    def delete(self):
+    def delete(self) -> int:
         """Deletes matching objects from the Repository
 
         Does not throw error if no objects are matched.
@@ -353,25 +353,25 @@ class QuerySet:
     ###############################
 
     @property
-    def _data(self):
+    def _data(self) -> "ResultSet":
         active_data = self._result_cache if self._result_cache else self.all()
         temp_data = copy.deepcopy(active_data)
 
         return temp_data
 
-    def __iter__(self):
+    def __iter__(self) -> Any:
         """Return results on iteration"""
         return iter(self._data)
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return length of results"""
         return self._data.total
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Return True if query results have items"""
         return bool(self._data)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Support friendly print of query criteria"""
         return "<%s: entity: %s, criteria: %s, offset: %s, limit: %s, order_by: %s>" % (
             self.__class__.__name__,
@@ -382,11 +382,11 @@ class QuerySet:
             self._order_by,
         )
 
-    def __getitem__(self, k):
+    def __getitem__(self, k: Any) -> Any:
         """Support slicing of results"""
         return self._data.items[k]
 
-    def __contains__(self, k):
+    def __contains__(self, k: Any) -> bool:
         """Support `in` operations"""
         return k.id in [item.id for item in self._data.items]
 
@@ -395,47 +395,47 @@ class QuerySet:
     #########################
 
     @property
-    def total(self):
+    def total(self) -> int:
         """Return the total number of records"""
         return self._data.total
 
     @property
-    def items(self):
+    def items(self) -> list:
         """Return result values"""
         return self._data.items
 
     @property
-    def first(self):
+    def first(self) -> Any | None:
         """Return the first result"""
         return self._data.first
 
     @property
-    def last(self):
+    def last(self) -> Any | None:
         """Return the last result"""
         return self._data.last
 
     @property
-    def has_next(self):
+    def has_next(self) -> bool:
         """Return True if there are more values present"""
         return self._data.has_next
 
     @property
-    def has_prev(self):
+    def has_prev(self) -> bool:
         """Return True if there are previous values present"""
         return self._data.has_prev
 
     @property
-    def page(self):
+    def page(self) -> int:
         """Return the current page number"""
         return self._data.page
 
     @property
-    def page_size(self):
+    def page_size(self) -> int | None:
         """Return the page size"""
         return self._data.page_size
 
     @property
-    def total_pages(self):
+    def total_pages(self) -> int:
         """Return the total number of pages"""
         return self._data.total_pages
 

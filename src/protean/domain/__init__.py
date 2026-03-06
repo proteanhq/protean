@@ -91,7 +91,24 @@ from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
 )
-from protean.fields import HasMany, HasOne, Reference, ValueObject
+from protean.fields import (
+    Auto,
+    Boolean,
+    Date,
+    DateTime,
+    Dict as DictField,
+    Float,
+    HasMany,
+    HasOne,
+    Identifier,
+    Integer,
+    List as ListField,
+    Reference,
+    Status,
+    String,
+    Text,
+    ValueObject,
+)
 from protean.fields.basic import ValueObjectList
 from protean.utils import (
     DomainObjects,
@@ -113,6 +130,27 @@ from .type_manager import TypeManager
 from .validation import DomainValidator
 
 logger = logging.getLogger(__name__)
+
+# Field specifiers for @dataclass_transform() — tells mypy which callables
+# represent field declarations in class bodies using annotation syntax.
+_FIELD_SPECIFIERS = (
+    Auto,
+    Boolean,
+    Date,
+    DateTime,
+    DictField,
+    Float,
+    HasMany,
+    HasOne,
+    Identifier,
+    Integer,
+    ListField,
+    Reference,
+    Status,
+    String,
+    Text,
+    ValueObject,
+)
 
 _T = TypeVar("_T")
 
@@ -1102,7 +1140,7 @@ class Domain:
     def aggregate(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def aggregate(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1118,7 +1156,7 @@ class Domain:
     def application_service(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def application_service(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1134,7 +1172,7 @@ class Domain:
     def command(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def command(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1150,7 +1188,7 @@ class Domain:
     def command_handler(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def command_handler(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1162,7 +1200,7 @@ class Domain:
     def event(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def event(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1178,7 +1216,7 @@ class Domain:
     def event_handler(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def event_handler(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1194,7 +1232,7 @@ class Domain:
     def domain_service(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def domain_service(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1210,7 +1248,7 @@ class Domain:
     def entity(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def entity(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1222,7 +1260,7 @@ class Domain:
     def email(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def email(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1234,7 +1272,7 @@ class Domain:
     def database_model(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def database_model(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1246,7 +1284,7 @@ class Domain:
     def repository(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def repository(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1258,7 +1296,7 @@ class Domain:
     def subscriber(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def subscriber(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1274,7 +1312,7 @@ class Domain:
     def value_object(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def value_object(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1290,7 +1328,7 @@ class Domain:
     def projection(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def projection(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1306,7 +1344,7 @@ class Domain:
     def projector(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def projector(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1322,7 +1360,7 @@ class Domain:
     def query(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def query(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1338,7 +1376,7 @@ class Domain:
     def query_handler(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def query_handler(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1354,7 +1392,7 @@ class Domain:
     def process_manager(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform()
+    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
     def process_manager(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:

@@ -606,7 +606,7 @@ class atomic_change:
     logical transition.
     """
 
-    def __init__(self, aggregate: BaseAggregate) -> None:
+    def __init__(self, aggregate: Any) -> None:
         self.aggregate = aggregate
         self._status_snapshots: dict[str, Any] = {}
 
@@ -685,7 +685,10 @@ class atomic_change:
                 )
 
 
-def apply(fn):
+_F = TypeVar("_F", bound=typing.Callable[..., None])
+
+
+def apply(fn: _F) -> _F:
     """Decorator to mark event-application methods on Event-Sourced Aggregates.
 
     Each ``@apply`` method handles one event type and mutates aggregate state
@@ -718,9 +721,9 @@ def apply(fn):
         )
 
     @functools.wraps(fn)
-    def wrapper(*args):
+    def wrapper(*args: Any) -> None:
         fn(*args)
 
     setattr(wrapper, "_event_cls", _event_cls)
 
-    return wrapper
+    return wrapper  # type: ignore[return-value]

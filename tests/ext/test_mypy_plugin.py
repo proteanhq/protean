@@ -34,6 +34,8 @@ _FIELD_FIXTURE_FILES = [
     "identifier_fields.py",
     "class_fields.py",
     "status_field.py",
+    "association_fields.py",
+    "field_annotations.py",
 ]
 
 # Decorator fixture files (new tests)
@@ -167,11 +169,11 @@ class TestContainerFields:
         notes, errors = _get_field_results("container_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.list",  # List()
-            "builtins.list",  # List(content_type=int)
-            "builtins.dict",  # Dict()
-            "builtins.list",  # List(required=True)
-            "builtins.dict",  # Dict(required=True)
+            "builtins.list[Any]",  # List()
+            "builtins.list[Any]",  # List(content_type=int)
+            "builtins.dict[builtins.str, Any]",  # Dict()
+            "builtins.list[Any]",  # List(required=True)
+            "builtins.dict[builtins.str, Any]",  # Dict(required=True)
         ]
         assert not errors
 
@@ -220,6 +222,50 @@ class TestClassFields:
         # but there should be no type errors
         type_errors = [e for e in errors if "[call-arg]" not in e]
         assert not type_errors
+
+
+class TestAssociationFields:
+    """Association fields resolve to the correct generic types."""
+
+    def test_has_one_resolves_to_optional_entity(self) -> None:
+        notes, errors = _get_field_results("association_fields.py")
+        types = _extract_revealed_types(notes)
+        # HasOne(OrderItem) → OrderItem | None
+        assert "| None" in types[0]
+        assert "OrderItem" in types[0]
+
+    def test_has_many_resolves_to_list(self) -> None:
+        notes, errors = _get_field_results("association_fields.py")
+        types = _extract_revealed_types(notes)
+        # HasMany(OrderItem) → list[OrderItem]
+        assert types[1].startswith("builtins.list[")
+        assert "OrderItem" in types[1]
+
+    def test_value_object_resolves_to_optional_vo(self) -> None:
+        notes, errors = _get_field_results("association_fields.py")
+        types = _extract_revealed_types(notes)
+        # ValueObject(Address) → Address | None
+        assert "| None" in types[2]
+        assert "Address" in types[2]
+
+
+class TestFieldAnnotations:
+    """Field descriptors used as type annotations resolve to Python types."""
+
+    def test_field_annotations_resolve_correctly(self) -> None:
+        notes, errors = _get_field_results("field_annotations.py")
+        types = _extract_revealed_types(notes)
+        assert types == [
+            "builtins.str",  # String
+            "builtins.str",  # Text
+            "builtins.int",  # Integer
+            "builtins.float",  # Float
+            "builtins.bool",  # Boolean
+            "datetime.date",  # Date
+            "datetime.datetime",  # DateTime
+            "builtins.str",  # Identifier
+        ]
+        assert not errors
 
 
 # =====================================================================
