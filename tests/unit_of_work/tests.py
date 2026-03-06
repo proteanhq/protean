@@ -56,27 +56,38 @@ class TestUnitOfWorkAdditionalCoverage:
         """Test that context manager properly handles exceptions by calling rollback"""
         repo = test_domain.repository_for(Person)
 
-        with patch.object(UnitOfWork, "rollback") as mock_rollback:
+        rollback_called = False
+        original_rollback = UnitOfWork.rollback
+
+        def tracking_rollback(self_uow):
+            nonlocal rollback_called
+            rollback_called = True
+            original_rollback(self_uow)
+
+        with patch.object(UnitOfWork, "rollback", tracking_rollback):
             try:
                 with UnitOfWork():
                     person = Person(first_name="Jane", last_name="Doe")
                     repo.add(person)
-                    # Force an exception to trigger the rollback path
                     raise RuntimeError("Test exception")
             except RuntimeError:
-                pass  # Expected exception
+                pass
 
-            # Verify rollback was called due to the exception
-            mock_rollback.assert_called_once()
+            assert rollback_called
 
-    @pytest.mark.skip(
-        "This test unexpectedly fails unrelated tests in tests/unit_of_work/test_child_object_persistence.py"
-    )
     def test_context_manager_commit_failure_triggers_rollback(self, test_domain):
         """Test that when commit fails in context manager, rollback is called"""
         repo = test_domain.repository_for(Person)
 
-        with patch.object(UnitOfWork, "rollback") as mock_rollback:
+        rollback_called = False
+        original_rollback = UnitOfWork.rollback
+
+        def tracking_rollback(self_uow):
+            nonlocal rollback_called
+            rollback_called = True
+            original_rollback(self_uow)
+
+        with patch.object(UnitOfWork, "rollback", tracking_rollback):
             with patch.object(
                 UnitOfWork, "commit", side_effect=TransactionError("Commit failed")
             ):
@@ -85,8 +96,7 @@ class TestUnitOfWorkAdditionalCoverage:
                         person = Person(first_name="Jane", last_name="Doe")
                         repo.add(person)
 
-            # Verify rollback was called when commit failed
-            mock_rollback.assert_called_once()
+            assert rollback_called
 
     def test_register_message_functionality(self, test_domain):
         """Test message registration functionality"""

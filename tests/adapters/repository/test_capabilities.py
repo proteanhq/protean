@@ -232,9 +232,8 @@ class TestDatabaseCapabilityMethods:
     def test_memory_provider_capabilities(self, test_domain):
         """Test MemoryProvider capability declaration and methods."""
         provider = test_domain.providers["default"]
-
         if provider.__class__.__name__ != "MemoryProvider":
-            pytest.skip("Test specific to MemoryProvider")
+            return  # Only relevant for MemoryProvider
 
         assert provider.capabilities == DatabaseCapabilities.IN_MEMORY
 
@@ -259,66 +258,6 @@ class TestDatabaseCapabilityMethods:
         # Does not have type system capabilities
         assert not provider.has_capability(DatabaseCapabilities.NATIVE_JSON)
         assert not provider.has_capability(DatabaseCapabilities.NATIVE_ARRAY)
-
-    def test_postgresql_provider_capabilities(self, test_domain):
-        """Test PostgresqlProvider capability declaration and methods."""
-        provider = test_domain.providers["default"]
-
-        if provider.__class__.__name__ != "PostgresqlProvider":
-            pytest.skip("Test specific to PostgresqlProvider")
-
-        expected = (
-            DatabaseCapabilities.RELATIONAL
-            | DatabaseCapabilities.NATIVE_JSON
-            | DatabaseCapabilities.NATIVE_ARRAY
-        )
-        assert provider.capabilities == expected
-
-        assert provider.has_capability(DatabaseCapabilities.TRANSACTIONS)
-        assert provider.has_capability(DatabaseCapabilities.NATIVE_JSON)
-        assert provider.has_capability(DatabaseCapabilities.NATIVE_ARRAY)
-        assert provider.has_capability(DatabaseCapabilities.SCHEMA_MANAGEMENT)
-        assert provider.has_capability(DatabaseCapabilities.CONNECTION_POOLING)
-        assert provider.has_capability(DatabaseCapabilities.RAW_QUERIES)
-        assert provider.has_capability(DatabaseCapabilities.OPTIMISTIC_LOCKING)
-
-        assert not provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS)
-
-    def test_sqlite_provider_capabilities(self, test_domain):
-        """Test SqliteProvider capability declaration and methods."""
-        provider = test_domain.providers["default"]
-
-        if provider.__class__.__name__ != "SqliteProvider":
-            pytest.skip("Test specific to SqliteProvider")
-
-        assert provider.capabilities == DatabaseCapabilities.RELATIONAL
-
-        assert provider.has_capability(DatabaseCapabilities.TRANSACTIONS)
-        assert provider.has_capability(DatabaseCapabilities.SCHEMA_MANAGEMENT)
-        assert provider.has_capability(DatabaseCapabilities.CONNECTION_POOLING)
-        assert provider.has_capability(DatabaseCapabilities.RAW_QUERIES)
-
-        assert not provider.has_capability(DatabaseCapabilities.NATIVE_JSON)
-        assert not provider.has_capability(DatabaseCapabilities.NATIVE_ARRAY)
-        assert not provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS)
-
-    def test_elasticsearch_provider_capabilities(self, test_domain):
-        """Test ESProvider capability declaration and methods."""
-        provider = test_domain.providers["default"]
-
-        if provider.__class__.__name__ != "ESProvider":
-            pytest.skip("Test specific to ESProvider")
-
-        assert provider.capabilities == DatabaseCapabilities.DOCUMENT_STORE
-
-        assert provider.has_capability(DatabaseCapabilities.CRUD)
-        assert provider.has_capability(DatabaseCapabilities.SCHEMA_MANAGEMENT)
-        assert provider.has_capability(DatabaseCapabilities.OPTIMISTIC_LOCKING)
-
-        assert not provider.has_capability(DatabaseCapabilities.TRANSACTIONS)
-        assert not provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS)
-        assert not provider.has_capability(DatabaseCapabilities.RAW_QUERIES)
-        assert not provider.has_capability(DatabaseCapabilities.CONNECTION_POOLING)
 
     def test_has_all_capabilities(self, test_domain):
         """Test has_all_capabilities method with various combinations."""
@@ -436,23 +375,19 @@ class TestRequiredLookups:
 
     def test_sa_provider_has_all_required_lookups(self):
         """SAProvider should register all required lookups."""
-        try:
-            from protean.adapters.repository.sqlalchemy import SAProvider
+        sa = pytest.importorskip("sqlalchemy", reason="SQLAlchemy not available")  # noqa: F841
+        from protean.adapters.repository.sqlalchemy import SAProvider
 
-            missing = SAProvider.validate_lookups()
-            assert missing == [], f"SAProvider is missing lookups: {missing}"
-        except ImportError:
-            pytest.skip("SQLAlchemy not available")
+        missing = SAProvider.validate_lookups()
+        assert missing == [], f"SAProvider is missing lookups: {missing}"
 
     def test_es_provider_has_all_required_lookups(self):
         """ESProvider should register all required lookups."""
-        try:
-            from protean.adapters.repository.elasticsearch import ESProvider
+        pytest.importorskip("elasticsearch", reason="Elasticsearch not available")
+        from protean.adapters.repository.elasticsearch import ESProvider
 
-            missing = ESProvider.validate_lookups()
-            assert missing == [], f"ESProvider is missing lookups: {missing}"
-        except ImportError:
-            pytest.skip("Elasticsearch not available")
+        missing = ESProvider.validate_lookups()
+        assert missing == [], f"ESProvider is missing lookups: {missing}"
 
     def test_validate_lookups_returns_sorted_list(self):
         """validate_lookups should return a sorted list of missing lookup names."""

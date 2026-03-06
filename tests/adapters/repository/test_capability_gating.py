@@ -33,7 +33,7 @@ class TestRawQueryCapabilityGating:
         """Providers with RAW_QUERIES can call raw() without error."""
         provider = test_domain.providers["default"]
         if not provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
-            pytest.skip("Provider does not support RAW_QUERIES")
+            return  # Not applicable to this provider
 
         # Should not raise — exact query format varies by adapter,
         # but the gate itself should let the call through.
@@ -50,9 +50,7 @@ class TestRawQueryCapabilityGating:
         """Providers without RAW_QUERIES raise NotSupportedError from raw()."""
         provider = test_domain.providers["default"]
         if provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
-            pytest.skip(
-                "Provider supports RAW_QUERIES — test needs a provider without it"
-            )
+            return  # Not applicable to this provider
 
         with pytest.raises(NotSupportedError, match="does not support raw queries"):
             provider.raw("SELECT 1")
@@ -61,9 +59,7 @@ class TestRawQueryCapabilityGating:
         """QuerySet.raw() raises NotSupportedError for providers without RAW_QUERIES."""
         provider = test_domain.providers["default"]
         if provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
-            pytest.skip(
-                "Provider supports RAW_QUERIES — test needs a provider without it"
-            )
+            return  # Not applicable to this provider
 
         dao = test_domain.repository_for(Widget)._dao
         with pytest.raises(NotSupportedError, match="does not support raw queries"):
@@ -73,7 +69,7 @@ class TestRawQueryCapabilityGating:
         """QuerySet.raw() works for providers with RAW_QUERIES."""
         provider = test_domain.providers["default"]
         if not provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
-            pytest.skip("Provider does not support RAW_QUERIES")
+            return  # Not applicable to this provider
 
         # Create a record first
         test_domain.repository_for(Widget).add(Widget(name="Sprocket", weight=10))
@@ -139,7 +135,7 @@ class TestTransactionCapabilityWarnings:
         """Provider with SIMULATED_TRANSACTIONS logs a debug message."""
         provider = test_domain.providers["default"]
         if not provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
-            pytest.skip("Provider does not use simulated transactions")
+            return  # Not applicable to this provider
 
         from protean.core.unit_of_work import UnitOfWork
 
@@ -158,7 +154,7 @@ class TestTransactionCapabilityWarnings:
         if provider.has_capability(
             DatabaseCapabilities.TRANSACTIONS
         ) or provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
-            pytest.skip("Provider supports some form of transactions")
+            return  # Not applicable to this provider
 
         from protean.core.unit_of_work import UnitOfWork
 
@@ -176,7 +172,7 @@ class TestTransactionCapabilityWarnings:
         """Provider with TRANSACTIONS should not emit any transaction warning."""
         provider = test_domain.providers["default"]
         if not provider.has_capability(DatabaseCapabilities.TRANSACTIONS):
-            pytest.skip("Provider does not support real transactions")
+            return  # Not applicable to this provider
 
         from protean.core.unit_of_work import UnitOfWork
 

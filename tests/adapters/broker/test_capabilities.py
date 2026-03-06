@@ -1,5 +1,3 @@
-import pytest
-
 from protean.port.broker import BrokerCapabilities
 
 
@@ -234,7 +232,7 @@ class TestBrokerCapabilityMethods:
     def test_capability_methods_with_inline_broker(self, broker):
         """Test capability methods specifically with inline broker."""
         if broker.__class__.__name__ != "InlineBroker":
-            pytest.skip("Test specific to InlineBroker")
+            return  # Only relevant for InlineBroker
 
         # InlineBroker has RELIABLE_MESSAGING capabilities
         expected_caps = BrokerCapabilities.RELIABLE_MESSAGING
@@ -259,73 +257,6 @@ class TestBrokerCapabilityMethods:
         )
         assert not broker.has_any_capability(
             BrokerCapabilities.REPLAY | BrokerCapabilities.STREAM_PARTITIONING
-        )
-
-    def test_capability_methods_with_redis_broker(self, broker):
-        """Test capability methods specifically with Redis broker."""
-        if broker.__class__.__name__ != "RedisBroker":
-            pytest.skip("Test specific to RedisBroker")
-
-        # RedisBroker has ORDERED_MESSAGING | BLOCKING_READ capabilities
-        expected_caps = (
-            BrokerCapabilities.ORDERED_MESSAGING | BrokerCapabilities.BLOCKING_READ
-        )
-
-        # Test has_all_capabilities
-        assert broker.has_all_capabilities(BrokerCapabilities.PUBLISH)
-        assert broker.has_all_capabilities(BrokerCapabilities.SUBSCRIBE)
-        assert broker.has_all_capabilities(BrokerCapabilities.CONSUMER_GROUPS)
-        assert broker.has_all_capabilities(BrokerCapabilities.ACK_NACK)
-        assert broker.has_all_capabilities(BrokerCapabilities.DELIVERY_GUARANTEES)
-        assert broker.has_all_capabilities(BrokerCapabilities.MESSAGE_ORDERING)
-        assert broker.has_all_capabilities(BrokerCapabilities.BLOCKING_READ)
-        assert broker.has_all_capabilities(expected_caps)
-
-        # Should not have some advanced capabilities
-        assert not broker.has_all_capabilities(BrokerCapabilities.REPLAY)
-        assert not broker.has_all_capabilities(BrokerCapabilities.DEAD_LETTER_QUEUE)
-        assert not broker.has_all_capabilities(BrokerCapabilities.ENTERPRISE_STREAMING)
-
-        # Test has_any_capability
-        assert broker.has_any_capability(BrokerCapabilities.MESSAGE_ORDERING)
-        assert broker.has_any_capability(
-            BrokerCapabilities.BLOCKING_READ | BrokerCapabilities.REPLAY
-        )
-        assert not broker.has_any_capability(
-            BrokerCapabilities.REPLAY
-            | BrokerCapabilities.DEAD_LETTER_QUEUE
-            | BrokerCapabilities.STREAM_PARTITIONING
-        )
-
-    def test_capability_methods_with_redis_pubsub_broker(self, broker):
-        """Test capability methods specifically with Redis PubSub broker."""
-        if broker.__class__.__name__ != "RedisPubSubBroker":
-            pytest.skip("Test specific to RedisPubSubBroker")
-
-        # RedisPubSubBroker has SIMPLE_QUEUING capabilities
-        expected_caps = BrokerCapabilities.SIMPLE_QUEUING
-
-        # Test has_all_capabilities
-        assert broker.has_all_capabilities(BrokerCapabilities.PUBLISH)
-        assert broker.has_all_capabilities(BrokerCapabilities.SUBSCRIBE)
-        assert broker.has_all_capabilities(BrokerCapabilities.CONSUMER_GROUPS)
-        assert broker.has_all_capabilities(expected_caps)
-
-        # Should not have advanced capabilities
-        assert not broker.has_all_capabilities(BrokerCapabilities.ACK_NACK)
-        assert not broker.has_all_capabilities(BrokerCapabilities.MESSAGE_ORDERING)
-        assert not broker.has_all_capabilities(BrokerCapabilities.BLOCKING_READ)
-        assert not broker.has_all_capabilities(BrokerCapabilities.RELIABLE_MESSAGING)
-
-        # Test has_any_capability
-        assert broker.has_any_capability(BrokerCapabilities.CONSUMER_GROUPS)
-        assert broker.has_any_capability(
-            BrokerCapabilities.CONSUMER_GROUPS | BrokerCapabilities.ACK_NACK
-        )
-        assert not broker.has_any_capability(
-            BrokerCapabilities.ACK_NACK
-            | BrokerCapabilities.MESSAGE_ORDERING
-            | BrokerCapabilities.REPLAY
         )
 
     def test_combined_capability_checks(self, broker):

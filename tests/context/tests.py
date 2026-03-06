@@ -63,27 +63,6 @@ class TestDomainContext:
 
         assert cleanup_stuff == [None]
 
-    @pytest.mark.skip  # FIXME Could provide a domain level handler to catch and act on exceptions
-    def test_domain_tearing_down_with_handled_exception_by_domain_handler(
-        self, test_domain
-    ):
-        # app.config["PROPAGATE_EXCEPTIONS"] = True
-        # cleanup_stuff = []
-
-        # @test_domain.teardown_domain_context
-        # def cleanup(exception):
-        #     cleanup_stuff.append(exception)
-
-        # @test_domain.errorhandler(Exception)
-        # def handler(f):
-        #     return flask.jsonify(str(f))
-
-        # with domain.domain_context():
-        #     client.get("/")
-
-        # assert cleanup_stuff == [None]
-        pass
-
     def test_domain_tearing_down_with_unhandled_exception(self, test_domain):
         test_domain.config["PROPAGATE_EXCEPTIONS"] = True
         cleanup_stuff = []

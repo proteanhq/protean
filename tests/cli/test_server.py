@@ -152,13 +152,6 @@ class TestServerCommand:
             assert result.exit_code == expected_exit_code
             assert isinstance(result.exception, SystemExit)
 
-    @pytest.mark.skip(reason="Not implemented")
-    def test_that_server_processes_messages_on_start(self):
-        # Start in non-test mode
-        # Ensure messages are processed
-        # Manually shutdown with `asyncio.create_task(engine.shutdown())`
-        pass
-
     def test_server_aborts_with_zero_workers(self):
         """Test that the server command aborts when --workers is 0."""
         args = ["server", "--domain", "publishing7.py", "--workers", "0"]

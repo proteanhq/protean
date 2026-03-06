@@ -1,6 +1,5 @@
 import pytest
 
-from protean.exceptions import ValidationError
 from protean.utils.reflection import attributes
 
 from .elements import Account, Author
@@ -31,17 +30,6 @@ class TestReferenceFieldAssociation:
         test_domain.repository_for(Author)._dao.save(author)
 
         assert author.state_.is_persisted
-
-    @pytest.mark.skip
-    def test_that_assignment_fails_when_an_invalid_entity_type_is_assigned_to_a_relation(
-        self, test_domain
-    ):
-        class DummyAccount(Account):
-            pass
-
-        account = DummyAccount(email="john.doe@gmail.com", password="a1b2c3")
-        with pytest.raises(ValidationError):
-            Author(first_name="John", last_name="Doe", account=account)
 
     def test_the_presence_of_shadow_attribute_backing_the_association(
         self, test_domain

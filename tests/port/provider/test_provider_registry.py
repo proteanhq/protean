@@ -460,75 +460,65 @@ class TestProviderRegistryIntegration:
 
     def test_postgresql_provider_registration(self):
         """Test PostgreSQL provider registration when sqlalchemy is available."""
-        try:
-            import sqlalchemy  # noqa: F401
+        pytest.importorskip("sqlalchemy", reason="SQLAlchemy package not available")
 
-            from protean.adapters.repository.sqlalchemy import register_postgresql
+        from protean.adapters.repository.sqlalchemy import register_postgresql
 
-            register_postgresql()
+        register_postgresql()
 
-            assert "postgresql" in registry._providers
+        assert "postgresql" in registry._providers
 
-            from protean.adapters.repository.sqlalchemy import PostgresqlProvider
+        from protean.adapters.repository.sqlalchemy import PostgresqlProvider
 
-            provider_cls = registry.get("postgresql")
-            assert provider_cls == PostgresqlProvider
-        except ImportError:
-            pytest.skip("SQLAlchemy package not available")
+        provider_cls = registry.get("postgresql")
+        assert provider_cls == PostgresqlProvider
 
     def test_sqlite_provider_registration(self):
         """Test SQLite provider registration when sqlalchemy is available."""
-        try:
-            import sqlalchemy  # noqa: F401
+        pytest.importorskip("sqlalchemy", reason="SQLAlchemy package not available")
 
-            from protean.adapters.repository.sqlalchemy import register_sqlite
+        from protean.adapters.repository.sqlalchemy import register_sqlite
 
-            register_sqlite()
+        register_sqlite()
 
-            assert "sqlite" in registry._providers
+        assert "sqlite" in registry._providers
 
-            from protean.adapters.repository.sqlalchemy import SqliteProvider
+        from protean.adapters.repository.sqlalchemy import SqliteProvider
 
-            provider_cls = registry.get("sqlite")
-            assert provider_cls == SqliteProvider
-        except ImportError:
-            pytest.skip("SQLAlchemy package not available")
+        provider_cls = registry.get("sqlite")
+        assert provider_cls == SqliteProvider
 
     def test_mssql_provider_registration(self):
         """Test MSSQL provider registration when sqlalchemy is available."""
-        try:
-            import sqlalchemy  # noqa: F401
+        pytest.importorskip("sqlalchemy", reason="SQLAlchemy package not available")
 
-            from protean.adapters.repository.sqlalchemy import register_mssql
+        from protean.adapters.repository.sqlalchemy import register_mssql
 
-            register_mssql()
+        register_mssql()
 
-            assert "mssql" in registry._providers
+        assert "mssql" in registry._providers
 
-            from protean.adapters.repository.sqlalchemy import MssqlProvider
+        from protean.adapters.repository.sqlalchemy import MssqlProvider
 
-            provider_cls = registry.get("mssql")
-            assert provider_cls == MssqlProvider
-        except ImportError:
-            pytest.skip("SQLAlchemy package not available")
+        provider_cls = registry.get("mssql")
+        assert provider_cls == MssqlProvider
 
     def test_elasticsearch_provider_registration(self):
         """Test Elasticsearch provider registration when elasticsearch is available."""
-        try:
-            import elasticsearch as es_module  # noqa: F401
+        pytest.importorskip(
+            "elasticsearch", reason="Elasticsearch package not available"
+        )
 
-            from protean.adapters.repository.elasticsearch import register
+        from protean.adapters.repository.elasticsearch import register
 
-            register()
+        register()
 
-            assert "elasticsearch" in registry._providers
+        assert "elasticsearch" in registry._providers
 
-            from protean.adapters.repository.elasticsearch import ESProvider
+        from protean.adapters.repository.elasticsearch import ESProvider
 
-            provider_cls = registry.get("elasticsearch")
-            assert provider_cls == ESProvider
-        except ImportError:
-            pytest.skip("Elasticsearch package not available")
+        provider_cls = registry.get("elasticsearch")
+        assert provider_cls == ESProvider
 
     def test_multiple_provider_registration(self):
         """Test registering multiple providers."""

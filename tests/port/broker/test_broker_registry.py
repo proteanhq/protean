@@ -402,25 +402,20 @@ class TestBrokerRegistryIntegration:
 
     def test_redis_broker_registration_with_redis_available(self):
         """Test Redis broker registration when redis package is available."""
-        try:
-            import redis as redis_module  # noqa: F401
+        pytest.importorskip("redis", reason="Redis package not available")
 
-            # If redis is available, test registration
-            from protean.adapters.broker.redis import register
+        from protean.adapters.broker.redis import register
 
-            register()
+        register()
 
-            # Should be registered
-            assert "redis" in registry._brokers
+        # Should be registered
+        assert "redis" in registry._brokers
 
-            # Should be able to get the broker class
-            from protean.adapters.broker.redis import RedisBroker
+        # Should be able to get the broker class
+        from protean.adapters.broker.redis import RedisBroker
 
-            broker_cls = registry.get("redis")
-            assert broker_cls == RedisBroker
-        except ImportError:
-            # Redis not available, skip this test
-            pytest.skip("Redis package not available")
+        broker_cls = registry.get("redis")
+        assert broker_cls == RedisBroker
 
     def test_multiple_broker_registration(self):
         """Test registering multiple brokers."""

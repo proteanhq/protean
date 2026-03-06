@@ -12,9 +12,6 @@ import pytest
 from sqlalchemy import orm, text
 
 from protean import Domain, UnitOfWork
-from protean.adapters.repository.sqlalchemy import (
-    SAProvider,
-)
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String, Integer
 from tests.shared import POSTGRES_URI
@@ -25,15 +22,13 @@ class DummyEntity(BaseAggregate):
     age: Integer(default=0)
 
 
+@pytest.mark.usefixtures("require_sa_provider")
 class TestSessionFactoryCaching:
     """Verify that get_session() returns the same cached scoped_session."""
 
     def test_get_session_returns_same_instance(self, test_domain):
         """get_session() should return the same scoped_session object every time."""
         provider = test_domain.providers["default"]
-
-        if not isinstance(provider, SAProvider):
-            pytest.skip("Only applicable to SQLAlchemy providers")
 
         session1 = provider.get_session()
         session2 = provider.get_session()
@@ -47,18 +42,12 @@ class TestSessionFactoryCaching:
         """get_session() should be stable across many invocations."""
         provider = test_domain.providers["default"]
 
-        if not isinstance(provider, SAProvider):
-            pytest.skip("Only applicable to SQLAlchemy providers")
-
         sessions = [provider.get_session() for _ in range(100)]
         assert all(s is sessions[0] for s in sessions)
 
     def test_scoped_session_created_during_init(self, test_domain):
         """The scoped session should be created during provider __init__."""
         provider = test_domain.providers["default"]
-
-        if not isinstance(provider, SAProvider):
-            pytest.skip("Only applicable to SQLAlchemy providers")
 
         assert hasattr(provider, "_scoped_session_cls")
         assert hasattr(provider, "_session_factory")
@@ -67,9 +56,6 @@ class TestSessionFactoryCaching:
     def test_session_factory_bound_to_engine(self, test_domain):
         """The session factory should be bound to the provider's engine."""
         provider = test_domain.providers["default"]
-
-        if not isinstance(provider, SAProvider):
-            pytest.skip("Only applicable to SQLAlchemy providers")
 
         assert provider._session_factory.kw.get("bind") is provider._engine
 
@@ -416,13 +402,10 @@ class TestUoWSessionCleanup:
 
         assert uow._sessions == {}
 
-    def test_reset_calls_remove_on_scoped_sessions(self, test_domain):
+    def test_reset_calls_remove_on_scoped_sessions(
+        self, test_domain, require_sa_provider
+    ):
         """_reset() should call remove() on scoped sessions, not just close()."""
-        provider = test_domain.providers["default"]
-
-        if not isinstance(provider, SAProvider):
-            pytest.skip("Only applicable to SQLAlchemy providers")
-
         uow = UnitOfWork()
         uow.start()
 

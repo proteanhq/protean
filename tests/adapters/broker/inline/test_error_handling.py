@@ -336,6 +336,9 @@ def test_get_retry_count_exception_handling(broker):
     assert count == 0
 
 
+@pytest.mark.xfail(
+    reason="Flaky — cleanup_stale_messages may raise on invalid in-flight data"
+)
 def test_cleanup_stale_messages_exception_in_processing(broker):
     """Test cleanup_stale_messages with processing errors."""
     consumer_group = "test_consumer_group"
@@ -344,11 +347,7 @@ def test_cleanup_stale_messages_exception_in_processing(broker):
     broker._in_flight["invalid:group"] = "not_a_dict"
 
     # Should handle gracefully
-    try:
-        broker._cleanup_stale_messages(consumer_group, 1.0)
-    except Exception:
-        # This test is marked as skipped in original, keeping same behavior
-        pytest.skip("This test is flaky and needs to be fixed")
+    broker._cleanup_stale_messages(consumer_group, 1.0)
 
 
 def test_requeue_messages_exception_handling(broker):

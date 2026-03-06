@@ -41,14 +41,6 @@ class TestLoadingTOML:
         assert domain is not None
         domain.config["custom"]["FOO"] == "bar"
 
-    @pytest.mark.skip(reason="No Immutability Functionality yet")
-    def test_domain_config_is_immutable(self):
-        change_working_directory_to("test14")
-
-        domain = derive_domain("domain14")
-        with pytest.raises(TypeError):
-            domain.config["custom"]["FOO"] = "baz"
-
     @pytest.mark.no_test_domain
     def test_domain_prioritizes_dot_domain_toml_over_domain_toml(self):
         """Ensure protean tries to parse configuration from files in the following order:
@@ -90,14 +82,6 @@ class TestLoadingTOML:
         domain = derive_domain("domain17")
         assert domain is not None
         assert domain.config["custom"]["FOO"] == "quux"
-
-    @pytest.mark.skip(reason="No Immutability Functionality yet")
-    def test_custom_is_immutable(self):
-        change_working_directory_to("test14")
-
-        domain = derive_domain("domain14")
-        with pytest.raises(TypeError):
-            domain.config["custom"]["FOO"] = "baz"
 
     @pytest.mark.no_test_domain
     @pytest.mark.filterwarnings("always::UserWarning")

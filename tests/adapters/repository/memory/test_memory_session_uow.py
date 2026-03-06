@@ -128,10 +128,6 @@ def test_memory_session_commit_without_uow(test_domain):
 
 def test_memory_session_isolation_with_multiple_providers(test_domain):
     """Test that sessions are properly isolated per provider"""
-    # Add a second provider for testing
-    if not hasattr(test_domain, "config") or "databases" not in test_domain.config:
-        pytest.skip("Test domain doesn't support multiple databases")
-
     test_domain.config["databases"]["secondary"] = {"provider": "memory"}
     test_domain._initialize()
 

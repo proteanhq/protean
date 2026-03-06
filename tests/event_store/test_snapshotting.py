@@ -175,12 +175,3 @@ def test_that_a_stream_with_a_snapshop_and_no_further_events_is_reconstructed_co
     assert snapshot is not None
     assert User(**snapshot["data"]) == user
     assert snapshot["data"]["name"] == "John Doe 20"
-
-
-@pytest.mark.skip(reason="Yet to implement")
-@pytest.mark.eventstore
-def test_that_snapshots_preserve_performance_even_with_large_no_of_events(test_domain):
-    # Measure the time taken to load aggregate with 10 events
-    # Add 1000 events to Aggregate
-    # Measure the time taken to load aggregate with 1000 events
-    pass
