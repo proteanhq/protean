@@ -254,7 +254,7 @@ class HandlerConfigurator:
         type_string = (
             f"{self._domain.camel_case_name}."
             f"{transition_cls.__name__}."
-            f"{getattr(transition_cls, '__version__', 'v1')}"
+            f"v{getattr(transition_cls, '__version__', 1)}"
         )
         setattr(transition_cls, "__type__", type_string)
         self._domain._events_and_commands[type_string] = transition_cls

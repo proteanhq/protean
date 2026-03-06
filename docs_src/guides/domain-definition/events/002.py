@@ -30,7 +30,7 @@ class UserLoggedIn:
 
 @domain.event(part_of="User")
 class UserActivated:
-    __version__ = "v2"
+    __version__ = 2
 
     user_id: Identifier(required=True)
     activated_at: DateTime(required=True, default=lambda: datetime.now(timezone.utc))

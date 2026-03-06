@@ -14,7 +14,7 @@ from protean.utils.eventing import Message
 
 
 class OrderPlaced(BaseEvent):
-    __version__ = "v3"
+    __version__ = 3
     order_id = Identifier(required=True)
     total_amount = Float(required=True)
     currency = String(required=True)
@@ -58,10 +58,10 @@ def register_elements(test_domain):
     test_domain.register(Order, is_event_sourced=True)
     test_domain.register(OrderPlaced, part_of=Order)
     test_domain.upcaster(
-        UpcastV1ToV2, event_type=OrderPlaced, from_version="v1", to_version="v2"
+        UpcastV1ToV2, event_type=OrderPlaced, from_version=1, to_version=2
     )
     test_domain.upcaster(
-        UpcastV2ToV3, event_type=OrderPlaced, from_version="v2", to_version="v3"
+        UpcastV2ToV3, event_type=OrderPlaced, from_version=2, to_version=3
     )
     test_domain.init(traverse=False)
 
@@ -70,7 +70,7 @@ def register_elements(test_domain):
 
 
 def _raw_message(
-    type_string: str, version: str, data: dict, stream: str = "test::order-1"
+    type_string: str, version: int, data: dict, stream: str = "test::order-1"
 ) -> dict:
     """Build a raw message dict as it would appear in the event store."""
     return {
@@ -103,7 +103,7 @@ class TestV1EventUpcast:
     def test_v1_event_is_upcast_to_v3(self, test_domain):
         raw = _raw_message(
             "Test.OrderPlaced.v1",
-            "v1",
+            1,
             {"order_id": "order-1", "amount": 42.0},
         )
         msg = Message.deserialize(raw, validate=False)
@@ -117,7 +117,7 @@ class TestV1EventUpcast:
     def test_v1_event_upcast_preserves_message_id(self, test_domain):
         raw = _raw_message(
             "Test.OrderPlaced.v1",
-            "v1",
+            1,
             {"order_id": "order-1", "amount": 42.0},
         )
         msg = Message.deserialize(raw, validate=False)
@@ -131,7 +131,7 @@ class TestV2EventUpcast:
     def test_v2_event_is_upcast_to_v3(self, test_domain):
         raw = _raw_message(
             "Test.OrderPlaced.v2",
-            "v2",
+            2,
             {"order_id": "order-2", "amount": 99.99, "currency": "EUR"},
         )
         msg = Message.deserialize(raw, validate=False)
@@ -147,7 +147,7 @@ class TestCurrentVersionNoUpcast:
     def test_v3_event_passes_through_unchanged(self, test_domain):
         raw = _raw_message(
             "Test.OrderPlaced.v3",
-            "v3",
+            3,
             {"order_id": "order-3", "total_amount": 50.0, "currency": "GBP"},
         )
         msg = Message.deserialize(raw, validate=False)
@@ -163,7 +163,7 @@ class TestUnknownTypeStringRaisesError:
     def test_completely_unknown_type(self, test_domain):
         raw = _raw_message(
             "Test.NonExistent.v1",
-            "v1",
+            1,
             {"foo": "bar"},
         )
         msg = Message.deserialize(raw, validate=False)
@@ -196,7 +196,7 @@ class TestUpcastWorksWithEventStore:
                     "kind": "EVENT",
                     "origin_stream": None,
                     "stream_category": "test::order",
-                    "version": "v1",
+                    "version": 1,
                     "sequence_id": "0",
                     "asynchronous": True,
                 },

@@ -74,13 +74,13 @@ consistent meta-option handling.
 | Option | Type | Description |
 |--------|------|-------------|
 | `event_type` | Event class | The **current** event class this upcaster targets |
-| `from_version` | `str` | Source version (e.g. `"v1"`) |
-| `to_version` | `str` | Target version (e.g. `"v2"`) |
+| `from_version` | `int` | Source version (e.g. `1`) |
+| `to_version` | `int` | Target version (e.g. `2`) |
 
 **Validation** (in `upcaster_factory()`):
 
 - `event_type` must be a `BaseEvent` subclass
-- `from_version` and `to_version` must both be non-empty strings
+- `from_version` and `to_version` must both be positive integers
 - `from_version` must differ from `to_version`
 
 **Abstract method:**
@@ -102,12 +102,12 @@ direct-call registration:
 
 ```python
 # Decorator syntax
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class MyUpcaster(BaseUpcaster):
     def upcast(self, data): ...
 
 # Direct registration (e.g. in test fixtures)
-domain.upcaster(MyUpcaster, event_type=OrderPlaced, from_version="v1", to_version="v2")
+domain.upcaster(MyUpcaster, event_type=OrderPlaced, from_version=1, to_version=2)
 ```
 
 Both paths call `upcaster_factory()` for validation and append the result to
@@ -228,11 +228,11 @@ at runtime during deserialization. The following errors are caught:
 
 | Error | Cause | Example |
 |-------|-------|---------|
-| Duplicate upcaster | Two upcasters with same `(event_type, from_version)` | Two classes both claiming `v1→v2` |
-| Non-convergent chain | Multiple terminal versions | `v1→v2` and `v1a→v3` — terminals are `v2` and `v3` |
-| Cycle | Version graph contains a loop | `v1→v2` and `v2→v1` |
-| Gap | Chain doesn't reach terminal | `v1→v2` registered but `v2→v3` missing, terminal is `v3` |
-| Missing event class | Terminal version not in `_events_and_commands` | Chain ends at `v99` but event `__version__` is `"v2"` |
+| Duplicate upcaster | Two upcasters with same `(event_type, from_version)` | Two classes both claiming `1→2` |
+| Non-convergent chain | Multiple terminal versions | `1→2` and `3→4` — terminals are `2` and `4` |
+| Cycle | Version graph contains a loop | `1→2` and `2→1` |
+| Gap | Chain doesn't reach terminal | `1→2` registered but `2→3` missing, terminal is `3` |
+| Missing event class | Terminal version not in `_events_and_commands` | Chain ends at `99` but event `__version__` is `2` |
 
 ## Runtime Execution
 

@@ -449,7 +449,7 @@
             "element_type": { "const": "COMMAND" },
             "part_of": { "type": "string", "minLength": 1 },
             "__type__": { "type": "string", "minLength": 1 },
-            "__version__": { "type": "string", "pattern": "^v[0-9]+$" },
+            "__version__": { "type": "integer", "minimum": 1 },
             "fields": { "$ref": "#/$defs/fields_map" }
           },
           "required": ["part_of", "__type__", "__version__", "fields"]
@@ -467,7 +467,7 @@
             "element_type": { "const": "EVENT" },
             "part_of": { "type": "string", "minLength": 1 },
             "__type__": { "type": "string", "minLength": 1 },
-            "__version__": { "type": "string", "pattern": "^v[0-9]+$" },
+            "__version__": { "type": "integer", "minimum": 1 },
             "is_fact_event": { "type": "boolean" },
             "published": { "type": "boolean" },
             "fields": { "$ref": "#/$defs/fields_map" }

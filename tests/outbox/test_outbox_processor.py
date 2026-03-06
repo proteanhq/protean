@@ -521,7 +521,7 @@ class TestMessageReconstruction:
             kind="EVENT",
             origin_stream="original-stream",
             stream_category="test-stream",
-            version="v1",
+            version=1,
             sequence_id="1.0",
             asynchronous=True,
             expected_version=0,

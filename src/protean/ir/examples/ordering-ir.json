@@ -98,7 +98,7 @@
       "commands": {
         "ecommerce.ordering.CancelOrder": {
           "__type__": "Ordering.CancelOrder.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "COMMAND",
           "fields": {
             "order_id": {
@@ -119,7 +119,7 @@
         },
         "ecommerce.ordering.PlaceOrder": {
           "__type__": "Ordering.PlaceOrder.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "COMMAND",
           "fields": {
             "customer_name": {
@@ -219,7 +219,7 @@
       "events": {
         "ecommerce.ordering.OrderCancelled": {
           "__type__": "Ordering.OrderCancelled.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "EVENT",
           "fields": {
             "order_id": {
@@ -241,7 +241,7 @@
         },
         "ecommerce.ordering.OrderPlaced": {
           "__type__": "Ordering.OrderPlaced.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "EVENT",
           "fields": {
             "customer_name": {
@@ -390,7 +390,7 @@
       "commands": {
         "ecommerce.payments.ConfirmPayment": {
           "__type__": "Ordering.ConfirmPayment.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "COMMAND",
           "fields": {
             "amount": {
@@ -416,7 +416,7 @@
       "events": {
         "ecommerce.payments.PaymentConfirmed": {
           "__type__": "Ordering.PaymentConfirmed.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "EVENT",
           "fields": {
             "amount": {
@@ -444,7 +444,7 @@
         },
         "ecommerce.payments.PaymentFailed": {
           "__type__": "Ordering.PaymentFailed.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "EVENT",
           "fields": {
             "order_id": {

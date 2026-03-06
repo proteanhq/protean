@@ -54,7 +54,7 @@ class TypeManager:
                 type_string = (
                     f"{self._domain.camel_case_name}."
                     f"{element.cls.__name__}."
-                    f"{element.cls.__version__}"
+                    f"v{element.cls.__version__}"
                 )
 
                 setattr(element.cls, "__type__", type_string)

@@ -25,7 +25,7 @@ from protean.utils.mixins import handle
 class OrderPlaced(BaseEvent):
     """Current version — v2 renamed 'amount' to 'total' and added currency."""
 
-    __version__ = "v2"
+    __version__ = 2
     order_id = Identifier(required=True)
     total = Float(required=True)
     currency = String(required=True)
@@ -91,8 +91,8 @@ def register_elements(test_domain):
     test_domain.upcaster(
         UpcastOrderPlacedV1ToV2,
         event_type=OrderPlaced,
-        from_version="v1",
-        to_version="v2",
+        from_version=1,
+        to_version=2,
     )
     test_domain.init(traverse=False)
 
@@ -121,7 +121,7 @@ def _v1_message(order_id: str = "order-1", amount: float = 42.0) -> Message:
                 "kind": "EVENT",
                 "origin_stream": None,
                 "stream_category": "test::order",
-                "version": "v1",
+                "version": 1,
                 "sequence_id": "0",
                 "asynchronous": True,
             },
@@ -149,7 +149,7 @@ def _v2_message(
                 "kind": "EVENT",
                 "origin_stream": None,
                 "stream_category": "test::order",
-                "version": "v2",
+                "version": 2,
                 "sequence_id": "0",
                 "asynchronous": True,
             },

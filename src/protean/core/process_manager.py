@@ -522,7 +522,7 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
             fqn=fqn(transition_cls),
             kind="EVENT",
             stream_category=cls.meta_.stream_category,
-            version=getattr(transition_cls, "__version__", "v1"),
+            version=getattr(transition_cls, "__version__", 1),
             sequence_id=str(pm_instance._version),
             expected_version=expected_version,
         )

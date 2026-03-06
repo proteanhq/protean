@@ -37,7 +37,7 @@ class TestCommandExtraction:
 
     def test_command_version(self, order_cluster):
         for cmd in order_cluster["commands"].values():
-            assert cmd["__version__"] == "v1"
+            assert cmd["__version__"] == 1
 
     def test_command_part_of(self, order_cluster):
         agg_fqn = order_cluster["aggregate"]["fqn"]
@@ -81,7 +81,7 @@ class TestEventExtraction:
 
     def test_event_version(self, order_cluster):
         for evt in order_cluster["events"].values():
-            assert evt["__version__"] == "v1"
+            assert evt["__version__"] == 1
 
     def test_event_part_of(self, order_cluster):
         agg_fqn = order_cluster["aggregate"]["fqn"]

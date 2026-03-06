@@ -18,7 +18,7 @@ class Order(BaseAggregate):
 
 
 class OrderPlaced(BaseEvent):
-    __version__ = "v2"
+    __version__ = 2
     order_id = Identifier(required=True)
     amount = Float(required=True)
     currency = String(default="USD")
@@ -41,8 +41,8 @@ class TestUpcasterRegistration:
         test_domain.upcaster(
             UpcastOrderPlacedV1ToV2,
             event_type=OrderPlaced,
-            from_version="v1",
-            to_version="v2",
+            from_version=1,
+            to_version=2,
         )
         test_domain.init(traverse=False)
 
@@ -52,8 +52,8 @@ class TestUpcasterRegistration:
     def test_upcaster_meta_options(self, test_domain):
         upcaster_cls = test_domain._upcasters[0]
         assert upcaster_cls.meta_.event_type is OrderPlaced
-        assert upcaster_cls.meta_.from_version == "v1"
-        assert upcaster_cls.meta_.to_version == "v2"
+        assert upcaster_cls.meta_.from_version == 1
+        assert upcaster_cls.meta_.to_version == 2
 
     def test_upcaster_chain_is_built(self, test_domain):
         assert test_domain._upcaster_chain.needs_upcasting("Test.OrderPlaced.v1")
@@ -70,9 +70,7 @@ class TestUpcasterRegistrationWithDecorator:
         test_domain.register(Order, is_event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
 
-        @test_domain.upcaster(
-            event_type=OrderPlaced, from_version="v1", to_version="v2"
-        )
+        @test_domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
         class MyUpcaster(BaseUpcaster):
             def upcast(self, data: dict) -> dict:
                 data["currency"] = "USD"
@@ -92,8 +90,8 @@ class TestUpcasterValidation:
         with pytest.raises(IncorrectUsageError, match="must specify `event_type`"):
             test_domain.upcaster(
                 UpcastOrderPlacedV1ToV2,
-                from_version="v1",
-                to_version="v2",
+                from_version=1,
+                to_version=2,
             )
 
     def test_error_missing_from_version(self, test_domain):
@@ -101,7 +99,7 @@ class TestUpcasterValidation:
             test_domain.upcaster(
                 UpcastOrderPlacedV1ToV2,
                 event_type=OrderPlaced,
-                to_version="v2",
+                to_version=2,
             )
 
     def test_error_missing_to_version(self, test_domain):
@@ -109,7 +107,7 @@ class TestUpcasterValidation:
             test_domain.upcaster(
                 UpcastOrderPlacedV1ToV2,
                 event_type=OrderPlaced,
-                from_version="v1",
+                from_version=1,
             )
 
     def test_error_same_from_and_to_version(self, test_domain):
@@ -119,8 +117,8 @@ class TestUpcasterValidation:
             test_domain.upcaster(
                 UpcastOrderPlacedV1ToV2,
                 event_type=OrderPlaced,
-                from_version="v1",
-                to_version="v1",
+                from_version=1,
+                to_version=1,
             )
 
     def test_error_event_type_not_an_event(self, test_domain):
@@ -128,8 +126,8 @@ class TestUpcasterValidation:
             test_domain.upcaster(
                 UpcastOrderPlacedV1ToV2,
                 event_type=Order,  # Not an event!
-                from_version="v1",
-                to_version="v2",
+                from_version=1,
+                to_version=2,
             )
 
     def test_base_upcaster_cannot_be_instantiated(self):

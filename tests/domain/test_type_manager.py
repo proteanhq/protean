@@ -64,7 +64,7 @@ class TestSetAndRecordTypes:
             assert len(parts) == 3
             assert parts[0] == "Test"
             assert parts[1] == cls.__name__
-            assert parts[2] == cls.__version__
+            assert parts[2] == f"v{cls.__version__}"
 
     def test_typed_events_are_recorded_in_events_and_commands(self, test_domain):
         test_domain.register(Account)
@@ -82,7 +82,7 @@ class TestSetAndRecordTypes:
         """An event with a custom version uses that version in the type string."""
 
         class V2Event(BaseEvent):
-            __version__ = "v2"
+            __version__ = 2
             value: String()
 
         test_domain.register(Account)

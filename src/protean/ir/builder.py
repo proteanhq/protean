@@ -444,7 +444,7 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
-        entry["__version__"] = getattr(cls, "__version__", "v1")
+        entry["__version__"] = getattr(cls, "__version__", 1)
         entry["element_type"] = "COMMAND"
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
@@ -463,7 +463,7 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
-        entry["__version__"] = getattr(cls, "__version__", "v1")
+        entry["__version__"] = getattr(cls, "__version__", 1)
 
         if record.auto_generated:
             entry["auto_generated"] = True

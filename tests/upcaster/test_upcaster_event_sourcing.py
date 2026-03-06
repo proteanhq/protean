@@ -14,7 +14,7 @@ from protean.fields import Float, Identifier, String
 class AccountOpened(BaseEvent):
     """Current version — v2 added the currency field."""
 
-    __version__ = "v2"
+    __version__ = 2
     account_id = Identifier(required=True)
     owner = String(required=True)
     initial_balance = Float(required=True)
@@ -24,7 +24,7 @@ class AccountOpened(BaseEvent):
 class AccountCredited(BaseEvent):
     """Unchanged event — still v1."""
 
-    __version__ = "v1"
+    __version__ = 1
     account_id = Identifier(required=True)
     amount = Float(required=True)
 
@@ -69,8 +69,8 @@ def register_elements(test_domain):
     test_domain.upcaster(
         UpcastAccountOpenedV1ToV2,
         event_type=AccountOpened,
-        from_version="v1",
-        to_version="v2",
+        from_version=1,
+        to_version=2,
     )
     test_domain.init(traverse=False)
 
@@ -79,7 +79,7 @@ def _write_raw_event(
     store,
     stream: str,
     type_string: str,
-    version: str,
+    version: int,
     data: dict,
     position: int,
 ) -> None:
@@ -125,7 +125,7 @@ class TestAggregateReconstructionWithMixedVersions:
             store,
             stream,
             "Test.AccountOpened.v1",
-            "v1",
+            1,
             {"account_id": "acct-1", "owner": "Alice", "initial_balance": 100.0},
             position=0,
         )
@@ -135,7 +135,7 @@ class TestAggregateReconstructionWithMixedVersions:
             store,
             stream,
             "Test.AccountCredited.v1",
-            "v1",
+            1,
             {"account_id": "acct-1", "amount": 50.0},
             position=1,
         )
@@ -158,7 +158,7 @@ class TestAggregateReconstructionWithMixedVersions:
             store,
             stream,
             "Test.AccountOpened.v2",
-            "v2",
+            2,
             {
                 "account_id": "acct-2",
                 "owner": "Bob",
@@ -184,7 +184,7 @@ class TestAggregateReconstructionWithMixedVersions:
             store,
             stream,
             "Test.AccountOpened.v1",
-            "v1",
+            1,
             {"account_id": "acct-3", "owner": "Charlie", "initial_balance": 0.0},
             position=0,
         )
@@ -207,7 +207,7 @@ class TestRepositoryWithUpcasting:
             store,
             stream,
             "Test.AccountOpened.v1",
-            "v1",
+            1,
             {"account_id": "acct-repo", "owner": "Diana", "initial_balance": 500.0},
             position=0,
         )
@@ -215,7 +215,7 @@ class TestRepositoryWithUpcasting:
             store,
             stream,
             "Test.AccountCredited.v1",
-            "v1",
+            1,
             {"account_id": "acct-repo", "amount": 25.0},
             position=1,
         )

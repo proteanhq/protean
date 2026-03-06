@@ -70,7 +70,7 @@ method: `upcast(self, data: dict) -> dict`.
 ```python
 from protean.core.upcaster import BaseUpcaster
 
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastOrderPlacedV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["currency"] = "USD"
@@ -82,8 +82,8 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 | Option | Type | Description |
 |--------|------|-------------|
 | `event_type` | Event class | The event this upcaster targets (always the *current* class). |
-| `from_version` | `str` | The source version this upcaster transforms from (e.g. `"v1"`). |
-| `to_version` | `str` | The target version this upcaster transforms to (e.g. `"v2"`). |
+| `from_version` | `int` | The source version this upcaster transforms from (e.g. `1`). |
+| `to_version` | `int` | The target version this upcaster transforms to (e.g. `2`). |
 
 ### The `upcast` Method
 
@@ -116,7 +116,7 @@ class OrderPlaced(BaseEvent):
 ```python
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    __version__ = "v2"
+    __version__ = 2
     order_id = Identifier(required=True)
     amount = Float(required=True)
     currency = String(required=True)
@@ -124,7 +124,7 @@ class OrderPlaced(BaseEvent):
 
 **Upcaster:**
 ```python
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastOrderPlacedV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         # All orders before v2 were in USD
@@ -138,7 +138,7 @@ The field `customer_name` was split into `first_name` and `last_name`.
 
 **Upcaster:**
 ```python
-@domain.upcaster(event_type=CustomerRegistered, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=CustomerRegistered, from_version=1, to_version=2)
 class UpcastCustomerRegisteredV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         full_name = data.pop("customer_name", "")
@@ -155,7 +155,7 @@ new `Address` value object).
 
 **Upcaster:**
 ```python
-@domain.upcaster(event_type=CustomerRegistered, from_version="v2", to_version="v3")
+@domain.upcaster(event_type=CustomerRegistered, from_version=2, to_version=3)
 class UpcastCustomerRegisteredV2ToV3(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["address"] = {
@@ -179,20 +179,20 @@ The framework chains them automatically.
 
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    __version__ = "v3"
+    __version__ = 3
     order_id = Identifier(required=True)
     total_amount = Float(required=True)
     currency = String(required=True)
 
 
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["currency"] = "USD"
         return data
 
 
-@domain.upcaster(event_type=OrderPlaced, from_version="v2", to_version="v3")
+@domain.upcaster(event_type=OrderPlaced, from_version=2, to_version=3)
 class UpcastV2ToV3(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["total_amount"] = data.pop("amount")
@@ -210,7 +210,7 @@ events. In v2, the event schema no longer includes it. The upcaster strips
 it out so the current constructor doesn't receive unknown fields:
 
 ```python
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastOrderPlacedV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data.pop("legacy_code", None)
@@ -223,7 +223,7 @@ The v2 schema adds a `line_item_count` field that can be computed from existing
 data:
 
 ```python
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastOrderPlacedV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["line_item_count"] = len(data.get("items", []))
@@ -300,22 +300,22 @@ The following errors are caught at startup (not at runtime):
 
 ```python
 # ERROR: Two upcasters for the same (event_type, from_version)
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcasterA(BaseUpcaster): ...
 
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcasterB(BaseUpcaster): ...
-# → ConfigurationError: Duplicate upcaster for OrderPlaced from version v1
+# → ConfigurationError: Duplicate upcaster for OrderPlaced from version 1
 ```
 
 ### Version cycles
 
 ```python
 # ERROR: v1→v2 and v2→v1 creates a cycle
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class Forward(BaseUpcaster): ...
 
-@domain.upcaster(event_type=OrderPlaced, from_version="v2", to_version="v1")
+@domain.upcaster(event_type=OrderPlaced, from_version=2, to_version=1)
 class Backward(BaseUpcaster): ...
 # → ConfigurationError: Upcaster chain does not converge
 ```
@@ -323,11 +323,11 @@ class Backward(BaseUpcaster): ...
 ### Non-convergent chains
 
 ```python
-# ERROR: v1→v2 and v1a→v3 — two terminal versions
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+# ERROR: 1→2 and 3→4 — two terminal versions
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class BranchA(BaseUpcaster): ...
 
-@domain.upcaster(event_type=OrderPlaced, from_version="v1a", to_version="v3")
+@domain.upcaster(event_type=OrderPlaced, from_version=3, to_version=4)
 class BranchB(BaseUpcaster): ...
 # → ConfigurationError: does not converge to a single current version
 ```
@@ -335,8 +335,8 @@ class BranchB(BaseUpcaster): ...
 ### Missing event class for terminal version
 
 ```python
-# ERROR: Chain ends at v99, but OrderPlaced.__version__ is "v2"
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v99")
+# ERROR: Chain ends at 99, but OrderPlaced.__version__ is 2
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=99)
 class WrongTarget(BaseUpcaster): ...
 # → ConfigurationError: no event is registered with type string ...v99
 ```

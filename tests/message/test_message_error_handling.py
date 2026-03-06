@@ -239,7 +239,7 @@ class TestMessageErrorHandling:
                     "fqn": "test.Registered",
                     "kind": "EVENT",
                     "origin_stream": None,
-                    "version": "v1",
+                    "version": 1,
                     "sequence_id": "1",
                     "asynchronous": True,
                 },

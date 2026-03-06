@@ -51,18 +51,18 @@ class TestMetadataVersion:
 
     def test_command_metadata_version_default(self):
         command = Login(user_id=str(uuid4()))
-        assert command._metadata.domain.version == "v1"
+        assert command._metadata.domain.version == 1
 
     def test_overridden_version(self, test_domain):
         class Login(BaseCommand):
-            __version__ = "v2"
+            __version__ = 2
             user_id: Identifier(identifier=True)
 
         test_domain.register(Login, part_of=User)
         test_domain.init(traverse=False)
 
         command = Login(user_id=str(uuid4()))
-        assert command._metadata.domain.version == "v2"
+        assert command._metadata.domain.version == 2
 
 
 class TestMetadataAsynchronous:
@@ -124,7 +124,7 @@ def test_command_metadata(test_domain):
                     "kind": "COMMAND",
                     "origin_stream": None,
                     "stream_category": None,
-                    "version": "v1",
+                    "version": 1,
                     "sequence_id": None,
                     "asynchronous": True,
                     "expected_version": None,

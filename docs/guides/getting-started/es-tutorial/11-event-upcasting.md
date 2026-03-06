@@ -22,7 +22,7 @@ First, bump the event to v2 and add the new field:
 --8<-- "guides/getting-started/es-tutorial/ch11.py:deposit_made_v2"
 ```
 
-The `__version__ = "v2"` attribute tells Protean this is the current
+The `__version__ = 2` attribute tells Protean this is the current
 schema. Historical events stored as `"v1"` will need transformation.
 
 ## Writing the Upcaster
@@ -34,7 +34,7 @@ schema. Historical events stored as `"v1"` will need transformation.
 The upcaster is a simple class:
 
 - **`event_type=DepositMade`** — which event this upcaster handles.
-- **`from_version="v1"`, `to_version="v2"`** — the version transition.
+- **`from_version=1`, `to_version=2`** — the version transition.
 - **`upcast(self, data: dict) -> dict`** — transforms the old payload.
   Here, we add `source_type = "unknown"` since we cannot determine the
   source for historical deposits.
@@ -60,7 +60,7 @@ Later, regulations add a `currency` field. Bump to v3:
 ```python
 @domain.event(part_of=Account)
 class DepositMade:
-    __version__ = "v3"
+    __version__ = 3
 
     account_id: Identifier(required=True)
     amount: Float(required=True)
@@ -69,7 +69,7 @@ class DepositMade:
     reference: String()
 
 
-@domain.upcaster(event_type=DepositMade, from_version="v2", to_version="v3")
+@domain.upcaster(event_type=DepositMade, from_version=2, to_version=3)
 class UpcastDepositV2ToV3(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["currency"] = "USD"
@@ -104,7 +104,7 @@ If any validation fails, `domain.init()` raises an error immediately.
 
 ## What We Built
 
-- **Event versioning** with `__version__ = "v2"` on the event class.
+- **Event versioning** with `__version__ = 2` on the event class.
 - An **upcaster** with `@domain.upcaster()` that transforms old payloads.
 - **Upcaster chains** that automatically compose (v1 → v2 → v3).
 - **Startup validation** that catches broken chains at init time.

@@ -231,7 +231,7 @@ from protean.core.upcaster import BaseUpcaster
 # Current event definition (v3)
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
-    __version__ = "v3"
+    __version__ = 3
     order_id = Identifier(required=True)
     customer_id = Identifier(required=True)
     line_items = List(required=True)
@@ -242,7 +242,7 @@ class OrderPlaced(BaseEvent):
 
 
 # v1 → v2: added currency field
-@domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastOrderPlacedV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["currency"] = "USD"
@@ -250,7 +250,7 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 
 
 # v2 → v3: renamed 'items' to 'line_items', split total into subtotal + tax
-@domain.upcaster(event_type=OrderPlaced, from_version="v2", to_version="v3")
+@domain.upcaster(event_type=OrderPlaced, from_version=2, to_version=3)
 class UpcastOrderPlacedV2ToV3(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["line_items"] = data.pop("items", [])

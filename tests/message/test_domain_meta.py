@@ -53,7 +53,7 @@ class TestDomainMetaFields:
             kind="EVENT",
             origin_stream="user-123",
             stream_category="user",
-            version="v2",
+            version=2,
             sequence_id="1.0",
             asynchronous=True,
             expected_version=5,
@@ -63,7 +63,7 @@ class TestDomainMetaFields:
         assert domain_meta.kind == "EVENT"
         assert domain_meta.origin_stream == "user-123"
         assert domain_meta.stream_category == "user"
-        assert domain_meta.version == "v2"
+        assert domain_meta.version == 2
         assert domain_meta.sequence_id == "1.0"
         assert domain_meta.asynchronous is True
         assert domain_meta.expected_version == 5
@@ -79,7 +79,7 @@ class TestDomainMetaFields:
         assert domain_meta.kind == "COMMAND"
         assert domain_meta.origin_stream is None
         assert domain_meta.stream_category is None
-        assert domain_meta.version == "v1"  # Default value
+        assert domain_meta.version == 1  # Default value
         assert domain_meta.sequence_id is None
         assert domain_meta.asynchronous is True  # Default value
         assert domain_meta.expected_version is None
@@ -139,11 +139,11 @@ class TestDomainMetaFields:
         """Test version field behavior"""
         # Default version
         meta_default = DomainMeta(fqn="test.Event", kind="EVENT")
-        assert meta_default.version == "v1"
+        assert meta_default.version == 1
 
         # Custom version
-        meta_custom = DomainMeta(fqn="test.Event", kind="EVENT", version="v3")
-        assert meta_custom.version == "v3"
+        meta_custom = DomainMeta(fqn="test.Event", kind="EVENT", version=3)
+        assert meta_custom.version == 3
 
     def test_domain_meta_asynchronous_field(self):
         """Test asynchronous field behavior"""
@@ -194,7 +194,7 @@ class TestDomainMetaFields:
             kind="EVENT",
             origin_stream="test-123",
             stream_category="test",
-            version="v2",
+            version=2,
             sequence_id="1.0",
             asynchronous=False,
             expected_version=7,
@@ -207,7 +207,7 @@ class TestDomainMetaFields:
             "kind": "EVENT",
             "origin_stream": "test-123",
             "stream_category": "test",
-            "version": "v2",
+            "version": 2,
             "sequence_id": "1.0",
             "asynchronous": False,
             "expected_version": 7,
@@ -222,7 +222,7 @@ class TestDomainMetaFields:
             "fqn": "test.Command",
             "kind": "COMMAND",
             "stream_category": "test:command",
-            "version": "v1",
+            "version": 1,
             "asynchronous": True,
         }
 
@@ -231,7 +231,7 @@ class TestDomainMetaFields:
         assert domain_meta.fqn == "test.Command"
         assert domain_meta.kind == "COMMAND"
         assert domain_meta.stream_category == "test:command"
-        assert domain_meta.version == "v1"
+        assert domain_meta.version == 1
         assert domain_meta.asynchronous is True
 
 
@@ -283,7 +283,7 @@ class TestDomainMetaInMessage:
                     "fqn": "test.Register",
                     "kind": "COMMAND",
                     "stream_category": "user:command",
-                    "version": "v1",
+                    "version": 1,
                     "asynchronous": True,
                 },
                 "envelope": {"specversion": "1.0", "checksum": "xyz789"},
@@ -295,7 +295,7 @@ class TestDomainMetaInMessage:
         assert message.metadata.domain.fqn == "test.Register"
         assert message.metadata.domain.kind == "COMMAND"
         assert message.metadata.domain.stream_category == "user:command"
-        assert message.metadata.domain.version == "v1"
+        assert message.metadata.domain.version == 1
         assert message.metadata.domain.asynchronous is True
 
     def test_message_with_partial_domain_meta(self):
@@ -322,7 +322,7 @@ class TestDomainMetaInMessage:
         assert message.metadata.domain.kind == "EVENT"
         assert message.metadata.domain.origin_stream is None
         assert message.metadata.domain.stream_category is None
-        assert message.metadata.domain.version == "v1"  # Default
+        assert message.metadata.domain.version == 1  # Default
         assert message.metadata.domain.asynchronous is True  # Default
 
     def test_event_message_with_stream_category(self):

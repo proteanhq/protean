@@ -64,7 +64,7 @@ def test_event_payload():
                 "kind": "EVENT",
                 "origin_stream": None,
                 "stream_category": "test::user",
-                "version": "v1",
+                "version": 1,
                 "sequence_id": "0",
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
                 "expected_version": None,

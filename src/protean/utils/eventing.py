@@ -153,7 +153,7 @@ class DomainMeta(BaseValueObject):
     stream_category: str | None = None
 
     # Version of the event (overridable via __version__ class attr)
-    version: str = "v1"
+    version: int = 1
 
     # Sequence of the event in the aggregate (version after persistence)
     sequence_id: str | None = None
@@ -255,9 +255,14 @@ class BaseMessageType(BaseModel, OptionsMixin):
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
 
-        # Use explicit version if specified, else default to "v1"
+        # Use explicit version if specified, else default to 1
         if not hasattr(cls, "__version__"):
-            setattr(cls, "__version__", "v1")
+            cls.__version__ = 1
+        elif not isinstance(cls.__version__, int) or cls.__version__ < 1:
+            raise IncorrectUsageError(
+                f"`{cls.__name__}.__version__` must be a positive integer, "
+                f"got `{cls.__version__!r}`"
+            )
 
         # Initialize invariant storage
         setattr(cls, "_invariants", defaultdict(dict))
@@ -758,8 +763,9 @@ class Message(BaseModel, OptionsMixin):
                         f"Message type {type_string} is not registered with the domain."
                     )
 
-                # Parse "DomainName.EventName.version" → base + version
-                base_type, _, from_version = type_string.rpartition(".")
+                # Parse "DomainName.EventName.v1" → base + int version
+                base_type, _, version_str = type_string.rpartition(".")
+                from_version = int(version_str.lstrip("v"))
                 data = upcaster_chain.upcast(base_type, from_version, data)
 
             return element_cls(_metadata=self.metadata, **data)

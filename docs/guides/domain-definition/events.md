@@ -192,7 +192,7 @@ Sample metadata from an event:
     "stream": "test::user-411b2ceb-9513-45d7-9e03-bbc0846fae93",
     "origin_stream": null,
     "timestamp": "2024-08-16 15:30:27.977101+00:00",
-    "version": "v1",
+    "version": 1,
     "sequence_id": "0",
     "asynchronous": true,
     "correlation_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
@@ -325,7 +325,7 @@ In [2]: user.login()
 In [3]: event = user._events[0]
 
 In [4]: event
-Out[4]: <UserLoggedIn: UserLoggedIn object ({'_metadata': {'id': '002::user-1-0.1', 'type': '002.UserLoggedIn.v1', 'fqn': '002.UserLoggedIn', 'kind': 'EVENT', 'stream': '002::user-1', 'origin_stream': None, 'timestamp': '2024-07-18 22:02:32.522360+00:00', 'version': 'v1', 'sequence_id': '0.1'}, 'user_id': '1'})>
+Out[4]: <UserLoggedIn: UserLoggedIn object ({'_metadata': {'id': '002::user-1-0.1', 'type': '002.UserLoggedIn.v1', 'fqn': '002.UserLoggedIn', 'kind': 'EVENT', 'stream': '002::user-1', 'origin_stream': None, 'timestamp': '2024-07-18 22:02:32.522360+00:00', 'version': 1, 'sequence_id': '0.1'}, 'user_id': '1'})>
 
 In [5]: event.to_dict()
 Out[5]: 
@@ -336,7 +336,7 @@ Out[5]:
   'stream': '002::user-1',
   'origin_stream': None,
   'timestamp': '2024-07-18 22:02:32.522360+00:00',
-  'version': 'v1',
+  'version': 1,
   'sequence_id': '0.1'},
  'user_id': '1'}
 
@@ -349,7 +349,7 @@ Out[6]: {'user_id': '1'}
 Because events serve as API contracts of an aggregate with the rest of the
 ecosystem, they are versioned to signal changes to contract.
 
-Events have a default version of **v1**.
+Events have a default version of **1**.
 
 You can override and customize the version with the `__version__` class
 attribute:
@@ -357,7 +357,7 @@ attribute:
 ```python hl_lines="3"
 @domain.event(part_of=User)
 class UserActivated:
-    __version__ = "v2"
+    __version__ = 2
 
     user_id: Identifier(required=True)
     activated_at: DateTime(required=True)

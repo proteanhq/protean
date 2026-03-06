@@ -33,11 +33,11 @@ class UpcasterChain:
     def __init__(self) -> None:
         # Edges collected before build_chains() is called.
         # {event_base_type: [(from_version, to_version, upcaster_cls), ...]}
-        self._edges: dict[str, list[tuple[str, str, type]]] = {}
+        self._edges: dict[str, list[tuple[int, int, type]]] = {}
 
         # Populated by build_chains():
         # {(event_base_type, from_version): [upcaster_instance, ...]}
-        self._chains: dict[tuple[str, str], list[Any]] = {}
+        self._chains: dict[tuple[str, int], list[Any]] = {}
 
         # {old_type_string: current_event_class}
         self._version_map: dict[str, type] = {}
@@ -49,8 +49,8 @@ class UpcasterChain:
     def register_upcaster(
         self,
         event_base_type: str,
-        from_version: str,
-        to_version: str,
+        from_version: int,
+        to_version: int,
         upcaster_cls: type,
     ) -> None:
         """Record a single upcaster edge for later chain construction."""
@@ -86,13 +86,13 @@ class UpcasterChain:
     def _build_chain_for_event(
         self,
         event_base_type: str,
-        edges: list[tuple[str, str, type]],
+        edges: list[tuple[int, int, type]],
         events_and_commands: dict[str, type],
     ) -> None:
         # Build adjacency map: from_version → (to_version, upcaster_cls)
-        adjacency: dict[str, tuple[str, type]] = {}
-        all_from: set[str] = set()
-        all_to: set[str] = set()
+        adjacency: dict[int, tuple[int, type]] = {}
+        all_from: set[int] = set()
+        all_to: set[int] = set()
 
         for from_v, to_v, cls in edges:
             if from_v in adjacency:
@@ -118,7 +118,7 @@ class UpcasterChain:
         current_version = terminal_versions.pop()
 
         # Verify the terminal version matches a registered event class.
-        current_type_string = f"{event_base_type}.{current_version}"
+        current_type_string = f"{event_base_type}.v{current_version}"
         current_cls = events_and_commands.get(current_type_string)
         if current_cls is None:
             raise ConfigurationError(
@@ -130,7 +130,7 @@ class UpcasterChain:
         # Walk from each source version to the terminal, building the chain.
         for start_version in all_from:
             chain: list[Any] = []
-            visited: set[str] = set()
+            visited: set[int] = set()
             v = start_version
 
             while v in adjacency:
@@ -152,13 +152,13 @@ class UpcasterChain:
                 )
 
             self._chains[(event_base_type, start_version)] = chain
-            self._version_map[f"{event_base_type}.{start_version}"] = current_cls
+            self._version_map[f"{event_base_type}.v{start_version}"] = current_cls
 
     # ------------------------------------------------------------------
     # Runtime lookup & application
     # ------------------------------------------------------------------
 
-    def upcast(self, event_base_type: str, from_version: str, data: dict) -> dict:
+    def upcast(self, event_base_type: str, from_version: int, data: dict) -> dict:
         """Apply the upcaster chain and return the transformed payload.
 
         Returns *data* unchanged if no chain exists for the given key.

@@ -29,7 +29,7 @@ class AccountOpened:
 class DepositMade:
     """v2 adds a source_type field to track how the deposit originated."""
 
-    __version__ = "v2"
+    __version__ = 2
 
     account_id: Identifier(required=True)
     amount: Float(required=True)
@@ -143,7 +143,7 @@ class Account:
 
 # --8<-- [end:aggregate]
 # --8<-- [start:upcaster]
-@domain.upcaster(event_type=DepositMade, from_version="v1", to_version="v2")
+@domain.upcaster(event_type=DepositMade, from_version=1, to_version=2)
 class UpcastDepositV1ToV2(BaseUpcaster):
     """Transform v1 DepositMade events to v2 by adding source_type.
 
@@ -281,8 +281,8 @@ if __name__ == "__main__":
 
         # Verify the upcaster is registered
         assert UpcastDepositV1ToV2.meta_.event_type == DepositMade
-        assert UpcastDepositV1ToV2.meta_.from_version == "v1"
-        assert UpcastDepositV1ToV2.meta_.to_version == "v2"
+        assert UpcastDepositV1ToV2.meta_.from_version == 1
+        assert UpcastDepositV1ToV2.meta_.to_version == 2
 
         assert account.balance == 1750.00  # 1000 + 500 + 250
         print("\nAll checks passed!")

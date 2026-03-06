@@ -104,7 +104,7 @@ past tense (`OrderPlaced`, `CustomerRegistered`).
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Aggregate that raises this event |
 
-Events also support a `__version__` class attribute (default `"v1"`) for
+Events also support a `__version__` class attribute (default `1`) for
 schema versioning.
 
 Guide: [Events](../../guides/domain-definition/events.md)

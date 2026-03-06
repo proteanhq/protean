@@ -71,7 +71,7 @@ Both IDs live in `DomainMeta`, the domain-specific section of message metadata:
         "domain": {
             "fqn": "myapp.events.OrderPlaced",
             "kind": "EVENT",
-            "version": "v1",
+            "version": 1,
             "sequence_id": "0.1",
             "correlation_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
             "causation_id": "myapp::order:command-abc123"

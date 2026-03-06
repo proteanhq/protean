@@ -66,7 +66,7 @@ class TestTraceParentHandling:
                 "domain": {
                     "fqn": "test.Event",
                     "kind": "EVENT",
-                    "version": "v1",
+                    "version": 1,
                 }
             },
             "headers": {
@@ -148,7 +148,7 @@ class TestMessageDeserializationEdgeCases:
                 "domain": {
                     "fqn": "test.User.Registered.v1",
                     "kind": "EVENT",
-                    "version": "v1",
+                    "version": 1,
                 },
             },
             # These values should be picked up when headers aren't present
@@ -188,7 +188,7 @@ class TestMessageDeserializationEdgeCases:
                 "domain": {
                     "fqn": "test.User.Registered.v1",
                     "kind": "EVENT",
-                    "version": "v1",
+                    "version": 1,
                 },
             },
         }
@@ -215,7 +215,7 @@ class TestMessageDeserializationEdgeCases:
                 "domain": {
                     "fqn": "test.User.Registered.v1",
                     "kind": "EVENT",
-                    "version": "v1",
+                    "version": 1,
                 },
             },
             # Position and global_position at root level
@@ -244,7 +244,7 @@ class TestMessageDeserializationEdgeCases:
                 "domain": {
                     "fqn": "test.User.Registered.v1",
                     "kind": "EVENT",
-                    "version": "v1",
+                    "version": 1,
                 },
             },
             "position": 5,
@@ -353,7 +353,7 @@ class TestMessageBuildErrorContext:
                 "domain": DomainMeta(
                     fqn="test.Event",
                     kind="EVENT",
-                    version="v1",
+                    version=1,
                 ),
                 "event_store": EventStoreMeta(
                     position=10,
@@ -422,7 +422,7 @@ class TestMessageFromDomainObjectEdgeCases:
             "domain": DomainMeta(
                 fqn="test.Register",
                 kind=MessageType.COMMAND.value,
-                version="v1",
+                version=1,
             ),
         }
         # Use object.__setattr__ to bypass immutability check
@@ -454,7 +454,7 @@ class TestMessageFromDomainObjectEdgeCases:
             "domain": DomainMeta(
                 fqn="test.UserFactEvent",
                 kind=MessageType.EVENT.value,
-                version="v1",
+                version=1,
             ),
         }
 
@@ -487,7 +487,7 @@ class TestMessageToDomainObjectValidation:
                 "domain": DomainMeta(
                     fqn="test.Registered",
                     kind=MessageType.EVENT.value,
-                    version="v1",
+                    version=1,
                 ),
             },
         )
@@ -515,7 +515,7 @@ class TestMessageToDomainObjectValidation:
                 "domain": DomainMeta(
                     fqn="test.Unknown",
                     kind="UNSUPPORTED",  # Invalid kind
-                    version="v1",
+                    version=1,
                 ),
             },
         )
@@ -542,7 +542,7 @@ class TestMessageToDomainObjectValidation:
                 "domain": DomainMeta(
                     fqn="test.UnregisteredEvent",
                     kind=MessageType.EVENT.value,
-                    version="v1",
+                    version=1,
                 ),
             },
         )

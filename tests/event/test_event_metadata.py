@@ -84,18 +84,18 @@ class TestMetadataVersion:
 
     def test_event_metadata_version_default(self):
         event = UserLoggedIn(user_id=str(uuid4()))
-        assert event._metadata.domain.version == "v1"
+        assert event._metadata.domain.version == 1
 
     def test_overridden_version(self, test_domain):
         class UserLoggedIn(BaseEvent):
-            __version__ = "v2"
+            __version__ = 2
             user_id: Identifier(identifier=True)
 
         test_domain.register(UserLoggedIn, part_of=User)
         test_domain.init(traverse=False)
 
         event = UserLoggedIn(user_id=str(uuid4()))
-        assert event._metadata.domain.version == "v2"
+        assert event._metadata.domain.version == 2
 
     def test_version_value_in_multiple_event_definitions(self, test_domain):
         def version1():
@@ -106,7 +106,7 @@ class TestMetadataVersion:
 
         def version2():
             class DummyEvent(BaseEvent):
-                __version__ = "v2"
+                __version__ = 2
                 user_id: Identifier(identifier=True)
 
             return DummyEvent
@@ -118,8 +118,8 @@ class TestMetadataVersion:
         test_domain.register(event_cls2, part_of=User)
         test_domain.init(traverse=False)
 
-        assert event_cls1.__version__ == "v1"
-        assert event_cls2.__version__ == "v2"
+        assert event_cls1.__version__ == 1
+        assert event_cls2.__version__ == 2
 
         assert len(test_domain.registry.events) == 3  # Includes UserLoggedIn
 
@@ -184,7 +184,7 @@ def test_event_metadata():
                 "kind": "EVENT",
                 "origin_stream": None,
                 "stream_category": "test::user",
-                "version": "v1",
+                "version": 1,
                 "sequence_id": "0",
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
                 "expected_version": None,

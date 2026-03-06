@@ -31,7 +31,7 @@ class TestLegacyFlatMetadataDeserialization:
                 "kind": "EVENT",
                 "type": "SustainApi.ClientContactUpdated.v1",
                 "stream": "sustain_api::client-dc1eafa7-2e61-4d2c-81e9-0003554cf284",
-                "version": "v1",
+                "version": 1,
                 "timestamp": "2026-01-19 09:57:49.404658+00:00",
                 "sequence_id": "3.4",
                 "asynchronous": True,
@@ -57,7 +57,7 @@ class TestLegacyFlatMetadataDeserialization:
         # Domain metadata migrated from flat keys
         assert msg.metadata.domain.fqn == "src.clients.model.ClientContactUpdated"
         assert msg.metadata.domain.kind == "EVENT"
-        assert msg.metadata.domain.version == "v1"
+        assert msg.metadata.domain.version == 1
         assert msg.metadata.domain.sequence_id == "3.4"
         assert msg.metadata.domain.asynchronous is True
         assert msg.metadata.domain.origin_stream is None

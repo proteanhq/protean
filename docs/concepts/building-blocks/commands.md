@@ -46,13 +46,13 @@ Headers and metadata such as timestamps, unique identifiers, and version
 numbers are included in commands for precise tracking of origin and intent.
 
 ### Commands are **versioned**. { data-toc-label="Versioning" }
-Each command is assigned a version number (defaulting to `"v1"`), ensuring that
+Each command is assigned a version number (defaulting to `1`), ensuring that
 commands can evolve over time. Set `__version__` on the class to override:
 
 ```python
 @domain.command(part_of=Order)
 class PlaceOrder:
-    __version__ = "v2"
+    __version__ = 2
     ...
 ```
 

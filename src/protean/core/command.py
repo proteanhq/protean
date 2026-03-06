@@ -120,9 +120,7 @@ class BaseCommand(BaseMessageType):
     def _build_metadata(self, incoming: Metadata | None) -> None:
         """Build metadata for the command from incoming metadata or defaults."""
         version = (
-            self.__class__.__version__
-            if hasattr(self.__class__, "__version__")
-            else "v1"
+            self.__class__.__version__ if hasattr(self.__class__, "__version__") else 1
         )
 
         origin_stream = None

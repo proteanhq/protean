@@ -101,7 +101,7 @@
       "commands": {
         "banking.accounts.CloseAccount": {
           "__type__": "Fidelis.CloseAccount.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "COMMAND",
           "fields": {
             "account_id": {
@@ -121,7 +121,7 @@
         },
         "banking.accounts.MakeDeposit": {
           "__type__": "Fidelis.MakeDeposit.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "COMMAND",
           "fields": {
             "account_id": {
@@ -146,7 +146,7 @@
         },
         "banking.accounts.MakeWithdrawal": {
           "__type__": "Fidelis.MakeWithdrawal.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "COMMAND",
           "fields": {
             "account_id": {
@@ -171,7 +171,7 @@
         },
         "banking.accounts.OpenAccount": {
           "__type__": "Fidelis.OpenAccount.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "COMMAND",
           "fields": {
             "account_number": {
@@ -225,7 +225,7 @@
       "events": {
         "banking.accounts.AccountClosed": {
           "__type__": "Fidelis.AccountClosed.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "EVENT",
           "fields": {
             "account_id": {
@@ -246,7 +246,7 @@
         },
         "banking.accounts.AccountOpened": {
           "__type__": "Fidelis.AccountOpened.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "EVENT",
           "fields": {
             "account_id": {
@@ -279,7 +279,7 @@
         },
         "banking.accounts.DepositMade": {
           "__type__": "Fidelis.DepositMade.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "EVENT",
           "fields": {
             "account_id": {
@@ -306,7 +306,7 @@
         },
         "banking.accounts.WithdrawalMade": {
           "__type__": "Fidelis.WithdrawalMade.v1",
-          "__version__": "v1",
+          "__version__": 1,
           "element_type": "EVENT",
           "fields": {
             "account_id": {

@@ -533,8 +533,8 @@ class TestESTutorialCh11(_ESTutorialBase):
 
             # Verify upcaster metadata
             assert ch11.UpcastDepositV1ToV2.meta_.event_type == ch11.DepositMade
-            assert ch11.UpcastDepositV1ToV2.meta_.from_version == "v1"
-            assert ch11.UpcastDepositV1ToV2.meta_.to_version == "v2"
+            assert ch11.UpcastDepositV1ToV2.meta_.from_version == 1
+            assert ch11.UpcastDepositV1ToV2.meta_.to_version == 2
 
 
 @pytest.mark.no_test_domain

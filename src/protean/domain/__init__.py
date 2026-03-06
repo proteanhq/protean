@@ -1380,12 +1380,12 @@ class Domain:
 
         Keyword Args:
             event_type (type): The event class this upcaster targets (current version).
-            from_version (str): Source version string (e.g. ``"v1"``).
-            to_version (str): Target version string (e.g. ``"v2"``).
+            from_version (int): Source version number (e.g. ``1``).
+            to_version (int): Target version number (e.g. ``2``).
 
         Example::
 
-            @domain.upcaster(event_type=OrderPlaced, from_version="v1", to_version="v2")
+            @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
             class UpcastOrderPlacedV1ToV2(BaseUpcaster):
                 def upcast(self, data: dict) -> dict:
                     data["currency"] = "USD"
