@@ -227,13 +227,13 @@ class AccountCommandHandler:
     def register(self, command: RegisterCommand):
         # Command handling logic that might raise exceptions
         ...
-    
+
     @classmethod
     def handle_error(cls, exc: Exception, message):
         """Custom error handling logic for command processing failures"""
         # Log the error
         logger.error(f"Failed to process command: {exc}")
-        
+
         # Perform recovery operations
         # Example: notify monitoring systems, attempt retry, etc.
         ...

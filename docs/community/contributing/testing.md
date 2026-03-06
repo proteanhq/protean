@@ -365,7 +365,7 @@ jobs:
       # Setup steps...
       - name: Tests
         run: protean test -c FULL
-        
+
       - name: CodeCOV
         uses: codecov/codecov-action@v4.0.1
         with:

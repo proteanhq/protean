@@ -21,7 +21,7 @@ Validations ensure that data meets basic requirements before it can be processed
 Invariants are business rules that must always hold true within your domain model. They preserve the consistency and integrity of your domain objects:
 
 - **Always valid** - Invariants are conditions that must hold true at all times
-- **Domain-driven** - Invariants stem from business rules and policies 
+- **Domain-driven** - Invariants stem from business rules and policies
 - **Immediate validation** - Triggered automatically during initialization and state changes
 
 [Learn more about invariants →](invariants.md)

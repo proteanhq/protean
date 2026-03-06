@@ -41,7 +41,7 @@ domain.repository_for(Person).add(person)
 from protean import UnitOfWork
 
 with UnitOfWork():
-    domain.repository_for(Person).add(person)    
+    domain.repository_for(Person).add(person)
 ...
 ```
 
@@ -69,7 +69,7 @@ persisting to the database.
 In [1]: post = Post(title="Events in Aggregates", body="Lorem ipsum dolor sit amet, consectetur adipiscing...")
 
 In [2]: post.to_dict()
-Out[2]: 
+Out[2]:
 {'title': 'Events in Aggregates',
  'body': 'Lorem ipsum dolor sit amet, consectetur adipiscing...',
  'published': False,
@@ -109,7 +109,7 @@ In [3]: domain.repository_for(Post).get("1")
 Out[3]: <Post: Post object (id: 1)>
 
 In [4]: domain.repository_for(Post).get("1").to_dict()
-Out[4]: 
+Out[4]:
 {'title': 'Events in Aggregates',
  'body': 'Lorem ipsum dolor sit amet, consectetur adipiscing...',
  'published': False,
@@ -121,7 +121,7 @@ In [6]: domain.repository_for(Post).add(post)
 Out[6]: <Post: Post object (id: 1)>
 
 In [7]: domain.repository_for(Post).get("1").to_dict()
-Out[7]: 
+Out[7]:
 {'title': '(Updated Title) Events in Entities',
  'body': 'Lorem ipsum dolor sit amet, consectetur adipiscing...',
  'published': False,

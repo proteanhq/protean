@@ -71,7 +71,7 @@ A date, represented in Python by a `datetime.date` instance.
 In [1]: p = Post(title="It")
 
 In [2]: p.to_dict()
-Out[2]: 
+Out[2]:
 {'title': 'It',
  'published_on': '2024-05-09',
  'id': '88a21815-7d9b-4138-9cac-5a06889d4318'}
@@ -85,7 +85,7 @@ the help of the venerable
 In [1]: post = Post(title='Foo', published_on="2020-01-01")
 
 In [2]: post.to_dict()
-Out[2]: 
+Out[2]:
 {'title': 'Foo',
  'published_on': '2020-01-01',
  'id': 'ffcb3b26-71f0-45d0-8ca0-b71a9603f792'}
@@ -109,7 +109,7 @@ A date and time, represented in Python by a `datetime.datetime` instance.
 In [1]: p = Post(title="It")
 
 In [2]: p.to_dict()
-Out[2]: 
+Out[2]:
 {'title': 'It',
  'created_at': '2024-05-09 17:12:11.373300+00:00',
  'id': '3a96e434-06ab-4244-80a8-76edbd621a27'}
@@ -127,7 +127,7 @@ A `True`/`False` field.
 In [1]: u = User(name="John Doe")
 
 In [2]: u.to_dict()
-Out[2]: 
+Out[2]:
 {'name': 'John Doe',
  'subscribed': False,
  'id': '69190dd4-12a6-4666-a799-9409ddab39cd'}
@@ -173,7 +173,7 @@ that represents their unique identifier.
 
 ```shell hl_lines="4 11"
 In [1]: declared_fields(Person)
-Out[1]: 
+Out[1]:
 {'name': String(required=True, max_length=50, min_length=2),
  'id': Auto(identifier=True)}
 

@@ -91,13 +91,13 @@ broker = domain.brokers['default']
 if broker.has_capability(BrokerCapabilities.CONSUMER_GROUPS):
     # Use consumer group features
     messages = broker.read(
-        stream="orders", 
+        stream="orders",
         consumer_group="order-processor"
     )
 
 # Check for any of multiple capabilities
 if broker.has_any_capability(
-    BrokerCapabilities.MESSAGE_ACKNOWLEDGEMENT | 
+    BrokerCapabilities.MESSAGE_ACKNOWLEDGEMENT |
     BrokerCapabilities.MESSAGE_REJECTION
 ):
     # Handle acknowledgments

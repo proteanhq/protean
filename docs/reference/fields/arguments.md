@@ -85,7 +85,7 @@ called every time a new object is created.
 In [1]: post = Post(title='Foo')
 
 In [2]: post.to_dict()
-Out[2]: 
+Out[2]:
 {'title': 'Foo',
  'created_at': '2024-05-09 00:58:10.781744+00:00',
  'id': '4f6b1fef-bc60-44c2-9ba6-6f844e0d31b0'}
@@ -109,7 +109,7 @@ Initializing an Adult aggregate will populate the defaults correctly:
 In [1]: adult = Adult(name="John Doe")
 
 In [2]: adult.to_dict()
-Out[2]: 
+Out[2]:
 {'name': 'John Doe',
  'topics': ['Music', 'Cinema', 'Politics'],
  'id': '14381a6f-b62a-4135-a1d7-d50f68e2afba'}
@@ -180,7 +180,7 @@ The choices are enforced when the field is initialized or updated:
 In [1]: building = Building(name="Atlantis", floors=3, status="WIP")
 
 In [2]: building.to_dict()
-Out[2]: 
+Out[2]:
 {'name': 'Atlantis',
  'floors': 3,
  'status': 'WIP',
@@ -207,13 +207,13 @@ Protean will now persist the value under `fullname` instead of `name`.
 In [1]: from protean.utils.reflection import declared_fields, attributes
 
 In [2]: declared_fields(Person)
-Out[2]: 
+Out[2]:
 {'email': String(),
  'name': String(required=True, referenced_as='fullname'),
  'id': Auto(identifier=True)}
 
 In [3]: attributes(Person)
-Out[3]: 
+Out[3]:
 {'_version': Integer(default=-1),
  'email': String(),
  'fullname': String(required=True, referenced_as='fullname'),

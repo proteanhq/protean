@@ -23,51 +23,51 @@ if TYPE_CHECKING:
 
 class CustomBroker(BaseBroker):
     """Custom broker implementation."""
-    
+
     def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
         super().__init__(name, domain, conn_info)
         # Initialize your broker connection here
-    
+
     @property
     def capabilities(self) -> BrokerCapabilities:
         """Declare broker capabilities."""
         return BrokerCapabilities.BASIC_PUBSUB
-    
+
     def _publish(self, stream: str, message: dict) -> str:
         """Publish a message to the broker."""
         # Implementation required
         pass
-    
+
     def _read(
-        self, 
-        stream: str, 
-        consumer_group: str, 
+        self,
+        stream: str,
+        consumer_group: str,
         no_of_messages: int
     ) -> List[Tuple[str, dict]]:
         """Read messages from the broker."""
         # Implementation required
         pass
-    
+
     def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Acknowledge message processing."""
         # Required if ACK_NACK capability is declared
         pass
-    
+
     def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Reject message for reprocessing."""
         # Required if ACK_NACK capability is declared
         pass
-    
+
     def _ping(self) -> bool:
         """Test broker connectivity."""
         # Implementation required
         pass
-    
+
     def _health_stats(self) -> dict:
         """Get broker health statistics."""
         # Implementation required
         pass
-    
+
     def _ensure_connection(self) -> bool:
         """Ensure connection is healthy."""
         # Implementation required
@@ -119,7 +119,7 @@ def register():
         # Only register if kafka is available
         import kafka
         from protean.port.broker import registry
-        
+
         registry.register(
             "kafka",
             "protean_kafka.broker.KafkaBroker"
@@ -146,49 +146,49 @@ if TYPE_CHECKING:
 
 class KafkaBroker(BaseBroker):
     """Kafka broker implementation for Protean."""
-    
+
     __broker__ = "kafka"
-    
+
     def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
         super().__init__(name, domain, conn_info)
-        
+
         # Initialize Kafka connection
         self.producer = kafka.KafkaProducer(
             bootstrap_servers=conn_info.get("BOOTSTRAP_SERVERS", ["localhost:9092"]),
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
-        
+
         self.consumer = kafka.KafkaConsumer(
             bootstrap_servers=conn_info.get("BOOTSTRAP_SERVERS", ["localhost:9092"]),
             value_deserializer=lambda m: json.loads(m.decode('utf-8'))
         )
-    
+
     @property
     def capabilities(self) -> BrokerCapabilities:
         return BrokerCapabilities.ORDERED_MESSAGING
-    
+
     def _publish(self, stream: str, message: dict) -> str:
         """Publish message to Kafka topic."""
         future = self.producer.send(stream, message)
         record_metadata = future.get(timeout=10)
         return f"{record_metadata.partition}:{record_metadata.offset}"
-    
+
     def _read(self, stream: str, consumer_group: str, no_of_messages: int) -> List[Tuple[str, dict]]:
         """Read messages from Kafka topic."""
         # Subscribe to topic with consumer group
         self.consumer.subscribe([stream])
         messages = []
-        
+
         # Poll for messages
         records = self.consumer.poll(timeout_ms=1000, max_records=no_of_messages)
-        
+
         for topic_partition, msgs in records.items():
             for msg in msgs:
                 msg_id = f"{msg.partition}:{msg.offset}"
                 messages.append((msg_id, msg.value))
-        
+
         return messages
-    
+
     def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Acknowledge message (commit offset in Kafka)."""
         try:
@@ -196,13 +196,13 @@ class KafkaBroker(BaseBroker):
             return True
         except Exception:
             return False
-    
+
     def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Negative acknowledgment - seek back for reprocessing."""
         # In Kafka, NACK typically means not committing the offset
         # Message will be redelivered on next poll
         return True
-    
+
     def _ping(self) -> bool:
         """Test Kafka connectivity."""
         try:
@@ -211,7 +211,7 @@ class KafkaBroker(BaseBroker):
             return True
         except:
             return False
-    
+
     def _health_stats(self) -> dict:
         """Get Kafka broker health statistics."""
         try:
@@ -223,7 +223,7 @@ class KafkaBroker(BaseBroker):
             }
         except Exception as e:
             return {"healthy": False, "error": str(e)}
-    
+
     def _ensure_connection(self) -> bool:
         """Ensure Kafka connection is healthy."""
         return self._ping()
@@ -270,16 +270,16 @@ Choose the appropriate capability tier for your broker:
 def capabilities(self) -> BrokerCapabilities:
     # Basic pub/sub only
     return BrokerCapabilities.BASIC_PUBSUB
-    
+
     # With consumer groups
     return BrokerCapabilities.SIMPLE_QUEUING
-    
+
     # With acknowledgments
     return BrokerCapabilities.RELIABLE_MESSAGING
-    
+
     # With ordering guarantees
     return BrokerCapabilities.ORDERED_MESSAGING
-    
+
     # Full enterprise features
     return BrokerCapabilities.ENTERPRISE_STREAMING
 ```
@@ -319,10 +319,10 @@ def test_end_to_end():
         }
     }
     domain.init()
-    
+
     # Publish message
     msg_id = domain.brokers.publish("test", {"data": "test"})
-    
+
     # Read message
     messages = domain.brokers['default'].read("test", "group", 1)
     assert len(messages) == 1
@@ -343,11 +343,11 @@ def test_end_to_end():
 ```python
 def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
     super().__init__(name, domain, conn_info)
-    
+
     # Create connection pool
     self.pool = []
     pool_size = conn_info.get("POOL_SIZE", 10)
-    
+
     for _ in range(pool_size):
         conn = self._create_connection()
         self.pool.append(conn)
@@ -360,7 +360,7 @@ import time
 
 def _publish(self, stream: str, message: dict) -> str:
     max_retries = 3
-    
+
     for attempt in range(max_retries):
         try:
             return self._do_publish(stream, message)

@@ -20,7 +20,7 @@ domain concept. Aggregates are often composed of one or more Aggregate
 Elements, that work together to codify the concept.
 
 Aggregates act as **Root Entities** - they manage the lifecycle
-of all [Entities](../../glossary.md#entity) and 
+of all [Entities](../../glossary.md#entity) and
 [Value Objects](../../glossary.md#value-object) enclosed within them.
 Aggregates are just [entities](#entities), in that sense, but are responsible
 for all other enclosed entities. Elements enclosed within an Aggregate are

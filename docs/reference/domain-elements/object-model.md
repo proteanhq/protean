@@ -9,7 +9,7 @@ traits.
 ## Meta Options
 
 Protean elements have a `meta_` attribute that holds the configuration options
-specified for the element. 
+specified for the element.
 
 Options are passed as parameters to the element decorator:
 
@@ -19,7 +19,7 @@ Options are passed as parameters to the element decorator:
 
 ```python
 In [1]: User.meta_
-Out[1]: 
+Out[1]:
 {'database_model': None,
  'stream_category': 'user',
  'auto_add_id_field': True,

@@ -116,7 +116,7 @@ Handlers automatically subscribe to their associated aggregate's stream category
 @domain.event_handler(part_of=Order)
 class OrderEventHandler:
     # Subscribes to Order's stream category ("order")
-    
+
     @handle(OrderPlaced)
     def handle_order_placed(self, event):
         ...
@@ -143,7 +143,7 @@ A powerful pattern is having handlers that are part of one aggregate but subscri
 @domain.event_handler(part_of=Inventory, stream_category="order")
 class InventoryEventHandler:
     """Handles order events to update inventory."""
-    
+
     @handle(OrderShipped)
     def reduce_stock(self, event):
         # React to Order events while being part of Inventory
@@ -308,7 +308,7 @@ class Shipment:
 Use explicit stream categories when the default doesn't align with your domain language:
 
 ```python
-# Default would be "purchase_order" 
+# Default would be "purchase_order"
 @domain.aggregate(stream_category="order")
 class PurchaseOrder:
     ...
@@ -323,7 +323,7 @@ When handlers subscribe to other aggregates' streams, document the reason clearl
 class InventoryEventHandler:
     """
     Subscribes to order stream to maintain inventory consistency.
-    
+
     When orders are placed or shipped, inventory levels are adjusted
     to reflect the change in available stock.
     """

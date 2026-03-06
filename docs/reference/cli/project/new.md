@@ -17,7 +17,7 @@ protean new [OPTIONS] PROJECT_NAME
 
 ## Options
 
-- `--output-dir`, `-o`: Specifies the directory where the project should be 
+- `--output-dir`, `-o`: Specifies the directory where the project should be
 created. If not provided, the current directory is used.
 
 !!! note

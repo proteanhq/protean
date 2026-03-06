@@ -107,7 +107,7 @@ In [1]: user = User(
    ...: )
 
 In [2]: user.to_dict()
-Out[2]: 
+Out[2]:
 {'email': {'address': 'john.doe@gmail.com'},
  'name': 'John Doe',
  'timezone': 'America/Los_Angeles',
@@ -143,7 +143,7 @@ In [1]: account = Account(
    ...:     )
 
 In [2]: account.to_dict()
-Out[2]: 
+Out[2]:
 {'balance': {'currency': 'USD', 'amount': 100.0},
  'name': 'Checking',
  'id': '74731f8b-a58e-4666-858b-b2e57e42ce68'}
@@ -160,7 +160,7 @@ In [1]: account = Account(
    ...:     )
 
 In [2]: account.to_dict()
-Out[2]: 
+Out[2]:
 {'balance': {'currency': 'USD', 'amount': 100.0},
  'name': 'Checking',
  'id': 'a41a0ac9-9e6d-4300-96e3-054c70201e51'}

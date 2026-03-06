@@ -257,9 +257,9 @@ sequenceDiagram
   API Controller->>Domain: command object (asynchronous=True)
   Domain->>Event Store: Store command with asynchronous=True
   Domain-->>API Controller: Acknowledge receipt (return immediately)
-  
+
   Note over Protean Server: Later, asynchronously...
-  
+
   Protean Server->>Event Store: Poll for unprocessed commands
   Event Store-->>Protean Server: Return command
   Protean Server->>Command Handler: Process command
@@ -289,7 +289,7 @@ IncorrectUsageError: 'Command Objects are immutable and cannot be modified once 
 ## Relationship with Event Processing
 
 Protean offers similar configuration options for events through:
-- The `event_processing` domain configuration setting 
+- The `event_processing` domain configuration setting
 - The ability to raise events with specific `asynchronous` flags
 
 Events and commands in Protean follow the same processing patterns, enabling you to build consistent, predictable workflows. You can configure both to suit your specific domain needs:

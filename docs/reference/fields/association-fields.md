@@ -43,7 +43,7 @@ In [2]: domain.repository_for(Book).add(book)
 Out[2]: <Book: Book object (id: a4a642d9-87ed-44de-9889-c687466f171b)>
 
 In [3]: domain.repository_for(Book).query.all().items[0].to_dict()
-Out[3]: 
+Out[3]:
 {'title': 'The Great Gatsby',
  'author': {'name': 'F. Scott Fitzgerald',
   'id': '1f275e92-9872-4d96-b999-4ef0fbe61013'},
@@ -59,13 +59,13 @@ Out[3]:
     In [1]: from protean.utils.reflection import declared_fields, attributes
 
     In [2]: declared_fields(Author)
-    Out[2]: 
+    Out[2]:
     {'name': String(required=True, max_length=50),
     'id': Auto(identifier=True),
     'book': Reference()}
-    
+
     In [3]: attributes(Author)
-    Out[3]: 
+    Out[3]:
     {'name': String(required=True, max_length=50),
     'id': Auto(identifier=True),
     'book_id': _ReferenceField()}
@@ -98,7 +98,7 @@ In [1]: post = Post(
    ...: )
 
 In [2]: post.to_dict()
-Out[2]: 
+Out[2]:
 {'title': 'Foo',
  'comments': [{'content': 'Bar', 'id': '085ed011-15b3-48e3-9363-99a53bc9362a'},
   {'content': 'Baz', 'id': '4790cf87-c234-42b6-bb03-1e0599bd6c0f'}],
@@ -107,7 +107,7 @@ Out[2]:
 In [3]: post.add_comments(Comment(content="Qux"))
 
 In [4]: post.to_dict()
-Out[4]: 
+Out[4]:
 {'title': 'Foo',
  'comments': [{'content': 'Bar', 'id': '085ed011-15b3-48e3-9363-99a53bc9362a'},
   {'content': 'Baz', 'id': '4790cf87-c234-42b6-bb03-1e0599bd6c0f'},
@@ -162,7 +162,7 @@ Reference fields automatically create shadow fields (foreign key attributes) tha
 ```shell hl_lines="6"
 In [1]: from protean.utils.reflection import attributes
 In [2]: attributes(Comment)
-Out[2]: 
+Out[2]:
 {'content': String(max_length=500),
  'id': Auto(identifier=True),
  'post': Reference(),
@@ -195,7 +195,7 @@ class Order:
 By default, association fields create foreign keys following the pattern `<aggregate_name>_id`. The `via` parameter allows you to specify a custom field name for the foreign key relationship:
 
 ```python hl_lines="4 9"
-@domain.aggregate  
+@domain.aggregate
 class Product:
     name: String(max_length=100)
     reviews = HasMany("Review", via="product_sku")

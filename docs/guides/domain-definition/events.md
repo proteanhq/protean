@@ -101,12 +101,12 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    Aggregate->>Aggregate: Raise event 
+    Aggregate->>Aggregate: Raise event
     Aggregate->>Event Store: Store event (asynchronous=True)
     Aggregate-->>Client: Continue execution immediately
-    
+
     Note over Protean Server: Later, asynchronously...
-    
+
     Protean Server->>Event Store: Poll for unprocessed events
     Event Store-->>Protean Server: Return event
     Protean Server->>Event Handler: Process event
@@ -328,7 +328,7 @@ In [4]: event
 Out[4]: <UserLoggedIn: UserLoggedIn object ({'_metadata': {'id': '002::user-1-0.1', 'type': '002.UserLoggedIn.v1', 'fqn': '002.UserLoggedIn', 'kind': 'EVENT', 'stream': '002::user-1', 'origin_stream': None, 'timestamp': '2024-07-18 22:02:32.522360+00:00', 'version': 1, 'sequence_id': '0.1'}, 'user_id': '1'})>
 
 In [5]: event.to_dict()
-Out[5]: 
+Out[5]:
 {'_metadata': {'id': '002::user-1-0.1',
   'type': '002.UserLoggedIn.v1',
   'fqn': '002.UserLoggedIn',

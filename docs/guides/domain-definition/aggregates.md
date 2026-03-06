@@ -313,7 +313,7 @@ In [6]: current_domain.repository_for(Post).add(post)
 Out[6]: <Post: Post object (id: 19031285-6e27-4b7e-8b06-47ba6766208a)>
 
 In [7]: post.to_dict()
-Out[7]: 
+Out[7]:
 {'title': 'Foo',
  'created_on': '2024-05-06 14:29:22.946329+00:00',
  'comments': [{'content': 'bar', 'id': 'af238f7b-5225-41fc-ae37-36cd4cface66'},

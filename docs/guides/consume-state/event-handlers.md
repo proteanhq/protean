@@ -91,15 +91,15 @@ Out[8]: {
       autonumber
       Aggregate->>Domain: Publish Event
       Domain->>Event Store: Store Event
-      Event Store-->>Domain: 
-      Domain-->>Aggregate: 
+      Event Store-->>Domain:
+      Domain-->>Aggregate:
 
       Note over Domain,Event Handler: Asynchronous Processing
 
       Event Store->>Event Handler: Deliver Event
       Event Handler->>Event Handler: Process Event
       Event Handler->>Repository: Load/Update Aggregates
-      Repository-->>Event Handler: 
+      Repository-->>Event Handler:
       Event Handler->>Event Handler: Perform Side Effects
       Event Handler->>Repository: Persist Aggregates
     ```
@@ -302,13 +302,13 @@ class InventoryEventHandler:
     def update_inventory(self, event):
         # Event handling logic that might raise exceptions
         ...
-    
+
     @classmethod
     def handle_error(cls, exc: Exception, message):
         """Custom error handling for event processing failures"""
         # Log the error
         logger.error(f"Failed to process event {message.type}: {exc}")
-        
+
         # Perform recovery operations
         # Example: store failed events for retry, trigger compensating actions, etc.
         ...

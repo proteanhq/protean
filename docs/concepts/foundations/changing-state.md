@@ -82,7 +82,7 @@ evolves over time.
 
 This separation also allows for optimized handling of write operations, focusing on
 modifying the state of the system, while queries are handled separately,
-optimized for reading data. 
+optimized for reading data.
 
 Each Command is processed by a handler method in a Command Handler element.
 
@@ -103,7 +103,7 @@ aggregate from the persistence store (or an event store if using the Event
 Sourcing pattern), and then persisting it.
 
 When a command is processed, the application layer hydrates the aggregate and
-then invokes methods on the up-to-date aggregate. 
+then invokes methods on the up-to-date aggregate.
 
 ## Aggregates mutate
 

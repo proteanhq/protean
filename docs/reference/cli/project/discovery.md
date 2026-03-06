@@ -1,11 +1,11 @@
 # Domain Discovery
 
-In most cases, you will use the `protean` script to interact with your domain 
-over the CLI. The script must be told where to find your domain to load and 
-initialize it, prepping it for your use. The `--domain` option is used to 
+In most cases, you will use the `protean` script to interact with your domain
+over the CLI. The script must be told where to find your domain to load and
+initialize it, prepping it for your use. The `--domain` option is used to
 specify how to load the domain.
 
-While `--domain` supports a variety of options for specifying your domain, 
+While `--domain` supports a variety of options for specifying your domain,
 the below typical values cover most use cases:
 
 **(nothing)**

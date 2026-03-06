@@ -26,7 +26,7 @@ In [1]: account = Account(
    ...: )
 
 In [2]: account.to_dict()
-Out[2]: 
+Out[2]:
 {'balance': {'currency': 'USD', 'amount': 100.0},
  'name': 'Checking',
  'id': '513b8a78-e00f-45ce-bb6f-11ef0cccbec6'}
@@ -61,7 +61,7 @@ to be of the right type.
 In [1]: user = User(email="john.doe@gmail.com", roles=['ADMIN', 'EDITOR'])
 
 In [2]: user.to_dict()
-Out[2]: 
+Out[2]:
 {'email': 'john.doe@gmail.com',
  'roles': ['ADMIN', 'EDITOR'],
  'id': '582d946b-409b-4b15-b3be-6a90284264b3'}
@@ -96,7 +96,7 @@ In [1]: order = Order(
    ...:     )
 
 In [2]: order.to_dict()
-Out[2]: 
+Out[2]:
 {'customer': {'name': 'John Doe',
   'email': 'john@doe.com',
   'addresses': [{'street': '123 Main St',
@@ -175,7 +175,7 @@ In [1]: event=UserEvent(
    ...: )
 
 In [2]: event.to_dict()
-Out[2]: 
+Out[2]:
 {'name': 'UserRegistered',
  'payload': {'name': 'John Doe', 'email': 'john.doe@example.com'},
  'id': '44e9143f-f4a6-40da-9128-4b6c013420d4'}

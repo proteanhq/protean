@@ -1,4 +1,4 @@
 [brokers.default]
 provider = "redis"
 URI = "redis://127.0.0.1:56379/2"
-IS_ASYNC = true 
+IS_ASYNC = true

@@ -95,7 +95,7 @@ In [2]: declared_fields(User)
 Out[2]: {'user_id': Auto(identifier=True), 'name': String(required=True)}
 
 In [3]: attributes(User)
-Out[3]: 
+Out[3]:
 {'_version': Integer(default=-1),
  'user_id': Auto(identifier=True),
  'name': String(required=True)}
@@ -119,7 +119,7 @@ automatically added to the entity.
 In [1]: from protean.utils.reflection import declared_fields
 
 In [2]: declared_fields(Person)
-Out[2]: 
+Out[2]:
 {'name': String(required=True, max_length=50, min_length=2),
  'id': Auto(identifier=True)}
 ```
@@ -136,7 +136,7 @@ In [10]: @domain.aggregate
     ...: class Order:
     ...:     order_id = Auto(identifier=True)
     ...:     customer_id = Identifier(identifier=True)
-    ...: 
+    ...:
 ---------------------------------------------------------------------------
 ...
 NotSupportedError: {'_entity': ['Multiple identifier fields found in entity Order. Only one identifier field is allowed.']}

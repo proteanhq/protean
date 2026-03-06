@@ -105,7 +105,7 @@ docker-compose up -d redis elasticsearch postgres message-db
  ✔ Container protean-postgres-1       Running
  ✔ Container protean-elasticsearch-1  Running
  ✔ Container protean-message-db-1     Running
- ✔ Container protean-redis-1          Running       
+ ✔ Container protean-redis-1          Running
 ...
 $ protean test -c FULL
 ...

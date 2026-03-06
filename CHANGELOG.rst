@@ -124,14 +124,14 @@ generation, and full ecosystem compatibility.
   * Unified event-sourced and “regular” Aggregates, making them interchangeable in client code.
   * Cleaner event-stream handling and automatic version synchronisation on DAO fetch.
 * **Stream subsystem** refinements that reduce boilerplate and improve performance.
-* Domain start-up hardening  
-  * Domain is now initialised *before* the Engine starts.  
+* Domain start-up hardening
+  * Domain is now initialised *before* the Engine starts.
   * Explicit check that a compatible database provider is registered at initialisation.
 * **Multi-environment configuration** support (e.g., `dev`, `staging`, `prod`) driven by TOML.
 * Simplified **Broker** and **Subscriber** APIs; subscribers now run inside the Engine event-loop.
 * New `Field.clone()` helper for programmatically copying Field definitions.
-* Internal clean-ups  
-  * Exceptions hierarchy streamlined.  
+* Internal clean-ups
+  * Exceptions hierarchy streamlined.
   * `Options` refactored to subclass `dict` for easier introspection.
 * **Application-service enhancements**: stricter invariants and clearer lifecycle hooks.
 * Dependency maintenance (virtualenv 20.26, etc.) and documentation polish.
@@ -181,7 +181,7 @@ generation, and full ecosystem compatibility.
 * Remove support for inner Meta class
 * Revamp BaseModel for parity with other domain elements
 * Disallow multiple identity fields in aggregates
-* Register raised events only on Aggregates 
+* Register raised events only on Aggregates
 * Track aggregate cluster to which elements belong
 * Allow publishing multiple events in a single call
 * Accept custom identity function to generate identities

@@ -15,7 +15,7 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 - **Access**: Accessed directly from outside the domain
 - **Lifecycle**: Manage the lifecycle of contained entities and value objects
 
-### Entities  
+### Entities
 - **Purpose**: Represent domain concepts with unique identity
 - **Identity**: Have unique identity that persists through state changes
 - **Mutability**: Mutable - can change state over time
@@ -84,7 +84,7 @@ class Order:
 - ✅ Transaction root for order-related operations
 - ✅ Generates domain events (OrderCreated, OrderShipped, etc.)
 
-#### OrderItem (Entity) 
+#### OrderItem (Entity)
 ```python
 @domain.entity(part_of=Order)
 class OrderItem:
@@ -103,11 +103,11 @@ class OrderItem:
 
 #### Money (Value Object)
 ```python
-@domain.value_object  
+@domain.value_object
 class Money:
     amount = Decimal(required=True, min_value=0)
     currency: String(max_length=3, required=True)
-    
+
     def add(self, other):
         if self.currency != other.currency:
             raise ValueError("Cannot add different currencies")
@@ -137,7 +137,7 @@ class Post:
 
 #### Comment (Entity)
 ```python
-@domain.entity(part_of=Post)  
+@domain.entity(part_of=Post)
 class Comment:
     content: String(max_length=500, required=True)
     author_id: String(required=True)
@@ -149,7 +149,7 @@ class Comment:
 @domain.value_object
 class Email:
     address: String(max_length=255, required=True)
-    
+
     def clean(self):
         if '@' not in self.address:
             raise ValidationError("Invalid email format")
@@ -165,7 +165,7 @@ class Email:
 @domain.aggregate
 class User: ...
 
-@domain.aggregate  
+@domain.aggregate
 class Address: ...  # Should be Value Object
 
 @domain.aggregate
@@ -199,7 +199,7 @@ class Comment:
 # ❌ Bad: Treating entities like value objects
 def process_order(order_item_data):
     # Creating new entity instead of referencing existing one
-    item = OrderItem(**order_item_data)  
+    item = OrderItem(**order_item_data)
     # Should retrieve existing entity by ID
 ```
 
@@ -235,7 +235,7 @@ class Money:
 @domain.aggregate
 class User:
     email: String()  # Should be ValueObject(Email)
-    phone: String()  # Should be ValueObject(Phone) 
+    phone: String()  # Should be ValueObject(Phone)
     address_line1: String()  # Should be ValueObject(Address)
     address_line2: String()
     city: String()
@@ -257,12 +257,12 @@ flowchart TD
     B -->|Yes| D{{"Direct Access?"}}
     D -->|Yes| E["Aggregate"]
     D -->|No| F["Entity"]
-    
+
     classDef question fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
     classDef aggregate fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
     classDef entity fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef valueObject fill:#fff8e1,stroke:#f57f17,stroke-width:2px
-    
+
     class B,D question
     class E aggregate
     class F entity

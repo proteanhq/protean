@@ -17,12 +17,12 @@ the modules in your project is prone to circular import issues.
 Protean solves this issue with the domain context. Rather than passing the
 domain around to each method, or referring to a domain directly, you can use
 the `current_domain` proxy instead. The `current_domain` proxy,
-which points to the domain handling the current activity. 
+which points to the domain handling the current activity.
 
 The `DomainContext` helps manage the active domain object for the duration of a
 thread's execution. The domain context keeps track of the domain-level data
 during the lifetime of a domain object, and is used while processing handlers,
-CLI commands, or other activities. 
+CLI commands, or other activities.
 
 ## Activating the Domain Context
 
@@ -46,7 +46,7 @@ Once the task has been completed, the domain stack is reset to its original
 state after popping the context.
 
 This is a convenient pattern to use in conjunction with most API frameworks.
-The domain’s context is pushed up at the beginning of a request and popped out 
+The domain’s context is pushed up at the beginning of a request and popped out
 once the request is processed.
 
 ### Manually

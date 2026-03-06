@@ -107,7 +107,7 @@ class ChatRoom:
     def __init__(self, room_id: str):
         self.room_id = room_id
         self.channel = f"chat:{room_id}"
-    
+
     def send_message(self, user_id: str, message: str):
         # Broadcast to all connected clients
         domain.brokers['notifications'].publish(
@@ -150,7 +150,7 @@ class NotificationService:
                 **notification
             }
         )
-    
+
     def notify_followers(self, user_id: str, update: dict):
         # Notify all followers about user activity
         for follower_id in get_followers(user_id):
@@ -173,7 +173,7 @@ class CacheInvalidator:
 def update_user_profile(user_id: str, data: dict):
     # Update database
     user_repo.update(user_id, data)
-    
+
     # Broadcast cache invalidation
     domain.brokers['notifications'].publish(
         stream="cache:invalidation",
@@ -195,7 +195,7 @@ class MetricsCollector:
         metric_name = message["name"]
         value = message["value"]
         tags = message.get("tags", {})
-        
+
         # Send to monitoring system
         statsd.gauge(metric_name, value, tags=tags)
 
@@ -256,7 +256,7 @@ class OrderProcessor1:
     def process(self, msg):
         print("Group 1 processing")
 
-@domain.subscriber(stream="orders", broker="notifications", consumer_group="group2")  
+@domain.subscriber(stream="orders", broker="notifications", consumer_group="group2")
 class OrderProcessor2:
     @handle("order.created")
     def process(self, msg):
@@ -273,7 +273,7 @@ class ResilientSubscriber:
     def __init__(self):
         self.connected = False
         self.reconnect_attempts = 0
-    
+
     def connect(self):
         while self.reconnect_attempts < 5:
             try:
@@ -381,14 +381,14 @@ Monitor broker health:
 ```python
 def health_check():
     broker = domain.brokers['notifications']
-    
+
     # Test connectivity
     if not broker.ping():
         return {"status": "unhealthy", "error": "Connection failed"}
-    
+
     # Get health statistics
     stats = broker.health_stats()
-    
+
     if stats.get('healthy', False):
         return {
             "status": "healthy",
@@ -434,13 +434,13 @@ class BrokerCompatibilityLayer:
         self.old_broker = old_broker
         self.new_broker = new_broker
         self.migration_mode = True
-    
+
     def publish(self, stream: str, message: dict):
         # Publish to both during migration
         if self.migration_mode:
             self.old_broker.publish(stream, message)
         return self.new_broker.publish(stream, message)
-    
+
     def complete_migration(self):
         self.migration_mode = False
 ```
@@ -473,7 +473,7 @@ class ResilientPubSubBroker:
             failure_threshold=5,
             recovery_timeout=60
         )
-    
+
     @circuit_breaker
     def publish(self, stream: str, message: dict):
         return self.broker.publish(stream, message)

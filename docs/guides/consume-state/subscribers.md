@@ -53,7 +53,7 @@ sequenceDiagram
   Engine->>Subscriber: __call__(payload)
   Subscriber->>Subscriber: Process Message
   Subscriber->>Repository: Load/Update Aggregate
-  Repository-->>Subscriber: 
+  Repository-->>Subscriber:
   Subscriber->>Repository: Persist Changes
   Subscriber-->>Engine: Success/Failure
   Engine->>Broker: Acknowledge / Nack

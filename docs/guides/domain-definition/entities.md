@@ -34,7 +34,7 @@ specified while defining the identity, you will see an `IncorrectUsageError`:
 >>> @publishing.entity
 ... class Comment:
 ...     content = String(max_length=500)
-... 
+...
 IncorrectUsageError: 'Entity `Comment` needs to be associated with an Aggregate'
 ```
 
