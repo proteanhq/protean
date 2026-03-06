@@ -149,6 +149,7 @@ specific area.
 - [Outbox Pattern](./concepts/async-processing/outbox.md) -- Reliable message delivery via same-transaction storage.
 - [Observability](./reference/server/observability.md) -- Real-time tracing, the Observatory monitoring server, SSE streaming, and Prometheus metrics.
 - [Running the Server](./guides/server/index.md) -- Start, configure, and operate the Protean server.
+- [Dispatching Published Events to External Brokers](./guides/server/external-event-dispatch.md) -- Configure external brokers to deliver published events to other bounded contexts.
 
 **CLI**
 
@@ -323,6 +324,7 @@ Protean supports but does not enforce.
 - [Consuming Events from Other Domains](./patterns/consuming-events-from-other-domains.md) -- Subscribers as anti-corruption layers for external events.
 - [Sharing Event Classes Across Domains](./patterns/sharing-event-classes-across-domains.md) -- Share schemas, not code; use contract tests for compatibility.
 - [Use Fact Events as Cross-Context Integration Contracts](./patterns/fact-events-as-integration-contracts.md) -- Publish full aggregate snapshots for external consumers instead of forcing them to reconstruct state from granular deltas.
+- [Publishing Events to External Brokers](./patterns/publishing-events-to-external-brokers.md) -- Deliver published events to external brokers via the outbox with independent retry, failure isolation, and stripped metadata envelopes.
 
 ### Testing & Infrastructure
 

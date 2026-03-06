@@ -79,6 +79,7 @@ need by what you're trying to accomplish.
 | Rebuild a projection from historical events     | [`protean projection rebuild`](./reference/cli/data/projection.md) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
 | Use fact events for cross-context integration   | [Fact Events as Integration Contracts](./patterns/fact-events-as-integration-contracts.md) |
+| Publish events to external brokers for other bounded contexts | [External Event Dispatch](./guides/server/external-event-dispatch.md) |
 | Follow the causal chain of a business operation | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
 | Traverse causation chains programmatically      | [Message Tracing](./guides/domain-behavior/message-tracing.md#traversing-the-causation-chain-programmatically) |
 | Serialize events to CloudEvents v1.0 for external systems | [CloudEvents Interoperability](./guides/consume-state/cloudevents.md) |
@@ -114,6 +115,7 @@ need by what you're trying to accomplish.
 | Process events and commands asynchronously      | [Server](./concepts/async-processing/index.md) |
 | Understand subscriptions and event processing   | [Subscriptions](./concepts/async-processing/subscriptions.md) |
 | Use the outbox pattern for reliable messaging   | [Outbox](./concepts/async-processing/outbox.md) |
+| Dispatch published events to external brokers   | [External Event Dispatch](./guides/server/external-event-dispatch.md) |
 | Set up structured logging                       | [Running the Server](./guides/server/index.md) |
 | Add request-scoped context to logs              | [Running the Server](./guides/server/index.md) |
 | Minimize logging noise in tests                 | [Running the Server](./guides/server/index.md#test-mode) |

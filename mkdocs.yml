@@ -247,6 +247,7 @@ nav:
       - guides/server/logging.md
       - guides/server/monitoring.md
       - guides/server/using-priority-lanes.md
+      - guides/server/external-event-dispatch.md
     - Multi-Domain Applications:
       - guides/multi-domain-applications.md
     - Test Your Application:
@@ -425,6 +426,7 @@ nav:
       - patterns/consuming-events-from-other-domains.md
       - patterns/sharing-event-classes-across-domains.md
       - patterns/fact-events-as-integration-contracts.md
+      - patterns/publishing-events-to-external-brokers.md
     - Operations:
       - patterns/running-data-migrations-with-priority-lanes.md
       - patterns/classify-async-processing-errors.md

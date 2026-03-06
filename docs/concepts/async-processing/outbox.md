@@ -108,6 +108,7 @@ default_subscription_type = "stream"   # Enables outbox automatically
 
 [outbox]
 broker = "default"         # Which broker to publish to
+external_brokers = []      # External broker(s) for published events
 messages_per_tick = 10     # Messages processed per cycle
 tick_interval = 1          # Seconds between cycles
 
@@ -175,6 +176,63 @@ database_uri = "postgresql://localhost/analytics"
 # - outbox-processor-default-to-default
 # - outbox-processor-analytics-to-default
 ```
+
+## External Dispatch for Published Events
+
+Events marked with `published=True` can be delivered to external brokers —
+other bounded contexts, partner systems, or analytics pipelines. When
+`external_brokers` is configured, the Unit of Work creates additional outbox
+rows for each external broker, alongside the internal row:
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant DB as Database
+    participant Outbox as Outbox Table
+    participant IOP as Internal Processor
+    participant EOP as External Processor
+    participant IBR as Internal Broker
+    participant EBR as External Broker
+
+    App->>DB: 1. Save aggregate
+    App->>Outbox: 2a. Internal row (same txn)
+    App->>Outbox: 2b. External row (same txn)
+    DB-->>App: Success (all committed)
+
+    Note over IOP,EBR: Asynchronously, independently...
+
+    IOP->>Outbox: 3a. Poll (target_broker=default)
+    IOP->>IBR: 4a. Publish (full metadata)
+
+    EOP->>Outbox: 3b. Poll (target_broker=partner)
+    EOP->>EBR: 4b. Publish (stripped metadata)
+```
+
+Each row is processed independently — if the external broker is down, the
+internal row publishes normally while the external row retries on its own
+schedule.
+
+### External Envelope
+
+External messages use a stripped envelope that removes internal-only fields
+(`expected_version`, `asynchronous`, `priority`, event store positions,
+`checksum`) while preserving fields external consumers need: headers for
+deduplication, domain context for routing, and user-provided extensions.
+
+### Configuration
+
+```toml
+[outbox]
+broker = "default"
+external_brokers = ["partner_events"]   # One or more external broker names
+```
+
+For the full setup guide, see
+[Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md).
+For architectural trade-offs, see
+[Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md).
+
+---
 
 ## Outbox Message Lifecycle
 

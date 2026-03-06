@@ -249,3 +249,4 @@ During graceful shutdown:
 - [Configuration](../../reference/server/configuration.md) — Full configuration reference
 - [Subscription Types](../../reference/server/subscription-types.md) — Choose the right subscription
 - [Using Priority Lanes](using-priority-lanes.md) — Route background workloads through the backfill lane
+- [External Event Dispatch](external-event-dispatch.md) — Deliver published events to external brokers

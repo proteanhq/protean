@@ -120,6 +120,33 @@ messages_per_tick = 10
 tick_interval = 1
 ```
 
+### External Outbox Processors
+
+When `external_brokers` is configured, the Engine creates additional
+`OutboxProcessor` instances — one per external broker per database provider.
+These processors only pick up outbox rows tagged with their target broker and
+publish using a stripped metadata envelope suitable for external consumers:
+
+```toml
+[outbox]
+broker = "default"
+external_brokers = ["partner_events"]   # Adds external processors
+```
+
+With one database provider, this creates two processors:
+
+- `outbox-processor-default-to-default` — internal events
+- `outbox-processor-default-to-partner_events-external` — published events to
+  external broker
+
+External processors emit `outbox.external_published` and
+`outbox.external_failed` trace events (distinct from internal
+`outbox.published` / `outbox.failed`), and skip priority lane routing since
+lanes are an internal concern.
+
+See [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md)
+for the full setup guide.
+
 ## Configuration Hierarchy
 
 When registering subscriptions, the Engine consults a hierarchy of configuration sources to determine the appropriate subscription type and options for each handler. The resolution process typically follows this order of precedence:

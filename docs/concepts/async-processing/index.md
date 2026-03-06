@@ -121,6 +121,14 @@ The outbox pattern ensures reliable message delivery by:
 
 Learn more in [Outbox Pattern](outbox.md).
 
+### External Event Dispatch
+
+Events marked `published=True` can be delivered to external brokers for
+cross-bounded-context communication. The outbox creates additional rows for
+each external broker, processed independently with stripped metadata envelopes.
+
+Learn more in [External Event Dispatch](../../guides/server/external-event-dispatch.md).
+
 ## In This Section
 
 - [Engine Architecture](engine.md) - How the engine manages subscriptions and

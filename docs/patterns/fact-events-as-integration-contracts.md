@@ -519,3 +519,5 @@ operation occurred -- is essential.**
 
     - [Raising Events](../guides/domain-behavior/raising-events.md) -- How events are raised and enriched.
     - [Subscribers](../guides/consume-state/subscribers.md) -- Consuming messages from external brokers.
+    - [Publishing Events to External Brokers](publishing-events-to-external-brokers.md) -- Delivering published events to external brokers via the outbox.
+    - [External Event Dispatch](../guides/server/external-event-dispatch.md) -- Step-by-step setup for external broker dispatch.

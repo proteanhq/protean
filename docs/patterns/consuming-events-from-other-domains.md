@@ -413,3 +413,7 @@ stimulus came from outside.**
     **Guides:**
 
     - [Subscribers](../guides/consume-state/subscribers.md) — Subscriber definition, broker configuration, and error handling.
+
+    **Patterns:**
+
+    - [Publishing Events to External Brokers](publishing-events-to-external-brokers.md) — The producer side: delivering published events via the outbox.
