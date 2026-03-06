@@ -400,6 +400,35 @@ or remove enable_outbox.
 Setting `default_subscription_type = "stream"` automatically enables the outbox
 without needing to set `enable_outbox` at all.
 
+### Missing External Broker
+
+Configuring an `external_brokers` entry that doesn't match a registered broker
+is a startup error:
+
+```toml
+[outbox]
+external_brokers = ["nonexistent_broker"]
+```
+
+```
+ValueError: External broker 'nonexistent_broker' configured in
+outbox.external_brokers but not found in domain broker configuration
+```
+
+### Published Events Without External Brokers
+
+If your domain has events with `published=True` but no `external_brokers`
+configured, Protean logs a warning during initialization:
+
+```
+WARNING: Domain has published events but no external_brokers configured
+in outbox settings. Published events will only be dispatched internally.
+```
+
+This is informational, not an error. See
+[Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md)
+to configure external dispatch.
+
 ### Invalid Subscription Type
 
 ```python

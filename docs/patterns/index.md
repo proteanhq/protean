@@ -40,8 +40,9 @@ If you are new to these patterns, these sequences build on each other:
     [Sharing Event Classes Across Domains](sharing-event-classes-across-domains.md)
 
 **Cross-system integration** -- publishing, consuming, and contracting across system boundaries:
-:   [Consuming Events from Other Domains](consuming-events-from-other-domains.md) →
-    [Fact Events as Integration Contracts](fact-events-as-integration-contracts.md) →
+:   [Fact Events as Integration Contracts](fact-events-as-integration-contracts.md) →
+    [Publishing Events to External Brokers](publishing-events-to-external-brokers.md) →
+    [Consuming Events from Other Domains](consuming-events-from-other-domains.md) →
     [CloudEvents as a Boundary Contract](cloudevents-interoperability.md)
 
 **Read models** -- designing, deploying, and evolving projections:
@@ -230,6 +231,12 @@ If you are new to these patterns, these sequences build on each other:
   External consumers receive complete state snapshots instead of reconstructing
   state from granular deltas. Reserve delta events for internal reactions where
   semantic meaning is essential.
+
+- **[Publishing Events to External Brokers](publishing-events-to-external-brokers.md)**
+  -- Deliver `published=True` events to external brokers via the outbox pattern.
+  Each external broker gets its own outbox row with independent retry and a
+  stripped metadata envelope. Internal processing is never blocked by external
+  broker failures.
 
 ## Operations
 
