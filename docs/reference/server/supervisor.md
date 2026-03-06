@@ -19,6 +19,22 @@ Multiple workers are most effective with **StreamSubscription**, where Redis
 consumer groups distribute messages across consumers automatically. Each message
 is processed by exactly one worker.
 
+!!! important "Prerequisite: Stream subscriptions"
+    Multi-worker mode requires `default_subscription_type = "stream"` in your
+    domain configuration. This enables the
+    [transactional outbox](../../concepts/async-processing/outbox.md) and
+    Redis Stream-based consumer groups that distribute messages across workers.
+
+    ```toml
+    # domain.toml
+    [server]
+    default_subscription_type = "stream"
+    ```
+
+    See [Subscription Types](subscription-types.md) for details on the two
+    subscription types and [Configuration Reference](../configuration/index.md#server)
+    for the full list of server options.
+
 !!! note
     **EventStoreSubscription** does not distribute messages across workers.
     Multiple workers will each process the same messages independently, which is

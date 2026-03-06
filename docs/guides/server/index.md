@@ -74,6 +74,17 @@ Run multiple Engine processes from a single command using `--workers`:
 protean server --domain=my_domain --workers 4
 ```
 
+Multi-worker mode requires stream subscriptions so that Redis consumer groups
+can distribute messages across workers. Set this in your `domain.toml`:
+
+```toml
+[server]
+default_subscription_type = "stream"
+```
+
+See [Configuration Reference](../../reference/configuration/index.md#server) for
+the full list of server options.
+
 Workers coordinate through Redis consumer groups (for stream message
 distribution) and database-level locking (for outbox processing). No IPC or
 shared memory is needed between workers.
