@@ -577,7 +577,7 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
             ):
                 element_cls._invariants[method._invariant][method_name] = method
 
-    # Set stream name to be `domain_name::aggregate_name`
+    # Set stream category to be `domain_name::aggregate_name`
     element_cls.meta_.stream_category = (
         f"{domain.normalized_name}::{element_cls.meta_.stream_category}"
     )

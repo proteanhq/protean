@@ -161,6 +161,15 @@ class UnitOfWork:
         # not in a relational table.  We still need a session for the outbox
         # INSERT, so one is lazily initialised here when missing.
         if self.domain.has_outbox:
+            outbox_config = self.domain.config.get("outbox", {})
+            internal_broker = outbox_config.get("broker", "default")
+            external_brokers: list[str] = outbox_config.get("external_brokers", [])
+            # When external brokers are configured, tag every row with its
+            # target broker so each OutboxProcessor can filter by its own
+            # broker.  When no external brokers exist, leave target_broker
+            # as None for full backward compatibility.
+            use_target_broker = bool(external_brokers)
+
             for provider_name, events in all_events.items():
                 if not events:
                     continue
@@ -181,6 +190,7 @@ class UnitOfWork:
                         correlation_id = event._metadata.domain.correlation_id
                         causation_id = event._metadata.domain.causation_id
 
+                    # Internal outbox row (always created)
                     outbox_message = Outbox.create_message(
                         message_id=event._metadata.headers.id,
                         stream_name=event._metadata.headers.stream,
@@ -190,8 +200,29 @@ class UnitOfWork:
                         priority=priority,
                         correlation_id=correlation_id,
                         causation_id=causation_id,
+                        target_broker=(internal_broker if use_target_broker else None),
                     )
                     outbox_repo._dao.save(outbox_message)
+
+                    # External outbox rows for published events — one per
+                    # external broker.  Each row is processed independently
+                    # by its own OutboxProcessor instance.
+                    if external_brokers and getattr(
+                        event.__class__.meta_, "published", False
+                    ):
+                        for ext_broker in external_brokers:
+                            ext_outbox = Outbox.create_message(
+                                message_id=event._metadata.headers.id,
+                                stream_name=event._metadata.headers.stream,
+                                message_type=event._metadata.headers.type,
+                                data=event.payload,
+                                metadata=event._metadata,
+                                priority=priority,
+                                correlation_id=correlation_id,
+                                causation_id=causation_id,
+                                target_broker=ext_broker,
+                            )
+                            outbox_repo._dao.save(ext_outbox)
 
         # Exit from Unit of Work
         # This is necessary to ensure that the context stack is cleared

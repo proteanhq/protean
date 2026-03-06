@@ -107,6 +107,7 @@ class DomainValidator:
         self._validate_query_handler_associations()
         self._warn_unhandled_commands()
         self._warn_missing_apply_handlers()
+        self._warn_published_events_without_external_brokers()
 
     # ------------------------------------------------------------------
     # Private validation methods
@@ -286,3 +287,23 @@ class DomainValidator:
                         evt_record.cls.__name__,
                         agg_record.cls.__name__,
                     )
+
+    def _warn_published_events_without_external_brokers(self) -> None:
+        """Warn when published events exist but no external brokers are configured."""
+        external_brokers = self._domain.config.get("outbox", {}).get(
+            "external_brokers", []
+        )
+        if external_brokers:
+            return
+
+        registry = self._domain.registry
+        has_published = any(
+            getattr(record.cls.meta_, "published", False)
+            for record in registry._elements.get(DomainObjects.EVENT.value, {}).values()
+        )
+        if has_published:
+            logger.warning(
+                "Domain has published events but no external_brokers "
+                "configured in outbox settings. Published events will "
+                "only be dispatched internally."
+            )

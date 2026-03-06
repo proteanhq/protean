@@ -443,6 +443,43 @@ class Message(BaseModel, OptionsMixin):
         result["metadata"] = self.metadata.to_dict() if self.metadata else None
         return result
 
+    def to_external_dict(self) -> dict[str, Any]:
+        """Return message dict with internal metadata stripped for external dispatch.
+
+        Keeps transport and domain-level fields needed by external consumers:
+        headers (id, type, time, stream, traceparent), domain context
+        (fqn, kind, version, sequence_id, correlation_id, causation_id,
+        origin_stream, stream_category), and user-provided extensions.
+
+        Strips internal-only fields: domain.expected_version,
+        domain.asynchronous, domain.priority, event_store positions,
+        and envelope.checksum.
+
+        The ``metadata.headers.id`` field serves as the idempotency /
+        deduplication key for external consumers.
+        """
+        result: dict[str, Any] = {"data": self.data}
+        if self.metadata:
+            meta_dict: dict[str, Any] = {}
+            # Headers — keep all (id, type, time, stream, traceparent)
+            if self.metadata.headers:
+                meta_dict["headers"] = self.metadata.headers.to_dict()
+            # Domain — strip internal fields
+            if self.metadata.domain:
+                domain_dict = self.metadata.domain.to_dict()
+                for key in ("expected_version", "asynchronous", "priority"):
+                    domain_dict.pop(key, None)
+                meta_dict["domain"] = domain_dict
+            # Envelope — keep specversion only
+            meta_dict["envelope"] = {"specversion": "1.0"}
+            # Extensions — keep all (user-provided enrichments)
+            if self.metadata.extensions:
+                meta_dict["extensions"] = dict(self.metadata.extensions)
+            result["metadata"] = meta_dict
+        else:
+            result["metadata"] = None
+        return result
+
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return False

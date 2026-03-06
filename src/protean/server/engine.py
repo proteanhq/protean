@@ -220,6 +220,30 @@ class Engine:
                     messages_per_tick=messages_per_tick,
                     tick_interval=tick_interval,
                 )
+
+            # Create external outbox processors for published event dispatch
+            external_brokers: list[str] = outbox_config.get("external_brokers", [])
+            for ext_broker_name in external_brokers:
+                if ext_broker_name not in self.domain.brokers:
+                    raise ValueError(
+                        f"External broker '{ext_broker_name}' configured in "
+                        f"outbox.external_brokers but not found in domain "
+                        f"broker configuration"
+                    )
+                for database_provider_name in self.domain.providers.keys():
+                    processor_name = f"outbox-processor-{database_provider_name}-to-{ext_broker_name}-external"
+                    logger.debug(
+                        f"Creating external outbox processor: {processor_name}"
+                    )
+                    self._outbox_processors[processor_name] = OutboxProcessor(
+                        self,
+                        database_provider_name,
+                        ext_broker_name,
+                        messages_per_tick=messages_per_tick,
+                        tick_interval=tick_interval,
+                        is_external=True,
+                    )
+
             # Verify outbox repos are initialised and DAO-accessible
             for provider_name, outbox_repo in self.domain._outbox_repos.items():
                 try:

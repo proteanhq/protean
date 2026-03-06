@@ -56,6 +56,7 @@ def _default_config():
         "enable_outbox": False,
         "outbox": {
             "broker": "default",
+            "external_brokers": [],  # List of broker names for published event dispatch
             "messages_per_tick": 50,  # Process outbox in efficient batches
             "tick_interval": 0.01,  # 10ms check interval for outbox
             "retry": {
