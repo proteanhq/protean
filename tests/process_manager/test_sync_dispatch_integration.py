@@ -237,7 +237,7 @@ class TestMessageBasedDispatch:
             fqn="tests.process_manager.elements.OrderPlaced",
             kind="EVENT",
             stream_category="test::order",
-            version="v1",
+            version=1,
         )
         metadata = Metadata(headers=headers, envelope=envelope, domain=domain_meta)
 
@@ -280,7 +280,7 @@ class TestMessageBasedDispatch:
                 fqn=f"tests.process_manager.elements.{event_cls.__name__}",
                 kind="EVENT",
                 stream_category=stream_category,
-                version="v1",
+                version=1,
             )
             metadata = Metadata(headers=headers, envelope=envelope, domain=domain_meta)
             return Message(data=event.payload, metadata=metadata)

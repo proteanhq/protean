@@ -56,7 +56,7 @@ class OrderPlaced(BaseEvent):
 class StockReserved(BaseEvent):
     """Simulates an event from the Inventory domain."""
 
-    __version__ = "v1"
+    __version__ = 1
     inventory_item_id: Identifier()
     reservation_id: Identifier()
     order_id: Identifier()
@@ -66,7 +66,7 @@ class StockReserved(BaseEvent):
 class PaymentSucceeded(BaseEvent):
     """Simulates an event from the Payments domain."""
 
-    __version__ = "v1"
+    __version__ = 1
     payment_id: Identifier()
     order_id: Identifier()
     amount: Float()
@@ -241,7 +241,7 @@ class TestMessageDispatchWithExternalEvents:
             fqn=f"tests.process_manager.test_external_event_dispatch.{event_cls.__name__}",
             kind="EVENT",
             stream_category=stream_category,
-            version="v1",
+            version=1,
         )
         metadata = Metadata(headers=headers, envelope=envelope, domain=domain_meta)
         return Message(data=event.payload, metadata=metadata)
