@@ -538,6 +538,19 @@ class Message(BaseModel, OptionsMixin):
         }
 
     @classmethod
+    def _normalize_version(cls, metadata_dict: dict) -> None:
+        """Normalize legacy string versions (e.g. "v1") to integers.
+
+        Old Protean versions stored version as a string like "v1".
+        Current versions use plain integers. This converts in-place.
+        """
+        domain = metadata_dict.get("domain")
+        if domain and isinstance(domain, dict):
+            v = domain.get("version")
+            if isinstance(v, str):
+                domain["version"] = int(v.lstrip("vV"))
+
+    @classmethod
     def _build_envelope(cls, metadata_dict: dict, message: dict) -> None:
         """Build envelope within metadata if not present."""
         if "envelope" not in metadata_dict:
@@ -652,6 +665,9 @@ class Message(BaseModel, OptionsMixin):
 
             # Migrate legacy flat metadata to nested structure
             cls._migrate_legacy_metadata(metadata_dict)
+
+            # Normalize legacy string versions (e.g. "v1" -> 1)
+            cls._normalize_version(metadata_dict)
 
             # Build metadata components
             cls._build_envelope(metadata_dict, message)
