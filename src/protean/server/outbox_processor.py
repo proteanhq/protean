@@ -29,6 +29,7 @@ class OutboxProcessor(BaseSubscription):
         messages_per_tick: int = 10,
         tick_interval: int = 1,
         worker_id: Optional[str] = None,
+        is_external: bool = False,
     ) -> None:
         """
         Initialize the OutboxProcessor.
@@ -40,13 +41,14 @@ class OutboxProcessor(BaseSubscription):
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
             tick_interval (int, optional): The interval between ticks. Defaults to 1.
             worker_id (str, optional): Worker identifier for message locking. Defaults to subscription_id.
+            is_external (bool): Whether this processor handles external broker dispatch.
         """
         # Initialize parent class - use dummy handler to satisfy BaseSubscription requirements
         super().__init__(engine, messages_per_tick, tick_interval)
 
-        self.subscription_id = (
-            f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
-        )
+        self.is_external = is_external
+        suffix = "-external" if is_external else ""
+        self.subscription_id = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}{suffix}"
 
         self.database_provider_name = database_provider_name
         self.broker_provider_name = broker_provider_name
@@ -82,6 +84,14 @@ class OutboxProcessor(BaseSubscription):
         self._lanes_enabled = lanes_config.get("enabled", False)
         self._lane_threshold = lanes_config.get("threshold", 0)
         self._backfill_suffix = lanes_config.get("backfill_suffix", "backfill")
+
+        # Filter outbox rows by target_broker when external brokers are
+        # configured.  Without external brokers the field is always None
+        # and we must NOT filter (backward compatibility).
+        external_brokers = engine.domain.config.get("outbox", {}).get(
+            "external_brokers", []
+        )
+        self._filter_by_broker = bool(external_brokers) or is_external
 
         self.tick_count = 0
 
@@ -141,8 +151,11 @@ class OutboxProcessor(BaseSubscription):
 
         # Run the database query in a thread pool to avoid blocking the event loop
         # This allows other async tasks to run concurrently
+        target_broker = self.broker_provider_name if self._filter_by_broker else None
         messages = await asyncio.to_thread(
-            self.outbox_repo.find_unprocessed, limit=self.messages_per_tick
+            self.outbox_repo.find_unprocessed,
+            limit=self.messages_per_tick,
+            target_broker=target_broker,
         )
         if messages:
             logger.debug(f"Found {len(messages)} messages to process")
@@ -266,7 +279,7 @@ class OutboxProcessor(BaseSubscription):
                         f"Published to {message.stream_name}: {message.message_id[:8]}..."
                     )
 
-                    # Emit outbox.published trace
+                    # Emit trace event — distinguish internal from external
                     stream_category = (
                         message.metadata_.domain.stream_category
                         if message.metadata_.domain
@@ -277,8 +290,13 @@ class OutboxProcessor(BaseSubscription):
                         if message.metadata_.headers
                         else "unknown"
                     )
+                    trace_event = (
+                        "outbox.external_published"
+                        if self.is_external
+                        else "outbox.published"
+                    )
                     self.engine.emitter.emit(
-                        event="outbox.published",
+                        event=trace_event,
                         stream=stream_category,
                         message_id=message.message_id,
                         message_type=message_type,
@@ -341,9 +359,9 @@ class OutboxProcessor(BaseSubscription):
                 metadata=message.metadata_,
             )
 
-            # Convert to dict for publishing - this gives us the standard structure
-            # with top-level 'data' and 'metadata' keys
-            message_dict = msg.to_dict()
+            # Convert to dict for publishing.  External processors strip
+            # internal-only metadata fields from the envelope.
+            message_dict = msg.to_external_dict() if self.is_external else msg.to_dict()
 
             # Publish the standardized message structure to broker
             stream_category = (
@@ -352,9 +370,10 @@ class OutboxProcessor(BaseSubscription):
                 else None
             )
 
-            # Route to backfill lane if priority is below threshold and lanes are enabled
+            # Priority lanes only apply to internal processors
             if (
-                self._lanes_enabled
+                not self.is_external
+                and self._lanes_enabled
                 and stream_category
                 and message.priority < self._lane_threshold
             ):
@@ -400,7 +419,7 @@ class OutboxProcessor(BaseSubscription):
             max_retries=self.retry_config["max_attempts"],
         )
 
-        # Emit outbox.failed trace
+        # Emit trace event — distinguish internal from external
         stream_category = (
             message.metadata_.domain.stream_category
             if message.metadata_ and message.metadata_.domain
@@ -411,8 +430,9 @@ class OutboxProcessor(BaseSubscription):
             if message.metadata_ and message.metadata_.headers
             else "unknown"
         )
+        trace_event = "outbox.external_failed" if self.is_external else "outbox.failed"
         self.engine.emitter.emit(
-            event="outbox.failed",
+            event=trace_event,
             stream=stream_category,
             message_id=message.message_id,
             message_type=message_type,

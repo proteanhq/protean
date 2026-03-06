@@ -78,6 +78,9 @@ class Outbox(BaseAggregate):
     # Message priority for processing order
     priority: int = 0  # Higher = more important
 
+    # Target broker for this message (None = legacy/unqualified)
+    target_broker: str | None = None
+
     @classmethod
     def create_message(
         cls,
@@ -91,6 +94,7 @@ class Outbox(BaseAggregate):
         causation_id: Optional[str] = None,
         max_retries: int = 3,
         sequence_number: Optional[int] = None,
+        target_broker: str | None = None,
     ) -> "Outbox":
         """Create a new outbox message ready for publishing.
 
@@ -105,6 +109,7 @@ class Outbox(BaseAggregate):
             causation_id: Causation identifier (parent message's headers.id)
             max_retries: Maximum retry attempts
             sequence_number: Sequence number for ordering
+            target_broker: Name of the broker this message targets (None = legacy)
 
         Returns:
             New Outbox instance
@@ -120,6 +125,7 @@ class Outbox(BaseAggregate):
             causation_id=causation_id,
             max_retries=max_retries,
             sequence_number=sequence_number,
+            target_broker=target_broker,
             status=OutboxStatus.PENDING.value,
         )
 
@@ -310,7 +316,11 @@ class OutboxRepository(BaseRepository):
 
         return query.all().items
 
-    def find_unprocessed(self, limit: Optional[int] = None) -> List[Outbox]:
+    def find_unprocessed(
+        self,
+        limit: Optional[int] = None,
+        target_broker: str | None = None,
+    ) -> List[Outbox]:
         """Find messages that are ready for processing.
 
         Returns messages that are:
@@ -321,6 +331,8 @@ class OutboxRepository(BaseRepository):
 
         Args:
             limit: Maximum number of messages to return
+            target_broker: Filter by target broker name. When provided,
+                only returns rows destined for this broker.
 
         Returns:
             List of Outbox messages ready for processing
@@ -332,6 +344,9 @@ class OutboxRepository(BaseRepository):
         query = self._dao.query.filter(
             status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]
         )
+
+        if target_broker is not None:
+            query = query.filter(target_broker=target_broker)
 
         # Order by priority (higher first)
         query = query.order_by("-priority")
