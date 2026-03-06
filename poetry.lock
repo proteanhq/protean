@@ -1721,15 +1721,15 @@ files = [
 
 [[package]]
 name = "message-db-py"
-version = "0.3.2"
+version = "0.3.3"
 description = "The Python interface to the MessageDB Event Store and Message Store"
 optional = true
 python-versions = "<4.0,>=3.11"
 groups = ["main"]
 markers = "extra == \"message-db\""
 files = [
-    {file = "message_db_py-0.3.2-py3-none-any.whl", hash = "sha256:198865cf482e845c8d76f36edd76566398dbc4d921a9fe9ee0030c0f56a42c50"},
-    {file = "message_db_py-0.3.2.tar.gz", hash = "sha256:be94fd2532d2cf52e587a1e4d1bb12b603ad9dedb27d57733003d7baebcee4a3"},
+    {file = "message_db_py-0.3.3-py3-none-any.whl", hash = "sha256:97bc29b31af1e7d8d1b3bcbbdf5822551bf2d8b253055b563e3f30bc1c25ef84"},
+    {file = "message_db_py-0.3.3.tar.gz", hash = "sha256:d6c62d1631507e2a716c35f6b3bb4154e7b1388e3759290afff5df19724a3e9e"},
 ]
 
 [package.dependencies]
@@ -3625,4 +3625,4 @@ sqlite = ["sqlalchemy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "a3793a98cab118a5722d59be2ba8d9645ecf72d5786f1f1b0f2aa4545adb91dd"
+content-hash = "74623e20db1a9eb4bdcffff370352953c1cfc5e13fa7af37924b0e3c20b554d1"
