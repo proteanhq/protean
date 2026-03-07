@@ -8,7 +8,11 @@ precedence over auto-generated mappings.
 import pytest
 from datetime import datetime
 
+from elasticsearch_dsl import Text
+
 from protean.core.aggregate import BaseAggregate
+from protean.core.database_model import BaseDatabaseModel
+from protean.core.value_object import BaseValueObject
 from protean.fields import (
     Boolean,
     Date,
@@ -18,6 +22,8 @@ from protean.fields import (
     Integer,
     List,
     String,
+    ValueObject,
+    ValueObjectList,
 )
 
 
@@ -130,3 +136,128 @@ class TestExplicitFieldMapping:
             "entity_version",
         }
         assert set(props.keys()) == expected_fields
+
+
+class Address(BaseValueObject):
+    street: String(max_length=200)
+    city: String(max_length=100)
+
+
+class Tag(BaseValueObject):
+    label: String(max_length=50)
+
+
+class AggregateWithVO(BaseAggregate):
+    name: String(max_length=100, required=True)
+    address = ValueObject(Address)
+    tags = ValueObjectList(content_type=ValueObject(value_object_cls=Tag))
+
+
+class PartialCustomModel(BaseDatabaseModel):
+    """Custom model that only maps 'name', leaving other fields to auto-mapping."""
+
+    name = Text(analyzer="standard")
+
+
+@pytest.mark.elasticsearch
+class TestShadowAndReferenceFieldMapping:
+    """Test mapping of ValueObject shadow fields, references, and ValueObjectList"""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(AggregateWithVO)
+        test_domain.register(Address, part_of=AggregateWithVO)
+        test_domain.register(Tag, part_of=AggregateWithVO)
+        test_domain.init(traverse=False)
+
+    def test_shadow_fields_mapped_from_value_object(self, test_domain):
+        """ValueObject shadow fields (flattened) should be mapped as Keyword"""
+        props = _get_mapping_props(test_domain, AggregateWithVO)
+
+        assert props["address_street"]["type"] == "keyword"
+        assert props["address_city"]["type"] == "keyword"
+
+    def test_value_object_list_mapped_as_nested(self, test_domain):
+        """ValueObjectList fields should be mapped as ES Nested"""
+        props = _get_mapping_props(test_domain, AggregateWithVO)
+
+        assert props["tags"]["type"] == "nested"
+
+
+@pytest.mark.elasticsearch
+class TestCustomModelAutoFillsGaps:
+    """Test that decorate_database_model_class auto-maps unmapped attributes."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(MappedAggregate)
+        test_domain.register_database_model(PartialCustomModel, part_of=MappedAggregate)
+        test_domain.init(traverse=False)
+
+    def test_custom_field_preserved(self, test_domain):
+        """User-defined Text field should be preserved in the final mapping"""
+        model_cls = test_domain.repository_for(MappedAggregate)._database_model
+        doc_mapping = model_cls._doc_type.mapping.to_dict()
+        props = doc_mapping.get("properties", {})
+
+        assert props["name"]["type"] == "text"
+
+    def test_unmapped_attributes_auto_filled(self, test_domain):
+        """Attributes not in the custom model should be auto-mapped"""
+        model_cls = test_domain.repository_for(MappedAggregate)._database_model
+
+        # The extra mapping (auto-filled) should include fields not in PartialCustomModel
+        idx_mapping = model_cls._index._mapping
+        assert idx_mapping is not None
+        idx_props = idx_mapping.to_dict().get("properties", {})
+
+        # age, score, is_active, etc. should be auto-mapped
+        assert "age" in idx_props
+        assert idx_props["age"]["type"] == "integer"
+        assert "score" in idx_props
+        assert idx_props["score"]["type"] == "float"
+        assert "entity_version" in idx_props
+        assert idx_props["entity_version"]["type"] == "integer"
+
+    def test_custom_model_keyword_fields_detects_text(self, test_domain):
+        """Text fields in custom models should appear in _keyword_fields"""
+        model_cls = test_domain.repository_for(MappedAggregate)._database_model
+
+        # 'name' is Text in the custom model → needs .keyword for exact matching
+        assert "name" in model_cls._keyword_fields
+
+
+@pytest.mark.elasticsearch
+class TestCustomModelWithSettings:
+    """Test decorate_database_model_class with provider-level SETTINGS."""
+
+    @pytest.fixture(autouse=True)
+    def register_with_settings(self, test_domain):
+        test_domain.config["databases"]["default"]["SETTINGS"] = {"number_of_shards": 3}
+        test_domain.register(MappedAggregate)
+        test_domain.register_database_model(PartialCustomModel, part_of=MappedAggregate)
+        test_domain.init(traverse=False)
+
+    def test_settings_applied_to_decorated_model(self, test_domain):
+        """Provider-level SETTINGS should be applied during decoration"""
+        model_cls = test_domain.repository_for(MappedAggregate)._database_model
+
+        assert model_cls._index._settings == {"number_of_shards": 3}
+
+
+@pytest.mark.elasticsearch
+class TestAutoIncrementFieldMapping:
+    """Test that auto-increment fields are mapped as ES Integer."""
+
+    def test_increment_field_mapped_as_integer(self, test_domain):
+        """Fields with increment=True should map to ES Integer"""
+        from protean.adapters.repository.elasticsearch import _es_field_mapping_for
+        from protean.fields.resolved import ResolvedField
+
+        # Create a mock ResolvedField with increment=True
+        field = ResolvedField.__new__(ResolvedField)
+        field.identifier = False
+        field.increment = True
+
+        es_field = _es_field_mapping_for(field)
+        assert es_field.name == "integer"
