@@ -10,23 +10,23 @@ from protean.fields import String, Integer, Float, Boolean, DateTime, Date
 class DummyEntity(BaseAggregate):
     """Test entity with various field types for comprehensive testing"""
 
-    # String fields - should use .keyword
+    # String fields - mapped as Keyword (exact match natively)
     name: String(max_length=100, required=True)
     description: String(max_length=500)
 
-    # Numeric fields - should NOT use .keyword
+    # Numeric fields - mapped as Integer/Float
     age: Integer()
     score: Float()
     count: Integer(default=0)
 
-    # Boolean field - should NOT use .keyword
+    # Boolean field - mapped as Boolean
     is_active: Boolean(default=True)
 
-    # Date/time fields - should NOT use .keyword
+    # Date/time fields - mapped as Date
     created_at: DateTime(default=datetime.now)
     birth_date: Date()
 
-    # Auto field (identifier) - should NOT use .keyword (already keyword-mapped)
+    # Auto field (identifier) - mapped as Keyword
     # id field is automatically added by BaseAggregate
 
 
@@ -58,52 +58,32 @@ class TestFieldTypeDetectionIntegration:
         test_domain.init(traverse=False)
 
     def test_comprehensive_field_type_detection(self, test_domain):
-        """Test field type detection across all field types"""
+        """Test that auto-generated models have empty keyword_fields set.
+
+        With explicit Keyword mapping for string fields, no fields need
+        the .keyword subfield — all strings are already Keyword type.
+        """
         provider = test_domain.providers["default"]
 
-        # Test comprehensive entity
+        # Auto-generated models: all fields mapped explicitly, no .keyword needed
         test_keyword_fields = provider._compute_keyword_fields(DummyEntity)
-
-        # String fields should be included
-        assert "name" in test_keyword_fields
-        assert "description" in test_keyword_fields
-
-        # Numeric fields should be excluded
-        assert "age" not in test_keyword_fields
-        assert "score" not in test_keyword_fields
-        assert "count" not in test_keyword_fields
-
-        # Boolean field should be excluded
-        assert "is_active" not in test_keyword_fields
-
-        # Date/time fields should be excluded
-        assert "created_at" not in test_keyword_fields
-        assert "birth_date" not in test_keyword_fields
-
-        # Identifier field should be excluded
-        assert "id" not in test_keyword_fields
+        assert test_keyword_fields == set()
 
     def test_minimal_entity_all_string_fields(self, test_domain):
-        """Test entity with only string fields"""
+        """Test entity with only string fields has empty keyword_fields"""
         provider = test_domain.providers["default"]
         keyword_fields = provider._compute_keyword_fields(MinimalEntity)
 
-        # All declared fields should be string fields
-        assert "title" in keyword_fields
-        assert "content" in keyword_fields
-        assert "id" not in keyword_fields  # ID is special case
+        # With explicit Keyword mapping, no fields need .keyword subfield
+        assert keyword_fields == set()
 
     def test_numeric_entity_no_keyword_fields(self, test_domain):
         """Test entity with only numeric/date fields"""
         provider = test_domain.providers["default"]
         keyword_fields = provider._compute_keyword_fields(NumericEntity)
 
-        # No fields should need .keyword (all are numeric/date/boolean)
-        assert "value" not in keyword_fields
-        assert "ratio" not in keyword_fields
-        assert "enabled" not in keyword_fields
-        assert "timestamp" not in keyword_fields
-        assert "id" not in keyword_fields
+        # No fields should need .keyword
+        assert keyword_fields == set()
 
     def test_end_to_end_filtering_with_cached_field_types(self, test_domain):
         """Test end-to-end filtering functionality with cached field type information"""
@@ -203,14 +183,14 @@ class TestFieldTypeDetectionIntegration:
         dao.create(name="John", description="Test Description")
         dao.create(name="jane", description="test description")
 
-        # Test exact match (case-sensitive, uses .keyword)
+        # Test exact match (case-sensitive with Keyword mapping)
         exact_results = dao.query.filter(name__exact="John")
         assert exact_results.total == 1
 
         exact_lower = dao.query.filter(name__exact="john")
         assert exact_lower.total == 0  # Should not match due to case sensitivity
 
-        # Test case-insensitive match (uses analyzed field)
+        # iexact uses case_insensitive flag on term query (works on Keyword fields)
         iexact_results = dao.query.filter(name__iexact="JOHN")
         assert iexact_results.total == 1
 
@@ -266,9 +246,9 @@ class TestFieldTypeDetectionEdgeCases:
         # Create lookup without database_model_cls
         lookup = Exact("name", "value")
 
-        # Should fall back to using .keyword for safety
+        # With explicit Keyword mappings, fallback queries directly (no .keyword)
         query_dict = lookup.as_expression().to_dict()
-        assert query_dict == {"term": {"name.keyword": "value"}}
+        assert query_dict == {"term": {"name": "value"}}
 
     def test_empty_keyword_fields_set(self, test_domain):
         """Test behavior when entity has no string fields"""
@@ -280,18 +260,14 @@ class TestFieldTypeDetectionEdgeCases:
         assert len(keyword_fields) == 0
 
     def test_field_type_consistency_across_operations(self, test_domain):
-        """Test that field type detection is consistent across different lookup types"""
+        """Test that with explicit Keyword mappings, no fields use .keyword subfield"""
         dao = test_domain.repository_for(DummyEntity)._dao
         keyword_fields = dao.database_model_cls._keyword_fields
 
-        # All string field lookups should behave consistently
-        string_field = "name"
-        numeric_field = "age"
+        # With explicit Keyword mapping, keyword_fields is empty
+        assert keyword_fields == set()
 
-        assert string_field in keyword_fields
-        assert numeric_field not in keyword_fields
-
-        # Test different lookup types for string field
+        # Test different lookup types for string field — none should use .keyword
         from protean.adapters.repository.elasticsearch import (
             Exact,
             In,
@@ -300,6 +276,7 @@ class TestFieldTypeDetectionEdgeCases:
             Endswith,
         )
 
+        string_field = "name"
         string_lookups = [
             (Exact, "John"),
             (In, ["John", "Jane"]),
@@ -311,28 +288,12 @@ class TestFieldTypeDetectionEdgeCases:
         for lookup_class, value in string_lookups:
             lookup = lookup_class(string_field, value)
             lookup.database_model_cls = dao.database_model_cls
-            query = lookup.as_expression().to_dict()
+            query_dict = lookup.as_expression().to_dict()
 
-            # All should use .keyword subfield for string field
-            field_used = list(query.values())[0]  # Get the inner query object
-            if isinstance(field_used, dict):
-                field_name = list(field_used.keys())[0]
-                assert field_name.endswith(".keyword"), (
-                    f"{lookup_class.__name__} should use .keyword for string field"
-                )
-
-        # Test numeric field lookups
-        numeric_lookups = [(Exact, 25), (In, [25, 30])]
-
-        for lookup_class, value in numeric_lookups:
-            lookup = lookup_class(numeric_field, value)
-            lookup.database_model_cls = dao.database_model_cls
-            query = lookup.as_expression().to_dict()
-
-            # Should NOT use .keyword subfield for numeric field
-            field_used = list(query.values())[0]
+            # No field should use .keyword subfield (all strings are Keyword type)
+            field_used = list(query_dict.values())[0]
             if isinstance(field_used, dict):
                 field_name = list(field_used.keys())[0]
                 assert not field_name.endswith(".keyword"), (
-                    f"{lookup_class.__name__} should NOT use .keyword for numeric field"
+                    f"{lookup_class.__name__} should NOT use .keyword for Keyword-mapped field"
                 )

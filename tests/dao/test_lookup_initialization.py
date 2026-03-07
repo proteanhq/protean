@@ -163,12 +163,13 @@ class TestElasticsearchLookupInitialization:
         assert lookup.should_use_keyword_field("age") is False
 
     def test_es_should_use_keyword_field_without_model_cls(self):
-        """ES lookup defaults to True for keyword fields when no model cls."""
+        """ES lookup defaults to False when no model cls (strings are Keyword-mapped)."""
         from protean.adapters.repository.elasticsearch import Exact
 
         lookup = Exact("name", "John")
-        # Without database_model_cls, falls back to True for safety
-        assert lookup.should_use_keyword_field("name") is True
+        # Without database_model_cls, falls back to False — auto-generated models
+        # map strings as Keyword, so no .keyword subfield is needed.
+        assert lookup.should_use_keyword_field("name") is False
 
     def test_es_exact_lookup_inherits_keyword_init(self):
         """ES Exact lookup inherits the keyword-only init."""

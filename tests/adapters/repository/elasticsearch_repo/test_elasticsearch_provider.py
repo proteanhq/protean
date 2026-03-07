@@ -63,7 +63,11 @@ class TestElasticsearchProvider:
             test_domain.repository_for(Person)._dao.query.raw("SELECT * FROM person")
 
     def test_keyword_fields_precomputed_for_constructed_model(self, test_domain):
-        """Test that keyword fields are precomputed and cached during model construction"""
+        """Test that keyword fields are precomputed and cached during model construction.
+
+        With explicit Keyword mappings, auto-generated models have no fields
+        needing .keyword suffix (all strings are Keyword type natively).
+        """
         provider = test_domain.providers["default"]
 
         # Get the database model class for Person
@@ -73,14 +77,8 @@ class TestElasticsearchProvider:
         assert hasattr(person_model_cls, "_keyword_fields")
         keyword_fields = person_model_cls._keyword_fields
 
-        # String fields should be in keyword_fields
-        assert "first_name" in keyword_fields
-        assert "last_name" in keyword_fields
-
-        # Numeric/date fields should NOT be in keyword_fields
-        assert "age" not in keyword_fields  # Integer field
-        assert "created_at" not in keyword_fields  # DateTime field
-        assert "id" not in keyword_fields  # Identifier field
+        # With explicit Keyword mapping, no fields need .keyword subfield
+        assert keyword_fields == set()
 
     def test_keyword_fields_cached_on_dao_database_model(self, test_domain):
         """Test that keyword fields are cached on DAO's database model class"""
@@ -90,29 +88,22 @@ class TestElasticsearchProvider:
         assert hasattr(dao.database_model_cls, "_keyword_fields")
         keyword_fields = dao.database_model_cls._keyword_fields
 
-        # Verify correct field classification
-        assert "first_name" in keyword_fields  # String field
-        assert "last_name" in keyword_fields  # String field
-        assert "age" not in keyword_fields  # Integer field
-        assert "created_at" not in keyword_fields  # DateTime field
+        # With explicit Keyword mapping, auto-generated models have empty set
+        assert keyword_fields == set()
 
     def test_compute_keyword_fields_method(self, test_domain):
         """Test the _compute_keyword_fields method directly"""
         provider = test_domain.providers["default"]
 
         # Test with Person entity (has String, Integer, DateTime fields)
+        # Without custom attrs, all fields are auto-mapped as Keyword (no .keyword needed)
         keyword_fields = provider._compute_keyword_fields(Person)
 
         # Should be a set
         assert isinstance(keyword_fields, set)
 
-        # String fields should be included
-        expected_string_fields = {"first_name", "last_name"}
-        assert expected_string_fields.issubset(keyword_fields)
-
-        # Non-string fields should be excluded
-        non_string_fields = {"age", "created_at", "id"}
-        assert not any(field in keyword_fields for field in non_string_fields)
+        # With explicit Keyword mapping, no fields need .keyword subfield
+        assert keyword_fields == set()
 
     def test_keyword_fields_cached_across_dao_instances(self, test_domain):
         """Test that keyword fields are shared across DAO instances for same entity"""
