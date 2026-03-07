@@ -1,17 +1,28 @@
-"""Conftest for SQLAlchemy-specific repository tests."""
+"""Conftest for SQLAlchemy-specific repository tests.
 
-import pytest
+Deselects tests marked with @pytest.mark.sa_provider at collection time
+when --db is not a SQLAlchemy-backed database, avoiding noisy SKIPPED messages.
+"""
 
-from protean.adapters.repository.sqlalchemy import SAProvider
+# Database types backed by SQLAlchemy
+_SA_DATABASES = {"POSTGRESQL", "SQLITE", "MSSQL"}
 
 
-@pytest.fixture
-def require_sa_provider(test_domain):
-    """Skip the test if the default provider is not an SAProvider.
+def pytest_collection_modifyitems(config, items):
+    """Deselect sa_provider-marked tests when --db is not an SA database."""
+    db_option = config.getoption("--db", "MEMORY").upper()
+    if db_option in _SA_DATABASES:
+        return
 
-    Use as a class-level or test-level autouse fixture for tests that
-    only make sense with an SQLAlchemy provider.
-    """
-    provider = test_domain.providers["default"]
-    if not isinstance(provider, SAProvider):
-        pytest.skip("Only applicable to SQLAlchemy providers")
+    deselected = []
+    remaining = []
+
+    for item in items:
+        if item.get_closest_marker("sa_provider"):
+            deselected.append(item)
+        else:
+            remaining.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = remaining

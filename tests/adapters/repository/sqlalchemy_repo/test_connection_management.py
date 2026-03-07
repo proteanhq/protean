@@ -22,7 +22,7 @@ class DummyEntity(BaseAggregate):
     age: Integer(default=0)
 
 
-@pytest.mark.usefixtures("require_sa_provider")
+@pytest.mark.sa_provider
 class TestSessionFactoryCaching:
     """Verify that get_session() returns the same cached scoped_session."""
 
@@ -402,9 +402,8 @@ class TestUoWSessionCleanup:
 
         assert uow._sessions == {}
 
-    def test_reset_calls_remove_on_scoped_sessions(
-        self, test_domain, require_sa_provider
-    ):
+    @pytest.mark.sa_provider
+    def test_reset_calls_remove_on_scoped_sessions(self, test_domain):
         """_reset() should call remove() on scoped sessions, not just close()."""
         uow = UnitOfWork()
         uow.start()

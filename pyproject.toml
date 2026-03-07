@@ -209,6 +209,7 @@ markers = [
     "reliable_messaging: tests for reliable messaging capability (includes ack/nack)",
     "ordered_messaging: tests for ordered messaging capability (includes message ordering)",
     "enterprise_streaming: tests for enterprise streaming capability (includes DLQ, replay, partitioning)",
+    "sa_provider: tests requiring an SQLAlchemy-backed database provider",
     # Capability-based markers for database testing
     "basic_storage: tests for basic CRUD, filtering, bulk operations, ordering (all providers)",
     "transactional: tests requiring transaction support (real or simulated commit/rollback)",

@@ -178,6 +178,7 @@ def pytest_collection_modifyitems(config, items):
                 "schema_management",
                 "native_json",
                 "native_array",
+                "sa_provider",
             ]
             for marker_name in capability_markers:
                 if item.get_closest_marker(marker_name):

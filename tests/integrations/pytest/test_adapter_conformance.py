@@ -339,8 +339,8 @@ class TestConformancePluginIntegration:
         assert result.returncode == 0
         assert "passed" in result.stdout
 
-    def test_plugin_skips_unsupported_capabilities(self, tmp_path: Path):
-        """Tests for capabilities the provider lacks are skipped."""
+    def test_plugin_deselects_unsupported_capabilities(self, tmp_path: Path):
+        """Tests for capabilities the provider lacks are deselected."""
         from protean.testing import get_generic_test_dir
 
         generic_dir = get_generic_test_dir()
@@ -352,9 +352,9 @@ class TestConformancePluginIntegration:
                 "--db=MEMORY",
             ],
         )
-        # Memory lacks NATIVE_JSON — all tests should be skipped
-        assert result.returncode == 0
-        assert "skipped" in result.stdout
+        # Memory lacks NATIVE_JSON — all tests should be deselected (exit code 5)
+        assert result.returncode == 5
+        assert "deselected" in result.stdout
         assert "failed" not in result.stdout
 
     def test_plugin_works_with_user_overridden_db_config(self, tmp_path: Path):

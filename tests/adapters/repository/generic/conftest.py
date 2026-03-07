@@ -1,61 +1,74 @@
 """Conftest for generic database capability tests.
 
-Automatically skips tests when the current database provider
-does not have the capability required by the test's marker.
+Deselects tests at collection time when the current --db provider
+does not support the capability required by the test's marker.
+This avoids noisy SKIPPED messages in default (Memory) test runs.
 """
 
-import pytest
+# Static mapping from --db option to supported capability markers.
+# Mirrors the database_capability_markers in src/protean/cli/test.py.
+_DB_CAPABILITY_MARKERS: dict[str, set[str]] = {
+    "MEMORY": {"basic_storage", "transactional", "raw_queries"},
+    "POSTGRESQL": {
+        "basic_storage",
+        "transactional",
+        "atomic_transactions",
+        "raw_queries",
+        "schema_management",
+        "native_json",
+        "native_array",
+    },
+    "SQLITE": {
+        "basic_storage",
+        "transactional",
+        "atomic_transactions",
+        "raw_queries",
+        "schema_management",
+    },
+    "MSSQL": {
+        "basic_storage",
+        "transactional",
+        "atomic_transactions",
+        "raw_queries",
+        "schema_management",
+        "native_json",
+        "native_array",
+    },
+    "ELASTICSEARCH": {"basic_storage", "schema_management"},
+}
 
-from protean.port.provider import DatabaseCapabilities
-
-# Mapping from marker name to the DatabaseCapabilities flag(s) required
-MARKER_TO_CAPABILITY = {
-    "basic_storage": DatabaseCapabilities.BASIC_STORAGE,
-    "transactional": (
-        DatabaseCapabilities.TRANSACTIONS | DatabaseCapabilities.SIMULATED_TRANSACTIONS
-    ),
-    "atomic_transactions": DatabaseCapabilities.TRANSACTIONS,
-    "raw_queries": DatabaseCapabilities.RAW_QUERIES,
-    "schema_management": DatabaseCapabilities.SCHEMA_MANAGEMENT,
-    "native_json": DatabaseCapabilities.NATIVE_JSON,
-    "native_array": DatabaseCapabilities.NATIVE_ARRAY,
+# All capability markers that gate tests in this directory
+_ALL_CAPABILITY_MARKERS = {
+    "basic_storage",
+    "transactional",
+    "atomic_transactions",
+    "raw_queries",
+    "schema_management",
+    "native_json",
+    "native_array",
 }
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip tests whose capability marker is not satisfied by the current provider."""
+    """Deselect tests whose capability marker is not supported by the current --db."""
+    db_option = config.getoption("--db", "MEMORY").upper()
+    supported = _DB_CAPABILITY_MARKERS.get(db_option, set())
+
+    deselected = []
+    remaining = []
+
     for item in items:
-        for marker_name, required_caps in MARKER_TO_CAPABILITY.items():
-            marker = item.get_closest_marker(marker_name)
-            if marker is None:
-                continue
+        marker_name = None
+        for name in _ALL_CAPABILITY_MARKERS:
+            if item.get_closest_marker(name):
+                marker_name = name
+                break
 
-            # Store the required capability on the item for the fixture to check
-            item._database_required_capability = (marker_name, required_caps)
-            break  # A test should only have one capability marker
+        if marker_name is not None and marker_name not in supported:
+            deselected.append(item)
+        else:
+            remaining.append(item)
 
-
-@pytest.fixture(autouse=True)
-def _skip_if_provider_lacks_capability(request, test_domain):
-    """Skip the test if the provider lacks the required capability."""
-    cap_info = getattr(request.node, "_database_required_capability", None)
-    if cap_info is None:
-        return
-
-    marker_name, required_caps = cap_info
-    provider = test_domain.providers["default"]
-
-    # For `transactional`, the provider needs TRANSACTIONS or SIMULATED_TRANSACTIONS
-    if marker_name == "transactional":
-        if not provider.has_any_capability(required_caps):
-            pytest.skip(
-                f"Provider '{provider.name}' ({provider.__class__.__name__}) "
-                f"lacks transaction support (real or simulated)"
-            )
-    else:
-        # For all other markers, ALL flag bits must be present
-        if not provider.has_all_capabilities(required_caps):
-            pytest.skip(
-                f"Provider '{provider.name}' ({provider.__class__.__name__}) "
-                f"lacks required capability: {marker_name}"
-            )
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = remaining
