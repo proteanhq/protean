@@ -38,6 +38,8 @@ need by what you're trying to accomplish.
 | Raise domain events from an aggregate           | [Raising Events](./guides/domain-behavior/raising-events.md) |
 | Trace the full causal chain of commands and events | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
 | Inject tenant, user, or request context into every event and command | [Message Enrichment](./patterns/message-enrichment.md) |
+| Implement multi-tenancy in an event-driven system | [Multi-Tenancy](./patterns/multi-tenancy.md) |
+| Isolate data by tenant with row-level filtering | [Multi-Tenancy](./patterns/multi-tenancy.md) |
 | Coordinate logic across multiple aggregates     | [Domain Services](./guides/domain-behavior/domain-services.md) |
 | Model an aggregate's lifecycle as a state machine | [Aggregate State Machines](./patterns/aggregate-state-machines.md) |
 

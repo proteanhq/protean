@@ -136,6 +136,13 @@ If you are new to these patterns, these sequences build on each other:
   while ensuring all messages carry operational context in
   `metadata.extensions`.
 
+- **[Multi-Tenancy in Event-Driven Systems](multi-tenancy.md)** --
+  Row-level tenant isolation using `g.tenant_id`, enrichers,
+  `metadata.extensions`, and automatic context propagation through async
+  processing. Covers the end-to-end flow from middleware through event store
+  to async handlers, with future directions for schema-per-tenant and
+  database-per-tenant strategies.
+
 - **[CloudEvents as a Boundary Contract](cloudevents-interoperability.md)** --
   Serialize Protean events to the CloudEvents v1.0 standard at system
   boundaries. Keep internal metadata DDD-native; use `to_cloudevent()` and

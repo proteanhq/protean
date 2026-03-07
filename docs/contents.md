@@ -304,6 +304,7 @@ Protean supports but does not enforce.
 - [Coordinating Long-Running Processes](./patterns/coordinating-long-running-processes.md) -- Use a process manager to coordinate multi-step workflows across aggregates, with idempotent handlers, compensation, and timeout strategies.
 - [Message Tracing in Event-Driven Systems](./patterns/message-tracing.md) -- Correlation and causation IDs for end-to-end traceability across commands and events.
 - [Enrich Messages with Cross-Cutting Metadata](./patterns/message-enrichment.md) -- Inject tenant IDs, user context, and request trace IDs into events and commands via enrichment hooks, keeping the domain model clean.
+- [Multi-Tenancy in Event-Driven Systems](./patterns/multi-tenancy.md) -- Row-level tenant isolation using enrichers, `metadata.extensions`, and automatic context propagation through async processing.
 - [CloudEvents as a Boundary Contract](./patterns/cloudevents-interoperability.md) -- Serialize Protean events to the CloudEvents v1.0 standard at system boundaries; use `to_cloudevent()` and `from_cloudevent()` as an anti-corruption layer for interoperability.
 
 ### Architecture & Quality

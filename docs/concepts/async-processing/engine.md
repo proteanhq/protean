@@ -195,6 +195,57 @@ The emitter adds zero overhead when no monitoring tools are subscribed and
 persistence is disabled -- see [Observability](../../reference/server/observability.md) for the full
 design, the Observatory monitoring server, and trace API endpoints.
 
+## Context Propagation
+
+When the Engine processes a message, it restores the cross-cutting context that
+was present when the message was originally created. This is critical for
+multi-tenant applications, user-scoped auditing, and any scenario where async
+handlers need ambient context from the original request.
+
+### How it works
+
+1. During the original request, [enrichers](../../patterns/message-enrichment.md)
+   inject values from `g` (e.g., `g.tenant_id`, `g.user_id`) into the message's
+   `metadata.extensions`.
+2. The message is persisted to the event store with its extensions intact.
+3. When the Engine picks up the message for async processing, it reads
+   `metadata.extensions` and passes them as keyword arguments to
+   `domain_context()`:
+
+```python
+# Simplified from engine.py — what the Engine does for each message
+extensions = message.metadata.extensions or {}
+
+with self.domain.domain_context(**extensions):
+    g.message_in_context = message
+    # Handler runs here — g.tenant_id, g.user_id, etc. are available
+```
+
+This means any key injected by an enricher is automatically available as an
+attribute on `g` inside the handler. No manual extraction is needed.
+
+### `g.message_in_context`
+
+In addition to restoring enricher-injected values, the Engine sets
+`g.message_in_context` to the current message being processed. Handlers can
+use this to access the full message metadata:
+
+```python
+# Access the full extensions dict
+tenant_id = g.message_in_context.metadata.extensions.get("tenant_id")
+
+# Or use the restored g attribute directly (simpler)
+tenant_id = g.tenant_id
+```
+
+After the handler completes (or fails), the domain context is torn down and
+`g` is cleaned up — extensions do not leak between messages.
+
+For a complete worked example of context propagation in a multi-tenant
+application, see [Multi-Tenancy in Event-Driven Systems](../../patterns/multi-tenancy.md).
+
+---
+
 ## Running the Engine
 
 For comprehensive information on how to start, configure, and operate the engine, including:
