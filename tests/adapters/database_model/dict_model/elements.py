@@ -51,3 +51,29 @@ class ProviderCustomModel(BaseDatabaseModel):
 class Receiver(BaseAggregate):
     name = String()
     age = Integer()
+
+
+class Widget(BaseAggregate):
+    name = String()
+    weight = Integer()
+
+
+class WidgetCustomModel(BaseDatabaseModel):
+    """Custom model with method overrides, staticmethods, and properties to
+    verify that dynamic class creation via ``type()`` preserves them."""
+
+    @classmethod
+    def from_entity(cls, entity) -> dict:
+        """Override from_entity to upper-case the name."""
+        item_dict = cls._entity_to_dict(entity)
+        if item_dict.get("name"):
+            item_dict["name"] = item_dict["name"].upper()
+        return item_dict
+
+    @staticmethod
+    def custom_static() -> str:
+        return "static-ok"
+
+    @property
+    def custom_property(self) -> str:
+        return "property-ok"

@@ -4,7 +4,7 @@ import logging
 from abc import ABCMeta, abstractmethod
 from enum import Flag, auto
 from importlib import import_module, metadata
-from typing import Any, Type
+from typing import Any, Protocol, Type, runtime_checkable
 
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils.query import RegisterLookupMixin
@@ -61,6 +61,30 @@ class DatabaseCapabilities(Flag):
     )
 
 
+@runtime_checkable
+class SessionProtocol(Protocol):
+    """Protocol that database session objects must satisfy.
+
+    Objects returned by ``get_session()`` and ``get_connection()`` must
+    implement ``commit``, ``rollback``, and ``close``, and expose an
+    ``is_active`` flag.
+
+    Adapters without real transaction support (e.g., Elasticsearch)
+    should provide no-op implementations and set ``is_active = True``
+    in ``__init__``.
+
+    ``begin()`` is optional — only needed for adapters with deferred
+    transaction start (e.g., SQLAlchemy).  The Unit of Work calls
+    ``begin()`` only when ``is_active`` is ``False``.
+    """
+
+    is_active: bool
+
+    def commit(self) -> None: ...
+    def rollback(self) -> None: ...
+    def close(self) -> None: ...
+
+
 class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     """Provider implementation for each database.
 
@@ -108,16 +132,14 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     Session Protocol
     ================
 
-    ``get_session()`` and ``get_connection()`` must return objects that support:
-
-    - ``commit()`` — flush pending changes to the database
-    - ``rollback()`` — discard pending changes
-    - ``close()`` — release the connection back to the pool
+    ``get_session()`` and ``get_connection()`` must return objects that
+    satisfy :class:`SessionProtocol` (``commit``, ``rollback``, ``close``,
+    and an ``is_active`` flag).
 
     The ``BaseDAO``'s ``_commit_if_standalone()`` calls these methods when
     operating outside a Unit of Work. Adapters without real transactions
     (e.g., Elasticsearch) should provide a session object with no-op
-    implementations of these methods.
+    implementations and ``is_active = True``.
 
     Call Flow
     =========
@@ -225,16 +247,20 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Extract lookup method based on key name format"""
         parts = key.split("__")
         # 'exact' is the default lookup if there was no explicit comparison op in `key`
-        #   Assume there is only one `__` in the key.
-        #   FIXME Change for child attribute query support
+        # Only single-level field__op lookups are supported.  Nested attribute
+        # queries (e.g. address__city__contains) are unnecessary because:
+        #   - Value objects are flattened into shadow fields (billing_address_street)
+        #   - Child entities live in separate repositories with their own queries
         op = "exact" if len(parts) == 1 else parts[1]
 
         # Construct and assign the lookup class as a filter criteria
         return parts[0], self.get_lookup(op)
 
     @abstractmethod
-    def get_session(self) -> Any:
+    def get_session(self) -> SessionProtocol:
         """Establish a new session with the database.
+
+        Must return an object satisfying :class:`SessionProtocol`.
 
         Typically the session factory should be created once per application. Which is then
         held on to and passed to different transactions.
@@ -249,8 +275,11 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_connection(self) -> Any:
-        """Get the connection object for the repository"""
+    def get_connection(self) -> SessionProtocol:
+        """Get the connection object for the repository.
+
+        Must return an object satisfying :class:`SessionProtocol`.
+        """
 
     @abstractmethod
     def is_alive(self) -> bool:

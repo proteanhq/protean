@@ -167,10 +167,14 @@ def database_model_factory(element_cls: type[_T], domain: Any, **opts: Any) -> t
     entity_field_names = set(declared_fields(part_of_cls).keys())
 
     _SKIP = {"Meta", "meta_", "element_type"}
+    _DESCRIPTOR_TYPES = (classmethod, staticmethod, property)
     model_field_names = {
         name
         for name, value in vars(element_cls).items()
-        if not name.startswith("_") and name not in _SKIP and not callable(value)
+        if not name.startswith("_")
+        and name not in _SKIP
+        and not callable(value)
+        and not isinstance(value, _DESCRIPTOR_TYPES)
     }
 
     extra = model_field_names - entity_field_names

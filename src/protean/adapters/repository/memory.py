@@ -185,7 +185,7 @@ class MemoryProvider(BaseProvider):
             meta_.part_of = entity_cls
 
             custom_attrs.update({"meta_": meta_})
-            # FIXME Ensure the custom model attributes are constructed properly
+            # User class is in the MRO; custom methods/properties resolve via standard Python MRO
             decorated_database_database_model_cls = type(
                 database_model_cls.__name__,
                 (MemoryModel, database_model_cls),
@@ -214,7 +214,7 @@ class MemoryProvider(BaseProvider):
             attrs = {
                 "meta_": meta_,
             }
-            # FIXME Ensure the custom model attributes are constructed properly
+            # Auto-generated model; no user-defined attributes to carry over
             database_model_cls = type(
                 entity_cls.__name__ + "Model", (MemoryModel,), attrs
             )
