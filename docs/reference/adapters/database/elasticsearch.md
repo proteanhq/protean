@@ -81,34 +81,71 @@ The Elasticsearch provider supports the following capabilities:
   refers to SQL-style JSON columns
 - :x: **NATIVE_ARRAY** -- No SQL-style array columns
 
-## Elasticsearch Model
+## Field Mapping
 
-You can supply a custom Elasticsearch Model with an `Index` inner class.
-Options in the inner class override configuration-level settings.
+Protean auto-generates an explicit Elasticsearch mapping for every
+aggregate. Each Protean field type is mapped to an appropriate
+`elasticsearch_dsl` field type:
+
+| Protean Field | ES Mapping Type | Notes |
+|---|---|---|
+| `String` | `keyword` | Exact match, sortable, aggregatable |
+| `Identifier` / `Auto` | `keyword` | Identity fields |
+| `Integer` | `integer` | |
+| `Float` | `float` | |
+| `Boolean` | `boolean` | |
+| `DateTime` | `date` | |
+| `Date` | `date` | |
+| `Dict` | *(dynamic)* | Uses ES dynamic mapping |
+| `List` | *(dynamic)* | Uses ES dynamic mapping |
+| `ValueObjectList` | `nested` | Nested objects |
+
+String fields default to `keyword` — they support exact matching, sorting,
+and aggregations out of the box. If you need full-text search with
+analyzers, define a custom Elasticsearch Model (see below).
+
+## Custom Elasticsearch Model
+
+Supply a custom `@domain.model` when you need ES-specific field tuning
+(analyzers, multi-fields, normalizers, etc.) or custom `Index` settings.
+User-defined fields take precedence; unmapped attributes are filled in
+automatically from the aggregate.
 
 ```python
-from protean.fields import String, Text
+import elasticsearch_dsl
 
 @domain.aggregate
-class Person:
-    name: String()
-    about: Text()
+class Article:
+    title: String()
+    body: String()
+    category: String()
 
     class Meta:
-        schema_name = "people"
+        schema_name = "articles"
 
-@domain.database_model(part_of=Person)
-class PeopleModel:
-    name = elasticsearch_dsl.Text(fields={"raw": elasticsearch_dsl.Keyword()})
-    about = elasticsearch_dsl.Text()
+@domain.model(part_of=Article)
+class ArticleModel:
+    # Full-text search with .keyword subfield for exact match
+    title = elasticsearch_dsl.Text(
+        analyzer="standard",
+        fields={"keyword": elasticsearch_dsl.Keyword()}
+    )
+    # Full-text search only
+    body = elasticsearch_dsl.Text(analyzer="english")
+    # category is not listed — auto-mapped as Keyword from the aggregate
 
     class Index:
         settings = {"number_of_shards": 1}
 ```
 
-!!!note
+!!! note
     When a custom model defines an `Index` inner class, its settings override
     the global `settings` from the configuration file.
+
+!!! note
+    When a custom model defines `Text`-type fields, lookups like `exact`,
+    `in`, `contains`, `startswith`, and `endswith` on those fields
+    automatically use the `.keyword` subfield for exact matching.
 
 ## Limitations
 

@@ -8,16 +8,12 @@ class TestLookup:
     def test_exact_lookup(self, test_domain):
         lookup = repo.Exact("first_name", "John")
 
-        assert lookup.as_expression().to_dict() == {
-            "term": {"first_name.keyword": "John"}
-        }
+        assert lookup.as_expression().to_dict() == {"term": {"first_name": "John"}}
 
     def test_in_lookup(self, test_domain):
         lookup = repo.In("first_name", ["John"])
 
-        assert lookup.as_expression().to_dict() == {
-            "terms": {"first_name.keyword": ["John"]}
-        }
+        assert lookup.as_expression().to_dict() == {"terms": {"first_name": ["John"]}}
 
     def test_gt_lookup(self, test_domain):
         lookup = repo.GreaterThan("age", 6)
@@ -43,21 +39,21 @@ class TestLookup:
         lookup = repo.Contains("first_name", "John")
 
         assert lookup.as_expression().to_dict() == {
-            "wildcard": {"first_name.keyword": {"value": "*John*"}}
+            "wildcard": {"first_name": {"value": "*John*"}}
         }
 
     def test_startswith_lookup(self, test_domain):
         lookup = repo.Startswith("first_name", "John")
 
         assert lookup.as_expression().to_dict() == {
-            "wildcard": {"first_name.keyword": {"value": "John*"}}
+            "wildcard": {"first_name": {"value": "John*"}}
         }
 
     def test_endswith_lookup(self, test_domain):
         lookup = repo.Endswith("first_name", "John")
 
         assert lookup.as_expression().to_dict() == {
-            "wildcard": {"first_name.keyword": {"value": "*John"}}
+            "wildcard": {"first_name": {"value": "*John"}}
         }
 
 
@@ -76,8 +72,10 @@ class TestLookupFieldTypeDetection:
         self.Person = Person
         self.Alien = Alien
 
-    def test_exact_lookup_uses_keyword_for_string_fields(self, test_domain):
-        """Test that Exact lookup uses .keyword subfield for string fields"""
+    def test_exact_lookup_queries_keyword_mapped_string_fields_directly(
+        self, test_domain
+    ):
+        """Test that Exact lookup queries Keyword-mapped string fields directly"""
         dao = test_domain.repository_for(self.Person)._dao
 
         # Create lookup with database model class attached (as done in _build_filters)
@@ -85,9 +83,9 @@ class TestLookupFieldTypeDetection:
             "first_name", "John", database_model_cls=dao.database_model_cls
         )
 
-        # String field should use .keyword subfield
+        # String fields are mapped as Keyword — query directly, no .keyword subfield
         query_dict = lookup.as_expression().to_dict()
-        assert query_dict == {"term": {"first_name.keyword": "John"}}
+        assert query_dict == {"term": {"first_name": "John"}}
 
     def test_exact_lookup_no_keyword_for_numeric_fields(self, test_domain):
         """Test that Exact lookup doesn't use .keyword subfield for numeric fields"""
@@ -120,7 +118,7 @@ class TestLookupFieldTypeDetection:
         )
 
         query_dict = lookup.as_expression().to_dict()
-        assert query_dict == {"terms": {"first_name.keyword": ["John", "Jane"]}}
+        assert query_dict == {"terms": {"first_name": ["John", "Jane"]}}
 
     def test_in_lookup_no_keyword_for_numeric_fields(self, test_domain):
         """Test that In lookup doesn't use .keyword subfield for numeric fields"""
@@ -140,7 +138,7 @@ class TestLookupFieldTypeDetection:
         )
 
         query_dict = lookup.as_expression().to_dict()
-        assert query_dict == {"wildcard": {"first_name.keyword": {"value": "*Jo*"}}}
+        assert query_dict == {"wildcard": {"first_name": {"value": "*Jo*"}}}
 
     def test_contains_lookup_no_keyword_for_numeric_fields(self, test_domain):
         """Test that Contains lookup doesn't use .keyword for numeric fields"""
@@ -160,7 +158,7 @@ class TestLookupFieldTypeDetection:
         )
 
         query_dict = lookup.as_expression().to_dict()
-        assert query_dict == {"wildcard": {"last_name.keyword": {"value": "Doe*"}}}
+        assert query_dict == {"wildcard": {"last_name": {"value": "Doe*"}}}
 
     def test_endswith_lookup_uses_keyword_for_string_fields(self, test_domain):
         """Test that Endswith lookup uses .keyword subfield for string fields"""
@@ -171,25 +169,27 @@ class TestLookupFieldTypeDetection:
         )
 
         query_dict = lookup.as_expression().to_dict()
-        assert query_dict == {"wildcard": {"last_name.keyword": {"value": "*son"}}}
+        assert query_dict == {"wildcard": {"last_name": {"value": "*son"}}}
 
     def test_lookup_fallback_when_no_cached_info(self, test_domain):
-        """Test that lookups fall back to using .keyword when no cached info available"""
+        """Test that lookups query field directly when no cached info available"""
         # Create lookup without database model class (missing cached info)
         lookup = repo.Exact("first_name", "John")
 
-        # Should fall back to using .keyword for safety
+        # With explicit Keyword mappings, fallback queries directly (no .keyword)
         query_dict = lookup.as_expression().to_dict()
-        assert query_dict == {"term": {"first_name.keyword": "John"}}
+        assert query_dict == {"term": {"first_name": "John"}}
 
-    def test_iexact_lookup_uses_analyzed_field(self, test_domain):
-        """Test that IExact lookup uses the analyzed field (not .keyword)"""
+    def test_iexact_lookup_uses_case_insensitive_flag(self, test_domain):
+        """Test that IExact lookup uses case_insensitive on term query"""
         dao = test_domain.repository_for(self.Person)._dao
 
         lookup = repo.IExact(
             "first_name", "John", database_model_cls=dao.database_model_cls
         )
 
-        # IExact should use analyzed field and lowercase the target
+        # IExact uses case_insensitive flag (works on Keyword fields)
         query_dict = lookup.as_expression().to_dict()
-        assert query_dict == {"term": {"first_name": "john"}}
+        assert query_dict == {
+            "term": {"first_name": {"value": "John", "case_insensitive": True}}
+        }

@@ -8,7 +8,19 @@ from uuid import UUID
 import elasticsearch_dsl
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
-from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
+from elasticsearch_dsl import (
+    Boolean as ESBoolean,
+    Date as ESDate,
+    Document,
+    Float as ESFloat,
+    Index,
+    Integer as ESInteger,
+    Keyword,
+    Mapping,
+    Nested as ESNested,
+    Search,
+    query,
+)
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
@@ -20,9 +32,90 @@ from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, id_field
+from protean.fields.association import _ReferenceField
+from protean.fields.basic import ValueObjectList
+from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import ResolvedField
 
 logger = logging.getLogger(__name__)
+
+# Python type → elasticsearch_dsl field type mapping for auto-generated models.
+# These are sensible defaults; users override via custom @domain.model classes
+# for ES-specific tuning (analyzers, multi-fields, etc.).
+_PYTHON_TYPE_TO_ES = {
+    str: Keyword,
+    int: ESInteger,
+    float: ESFloat,
+    bool: ESBoolean,
+}
+
+
+def _resolve_python_type(field_obj: ResolvedField):
+    """Unwrap Optional/Union and generic aliases to get the base Python type."""
+    import types
+    import typing
+
+    python_type = field_obj._python_type
+    origin = typing.get_origin(python_type)
+    if origin is types.UnionType or origin is typing.Union:
+        args = [a for a in typing.get_args(python_type) if a is not type(None)]
+        if args:
+            python_type = args[0]
+            # Re-check origin for the unwrapped type (e.g. list[Any])
+            origin = typing.get_origin(python_type)
+
+    # Resolve generic aliases like list[Any] → list, dict[str, Any] → dict
+    if origin is not None:
+        python_type = origin
+
+    return python_type
+
+
+def _es_field_mapping_for(field_obj) -> elasticsearch_dsl.Field | None:
+    """Map a Protean field to an elasticsearch_dsl field type.
+
+    Returns a sensible default ES field, or None for fields that should use
+    Elasticsearch's dynamic mapping (List, Dict). For ES-specific tuning
+    (analyzers, multi-fields, etc.), users should define a custom @domain.model.
+    """
+    from datetime import date as _date
+    from datetime import datetime as _datetime
+
+    # ShadowField (flattened ValueObject attribute): delegate to inner field
+    if isinstance(field_obj, _ShadowField):
+        return _es_field_mapping_for(field_obj.field_obj)
+
+    # ResolvedField (Pydantic shim)
+    if isinstance(field_obj, ResolvedField):
+        if field_obj.identifier:
+            return Keyword()
+        if field_obj.increment:
+            return ESInteger()
+
+        python_type = _resolve_python_type(field_obj)
+
+        # Date/datetime
+        if python_type in (_datetime, _date):
+            return ESDate()
+
+        # Dict / List → skip explicit mapping, let ES use dynamic mapping.
+        # ESObject(enabled=False) breaks serialization of plain values.
+        if python_type in (dict, list):
+            return None
+
+        return _PYTHON_TYPE_TO_ES.get(python_type, Keyword)()
+
+    # Reference field (FK shadow): always Keyword
+    if isinstance(field_obj, _ReferenceField):
+        return Keyword()
+
+    # ValueObjectList: nested objects
+    if isinstance(field_obj, ValueObjectList):
+        return ESNested()
+
+    # Fallback
+    return Keyword()
+
 
 operators = {
     "exact": "__eq__",
@@ -492,47 +585,28 @@ class ESProvider(BaseProvider):
 
         return schema_name
 
-    def _compute_keyword_fields(self, entity_cls):
-        """Precompute which fields should use .keyword subfield for exact matching.
+    def _compute_keyword_fields(
+        self, entity_cls, database_model_cls=None, custom_attrs=None
+    ):
+        """Precompute which fields need a .keyword subfield for exact matching.
+
+        With explicit mappings, only fields mapped as ``Text`` (from custom
+        @domain.model classes) need the ``.keyword`` suffix.  Auto-generated
+        models map strings to ``Keyword``, which supports exact matching
+        natively without a subfield.
 
         Returns a set of field names that should use the .keyword subfield.
-        This computation is done once during model construction for efficiency.
         """
-        import types
-        import typing
-        from datetime import date as _date
-        from datetime import datetime as _datetime
+        from elasticsearch_dsl import Text as ESText
 
-        keyword_fields = set()
-        entity_attributes = attributes(entity_cls)
+        keyword_fields: set[str] = set()
 
-        for field_name, field_obj in entity_attributes.items():
-            # Handle Pydantic field shims: check Python type
-            if isinstance(field_obj, ResolvedField):
-                if field_obj.identifier:
-                    continue
-
-                # Unwrap Optional/Union to get the base type
-                python_type = field_obj._python_type
-                origin = typing.get_origin(python_type)
-                if origin is types.UnionType or origin is typing.Union:
-                    args = [
-                        a for a in typing.get_args(python_type) if a is not type(None)
-                    ]
-                    if args:
-                        python_type = args[0]
-
-                # Numeric and date types don't use .keyword
-                if python_type in (int, float, bool, _datetime, _date):
-                    continue
-
-                keyword_fields.add(field_name)
-                continue
-
-            # Non-shim fields (association descriptors etc.) — skip for keyword
-            if getattr(field_obj, "identifier", False):
-                continue
-            keyword_fields.add(field_name)
+        # When a custom model provides explicit ES field definitions,
+        # detect which are Text-type (those need .keyword for exact match)
+        if custom_attrs:
+            for attr_name, attr_value in custom_attrs.items():
+                if isinstance(attr_value, ESText):
+                    keyword_fields.add(attr_name)
 
         return keyword_fields
 
@@ -611,15 +685,39 @@ class ESProvider(BaseProvider):
             # Add the Index class to the custom attributes
             custom_attrs.update({"Index": index_cls})
 
-            # FIXME Ensure the custom model attributes are constructed properly
+            # Snapshot custom attrs before type() — the ES DSL Document
+            # metaclass mutates the dict, removing field entries.
+            custom_attrs_snapshot = dict(custom_attrs)
+
             decorated_database_database_model_cls = type(
                 database_model_cls.__name__,
                 (ElasticsearchModel, database_model_cls),
                 custom_attrs,
             )
 
+            # Auto-map entity attributes not explicitly defined in the custom model.
+            # User-defined ES fields take precedence.
+            m = Mapping()
+            entity_attributes = attributes(entity_cls)
+            for attr_name, field_obj in entity_attributes.items():
+                # Skip _version — remapped to entity_version in from_entity()
+                if attr_name == "_version":
+                    continue
+                if attr_name not in custom_attrs_snapshot:
+                    es_field = _es_field_mapping_for(field_obj)
+                    if es_field is not None:
+                        m.field(attr_name, es_field)
+
+            if hasattr(entity_cls, "_version"):
+                if "entity_version" not in custom_attrs_snapshot:
+                    m.field("entity_version", ESInteger())
+
+            decorated_database_database_model_cls._index.mapping(m)
+
             # Precompute and cache field type information for efficient lookup operations
-            keyword_fields = self._compute_keyword_fields(entity_cls)
+            keyword_fields = self._compute_keyword_fields(
+                entity_cls, custom_attrs=custom_attrs_snapshot
+            )
             decorated_database_database_model_cls._keyword_fields = keyword_fields
 
             # Memoize the constructed model class
@@ -652,18 +750,26 @@ class ESProvider(BaseProvider):
 
             attrs = {"meta_": meta_, "Index": index_cls}
 
-            # FIXME Ensure the custom model attributes are constructed properly
             database_model_cls = type(
                 entity_cls.__name__ + "Model", (ElasticsearchModel,), attrs
             )
 
-            # Create Dynamic Mapping and associate with index
-            # FIXME Expand to all types of fields
-            id_field_obj = id_field(entity_cls)
-            assert id_field_obj is not None
-            id_field_name = id_field_obj.field_name
+            # Build explicit mapping from entity attributes
             m = Mapping()
-            m.field(id_field_name, Keyword())
+            entity_attributes = attributes(entity_cls)
+            for attr_name, field_obj in entity_attributes.items():
+                # Skip _version — it's remapped to entity_version in from_entity()
+                # to avoid conflict with ES's internal _version metadata
+                if attr_name == "_version":
+                    continue
+                es_field = _es_field_mapping_for(field_obj)
+                if es_field is not None:
+                    m.field(attr_name, es_field)
+
+            # Map entity_version if the entity supports versioning
+            # (_version is stored as entity_version in ES)
+            if hasattr(entity_cls, "_version"):
+                m.field("entity_version", ESInteger())
 
             database_model_cls._index.mapping(m)
 
@@ -815,8 +921,9 @@ class DefaultLookup(BaseLookup):
         ):
             return field_name in self.database_model_cls._keyword_fields
 
-        # Fallback: if we don't have the cached info, default to using .keyword for safety
-        return True
+        # Fallback: with explicit Keyword mappings, .keyword subfield is not needed
+        # (only Text fields from custom models need .keyword)
+        return False
 
 
 @ESProvider.register_lookup
@@ -846,16 +953,14 @@ class IExact(DefaultLookup):
     lookup_name = "iexact"
 
     def as_expression(self):
-        # For case-insensitive exact matching, we use the analyzed text field
-        # which has been lowercased by the default analyzer
         field_name = self.process_source()
         target_value = self.process_target()
 
-        # Convert target to lowercase to match the analyzed field
-        if isinstance(target_value, str):
-            target_value = target_value.lower()
-
-        return query.Q("term", **{field_name: target_value})
+        # Use case_insensitive flag on term query (works on Keyword fields)
+        return query.Q(
+            "term",
+            **{field_name: {"value": target_value, "case_insensitive": True}},
+        )
 
 
 @ESProvider.register_lookup
