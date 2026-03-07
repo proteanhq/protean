@@ -1,0 +1,929 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://protean.dev/ir/v0.1.0/schema.json",
+  "title": "Protean IR v0.1.0",
+  "description": "Intermediate Representation for Protean domain models. Captures topology — what domain elements exist, their shape, and how they connect.",
+
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "URI to this JSON Schema for validation"
+    },
+    "ir_version": {
+      "type": "string",
+      "description": "Semantic version of the IR format"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of generation"
+    },
+    "checksum": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 hex digest for staleness detection"
+    },
+    "domain": {
+      "$ref": "#/$defs/domain_metadata"
+    },
+    "contracts": {
+      "$ref": "#/$defs/contracts"
+    },
+    "clusters": {
+      "type": "object",
+      "description": "Aggregate clusters keyed by aggregate FQN",
+      "additionalProperties": {
+        "$ref": "#/$defs/cluster"
+      }
+    },
+    "projections": {
+      "type": "object",
+      "description": "Read-side projections keyed by projection FQN",
+      "additionalProperties": {
+        "$ref": "#/$defs/projection_group"
+      }
+    },
+    "flows": {
+      "$ref": "#/$defs/flows"
+    },
+    "elements": {
+      "$ref": "#/$defs/elements_index"
+    },
+    "diagnostics": {
+      "type": "array",
+      "description": "Builder warnings and errors (may be empty)",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    }
+  },
+  "required": [
+    "$schema",
+    "ir_version",
+    "generated_at",
+    "checksum",
+    "domain",
+    "clusters",
+    "projections",
+    "flows",
+    "elements",
+    "diagnostics"
+  ],
+  "additionalProperties": true,
+
+  "$defs": {
+
+    "base_element": {
+      "type": "object",
+      "description": "Common fields shared by all domain elements",
+      "properties": {
+        "fqn": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "module": { "type": "string", "minLength": 1 },
+        "element_type": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["fqn", "name", "module", "element_type"]
+    },
+
+    "invariants": {
+      "type": "object",
+      "description": "Pre- and post-condition invariant method names",
+      "properties": {
+        "pre": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "post": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["pre", "post"],
+      "additionalProperties": false
+    },
+
+    "subscription": {
+      "type": "object",
+      "description": "Subscription configuration for handlers/projectors",
+      "properties": {
+        "type": {
+          "oneOf": [
+            { "type": "string", "enum": ["stream", "event_store"] },
+            { "type": "null" }
+          ]
+        },
+        "profile": {
+          "oneOf": [
+            { "type": "string", "enum": ["production", "fast", "batch", "debug", "projection"] },
+            { "type": "null" }
+          ]
+        },
+        "config": { "type": "object" }
+      },
+      "required": ["type", "profile", "config"],
+      "additionalProperties": true
+    },
+
+    "fields_map": {
+      "type": "object",
+      "description": "Map of field name to field definition",
+      "additionalProperties": {
+        "$ref": "#/$defs/field"
+      }
+    },
+
+    "standard_handler_map": {
+      "type": "object",
+      "description": "Map of __type__ string to list of handler method names",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1
+      }
+    },
+
+    "apply_handler_map": {
+      "type": "object",
+      "description": "Map of event FQN to single @apply method name (ES aggregates only)",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+
+    "field": {
+      "description": "Discriminated union of field kinds",
+      "oneOf": [
+        { "$ref": "#/$defs/field_standard" },
+        { "$ref": "#/$defs/field_text" },
+        { "$ref": "#/$defs/field_identifier" },
+        { "$ref": "#/$defs/field_auto" },
+        { "$ref": "#/$defs/field_list" },
+        { "$ref": "#/$defs/field_dict" },
+        { "$ref": "#/$defs/field_value_object" },
+        { "$ref": "#/$defs/field_value_object_list" },
+        { "$ref": "#/$defs/field_has_one" },
+        { "$ref": "#/$defs/field_has_many" },
+        { "$ref": "#/$defs/field_reference" }
+      ]
+    },
+
+    "field_standard": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "standard" },
+        "type": { "enum": ["String", "Integer", "Float", "Boolean", "Date", "DateTime"] },
+        "required": { "type": "boolean" },
+        "identifier": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "default": {},
+        "max_length": { "type": "integer" },
+        "min_length": { "type": "integer" },
+        "max_value": { "type": "number" },
+        "min_value": { "type": "number" },
+        "choices": { "type": "array", "items": { "type": "string" } },
+        "sanitize": { "type": "boolean" },
+        "description": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
+      "additionalProperties": true
+    },
+
+    "field_text": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "text" },
+        "type": { "const": "Text" },
+        "required": { "type": "boolean" },
+        "default": {},
+        "max_length": { "type": "integer" },
+        "min_length": { "type": "integer" },
+        "sanitize": { "type": "boolean" },
+        "description": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
+      "additionalProperties": true
+    },
+
+    "field_identifier": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "identifier" },
+        "type": { "const": "Identifier" },
+        "required": { "type": "boolean" },
+        "identifier": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "default": {},
+        "description": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
+      "additionalProperties": true
+    },
+
+    "field_auto": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "auto" },
+        "type": { "const": "Auto" },
+        "required": { "type": "boolean" },
+        "identifier": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "increment": { "type": "boolean" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
+      "additionalProperties": true
+    },
+
+    "field_list": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "list" },
+        "type": { "const": "List" },
+        "required": { "type": "boolean" },
+        "content_type": { "type": "string" },
+        "default": {},
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
+      "additionalProperties": true
+    },
+
+    "field_dict": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "dict" },
+        "type": { "const": "Dict" },
+        "required": { "type": "boolean" },
+        "default": {},
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
+      "additionalProperties": true
+    },
+
+    "field_value_object": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "value_object" },
+        "target": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "target"],
+      "additionalProperties": true
+    },
+
+    "field_value_object_list": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "value_object_list" },
+        "target": { "type": "string", "minLength": 1 },
+        "content_type": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "target"],
+      "additionalProperties": true
+    },
+
+    "field_has_one": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "has_one" },
+        "target": { "type": "string", "minLength": 1 },
+        "via": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "target"],
+      "additionalProperties": true
+    },
+
+    "field_has_many": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "has_many" },
+        "target": { "type": "string", "minLength": 1 },
+        "via": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "target"],
+      "additionalProperties": true
+    },
+
+    "field_reference": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "reference" },
+        "target": { "type": "string", "minLength": 1 },
+        "linked_attribute": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "target"],
+      "additionalProperties": true
+    },
+
+    "aggregate_options": {
+      "type": "object",
+      "properties": {
+        "is_event_sourced": { "type": "boolean" },
+        "fact_events": { "type": "boolean" },
+        "provider": { "type": "string" },
+        "schema_name": { "type": "string" },
+        "stream_category": { "type": "string" },
+        "auto_add_id_field": { "type": "boolean" },
+        "limit": { "type": "integer", "minimum": 1 }
+      },
+      "required": [
+        "is_event_sourced", "fact_events", "provider",
+        "schema_name", "stream_category", "auto_add_id_field", "limit"
+      ],
+      "additionalProperties": true
+    },
+
+    "entity_options": {
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string" },
+        "schema_name": { "type": "string" },
+        "auto_add_id_field": { "type": "boolean" },
+        "limit": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["provider", "schema_name", "auto_add_id_field", "limit"],
+      "additionalProperties": true
+    },
+
+    "projection_options": {
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string" },
+        "schema_name": { "type": "string" },
+        "cache": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        },
+        "limit": { "type": "integer", "minimum": 1 },
+        "order_by": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["provider", "schema_name", "cache", "limit", "order_by"],
+      "additionalProperties": true
+    },
+
+    "aggregate": {
+      "description": "Aggregate root element",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "AGGREGATE" },
+            "identity_field": { "type": "string", "minLength": 1 },
+            "fields": { "$ref": "#/$defs/fields_map" },
+            "invariants": { "$ref": "#/$defs/invariants" },
+            "options": { "$ref": "#/$defs/aggregate_options" },
+            "apply_handlers": { "$ref": "#/$defs/apply_handler_map" }
+          },
+          "required": ["identity_field", "fields", "invariants", "options"]
+        }
+      ]
+    },
+
+    "entity": {
+      "description": "Entity within an aggregate cluster",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "ENTITY" },
+            "part_of": { "type": "string", "minLength": 1 },
+            "identity_field": { "type": "string", "minLength": 1 },
+            "fields": { "$ref": "#/$defs/fields_map" },
+            "invariants": { "$ref": "#/$defs/invariants" },
+            "options": { "$ref": "#/$defs/entity_options" }
+          },
+          "required": ["part_of", "identity_field", "fields", "invariants", "options"]
+        }
+      ]
+    },
+
+    "value_object": {
+      "description": "Immutable value object",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "VALUE_OBJECT" },
+            "part_of": {
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "null" }
+              ]
+            },
+            "fields": { "$ref": "#/$defs/fields_map" },
+            "invariants": { "$ref": "#/$defs/invariants" }
+          },
+          "required": ["part_of", "fields", "invariants"]
+        }
+      ]
+    },
+
+    "command": {
+      "description": "Immutable command representing intent to change state",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "COMMAND" },
+            "part_of": { "type": "string", "minLength": 1 },
+            "__type__": { "type": "string", "minLength": 1 },
+            "__version__": { "type": "integer", "minimum": 1 },
+            "fields": { "$ref": "#/$defs/fields_map" }
+          },
+          "required": ["part_of", "__type__", "__version__", "fields"]
+        }
+      ]
+    },
+
+    "event": {
+      "description": "Immutable domain event",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "EVENT" },
+            "part_of": { "type": "string", "minLength": 1 },
+            "__type__": { "type": "string", "minLength": 1 },
+            "__version__": { "type": "integer", "minimum": 1 },
+            "is_fact_event": { "type": "boolean" },
+            "published": { "type": "boolean" },
+            "fields": { "$ref": "#/$defs/fields_map" }
+          },
+          "required": ["part_of", "__type__", "__version__", "is_fact_event", "fields"]
+        }
+      ]
+    },
+
+    "command_handler": {
+      "description": "Handler that processes commands for an aggregate",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "COMMAND_HANDLER" },
+            "part_of": { "type": "string", "minLength": 1 },
+            "stream_category": { "type": "string", "minLength": 1 },
+            "subscription": { "$ref": "#/$defs/subscription" },
+            "handlers": { "$ref": "#/$defs/standard_handler_map" }
+          },
+          "required": ["part_of", "stream_category", "subscription", "handlers"]
+        }
+      ]
+    },
+
+    "event_handler": {
+      "description": "Handler that reacts to domain events",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "EVENT_HANDLER" },
+            "part_of": { "type": "string", "minLength": 1 },
+            "stream_category": { "type": "string", "minLength": 1 },
+            "source_stream": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "null" }
+              ]
+            },
+            "subscription": { "$ref": "#/$defs/subscription" },
+            "handlers": { "$ref": "#/$defs/standard_handler_map" }
+          },
+          "required": ["part_of", "stream_category", "source_stream", "subscription", "handlers"]
+        }
+      ]
+    },
+
+    "application_service": {
+      "description": "Stateless orchestration layer for use cases",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "APPLICATION_SERVICE" },
+            "part_of": { "type": "string", "minLength": 1 }
+          },
+          "required": ["part_of"]
+        }
+      ]
+    },
+
+    "repository": {
+      "description": "Persistence abstraction for an aggregate",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "REPOSITORY" },
+            "part_of": { "type": "string", "minLength": 1 }
+          },
+          "required": ["part_of"]
+        }
+      ]
+    },
+
+    "database_model": {
+      "description": "Persistence-specific data schema",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "DATABASE_MODEL" },
+            "part_of": { "type": "string", "minLength": 1 },
+            "database": { "type": "string", "minLength": 1 },
+            "schema_name": { "type": "string", "minLength": 1 }
+          },
+          "required": ["part_of", "database", "schema_name"]
+        }
+      ]
+    },
+
+    "projection": {
+      "description": "Read-optimized view (CQRS read model)",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "PROJECTION" },
+            "identity_field": { "type": "string", "minLength": 1 },
+            "fields": { "$ref": "#/$defs/fields_map" },
+            "options": { "$ref": "#/$defs/projection_options" }
+          },
+          "required": ["identity_field", "fields", "options"]
+        }
+      ]
+    },
+
+    "projector": {
+      "description": "Event handler that maintains a projection",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "PROJECTOR" },
+            "projector_for": { "type": "string", "minLength": 1 },
+            "aggregates": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "stream_categories": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "subscription": { "$ref": "#/$defs/subscription" },
+            "handlers": { "$ref": "#/$defs/standard_handler_map" }
+          },
+          "required": ["projector_for", "aggregates", "stream_categories", "subscription", "handlers"]
+        }
+      ]
+    },
+
+    "query": {
+      "description": "Read intent (no version, unlike commands/events)",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "QUERY" },
+            "part_of": { "type": "string", "minLength": 1 },
+            "__type__": { "type": "string", "minLength": 1 },
+            "fields": { "$ref": "#/$defs/fields_map" }
+          },
+          "required": ["part_of", "__type__", "fields"]
+        }
+      ]
+    },
+
+    "query_handler": {
+      "description": "Handler that processes queries for a projection",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "QUERY_HANDLER" },
+            "part_of": { "type": "string", "minLength": 1 },
+            "handlers": { "$ref": "#/$defs/standard_handler_map" }
+          },
+          "required": ["part_of", "handlers"]
+        }
+      ]
+    },
+
+    "domain_service": {
+      "description": "Stateless service spanning 2+ aggregates",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "DOMAIN_SERVICE" },
+            "part_of": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 2
+            },
+            "invariants": { "$ref": "#/$defs/invariants" }
+          },
+          "required": ["part_of", "invariants"]
+        }
+      ]
+    },
+
+    "process_manager": {
+      "description": "Long-running cross-aggregate coordination",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "PROCESS_MANAGER" },
+            "identity_field": { "type": "string", "minLength": 1 },
+            "fields": { "$ref": "#/$defs/fields_map" },
+            "stream_category": { "type": "string", "minLength": 1 },
+            "stream_categories": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "subscription": { "$ref": "#/$defs/subscription" },
+            "handlers": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/process_manager_handler_entry"
+              }
+            },
+            "transition_event": { "$ref": "#/$defs/transition_event" }
+          },
+          "required": [
+            "identity_field", "fields", "stream_category",
+            "stream_categories", "subscription", "handlers",
+            "transition_event"
+          ]
+        }
+      ]
+    },
+
+    "subscriber": {
+      "description": "Consumer of external broker messages",
+      "allOf": [
+        { "$ref": "#/$defs/base_element" },
+        {
+          "type": "object",
+          "properties": {
+            "element_type": { "const": "SUBSCRIBER" },
+            "broker": { "type": "string", "minLength": 1 },
+            "stream": { "type": "string", "minLength": 1 }
+          },
+          "required": ["broker", "stream"]
+        }
+      ]
+    },
+
+    "process_manager_handler_entry": {
+      "type": "object",
+      "description": "PM handler with lifecycle and correlation metadata",
+      "properties": {
+        "methods": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "start": { "type": "boolean" },
+        "end": { "type": "boolean" },
+        "correlate": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          ]
+        }
+      },
+      "required": ["methods", "start", "end", "correlate"],
+      "additionalProperties": true
+    },
+
+    "transition_event": {
+      "type": "object",
+      "description": "Auto-generated PM transition event reference",
+      "properties": {
+        "fqn": { "type": "string", "minLength": 1 },
+        "__type__": { "type": "string", "minLength": 1 }
+      },
+      "required": ["fqn", "__type__"],
+      "additionalProperties": true
+    },
+
+    "contracts": {
+      "type": "object",
+      "description": "Published language of the bounded context — events available to external consumers",
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "__type__": { "type": "string", "minLength": 1 },
+              "fqn": { "type": "string", "minLength": 1 }
+            },
+            "required": ["__type__", "fqn"],
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+
+    "cluster": {
+      "type": "object",
+      "description": "Aggregate cluster containing all elements in the aggregate boundary",
+      "properties": {
+        "aggregate": { "$ref": "#/$defs/aggregate" },
+        "entities": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/entity" }
+        },
+        "value_objects": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/value_object" }
+        },
+        "commands": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/command" }
+        },
+        "events": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/event" }
+        },
+        "command_handlers": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/command_handler" }
+        },
+        "event_handlers": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/event_handler" }
+        },
+        "application_services": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/application_service" }
+        },
+        "repositories": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/repository" }
+        },
+        "database_models": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/database_model" }
+        }
+      },
+      "required": [
+        "aggregate", "entities", "value_objects", "commands", "events",
+        "command_handlers", "event_handlers", "application_services",
+        "repositories", "database_models"
+      ],
+      "additionalProperties": true
+    },
+
+    "projection_group": {
+      "type": "object",
+      "description": "Projection with its projectors, queries, and query handlers",
+      "properties": {
+        "projection": { "$ref": "#/$defs/projection" },
+        "projectors": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/projector" }
+        },
+        "queries": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/query" }
+        },
+        "query_handlers": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/query_handler" }
+        }
+      },
+      "required": ["projection", "projectors", "queries", "query_handlers"],
+      "additionalProperties": true
+    },
+
+    "flows": {
+      "type": "object",
+      "description": "Cross-aggregate coordination elements",
+      "properties": {
+        "domain_services": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/domain_service" }
+        },
+        "process_managers": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/process_manager" }
+        },
+        "subscribers": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/subscriber" }
+        }
+      },
+      "required": ["domain_services", "process_managers", "subscribers"],
+      "additionalProperties": true
+    },
+
+    "elements_index": {
+      "type": "object",
+      "description": "Flat index of all element FQNs by type for O(1) lookup",
+      "properties": {
+        "AGGREGATE": { "type": "array", "items": { "type": "string" } },
+        "APPLICATION_SERVICE": { "type": "array", "items": { "type": "string" } },
+        "COMMAND": { "type": "array", "items": { "type": "string" } },
+        "COMMAND_HANDLER": { "type": "array", "items": { "type": "string" } },
+        "DATABASE_MODEL": { "type": "array", "items": { "type": "string" } },
+        "DOMAIN_SERVICE": { "type": "array", "items": { "type": "string" } },
+        "ENTITY": { "type": "array", "items": { "type": "string" } },
+        "EVENT": { "type": "array", "items": { "type": "string" } },
+        "EVENT_HANDLER": { "type": "array", "items": { "type": "string" } },
+        "PROCESS_MANAGER": { "type": "array", "items": { "type": "string" } },
+        "PROJECTION": { "type": "array", "items": { "type": "string" } },
+        "PROJECTOR": { "type": "array", "items": { "type": "string" } },
+        "QUERY": { "type": "array", "items": { "type": "string" } },
+        "QUERY_HANDLER": { "type": "array", "items": { "type": "string" } },
+        "REPOSITORY": { "type": "array", "items": { "type": "string" } },
+        "SUBSCRIBER": { "type": "array", "items": { "type": "string" } },
+        "VALUE_OBJECT": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": [
+        "AGGREGATE", "APPLICATION_SERVICE", "COMMAND", "COMMAND_HANDLER",
+        "DATABASE_MODEL", "DOMAIN_SERVICE", "ENTITY", "EVENT",
+        "EVENT_HANDLER", "PROCESS_MANAGER", "PROJECTION", "PROJECTOR",
+        "QUERY", "QUERY_HANDLER", "REPOSITORY", "SUBSCRIBER", "VALUE_OBJECT"
+      ],
+      "additionalProperties": true
+    },
+
+    "domain_metadata": {
+      "type": "object",
+      "description": "Bounded context identity and global configuration",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "normalized_name": { "type": "string", "minLength": 1 },
+        "camel_case_name": { "type": "string", "minLength": 1 },
+        "identity_strategy": { "enum": ["uuid", "function", "database"] },
+        "identity_type": { "enum": ["string", "integer"] },
+        "event_processing": { "enum": ["sync", "async"] },
+        "command_processing": { "enum": ["sync", "async"] }
+      },
+      "required": [
+        "name", "normalized_name", "camel_case_name",
+        "identity_strategy", "identity_type",
+        "event_processing", "command_processing"
+      ],
+      "additionalProperties": true
+    },
+
+    "diagnostic": {
+      "type": "object",
+      "description": "Builder warning or error about incomplete/suspicious structure",
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "level": { "enum": ["error", "warning", "info"] },
+        "message": { "type": "string", "minLength": 1 },
+        "element": { "type": "string" }
+      },
+      "required": ["code", "level", "message"],
+      "additionalProperties": true
+    }
+  }
+}
