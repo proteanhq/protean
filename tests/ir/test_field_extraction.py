@@ -5,6 +5,7 @@ import pytest
 from protean.ir.builder import IRBuilder
 
 from .elements import (
+    build_database_model_domain,
     build_extended_field_test_domain,
     build_field_test_domain,
     build_status_field_domain,
@@ -336,3 +337,73 @@ class TestMinLength:
     def test_min_length_absent_when_not_set(self, author_fields):
         f = author_fields["bio"]
         assert "min_length" not in f
+
+
+# ---------------------------------------------------------------------------
+# Reference field and HasMany via tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def customer_fields():
+    """Return extracted fields for the Customer aggregate (has HasMany with via)."""
+    domain = build_database_model_domain()
+    builder = IRBuilder(domain)
+    customer_cls = None
+    for record in domain._domain_registry._elements["AGGREGATE"].values():
+        if record.cls.__name__ == "Customer":
+            customer_cls = record.cls
+            break
+    assert customer_cls is not None
+    return builder._extract_fields(customer_cls)
+
+
+@pytest.fixture
+def order_entity_fields():
+    """Return extracted fields for the Order entity (has auto-generated Reference)."""
+    domain = build_database_model_domain()
+    builder = IRBuilder(domain)
+    order_cls = None
+    for record in domain._domain_registry._elements["ENTITY"].values():
+        if record.cls.__name__ == "Order":
+            order_cls = record.cls
+            break
+    assert order_cls is not None
+    return builder._extract_fields(order_cls)
+
+
+@pytest.mark.no_test_domain
+class TestReferenceFieldExtraction:
+    """Verify Reference field extraction including linked_attribute and auto_generated."""
+
+    def test_reference_kind(self, order_entity_fields):
+        f = order_entity_fields["customer"]
+        assert f["kind"] == "reference"
+
+    def test_reference_target(self, order_entity_fields):
+        f = order_entity_fields["customer"]
+        assert "Customer" in f["target"]
+
+    def test_reference_linked_attribute(self, order_entity_fields):
+        f = order_entity_fields["customer"]
+        # linked_attribute is the identity field name of the target aggregate
+        assert f["linked_attribute"] == "id"
+
+    def test_reference_auto_generated(self, order_entity_fields):
+        f = order_entity_fields["customer"]
+        assert f["auto_generated"] is True
+
+
+@pytest.mark.no_test_domain
+class TestHasManyVia:
+    """Verify HasMany via attribute extraction."""
+
+    def test_has_many_via_present(self, customer_fields):
+        f = customer_fields["orders"]
+        assert f["kind"] == "has_many"
+        assert f["via"] == "customer_id"
+
+    def test_has_many_via_absent_when_not_set(self, author_fields):
+        f = author_fields["books"]
+        assert f["kind"] == "has_many"
+        assert "via" not in f

@@ -2,6 +2,7 @@
 
 from protean import Domain, handle, invariant
 from protean.core.aggregate import apply
+from protean.core.database_model import BaseDatabaseModel
 from protean.fields import HasMany, HasOne, ValueObject as VOField
 
 from protean.fields.containers import Dict, List
@@ -365,6 +366,37 @@ def build_status_field_domain() -> Domain:
             },
         )
         category = Status(OrderStatus, default="DRAFT")
+
+    domain.init(traverse=False)
+    return domain
+
+
+def build_database_model_domain() -> Domain:
+    """Build a domain with database models, Reference fields, and HasMany via."""
+    domain = Domain(name="DbModelTest", root_path=".")
+
+    @domain.entity(part_of="Customer")
+    class Order:
+        description = String(max_length=200)
+
+    @domain.aggregate
+    class Customer:
+        name = String(max_length=100, required=True)
+        orders = HasMany(Order, via="customer_id")
+
+    class CustomerModel(BaseDatabaseModel):
+        name = Text()
+
+    class CustomerReportModel(BaseDatabaseModel):
+        name = Text()
+
+    domain.register(CustomerModel, part_of=Customer, schema_name="customers")
+    domain.register(
+        CustomerReportModel,
+        part_of=Customer,
+        database="reporting",
+        schema_name="customer_reports",
+    )
 
     domain.init(traverse=False)
     return domain
