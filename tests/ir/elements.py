@@ -72,6 +72,28 @@ def build_extended_field_test_domain() -> Domain:
     return domain
 
 
+def build_via_and_min_length_domain() -> Domain:
+    """Build a domain with HasOne via and String min_length for extraction tests."""
+    domain = Domain(name="ViaMinLenTest", root_path=".")
+
+    @domain.entity(part_of="Author")
+    class Bio:
+        content = Text()
+
+    @domain.entity(part_of="Author")
+    class Book:
+        title = String(max_length=200, required=True)
+
+    @domain.aggregate
+    class Author:
+        name = String(max_length=100, required=True, min_length=3)
+        bio = HasOne(Bio, via="author_id")
+        books = HasMany(Book)
+
+    domain.init(traverse=False)
+    return domain
+
+
 def build_cluster_test_domain() -> Domain:
     """Build a domain with aggregate, entity, value object, and invariants."""
     domain = Domain(name="ClusterTest", root_path=".")
