@@ -271,3 +271,59 @@ class TestDiscoverSubscriptions:
             meta_ = FakeMeta()
 
         assert _infer_stream_category(FakeHandler) is None
+
+    def test_discover_subscriptions_includes_subscribers(self):
+        """Subscribers (broker subscriptions) are discovered with DLQ streams."""
+        from protean.core.subscriber import BaseSubscriber
+
+        domain = Domain(__file__, "TestSubscribers")
+
+        class PaymentWebhookSubscriber(BaseSubscriber):
+            def __call__(self, data: dict):
+                pass
+
+        domain.register(PaymentWebhookSubscriber, stream="payment_events")
+        domain.init(traverse=False)
+
+        infos = discover_subscriptions(domain)
+        sub_info = next(
+            (i for i in infos if "PaymentWebhookSubscriber" in i.handler_name), None
+        )
+        assert sub_info is not None
+        assert sub_info.stream_category == "payment_events"
+        assert sub_info.dlq_stream == "payment_events:dlq"
+        assert sub_info.backfill_dlq_stream is None  # No priority lanes for subscribers
+
+    def test_discover_subscriptions_subscriber_deduplication(self):
+        """Subscribers are not duplicated in discovery results."""
+        from protean.core.subscriber import BaseSubscriber
+
+        domain = Domain(__file__, "TestSubDedup")
+
+        class ExternalSubscriber(BaseSubscriber):
+            def __call__(self, data: dict):
+                pass
+
+        domain.register(ExternalSubscriber, stream="ext_events")
+        domain.init(traverse=False)
+
+        infos = discover_subscriptions(domain)
+        # Call again to verify deduplication within a single call
+        sub_infos = [i for i in infos if "ExternalSubscriber" in i.handler_name]
+        assert len(sub_infos) == 1
+
+    def test_collect_dlq_streams_includes_subscriber_dlqs(self):
+        """collect_dlq_streams() includes DLQ streams from subscribers."""
+        from protean.core.subscriber import BaseSubscriber
+
+        domain = Domain(__file__, "TestSubCollect")
+
+        class WebhookSub(BaseSubscriber):
+            def __call__(self, data: dict):
+                pass
+
+        domain.register(WebhookSub, stream="webhooks")
+        domain.init(traverse=False)
+
+        streams = collect_dlq_streams(domain)
+        assert "webhooks:dlq" in streams

@@ -170,13 +170,26 @@ The Observatory exposes DLQ management endpoints for programmatic access:
 ## How Messages Enter the DLQ
 
 Messages are moved to the DLQ when they fail processing after exhausting
-all retry attempts. The engine's
-[StreamSubscription](../../server/subscription-types.md) tracks retry counts
-per message and moves messages to `{stream_category}:dlq` streams after
-`max_retries` failures.
+all retry attempts. Both **StreamSubscription** and **BrokerSubscription**
+track retry counts per message and route failed messages to
+`{stream_category}:dlq` streams after `max_retries` failures.
 
-See [Subscriptions](../../../concepts/async-processing/subscriptions.md) for
-details on subscription lifecycle and error handling.
+DLQ behavior is configured per subscription type in `domain.toml`:
+
+```toml
+[server.stream_subscription]
+max_retries = 3        # Retry attempts before DLQ
+enable_dlq = true      # Set false to discard instead
+
+[server.broker_subscription]
+max_retries = 3
+enable_dlq = true
+```
+
+For the full error handling guide, see
+[Error Handling](../../../guides/server/error-handling.md). For subscription
+lifecycle details, see
+[Subscriptions](../../../concepts/async-processing/subscriptions.md).
 
 ## Domain Discovery
 

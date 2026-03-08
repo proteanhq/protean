@@ -209,6 +209,16 @@ enable_dlq = true
 # EventStoreSubscription defaults
 [server.event_store_subscription]
 position_update_interval = 10
+max_retries = 3
+retry_delay_seconds = 1
+enable_recovery = true
+recovery_interval_seconds = 30
+
+# BrokerSubscription defaults
+[server.broker_subscription]
+max_retries = 3
+retry_delay_seconds = 1
+enable_dlq = true
 
 # Handler-specific overrides
 [server.subscriptions.OrderEventHandler]

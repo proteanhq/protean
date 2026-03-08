@@ -134,6 +134,9 @@ need by what you're trying to accomplish.
 | Use priority lanes for background workloads      | [Using Priority Lanes](./guides/server/using-priority-lanes.md) |
 | Run a bulk migration with priority lanes        | [Running Data Migrations with Priority Lanes](./patterns/running-data-migrations-with-priority-lanes.md) |
 | Classify and handle errors in async handlers    | [Classify Async Processing Errors](./patterns/classify-async-processing-errors.md) |
+| Handle message processing failures              | [Error Handling](./guides/server/error-handling.md) |
+| Inspect and replay dead letter queue messages   | [Error Handling](./guides/server/error-handling.md#dead-letter-queue-lifecycle) |
+| Configure retry and DLQ settings                | [Error Handling](./guides/server/error-handling.md#configuration-reference) |
 
 ## Use the CLI
 
