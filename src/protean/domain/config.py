@@ -87,11 +87,22 @@ def _default_config():
             # Used when subscription_type is "event_store"
             "event_store_subscription": {
                 "position_update_interval": 10,  # How often to update position in event store
+                "max_retries": 3,  # Max retry attempts before marking as exhausted
+                "retry_delay_seconds": 1,  # Delay between recovery retries
+                "enable_recovery": True,  # Enable failed position recovery
+                "recovery_interval_seconds": 30,  # How often to run recovery pass
             },
             # Stream subscription settings
             # Used when subscription_type is "stream"
             "stream_subscription": {
                 "blocking_timeout_ms": 100,  # 100ms blocking read - balance between responsiveness and CPU
+                "max_retries": 3,  # Max retry attempts before DLQ
+                "retry_delay_seconds": 1,  # Delay between retries
+                "enable_dlq": True,  # Enable dead letter queue
+            },
+            # Broker subscription settings
+            # Used for incoming messages from external brokers via subscribers
+            "broker_subscription": {
                 "max_retries": 3,  # Max retry attempts before DLQ
                 "retry_delay_seconds": 1,  # Delay between retries
                 "enable_dlq": True,  # Enable dead letter queue

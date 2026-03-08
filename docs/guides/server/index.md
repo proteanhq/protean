@@ -252,6 +252,7 @@ During graceful shutdown:
 
 ## Next Steps
 
+- [Error Handling](./error-handling.md) — Retry logic, dead letter queues, and recovery mechanisms
 - [Production Deployment](./production-deployment.md) — Process management, Docker, Kubernetes, scaling, and health checks
 - [Logging](./logging.md) — Structured logging with structlog, environment-aware defaults, and context variables
 - [Monitoring](./monitoring.md) — Observatory dashboard, Prometheus metrics, and subscription lag tracking

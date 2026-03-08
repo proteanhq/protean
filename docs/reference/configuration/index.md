@@ -291,6 +291,16 @@ enable_dlq = true             # Enable dead letter queue
 # EventStoreSubscription defaults
 [server.event_store_subscription]
 position_update_interval = 10  # Messages between position writes
+max_retries = 3                # Retries before marking exhausted
+retry_delay_seconds = 1        # Delay between recovery retries
+enable_recovery = true         # Enable periodic recovery pass
+recovery_interval_seconds = 30 # Interval between recovery sweeps
+
+# BrokerSubscription defaults
+[server.broker_subscription]
+max_retries = 3               # Retries before DLQ
+retry_delay_seconds = 1       # Delay between retries
+enable_dlq = true             # Enable dead letter queue
 
 # Handler-specific overrides
 [server.subscriptions.OrderEventHandler]

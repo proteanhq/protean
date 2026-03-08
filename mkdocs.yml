@@ -243,6 +243,7 @@ nav:
       - guides/fastapi/testing-endpoints.md
     - Run the Server:
       - guides/server/index.md
+      - guides/server/error-handling.md
       - guides/server/production-deployment.md
       - guides/server/logging.md
       - guides/server/monitoring.md
