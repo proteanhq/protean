@@ -1097,7 +1097,17 @@ class IRBuilder:
 
     def _collect_diagnostics(self, ir: dict[str, Any]) -> None:
         """Collect diagnostic warnings from the built IR."""
-        # UNHANDLED_EVENT: events with no registered handler
+        self._diagnose_unhandled_events(ir)
+        self._diagnose_unused_commands(ir)
+        self._diagnose_es_missing_apply(ir)
+
+    def _diagnose_unhandled_events(self, ir: dict[str, Any]) -> None:
+        """UNHANDLED_EVENT: events with no registered handler.
+
+        Excludes published events (intentionally external), fact events
+        (auto-generated), and auto-generated events (e.g. process manager
+        transition events).
+        """
         handled_event_types: set[str] = set()
 
         # Collect all handled event types from event handlers in clusters
@@ -1117,6 +1127,16 @@ class IRBuilder:
         # Check each event
         for cluster in ir["clusters"].values():
             for event in cluster["events"].values():
+                # Skip published events — they are intentionally external
+                if event.get("published", False):
+                    continue
+                # Skip fact events — auto-generated from aggregate changes
+                if event.get("is_fact_event", False):
+                    continue
+                # Skip auto-generated events (e.g. PM transition events)
+                if event.get("auto_generated", False):
+                    continue
+
                 event_type = event.get("__type__", "")
                 if event_type and event_type not in handled_event_types:
                     self._diagnostics.append(
@@ -1125,6 +1145,66 @@ class IRBuilder:
                             "element": event["fqn"],
                             "level": "warning",
                             "message": f"Event {event['name']} has no registered handler",
+                        }
+                    )
+
+    def _diagnose_unused_commands(self, ir: dict[str, Any]) -> None:
+        """UNUSED_COMMAND: commands with no handler method wired."""
+        handled_command_types: set[str] = set()
+
+        # Collect all handled command types from command handlers
+        for cluster in ir["clusters"].values():
+            for ch in cluster["command_handlers"].values():
+                handled_command_types.update(ch.get("handlers", {}).keys())
+
+        # Check each command
+        for cluster in ir["clusters"].values():
+            for command in cluster["commands"].values():
+                command_type = command.get("__type__", "")
+                if command_type and command_type not in handled_command_types:
+                    self._diagnostics.append(
+                        {
+                            "code": "UNUSED_COMMAND",
+                            "element": command["fqn"],
+                            "level": "warning",
+                            "message": f"Command {command['name']} has no registered handler",
+                        }
+                    )
+
+    def _diagnose_es_missing_apply(self, ir: dict[str, Any]) -> None:
+        """ES_EVENT_MISSING_APPLY: ES aggregate events without @apply handler.
+
+        For event-sourced aggregates, every domain event (excluding fact
+        events and auto-generated events) should have a corresponding
+        @apply handler on the aggregate.
+        """
+        for cluster in ir["clusters"].values():
+            aggregate = cluster["aggregate"]
+            options = aggregate.get("options", {})
+
+            if not options.get("is_event_sourced", False):
+                continue
+
+            apply_handlers = aggregate.get("apply_handlers", {})
+
+            for event in cluster["events"].values():
+                # Skip fact events and auto-generated events
+                if event.get("is_fact_event", False):
+                    continue
+                if event.get("auto_generated", False):
+                    continue
+
+                event_fqn = event["fqn"]
+                if event_fqn not in apply_handlers:
+                    self._diagnostics.append(
+                        {
+                            "code": "ES_EVENT_MISSING_APPLY",
+                            "element": event_fqn,
+                            "level": "warning",
+                            "message": (
+                                f"Event {event['name']} has no @apply handler "
+                                f"on aggregate {aggregate['name']}"
+                            ),
                         }
                     )
 
