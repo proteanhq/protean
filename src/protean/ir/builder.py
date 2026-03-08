@@ -116,10 +116,14 @@ class IRBuilder:
             elif isinstance(field_obj, HasOne):
                 entry["kind"] = "has_one"
                 entry["target"] = fqn(field_obj.to_cls)
+                if field_obj.via is not None:
+                    entry["via"] = field_obj.via
 
             elif isinstance(field_obj, HasMany):
                 entry["kind"] = "has_many"
                 entry["target"] = fqn(field_obj.to_cls)
+                if field_obj.via is not None:
+                    entry["via"] = field_obj.via
 
             elif isinstance(field_obj, Reference):
                 entry["kind"] = "reference"
@@ -176,6 +180,8 @@ class IRBuilder:
             entry["auto_generated"] = True
         if field.max_length is not None:
             entry["max_length"] = field.max_length
+        if field.min_length is not None:
+            entry["min_length"] = field.min_length
         if field.min_value is not None:
             entry["min_value"] = field.min_value
         if field.max_value is not None:

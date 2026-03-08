@@ -114,18 +114,21 @@ class ResolvedField:
 
         # Extract constraint metadata from FieldInfo.metadata
         self.max_length: int | None = None
+        self.min_length: int | None = None
         self.min_value: Any = None
         self.max_value: Any = None
         if field_info is not None:
             try:
-                from annotated_types import Ge, Gt, Le, Lt, MaxLen
+                from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
             except ImportError:  # pragma: no cover
-                MaxLen = Ge = Gt = Le = Lt = None  # type: ignore[assignment,misc]
+                MaxLen = MinLen = Ge = Gt = Le = Lt = None  # type: ignore[assignment,misc]
 
             if MaxLen is not None:
                 for m in field_info.metadata:
                     if isinstance(m, MaxLen):
                         self.max_length = m.max_length
+                    elif isinstance(m, MinLen):
+                        self.min_length = m.min_length
                     elif isinstance(m, Ge):
                         self.min_value = m.ge
                     elif isinstance(m, Gt):

@@ -8,6 +8,7 @@ from .elements import (
     build_extended_field_test_domain,
     build_field_test_domain,
     build_status_field_domain,
+    build_via_and_min_length_domain,
 )
 
 
@@ -288,3 +289,50 @@ class TestStatusFieldExtraction:
     def test_status_default(self, status_fields):
         f = status_fields["status"]
         assert f["default"] == "DRAFT"
+
+
+# ---------------------------------------------------------------------------
+# Via attribute and min_length tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def author_fields():
+    """Return extracted fields for the Author aggregate."""
+    domain = build_via_and_min_length_domain()
+    builder = IRBuilder(domain)
+    author_cls = None
+    for record in domain._domain_registry._elements["AGGREGATE"].values():
+        if record.cls.__name__ == "Author":
+            author_cls = record.cls
+            break
+    assert author_cls is not None
+    return builder._extract_fields(author_cls)
+
+
+@pytest.mark.no_test_domain
+class TestHasOneVia:
+    """Verify HasOne via attribute extraction."""
+
+    def test_has_one_via_present(self, author_fields):
+        f = author_fields["bio"]
+        assert f["kind"] == "has_one"
+        assert f["via"] == "author_id"
+
+    def test_has_many_via_absent_when_not_set(self, author_fields):
+        f = author_fields["books"]
+        assert f["kind"] == "has_many"
+        assert "via" not in f
+
+
+@pytest.mark.no_test_domain
+class TestMinLength:
+    """Verify min_length attribute extraction."""
+
+    def test_min_length_present(self, author_fields):
+        f = author_fields["name"]
+        assert f["min_length"] == 3
+
+    def test_min_length_absent_when_not_set(self, author_fields):
+        f = author_fields["bio"]
+        assert "min_length" not in f
