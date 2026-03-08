@@ -16,7 +16,9 @@ Covers:
 - Failed position stores stream info for recovery
 """
 
+import asyncio
 import logging
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -1030,3 +1032,153 @@ class TestEmitterTraces:
 
         # Position should be exhausted
         assert len(sub._get_unresolved_positions()) == 0
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Tests: Recovery Edge Cases
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestRecoveryEdgeCases:
+    """Edge cases in the recovery pass."""
+
+    @pytest.mark.asyncio
+    async def test_recovery_fallback_when_stream_name_is_none(
+        self, test_domain, caplog
+    ):
+        """Recovery reads from category stream when stream_name is not recorded."""
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler, max_retries=5)
+
+        msg = _create_message(global_position=1, stream_position=0)
+        # Write event to store at its specific stream
+        _write_event_to_store(test_domain, msg)
+
+        await sub.process_batch([msg])
+
+        # Manually clear stream_name to simulate a record without stream info
+        sub._failed_positions[1]["stream_name"] = None
+        sub._failed_positions[1]["stream_position"] = None
+
+        # Recovery should fall back to reading from category stream using
+        # global_position. The category stream read may or may not find the
+        # message — the key thing is the code path doesn't crash.
+        with caplog.at_level(logging.WARNING):
+            recovered = await sub.run_recovery_pass()
+
+        assert recovered == 0
+        # Position still tracked (not removed — message may not have been found
+        # or handler may have failed again)
+        assert 1 in sub._failed_positions
+
+    @pytest.mark.asyncio
+    async def test_recovery_handles_message_not_found(self, test_domain, caplog):
+        """Recovery logs warning and skips when message is not found at position."""
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler)
+
+        msg = _create_message(global_position=1, stream_position=0)
+        # Intentionally do NOT write to store — message won't be found
+
+        await sub.process_batch([msg])
+
+        # Manually set a stream_name that doesn't exist in the store
+        sub._failed_positions[1]["stream_name"] = "nonexistent-stream-999"
+        sub._failed_positions[1]["stream_position"] = 999
+
+        with caplog.at_level(logging.WARNING):
+            recovered = await sub.run_recovery_pass()
+
+        assert recovered == 0
+        assert "Could not find message at position 1" in caplog.text
+        # Position still in tracking (not removed — will retry next pass)
+        assert 1 in sub._failed_positions
+
+    @pytest.mark.asyncio
+    async def test_recovery_with_positive_retry_delay(self, test_domain):
+        """Recovery applies retry_delay_seconds > 0 between retries."""
+        import time
+
+        global fail_count
+        fail_count = 1  # Fail once, then succeed
+
+        sub = _make_subscription(
+            test_domain,
+            TransientFailingEventHandler,
+            retry_delay_seconds=0.05,  # Small but nonzero delay
+        )
+
+        msg = _create_message(global_position=1, stream_position=0)
+        _write_event_to_store(test_domain, msg)
+
+        await sub.process_batch([msg])
+
+        start = time.monotonic()
+        recovered = await sub.run_recovery_pass()
+        elapsed = time.monotonic() - start
+
+        assert recovered == 1
+        # Should have delayed at least 50ms
+        assert elapsed >= 0.04  # Small tolerance
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Tests: Poll and Cleanup
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TestPollAndCleanup:
+    """Tests for poll() integration with recovery and cleanup()."""
+
+    @pytest.mark.asyncio
+    async def test_poll_calls_maybe_run_recovery(self, test_domain):
+        """poll() calls maybe_run_recovery() on each iteration."""
+        sub = _make_subscription(
+            test_domain, SucceedingEventHandler, recovery_interval_seconds=0
+        )
+        sub.tick_interval = 0  # No sleep between iterations
+
+        recovery_calls = 0
+
+        async def counting_recovery():
+            nonlocal recovery_calls
+            recovery_calls += 1
+            # Stop after 2 iterations
+            if recovery_calls >= 2:
+                sub.keep_going = False
+            return 0
+
+        sub.maybe_run_recovery = counting_recovery
+
+        async def noop_tick():
+            pass
+
+        sub.tick = noop_tick
+
+        await asyncio.wait_for(sub.poll(), timeout=2.0)
+
+        assert recovery_calls >= 2
+
+    @pytest.mark.asyncio
+    async def test_poll_exits_on_engine_shutting_down(self, test_domain):
+        """poll() exits when engine.shutting_down is set."""
+        sub = _make_subscription(test_domain, SucceedingEventHandler)
+        sub.tick = AsyncMock()
+
+        async def stop_engine():
+            await asyncio.sleep(0.05)
+            sub.engine.shutting_down = True
+
+        asyncio.create_task(stop_engine())
+        await asyncio.wait_for(sub.poll(), timeout=2.0)
+
+        assert sub.engine.shutting_down
+
+    @pytest.mark.asyncio
+    async def test_cleanup_updates_position_to_store(self, test_domain):
+        """cleanup() persists the current position to the store."""
+        sub = _make_subscription(test_domain, SucceedingEventHandler)
+        sub.current_position = 42
+
+        await sub.cleanup()
+
+        last_pos = await sub.fetch_last_position()
+        assert last_pos == 42
