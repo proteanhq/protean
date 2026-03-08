@@ -589,7 +589,11 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
-        entry["database"] = getattr(cls.meta_, "database", None)
+
+        database = getattr(cls.meta_, "database", None)
+        if database is not None:
+            entry["database"] = database
+
         entry["element_type"] = "DATABASE_MODEL"
         entry["fqn"] = fqn(cls)
         entry["module"] = cls.__module__
@@ -599,7 +603,9 @@ class IRBuilder:
         if agg_cls is not None:
             entry["part_of"] = fqn(agg_cls)
 
-        entry["schema_name"] = getattr(cls.meta_, "schema_name", None)
+        schema_name = getattr(cls.meta_, "schema_name", None)
+        if schema_name is not None:
+            entry["schema_name"] = schema_name
 
         return dict(sorted(entry.items()))
 

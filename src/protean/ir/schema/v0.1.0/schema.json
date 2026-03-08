@@ -167,7 +167,8 @@
         { "$ref": "#/$defs/field_value_object_list" },
         { "$ref": "#/$defs/field_has_one" },
         { "$ref": "#/$defs/field_has_many" },
-        { "$ref": "#/$defs/field_reference" }
+        { "$ref": "#/$defs/field_reference" },
+        { "$ref": "#/$defs/field_status" }
       ]
     },
 
@@ -325,6 +326,27 @@
         "auto_generated": { "type": "boolean" }
       },
       "required": ["kind", "target"],
+      "additionalProperties": true
+    },
+
+    "field_status": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "status" },
+        "type": { "const": "Status" },
+        "required": { "type": "boolean" },
+        "default": {},
+        "choices": { "type": "array", "items": { "type": "string" } },
+        "transitions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
       "additionalProperties": true
     },
 
@@ -561,7 +583,7 @@
             "database": { "type": "string", "minLength": 1 },
             "schema_name": { "type": "string", "minLength": 1 }
           },
-          "required": ["part_of", "database", "schema_name"]
+          "required": ["part_of"]
         }
       ]
     },

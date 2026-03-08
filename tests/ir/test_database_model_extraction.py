@@ -60,7 +60,7 @@ class TestDatabaseModelExtraction:
 
     def test_customer_model_database_default(self, database_models):
         model = self._find_model(database_models, "CustomerModel")
-        assert model["database"] is None
+        assert "database" not in model
 
     def test_report_model_database_custom(self, database_models):
         model = self._find_model(database_models, "CustomerReportModel")
