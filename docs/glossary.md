@@ -112,9 +112,9 @@ The model responsible for handling state changes and enforcing business rules. I
 
 ### Concurrency Control
 
-A mechanism for preventing conflicts when multiple processes attempt to modify the same aggregate simultaneously. Protean uses optimistic concurrency control through aggregate versioning — each aggregate tracks a version number that is checked before persisting changes, rejecting updates based on stale versions.
+A mechanism for preventing conflicts when multiple processes attempt to modify the same aggregate simultaneously. Protean uses optimistic concurrency control through aggregate versioning — each aggregate tracks a version number that is checked before persisting changes, rejecting updates based on stale versions. When a version mismatch is detected, the framework raises `ExpectedVersionError`. In async handlers, this error is automatically retried with exponential backoff before reaching the subscription retry pipeline.
 
-[Learn more →](concepts/building-blocks/aggregates.md) | **See also**: [Aggregate](#aggregate), [Event Sourcing](#event-sourcing)
+[Learn more →](concepts/building-blocks/aggregates.md) | [Auto-retry config →](guides/server/error-handling.md#version-conflict-auto-retry) | **See also**: [Aggregate](#aggregate), [Event Sourcing](#event-sourcing)
 
 ### Delta Event
 

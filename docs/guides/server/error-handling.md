@@ -191,6 +191,86 @@ creating subscriptions programmatically.
 
 ---
 
+## Version conflict auto-retry
+
+`ExpectedVersionError` is the most common transient failure in
+event-sourced and version-tracked systems. It occurs when two handlers
+concurrently modify the same aggregate — the second writer's version
+check fails because the first writer already advanced the version.
+
+Protean handles this **automatically at the `@handle` wrapper level**.
+When a handler raises `ExpectedVersionError`, the framework:
+
+1. Catches the exception before it reaches the subscription retry pipeline.
+2. Waits with exponential backoff (50 ms &rarr; 100 ms &rarr; 200 ms …).
+3. Re-executes the handler in a **fresh `UnitOfWork`**, so the aggregate
+   is re-read at the latest version.
+4. After exhausting fast retries (default 3), propagates the error to the
+   subscription for normal retry/DLQ handling.
+
+This is transparent — the subscription never sees transient version
+conflicts. Only persistent conflicts (extremely rare) surface as
+failures.
+
+### Why this works
+
+Each retry creates a new `UnitOfWork`. The handler re-reads the aggregate
+from the event store (or database), which now reflects the concurrent
+write. The handler's business logic executes against the current state,
+and the write succeeds.
+
+### Configuration
+
+Version retry is **enabled by default** with sensible defaults. Configure
+it under `[server.version_retry]` in `domain.toml`:
+
+```toml
+[server.version_retry]
+enabled = true            # Set false to disable auto-retry
+max_retries = 3           # Fast retries before propagating to subscription
+base_delay_seconds = 0.05 # 50ms initial backoff delay
+max_delay_seconds = 1.0   # Cap backoff at 1 second
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable/disable version conflict auto-retry |
+| `max_retries` | `3` | Number of fast retries before propagating |
+| `base_delay_seconds` | `0.05` | Initial backoff delay (doubles each retry) |
+| `max_delay_seconds` | `1.0` | Maximum backoff delay cap |
+
+With the defaults, worst-case retry adds 350 ms (50 + 100 + 200 ms)
+before the handler either succeeds or the error escalates to the
+subscription.
+
+### Disabling auto-retry
+
+```toml
+[server.version_retry]
+enabled = false
+```
+
+When disabled, `ExpectedVersionError` propagates immediately to the
+subscription retry/DLQ pipeline, like any other exception.
+
+### When auto-retry is not enough
+
+Auto-retry works well for idempotent operations where either outcome is
+acceptable (e.g., updating user preferences). But not all version
+conflicts are equal — some mean a real business problem (e.g., two
+customers booking the same seat), and others require merge logic.
+
+If your handler needs to distinguish between conflict types, catch
+`ExpectedVersionError` **inside** the handler method and handle it
+explicitly. When you catch it inside the handler, the framework's
+auto-retry does not trigger.
+
+For a full treatment of the three conflict categories (last writer wins,
+business rejection, conditional merge), see
+[Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md).
+
+---
+
 ## Custom error handling
 
 Every handler and subscriber class can override `handle_error()` to
@@ -280,6 +360,7 @@ protean dlq purge --domain=my_domain --subscription=orders
 
 ## Next steps
 
+- [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md) — Classify version conflicts by business meaning
 - [Monitoring](./monitoring.md) — Observatory dashboard and metrics
 - [Logging](./logging.md) — Structured logging configuration
 - [Production Deployment](./production-deployment.md) — Process management and scaling

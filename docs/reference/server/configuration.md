@@ -220,6 +220,13 @@ max_retries = 3
 retry_delay_seconds = 1
 enable_dlq = true
 
+# Version conflict auto-retry
+[server.version_retry]
+enabled = true
+max_retries = 3
+base_delay_seconds = 0.05
+max_delay_seconds = 1.0
+
 # Handler-specific overrides
 [server.subscriptions.OrderEventHandler]
 profile = "fast"

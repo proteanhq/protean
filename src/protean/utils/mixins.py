@@ -1,12 +1,60 @@
 import functools
+import logging
+import time
 from collections import defaultdict
 from typing import Any, Callable, Union
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
+from protean.exceptions import ExpectedVersionError
 from protean.utils import DomainObjects
 from protean.utils.eventing import Message
+
+logger = logging.getLogger(__name__)
+
+
+_VERSION_RETRY_DEFAULTS = {
+    "enabled": True,
+    "max_retries": 3,
+    "base_delay_seconds": 0.05,
+    "max_delay_seconds": 1.0,
+}
+
+
+def _get_version_retry_config() -> dict:
+    """Read version retry configuration from the active domain.
+
+    Falls back to defaults if no domain is active (e.g. during tests
+    that call handlers directly without a domain context).
+    """
+    try:
+        from protean.utils.globals import current_domain
+
+        if current_domain:
+            server_config = current_domain.config.get("server", {})
+            cfg = server_config.get("version_retry", {})
+            return {
+                "enabled": cfg.get("enabled", _VERSION_RETRY_DEFAULTS["enabled"]),
+                "max_retries": int(
+                    cfg.get("max_retries", _VERSION_RETRY_DEFAULTS["max_retries"])
+                ),
+                "base_delay_seconds": float(
+                    cfg.get(
+                        "base_delay_seconds",
+                        _VERSION_RETRY_DEFAULTS["base_delay_seconds"],
+                    )
+                ),
+                "max_delay_seconds": float(
+                    cfg.get(
+                        "max_delay_seconds",
+                        _VERSION_RETRY_DEFAULTS["max_delay_seconds"],
+                    )
+                ),
+            }
+    except Exception:
+        pass
+    return dict(_VERSION_RETRY_DEFAULTS)
 
 
 class handle:
@@ -49,9 +97,32 @@ class handle:
 
         @functools.wraps(fn)
         def wrapper(instance, target_obj):
-            # Wrap function call within a UoW
-            with UnitOfWork():
-                return fn(instance, target_obj)
+            config = _get_version_retry_config()
+
+            if not config["enabled"] or config["max_retries"] <= 0:
+                with UnitOfWork():
+                    return fn(instance, target_obj)
+
+            max_retries = config["max_retries"]
+            base_delay = config["base_delay_seconds"]
+            max_delay = config["max_delay_seconds"]
+
+            for attempt in range(max_retries + 1):
+                try:
+                    with UnitOfWork():
+                        return fn(instance, target_obj)
+                except ExpectedVersionError:
+                    if attempt >= max_retries:
+                        raise
+                    delay = min(base_delay * (2**attempt), max_delay)
+                    logger.debug(
+                        "Version conflict in %s, retrying (%d/%d) after %.3fs",
+                        fn.__qualname__,
+                        attempt + 1,
+                        max_retries,
+                        delay,
+                    )
+                    time.sleep(delay)
 
         setattr(wrapper, "_target_cls", self._target_cls)
         setattr(wrapper, "_start", self._start)

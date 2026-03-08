@@ -302,6 +302,15 @@ max_retries = 3               # Retries before DLQ
 retry_delay_seconds = 1       # Delay between retries
 enable_dlq = true             # Enable dead letter queue
 
+# Version conflict auto-retry
+# Retries ExpectedVersionError at the handler level before
+# the error reaches the subscription retry/DLQ pipeline
+[server.version_retry]
+enabled = true               # Enable/disable auto-retry
+max_retries = 3              # Fast retries before propagating
+base_delay_seconds = 0.05    # 50ms initial backoff
+max_delay_seconds = 1.0      # Cap backoff at 1 second
+
 # Handler-specific overrides
 [server.subscriptions.OrderEventHandler]
 profile = "fast"

@@ -353,6 +353,57 @@ reason instead of blindly retried.
 
 ---
 
+## Framework auto-retry and when it is not enough
+
+Protean automatically retries `ExpectedVersionError` at the `@handle`
+wrapper level. When a handler raises a version conflict, the framework
+catches it, waits with exponential backoff, and re-executes the handler
+in a **fresh `UnitOfWork`** -- so the aggregate is re-read at the latest
+version. This happens transparently, before the error reaches the
+subscription retry pipeline. By default, the framework retries up to 3
+times with 50 ms initial backoff (350 ms worst case).
+
+This auto-retry is the right behavior for **category 1** (last writer
+wins) conflicts. The handler re-reads the aggregate and reapplies the
+change -- which is safe because either value is acceptable. In many
+cases, you do not need to write manual retry loops for category 1
+scenarios because the framework handles it.
+
+However, auto-retry alone is **not sufficient** for categories 2 and 3:
+
+- **Category 2** (conflict means a real problem): The handler should
+  catch `ExpectedVersionError` *inside* the handler method and translate
+  it into a domain-specific exception (e.g., `SeatAlreadyTaken`). The
+  framework's auto-retry will re-execute the handler, but the handler
+  itself must recognize that the operation is no longer valid and raise
+  accordingly. If the handler does not catch the error, the framework
+  retries blindly -- which is exactly what category 2 conflicts should
+  avoid.
+
+- **Category 3** (merge if possible): The handler must reload the
+  aggregate and re-evaluate preconditions. The framework's fresh
+  `UnitOfWork` gives you the latest aggregate state, but your handler
+  code must implement the merge logic. Simple re-execution works only
+  when the operation is idempotent.
+
+!!! note "When to catch `ExpectedVersionError` inside your handler"
+    If your handler deals with category 2 or 3 conflicts, catch
+    `ExpectedVersionError` inside the handler method and handle it
+    explicitly. When you catch it inside the handler, the framework's
+    auto-retry does not trigger (because no exception propagates out of
+    the handler).
+
+    If you do **not** catch it, the framework retries the entire handler
+    automatically. This is safe for category 1 conflicts but may produce
+    incorrect results for categories 2 and 3.
+
+For auto-retry configuration, see
+[Version conflict auto-retry](../guides/server/error-handling.md#version-conflict-auto-retry).
+To disable auto-retry entirely, set `enabled = false` in
+`[server.version_retry]`.
+
+---
+
 ## Anti-Patterns
 
 ### Generic catch-all handler
@@ -394,6 +445,14 @@ reservation). Retrying a failed reservation might succeed on a different
 version of the aggregate, producing a double booking. It is also wrong for
 additive operations unless the handler explicitly re-evaluates preconditions
 on the reloaded aggregate.
+
+!!! note "How this differs from framework auto-retry"
+    Protean's built-in auto-retry at the `@handle` level **also** retries
+    blindly -- which is correct for category 1 conflicts (the vast
+    majority). For categories 2 and 3, your handler must catch
+    `ExpectedVersionError` inside the handler method and apply the
+    appropriate strategy. When you catch it inside the handler, the
+    framework's retry does not trigger.
 
 ### Ignoring version conflicts entirely
 
@@ -474,3 +533,4 @@ aggregate's version protects only the data that genuinely must be consistent.
 
     - [Unit of Work](../guides/change-state/unit-of-work.md) -- Transaction management and version tracking.
     - [Persist Aggregates](../guides/change-state/persist-aggregates.md) -- Repository persistence patterns.
+    - [Error Handling](../guides/server/error-handling.md#version-conflict-auto-retry) -- Framework auto-retry configuration for version conflicts.
