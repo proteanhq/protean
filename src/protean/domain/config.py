@@ -87,6 +87,10 @@ def _default_config():
             # Used when subscription_type is "event_store"
             "event_store_subscription": {
                 "position_update_interval": 10,  # How often to update position in event store
+                "max_retries": 3,  # Max retry attempts before marking as exhausted
+                "retry_delay_seconds": 1,  # Delay between recovery retries
+                "enable_recovery": True,  # Enable failed position recovery
+                "recovery_interval_seconds": 30,  # How often to run recovery pass
             },
             # Stream subscription settings
             # Used when subscription_type is "stream"
