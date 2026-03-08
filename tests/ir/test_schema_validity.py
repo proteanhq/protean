@@ -71,6 +71,7 @@ class TestSchemaCompleteness:
             "field_list",
             "field_reference",
             "field_standard",
+            "field_status",
             "field_text",
             "field_value_object",
             "field_value_object_list",

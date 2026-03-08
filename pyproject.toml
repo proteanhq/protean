@@ -120,6 +120,7 @@ pytest = ">=8.2.1,<10.0.0"
 mypy = "^1.11.0"
 coverage = "^7.8.0"
 httpx = ">=0.27.0"  # For testing FastAPI
+jsonschema = ">=4.20.0"  # For IR schema validation tests
 
 [tool.poetry.group.docs]
 optional = true
