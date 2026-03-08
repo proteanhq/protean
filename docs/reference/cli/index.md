@@ -12,6 +12,7 @@ load the domain.
 | [`protean shell`](project/shell.md)    | Working with the shell             |
 | [`protean server`](runtime/server.md)  | Running an async background server |
 | [`protean observatory`](runtime/observatory.md) | Running the observability dashboard |
+| [`protean ir show`](ir.md)                   | Display the domain's IR as JSON or summary |
 | [`protean db setup`](data/database.md)       | Create all database tables         |
 | [`protean db drop`](data/database.md)        | Drop all database tables           |
 | [`protean db truncate`](data/database.md)    | Delete all data, preserve schema   |

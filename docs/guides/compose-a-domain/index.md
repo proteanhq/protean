@@ -137,3 +137,4 @@ domain = Domain(
 - [Activate Domain](./activate-domain.md) - Understand how to activate a domain and its components
 - [When to Compose a Domain](./when-to-compose.md) - Learn about the appropriate timing and scenarios for composing a domain
 - [Object Model](../../reference/domain-elements/object-model.md) - Understand the common structure and traits shared by all domain elements
+- [Inspecting the IR](./inspecting-the-ir.md) - Generate and explore the domain's Intermediate Representation

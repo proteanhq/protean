@@ -201,6 +201,7 @@ nav:
       - guides/compose-a-domain/initialize-domain.md
       - guides/compose-a-domain/activate-domain.md
       - guides/compose-a-domain/when-to-compose.md
+      - guides/compose-a-domain/inspecting-the-ir.md
     - Model Your Domain:
       - guides/domain-definition/index.md
       - guides/domain-definition/aggregates.md
@@ -288,6 +289,8 @@ nav:
         - reference/cli/runtime/server.md
         - reference/cli/runtime/observatory.md
         - reference/cli/runtime/subscriptions.md
+      - IR:
+        - reference/cli/ir.md
       - Data:
         - reference/cli/data/index.md
         - reference/cli/data/database.md

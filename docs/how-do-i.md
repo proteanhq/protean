@@ -219,6 +219,8 @@ need by what you're trying to accomplish.
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
+| Generate the IR for my domain                  | [Inspecting the IR](./guides/compose-a-domain/inspecting-the-ir.md) |
+| Understand the IR format and compatibility     | [IR Specification](./concepts/internals/ir-specification.md) |
 | Understand how the field system works           | [Field System](./concepts/internals/field-system.md) |
 | Learn why three field definition styles exist   | [Field System](./concepts/internals/field-system.md) |
 | Understand how the query system works internally | [Query System](./concepts/internals/query-system.md) |
