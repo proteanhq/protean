@@ -35,8 +35,14 @@ first persisted, and increases by one on each subsequent save.
 
 ### Aggregates have concurrency control. { data-toc-label="Concurrency Control" }
 Aggregates are persisted with optimistic concurrency. If the expected version
-of the aggregate does not match the version in the database, the transaction
-is aborted.
+of the aggregate does not match the version in the database, the framework
+raises `ExpectedVersionError`. In async handlers (`@handle`), this error is
+automatically retried with exponential backoff -- each retry creates a fresh
+Unit of Work that re-reads the aggregate at the latest version. See
+[Version conflict auto-retry](../../guides/server/error-handling.md#version-conflict-auto-retry)
+for configuration details and
+[Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md)
+for handling different conflict categories.
 
 ### Aggregates enclose business invariants. { data-toc-label="Invariants" }
 

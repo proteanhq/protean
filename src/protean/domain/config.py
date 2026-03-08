@@ -107,6 +107,15 @@ def _default_config():
                 "retry_delay_seconds": 1,  # Delay between retries
                 "enable_dlq": True,  # Enable dead letter queue
             },
+            # Version conflict auto-retry settings
+            # Retries ExpectedVersionError transparently at the handler level
+            # before the error reaches the subscription retry/DLQ pipeline
+            "version_retry": {
+                "enabled": True,  # Enable/disable version conflict auto-retry
+                "max_retries": 3,  # Fast retries before propagating to subscription
+                "base_delay_seconds": 0.05,  # 50ms initial backoff delay
+                "max_delay_seconds": 1.0,  # Cap backoff at 1 second
+            },
             # Handler-specific subscription configurations
             # Keys are handler names (e.g., "OrderEventHandler")
             # Values are dicts with any of: profile, stream_category, subscription_type,

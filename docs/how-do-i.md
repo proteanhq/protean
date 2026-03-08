@@ -62,6 +62,7 @@ need by what you're trying to accomplish.
 | Perform bulk updates or deletes                  | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Manage transactions                             | [Unit of Work](./guides/change-state/unit-of-work.md) | All |
 | Handle version conflicts (optimistic concurrency) | [Optimistic Concurrency as a Design Tool](./patterns/optimistic-concurrency-as-design-tool.md) | All |
+| Configure or disable version conflict auto-retry | [Error Handling](./guides/server/error-handling.md#version-conflict-auto-retry) | All |
 
 ## React to State Changes
 

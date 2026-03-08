@@ -245,6 +245,18 @@ transaction modified the same aggregate stream), the UoW raises an
 the first writer wins, and subsequent writers must retry with the latest
 version.
 
+In async handlers (command handlers and event handlers decorated with
+`@handle`), the framework **automatically retries** `ExpectedVersionError`
+with exponential backoff. Each retry creates a fresh `UnitOfWork`, so the
+handler re-reads the aggregate at the latest version. This is transparent —
+most version conflicts resolve without any manual intervention. For details,
+see [Version conflict auto-retry](../server/error-handling.md#version-conflict-auto-retry).
+
+For application services or direct `UnitOfWork` usage, you must handle
+`ExpectedVersionError` yourself. See
+[Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md)
+for the three conflict categories and how to respond to each.
+
 ## Errors during commit
 
 If the database commit fails for reasons other than version conflicts, the UoW
@@ -274,3 +286,8 @@ except TransactionError as exc:
     - [Persist Aggregates](./persist-aggregates.md) — Save and update aggregates through repositories.
     - [Command Handlers](./command-handlers.md) — Each handler method runs within an implicit Unit of Work.
     - [Application Services](./application-services.md) — Use `@use_case` for automatic Unit of Work management.
+
+    **Error handling:**
+
+    - [Error Handling](../server/error-handling.md#version-conflict-auto-retry) — Automatic version conflict retry in async handlers.
+    - [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md) — Classify version conflicts by business meaning.
