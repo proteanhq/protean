@@ -400,3 +400,154 @@ def build_database_model_domain() -> Domain:
 
     domain.init(traverse=False)
     return domain
+
+
+def build_integration_domain() -> Domain:
+    """Build a rich domain exercising all IR sections simultaneously.
+
+    Contains:
+    - 3 aggregates: Order, Inventory, Shipment
+    - Shared value object: Money
+    - Commands and events on each aggregate
+    - Cross-aggregate event handler (Inventory reacts to OrderPlaced)
+    - Process manager (OrderFulfillment spans Order + Shipment)
+    - Projection + projector (OrderDashboard)
+    - Subscriber (ExternalPaymentSubscriber)
+    """
+    from protean.utils.mixins import read
+
+    domain = Domain(name="Fulfillment", root_path=".")
+
+    # --- Shared value object ---
+
+    @domain.value_object
+    class Money:
+        amount = Float(default=0.0)
+        currency = String(max_length=3, default="USD")
+
+    # --- Aggregate 1: Order ---
+
+    @domain.entity(part_of="Order")
+    class LineItem:
+        product_name = String(max_length=200, required=True)
+        quantity = Integer(min_value=1, required=True)
+        unit_price = VOField(Money)
+
+    @domain.command(part_of="Order")
+    class PlaceOrder:
+        customer_name = String(max_length=100, required=True)
+
+    @domain.event(part_of="Order")
+    class OrderPlaced:
+        order_id = Identifier(required=True)
+        customer_name = String(required=True)
+        total = Float(required=True)
+
+    @domain.event(part_of="Order")
+    class OrderShipped:
+        order_id = Identifier(required=True)
+
+    @domain.aggregate
+    class Order:
+        customer_name = String(max_length=100, required=True)
+        total = VOField(Money)
+        items = HasMany(LineItem)
+
+    @domain.command_handler(part_of=Order)
+    class OrderCommandHandler:
+        @handle(PlaceOrder)
+        def handle_place_order(self, command):
+            pass
+
+    # --- Aggregate 2: Inventory ---
+
+    @domain.event(part_of="Inventory")
+    class StockReserved:
+        product_name = String(required=True)
+        quantity = Integer(required=True)
+
+    @domain.aggregate
+    class Inventory:
+        product_name = String(max_length=200, required=True)
+        stock = Integer(default=0)
+
+    @domain.event_handler(part_of=Inventory)
+    class InventoryReactor:
+        """Cross-aggregate handler: reacts to OrderPlaced."""
+
+        @handle(OrderPlaced)
+        def on_order_placed(self, event):
+            pass
+
+    # --- Aggregate 3: Shipping ---
+
+    @domain.command(part_of="Shipment")
+    class CreateShipment:
+        order_id = Identifier(required=True)
+        address = String(max_length=500, required=True)
+
+    @domain.event(part_of="Shipment")
+    class ShipmentDispatched:
+        shipment_id = Identifier(required=True)
+        order_id = Identifier(required=True)
+
+    @domain.aggregate
+    class Shipment:
+        order_id = Identifier(required=True)
+        address = String(max_length=500)
+        dispatched = Boolean(default=False)
+
+    # --- Process manager: spans Order + Shipment ---
+
+    @domain.process_manager(stream_categories=["order", "shipment"])
+    class OrderFulfillment:
+        order_id = Identifier()
+        status = String(default="new")
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_order_placed(self, event):
+            self.order_id = event.order_id
+            self.status = "awaiting_shipment"
+
+        @handle(ShipmentDispatched, correlate="order_id", end=True)
+        def on_shipment_dispatched(self, event):
+            self.status = "fulfilled"
+
+    # --- Projection + projector ---
+
+    @domain.projection
+    class OrderDashboard:
+        order_id = Identifier(identifier=True)
+        customer_name = String(max_length=100)
+        total_amount = Float(default=0.0)
+        shipped = Boolean(default=False)
+
+    @domain.projector(projector_for=OrderDashboard, aggregates=[Order])
+    class OrderDashboardProjector:
+        @handle(OrderPlaced)
+        def on_order_placed(self, event):
+            pass
+
+        @handle(OrderShipped)
+        def on_order_shipped(self, event):
+            pass
+
+    @domain.query(part_of=OrderDashboard)
+    class GetOrderDashboard:
+        order_id = Identifier(required=True)
+
+    @domain.query_handler(part_of=OrderDashboard)
+    class OrderDashboardQueryHandler:
+        @read(GetOrderDashboard)
+        def by_order(self, query):
+            pass
+
+    # --- Subscriber ---
+
+    @domain.subscriber(broker="default", stream="payment_gateway")
+    class ExternalPaymentSubscriber:
+        def __call__(self, payload):
+            pass
+
+    domain.init(traverse=False)
+    return domain
