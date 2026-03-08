@@ -182,7 +182,7 @@ async def test_broker_subscription_process_batch_nack_failure(test_domain, caplo
     )
 
     # Verify warning was logged
-    assert "Failed to nack message msg_id_1" in caplog.text
+    assert "Failed to NACK message msg_id_1" in caplog.text
 
     # Verify no messages were processed successfully
     assert result == 0
