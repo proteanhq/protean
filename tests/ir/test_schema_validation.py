@@ -18,6 +18,7 @@ from .elements import (
     build_extended_field_test_domain,
     build_field_test_domain,
     build_handler_test_domain,
+    build_integration_domain,
     build_process_manager_domain,
     build_status_field_domain,
     build_via_and_min_length_domain,
@@ -46,6 +47,7 @@ _DOMAIN_BUILDERS = [
     pytest.param(build_process_manager_domain, id="process_manager"),
     pytest.param(build_status_field_domain, id="status_field"),
     pytest.param(build_database_model_domain, id="database_model"),
+    pytest.param(build_integration_domain, id="integration"),
 ]
 
 
