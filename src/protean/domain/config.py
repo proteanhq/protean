@@ -100,6 +100,13 @@ def _default_config():
                 "retry_delay_seconds": 1,  # Delay between retries
                 "enable_dlq": True,  # Enable dead letter queue
             },
+            # Broker subscription settings
+            # Used for incoming messages from external brokers via subscribers
+            "broker_subscription": {
+                "max_retries": 3,  # Max retry attempts before DLQ
+                "retry_delay_seconds": 1,  # Delay between retries
+                "enable_dlq": True,  # Enable dead letter queue
+            },
             # Handler-specific subscription configurations
             # Keys are handler names (e.g., "OrderEventHandler")
             # Values are dicts with any of: profile, stream_category, subscription_type,

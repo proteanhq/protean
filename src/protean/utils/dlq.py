@@ -113,6 +113,26 @@ def discover_subscriptions(domain: "Domain") -> list[SubscriptionInfo]:
             for stream_cat in stream_categories:
                 _add(handler_cls, stream_cat)
 
+    # Subscribers (broker subscriptions with external streams)
+    for _, record in domain.registry._elements.get(
+        DomainObjects.SUBSCRIBER.value, {}
+    ).items():
+        handler_cls = record.cls
+        meta = getattr(handler_cls, "meta_", None)
+        stream = getattr(meta, "stream", None) if meta else None
+        if stream:
+            key = f"{fqn(handler_cls)}:{stream}"
+            if key not in seen_streams:
+                info = SubscriptionInfo(
+                    handler_name=handler_cls.__name__,
+                    handler_fqn=fqn(handler_cls),
+                    stream_category=stream,
+                    dlq_stream=f"{stream}:dlq",
+                    backfill_dlq_stream=None,  # Broker subscriptions don't use priority lanes
+                )
+                seen_streams[key] = info
+                infos.append(info)
+
     return infos
 
 
