@@ -1,5 +1,5 @@
 ![Protean](./assets/full-logo.png){ width="400" }
-# Pragmatic Framework for Ambitious Applications
+# Your whiteboard, shipped.
 
 [![Python](https://img.shields.io/pypi/pyversions/protean?label=Python)](https://github.com/proteanhq/protean/)
 [![Release](https://img.shields.io/pypi/v/protean?label=Release)](https://pypi.org/project/protean/)
@@ -8,12 +8,18 @@
 [![Tests](https://img.shields.io/badge/tests-3%2C826-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
-Build domain-driven Python applications with clean architecture.
-Start with DDD, evolve to CQRS or Event Sourcing — with pluggable
-infrastructure and zero boilerplate.
+A Python framework for domain-driven systems. Sketch aggregates, events,
+and bounded contexts on a whiteboard. Then write them in Python, exactly
+as you drew them.
 
-[Get Started](./guides/getting-started/hello.md){ .md-button .md-button--primary }
+Start with DDD, evolve to CQRS or Event Sourcing, swap
+infrastructure through configuration.
+
+**Your domain model is the architecture.**
+
+[Ship the Whiteboard](./guides/getting-started/hello.md){ .md-button .md-button--primary }
 [Tutorial](./guides/getting-started/tutorial/index.md){ .md-button }
+[Why Protean?](./why-protean.md){ .md-button }
 [How Do I...?](./how-do-i.md){ .md-button }
 
 ---
@@ -22,54 +28,45 @@ infrastructure and zero boilerplate.
 
 <div class="grid cards" markdown>
 
--   __:material-domain: Domain-First__
+-   __:material-magnify-scan: Domain Compiler__
 
     ---
 
-    Model your business in pure Python. No ORM inheritance, no framework
-    lock-in. Your domain code reads like the business, enabling
-    collaboration between developers and domain experts.
+    Your domain model is a machine-readable specification. Protean builds
+    an Intermediate Representation (IR) that enables derived docs, API
+    specs, contracts, and visual exploration.
 
--   __:material-power-plug-battery-outline: Plug In Infrastructure Later__
-
-    ---
-
-    Start with in-memory adapters — no database, no broker, no setup.
-    When you're ready, swap in PostgreSQL, Redis, Elasticsearch, or
-    MessageDB through configuration. No code changes.
-
--   __:material-call-split: Three Architectural Paths__
+-   __:material-shield-check-outline: Always-Valid Domain__
 
     ---
 
-    Begin with DDD, evolve to CQRS, adopt Event Sourcing — all within
+    Domain objects are always valid, or they don't exist. Four validation
+    layers -- field constraints, value object invariants, aggregate rules,
+    handler guards -- enforced on every change, automatically.
+
+-   __:material-call-split: Progressive Architecture__
+
+    ---
+
+    Start with DDD, evolve to CQRS, adopt Event Sourcing -- all within
     the same framework. Mix patterns per aggregate. Pragmatism over
     purity.
 
--   __:material-test-tube: Test Everything__
+-   __:material-power-plug-battery-outline: Infrastructure Portability__
 
     ---
 
-    3,826 tests with a 3.5:1 test-to-code ratio. Run your full domain
-    test suite in-memory in seconds. Every commit is tested against
-    PostgreSQL, Redis, Elasticsearch, MessageDB, and MSSQL across
-    Python 3.11-3.14.
-
--   __:material-cloud-check-outline: CloudEvents Compliant__
-
-    ---
-
-    Every event and command can be serialized to the
-    [CloudEvents v1.0](https://cloudevents.io/) standard for
-    cross-system interoperability. Protean's rich DDD metadata —
-    causal chains, sequence tracking, message integrity — rides
-    alongside as namespaced extensions.
+    Start with in-memory adapters -- no database, no broker, no setup.
+    When you're ready, swap in PostgreSQL, Redis, Elasticsearch, or
+    MessageDB through configuration. No code changes.
 
 </div>
 
+[:material-arrow-right-box: Read more -- Why Protean?](./why-protean.md){ .md-button }
+
 ---
 
-## See It in Action
+## See it in action
 
 ```python
 from protean import Domain, handle
@@ -107,37 +104,37 @@ class PostCommandHandler:
         return post.id
 ```
 
-1. :material-domain: **Domain** — The central registry that wires all elements together.
-2. :material-cube-outline: **Aggregate** — The core building block encapsulating fields and business logic.
-3. :material-bell-ring-outline: **Raising an Event** — `raise_()` emits a domain event to notify the rest of the system.
-4. :material-lightning-bolt: **Event** — An immutable record of something that happened in the domain.
-5. :material-play-circle-outline: **Command** — An intent to change state, carrying just the needed data.
-6. :material-cog-outline: **Command Handler** — Receives a command, creates/updates aggregates, and persists them.
-7. :material-database-outline: **Repository** — Built-in persistence abstraction to add, get, or remove aggregates without touching the database directly.
+1. :material-domain: **Domain** -- The central registry that wires all elements together.
+2. :material-cube-outline: **Aggregate** -- The core building block encapsulating fields and business logic.
+3. :material-bell-ring-outline: **Raising an Event** -- `raise_()` emits a domain event to notify the rest of the system.
+4. :material-lightning-bolt: **Event** -- An immutable record of something that happened in the domain.
+5. :material-play-circle-outline: **Command** -- An intent to change state, carrying just the needed data.
+6. :material-cog-outline: **Command Handler** -- Receives a command, creates/updates aggregates, and persists them.
+7. :material-database-outline: **Repository** -- Built-in persistence abstraction to add, get, or remove aggregates without touching the database directly.
 
-Aggregates, commands, events, and handlers — all in pure Python, with
+Aggregates, commands, events, and handlers -- all in pure Python, with
 decorators that wire everything together. No infrastructure required
 to get started.
 
 ---
 
-## Choose Your Path
+## Choose your path
 
 Protean supports three architectural approaches. Each builds on the one
-before it — start simple and add sophistication as your needs evolve.
+before it -- start simple and add sophistication as your needs evolve.
 
 | | Path | Best for |
 |---|---|---|
-| :material-shield-outline: | [**Domain-Driven Design**](./guides/pathways/ddd.md) | Clean domain modeling — the simplest way to start |
+| :material-shield-outline: | [**Domain-Driven Design**](./guides/pathways/ddd.md) | Clean domain modeling -- the simplest way to start |
 | :material-call-split: | [**CQRS**](./guides/pathways/cqrs.md) | Separate reads from writes with commands and projections |
 | :material-history: | [**Event Sourcing**](./guides/pathways/event-sourcing.md) | Full audit trail, temporal queries, and event replay |
 
-Not sure? Start with DDD — you can evolve later. See
+Not sure? Start with DDD -- you can evolve later. See
 [Choose a Path](./guides/pathways/index.md) for a detailed comparison.
 
 ---
 
-## Built to Last
+## Built to last
 
 <div class="grid cards" markdown>
 
@@ -167,7 +164,7 @@ Not sure? Start with DDD — you can evolve later. See
     ---
 
     Pluggable infrastructure across databases, brokers, event stores,
-    and caches — tested across 4 Python versions.
+    and caches -- tested across 4 Python versions.
 
 </div>
 
@@ -175,7 +172,7 @@ Not sure? Start with DDD — you can evolve later. See
 
 ---
 
-## Explore the Documentation
+## Explore the documentation
 
 <div class="grid cards" markdown>
 
@@ -207,7 +204,7 @@ Not sure? Start with DDD — you can evolve later. See
 
     ---
 
-    Task-oriented index — look up what you're trying to do and jump
+    Task-oriented index -- look up what you're trying to do and jump
     straight to the right guide.
 
     [:material-arrow-right-box: How Do I...?](./how-do-i.md)

@@ -273,6 +273,8 @@ and reported together.
 ---
 
 !!! tip "See also"
+    **Deep dive:** [The Always-Valid Domain](../../concepts/philosophy/always-valid.md) — The complete story of how Protean's four validation layers work together to guarantee your domain objects are never invalid.
+
     **Concept overview:** [Invariants](../../concepts/foundations/invariants.md) — Why invariants are fundamental to DDD and how they keep your domain always valid.
 
     **Related guides:**

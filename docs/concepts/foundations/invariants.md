@@ -118,6 +118,7 @@ For example, when an `Order` is placed, it raises an `OrderPlaced` event. An eve
 
 ## Further Reading
 
+- [The Always-Valid Domain](../philosophy/always-valid.md) -- the complete story of four-layer validation and what the always-valid guarantee means for your code
 - [Aggregates](../building-blocks/aggregates.md) -- invariant enforcement within aggregate boundaries
 - [Invariants Guide](../../guides/domain-behavior/invariants.md) -- implementing invariants in Protean
 - [Validation Layering](../../patterns/validation-layering.md) -- where different types of validation belong

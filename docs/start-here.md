@@ -53,10 +53,15 @@ changes, behavioral differences, and what's new.
 ## Core concepts
 
 Get to know the driving principles and core ideas that shape this framework
-in [Philosophy](./concepts/philosophy/index.md). In
+in [Philosophy](./concepts/philosophy/index.md). A key principle is the
+[always-valid guarantee](./concepts/philosophy/always-valid.md) -- domain
+objects are continuously validated and can never exist in an invalid state. In
 [Domain Elements](./concepts/building-blocks/index.md), explore key DDD
 elements like Aggregates, Repositories, Events, and more to understand the
 core structures of Protean.
+
+For a broader overview of what makes Protean different, see
+[Why Protean?](./why-protean.md).
 
 ## Building with Protean
 

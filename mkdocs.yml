@@ -57,9 +57,11 @@ extra_javascript:
   - https://unpkg.com/mermaid@10/dist/mermaid.min.js
   - javascripts/mermaid-init.js
 
-validation:
-  nav:
-    not_in_nav: info  # CLAUDE.md is intentionally excluded from nav
+exclude_docs: |
+  adr/
+
+not_in_nav: |
+  CLAUDE.md
 
 plugins:
   - privacy
@@ -120,6 +122,7 @@ nav:
   - Protean:
     - index.md
     - start-here.md
+    - why-protean.md
     - concepts/philosophy/index.md
     - contents.md
     - how-do-i.md
@@ -215,6 +218,7 @@ nav:
       - guides/domain-behavior/validations.md
       - guides/domain-behavior/invariants.md
       - guides/domain-behavior/aggregate-mutation.md
+      - guides/domain-behavior/status-transitions.md
       - guides/domain-behavior/raising-events.md
       - guides/domain-behavior/message-tracing.md
       - guides/domain-behavior/message-enrichment.md
@@ -341,6 +345,7 @@ nav:
     - concepts/index.md
     - Philosophy & Principles:
       - concepts/philosophy/index.md
+      - concepts/philosophy/always-valid.md
     - Foundations:
       - concepts/foundations/index.md
       - concepts/foundations/ubiquitous-language.md

@@ -32,9 +32,11 @@ need by what you're trying to accomplish.
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
+| Understand how Protean keeps domain objects always valid | [The Always-Valid Domain](./concepts/philosophy/always-valid.md) |
 | Validate field values                           | [Validations](./guides/domain-behavior/validations.md) |
 | Enforce business invariants                     | [Invariants](./guides/domain-behavior/invariants.md) |
 | Change aggregate state safely                   | [Aggregate Mutation](./guides/domain-behavior/aggregate-mutation.md) |
+| Enforce allowed state transitions on a field    | [Status Transitions](./guides/domain-behavior/status-transitions.md) |
 | Raise domain events from an aggregate           | [Raising Events](./guides/domain-behavior/raising-events.md) |
 | Trace the full causal chain of commands and events | [Message Tracing](./guides/domain-behavior/message-tracing.md) |
 | Inject tenant, user, or request context into every event and command | [Message Enrichment](./patterns/message-enrichment.md) |

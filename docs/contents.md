@@ -106,6 +106,7 @@ specific area.
 - [Validations](./guides/domain-behavior/validations.md) -- Field-level validation using types, options, and custom validators.
 - [Invariants](./guides/domain-behavior/invariants.md) -- Business rules that must always hold true within an aggregate.
 - [Mutating Aggregates](./guides/domain-behavior/aggregate-mutation.md) -- Modify state through named methods reflecting actions and events.
+- [Status Transitions](./guides/domain-behavior/status-transitions.md) -- Enforce lifecycle state machines with the Status field.
 - [Raising Events](./guides/domain-behavior/raising-events.md) -- Notify other parts of the system through domain events.
 - [Message Tracing](./guides/domain-behavior/message-tracing.md) -- Track the full causal chain of commands and events with correlation and causation IDs, and traverse causation chains programmatically.
 - [Domain Services](./guides/domain-behavior/domain-services.md) -- Complex domain logic that spans multiple aggregates.
@@ -367,6 +368,8 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 - [Glossary](./glossary.md) -- Definitions of key terms.
 - [Philosophy & Design Principles](./concepts/philosophy/index.md) -- The convictions that guide Protean's design.
+- [The Always-Valid Domain](./concepts/philosophy/always-valid.md) -- How four validation layers guarantee domain objects are never invalid.
+- [Why Protean?](./why-protean.md) -- Four capabilities that set Protean apart: domain compiler, always-valid domain, progressive architecture, infrastructure portability.
 
 ---
 

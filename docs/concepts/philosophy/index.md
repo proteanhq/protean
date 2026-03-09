@@ -176,3 +176,10 @@ Protean comes with built-in support for `pytest` and `pytest-bdd`,
 streamlining Test-Driven Development. Tests written during prototyping
 remain valid when you plug in production infrastructure — because the
 domain logic hasn't changed.
+
+---
+
+## Deep dives
+
+- [The Always-Valid Domain](always-valid.md) -- How four validation layers
+  guarantee that domain objects are never invalid.
