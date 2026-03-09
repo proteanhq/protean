@@ -41,8 +41,6 @@ def diff_ir(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     result["contracts"] = _diff_contracts(
         left.get("contracts", {}),
         right.get("contracts", {}),
-        left,
-        right,
     )
     result["diagnostics"] = _diff_diagnostics(
         left.get("diagnostics", []),
@@ -371,10 +369,12 @@ def _diff_flows(
 def _diff_contracts(
     left_contracts: dict[str, Any],
     right_contracts: dict[str, Any],
-    left_ir: dict[str, Any],
-    right_ir: dict[str, Any],
 ) -> dict[str, Any]:
-    """Diff the contracts section and detect breaking changes."""
+    """Diff the contracts section and detect breaking changes.
+
+    Contract entries use language-neutral keys: ``type`` (not ``__type__``),
+    ``version``, ``fields``, and ``fqn``.
+    """
     left_events = left_contracts.get("events", [])
     right_events = right_contracts.get("events", [])
 
@@ -391,59 +391,54 @@ def _diff_contracts(
 
     # Removed published events are breaking
     for event in removed:
+        event_label = event.get("type", event["fqn"])
         breaking.append(
             {
                 "type": "contract_event_removed",
-                "event": event.get("__type__", ""),
+                "event": event_label,
                 "fqn": event["fqn"],
-                "message": (
-                    f"Published event '{event.get('__type__', event['fqn'])}' "
-                    f"was removed"
-                ),
+                "message": f"Published event '{event_label}' was removed",
             }
         )
 
-    # Check events present in both for __type__ changes and field changes
-    for fqn in sorted(left_fqns & right_fqns):
-        left_evt = left_by_fqn[fqn]
-        right_evt = right_by_fqn[fqn]
+    # Check events present in both for type/version/field changes
+    for event_fqn in sorted(left_fqns & right_fqns):
+        left_evt = left_by_fqn[event_fqn]
+        right_evt = right_by_fqn[event_fqn]
 
-        # __type__ change is breaking
-        left_type = left_evt.get("__type__", "")
-        right_type = right_evt.get("__type__", "")
+        # type string change is breaking
+        left_type = left_evt.get("type", "")
+        right_type = right_evt.get("type", "")
         if left_type != right_type:
             breaking.append(
                 {
                     "type": "contract_type_changed",
-                    "fqn": fqn,
+                    "fqn": event_fqn,
                     "left": left_type,
                     "right": right_type,
                     "message": (
-                        f"__type__ changed for published event: "
+                        f"type changed for published event: "
                         f"'{left_type}' → '{right_type}'"
                     ),
                 }
             )
 
-        # Field-level changes on published events
-        left_event_def = _find_event_in_ir(left_ir, fqn)
-        right_event_def = _find_event_in_ir(right_ir, fqn)
-        if left_event_def and right_event_def:
-            left_fields = left_event_def.get("fields", {})
-            right_fields = right_event_def.get("fields", {})
-            removed_fields = set(left_fields.keys()) - set(right_fields.keys())
-            for field_name in sorted(removed_fields):
-                breaking.append(
-                    {
-                        "type": "contract_field_removed",
-                        "fqn": fqn,
-                        "field": field_name,
-                        "message": (
-                            f"Field '{field_name}' removed from published event "
-                            f"'{left_type}'"
-                        ),
-                    }
-                )
+        # Field-level changes — fields are embedded in contract entries
+        left_fields = left_evt.get("fields", {})
+        right_fields = right_evt.get("fields", {})
+        removed_fields = set(left_fields.keys()) - set(right_fields.keys())
+        for field_name in sorted(removed_fields):
+            breaking.append(
+                {
+                    "type": "contract_field_removed",
+                    "fqn": event_fqn,
+                    "field": field_name,
+                    "message": (
+                        f"Field '{field_name}' removed from published event "
+                        f"'{left_type}'"
+                    ),
+                }
+            )
 
     result: dict[str, Any] = {}
     if added:
@@ -454,15 +449,6 @@ def _diff_contracts(
         result["breaking_changes"] = breaking
 
     return result
-
-
-def _find_event_in_ir(ir: dict[str, Any], event_fqn: str) -> dict[str, Any] | None:
-    """Look up an event definition by FQN in the clusters section."""
-    for cluster in ir.get("clusters", {}).values():
-        events = cluster.get("events", {})
-        if event_fqn in events:
-            return events[event_fqn]
-    return None
 
 
 def _diff_diagnostics(

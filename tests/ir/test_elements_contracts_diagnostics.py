@@ -372,7 +372,24 @@ class TestPublishedContracts:
 
     def test_published_event_has_type(self):
         event = self.ir["contracts"]["events"][0]
-        assert "__type__" in event
+        assert "type" in event
+        assert event["type"].startswith("PublishedTest.")
+
+    def test_published_event_has_version(self):
+        event = self.ir["contracts"]["events"][0]
+        assert event["version"] == 1
+
+    def test_published_event_has_fields(self):
+        event = self.ir["contracts"]["events"][0]
+        assert "fields" in event
+        assert "account_id" in event["fields"]
+        assert "holder_name" in event["fields"]
+
+    def test_published_event_keys_are_language_neutral(self):
+        """Contract entries should not use Python-specific dunder keys."""
+        event = self.ir["contracts"]["events"][0]
+        assert "__type__" not in event
+        assert "__version__" not in event
 
     def test_unpublished_event_excluded(self):
         """AccountUpdated is not published and should not appear."""

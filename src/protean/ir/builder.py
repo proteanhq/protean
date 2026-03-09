@@ -1149,24 +1149,32 @@ class IRBuilder:
     # Contracts
     # ------------------------------------------------------------------
 
-    def _build_contracts(self) -> dict[str, list[dict[str, str]]]:
-        """Build contracts section — published events sorted by __type__."""
+    def _build_contracts(self) -> dict[str, list[dict[str, Any]]]:
+        """Build contracts section — published events with language-neutral keys.
+
+        Contract entries use ``type`` (not ``__type__``), ``version`` (not
+        ``__version__``), and include field schemas so that downstream
+        consumers (schema generators, contract checkers) have everything
+        they need without reaching into element-level IR.
+        """
         from protean.utils import fqn
 
         registry = self._domain._domain_registry
-        published_events: list[dict[str, str]] = []
+        published_events: list[dict[str, Any]] = []
 
         for record in registry._elements.get("EVENT", {}).values():
             cls = record.cls
             if getattr(cls.meta_, "published", False):
                 published_events.append(
                     {
-                        "__type__": getattr(cls, "__type__", ""),
+                        "fields": self._extract_fields(cls),
                         "fqn": fqn(cls),
+                        "type": getattr(cls, "__type__", ""),
+                        "version": getattr(cls, "__version__", 1),
                     }
                 )
 
-        return {"events": sorted(published_events, key=lambda e: e.get("__type__", ""))}
+        return {"events": sorted(published_events, key=lambda e: e.get("type", ""))}
 
     # ------------------------------------------------------------------
     # Diagnostics

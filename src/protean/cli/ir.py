@@ -242,12 +242,10 @@ def _print_diff_text(result: dict[str, Any]) -> None:
         print("\n[bold]Contracts[/bold]")
         for evt in contract_added:
             print(
-                f"  [green]+ published event: {evt.get('__type__', evt.get('fqn'))}[/green]"
+                f"  [green]+ published event: {evt.get('type', evt.get('fqn'))}[/green]"
             )
         for evt in contract_removed:
-            print(
-                f"  [red]- published event: {evt.get('__type__', evt.get('fqn'))}[/red]"
-            )
+            print(f"  [red]- published event: {evt.get('type', evt.get('fqn'))}[/red]")
 
     # Diagnostics
     diagnostics = result.get("diagnostics", {})

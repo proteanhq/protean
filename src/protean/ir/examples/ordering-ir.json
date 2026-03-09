@@ -476,16 +476,64 @@
   "contracts": {
     "events": [
       {
-        "__type__": "Ordering.OrderCancelled.v1",
-        "fqn": "ecommerce.ordering.OrderCancelled"
+        "fields": {
+          "order_id": {
+            "kind": "identifier",
+            "required": true,
+            "type": "Identifier"
+          },
+          "reason": {
+            "kind": "standard",
+            "type": "String"
+          }
+        },
+        "fqn": "ecommerce.ordering.OrderCancelled",
+        "type": "Ordering.OrderCancelled.v1",
+        "version": 1
       },
       {
-        "__type__": "Ordering.OrderPlaced.v1",
-        "fqn": "ecommerce.ordering.OrderPlaced"
+        "fields": {
+          "customer_name": {
+            "kind": "standard",
+            "required": true,
+            "type": "String"
+          },
+          "order_id": {
+            "kind": "identifier",
+            "required": true,
+            "type": "Identifier"
+          },
+          "total_amount": {
+            "kind": "standard",
+            "required": true,
+            "type": "Float"
+          }
+        },
+        "fqn": "ecommerce.ordering.OrderPlaced",
+        "type": "Ordering.OrderPlaced.v1",
+        "version": 1
       },
       {
-        "__type__": "Ordering.PaymentConfirmed.v1",
-        "fqn": "ecommerce.payments.PaymentConfirmed"
+        "fields": {
+          "amount": {
+            "kind": "standard",
+            "required": true,
+            "type": "Float"
+          },
+          "order_id": {
+            "kind": "identifier",
+            "required": true,
+            "type": "Identifier"
+          },
+          "payment_id": {
+            "kind": "identifier",
+            "required": true,
+            "type": "Identifier"
+          }
+        },
+        "fqn": "ecommerce.payments.PaymentConfirmed",
+        "type": "Ordering.PaymentConfirmed.v1",
+        "version": 1
       }
     ]
   },
