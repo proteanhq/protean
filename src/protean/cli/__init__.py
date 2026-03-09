@@ -21,6 +21,7 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
+from protean.cli.check import check
 from protean.cli.database import app as db_app
 from protean.cli.dlq import app as dlq_app
 from protean.cli.docs import app as docs_app
@@ -45,6 +46,7 @@ logger = get_logger(__name__)
 #   `no_args_is_help=True` will show the help message when no arguments are passed
 app = typer.Typer(no_args_is_help=True)
 
+app.command()(check)
 app.command()(new)
 app.command()(observatory)
 app.command()(shell)
