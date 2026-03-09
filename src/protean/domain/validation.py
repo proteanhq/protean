@@ -34,11 +34,22 @@ class DomainValidator:
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
         self._warnings: list[dict[str, str]] = []
+        self._errors: list[dict[str, str]] = []
 
     @property
     def warnings(self) -> list[dict[str, str]]:
         """Return collected warnings as structured diagnostics."""
         return list(self._warnings)
+
+    @property
+    def errors(self) -> list[dict[str, str]]:
+        """Return collected errors as structured diagnostics."""
+        return list(self._errors)
+
+    def reset(self) -> None:
+        """Clear all collected warnings and errors."""
+        self._warnings.clear()
+        self._errors.clear()
 
     # ------------------------------------------------------------------
     # Public API

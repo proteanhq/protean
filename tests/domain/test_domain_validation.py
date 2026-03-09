@@ -594,3 +594,69 @@ class TestStructuredWarnings:
         codes = {w["code"] for w in warnings}
         assert "UNUSED_COMMAND" in codes
         assert "ES_EVENT_MISSING_APPLY" in codes
+
+
+# ─── Structured errors collection ────────────────────────────────────
+
+
+class TestStructuredErrors:
+    """Verify the errors property and reset() method on DomainValidator."""
+
+    def test_errors_empty_on_valid_domain(self, test_domain):
+        test_domain.register(Account)
+        test_domain.init(traverse=False)
+
+        assert test_domain._validator.errors == []
+
+    def test_errors_property_returns_copy(self, test_domain):
+        """Mutating the returned list should not affect internal state."""
+        test_domain.register(Account)
+        test_domain.init(traverse=False)
+
+        # Manually inject an error to test copy semantics
+        test_domain._validator._errors.append(
+            {"code": "TEST", "element": "x", "level": "error", "message": "test"}
+        )
+        errors = test_domain._validator.errors
+        errors.clear()
+        assert len(test_domain._validator.errors) == 1
+
+
+class TestReset:
+    """Verify that reset() clears both warnings and errors."""
+
+    def test_reset_clears_warnings(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.init(traverse=False)
+
+        assert len(test_domain._validator.warnings) > 0
+        test_domain._validator.reset()
+        assert test_domain._validator.warnings == []
+
+    def test_reset_clears_errors(self, test_domain):
+        test_domain.register(Account)
+        test_domain.init(traverse=False)
+
+        # Manually inject an error to test reset
+        test_domain._validator._errors.append(
+            {"code": "TEST", "element": "x", "level": "error", "message": "test"}
+        )
+        assert len(test_domain._validator.errors) == 1
+        test_domain._validator.reset()
+        assert test_domain._validator.errors == []
+
+    def test_reset_clears_both(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.init(traverse=False)
+
+        test_domain._validator._errors.append(
+            {"code": "TEST", "element": "x", "level": "error", "message": "test"}
+        )
+        assert len(test_domain._validator.warnings) > 0
+        assert len(test_domain._validator.errors) > 0
+
+        test_domain._validator.reset()
+        assert test_domain._validator.warnings == []
+        assert test_domain._validator.errors == []
