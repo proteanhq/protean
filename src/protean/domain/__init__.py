@@ -565,16 +565,18 @@ class Domain:
 
             {
                 "domain": "<domain name>",
-                "status": "pass" | "warn" | "fail",
+                "status": "pass" | "warn" | "info" | "fail",
                 "errors": [...],       # from validate_all()
-                "warnings": [...],     # from validate_all()
                 "diagnostics": [...],  # from IR builder (if no errors)
                 "counts": {
                     "errors": int,
                     "warnings": int,
-                    "diagnostics": int,
+                    "infos": int,
                 },
             }
+
+        Diagnostics have a ``level`` field (``"warning"`` or ``"info"``)
+        used to compute the ``counts`` and determine the overall ``status``.
         """
         self._prepare(traverse=traverse, validate=False)
 
@@ -582,7 +584,6 @@ class Domain:
         self._validator.validate_all()
 
         errors = self._validator.errors
-        warnings = self._validator.warnings
         diagnostics: list[dict[str, str]] = []
 
         # Build IR for additional diagnostics only if no fatal errors
@@ -594,13 +595,15 @@ class Domain:
                 pass
 
         total_errors = len(errors)
-        total_warnings = len(warnings)
-        total_diagnostics = len(diagnostics)
+        total_warnings = sum(1 for d in diagnostics if d.get("level") == "warning")
+        total_infos = sum(1 for d in diagnostics if d.get("level") == "info")
 
         if total_errors > 0:
             status = "fail"
-        elif total_warnings > 0 or total_diagnostics > 0:
+        elif total_warnings > 0:
             status = "warn"
+        elif total_infos > 0:
+            status = "info"
         else:
             status = "pass"
 
@@ -608,12 +611,11 @@ class Domain:
             "domain": self.name,
             "status": status,
             "errors": errors,
-            "warnings": warnings,
             "diagnostics": diagnostics,
             "counts": {
                 "errors": total_errors,
                 "warnings": total_warnings,
-                "diagnostics": total_diagnostics,
+                "infos": total_infos,
             },
         }
 

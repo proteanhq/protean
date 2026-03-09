@@ -4,7 +4,8 @@ import pytest
 
 from protean import Domain, handle
 from protean.core.aggregate import apply
-from protean.fields.simple import Float, Identifier, String
+from protean.fields import Identifier
+from protean.fields.simple import Float, String
 from protean.ir.builder import IRBuilder
 
 from .elements import build_published_event_domain
@@ -16,11 +17,11 @@ def build_diagnostics_test_domain() -> Domain:
 
     @domain.event(part_of="Order")
     class OrderPlaced:
-        order_id = Identifier(required=True)
+        order_id = Identifier(identifier=True)
 
     @domain.event(part_of="Order")
     class OrderCancelled:
-        order_id = Identifier(required=True)
+        order_id = Identifier(identifier=True)
 
     @domain.command(part_of="Order")
     class PlaceOrder:
@@ -118,7 +119,7 @@ class TestDiagnostics:
 
         @domain.event(part_of="Item")
         class ItemCreated:
-            item_id = Identifier(required=True)
+            item_id = Identifier(identifier=True)
 
         @domain.command(part_of="Item")
         class CreateItem:
@@ -142,7 +143,10 @@ class TestDiagnostics:
 
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
-        assert len(ir["diagnostics"]) == 0
+        unhandled = [d for d in ir["diagnostics"] if d["code"] == "UNHANDLED_EVENT"]
+        unused = [d for d in ir["diagnostics"] if d["code"] == "UNUSED_COMMAND"]
+        assert len(unhandled) == 0
+        assert len(unused) == 0
 
     def test_published_events_excluded_from_unhandled(self):
         """Published events are intentionally external and should not
@@ -162,7 +166,7 @@ class TestDiagnostics:
 
         @domain.event(part_of="Order")
         class OrderPlaced:
-            order_id = Identifier(required=True)
+            order_id = Identifier(identifier=True)
 
         @domain.aggregate(fact_events=True)
         class Order:
@@ -230,7 +234,7 @@ class TestEsEventMissingApply:
 
         @domain.event(part_of="Wallet")
         class WalletCreated:
-            wallet_id = Identifier(required=True)
+            wallet_id = Identifier(identifier=True)
 
         @domain.event(part_of="Wallet")
         class FundsAdded:
@@ -395,3 +399,333 @@ class TestPublishedContracts:
         """AccountUpdated is not published and should not appear."""
         fqns = [e["fqn"] for e in self.ir["contracts"]["events"]]
         assert not any("AccountUpdated" in f for f in fqns)
+
+
+# ── AGGREGATE_WITHOUT_COMMAND_HANDLER ────────────────────────────────
+
+
+@pytest.mark.no_test_domain
+class TestAggregateWithoutCommandHandler:
+    """Detect aggregates with no command handler (no write path)."""
+
+    def test_aggregate_without_handler_detected(self):
+        domain = Domain(name="NoHandlerTest", root_path=".")
+
+        @domain.aggregate
+        class Product:
+            name = String(max_length=100, required=True)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" in codes
+
+    def test_aggregate_without_handler_format(self):
+        domain = Domain(name="NoHandlerFmt", root_path=".")
+
+        @domain.aggregate
+        class Widget:
+            label = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diag = next(
+            d
+            for d in ir["diagnostics"]
+            if d["code"] == "AGGREGATE_WITHOUT_COMMAND_HANDLER"
+        )
+        assert diag["level"] == "warning"
+        assert "Widget" in diag["message"]
+        assert "no command handler" in diag["message"]
+        assert "Widget" in diag["element"]
+
+    def test_no_warning_when_handler_exists(self):
+        domain = Domain(name="WithHandlerTest", root_path=".")
+
+        @domain.command(part_of="Order")
+        class PlaceOrder:
+            customer_name = String(required=True)
+
+        @domain.aggregate
+        class Order:
+            customer_name = String(max_length=100, required=True)
+
+        @domain.command_handler(part_of=Order)
+        class OrderHandler:
+            @handle(PlaceOrder)
+            def place(self, command):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" not in codes
+
+
+# ── PROJECTION_WITHOUT_PROJECTOR ─────────────────────────────────────
+
+
+@pytest.mark.no_test_domain
+class TestProjectionWithoutProjector:
+    """Detect projections with no projector to populate them."""
+
+    def test_projection_without_projector_detected(self):
+        domain = Domain(name="NoProjTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+            name = String(max_length=100)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "PROJECTION_WITHOUT_PROJECTOR" in codes
+
+    def test_projection_without_projector_format(self):
+        domain = Domain(name="NoProjFmt", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.projection
+        class OrderSummary:
+            order_id = Identifier(identifier=True)
+            name = String(max_length=100)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diag = next(
+            d for d in ir["diagnostics"] if d["code"] == "PROJECTION_WITHOUT_PROJECTOR"
+        )
+        assert diag["level"] == "warning"
+        assert "OrderSummary" in diag["message"]
+        assert "no projector" in diag["message"]
+        assert "OrderSummary" in diag["element"]
+
+    def test_no_warning_when_projector_exists(self):
+        domain = Domain(name="WithProjTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            name = String(required=True)
+
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+            name = String(max_length=100)
+
+        @domain.projector(projector_for=OrderView, aggregates=[Order])
+        class OrderProjector:
+            @handle(OrderPlaced)
+            def on_placed(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "PROJECTION_WITHOUT_PROJECTOR" not in codes
+
+
+# ── AGGREGATE_TOO_LARGE ─────────────────────────────────────────────
+
+
+@pytest.mark.no_test_domain
+class TestAggregateTooLarge:
+    """Detect aggregate clusters with too many entities."""
+
+    def test_large_aggregate_detected(self):
+        domain = Domain(name="LargeAggTest", root_path=".")
+        # Set limit low for testing
+        domain.config["lint"] = {"aggregate_size_limit": 2}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.entity(part_of=Order)
+        class LineItem:
+            sku = String(max_length=50)
+
+        @domain.entity(part_of=Order)
+        class Discount:
+            code = String(max_length=20)
+
+        @domain.entity(part_of=Order)
+        class Payment:
+            amount = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_TOO_LARGE"]
+        assert len(diags) == 1
+        assert diags[0]["level"] == "info"
+        assert "Order" in diags[0]["message"]
+        assert "3 entities" in diags[0]["message"]
+
+    def test_no_warning_when_under_limit(self):
+        domain = Domain(name="SmallAggTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.entity(part_of=Order)
+        class LineItem:
+            sku = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "AGGREGATE_TOO_LARGE" not in codes
+
+
+# ── HANDLER_TOO_BROAD ───────────────────────────────────────────────
+
+
+@pytest.mark.no_test_domain
+class TestHandlerTooBroad:
+    """Detect handlers handling too many message types."""
+
+    def test_broad_command_handler_detected(self):
+        domain = Domain(name="BroadHandlerTest", root_path=".")
+        domain.config["lint"] = {"handler_breadth_limit": 2}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.command(part_of=Order)
+        class CreateOrder:
+            name = String(required=True)
+
+        @domain.command(part_of=Order)
+        class UpdateOrder:
+            name = String(required=True)
+
+        @domain.command(part_of=Order)
+        class CancelOrder:
+            name = String(required=True)
+
+        @domain.command_handler(part_of=Order)
+        class OrderHandler:
+            @handle(CreateOrder)
+            def create(self, command):
+                pass
+
+            @handle(UpdateOrder)
+            def update(self, command):
+                pass
+
+            @handle(CancelOrder)
+            def cancel(self, command):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [d for d in ir["diagnostics"] if d["code"] == "HANDLER_TOO_BROAD"]
+        assert len(diags) == 1
+        assert diags[0]["level"] == "info"
+        assert "OrderHandler" in diags[0]["message"]
+        assert "3 message types" in diags[0]["message"]
+
+    def test_no_warning_when_under_limit(self):
+        domain = Domain(name="NarrowHandlerTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.command(part_of=Order)
+        class CreateOrder:
+            name = String(required=True)
+
+        @domain.command_handler(part_of=Order)
+        class OrderHandler:
+            @handle(CreateOrder)
+            def create(self, command):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "HANDLER_TOO_BROAD" not in codes
+
+
+# ── EVENT_WITHOUT_DATA ──────────────────────────────────────────────
+
+
+@pytest.mark.no_test_domain
+class TestEventWithoutData:
+    """Detect events with zero user-defined fields."""
+
+    def test_empty_event_detected(self):
+        domain = Domain(name="EmptyEventTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.event(part_of=Order)
+        class OrderNudged:
+            pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [d for d in ir["diagnostics"] if d["code"] == "EVENT_WITHOUT_DATA"]
+        assert len(diags) == 1
+        assert diags[0]["level"] == "info"
+        assert "OrderNudged" in diags[0]["message"]
+
+    def test_no_warning_when_event_has_fields(self):
+        domain = Domain(name="FieldEventTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            order_id = Identifier(required=True)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "EVENT_WITHOUT_DATA" not in codes
+
+    def test_fact_events_excluded(self):
+        """Fact events are auto-generated and should not be flagged."""
+        domain = Domain(name="FactEventTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [d for d in ir["diagnostics"] if d["code"] == "EVENT_WITHOUT_DATA"]
+        # The auto-generated fact event should not trigger this rule
+        fact_flagged = [d for d in diags if "Fact" in d.get("element", "")]
+        assert len(fact_flagged) == 0

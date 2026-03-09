@@ -136,9 +136,15 @@ class DomainValidator:
 
         Unlike :meth:`validate`, this method does **not** abort on the
         first error.  Each validation is wrapped in a try/except so that
-        all errors are captured in :attr:`errors` and all warnings in
-        :attr:`warnings`.  This is the entry point used by
-        ``Domain.check()`` and the ``protean check`` CLI.
+        all errors are captured in :attr:`errors`.
+
+        Warning-level checks (unhandled commands, missing @apply handlers,
+        published events without brokers) are **not** run here — they are
+        handled by IR diagnostics in ``IRBuilder._collect_diagnostics()``,
+        which provides a unified diagnostic model with severity levels.
+
+        This is the entry point used by ``Domain.check()`` and the
+        ``protean check`` CLI.
         """
         self.reset()
 
@@ -171,11 +177,6 @@ class DomainValidator:
                         "message": message,
                     }
                 )
-
-        # Warning methods never raise — they always collect
-        self._warn_unhandled_commands()
-        self._warn_missing_apply_handlers()
-        self._warn_published_events_without_external_brokers()
 
     # ------------------------------------------------------------------
     # Private validation methods
