@@ -395,6 +395,11 @@ class IRBuilder:
         from protean.utils.reflection import _ID_FIELD_NAME
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "ENTITY"
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
@@ -451,6 +456,11 @@ class IRBuilder:
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
         entry["__version__"] = getattr(cls, "__version__", 1)
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "COMMAND"
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
@@ -473,6 +483,10 @@ class IRBuilder:
 
         if record.auto_generated:
             entry["auto_generated"] = True
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
 
         entry["element_type"] = "EVENT"
         entry["fields"] = self._extract_fields(cls)
@@ -516,6 +530,11 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "COMMAND_HANDLER"
         entry["fqn"] = fqn(cls)
         entry["handlers"] = self._extract_handler_map(cls)
@@ -536,6 +555,11 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "EVENT_HANDLER"
         entry["fqn"] = fqn(cls)
         entry["handlers"] = self._extract_handler_map(cls)
@@ -557,6 +581,11 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "APPLICATION_SERVICE"
         entry["fqn"] = fqn(cls)
         entry["module"] = cls.__module__
@@ -573,6 +602,16 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
+        # Sparse: omit database when default "ALL"
+        database = getattr(cls.meta_, "database", "ALL")
+        if database != "ALL":
+            entry["database"] = database
+
         entry["element_type"] = "REPOSITORY"
         entry["fqn"] = fqn(cls)
         entry["module"] = cls.__module__
@@ -593,6 +632,10 @@ class IRBuilder:
         database = getattr(cls.meta_, "database", None)
         if database is not None:
             entry["database"] = database
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
 
         entry["element_type"] = "DATABASE_MODEL"
         entry["fqn"] = fqn(cls)
@@ -619,6 +662,11 @@ class IRBuilder:
         from protean.utils.reflection import _ID_FIELD_NAME
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "PROJECTION"
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
@@ -650,6 +698,10 @@ class IRBuilder:
         aggregates = getattr(cls.meta_, "aggregates", [])
         entry["aggregates"] = sorted(fqn(a) for a in aggregates) if aggregates else []
 
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "PROJECTOR"
         entry["fqn"] = fqn(cls)
         entry["handlers"] = self._extract_handler_map(cls)
@@ -671,6 +723,11 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "QUERY"
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
@@ -688,6 +745,11 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "QUERY_HANDLER"
         entry["fqn"] = fqn(cls)
         entry["handlers"] = self._extract_handler_map(cls)
@@ -767,6 +829,11 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "DOMAIN_SERVICE"
         entry["fqn"] = fqn(cls)
         entry["invariants"] = self._extract_invariants(cls)
@@ -788,6 +855,11 @@ class IRBuilder:
         from protean.utils.reflection import _ID_FIELD_NAME
 
         entry: dict[str, Any] = {}
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "PROCESS_MANAGER"
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
@@ -834,6 +906,11 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
         entry["broker"] = getattr(cls.meta_, "broker", "default")
+
+        doc = (cls.__doc__ or "").strip()
+        if doc:
+            entry["description"] = doc
+
         entry["element_type"] = "SUBSCRIBER"
         entry["fqn"] = fqn(cls)
         entry["module"] = cls.__module__

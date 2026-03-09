@@ -48,6 +48,7 @@ class BaseEvent(BaseMessageType):
     |--------|------|-------------|
     | ``part_of`` | ``type`` | The aggregate class that raises this event. Required. |
     | ``published`` | ``bool`` | Whether this event is part of the bounded context's published language. Default ``False``. |
+    | ``version`` | ``int`` | Message version number (alternative to ``__version__`` class attribute). Default ``1``. |
     """
 
     element_type: ClassVar[str] = DomainObjects.EVENT

@@ -250,13 +250,30 @@ class BaseMessageType(BaseModel, OptionsMixin):
             ("part_of", None),
             ("is_fact_event", False),
             ("published", False),
+            ("version", None),
         ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
 
-        # Use explicit version if specified, else default to 1
-        if not hasattr(cls, "__version__"):
+        # Resolve version: decorator option `version=N` sets __version__
+        meta_version = getattr(getattr(cls, "meta_", None), "version", None)
+        has_class_version = "__version__" in cls.__dict__
+
+        if meta_version is not None and has_class_version:
+            raise IncorrectUsageError(
+                f"`{cls.__name__}` sets both `version` option and "
+                f"`__version__` class attribute. Use one or the other."
+            )
+
+        if meta_version is not None:
+            if not isinstance(meta_version, int) or meta_version < 1:
+                raise IncorrectUsageError(
+                    f"`{cls.__name__}` `version` option must be a positive "
+                    f"integer, got `{meta_version!r}`"
+                )
+            cls.__version__ = meta_version
+        elif not hasattr(cls, "__version__"):
             cls.__version__ = 1
         elif not isinstance(cls.__version__, int) or cls.__version__ < 1:
             raise IncorrectUsageError(

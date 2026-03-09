@@ -44,6 +44,7 @@ class BaseCommand(BaseMessageType):
     | Option | Type | Description |
     |--------|------|-------------|
     | ``part_of`` | ``type`` | The aggregate class this command targets. Required. |
+    | ``version`` | ``int`` | Message version number (alternative to ``__version__`` class attribute). Default ``1``. |
     """
 
     element_type: ClassVar[str] = DomainObjects.COMMAND

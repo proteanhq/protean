@@ -551,3 +551,123 @@ def build_integration_domain() -> Domain:
 
     domain.init(traverse=False)
     return domain
+
+
+def build_description_test_domain() -> Domain:
+    """Build a domain where every element type has a docstring."""
+    from protean.utils.mixins import read
+
+    domain = Domain(name="DescriptionTest", root_path=".")
+
+    @domain.value_object
+    class Address:
+        """A postal address."""
+
+        street = String(max_length=255, required=True)
+        city = String(max_length=100, required=True)
+
+    @domain.entity(part_of="Order")
+    class LineItem:
+        """A single item within an order."""
+
+        product_name = String(max_length=200, required=True)
+        quantity = Integer(min_value=1, required=True)
+
+    @domain.command(part_of="Order")
+    class PlaceOrder:
+        """Request to place a new order."""
+
+        customer_name = String(max_length=100, required=True)
+
+    @domain.event(part_of="Order")
+    class OrderPlaced:
+        """Emitted when an order is successfully placed."""
+
+        order_id = Identifier(required=True)
+
+    @domain.aggregate
+    class Order:
+        """An order placed by a customer."""
+
+        customer_name = String(max_length=100, required=True)
+        address = VOField(Address)
+        items = HasMany(LineItem)
+
+    @domain.command_handler(part_of=Order)
+    class OrderCommandHandler:
+        """Handles order commands."""
+
+        @handle(PlaceOrder)
+        def handle_place(self, command):
+            pass
+
+    @domain.event_handler(part_of=Order)
+    class OrderEventHandler:
+        """Reacts to order events."""
+
+        @handle(OrderPlaced)
+        def on_placed(self, event):
+            pass
+
+    @domain.application_service(part_of=Order)
+    class OrderService:
+        """Application service for order use cases."""
+
+        pass
+
+    @domain.repository(part_of=Order)
+    class OrderRepository:
+        """Custom repository for orders."""
+
+        pass
+
+    @domain.aggregate
+    class Payment:
+        """A payment for an order."""
+
+        amount = Float(default=0.0)
+
+    @domain.domain_service(part_of=[Order, Payment])
+    class OrderValidator:
+        """Validates orders across business rules."""
+
+        pass
+
+    @domain.subscriber(broker="default", stream="ext_payments")
+    class PaymentSubscriber:
+        """Consumes external payment events."""
+
+        def __call__(self, payload):
+            pass
+
+    @domain.projection
+    class OrderSummary:
+        """Read-optimized order summary."""
+
+        order_id = Identifier(identifier=True)
+        customer_name = String(max_length=100)
+
+    @domain.projector(projector_for=OrderSummary, aggregates=[Order])
+    class OrderSummaryProjector:
+        """Projects order events into OrderSummary."""
+
+        @handle(OrderPlaced)
+        def on_placed(self, event):
+            pass
+
+    @domain.query(part_of=OrderSummary)
+    class GetOrderSummary:
+        """Query to fetch an order summary."""
+
+        order_id = Identifier(required=True)
+
+    @domain.query_handler(part_of=OrderSummary)
+    class OrderSummaryQueryHandler:
+        """Handles order summary queries."""
+
+        @read(GetOrderSummary)
+        def by_order(self, query):
+            pass
+
+    domain.init(traverse=False)
+    return domain

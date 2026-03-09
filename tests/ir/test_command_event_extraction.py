@@ -133,3 +133,119 @@ class TestFactEvent:
                 assert evt.get("auto_generated") is True
                 return
         pytest.fail("No fact event found")
+
+
+@pytest.mark.no_test_domain
+class TestVersionOption:
+    """Verify that the `version` decorator option sets __version__ on events and commands."""
+
+    def test_event_version_via_option(self):
+        """Events can set version via decorator option."""
+        from protean import Domain
+        from protean.fields.simple import Identifier, String
+        from protean.ir.builder import IRBuilder
+
+        domain = Domain(name="VersionTest", root_path=".")
+
+        @domain.event(part_of="Order", version=3)
+        class OrderPlaced:
+            order_id = Identifier(required=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        for cluster in ir["clusters"].values():
+            for evt in cluster["events"].values():
+                if evt["name"] == "OrderPlaced":
+                    assert evt["__version__"] == 3
+                    return
+        pytest.fail("OrderPlaced not found")
+
+    def test_command_version_via_option(self):
+        """Commands can set version via decorator option."""
+        from protean import Domain
+        from protean.fields.simple import String
+        from protean.ir.builder import IRBuilder
+
+        domain = Domain(name="VersionTest", root_path=".")
+
+        @domain.command(part_of="Order", version=2)
+        class PlaceOrder:
+            customer_name = String(max_length=100, required=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        for cluster in ir["clusters"].values():
+            for cmd in cluster["commands"].values():
+                if cmd["name"] == "PlaceOrder":
+                    assert cmd["__version__"] == 2
+                    return
+        pytest.fail("PlaceOrder not found")
+
+    def test_version_option_default_is_1(self):
+        """Without explicit version, __version__ defaults to 1."""
+        from protean import Domain
+        from protean.fields.simple import Identifier, String
+        from protean.ir.builder import IRBuilder
+
+        domain = Domain(name="VersionTest", root_path=".")
+
+        @domain.event(part_of="Order")
+        class OrderPlaced:
+            order_id = Identifier(required=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        for cluster in ir["clusters"].values():
+            for evt in cluster["events"].values():
+                if evt["name"] == "OrderPlaced":
+                    assert evt["__version__"] == 1
+                    return
+        pytest.fail("OrderPlaced not found")
+
+    def test_version_option_rejects_non_positive(self):
+        """Non-positive version raises IncorrectUsageError."""
+        import pytest as _pytest
+
+        from protean import Domain
+        from protean.exceptions import IncorrectUsageError
+        from protean.fields.simple import Identifier
+
+        domain = Domain(name="VersionTest", root_path=".")
+
+        with _pytest.raises(IncorrectUsageError, match="positive integer"):
+
+            @domain.event(part_of="Order", version=0)
+            class OrderPlaced:
+                order_id = Identifier(required=True)
+
+    def test_version_option_conflicts_with_class_version(self):
+        """Setting both version option and __version__ class attribute raises error."""
+        import pytest as _pytest
+
+        from protean import Domain
+        from protean.exceptions import IncorrectUsageError
+        from protean.fields.simple import Identifier
+
+        domain = Domain(name="VersionTest", root_path=".")
+
+        with _pytest.raises(IncorrectUsageError, match="both"):
+
+            @domain.event(part_of="Order", version=2)
+            class OrderPlaced:
+                __version__ = 3
+                order_id = Identifier(required=True)
