@@ -15,6 +15,7 @@ __all__ = [
     "SCHEMA_PATH",
     "EXAMPLES_DIR",
     "IRBuilder",
+    "diff_ir",
     "load_schema",
 ]
 
@@ -30,10 +31,14 @@ def load_schema() -> dict[str, Any]:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
-# Deferred import to avoid circular dependencies
+# Deferred imports to avoid circular dependencies
 def __getattr__(name: str) -> Any:
     if name == "IRBuilder":
         from protean.ir.builder import IRBuilder
 
         return IRBuilder
+    if name == "diff_ir":
+        from protean.ir.diff import diff_ir
+
+        return diff_ir
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
