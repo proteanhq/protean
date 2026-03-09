@@ -660,3 +660,198 @@ class TestReset:
         test_domain._validator.reset()
         assert test_domain._validator.warnings == []
         assert test_domain._validator.errors == []
+
+
+# ─── Config validations (extracted from Domain.init()) ───────────────
+
+
+class TestValidateOutboxSubscriptionConsistency:
+    """Validate that outbox + event_store subscription type is rejected."""
+
+    @pytest.mark.no_test_domain
+    def test_outbox_with_event_store_subscription_raises_error(self):
+        domain = Domain(__name__, "TestOutbox")
+        domain.config["enable_outbox"] = True
+        domain.config["server"] = {"default_subscription_type": "event_store"}
+
+        domain.register(Account)
+
+        with pytest.raises(ConfigurationError, match="Configuration conflict"):
+            domain.init(traverse=False)
+
+    @pytest.mark.no_test_domain
+    def test_outbox_with_stream_subscription_passes(self):
+        domain = Domain(__name__, "TestOutbox")
+        domain.config["enable_outbox"] = True
+        domain.config["server"] = {"default_subscription_type": "stream"}
+
+        domain.register(Account)
+        domain.init(traverse=False)  # Should not raise
+
+    def test_no_outbox_passes(self, test_domain):
+        test_domain.register(Account)
+        test_domain.init(traverse=False)  # Should not raise
+
+
+class TestValidatePriorityLanesConfig:
+    """Validate priority lanes configuration type checks."""
+
+    @pytest.mark.no_test_domain
+    def test_enabled_must_be_bool(self):
+        domain = Domain(__name__, "TestLanes")
+        domain.config["server"] = {"priority_lanes": {"enabled": "yes"}}
+
+        domain.register(Account)
+
+        with pytest.raises(ConfigurationError, match="must be a bool"):
+            domain.init(traverse=False)
+
+    @pytest.mark.no_test_domain
+    def test_threshold_must_be_numeric(self):
+        domain = Domain(__name__, "TestLanes")
+        domain.config["server"] = {
+            "priority_lanes": {"enabled": True, "threshold": "high"}
+        }
+
+        domain.register(Account)
+
+        with pytest.raises(ConfigurationError, match="must be an integer"):
+            domain.init(traverse=False)
+
+    @pytest.mark.no_test_domain
+    def test_backfill_suffix_must_be_nonempty_string(self):
+        domain = Domain(__name__, "TestLanes")
+        domain.config["server"] = {
+            "priority_lanes": {"enabled": True, "threshold": 100, "backfill_suffix": ""}
+        }
+
+        domain.register(Account)
+
+        with pytest.raises(ConfigurationError, match="non-empty string"):
+            domain.init(traverse=False)
+
+    @pytest.mark.no_test_domain
+    def test_valid_priority_lanes_config_passes(self):
+        domain = Domain(__name__, "TestLanes")
+        domain.config["server"] = {
+            "priority_lanes": {
+                "enabled": True,
+                "threshold": 100,
+                "backfill_suffix": "backfill",
+            }
+        }
+
+        domain.register(Account)
+        domain.init(traverse=False)  # Should not raise
+
+
+# ─── validate_all() ──────────────────────────────────────────────────
+
+
+class TestValidateAll:
+    """Verify that validate_all() collects all errors without aborting."""
+
+    @pytest.mark.no_test_domain
+    def test_collects_multiple_errors(self):
+        """Multiple broken elements → validate_all() collects all errors."""
+        domain = Domain(__name__, "TestMultiError")
+        domain.config["identity_strategy"] = "function"
+        # No identity function → error from _validate_identity_config
+        domain.config["enable_outbox"] = True
+        domain.config["server"] = {"default_subscription_type": "event_store"}
+        # outbox + event_store → error from _validate_outbox_subscription_consistency
+
+        domain.register(Account)
+        # Run the init steps that precede validation
+        domain._resolve_references()
+        domain._validator.check_unresolved_references()
+        domain._assign_aggregate_clusters()
+        domain._set_aggregate_cluster_options()
+        domain._generate_fact_event_classes()
+        domain._set_and_record_event_and_command_type()
+        domain._build_upcaster_chains()
+        domain._setup_command_handlers()
+        domain._setup_event_handlers()
+        domain._setup_projectors()
+        domain._setup_process_managers()
+        domain._set_query_type()
+        domain._setup_query_handlers()
+
+        domain._validator.validate_all()
+
+        errors = domain._validator.errors
+        assert len(errors) >= 2
+        codes = {e["code"] for e in errors}
+        assert "ConfigurationError" in codes
+
+    @pytest.mark.no_test_domain
+    def test_collects_warnings_alongside_errors(self):
+        """validate_all() collects both errors and warnings."""
+        domain = Domain(__name__, "TestMixed")
+        domain.config["identity_strategy"] = "function"
+        # No identity function → error
+
+        domain.register(Account)
+        domain.register(CreateAccount, part_of=Account)
+        # Unhandled command → warning
+
+        domain._resolve_references()
+        domain._validator.check_unresolved_references()
+        domain._assign_aggregate_clusters()
+        domain._set_aggregate_cluster_options()
+        domain._generate_fact_event_classes()
+        domain._set_and_record_event_and_command_type()
+        domain._build_upcaster_chains()
+        domain._setup_command_handlers()
+        domain._setup_event_handlers()
+        domain._setup_projectors()
+        domain._setup_process_managers()
+        domain._set_query_type()
+        domain._setup_query_handlers()
+
+        domain._validator.validate_all()
+
+        assert len(domain._validator.errors) >= 1
+        assert len(domain._validator.warnings) >= 1
+        assert domain._validator.warnings[0]["code"] == "UNUSED_COMMAND"
+
+    def test_validate_still_raises_on_first_error(self, test_domain):
+        """validate() (not validate_all) still raises on first error."""
+        test_domain.config["identity_strategy"] = "function"
+        # No identity function set
+
+        test_domain.register(Account)
+
+        with pytest.raises(ConfigurationError, match="no Identity Function"):
+            test_domain.init(traverse=False)
+
+    def test_clean_domain_has_no_errors(self, test_domain):
+        """A valid domain has empty errors after validate_all()."""
+
+        class Handler(BaseCommandHandler):
+            @handle(CreateAccount)
+            def create(self, command: CreateAccount) -> None:
+                pass
+
+        test_domain.register(Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.register(Handler, part_of=Account)
+        test_domain.init(traverse=False)
+
+        test_domain._validator.validate_all()
+        assert test_domain._validator.errors == []
+        assert test_domain._validator.warnings == []
+
+    def test_validate_all_resets_before_collecting(self, test_domain):
+        """validate_all() clears prior state before collecting."""
+        test_domain.register(Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.init(traverse=False)
+
+        # First call collects a warning
+        test_domain._validator.validate_all()
+        assert len(test_domain._validator.warnings) == 1
+
+        # Second call should reset and re-collect (not double)
+        test_domain._validator.validate_all()
+        assert len(test_domain._validator.warnings) == 1
