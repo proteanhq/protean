@@ -1193,6 +1193,8 @@ class IRBuilder:
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
         self._diagnose_event_without_data(ir)
+        # Custom lint rules from config
+        self._run_custom_lint_rules(ir)
 
     def _diagnose_unhandled_events(self, ir: dict[str, Any]) -> None:
         """UNHANDLED_EVENT: events with no registered handler.
@@ -1475,6 +1477,89 @@ class IRBuilder:
                             ),
                         }
                     )
+
+    # ------------------------------------------------------------------
+    # Custom lint rules
+    # ------------------------------------------------------------------
+
+    _VALID_LEVELS = frozenset({"error", "warning", "info"})
+    _REQUIRED_KEYS = frozenset({"code", "element", "level", "message"})
+
+    def _run_custom_lint_rules(self, ir: dict[str, Any]) -> None:
+        """Run user-defined lint rules from ``[lint] rules`` in domain config.
+
+        Each entry is a dotted import path to a callable with the signature
+        ``(ir: dict) -> list[dict]``.  Each returned dict must contain the
+        keys ``code``, ``element``, ``level``, and ``message``.  Invalid
+        results are logged and skipped.  Exceptions in rules are caught so
+        they never crash ``protean check``.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        rule_paths: list[str] = self._domain.config.get("lint", {}).get("rules", [])
+        if not rule_paths:
+            return
+
+        for path in rule_paths:
+            try:
+                callable_fn = self._import_callable(path)
+            except Exception:
+                logger.warning(
+                    "Custom lint rule %r could not be imported — skipped", path
+                )
+                continue
+
+            try:
+                results = callable_fn(ir)
+            except Exception:
+                logger.warning(
+                    "Custom lint rule %r raised an exception — skipped", path
+                )
+                continue
+
+            if not isinstance(results, list):
+                logger.warning(
+                    "Custom lint rule %r returned %s instead of list — skipped",
+                    path,
+                    type(results).__name__,
+                )
+                continue
+
+            for item in results:
+                if not isinstance(item, dict):
+                    logger.warning(
+                        "Custom lint rule %r returned non-dict item — skipped", path
+                    )
+                    continue
+                missing = self._REQUIRED_KEYS - set(item)
+                if missing:
+                    logger.warning(
+                        "Custom lint rule %r returned item missing keys %s — skipped",
+                        path,
+                        missing,
+                    )
+                    continue
+                if item["level"] not in self._VALID_LEVELS:
+                    logger.warning(
+                        "Custom lint rule %r returned invalid level %r — skipped",
+                        path,
+                        item["level"],
+                    )
+                    continue
+                self._diagnostics.append(item)
+
+    @staticmethod
+    def _import_callable(dotted_path: str) -> Any:
+        """Import a callable from a dotted path like ``'my_app.lint.check_names'``."""
+        import importlib
+
+        module_path, _, attr_name = dotted_path.rpartition(".")
+        if not module_path:
+            raise ImportError(f"Invalid dotted path: {dotted_path!r}")
+        module = importlib.import_module(module_path)
+        return getattr(module, attr_name)
 
     # ------------------------------------------------------------------
     # Checksum

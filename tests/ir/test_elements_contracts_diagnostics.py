@@ -401,6 +401,52 @@ class TestPublishedContracts:
         assert not any("AccountUpdated" in f for f in fqns)
 
 
+# ── PUBLISHED_NO_EXTERNAL_BROKER ─────────────────────────────────────
+
+
+@pytest.mark.no_test_domain
+class TestPublishedNoExternalBroker:
+    """Detect published events with no external brokers configured."""
+
+    def test_published_event_without_broker_flagged(self):
+        domain = Domain(name="PubNoBrokerTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.event(part_of=Order, published=True)
+        class OrderShipped:
+            order_id = Identifier(required=True)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [
+            d for d in ir["diagnostics"] if d["code"] == "PUBLISHED_NO_EXTERNAL_BROKER"
+        ]
+        assert len(diags) == 1
+        assert diags[0]["level"] == "warning"
+
+    def test_no_warning_when_external_broker_configured(self):
+        domain = Domain(name="PubWithBrokerTest", root_path=".")
+        domain.config["outbox"] = {"external_brokers": ["redis"]}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.event(part_of=Order, published=True)
+        class OrderShipped:
+            order_id = Identifier(required=True)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "PUBLISHED_NO_EXTERNAL_BROKER" not in codes
+
+
 # ── AGGREGATE_WITHOUT_COMMAND_HANDLER ────────────────────────────────
 
 
@@ -647,6 +693,47 @@ class TestHandlerTooBroad:
         assert "OrderHandler" in diags[0]["message"]
         assert "3 message types" in diags[0]["message"]
 
+    def test_broad_event_handler_detected(self):
+        """Event handler handling too many event types is flagged."""
+        domain = Domain(name="BroadEventHandlerTest", root_path=".")
+        domain.config["lint"] = {"handler_breadth_limit": 2}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.event(part_of=Order)
+        class OrderCreated:
+            name = String(required=True)
+
+        @domain.event(part_of=Order)
+        class OrderUpdated:
+            name = String(required=True)
+
+        @domain.event(part_of=Order)
+        class OrderCancelled:
+            name = String(required=True)
+
+        @domain.event_handler(part_of=Order)
+        class OrderEventHandler:
+            @handle(OrderCreated)
+            def on_created(self, event):
+                pass
+
+            @handle(OrderUpdated)
+            def on_updated(self, event):
+                pass
+
+            @handle(OrderCancelled)
+            def on_cancelled(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [d for d in ir["diagnostics"] if d["code"] == "HANDLER_TOO_BROAD"]
+        assert any("OrderEventHandler" in d["message"] for d in diags)
+
     def test_no_warning_when_under_limit(self):
         domain = Domain(name="NarrowHandlerTest", root_path=".")
 
@@ -737,3 +824,127 @@ class TestEventWithoutData:
         # The fact event should NOT trigger EVENT_WITHOUT_DATA
         diags = [d for d in ir["diagnostics"] if d["code"] == "EVENT_WITHOUT_DATA"]
         assert len(diags) == 0
+
+
+# ── Custom lint rules ───────────────────────────────────────────────
+
+_FIXTURES = "tests.ir.custom_lint_fixtures"
+
+
+def _build_domain_with_rules(rules: list[str]) -> Domain:
+    """Helper: build a minimal domain with custom lint rules configured."""
+    domain = Domain(name="CustomRuleTest", root_path=".")
+    domain.config["lint"] = {"rules": rules}
+
+    @domain.aggregate
+    class Widget:
+        label = String(max_length=50)
+
+    domain.init(traverse=False)
+    return domain
+
+
+@pytest.mark.no_test_domain
+class TestCustomLintRules:
+    """Custom lint rules loaded from [lint] rules config."""
+
+    def test_good_rule_appends_diagnostics(self):
+        domain = _build_domain_with_rules([f"{_FIXTURES}.good_rule"])
+        ir = IRBuilder(domain).build()
+
+        custom = [d for d in ir["diagnostics"] if d["code"] == "CUSTOM_CHECK"]
+        assert len(custom) == 1
+        assert custom[0]["level"] == "info"
+        assert custom[0]["element"] == "test.element"
+
+    def test_multi_result_rule(self):
+        domain = _build_domain_with_rules([f"{_FIXTURES}.multi_result_rule"])
+        ir = IRBuilder(domain).build()
+
+        custom_a = [d for d in ir["diagnostics"] if d["code"] == "CUSTOM_A"]
+        custom_b = [d for d in ir["diagnostics"] if d["code"] == "CUSTOM_B"]
+        assert len(custom_a) == 1
+        assert custom_a[0]["level"] == "warning"
+        assert len(custom_b) == 1
+        assert custom_b[0]["level"] == "info"
+
+    def test_empty_rule_adds_nothing(self):
+        domain = _build_domain_with_rules([f"{_FIXTURES}.empty_rule"])
+        ir = IRBuilder(domain).build()
+
+        # Only built-in diagnostics should be present
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "CUSTOM_CHECK" not in codes
+
+    def test_raising_rule_is_skipped(self):
+        """A rule that throws an exception is logged and skipped."""
+        domain = _build_domain_with_rules([f"{_FIXTURES}.raising_rule"])
+        ir = IRBuilder(domain).build()
+
+        # Should not crash — built-in diagnostics still present
+        assert isinstance(ir["diagnostics"], list)
+
+    def test_bad_return_type_is_skipped(self):
+        domain = _build_domain_with_rules([f"{_FIXTURES}.bad_return_type"])
+        ir = IRBuilder(domain).build()
+        assert isinstance(ir["diagnostics"], list)
+
+    def test_missing_keys_skipped(self):
+        domain = _build_domain_with_rules([f"{_FIXTURES}.missing_keys_rule"])
+        ir = IRBuilder(domain).build()
+
+        # The invalid item should not appear
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "PARTIAL" not in codes
+
+    def test_bad_level_skipped(self):
+        domain = _build_domain_with_rules([f"{_FIXTURES}.bad_level_rule"])
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "BAD_LEVEL" not in codes
+
+    def test_non_dict_item_skipped(self):
+        domain = _build_domain_with_rules([f"{_FIXTURES}.non_dict_item_rule"])
+        ir = IRBuilder(domain).build()
+        assert isinstance(ir["diagnostics"], list)
+
+    def test_import_failure_skipped(self):
+        """A non-existent rule path is logged and skipped."""
+        domain = _build_domain_with_rules(["nonexistent.module.rule"])
+        ir = IRBuilder(domain).build()
+        assert isinstance(ir["diagnostics"], list)
+
+    def test_invalid_dotted_path_skipped(self):
+        """A rule path without dots (no module) is logged and skipped."""
+        domain = _build_domain_with_rules(["norule"])
+        ir = IRBuilder(domain).build()
+        assert isinstance(ir["diagnostics"], list)
+
+    def test_no_rules_configured(self):
+        """No [lint] rules config means no custom rules run."""
+        domain = Domain(name="NoRulesTest", root_path=".")
+
+        @domain.aggregate
+        class Item:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        # Should have only built-in diagnostics
+        assert isinstance(ir["diagnostics"], list)
+
+    def test_multiple_rules_all_run(self):
+        domain = _build_domain_with_rules(
+            [
+                f"{_FIXTURES}.good_rule",
+                f"{_FIXTURES}.multi_result_rule",
+            ]
+        )
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "CUSTOM_CHECK" in codes
+        assert "CUSTOM_A" in codes
+        assert "CUSTOM_B" in codes
