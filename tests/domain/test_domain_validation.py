@@ -496,3 +496,101 @@ class TestValidateOrchestration:
         test_domain.register(AccountCreated, part_of=Account)
         test_domain.register(Handler, part_of=Account)
         test_domain.init(traverse=False)  # Should not raise
+
+
+# ─── Structured warnings collection ──────────────────────────────────
+
+
+class TestStructuredWarnings:
+    """Verify that _warn_* methods populate the warnings property with
+    structured dicts matching the IR diagnostic format."""
+
+    def test_unhandled_command_collected_as_structured_warning(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.init(traverse=False)
+
+        warnings = test_domain._validator.warnings
+        assert len(warnings) == 1
+        w = warnings[0]
+        assert w["code"] == "UNUSED_COMMAND"
+        assert "CreateAccount" in w["element"]
+        assert w["level"] == "warning"
+        assert "handler" in w["message"]
+
+    def test_missing_apply_handler_collected_as_structured_warning(self, test_domain):
+        class ESAggregate(BaseAggregate):
+            name: String()
+
+        test_domain.register(ESAggregate, is_event_sourced=True)
+        test_domain.register(AccountCreated, part_of=ESAggregate)
+        test_domain.init(traverse=False)
+
+        warnings = test_domain._validator.warnings
+        es_warnings = [w for w in warnings if w["code"] == "ES_EVENT_MISSING_APPLY"]
+        assert len(es_warnings) == 1
+        assert "AccountCreated" in es_warnings[0]["element"]
+        assert "@apply" in es_warnings[0]["message"]
+
+    @pytest.mark.no_test_domain
+    def test_published_event_no_broker_collected_as_structured_warning(self):
+        domain = Domain(__name__, "TestPublished")
+
+        class Order(BaseAggregate):
+            name: String()
+
+        class OrderShipped(BaseEvent):
+            order_id: String()
+
+        domain.register(Order)
+        domain.register(OrderShipped, part_of=Order, published=True)
+        domain.init(traverse=False)
+
+        warnings = domain._validator.warnings
+        broker_warnings = [
+            w for w in warnings if w["code"] == "PUBLISHED_NO_EXTERNAL_BROKER"
+        ]
+        assert len(broker_warnings) == 1
+        assert "published events" in broker_warnings[0]["message"]
+
+    def test_no_warnings_when_domain_is_well_formed(self, test_domain):
+        class Handler(BaseCommandHandler):
+            @handle(CreateAccount)
+            def create(self, command: CreateAccount) -> None:
+                pass
+
+        test_domain.register(Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.register(Handler, part_of=Account)
+        test_domain.init(traverse=False)
+
+        assert test_domain._validator.warnings == []
+
+    def test_warnings_property_returns_copy(self, test_domain):
+        """Mutating the returned list should not affect internal state."""
+        test_domain.register(Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.init(traverse=False)
+
+        warnings = test_domain._validator.warnings
+        warnings.clear()
+        assert len(test_domain._validator.warnings) == 1
+
+    def test_multiple_warnings_collected(self, test_domain):
+        """Multiple warning conditions produce multiple structured entries."""
+
+        class ESAggregate(BaseAggregate):
+            name: String()
+
+        class SomeEvent(BaseEvent):
+            data: String()
+
+        test_domain.register(ESAggregate, is_event_sourced=True)
+        test_domain.register(SomeEvent, part_of=ESAggregate)
+        test_domain.register(CreateAccount, part_of=ESAggregate)
+        test_domain.init(traverse=False)
+
+        warnings = test_domain._validator.warnings
+        codes = {w["code"] for w in warnings}
+        assert "UNUSED_COMMAND" in codes
+        assert "ES_EVENT_MISSING_APPLY" in codes
