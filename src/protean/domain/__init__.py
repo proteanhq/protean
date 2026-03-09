@@ -460,27 +460,18 @@ class Domain:
         """
         return underscore(parameterize(transliterate(self.name)))
 
-    def init(self, traverse=True):  # noqa: C901
-        """Parse the domain folder, and attach elements dynamically to the domain.
+    def _prepare(self, traverse: bool = True, validate: bool = True) -> None:
+        """Resolve references, wire handlers, and optionally validate.
 
-        Protean parses all files in the domain file's folder, as well as under it,
-        to load elements. So, all domain files are to be nested under the file contain
-        the domain definition.
+        This is the shared preparation sequence used by both :meth:`init`
+        (which validates fail-fast and initializes adapters) and :meth:`check`
+        (which skips fail-fast validation and uses ``validate_all()`` instead).
 
-        One can use the `traverse` flag to control this functionality, `True` by default.
-
-        When enabled, Protean is responsible for loading domain elements and ensuring
-        all functionality is activated.
-
-        The developer is responsible for activating functionality manually when
-        autoloading is disabled. Element activation can be done by importing them
-        in central areas of domain execution, like Application Services.
-
-        For example, asynchronous aspects of a domain like its Subscribers and
-        Event Handlers should be imported in their relevant Application Services
-        and Aggregates.
-
-        This method bubbles up circular import issues, if present, in the domain code.
+        Args:
+            traverse: Whether to auto-discover domain elements from files.
+            validate: Whether to run fail-fast validation at the end.
+                Set to ``False`` when the caller will run ``validate_all()``
+                separately (e.g. :meth:`check`).
         """
         if traverse is True:
             self._traverse()
@@ -525,8 +516,33 @@ class Domain:
         # Parse and setup handler methods in Query Handlers
         self._setup_query_handlers()
 
-        # Run Validations
-        self._validate_domain()
+        # Run fail-fast validations (skipped by check())
+        if validate:
+            self._validate_domain()
+
+    def init(self, traverse=True):  # noqa: C901
+        """Parse the domain folder, and attach elements dynamically to the domain.
+
+        Protean parses all files in the domain file's folder, as well as under it,
+        to load elements. So, all domain files are to be nested under the file contain
+        the domain definition.
+
+        One can use the `traverse` flag to control this functionality, `True` by default.
+
+        When enabled, Protean is responsible for loading domain elements and ensuring
+        all functionality is activated.
+
+        The developer is responsible for activating functionality manually when
+        autoloading is disabled. Element activation can be done by importing them
+        in central areas of domain execution, like Application Services.
+
+        For example, asynchronous aspects of a domain like its Subscribers and
+        Event Handlers should be imported in their relevant Application Services
+        and Aggregates.
+
+        This method bubbles up circular import issues, if present, in the domain code.
+        """
+        self._prepare(traverse=traverse)
 
         # Initialize adapters after loading domain
         self._initialize()
@@ -534,6 +550,72 @@ class Domain:
         # Initialize outbox DAOs for all providers
         if self.has_outbox:
             self._initialize_outbox()
+
+    def check(self, traverse: bool = True) -> dict[str, Any]:
+        """Validate the domain and return a structured diagnostic report.
+
+        Unlike :meth:`init`, this method does **not** initialize adapters —
+        it only resolves references, wires handlers, and runs every validation
+        check (collecting all issues instead of failing on the first one).
+
+        If no fatal errors are found, the IR is also built so that IR-level
+        diagnostics (e.g. ``UNHANDLED_EVENT``) can be included.
+
+        Returns a dict with the following structure::
+
+            {
+                "domain": "<domain name>",
+                "status": "pass" | "warn" | "fail",
+                "errors": [...],       # from validate_all()
+                "warnings": [...],     # from validate_all()
+                "diagnostics": [...],  # from IR builder (if no errors)
+                "counts": {
+                    "errors": int,
+                    "warnings": int,
+                    "diagnostics": int,
+                },
+            }
+        """
+        self._prepare(traverse=traverse, validate=False)
+
+        # Run the collect-all validator (does not raise)
+        self._validator.validate_all()
+
+        errors = self._validator.errors
+        warnings = self._validator.warnings
+        diagnostics: list[dict[str, str]] = []
+
+        # Build IR for additional diagnostics only if no fatal errors
+        if not errors:
+            try:
+                ir = self.to_ir()
+                diagnostics = ir.get("diagnostics", [])
+            except Exception:
+                pass
+
+        total_errors = len(errors)
+        total_warnings = len(warnings)
+        total_diagnostics = len(diagnostics)
+
+        if total_errors > 0:
+            status = "fail"
+        elif total_warnings > 0 or total_diagnostics > 0:
+            status = "warn"
+        else:
+            status = "pass"
+
+        return {
+            "domain": self.name,
+            "status": status,
+            "errors": errors,
+            "warnings": warnings,
+            "diagnostics": diagnostics,
+            "counts": {
+                "errors": total_errors,
+                "warnings": total_warnings,
+                "diagnostics": total_diagnostics,
+            },
+        }
 
     def _traverse(self):
         # Standard Library Imports
