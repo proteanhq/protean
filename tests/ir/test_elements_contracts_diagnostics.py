@@ -718,14 +718,22 @@ class TestEventWithoutData:
         """Fact events are auto-generated and should not be flagged."""
         domain = Domain(name="FactEventTest", root_path=".")
 
-        @domain.aggregate
+        @domain.aggregate(fact_events=True)
         class Order:
             name = String(max_length=100)
 
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
+        # Find the Order cluster (not MemoryMessage)
+        order_cluster = next(
+            c for c in ir["clusters"].values() if c["aggregate"]["name"] == "Order"
+        )
+        fact_events = [
+            e for e in order_cluster["events"].values() if e.get("is_fact_event", False)
+        ]
+        assert len(fact_events) > 0, "Expected at least one fact event"
+
+        # The fact event should NOT trigger EVENT_WITHOUT_DATA
         diags = [d for d in ir["diagnostics"] if d["code"] == "EVENT_WITHOUT_DATA"]
-        # The auto-generated fact event should not trigger this rule
-        fact_flagged = [d for d in diags if "Fact" in d.get("element", "")]
-        assert len(fact_flagged) == 0
+        assert len(diags) == 0

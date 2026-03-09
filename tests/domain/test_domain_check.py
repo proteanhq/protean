@@ -204,6 +204,53 @@ class TestDomainCheckDiagnostics:
         assert result["counts"]["infos"] == 0
 
 
+class TestDomainCheckInfoStatus:
+    """Domains with only info-level diagnostics return status=info."""
+
+    @pytest.mark.no_test_domain
+    def test_info_only_produces_info_status(self):
+        """An event with no fields triggers EVENT_WITHOUT_DATA (info),
+        and the overall status should be 'info' — not 'warn' or 'fail'."""
+        from protean.core.event_handler import BaseEventHandler
+
+        class InfoOrder(BaseAggregate):
+            name = String(required=True)
+
+        class InfoPlaceOrder(BaseCommand):
+            name = String(required=True)
+
+        class InfoPlaceOrderHandler(BaseCommandHandler):
+            @handle(InfoPlaceOrder)
+            def handle_place_order(self, command):
+                pass
+
+        # An empty event — triggers EVENT_WITHOUT_DATA (info)
+        class InfoOrderNudged(BaseEvent):
+            pass
+
+        class InfoNudgeHandler(BaseEventHandler):
+            @handle(InfoOrderNudged)
+            def on_nudge(self, event):
+                pass
+
+        domain = Domain(name="InfoDomain", root_path=__file__)
+        domain.register(InfoOrder)
+        domain.register(InfoPlaceOrder, part_of=InfoOrder)
+        domain.register(InfoPlaceOrderHandler, part_of=InfoOrder)
+        domain.register(InfoOrderNudged, part_of=InfoOrder)
+        domain.register(InfoNudgeHandler, part_of=InfoOrder)
+
+        result = domain.check(traverse=False)
+
+        assert result["status"] == "info"
+        assert result["counts"]["errors"] == 0
+        assert result["counts"]["warnings"] == 0
+        assert result["counts"]["infos"] > 0
+
+        codes = [d["code"] for d in result["diagnostics"]]
+        assert "EVENT_WITHOUT_DATA" in codes
+
+
 class TestPrepareRefactoring:
     """Verify that init() still works correctly after the _prepare() extraction."""
 

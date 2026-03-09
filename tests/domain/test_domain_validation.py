@@ -785,8 +785,8 @@ class TestValidateAll:
         assert "ConfigurationError" in codes
 
     @pytest.mark.no_test_domain
-    def test_collects_warnings_alongside_errors(self):
-        """validate_all() collects both errors and warnings."""
+    def test_validate_all_collects_only_errors(self):
+        """validate_all() collects errors but not warnings (handled by IRBuilder)."""
         domain = Domain(__name__, "TestMixed")
         domain.config["identity_strategy"] = "function"
         # No identity function → error

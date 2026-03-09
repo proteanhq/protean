@@ -9,7 +9,7 @@ Usage::
     protean check --domain=my_app --format=json
 
 Exit codes:
-    0 — clean (no errors or diagnostics)
+    0 — clean or info-only (no errors or warnings)
     1 — errors found
     2 — warnings only (no errors)
 """
@@ -125,5 +125,7 @@ def _print_rich(result: dict) -> None:
 
     if status == "pass":
         print("\n  [green]All checks passed.[/green]")
+    elif status == "info":
+        print("\n  [cyan]All checks passed with informational findings.[/cyan]")
 
     print()
