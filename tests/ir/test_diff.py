@@ -318,27 +318,30 @@ class TestDiffOptions:
 
 
 class TestDiffContracts:
+    def _contract_event(
+        self,
+        type_str: str = "Test.OrderPlaced.v1",
+        fqn: str = "app.OrderPlaced",
+        version: int = 1,
+        fields: dict | None = None,
+    ) -> dict:
+        """Helper to build a contract event entry with language-neutral keys."""
+        return {
+            "fields": fields or {},
+            "fqn": fqn,
+            "type": type_str,
+            "version": version,
+        }
+
     def test_added_published_event(self):
         left = _minimal_ir()
-        right = _minimal_ir(
-            contracts={
-                "events": [
-                    {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}
-                ]
-            }
-        )
+        right = _minimal_ir(contracts={"events": [self._contract_event()]})
         result = diff_ir(left, right)
         assert len(result["contracts"]["added"]) == 1
         assert result["summary"]["has_breaking_changes"] is False
 
     def test_removed_published_event_is_breaking(self):
-        left = _minimal_ir(
-            contracts={
-                "events": [
-                    {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}
-                ]
-            }
-        )
+        left = _minimal_ir(contracts={"events": [self._contract_event()]})
         right = _minimal_ir()
         result = diff_ir(left, right)
         assert len(result["contracts"]["removed"]) == 1
@@ -347,19 +350,9 @@ class TestDiffContracts:
         assert breaking[0]["type"] == "contract_event_removed"
 
     def test_type_change_is_breaking(self):
-        left = _minimal_ir(
-            contracts={
-                "events": [
-                    {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}
-                ]
-            }
-        )
+        left = _minimal_ir(contracts={"events": [self._contract_event()]})
         right = _minimal_ir(
-            contracts={
-                "events": [
-                    {"__type__": "Test.OrderPlaced.v2", "fqn": "app.OrderPlaced"}
-                ]
-            }
+            contracts={"events": [self._contract_event(type_str="Test.OrderPlaced.v2")]}
         )
         result = diff_ir(left, right)
         assert result["summary"]["has_breaking_changes"] is True
@@ -367,36 +360,17 @@ class TestDiffContracts:
         assert any(b["type"] == "contract_type_changed" for b in breaking)
 
     def test_removed_field_from_published_event_is_breaking(self):
-        event_with_field = _make_event(
-            "OrderPlaced",
-            "app.OrderPlaced",
-            fields={"amount": {"kind": "standard", "type": "Float"}},
-        )
-        event_without_field = _make_event("OrderPlaced", "app.OrderPlaced", fields={})
-
         left = _minimal_ir(
-            clusters={
-                "app.Order": _make_cluster(
-                    "Order", events={"app.OrderPlaced": event_with_field}
-                )
-            },
             contracts={
                 "events": [
-                    {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}
+                    self._contract_event(
+                        fields={"amount": {"kind": "standard", "type": "Float"}}
+                    )
                 ]
             },
         )
         right = _minimal_ir(
-            clusters={
-                "app.Order": _make_cluster(
-                    "Order", events={"app.OrderPlaced": event_without_field}
-                )
-            },
-            contracts={
-                "events": [
-                    {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}
-                ]
-            },
+            contracts={"events": [self._contract_event(fields={})]},
         )
         result = diff_ir(left, right)
         assert result["summary"]["has_breaking_changes"] is True
@@ -407,9 +381,7 @@ class TestDiffContracts:
         )
 
     def test_no_breaking_when_contracts_unchanged(self):
-        contract = {
-            "events": [{"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}]
-        }
+        contract = {"events": [self._contract_event()]}
         left = _minimal_ir(contracts=copy.deepcopy(contract))
         right = _minimal_ir(contracts=copy.deepcopy(contract))
         result = diff_ir(left, right)

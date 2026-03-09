@@ -781,10 +781,16 @@
           "items": {
             "type": "object",
             "properties": {
-              "__type__": { "type": "string", "minLength": 1 },
-              "fqn": { "type": "string", "minLength": 1 }
+              "fields": {
+                "type": "object",
+                "description": "Field schemas for the published event",
+                "additionalProperties": { "$ref": "#/$defs/field" }
+              },
+              "fqn": { "type": "string", "minLength": 1 },
+              "type": { "type": "string", "minLength": 1 },
+              "version": { "type": "integer", "minimum": 1 }
             },
-            "required": ["__type__", "fqn"],
+            "required": ["fields", "fqn", "type", "version"],
             "additionalProperties": true
           }
         }

@@ -339,16 +339,73 @@
   "contracts": {
     "events": [
       {
-        "__type__": "Fidelis.AccountOpened.v1",
-        "fqn": "banking.accounts.AccountOpened"
+        "fields": {
+          "account_id": {
+            "kind": "identifier",
+            "required": true,
+            "type": "Identifier"
+          },
+          "account_number": {
+            "kind": "standard",
+            "required": true,
+            "type": "String"
+          },
+          "holder_name": {
+            "kind": "standard",
+            "required": true,
+            "type": "String"
+          },
+          "opening_deposit": {
+            "kind": "standard",
+            "required": true,
+            "type": "Float"
+          }
+        },
+        "fqn": "banking.accounts.AccountOpened",
+        "type": "Fidelis.AccountOpened.v1",
+        "version": 1
       },
       {
-        "__type__": "Fidelis.DepositMade.v1",
-        "fqn": "banking.accounts.DepositMade"
+        "fields": {
+          "account_id": {
+            "kind": "identifier",
+            "required": true,
+            "type": "Identifier"
+          },
+          "amount": {
+            "kind": "standard",
+            "required": true,
+            "type": "Float"
+          },
+          "reference": {
+            "kind": "standard",
+            "type": "String"
+          }
+        },
+        "fqn": "banking.accounts.DepositMade",
+        "type": "Fidelis.DepositMade.v1",
+        "version": 1
       },
       {
-        "__type__": "Fidelis.WithdrawalMade.v1",
-        "fqn": "banking.accounts.WithdrawalMade"
+        "fields": {
+          "account_id": {
+            "kind": "identifier",
+            "required": true,
+            "type": "Identifier"
+          },
+          "amount": {
+            "kind": "standard",
+            "required": true,
+            "type": "Float"
+          },
+          "reference": {
+            "kind": "standard",
+            "type": "String"
+          }
+        },
+        "fqn": "banking.accounts.WithdrawalMade",
+        "type": "Fidelis.WithdrawalMade.v1",
+        "version": 1
       }
     ]
   },
