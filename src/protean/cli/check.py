@@ -9,9 +9,9 @@ Usage::
     protean check --domain=my_app --format=json
 
 Exit codes:
-    0 — clean (no errors, warnings, or diagnostics)
+    0 — clean or info-only (no errors or warnings)
     1 — errors found
-    2 — warnings or diagnostics only (no errors)
+    2 — warnings only (no errors)
 """
 
 import json
@@ -66,10 +66,10 @@ def check(
     else:
         _print_rich(result)
 
-    # Exit codes: 0=clean, 1=errors, 2=warnings/diagnostics only
+    # Exit codes: 0=clean, 1=errors, 2=warnings only
     if result["counts"]["errors"] > 0:
         raise typer.Exit(code=1)
-    elif result["counts"]["warnings"] > 0 or result["counts"]["diagnostics"] > 0:
+    elif result["counts"]["warnings"] > 0:
         raise typer.Exit(code=2)
 
 
@@ -82,6 +82,7 @@ def _print_rich(result: dict) -> None:
     # Status line
     status_style = {
         "pass": "[bold green]PASS[/bold green]",
+        "info": "[bold cyan]INFO[/bold cyan]",
         "warn": "[bold yellow]WARN[/bold yellow]",
         "fail": "[bold red]FAIL[/bold red]",
     }
@@ -93,8 +94,8 @@ def _print_rich(result: dict) -> None:
         parts.append(f"[red]{counts['errors']} error(s)[/red]")
     if counts["warnings"]:
         parts.append(f"[yellow]{counts['warnings']} warning(s)[/yellow]")
-    if counts["diagnostics"]:
-        parts.append(f"[cyan]{counts['diagnostics']} diagnostic(s)[/cyan]")
+    if counts["infos"]:
+        parts.append(f"[cyan]{counts['infos']} info(s)[/cyan]")
     if parts:
         print(f"  {', '.join(parts)}")
 
@@ -104,23 +105,27 @@ def _print_rich(result: dict) -> None:
         for err in result["errors"]:
             print(f"    [red]✗[/red] {err['message']}")
 
-    # Warnings
-    if result["warnings"]:
-        print(f"\n  [bold yellow]Warnings ({counts['warnings']}):[/bold yellow]")
-        for warn in result["warnings"]:
-            code = warn.get("code", "")
-            prefix = f"[dim]{code}:[/dim] " if code else ""
-            print(f"    [yellow]![/yellow] {prefix}{warn['message']}")
+    # Diagnostics — split by level for display
+    warnings = [d for d in result["diagnostics"] if d.get("level") == "warning"]
+    infos = [d for d in result["diagnostics"] if d.get("level") == "info"]
 
-    # Diagnostics (from IR)
-    if result["diagnostics"]:
-        print(f"\n  [bold cyan]Diagnostics ({counts['diagnostics']}):[/bold cyan]")
-        for diag in result["diagnostics"]:
+    if warnings:
+        print(f"\n  [bold yellow]Warnings ({len(warnings)}):[/bold yellow]")
+        for diag in warnings:
+            code = diag.get("code", "")
+            prefix = f"[dim]{code}:[/dim] " if code else ""
+            print(f"    [yellow]![/yellow] {prefix}{diag['message']}")
+
+    if infos:
+        print(f"\n  [bold cyan]Info ({len(infos)}):[/bold cyan]")
+        for diag in infos:
             code = diag.get("code", "")
             prefix = f"[dim]{code}:[/dim] " if code else ""
             print(f"    [cyan]·[/cyan] {prefix}{diag['message']}")
 
     if status == "pass":
         print("\n  [green]All checks passed.[/green]")
+    elif status == "info":
+        print("\n  [cyan]All checks passed with informational findings.[/cyan]")
 
     print()

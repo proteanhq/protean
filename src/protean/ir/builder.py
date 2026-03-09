@@ -1181,10 +1181,18 @@ class IRBuilder:
     # ------------------------------------------------------------------
 
     def _collect_diagnostics(self, ir: dict[str, Any]) -> None:
-        """Collect diagnostic warnings from the built IR."""
+        """Collect diagnostic warnings and info findings from the built IR."""
+        # Warning-level rules
         self._diagnose_unhandled_events(ir)
         self._diagnose_unused_commands(ir)
         self._diagnose_es_missing_apply(ir)
+        self._diagnose_published_no_external_broker(ir)
+        self._diagnose_aggregate_without_command_handler(ir)
+        self._diagnose_projection_without_projector(ir)
+        # Info-level rules (design smells)
+        self._diagnose_aggregate_too_large(ir)
+        self._diagnose_handler_too_broad(ir)
+        self._diagnose_event_without_data(ir)
 
     def _diagnose_unhandled_events(self, ir: dict[str, Any]) -> None:
         """UNHANDLED_EVENT: events with no registered handler.
@@ -1289,6 +1297,181 @@ class IRBuilder:
                             "message": (
                                 f"Event {event['name']} has no @apply handler "
                                 f"on aggregate {aggregate['name']}"
+                            ),
+                        }
+                    )
+
+    def _diagnose_published_no_external_broker(self, ir: dict[str, Any]) -> None:
+        """PUBLISHED_NO_EXTERNAL_BROKER: published events without external brokers.
+
+        When events are marked as ``published`` but no external brokers are
+        configured, they will only be dispatched internally — which is likely
+        not the intent.
+        """
+        external_brokers = self._domain.config.get("outbox", {}).get(
+            "external_brokers", []
+        )
+        if external_brokers:
+            return
+
+        has_published = any(
+            event.get("published", False)
+            for cluster in ir["clusters"].values()
+            for event in cluster["events"].values()
+        )
+        if has_published:
+            self._diagnostics.append(
+                {
+                    "code": "PUBLISHED_NO_EXTERNAL_BROKER",
+                    "element": self._domain.name,
+                    "level": "warning",
+                    "message": (
+                        "Domain has published events but no external_brokers "
+                        "configured in outbox settings. Published events will "
+                        "only be dispatched internally."
+                    ),
+                }
+            )
+
+    def _diagnose_aggregate_without_command_handler(self, ir: dict[str, Any]) -> None:
+        """AGGREGATE_WITHOUT_COMMAND_HANDLER: aggregate with no write path.
+
+        An aggregate cluster that has no command handlers has no way to
+        receive commands — likely a wiring gap.  Internal/infrastructure
+        aggregates (from ``protean.adapters``) are excluded.
+        """
+        for cluster in ir["clusters"].values():
+            aggregate = cluster["aggregate"]
+            # Skip infrastructure aggregates (e.g. MemoryMessage)
+            if aggregate["fqn"].startswith("protean.adapters."):
+                continue
+            if not cluster["command_handlers"]:
+                self._diagnostics.append(
+                    {
+                        "code": "AGGREGATE_WITHOUT_COMMAND_HANDLER",
+                        "element": aggregate["fqn"],
+                        "level": "warning",
+                        "message": (
+                            f"Aggregate `{aggregate['name']}` has no command handler "
+                            f"— no write path exists"
+                        ),
+                    }
+                )
+
+    def _diagnose_projection_without_projector(self, ir: dict[str, Any]) -> None:
+        """PROJECTION_WITHOUT_PROJECTOR: projection with no projector to populate it."""
+        for proj_entry in ir["projections"].values():
+            if not proj_entry["projectors"]:
+                proj = proj_entry["projection"]
+                self._diagnostics.append(
+                    {
+                        "code": "PROJECTION_WITHOUT_PROJECTOR",
+                        "element": proj["fqn"],
+                        "level": "warning",
+                        "message": (
+                            f"Projection `{proj['name']}` has no projector "
+                            f"to populate it"
+                        ),
+                    }
+                )
+
+    # ------------------------------------------------------------------
+    # Info-level diagnostics (design smells)
+    # ------------------------------------------------------------------
+
+    def _diagnose_aggregate_too_large(self, ir: dict[str, Any]) -> None:
+        """AGGREGATE_TOO_LARGE: cluster with too many entities.
+
+        Configurable via ``[lint] aggregate_size_limit`` in domain config
+        (default 5).
+        """
+        limit = self._domain.config.get("lint", {}).get("aggregate_size_limit", 5)
+        for cluster in ir["clusters"].values():
+            aggregate = cluster["aggregate"]
+            # Skip infrastructure aggregates
+            if aggregate["fqn"].startswith("protean.adapters."):
+                continue
+            entity_count = len(cluster["entities"])
+            if entity_count > limit:
+                self._diagnostics.append(
+                    {
+                        "code": "AGGREGATE_TOO_LARGE",
+                        "element": aggregate["fqn"],
+                        "level": "info",
+                        "message": (
+                            f"Aggregate `{aggregate['name']}` has {entity_count} "
+                            f"entities (limit: {limit})"
+                        ),
+                    }
+                )
+
+    def _diagnose_handler_too_broad(self, ir: dict[str, Any]) -> None:
+        """HANDLER_TOO_BROAD: handler handling too many message types.
+
+        Configurable via ``[lint] handler_breadth_limit`` in domain config
+        (default 5).
+        """
+        limit = self._domain.config.get("lint", {}).get("handler_breadth_limit", 5)
+        for cluster in ir["clusters"].values():
+            # Check command handlers
+            for ch in cluster["command_handlers"].values():
+                handler_count = len(ch.get("handlers", {}))
+                if handler_count > limit:
+                    self._diagnostics.append(
+                        {
+                            "code": "HANDLER_TOO_BROAD",
+                            "element": ch["fqn"],
+                            "level": "info",
+                            "message": (
+                                f"Handler `{ch['name']}` handles {handler_count} "
+                                f"message types (limit: {limit})"
+                            ),
+                        }
+                    )
+            # Check event handlers
+            for eh in cluster["event_handlers"].values():
+                handler_count = len(eh.get("handlers", {}))
+                if handler_count > limit:
+                    self._diagnostics.append(
+                        {
+                            "code": "HANDLER_TOO_BROAD",
+                            "element": eh["fqn"],
+                            "level": "info",
+                            "message": (
+                                f"Handler `{eh['name']}` handles {handler_count} "
+                                f"message types (limit: {limit})"
+                            ),
+                        }
+                    )
+
+    def _diagnose_event_without_data(self, ir: dict[str, Any]) -> None:
+        """EVENT_WITHOUT_DATA: event with zero user-defined fields.
+
+        An event with no fields carries no information beyond its type name.
+        This is usually a mistake — events should capture the relevant state
+        change data.  Auto-generated fields (id, _metadata) are excluded.
+        """
+        auto_field_names = {"id", "_metadata"}
+        for cluster in ir["clusters"].values():
+            for event in cluster["events"].values():
+                # Skip fact events and auto-generated events
+                if event.get("is_fact_event", False):
+                    continue
+                if event.get("auto_generated", False):
+                    continue
+                user_fields = {
+                    name
+                    for name in event.get("fields", {})
+                    if name not in auto_field_names
+                }
+                if not user_fields:
+                    self._diagnostics.append(
+                        {
+                            "code": "EVENT_WITHOUT_DATA",
+                            "element": event["fqn"],
+                            "level": "info",
+                            "message": (
+                                f"Event `{event['name']}` has no user-defined fields"
                             ),
                         }
                     )

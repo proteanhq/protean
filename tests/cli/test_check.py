@@ -73,9 +73,8 @@ class TestCheckJsonStructure:
             "domain",
             "status",
             "errors",
-            "warnings",
             "diagnostics",
             "counts",
         }
         assert set(data.keys()) == expected_keys
-        assert set(data["counts"].keys()) == {"errors", "warnings", "diagnostics"}
+        assert set(data["counts"].keys()) == {"errors", "warnings", "infos"}

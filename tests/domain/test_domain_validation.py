@@ -785,8 +785,8 @@ class TestValidateAll:
         assert "ConfigurationError" in codes
 
     @pytest.mark.no_test_domain
-    def test_collects_warnings_alongside_errors(self):
-        """validate_all() collects both errors and warnings."""
+    def test_validate_all_collects_only_errors(self):
+        """validate_all() collects errors but not warnings (handled by IRBuilder)."""
         domain = Domain(__name__, "TestMixed")
         domain.config["identity_strategy"] = "function"
         # No identity function → error
@@ -812,8 +812,9 @@ class TestValidateAll:
         domain._validator.validate_all()
 
         assert len(domain._validator.errors) >= 1
-        assert len(domain._validator.warnings) >= 1
-        assert domain._validator.warnings[0]["code"] == "UNUSED_COMMAND"
+        # Warnings are no longer collected by validate_all() — they are
+        # handled by IRBuilder diagnostics in the unified diagnostic model.
+        assert domain._validator.warnings == []
 
     def test_validate_still_raises_on_first_error(self, test_domain):
         """validate() (not validate_all) still raises on first error."""
@@ -844,14 +845,18 @@ class TestValidateAll:
 
     def test_validate_all_resets_before_collecting(self, test_domain):
         """validate_all() clears prior state before collecting."""
+        test_domain.config["identity_strategy"] = "function"
+        # No identity function → error
         test_domain.register(Account)
         test_domain.register(CreateAccount, part_of=Account)
-        test_domain.init(traverse=False)
 
-        # First call collects a warning
+        test_domain._prepare(traverse=False, validate=False)
+
+        # First call collects an error
         test_domain._validator.validate_all()
-        assert len(test_domain._validator.warnings) == 1
+        assert len(test_domain._validator.errors) >= 1
 
         # Second call should reset and re-collect (not double)
+        error_count = len(test_domain._validator.errors)
         test_domain._validator.validate_all()
-        assert len(test_domain._validator.warnings) == 1
+        assert len(test_domain._validator.errors) == error_count
