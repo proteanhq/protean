@@ -151,3 +151,39 @@ class TestRepositoryExtraction:
         for repo in account_cluster["repositories"].values():
             keys = list(repo.keys())
             assert keys == sorted(keys)
+
+    def test_database_omitted_when_default(self, account_cluster):
+        """Repositories with default database='ALL' should not have a database key."""
+        for repo in account_cluster["repositories"].values():
+            assert "database" not in repo
+
+
+@pytest.mark.no_test_domain
+class TestRepositoryDatabaseOption:
+    """Verify repository database option is captured in IR."""
+
+    def test_non_default_database_captured(self):
+        """Repository with explicit database option should have it in IR."""
+        from protean import Domain
+        from protean.fields.simple import String
+        from protean.ir.builder import IRBuilder
+
+        domain = Domain(name="RepoDbTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.repository(part_of=Order, database="memory")
+        class OrderMemoryRepository:
+            pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        for cluster in ir["clusters"].values():
+            for repo in cluster["repositories"].values():
+                if repo["name"] == "OrderMemoryRepository":
+                    assert repo["database"] == "memory"
+                    return
+        pytest.fail("OrderMemoryRepository not found")
