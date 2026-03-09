@@ -33,6 +33,12 @@ class DomainValidator:
 
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
+        self._warnings: list[dict[str, str]] = []
+
+    @property
+    def warnings(self) -> list[dict[str, str]]:
+        """Return collected warnings as structured diagnostics."""
+        return list(self._warnings)
 
     # ------------------------------------------------------------------
     # Public API
@@ -258,10 +264,19 @@ class DomainValidator:
                 not cmd_record.cls.meta_.abstract
                 and cmd_record.cls.__type__ not in all_handled_command_types
             ):
-                logger.warning(
-                    "Command `%s` does not have a registered handler",
-                    cmd_record.cls.__name__,
+                message = (
+                    f"Command `{cmd_record.cls.__name__}` "
+                    f"does not have a registered handler"
                 )
+                self._warnings.append(
+                    {
+                        "code": "UNUSED_COMMAND",
+                        "element": fqn(cmd_record.cls),
+                        "level": "warning",
+                        "message": message,
+                    }
+                )
+                logger.warning(message)
 
     def _warn_missing_apply_handlers(self) -> None:
         """Warn about events on event-sourced aggregates missing @apply handlers."""
@@ -281,12 +296,20 @@ class DomainValidator:
                     and not evt_record.cls.meta_.abstract
                     and fqn(evt_record.cls) not in agg_record.cls._projections
                 ):
-                    logger.warning(
-                        "Event `%s` on event-sourced aggregate `%s` "
-                        "does not have an @apply handler",
-                        evt_record.cls.__name__,
-                        agg_record.cls.__name__,
+                    message = (
+                        f"Event `{evt_record.cls.__name__}` on event-sourced "
+                        f"aggregate `{agg_record.cls.__name__}` "
+                        f"does not have an @apply handler"
                     )
+                    self._warnings.append(
+                        {
+                            "code": "ES_EVENT_MISSING_APPLY",
+                            "element": fqn(evt_record.cls),
+                            "level": "warning",
+                            "message": message,
+                        }
+                    )
+                    logger.warning(message)
 
     def _warn_published_events_without_external_brokers(self) -> None:
         """Warn when published events exist but no external brokers are configured."""
@@ -302,8 +325,17 @@ class DomainValidator:
             for record in registry._elements.get(DomainObjects.EVENT.value, {}).values()
         )
         if has_published:
-            logger.warning(
+            message = (
                 "Domain has published events but no external_brokers "
                 "configured in outbox settings. Published events will "
                 "only be dispatched internally."
             )
+            self._warnings.append(
+                {
+                    "code": "PUBLISHED_NO_EXTERNAL_BROKER",
+                    "element": self._domain.name,
+                    "level": "warning",
+                    "message": message,
+                }
+            )
+            logger.warning(message)
