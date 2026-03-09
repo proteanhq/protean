@@ -114,6 +114,9 @@ class DomainValidator:
         Called just before the domain is activated.  Each private method
         is responsible for one category of validation, making it easier
         to test and extend.
+
+        Raises on the first error encountered (fail-fast behavior used
+        by ``Domain.init()``).
         """
         self._validate_identity_config()
         self._validate_association_fields()
@@ -122,6 +125,54 @@ class DomainValidator:
         self._validate_projector_associations()
         self._validate_query_associations()
         self._validate_query_handler_associations()
+        self._validate_outbox_subscription_consistency()
+        self._validate_priority_lanes_config()
+        self._warn_unhandled_commands()
+        self._warn_missing_apply_handlers()
+        self._warn_published_events_without_external_brokers()
+
+    def validate_all(self) -> None:
+        """Run all domain validation checks, collecting every issue.
+
+        Unlike :meth:`validate`, this method does **not** abort on the
+        first error.  Each validation is wrapped in a try/except so that
+        all errors are captured in :attr:`errors` and all warnings in
+        :attr:`warnings`.  This is the entry point used by
+        ``Domain.check()`` and the ``protean check`` CLI.
+        """
+        self.reset()
+
+        validators = [
+            self._validate_identity_config,
+            self._validate_association_fields,
+            self._validate_event_sourced_aggregates,
+            self._validate_entity_providers,
+            self._validate_projector_associations,
+            self._validate_query_associations,
+            self._validate_query_handler_associations,
+            self._validate_outbox_subscription_consistency,
+            self._validate_priority_lanes_config,
+        ]
+
+        for validator_fn in validators:
+            try:
+                validator_fn()
+            except (ConfigurationError, IncorrectUsageError) as exc:
+                raw = exc.args[0] if exc.args else str(exc)
+                # Some validators pass a dict (e.g. {"element": "..."})
+                message = (
+                    raw.get("element", str(raw)) if isinstance(raw, dict) else str(raw)
+                )
+                self._errors.append(
+                    {
+                        "code": type(exc).__name__,
+                        "element": validator_fn.__name__,
+                        "level": "error",
+                        "message": message,
+                    }
+                )
+
+        # Warning methods never raise — they always collect
         self._warn_unhandled_commands()
         self._warn_missing_apply_handlers()
         self._warn_published_events_without_external_brokers()
@@ -260,6 +311,51 @@ class DomainValidator:
                         f"`{qh_record.cls.meta_.part_of.__name__}` is not a Projection, "
                         f"or is not registered in domain {self._domain.name}"
                     )
+
+    def _validate_outbox_subscription_consistency(self) -> None:
+        """Check that outbox and subscription type config are compatible."""
+        domain = self._domain
+        subscription_type = domain.config.get("server", {}).get(
+            "default_subscription_type", "event_store"
+        )
+        if (
+            domain.config.get("enable_outbox", False)
+            and subscription_type == "event_store"
+        ):
+            raise ConfigurationError(
+                "Configuration conflict: 'enable_outbox' is True but "
+                "'server.default_subscription_type' is 'event_store'. "
+                "When outbox is enabled, subscription type must be 'stream' "
+                "so that subscriptions read from the broker where the outbox publishes. "
+                "Either set server.default_subscription_type = 'stream' or remove enable_outbox."
+            )
+
+    def _validate_priority_lanes_config(self) -> None:
+        """Check that priority lanes configuration values are well-typed."""
+        lanes_config = self._domain.config.get("server", {}).get("priority_lanes", {})
+        if not lanes_config:
+            return
+
+        enabled = lanes_config.get("enabled", False)
+        if not isinstance(enabled, bool):
+            raise ConfigurationError(
+                f"server.priority_lanes.enabled must be a bool, "
+                f"got {type(enabled).__name__}: {enabled!r}"
+            )
+
+        threshold = lanes_config.get("threshold", 0)
+        if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
+            raise ConfigurationError(
+                f"server.priority_lanes.threshold must be an integer, "
+                f"got {type(threshold).__name__}: {threshold!r}"
+            )
+
+        suffix = lanes_config.get("backfill_suffix", "backfill")
+        if not isinstance(suffix, str) or not suffix.strip():
+            raise ConfigurationError(
+                f"server.priority_lanes.backfill_suffix must be a non-empty string, "
+                f"got {type(suffix).__name__}: {suffix!r}"
+            )
 
     def _warn_unhandled_commands(self) -> None:
         """Warn about registered Commands that have no handler."""

@@ -531,46 +531,6 @@ class Domain:
         # Initialize adapters after loading domain
         self._initialize()
 
-        # Validate outbox / subscription-type consistency
-        subscription_type = self.config.get("server", {}).get(
-            "default_subscription_type", "event_store"
-        )
-        if (
-            self.config.get("enable_outbox", False)
-            and subscription_type == "event_store"
-        ):
-            raise ConfigurationError(
-                "Configuration conflict: 'enable_outbox' is True but "
-                "'server.default_subscription_type' is 'event_store'. "
-                "When outbox is enabled, subscription type must be 'stream' "
-                "so that subscriptions read from the broker where the outbox publishes. "
-                "Either set server.default_subscription_type = 'stream' or remove enable_outbox."
-            )
-
-        # Validate priority lanes configuration
-        lanes_config = self.config.get("server", {}).get("priority_lanes", {})
-        if lanes_config:
-            enabled = lanes_config.get("enabled", False)
-            if not isinstance(enabled, bool):
-                raise ConfigurationError(
-                    f"server.priority_lanes.enabled must be a bool, "
-                    f"got {type(enabled).__name__}: {enabled!r}"
-                )
-
-            threshold = lanes_config.get("threshold", 0)
-            if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
-                raise ConfigurationError(
-                    f"server.priority_lanes.threshold must be an integer, "
-                    f"got {type(threshold).__name__}: {threshold!r}"
-                )
-
-            suffix = lanes_config.get("backfill_suffix", "backfill")
-            if not isinstance(suffix, str) or not suffix.strip():
-                raise ConfigurationError(
-                    f"server.priority_lanes.backfill_suffix must be a non-empty string, "
-                    f"got {type(suffix).__name__}: {suffix!r}"
-                )
-
         # Initialize outbox DAOs for all providers
         if self.has_outbox:
             self._initialize_outbox()
