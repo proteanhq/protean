@@ -12,6 +12,12 @@ class TestIRModuleGetattr:
         assert IRBuilder is not None
         assert IRBuilder.__name__ == "IRBuilder"
 
+    def test_import_diff_ir(self):
+        from protean.ir import diff_ir
+
+        assert diff_ir is not None
+        assert callable(diff_ir)
+
     def test_unknown_attribute_raises(self):
         import protean.ir
 
