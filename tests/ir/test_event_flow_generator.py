@@ -1,0 +1,598 @@
+"""Tests for the event flow diagram generator.
+
+Covers: generate_event_flow_diagram, cluster subgraphs, command/event
+node shapes, handler edges, process managers, projectors, and edge cases.
+"""
+
+import pytest
+
+from protean.ir.generators.events import generate_event_flow_diagram
+
+
+# ------------------------------------------------------------------
+# Fixtures — composable IR builders
+# ------------------------------------------------------------------
+
+
+def _cluster(
+    fqn: str,
+    *,
+    commands: dict | None = None,
+    events: dict | None = None,
+    command_handlers: dict | None = None,
+    event_handlers: dict | None = None,
+) -> dict:
+    """Build a minimal cluster dict."""
+    return {
+        "aggregate": {
+            "fqn": fqn,
+            "name": fqn.rsplit(".", 1)[-1],
+            "fields": {
+                "id": {"kind": "auto", "type": "Auto", "identifier": True},
+            },
+            "identity_field": "id",
+            "invariants": {"pre": [], "post": []},
+            "options": {"is_event_sourced": False, "fact_events": False},
+        },
+        "entities": {},
+        "value_objects": {},
+        "commands": commands or {},
+        "events": events or {},
+        "command_handlers": command_handlers or {},
+        "event_handlers": event_handlers or {},
+        "repositories": {},
+        "application_services": {},
+        "database_models": {},
+    }
+
+
+def _ir(
+    clusters: dict | None = None,
+    flows: dict | None = None,
+    projections: dict | None = None,
+) -> dict:
+    return {
+        "clusters": clusters or {},
+        "flows": flows
+        or {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+        "projections": projections or {},
+    }
+
+
+def _command(fqn: str, type_str: str) -> dict:
+    return {
+        "__type__": type_str,
+        "__version__": 1,
+        "element_type": "COMMAND",
+        "fqn": fqn,
+        "name": fqn.rsplit(".", 1)[-1],
+        "fields": {},
+    }
+
+
+def _event(fqn: str, type_str: str, *, is_fact_event: bool = False) -> dict:
+    return {
+        "__type__": type_str,
+        "__version__": 1,
+        "element_type": "EVENT",
+        "fqn": fqn,
+        "name": fqn.rsplit(".", 1)[-1],
+        "fields": {},
+        "is_fact_event": is_fact_event,
+        "published": True,
+    }
+
+
+def _command_handler(fqn: str, handlers: dict) -> dict:
+    return {
+        "element_type": "COMMAND_HANDLER",
+        "fqn": fqn,
+        "name": fqn.rsplit(".", 1)[-1],
+        "handlers": handlers,
+        "subscription": {"config": {}, "profile": None, "type": None},
+    }
+
+
+def _event_handler(fqn: str, handlers: dict) -> dict:
+    return {
+        "element_type": "EVENT_HANDLER",
+        "fqn": fqn,
+        "name": fqn.rsplit(".", 1)[-1],
+        "handlers": handlers,
+        "subscription": {"config": {}, "profile": None, "type": None},
+    }
+
+
+# ------------------------------------------------------------------
+# Empty / missing data
+# ------------------------------------------------------------------
+
+
+class TestEmptyIR:
+    def test_empty_clusters(self):
+        result = generate_event_flow_diagram(_ir())
+        assert result == "flowchart LR"
+
+    def test_missing_clusters_key(self):
+        result = generate_event_flow_diagram({})
+        assert result == "flowchart LR"
+
+
+# ------------------------------------------------------------------
+# Subgraph rendering
+# ------------------------------------------------------------------
+
+
+class TestSubgraphs:
+    def test_single_cluster_subgraph(self):
+        clusters = {
+            "app.Order": _cluster("app.Order"),
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters))
+        assert "subgraph app_Order[Order]" in result
+        assert "end" in result
+
+    def test_aggregate_node_inside_subgraph(self):
+        clusters = {
+            "app.Order": _cluster("app.Order"),
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters))
+        assert "agg_app_Order[Order]" in result
+
+    def test_multiple_subgraphs(self):
+        clusters = {
+            "app.Order": _cluster("app.Order"),
+            "app.Payment": _cluster("app.Payment"),
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters))
+        assert "subgraph app_Order" in result
+        assert "subgraph app_Payment" in result
+
+
+# ------------------------------------------------------------------
+# Command nodes (parallelogram shape)
+# ------------------------------------------------------------------
+
+
+class TestCommandNodes:
+    def test_command_parallelogram_shape(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                },
+            ),
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters))
+        assert "cmd_app_PlaceOrder[/PlaceOrder/]" in result
+
+
+# ------------------------------------------------------------------
+# Event nodes (stadium/rounded shape)
+# ------------------------------------------------------------------
+
+
+class TestEventNodes:
+    def test_event_rounded_shape(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters))
+        assert "evt_app_OrderPlaced([OrderPlaced])" in result
+
+    def test_fact_events_excluded(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                    "app._OrderFact": _event(
+                        "app._OrderFact", "App._OrderFact.v1", is_fact_event=True
+                    ),
+                },
+            ),
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters))
+        assert "OrderPlaced" in result
+        assert "_OrderFact" not in result
+
+
+# ------------------------------------------------------------------
+# Command handler edges: cmd -> handler -> aggregate
+# ------------------------------------------------------------------
+
+
+class TestCommandHandlerEdges:
+    @pytest.fixture()
+    def ir_with_handler(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                },
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                command_handlers={
+                    "app.OrderCommandHandler": _command_handler(
+                        "app.OrderCommandHandler",
+                        {"App.PlaceOrder.v1": ["handle_place_order"]},
+                    ),
+                },
+            ),
+        }
+        return _ir(clusters=clusters)
+
+    def test_command_to_handler_edge(self, ir_with_handler):
+        result = generate_event_flow_diagram(ir_with_handler)
+        assert "cmd_app_PlaceOrder --> hdlr_app_OrderCommandHandler" in result
+
+    def test_handler_to_aggregate_edge(self, ir_with_handler):
+        result = generate_event_flow_diagram(ir_with_handler)
+        assert "hdlr_app_OrderCommandHandler --> agg_app_Order" in result
+
+    def test_aggregate_to_event_edge(self, ir_with_handler):
+        result = generate_event_flow_diagram(ir_with_handler)
+        assert "agg_app_Order --> evt_app_OrderPlaced" in result
+
+
+# ------------------------------------------------------------------
+# Event handler nodes and edges
+# ------------------------------------------------------------------
+
+
+class TestEventHandlers:
+    def test_event_handler_rendered(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.NotificationHandler": _event_handler(
+                        "app.NotificationHandler",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters))
+        assert "eh_app_NotificationHandler[NotificationHandler]" in result
+
+    def test_event_to_handler_edge(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.NotificationHandler": _event_handler(
+                        "app.NotificationHandler",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters))
+        assert "evt_app_OrderPlaced --> eh_app_NotificationHandler" in result
+
+
+# ------------------------------------------------------------------
+# Process managers
+# ------------------------------------------------------------------
+
+
+class TestProcessManagers:
+    @pytest.fixture()
+    def ir_with_pm(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+            "app.Payment": _cluster(
+                "app.Payment",
+                events={
+                    "app.PaymentConfirmed": _event(
+                        "app.PaymentConfirmed", "App.PaymentConfirmed.v1"
+                    ),
+                    "app.PaymentFailed": _event(
+                        "app.PaymentFailed", "App.PaymentFailed.v1"
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.FulfillmentPM",
+                    "name": "FulfillmentPM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": True,
+                            "end": False,
+                            "methods": ["on_order_placed"],
+                        },
+                        "App.PaymentConfirmed.v1": {
+                            "correlate": "order_id",
+                            "start": False,
+                            "end": False,
+                            "methods": ["on_payment_confirmed"],
+                        },
+                        "App.PaymentFailed.v1": {
+                            "correlate": "order_id",
+                            "start": False,
+                            "end": True,
+                            "methods": ["on_payment_failed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        return _ir(clusters=clusters, flows=flows)
+
+    def test_pm_node_with_lifecycle(self, ir_with_pm):
+        result = generate_event_flow_diagram(ir_with_pm)
+        # Should have start and end annotations
+        assert "start, end" in result
+        assert "FulfillmentPM" in result
+
+    def test_pm_start_edge_label(self, ir_with_pm):
+        result = generate_event_flow_diagram(ir_with_pm)
+        assert "evt_app_OrderPlaced -->|start|" in result
+
+    def test_pm_end_edge_label(self, ir_with_pm):
+        result = generate_event_flow_diagram(ir_with_pm)
+        assert "evt_app_PaymentFailed -->|end|" in result
+
+    def test_pm_plain_edge(self, ir_with_pm):
+        result = generate_event_flow_diagram(ir_with_pm)
+        assert "evt_app_PaymentConfirmed --> pm_app_FulfillmentPM" in result
+
+    def test_pm_without_lifecycle(self):
+        """PM with no start/end handlers should have plain label."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.SimplePM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.SimplePM",
+                    "name": "SimplePM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": False,
+                            "end": False,
+                            "methods": ["on_order_placed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        result = generate_event_flow_diagram(_ir(clusters=clusters, flows=flows))
+        assert "pm_app_SimplePM[SimplePM]" in result
+        assert "-->|" not in result  # No edge labels
+
+
+# ------------------------------------------------------------------
+# Projectors
+# ------------------------------------------------------------------
+
+
+class TestProjectors:
+    @pytest.fixture()
+    def ir_with_projector(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                    "app.OrderCancelled": _event(
+                        "app.OrderCancelled", "App.OrderCancelled.v1"
+                    ),
+                },
+            ),
+        }
+        projections = {
+            "app.OrderDashboard": {
+                "projection": {
+                    "fqn": "app.OrderDashboard",
+                    "name": "OrderDashboard",
+                },
+                "projectors": {
+                    "app.OrderDashboardProjector": {
+                        "element_type": "PROJECTOR",
+                        "fqn": "app.OrderDashboardProjector",
+                        "name": "OrderDashboardProjector",
+                        "projector_for": "app.OrderDashboard",
+                        "handlers": {
+                            "App.OrderPlaced.v1": ["on_order_placed"],
+                            "App.OrderCancelled.v1": ["on_order_cancelled"],
+                        },
+                    }
+                },
+                "queries": {},
+                "query_handlers": {},
+            }
+        }
+        return _ir(clusters=clusters, projections=projections)
+
+    def test_projector_node_with_projection_label(self, ir_with_projector):
+        result = generate_event_flow_diagram(ir_with_projector)
+        # Label should show "ProjectorName → ProjectionName"
+        assert "OrderDashboardProjector" in result
+        assert "OrderDashboard" in result
+
+    def test_event_to_projector_edges(self, ir_with_projector):
+        result = generate_event_flow_diagram(ir_with_projector)
+        assert "evt_app_OrderPlaced --> proj_app_OrderDashboardProjector" in result
+        assert "evt_app_OrderCancelled --> proj_app_OrderDashboardProjector" in result
+
+
+# ------------------------------------------------------------------
+# Full integration test with example IR
+# ------------------------------------------------------------------
+
+
+class TestFullIntegration:
+    @pytest.fixture()
+    def ordering_ir(self):
+        """A small but complete ordering domain IR."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                    "app.CancelOrder": _command(
+                        "app.CancelOrder", "App.CancelOrder.v1"
+                    ),
+                },
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                    "app.OrderCancelled": _event(
+                        "app.OrderCancelled", "App.OrderCancelled.v1"
+                    ),
+                },
+                command_handlers={
+                    "app.OrderCommandHandler": _command_handler(
+                        "app.OrderCommandHandler",
+                        {
+                            "App.PlaceOrder.v1": ["handle_place"],
+                            "App.CancelOrder.v1": ["handle_cancel"],
+                        },
+                    ),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_confirmation"]},
+                    ),
+                },
+            ),
+            "app.Payment": _cluster(
+                "app.Payment",
+                commands={
+                    "app.ConfirmPayment": _command(
+                        "app.ConfirmPayment", "App.ConfirmPayment.v1"
+                    ),
+                },
+                events={
+                    "app.PaymentConfirmed": _event(
+                        "app.PaymentConfirmed", "App.PaymentConfirmed.v1"
+                    ),
+                },
+                command_handlers={
+                    "app.PaymentHandler": _command_handler(
+                        "app.PaymentHandler",
+                        {"App.ConfirmPayment.v1": ["handle_confirm"]},
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.FulfillmentPM",
+                    "name": "FulfillmentPM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": True,
+                            "end": False,
+                            "methods": ["on_order_placed"],
+                        },
+                        "App.PaymentConfirmed.v1": {
+                            "correlate": "order_id",
+                            "start": False,
+                            "end": True,
+                            "methods": ["on_payment_confirmed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        projections = {
+            "app.OrderDashboard": {
+                "projection": {
+                    "fqn": "app.OrderDashboard",
+                    "name": "OrderDashboard",
+                },
+                "projectors": {
+                    "app.DashboardProjector": {
+                        "element_type": "PROJECTOR",
+                        "fqn": "app.DashboardProjector",
+                        "name": "DashboardProjector",
+                        "projector_for": "app.OrderDashboard",
+                        "handlers": {
+                            "App.OrderPlaced.v1": ["on_order_placed"],
+                            "App.PaymentConfirmed.v1": ["on_payment_confirmed"],
+                        },
+                    }
+                },
+                "queries": {},
+                "query_handlers": {},
+            }
+        }
+        return _ir(clusters=clusters, flows=flows, projections=projections)
+
+    def test_starts_with_flowchart(self, ordering_ir):
+        result = generate_event_flow_diagram(ordering_ir)
+        assert result.startswith("flowchart LR")
+
+    def test_both_subgraphs_present(self, ordering_ir):
+        result = generate_event_flow_diagram(ordering_ir)
+        assert "subgraph app_Order" in result
+        assert "subgraph app_Payment" in result
+
+    def test_all_commands_present(self, ordering_ir):
+        result = generate_event_flow_diagram(ordering_ir)
+        assert "PlaceOrder" in result
+        assert "CancelOrder" in result
+        assert "ConfirmPayment" in result
+
+    def test_all_events_present(self, ordering_ir):
+        result = generate_event_flow_diagram(ordering_ir)
+        assert "OrderPlaced" in result
+        assert "OrderCancelled" in result
+        assert "PaymentConfirmed" in result
+
+    def test_pm_connected(self, ordering_ir):
+        result = generate_event_flow_diagram(ordering_ir)
+        assert "FulfillmentPM" in result
+        assert "pm_app_FulfillmentPM" in result
+
+    def test_projector_connected(self, ordering_ir):
+        result = generate_event_flow_diagram(ordering_ir)
+        assert "DashboardProjector" in result
+
+    def test_event_handler_connected(self, ordering_ir):
+        result = generate_event_flow_diagram(ordering_ir)
+        assert "OrderNotifier" in result
+        assert "evt_app_OrderPlaced --> eh_app_OrderNotifier" in result
