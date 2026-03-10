@@ -61,12 +61,21 @@ def mermaid_fence(body: str, *, title: str = "") -> str:
           A --> B
         ```
     """
+    # Choose a fence length longer than any run of backticks in the body
+    # so the Markdown fence is never prematurely closed.
+    fence_len = 3
+    for match in re.finditer(r"`+", body):
+        run_len = len(match.group(0))
+        if run_len >= fence_len:
+            fence_len = run_len + 1
+    fence = "`" * fence_len
+
     parts: list[str] = []
     if title:
         parts.append(f"## {title}\n")
-    parts.append("```mermaid")
+    parts.append(f"{fence}mermaid")
     parts.append(body)
-    parts.append("```")
+    parts.append(fence)
     return "\n".join(parts)
 
 
@@ -201,4 +210,5 @@ def sanitize_mermaid_id(text: str) -> str:
         >>> sanitize_mermaid_id("Order")
         'Order'
     """
-    return re.sub(r"\W+", "_", text).strip("_")
+    sanitized = re.sub(r"\W+", "_", text).strip("_")
+    return sanitized or "node"

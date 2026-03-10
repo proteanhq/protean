@@ -84,6 +84,18 @@ class TestMermaidFence:
         result = mermaid_fence("")
         assert result == "```mermaid\n\n```"
 
+    def test_body_with_backticks_uses_longer_fence(self):
+        body = "A --> B\n```\nC --> D"
+        result = mermaid_fence(body)
+        assert result.startswith("````mermaid\n")
+        assert result.endswith("\n````")
+
+    def test_body_with_long_backtick_run(self):
+        body = "A --> B\n`````\nC --> D"
+        result = mermaid_fence(body)
+        assert result.startswith("``````mermaid\n")
+        assert result.endswith("\n``````")
+
 
 # ------------------------------------------------------------------
 # short_name
@@ -238,3 +250,9 @@ class TestSanitizeMermaidId:
 
     def test_leading_trailing_stripped(self):
         assert sanitize_mermaid_id(".Order.") == "Order"
+
+    def test_empty_string_returns_fallback(self):
+        assert sanitize_mermaid_id("") == "node"
+
+    def test_only_special_chars_returns_fallback(self):
+        assert sanitize_mermaid_id("...") == "node"
