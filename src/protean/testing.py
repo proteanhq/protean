@@ -1,7 +1,7 @@
 """Testing DSL for Protean.
 
 Provides fluent, Pythonic DSLs for testing event-sourced aggregates,
-projections, and domain invariants.
+process managers, projections, and domain invariants.
 
 Event-sourcing tests
 --------------------
@@ -30,6 +30,28 @@ Multi-command chaining::
 
     assert order.accepted
     assert order.status == "Payment_Pending"
+
+Process manager tests
+---------------------
+
+When the first argument is a process manager class, ``given()`` returns
+a ``ProcessManagerResult`` that feeds events through the PM's handlers::
+
+    result = given(
+        OrderFulfillmentPM,
+        OrderPlaced(order_id="o1", customer_id="c1", total=100.0),
+        PaymentConfirmed(payment_id="p1", order_id="o1", amount=100.0),
+    )
+    assert result.status == "awaiting_shipment"
+    assert not result.is_complete
+    assert result.transition_count == 2
+
+Or events first with ``.results_in()``::
+
+    result = given(
+        OrderPlaced(order_id="o1", ...),
+        PaymentConfirmed(order_id="o1", ...),
+    ).results_in(OrderFulfillmentPM, id="o1")
 
 Projection tests
 ----------------
@@ -77,15 +99,19 @@ from protean.utils.eventing import (
 from protean.utils.reflection import _ID_FIELD_NAME
 
 
-def given(aggregate_cls_or_event: type | "BaseEvent", *events: "BaseEvent") -> AggregateResult | EventSequence:
+def given(
+    cls_or_event: type | "BaseEvent", *events: "BaseEvent"
+) -> AggregateResult | ProcessManagerResult | EventSequence:
     """Start a test sentence.
 
     Polymorphic entry point:
 
     - ``given(AggregateClass, *events)`` — returns an ``AggregateResult`` for
-      event-sourcing tests (existing behavior).
+      event-sourcing tests.
+    - ``given(ProcessManagerClass, *events)`` — returns a
+      ``ProcessManagerResult`` for process manager tests.
     - ``given(event, *events)`` — returns an ``EventSequence`` for projection
-      tests when all arguments are event instances.
+      or process manager tests (via ``.results_in()``).
 
     Examples::
 
@@ -94,14 +120,21 @@ def given(aggregate_cls_or_event: type | "BaseEvent", *events: "BaseEvent") -> A
         given(Order, order_created)                     # one event
         given(Order, order_created, order_confirmed)    # multiple events
 
+        # Process manager test
+        given(OrderFulfillmentPM, order_placed, payment_confirmed)
+
         # Projection test
         given(Registered(user_id="u1", name="Alice"))
         given(registered_event, transacted_event)
     """
-    if isinstance(aggregate_cls_or_event, type):
-        return AggregateResult(aggregate_cls_or_event, list(events))
-    # All arguments are event instances → projection testing path
-    return EventSequence([aggregate_cls_or_event, *events])
+    if isinstance(cls_or_event, type):
+        from protean.core.process_manager import BaseProcessManager
+
+        if issubclass(cls_or_event, BaseProcessManager):
+            return ProcessManagerResult(cls_or_event, list(events))
+        return AggregateResult(cls_or_event, list(events))
+    # All arguments are event instances → projection / PM testing path
+    return EventSequence([cls_or_event, *events])
 
 
 class EventLog:
@@ -530,9 +563,184 @@ class EventSequence:
 
         return ProjectionResult(projection_cls, projection)
 
+    def results_in(self, pm_cls: type, **identity: Any) -> ProcessManagerResult:
+        """Feed events through a process manager and return the result.
+
+        An alternative to ``given(PMClass, *events)`` when you want to
+        start with events and specify the PM class afterward::
+
+            result = given(
+                OrderPlaced(order_id="o1", ...),
+                PaymentConfirmed(order_id="o1", ...),
+            ).results_in(OrderFulfillmentPM, id="o1")
+
+        Args:
+            pm_cls: The process manager class.
+            **identity: Optional keyword arguments to identify the PM
+                instance to retrieve. If provided, uses the first value
+                as the correlation value for loading the PM.
+
+        Returns:
+            ProcessManagerResult with the PM state after processing.
+        """
+        identifier_value = next(iter(identity.values()), None) if identity else None
+        return ProcessManagerResult(
+            pm_cls, self._events, correlation_value=identifier_value
+        )
+
     def __repr__(self) -> str:
         type_names = [type(e).__name__ for e in self._events]
         return f"EventSequence({type_names})"
+
+
+class ProcessManagerResult:
+    """The result of feeding events through a process manager.
+
+    Proxies attribute access to the underlying PM instance, so
+    ``result.status`` works directly.
+
+    Created by ``given(PMClass, *events)`` or
+    ``given(*events).results_in(PMClass)``, not directly.
+
+    Example::
+
+        result = given(
+            OrderFulfillmentPM,
+            OrderPlaced(order_id="o1", customer_id="c1", total=100.0),
+            PaymentConfirmed(payment_id="p1", order_id="o1", amount=100.0),
+        )
+        assert result.status == "awaiting_shipment"
+        assert not result.is_complete
+        assert result.transition_count == 2
+    """
+
+    def __init__(
+        self,
+        pm_cls: type,
+        events: list[Any] | None = None,
+        *,
+        correlation_value: str | None = None,
+    ) -> None:
+        self._pm_cls = pm_cls
+        self._events = list(events or [])
+        self._pm_instance: Any = None
+        self._transition_count: int = 0
+        self._correlation_value = correlation_value
+        self._processed: bool = False
+
+        # Auto-process if events were given
+        if self._events:
+            self._process_events()
+
+    def _process_events(self) -> None:
+        """Feed all events through the PM's _handle() method."""
+        for event in self._events:
+            self._pm_cls._handle(event)
+        self._processed = True
+        self._load_pm()
+
+    def _load_pm(self) -> None:
+        """Load the PM instance from the event store after processing."""
+        from protean.utils.globals import current_domain
+
+        # Determine correlation value from the PM's start handler
+        correlation_value = self._correlation_value
+        if correlation_value is None:
+            correlation_value = self._infer_correlation_value()
+
+        if correlation_value is None:
+            self._pm_instance = None
+            self._transition_count = 0
+            return
+
+        stream_name = f"{self._pm_cls.meta_.stream_category}-{correlation_value}"
+        messages = current_domain.event_store.store.read(stream_name)
+
+        if messages:
+            self._pm_instance = self._pm_cls._from_transitions(
+                messages, correlation_value
+            )
+            self._transition_count = len(messages)
+        else:
+            self._pm_instance = None
+            self._transition_count = 0
+
+    def _infer_correlation_value(self) -> str | None:
+        """Infer the correlation value from the first event and the PM's handlers.
+
+        Inspects the PM's handler methods to find the correlate spec,
+        then extracts the correlation value from the first event.
+        """
+        from protean.core.process_manager import _resolve_correlation_value
+
+        if not self._events:
+            return None
+
+        # Find the correlation spec from the first event's handler
+        first_event = self._events[0]
+        handlers = self._pm_cls._handlers.get(
+            first_event.__class__.__type__
+        ) or self._pm_cls._handlers.get("$any")
+
+        if not handlers:
+            return None
+
+        handler_method = next(iter(handlers))
+        correlate_spec = getattr(handler_method, "_correlate", None)
+        if correlate_spec is None:
+            return None
+
+        return _resolve_correlation_value(first_event, correlate_spec)
+
+    # ------------------------------------------------------------------
+    # Result properties
+    # ------------------------------------------------------------------
+
+    @property
+    def is_complete(self) -> bool:
+        """``True`` if the process manager has been marked as complete."""
+        if self._pm_instance is None:
+            return False
+        return self._pm_instance._is_complete
+
+    @property
+    def not_started(self) -> bool:
+        """``True`` if no PM instance was found (no start event matched)."""
+        return self._pm_instance is None
+
+    @property
+    def transition_count(self) -> int:
+        """Number of transitions (handler invocations) recorded."""
+        return self._transition_count
+
+    @property
+    def process_manager(self) -> Any:
+        """The raw process manager instance, or ``None`` if not found."""
+        return self._pm_instance
+
+    def __getattr__(self, name: str) -> Any:
+        """Proxy attribute access to the underlying PM instance.
+
+        This makes ``result.status``, ``result.order_id`` work directly.
+        """
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if self._pm_instance is not None:
+            return getattr(self._pm_instance, name)
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'. "
+            f"Process manager not found — did any start event match?"
+        )
+
+    def __repr__(self) -> str:
+        pm_name = self._pm_cls.__name__
+        if self.not_started:
+            status = "not_started"
+        elif self.is_complete:
+            status = "complete"
+        else:
+            status = f"transitions={self._transition_count}"
+        return f"<ProcessManagerResult({pm_name}) {status}>"
 
 
 class ProjectionResult:
