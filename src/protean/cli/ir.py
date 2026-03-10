@@ -16,7 +16,6 @@ Usage::
 """
 
 import json
-from pathlib import Path
 from typing import Any
 
 import typer
@@ -25,11 +24,7 @@ from rich.console import Console
 from rich.table import Table
 from typing_extensions import Annotated
 
-from protean.exceptions import NoDomainException
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
-
-logger = get_logger(__name__)
+from protean.cli._ir_utils import load_domain_ir, load_ir_file
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -59,18 +54,7 @@ def show(
     ] = "json",
 ) -> None:
     """Show the domain's IR."""
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-    derived_domain.init()
-
-    ir = derived_domain.to_ir()
+    ir = load_domain_ir(domain)
 
     if format == "summary":
         _print_summary(ir)
@@ -131,12 +115,12 @@ def diff(
 
     # Load left IR
     if domain:
-        left_ir = _load_domain_ir(domain)
+        left_ir = load_domain_ir(domain)
     else:
-        left_ir = _load_ir_file(left)
+        left_ir = load_ir_file(left)
 
     # Load right IR
-    right_ir = _load_ir_file(right)
+    right_ir = load_ir_file(right)
 
     # Compute diff
     result = diff_ir(left_ir, right_ir)
@@ -145,34 +129,6 @@ def diff(
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
         _print_diff_text(result)
-
-
-def _load_ir_file(path: str) -> dict[str, Any]:
-    """Load an IR dict from a JSON file."""
-    file_path = Path(path)
-    if not file_path.exists():
-        print(f"[red]Error:[/red] file not found: {path}")
-        raise typer.Abort()
-    try:
-        return json.loads(file_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        print(f"[red]Error:[/red] invalid JSON in {path}: {exc}")
-        raise typer.Abort()
-
-
-def _load_domain_ir(domain_path: str) -> dict[str, Any]:
-    """Build and return the IR from a live domain."""
-    try:
-        derived_domain = derive_domain(domain_path)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-    derived_domain.init()
-    return derived_domain.to_ir()
 
 
 # ------------------------------------------------------------------
