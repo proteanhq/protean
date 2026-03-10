@@ -69,7 +69,6 @@ def preview():
 # ---------------------------------------------------------------------------
 
 _VALID_TYPES = ("clusters", "events", "handlers", "catalog", "all")
-_DIAGRAM_TYPES = ("clusters", "events", "handlers")
 
 
 @app.command()
@@ -117,7 +116,7 @@ def generate(
         str,
         typer.Option(
             "--cluster",
-            help="Filter to a specific cluster FQN (for --type=clusters only)",
+            help="Filter to a specific cluster FQN (for --type=clusters or --type=all)",
         ),
     ] = "",
 ) -> None:
@@ -224,23 +223,24 @@ def _generate_clusters(
             return raw
         return mermaid_fence(raw, title="Aggregate Cluster")
 
-    # For --type=all or --type=clusters without --cluster,
-    # generate one diagram per cluster.
+    # For --type=all or --type=clusters without --cluster filter.
     clusters = ir_data.get("clusters", {})
+
+    if output_format == "mermaid":
+        # Raw Mermaid: emit a single combined classDiagram (multiple
+        # top-level classDiagram declarations are invalid Mermaid).
+        return generate_cluster_diagram(ir_data)
+
+    # Markdown: one fenced diagram per cluster for readability.
     if not clusters:
         raw = generate_cluster_diagram(ir_data)
-        if output_format == "mermaid":
-            return raw
         return mermaid_fence(raw, title="Aggregate Clusters")
 
     parts: list[str] = []
     for cfqn in sorted(clusters):
         raw = generate_cluster_diagram(ir_data, cluster_fqn=cfqn)
         cluster_name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
-        if output_format == "mermaid":
-            parts.append(raw)
-        else:
-            parts.append(mermaid_fence(raw, title=f"Cluster: {cluster_name}"))
+        parts.append(mermaid_fence(raw, title=f"Cluster: {cluster_name}"))
 
     return "\n\n".join(parts)
 

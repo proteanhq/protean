@@ -664,11 +664,15 @@ class TestEmptyIR:
 
 
 class TestFullIntegration:
-    """Tests using the bundled ordering-ir.json example."""
+    """Tests using the bundled ordering-ir.json example.
+
+    The fixture asserts the file exists so a missing or moved example
+    causes a loud failure rather than a silent skip.
+    """
 
     @pytest.fixture()
     def ordering_ir_path(self) -> Path:
-        return (
+        path = (
             Path(__file__).resolve().parents[2]
             / "src"
             / "protean"
@@ -676,12 +680,11 @@ class TestFullIntegration:
             / "examples"
             / "ordering-ir.json"
         )
+        assert path.exists(), f"Bundled example IR not found at {path}"
+        return path
 
     def test_all_from_example(self, ordering_ir_path):
         """Full generation from the ordering example."""
-        if not ordering_ir_path.exists():
-            pytest.skip("ordering-ir.json not found")
-
         result = runner.invoke(
             app,
             ["generate", f"--ir={ordering_ir_path}"],
@@ -695,9 +698,6 @@ class TestFullIntegration:
 
     def test_mermaid_from_example(self, ordering_ir_path):
         """Mermaid output from the ordering example."""
-        if not ordering_ir_path.exists():
-            pytest.skip("ordering-ir.json not found")
-
         result = runner.invoke(
             app,
             [
@@ -713,9 +713,6 @@ class TestFullIntegration:
 
     def test_cluster_filter_from_example(self, ordering_ir_path):
         """Cluster filter with the ordering example."""
-        if not ordering_ir_path.exists():
-            pytest.skip("ordering-ir.json not found")
-
         result = runner.invoke(
             app,
             [
@@ -730,9 +727,6 @@ class TestFullIntegration:
 
     def test_file_output_from_example(self, ordering_ir_path, tmp_path):
         """Write full docs from ordering example to file."""
-        if not ordering_ir_path.exists():
-            pytest.skip("ordering-ir.json not found")
-
         out_file = tmp_path / "architecture.md"
         result = runner.invoke(
             app,
