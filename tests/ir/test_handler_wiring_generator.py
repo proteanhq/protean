@@ -393,8 +393,8 @@ class TestProcessManagers:
             process_managers=pm,
         )
         result = generate_handler_wiring_diagram(ir)
-        # Edge exists but without label
-        assert "-->|" not in result or "PaymentConfirmed" in result
+        # No lifecycle-labelled edges when start=False and end=False
+        assert "-->|" not in result
 
     def test_pm_without_lifecycle(self):
         evts = _event("app.SomeEvent")

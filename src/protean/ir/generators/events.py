@@ -16,6 +16,8 @@ from __future__ import annotations
 from typing import Any
 
 from protean.ir.generators.base import (
+    build_cmd_type_to_fqn,
+    build_evt_type_to_fqn,
     mermaid_escape,
     sanitize_mermaid_id,
     short_name,
@@ -48,28 +50,6 @@ def _proj_node_id(fqn: str) -> str:
 
 def _evt_handler_node_id(fqn: str) -> str:
     return f"eh_{sanitize_mermaid_id(fqn)}"
-
-
-def _build_event_type_to_fqn(ir: dict[str, Any]) -> dict[str, str]:
-    """Build a mapping from event __type__ strings to their FQNs."""
-    mapping: dict[str, str] = {}
-    for cluster in ir.get("clusters", {}).values():
-        for evt_fqn, evt in cluster.get("events", {}).items():
-            type_str = evt.get("__type__", "")
-            if type_str:
-                mapping[type_str] = evt_fqn
-    return mapping
-
-
-def _build_cmd_type_to_fqn(ir: dict[str, Any]) -> dict[str, str]:
-    """Build a mapping from command __type__ strings to their FQNs."""
-    mapping: dict[str, str] = {}
-    for cluster in ir.get("clusters", {}).values():
-        for cmd_fqn, cmd in cluster.get("commands", {}).items():
-            type_str = cmd.get("__type__", "")
-            if type_str:
-                mapping[type_str] = cmd_fqn
-    return mapping
 
 
 def _render_cluster_subgraph(
@@ -262,8 +242,8 @@ def generate_event_flow_diagram(ir: dict[str, Any]) -> str:
     if not clusters:
         return "flowchart LR"
 
-    evt_type_to_fqn = _build_event_type_to_fqn(ir)
-    cmd_type_to_fqn = _build_cmd_type_to_fqn(ir)
+    evt_type_to_fqn = build_evt_type_to_fqn(ir)
+    cmd_type_to_fqn = build_cmd_type_to_fqn(ir)
 
     lines: list[str] = ["flowchart LR"]
 
