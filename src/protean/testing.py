@@ -643,7 +643,7 @@ class ProcessManagerResult:
         """Load the PM instance from the event store after processing."""
         from protean.utils.globals import current_domain
 
-        # Determine correlation value from the PM's start handler
+        # Determine correlation value from the first event's matching handler
         correlation_value = self._correlation_value
         if correlation_value is None:
             correlation_value = self._infer_correlation_value()
