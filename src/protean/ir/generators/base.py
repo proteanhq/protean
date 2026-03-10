@@ -212,3 +212,40 @@ def sanitize_mermaid_id(text: str) -> str:
     """
     sanitized = re.sub(r"\W+", "_", text).strip("_")
     return sanitized or "node"
+
+
+# ---------------------------------------------------------------------------
+# Type-string → FQN lookup builders
+# ---------------------------------------------------------------------------
+
+
+def build_cmd_type_to_fqn(ir: dict[str, Any]) -> dict[str, str]:
+    """Map command ``__type__`` strings to their fully-qualified names.
+
+    Scans all clusters in the IR and returns a dict that maps each
+    command's type string (e.g. ``"Ordering.PlaceOrder.v1"``) to its
+    FQN (e.g. ``"ecommerce.ordering.PlaceOrder"``).
+    """
+    mapping: dict[str, str] = {}
+    for cluster in ir.get("clusters", {}).values():
+        for cmd_fqn, cmd in cluster.get("commands", {}).items():
+            type_str = cmd.get("__type__", "")
+            if type_str:
+                mapping[type_str] = cmd_fqn
+    return mapping
+
+
+def build_evt_type_to_fqn(ir: dict[str, Any]) -> dict[str, str]:
+    """Map event ``__type__`` strings to their fully-qualified names.
+
+    Scans all clusters in the IR and returns a dict that maps each
+    event's type string (e.g. ``"Ordering.OrderPlaced.v1"``) to its
+    FQN (e.g. ``"ecommerce.ordering.OrderPlaced"``).
+    """
+    mapping: dict[str, str] = {}
+    for cluster in ir.get("clusters", {}).values():
+        for evt_fqn, evt in cluster.get("events", {}).items():
+            type_str = evt.get("__type__", "")
+            if type_str:
+                mapping[type_str] = evt_fqn
+    return mapping
