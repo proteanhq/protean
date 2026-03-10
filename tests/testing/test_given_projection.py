@@ -281,6 +281,16 @@ class TestProjectionResultAssertionFailures:
         with pytest.raises(AssertionError, match="expected 999"):
             result.has(balance=999)
 
+    def test_has_raises_on_unknown_attribute(self):
+        """has() raises AssertionError with context when attribute doesn't exist."""
+        uid = str(uuid4())
+        result = given(
+            Registered(user_id=uid, email="a@b.com", name="Alice"),
+        ).then(Balances, id=uid)
+
+        with pytest.raises(AssertionError, match="has no attribute 'balanec'"):
+            result.has(balanec=100)
+
 
 # ---------------------------------------------------------------------------
 # Tests: ProjectionResult — repr and private attrs

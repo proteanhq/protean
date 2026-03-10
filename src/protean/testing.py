@@ -501,7 +501,14 @@ class EventSequence:
             ProjectionResult: Result object with ``.has()``, ``.found``,
             and ``.projection`` for assertions.
         """
+        from protean.exceptions import ObjectNotFoundError
         from protean.utils.globals import current_domain
+
+        if not identity:
+            raise ValueError(
+                "then() requires at least one keyword argument to identify "
+                "the projection record (e.g., id='u1')"
+            )
 
         domain = current_domain
 
@@ -512,18 +519,13 @@ class EventSequence:
                 handler_cls._handle(event)
 
         # Retrieve the projection
-        if not identity:
-            raise ValueError(
-                "then() requires at least one keyword argument to identify "
-                "the projection record (e.g., id='u1')"
-            )
 
         repo = domain.repository_for(projection_cls)
         identifier_value = next(iter(identity.values()))
 
         try:
             projection = repo.get(identifier_value)
-        except Exception:
+        except ObjectNotFoundError:
             projection = None
 
         return ProjectionResult(projection_cls, projection)
@@ -584,7 +586,12 @@ class ProjectionResult:
                 f"{self._projection_cls.__name__} projection not found"
             )
         for attr, expected_value in expected.items():
-            actual = getattr(self._projection, attr)
+            try:
+                actual = getattr(self._projection, attr)
+            except AttributeError:
+                raise AssertionError(
+                    f"{self._projection_cls.__name__} has no attribute '{attr}'"
+                ) from None
             if actual != expected_value:
                 raise AssertionError(
                     f"{self._projection_cls.__name__}.{attr}: "
