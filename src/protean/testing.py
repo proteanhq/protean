@@ -1,8 +1,10 @@
-"""Event-sourcing test DSL for Protean.
+"""Testing DSL for Protean.
 
-Provides a fluent, Pythonic DSL for testing event-sourced aggregates
-through integration tests that exercise the full command processing
-pipeline: command → handler → aggregate → events.
+Provides fluent, Pythonic DSLs for testing event-sourced aggregates,
+projections, and domain invariants.
+
+Event-sourcing tests
+--------------------
 
 The three words::
 
@@ -29,39 +31,39 @@ Multi-command chaining::
     assert order.accepted
     assert order.status == "Payment_Pending"
 
-Usage::
+Projection tests
+----------------
 
-    from protean.testing import given
+When called with event instances only (no class), ``given()`` returns
+an ``EventSequence`` for testing projections::
 
-    def test_payment_on_confirmed_order(order_created, order_confirmed, initiate_payment):
-        order = given(Order, order_created, order_confirmed).process(initiate_payment)
+    result = given(
+        Registered(user_id="u1", name="Alice"),
+        Transacted(user_id="u1", amount=100),
+    ).then(Balances, id="u1")
 
-        assert order.accepted
-        assert PaymentPending in order.events
-        assert order.events[PaymentPending].payment_id == "pay-001"
-        assert order.status == "Payment_Pending"
+    result.has(name="Alice", balance=100)
+    assert result.projection.balance == 100
 
-    def test_cannot_pay_unconfirmed_order(order_created, initiate_payment):
-        order = given(Order, order_created).process(initiate_payment)
+Invariant helpers
+-----------------
 
-        assert order.rejected
-        assert isinstance(order.rejection, ValidationError)
-        assert len(order.events) == 0
+``assert_invalid`` and ``assert_valid`` test validation behavior::
 
-    def test_create_order(create_order):
-        order = given(Order).process(create_order)
+    assert_invalid(
+        lambda: OrderPlacementService(order, [empty_inventory])(),
+        message="Product is out of stock",
+    )
 
-        assert order.accepted
-        assert OrderCreated in order.events
-        assert order.status == "Created"
+    assert_valid(lambda: OrderPlacementService(order, [sufficient_inventory])())
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
-from protean.exceptions import ProteanExceptionWithMessage
+from protean.exceptions import ProteanExceptionWithMessage, ValidationError
 
 if TYPE_CHECKING:
     from protean.core.event import BaseEvent
@@ -75,23 +77,31 @@ from protean.utils.eventing import (
 from protean.utils.reflection import _ID_FIELD_NAME
 
 
-def given(aggregate_cls: type, *events: "BaseEvent") -> "AggregateResult":
-    """Start an event-sourcing test sentence.
+def given(aggregate_cls_or_event: type | "BaseEvent", *events: "BaseEvent") -> AggregateResult | EventSequence:
+    """Start a test sentence.
 
-    Args:
-        aggregate_cls (type): The aggregate class under test.
-        *events (BaseEvent): Past domain events constituting the aggregate's history.
+    Polymorphic entry point:
 
-    Returns:
-        AggregateResult: Result object ready for ``.after()`` or ``.process()``.
+    - ``given(AggregateClass, *events)`` — returns an ``AggregateResult`` for
+      event-sourcing tests (existing behavior).
+    - ``given(event, *events)`` — returns an ``EventSequence`` for projection
+      tests when all arguments are event instances.
 
     Examples::
 
+        # Event-sourcing test
         given(Order)                                    # no history
         given(Order, order_created)                     # one event
         given(Order, order_created, order_confirmed)    # multiple events
+
+        # Projection test
+        given(Registered(user_id="u1", name="Alice"))
+        given(registered_event, transacted_event)
     """
-    return AggregateResult(aggregate_cls, list(events))
+    if isinstance(aggregate_cls_or_event, type):
+        return AggregateResult(aggregate_cls_or_event, list(events))
+    # All arguments are event instances → projection testing path
+    return EventSequence([aggregate_cls_or_event, *events])
 
 
 class EventLog:
@@ -447,6 +457,242 @@ class AggregateResult:
                     handler_cls._handle(enriched)
 
         return aggregate_id
+
+
+# ---------------------------------------------------------------------------
+# Projection testing DSL
+# ---------------------------------------------------------------------------
+
+
+class EventSequence:
+    """A sequence of domain events for testing projections.
+
+    Created by ``given()`` when all arguments are event instances.
+    Use ``.then()`` to query the resulting projection state after
+    processing the events through their projector handlers.
+
+    Example::
+
+        result = given(
+            Registered(user_id="u1", name="Alice"),
+            Transacted(user_id="u1", amount=100),
+        ).then(Balances, id="u1")
+
+        result.has(name="Alice", balance=100)
+    """
+
+    def __init__(self, events: list[Any]) -> None:
+        self._events = list(events)
+
+    def then(self, projection_cls: type, **identity: Any) -> ProjectionResult:
+        """Process events through projector handlers and query the projection.
+
+        Dispatches each event to its registered handlers (projectors, event
+        handlers) and then retrieves the projection record identified by
+        the given keyword arguments.
+
+        Args:
+            projection_cls: The projection class to query.
+            **identity: Keyword arguments identifying the projection record.
+                Must provide exactly one keyword matching the projection's
+                identifier field.
+
+        Returns:
+            ProjectionResult: Result object with ``.has()``, ``.found``,
+            and ``.projection`` for assertions.
+        """
+        from protean.exceptions import ObjectNotFoundError
+        from protean.utils.globals import current_domain
+
+        if not identity:
+            raise ValueError(
+                "then() requires at least one keyword argument to identify "
+                "the projection record (e.g., id='u1')"
+            )
+
+        domain = current_domain
+
+        # Process each event through its handlers
+        for event in self._events:
+            handler_classes = domain.handlers_for(event)
+            for handler_cls in handler_classes:
+                handler_cls._handle(event)
+
+        # Retrieve the projection
+
+        repo = domain.repository_for(projection_cls)
+        identifier_value = next(iter(identity.values()))
+
+        try:
+            projection = repo.get(identifier_value)
+        except ObjectNotFoundError:
+            projection = None
+
+        return ProjectionResult(projection_cls, projection)
+
+    def __repr__(self) -> str:
+        type_names = [type(e).__name__ for e in self._events]
+        return f"EventSequence({type_names})"
+
+
+class ProjectionResult:
+    """The result of querying a projection after processing events.
+
+    Provides ``.has()`` for fluent attribute assertions, ``.found``
+    to check existence, and ``.projection`` for direct access.
+
+    Example::
+
+        result = given(registered_event).then(Balances, id="u1")
+
+        assert result.found
+        result.has(name="Alice", balance=0)
+        assert result.projection.name == "Alice"
+    """
+
+    def __init__(self, projection_cls: type, projection: Any) -> None:
+        self._projection_cls = projection_cls
+        self._projection = projection
+
+    @property
+    def found(self) -> bool:
+        """``True`` if the projection record was found."""
+        return self._projection is not None
+
+    @property
+    def not_found(self) -> bool:
+        """``True`` if the projection record was not found."""
+        return self._projection is None
+
+    @property
+    def projection(self) -> Any:
+        """The projection instance, or ``None`` if not found."""
+        return self._projection
+
+    def has(self, **expected: Any) -> ProjectionResult:
+        """Assert that the projection has the expected attribute values.
+
+        Raises ``AssertionError`` with a descriptive message if any
+        attribute does not match.
+
+        Returns self for chaining.
+
+        Example::
+
+            result.has(name="Alice", balance=100)
+        """
+        if self._projection is None:
+            raise AssertionError(
+                f"{self._projection_cls.__name__} projection not found"
+            )
+        for attr, expected_value in expected.items():
+            try:
+                actual = getattr(self._projection, attr)
+            except AttributeError:
+                raise AssertionError(
+                    f"{self._projection_cls.__name__} has no attribute '{attr}'"
+                ) from None
+            if actual != expected_value:
+                raise AssertionError(
+                    f"{self._projection_cls.__name__}.{attr}: "
+                    f"expected {expected_value!r}, got {actual!r}"
+                )
+        return self
+
+    def __getattr__(self, name: str) -> Any:
+        """Proxy attribute access to the underlying projection."""
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if self._projection is not None:
+            return getattr(self._projection, name)
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'. "
+            f"Projection not found."
+        )
+
+    def __repr__(self) -> str:
+        status = "found" if self.found else "not_found"
+        proj_name = self._projection_cls.__name__
+        return f"<ProjectionResult({proj_name}) {status}>"
+
+
+# ---------------------------------------------------------------------------
+# Invariant testing helpers
+# ---------------------------------------------------------------------------
+
+
+def assert_invalid(
+    operation: Callable[[], Any],
+    *,
+    message: str | None = None,
+) -> ValidationError:
+    """Assert that an operation raises a ``ValidationError``.
+
+    Args:
+        operation: A callable (typically a lambda) wrapping the code
+            that should fail validation.
+        message: If provided, asserts that this string appears in at
+            least one of the flattened validation error messages.
+
+    Returns:
+        The caught ``ValidationError`` for further assertions.
+
+    Raises:
+        AssertionError: If no ``ValidationError`` is raised, or if
+            *message* is provided and not found in the error messages.
+
+    Example::
+
+        exc = assert_invalid(
+            lambda: OrderPlacementService(order, [empty_inventory])(),
+            message="Product is out of stock",
+        )
+    """
+    try:
+        operation()
+    except ValidationError as exc:
+        if message is not None:
+            flat_messages = [
+                msg for msgs in exc.messages.values() for msg in msgs
+            ]
+            if not any(message in m for m in flat_messages):
+                raise AssertionError(
+                    f"Expected validation message containing {message!r}, "
+                    f"got: {flat_messages}"
+                ) from None
+        return exc
+
+    raise AssertionError("Expected ValidationError but no exception was raised")
+
+
+def assert_valid(operation: Callable[[], Any]) -> Any:
+    """Assert that an operation completes without raising a ``ValidationError``.
+
+    Args:
+        operation: A callable (typically a lambda) wrapping the code
+            that should pass validation.
+
+    Returns:
+        The return value of the operation.
+
+    Raises:
+        AssertionError: If a ``ValidationError`` is raised.
+
+    Example::
+
+        assert_valid(
+            lambda: OrderPlacementService(order, [sufficient_inventory])()
+        )
+    """
+    try:
+        return operation()
+    except ValidationError as exc:
+        flat_messages = [
+            msg for msgs in exc.messages.values() for msg in msgs
+        ]
+        raise AssertionError(
+            f"Expected no ValidationError but got: {flat_messages}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
