@@ -8,6 +8,12 @@ Usage::
     # JSON output (CI-friendly)
     protean check --domain=my_app --format=json
 
+    # Filter by severity level
+    protean check --domain=my_app --level=warning
+
+    # Quiet mode (counts only, for CI scripts)
+    protean check --domain=my_app --quiet
+
 Exit codes:
     0 — clean or info-only (no errors or warnings)
     1 — errors found
@@ -29,6 +35,9 @@ logger = get_logger(__name__)
 
 _CONSOLE = Console()
 
+# Ordered from most severe to least — used for --level threshold filtering
+_LEVEL_ORDER = {"error": 0, "warning": 1, "info": 2}
+
 
 def check(
     domain: Annotated[
@@ -47,8 +56,30 @@ def check(
             help="Output format: 'rich' (default) or 'json'",
         ),
     ] = "rich",
+    level: Annotated[
+        str,
+        typer.Option(
+            "--level",
+            "-l",
+            help="Minimum severity to show: 'error', 'warning', or 'info' (default)",
+        ),
+    ] = "info",
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Quiet mode: show only counts and exit code",
+        ),
+    ] = False,
 ) -> None:
     """Validate a Protean domain and report errors, warnings, and diagnostics."""
+    if level not in _LEVEL_ORDER:
+        print(
+            f"[red]Invalid --level: {level!r}. Use 'error', 'warning', or 'info'.[/red]"
+        )
+        raise typer.Exit(code=1)
+
     try:
         derived_domain = derive_domain(domain)
     except NoDomainException as exc:
@@ -61,16 +92,56 @@ def check(
 
     result = derived_domain.check()
 
-    if format == "json":
+    # Preserve unfiltered counts for exit code — --level only affects display
+    unfiltered_counts = dict(result["counts"])
+
+    # Apply --level filter to displayed diagnostics
+    threshold = _LEVEL_ORDER[level]
+    result["diagnostics"] = [
+        d
+        for d in result["diagnostics"]
+        if _LEVEL_ORDER.get(d.get("level"), 2) <= threshold
+    ]
+    # Recompute displayed counts after filtering
+    result["counts"]["warnings"] = sum(
+        1 for d in result["diagnostics"] if d.get("level") == "warning"
+    )
+    result["counts"]["infos"] = sum(
+        1 for d in result["diagnostics"] if d.get("level") == "info"
+    )
+    # Recompute status from filtered counts for consistent display
+    if result["counts"]["errors"] > 0:
+        result["status"] = "fail"
+    elif result["counts"]["warnings"] > 0:
+        result["status"] = "warn"
+    elif result["counts"]["infos"] > 0:
+        result["status"] = "info"
+    else:
+        result["status"] = "pass"
+
+    if quiet:
+        _print_quiet(result)
+    elif format == "json":
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
         _print_rich(result)
 
-    # Exit codes: 0=clean, 1=errors, 2=warnings only
-    if result["counts"]["errors"] > 0:
+    # Exit codes use UNFILTERED counts — --level only affects display, not CI result
+    # 0=clean/info-only, 1=errors, 2=warnings only
+    if unfiltered_counts["errors"] > 0:
         raise typer.Exit(code=1)
-    elif result["counts"]["warnings"] > 0:
+    elif unfiltered_counts["warnings"] > 0:
         raise typer.Exit(code=2)
+
+
+def _print_quiet(result: dict) -> None:
+    """Print counts-only output for CI scripts."""
+    counts = result["counts"]
+    status = result["status"]
+    domain_name = result["domain"]
+    print(
+        f"{domain_name}: {status} (errors={counts['errors']}, warnings={counts['warnings']}, infos={counts['infos']})"
+    )
 
 
 def _print_rich(result: dict) -> None:
