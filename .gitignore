@@ -150,6 +150,5 @@ tester-*
 docs-old/*
 tmp/*
 
-CLAUDE.md
 *.code-workspace
 .claude/
