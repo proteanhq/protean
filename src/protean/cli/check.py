@@ -61,7 +61,7 @@ def check(
         typer.Option(
             "--level",
             "-l",
-            help="Minimum severity to show: 'error', 'warning' (default), or 'info'",
+            help="Minimum severity to show: 'error', 'warning', or 'info' (default)",
         ),
     ] = "info",
     quiet: Annotated[
@@ -92,20 +92,32 @@ def check(
 
     result = derived_domain.check()
 
-    # Apply --level filter to diagnostics
+    # Preserve unfiltered counts for exit code — --level only affects display
+    unfiltered_counts = dict(result["counts"])
+
+    # Apply --level filter to displayed diagnostics
     threshold = _LEVEL_ORDER[level]
     result["diagnostics"] = [
         d
         for d in result["diagnostics"]
         if _LEVEL_ORDER.get(d.get("level"), 2) <= threshold
     ]
-    # Recompute counts after filtering
+    # Recompute displayed counts after filtering
     result["counts"]["warnings"] = sum(
         1 for d in result["diagnostics"] if d.get("level") == "warning"
     )
     result["counts"]["infos"] = sum(
         1 for d in result["diagnostics"] if d.get("level") == "info"
     )
+    # Recompute status from filtered counts for consistent display
+    if result["counts"]["errors"] > 0:
+        result["status"] = "fail"
+    elif result["counts"]["warnings"] > 0:
+        result["status"] = "warn"
+    elif result["counts"]["infos"] > 0:
+        result["status"] = "info"
+    else:
+        result["status"] = "pass"
 
     if quiet:
         _print_quiet(result)
@@ -114,10 +126,11 @@ def check(
     else:
         _print_rich(result)
 
-    # Exit codes: 0=clean/info-only, 1=errors, 2=warnings only
-    if result["counts"]["errors"] > 0:
+    # Exit codes use UNFILTERED counts — --level only affects display, not CI result
+    # 0=clean/info-only, 1=errors, 2=warnings only
+    if unfiltered_counts["errors"] > 0:
         raise typer.Exit(code=1)
-    elif result["counts"]["warnings"] > 0:
+    elif unfiltered_counts["warnings"] > 0:
         raise typer.Exit(code=2)
 
 

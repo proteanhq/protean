@@ -733,6 +733,7 @@ class TestHandlerTooBroad:
 
         diags = [d for d in ir["diagnostics"] if d["code"] == "HANDLER_TOO_BROAD"]
         assert any("OrderEventHandler" in d["message"] for d in diags)
+        assert all(d["level"] == "info" for d in diags)
 
     def test_no_warning_when_under_limit(self):
         domain = Domain(name="NarrowHandlerTest", root_path=".")
@@ -903,6 +904,14 @@ class TestCustomLintRules:
 
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "BAD_LEVEL" not in codes
+
+    def test_error_level_rejected_for_custom_rules(self):
+        """Custom rules cannot use 'error' level — errors are DomainValidator's domain."""
+        domain = _build_domain_with_rules([f"{_FIXTURES}.error_level_rule"])
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "CUSTOM_ERROR" not in codes
 
     def test_non_dict_item_skipped(self):
         domain = _build_domain_with_rules([f"{_FIXTURES}.non_dict_item_rule"])

@@ -163,6 +163,16 @@ class TestCheckLevelFilter:
         assert data["counts"]["warnings"] == 0
         assert data["counts"]["infos"] == 0
 
+    def test_level_filter_does_not_suppress_exit_code(self):
+        """--level only affects display, not the exit code. A domain with
+        warnings still exits 2 even when --level=error hides them."""
+        result = runner.invoke(
+            app,
+            ["check", "-d", _DIAG_DOMAIN, "-f", "json", "--level", "error"],
+        )
+        # test25 has warnings → exit code 2 regardless of display filter
+        assert result.exit_code == 2
+
     def test_level_info_shows_all(self):
         result = runner.invoke(
             app,

@@ -1482,7 +1482,7 @@ class IRBuilder:
     # Custom lint rules
     # ------------------------------------------------------------------
 
-    _VALID_LEVELS = frozenset({"error", "warning", "info"})
+    _VALID_LEVELS = frozenset({"warning", "info"})
     _REQUIRED_KEYS = frozenset({"code", "element", "level", "message"})
 
     def _run_custom_lint_rules(self, ir: dict[str, Any]) -> None:

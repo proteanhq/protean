@@ -67,6 +67,18 @@ def bad_level_rule(ir: dict) -> list[dict]:
     ]
 
 
+def error_level_rule(ir: dict) -> list[dict]:
+    """Returns a dict with 'error' level — not allowed for custom rules."""
+    return [
+        {
+            "code": "CUSTOM_ERROR",
+            "element": "test.element",
+            "level": "error",
+            "message": "Custom rules cannot use error level",
+        }
+    ]
+
+
 def non_dict_item_rule(ir: dict) -> list[dict]:
     """Returns a list containing a non-dict item."""
     return ["not a dict"]
