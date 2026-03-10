@@ -44,7 +44,9 @@ class InfrastructureManager:
             hasattr(domain.providers, "_providers")
             and domain.providers._providers is not None
         ):
-            for provider_name in domain.providers._providers.keys():
+            for provider_name, provider in domain.providers._providers.items():
+                if not provider.managed:
+                    continue
                 try:
                     # Synthesize new outbox class specific to this provider
                     new_name = f"{camelize(provider_name)}Outbox"
@@ -93,10 +95,13 @@ class InfrastructureManager:
     def setup_database(self) -> None:
         """Create all database tables (aggregates, entities, projections, outbox).
 
-        Delegates to each provider's ``_create_database_artifacts()`` which is
-        idempotent — existing tables are left untouched.
+        Delegates to each managed provider's ``_create_database_artifacts()``
+        which is idempotent — existing tables are left untouched.
+        Providers with ``managed = false`` are skipped.
         """
         for _, provider in self._domain.providers.items():
+            if not provider.managed:
+                continue
             provider._create_database_artifacts()
 
     def setup_outbox(self) -> None:
@@ -117,13 +122,16 @@ class InfrastructureManager:
         for _provider_name, outbox_repo in self.outbox_repos.items():
             outbox_repo._dao  # noqa: B018
         for _, provider in self._domain.providers.items():
+            if not provider.managed:
+                continue
             provider._create_database_artifacts()  # Idempotent
 
     def truncate_database(self) -> None:
         """Delete all rows from every table without dropping the tables.
 
-        Clears aggregate/projection tables in all providers and the event
-        store messages table.
+        Clears aggregate/projection tables in all managed providers and the
+        event store messages table. Providers with ``managed = false`` are
+        skipped.
         """
         domain = self._domain
 
@@ -131,11 +139,18 @@ class InfrastructureManager:
         self.setup_database()
 
         for _, provider in domain.providers.items():
+            if not provider.managed:
+                continue
             provider._data_reset()
 
         domain.event_store.store._data_reset()
 
     def drop_database(self) -> None:
-        """Drop all database tables."""
+        """Drop all database tables for managed providers.
+
+        Providers with ``managed = false`` are skipped.
+        """
         for _, provider in self._domain.providers.items():
+            if not provider.managed:
+                continue
             provider._drop_database_artifacts()

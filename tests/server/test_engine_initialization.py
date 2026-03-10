@@ -128,3 +128,79 @@ class TestEngineOutboxValidation:
                         Engine(domain, test_mode=True)
                 finally:
                     type(outbox_repo)._dao = original_dao
+
+
+# ---------------------------------------------------------------------------
+# Engine outbox processors skip unmanaged providers
+# ---------------------------------------------------------------------------
+class TestEngineOutboxSkipsUnmanagedProviders:
+    @pytest.mark.no_test_domain
+    def test_no_outbox_processor_for_unmanaged_provider(self):
+        """Engine should not create outbox processors for unmanaged providers."""
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.config["databases"]["unmanaged"] = {
+            "provider": "memory",
+            "managed": False,
+        }
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            domain.setup_database()
+            engine = Engine(domain, test_mode=True)
+
+            # Only the default (managed) provider should have outbox processors
+            processor_names = list(engine._outbox_processors.keys())
+            assert any("default" in name for name in processor_names)
+            assert not any("unmanaged" in name for name in processor_names)
+
+    @pytest.mark.no_test_domain
+    def test_outbox_processor_created_for_managed_provider(self):
+        """Engine should create outbox processors for managed providers."""
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.config["databases"]["secondary"] = {
+            "provider": "memory",
+            "managed": True,
+        }
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            domain.setup_database()
+            engine = Engine(domain, test_mode=True)
+
+            processor_names = list(engine._outbox_processors.keys())
+            assert any("default" in name for name in processor_names)
+            assert any("secondary" in name for name in processor_names)
+
+    @pytest.mark.no_test_domain
+    def test_external_outbox_processor_skips_unmanaged(self):
+        """External outbox processors should also skip unmanaged providers."""
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.config["databases"]["unmanaged"] = {
+            "provider": "memory",
+            "managed": False,
+        }
+        # Configure a second broker as external
+        domain.config["brokers"]["external_broker"] = {
+            "provider": "inline",
+        }
+        domain.config["outbox"] = {
+            "external_brokers": ["external_broker"],
+        }
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            domain.setup_database()
+            engine = Engine(domain, test_mode=True)
+
+            processor_names = list(engine._outbox_processors.keys())
+            # No external processor for the unmanaged provider
+            assert not any(
+                "unmanaged" in name and "external" in name for name in processor_names
+            )
+            # But external processor exists for the default (managed) provider
+            assert any(
+                "default" in name and "external" in name for name in processor_names
+            )

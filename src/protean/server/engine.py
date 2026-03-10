@@ -209,8 +209,10 @@ class Engine:
                 f"Outbox configuration: batch_size={messages_per_tick}, interval={tick_interval}s"
             )
 
-            # Create an outbox processor for each database provider
-            for database_provider_name in self.domain.providers.keys():
+            # Create an outbox processor for each managed database provider
+            for database_provider_name, provider in self.domain.providers.items():
+                if not provider.managed:
+                    continue
                 processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
                 logger.debug(f"Creating outbox processor: {processor_name}")
                 self._outbox_processors[processor_name] = OutboxProcessor(
@@ -230,7 +232,9 @@ class Engine:
                         f"outbox.external_brokers but not found in domain "
                         f"broker configuration"
                     )
-                for database_provider_name in self.domain.providers.keys():
+                for database_provider_name, provider in self.domain.providers.items():
+                    if not provider.managed:
+                        continue
                     processor_name = f"outbox-processor-{database_provider_name}-to-{ext_broker_name}-external"
                     logger.debug(
                         f"Creating external outbox processor: {processor_name}"

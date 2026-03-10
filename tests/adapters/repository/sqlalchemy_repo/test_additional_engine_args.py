@@ -154,3 +154,22 @@ class TestAdditionalEngineArgs:
         assert "echo" in result
         assert result["echo"] is True
         assert "isolation_level" not in result
+
+    def test_managed_key_excluded_from_engine_args(self, test_domain):
+        """The ``managed`` key is a framework concern, not a SQLAlchemy engine arg."""
+        provider = PostgresqlProvider(
+            name="test_provider",
+            domain=test_domain,
+            conn_info={
+                "provider": "postgresql",
+                "database_uri": POSTGRES_URI,
+                "managed": False,
+                "echo": True,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "managed" not in result
+        assert "echo" in result
+        assert result["echo"] is True

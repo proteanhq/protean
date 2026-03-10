@@ -676,7 +676,7 @@ class SAProvider(BaseProvider):
             {
                 key: value
                 for key, value in self.conn_info.items()
-                if key not in ["provider", "database_uri", "schema"]
+                if key not in ["provider", "database_uri", "schema", "managed"]
             }
         )
 

@@ -215,6 +215,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         self.name = name
         self.domain = domain
         self.conn_info = conn_info
+        self.managed = conn_info.get("managed", True)
 
     @property
     @abstractmethod
