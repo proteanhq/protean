@@ -64,7 +64,8 @@ def _render_invariant_notes(sid: str, invariants: dict[str, list[str]]) -> list[
     if not names:
         return []
     label = ", ".join(names)
-    return [f'    note for {sid} "{mermaid_escape(label)}"']
+    escaped_label = mermaid_escape(label)
+    return [f"    note for {sid} {escaped_label}"]
 
 
 def _render_cluster(

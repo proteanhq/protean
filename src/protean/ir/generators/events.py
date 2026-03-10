@@ -115,7 +115,6 @@ def _render_cluster_edges(
     cluster_fqn: str,
     cluster: dict[str, Any],
     cmd_type_to_fqn: dict[str, str],
-    evt_type_to_fqn: dict[str, str],
 ) -> list[str]:
     """Render edges within a cluster: cmd -> handler -> agg -> event."""
     lines: list[str] = []
@@ -274,9 +273,7 @@ def generate_event_flow_diagram(ir: dict[str, Any]) -> str:
 
     # Edges within clusters
     for cfqn, cluster in sorted(clusters.items()):
-        lines.extend(
-            _render_cluster_edges(cfqn, cluster, cmd_type_to_fqn, evt_type_to_fqn)
-        )
+        lines.extend(_render_cluster_edges(cfqn, cluster, cmd_type_to_fqn))
 
     # Event handlers
     lines.extend(_render_event_handler_nodes_and_edges(ir, evt_type_to_fqn))
