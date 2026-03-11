@@ -3,12 +3,11 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 from typing import List, Optional, Tuple
 
-from uuid import uuid4
-
 from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
+from protean.fields import Auto
 from protean.utils.eventing import Metadata
 from protean.utils.query import Q
 
@@ -37,10 +36,7 @@ class Outbox(BaseAggregate):
     Outbox is a collection of messages that are to be sent to the event store.
     """
 
-    id: str = Field(
-        default_factory=lambda: str(uuid4()),
-        json_schema_extra={"identifier": True},
-    )
+    id = Auto(identifier=True)
 
     # Fields to be pushed to broker
     message_id: str

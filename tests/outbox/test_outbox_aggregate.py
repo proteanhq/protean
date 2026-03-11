@@ -1,5 +1,7 @@
 """Tests for Outbox aggregate behavior and state transitions."""
 
+import uuid
+
 import pytest
 from datetime import datetime, timezone, timedelta
 
@@ -110,6 +112,101 @@ class TestOutboxCreation:
         after_creation = datetime.now(timezone.utc)
 
         assert before_creation <= outbox.created_at <= after_creation
+
+    def test_id_auto_generated(self, sample_metadata):
+        """Test that id is auto-generated when not provided."""
+        outbox = Outbox.create_message(
+            message_id="message-123",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "value"},
+            metadata=sample_metadata,
+        )
+
+        assert outbox.id is not None
+        assert isinstance(outbox.id, str)
+        assert len(outbox.id) > 0
+
+    def test_id_is_unique_across_instances(self, sample_metadata):
+        """Test that auto-generated ids are unique."""
+        outbox1 = Outbox.create_message(
+            message_id="msg-1",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "value"},
+            metadata=sample_metadata,
+        )
+        outbox2 = Outbox.create_message(
+            message_id="msg-2",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"key": "value"},
+            metadata=sample_metadata,
+        )
+
+        assert outbox1.id != outbox2.id
+
+    def test_id_accepts_str(self, sample_metadata):
+        """Test that a plain str id is accepted as-is."""
+        str_id = str(uuid.uuid4())
+        outbox = Outbox(
+            id=str_id,
+            message_id="message-123",
+            stream_name="test-stream",
+            type="TestEvent",
+            data={"key": "value"},
+            metadata_=sample_metadata,
+        )
+
+        assert outbox.id == str_id
+
+    def test_id_coerces_uuid_to_str(self, sample_metadata):
+        """Test that a uuid.UUID id is coerced to str.
+
+        The GUID TypeDecorator in the SQLAlchemy adapter returns uuid.UUID
+        objects from process_result_value() for all dialects (PostgreSQL,
+        MSSQL, CHAR(32)). The Auto field's BeforeValidator coerces them.
+        """
+        uuid_val = uuid.uuid4()
+        outbox = Outbox(
+            id=uuid_val,
+            message_id="message-123",
+            stream_name="test-stream",
+            type="TestEvent",
+            data={"key": "value"},
+            metadata_=sample_metadata,
+        )
+
+        assert isinstance(outbox.id, str)
+        assert outbox.id == str(uuid_val)
+
+    def test_id_coerces_int_to_str(self, sample_metadata):
+        """Test that an integer id is coerced to str."""
+        outbox = Outbox(
+            id=42,
+            message_id="message-123",
+            stream_name="test-stream",
+            type="TestEvent",
+            data={"key": "value"},
+            metadata_=sample_metadata,
+        )
+
+        assert isinstance(outbox.id, str)
+        assert outbox.id == "42"
+
+    def test_explicit_id_overrides_auto_generation(self, sample_metadata):
+        """Test that providing an explicit id skips auto-generation."""
+        explicit_id = "custom-id-12345"
+        outbox = Outbox(
+            id=explicit_id,
+            message_id="message-123",
+            stream_name="test-stream",
+            type="TestEvent",
+            data={"key": "value"},
+            metadata_=sample_metadata,
+        )
+
+        assert outbox.id == explicit_id
 
 
 class TestStartProcessing:
