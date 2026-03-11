@@ -217,7 +217,7 @@ class TestAssertSnapshotDomainObjects:
         assert_snapshot(
             invoice,
             "aggregate_with_entities",
-            exclude=["id", "items"],
+            exclude=["id"],
         )
 
     def test_value_object_standalone(self):
@@ -235,6 +235,14 @@ class TestAssertSnapshotEdgeCases:
         assert_snapshot({}, "empty_dict")
         # Second call should match
         assert_snapshot({}, "empty_dict")
+
+    def test_path_traversal_name_rejected(self):
+        with pytest.raises(ValueError, match="Invalid snapshot name"):
+            assert_snapshot({"a": 1}, "../escape")
+
+    def test_absolute_path_name_rejected(self):
+        with pytest.raises(ValueError, match="Invalid snapshot name"):
+            assert_snapshot({"a": 1}, "/etc/passwd")
 
     def test_unsupported_type_raises_type_error(self):
         with pytest.raises(TypeError, match="Cannot snapshot"):

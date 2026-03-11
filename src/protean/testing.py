@@ -85,8 +85,12 @@ from __future__ import annotations
 import difflib
 import inspect
 import json
+from datetime import date, datetime
+from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
+from uuid import UUID
 
 from protean.exceptions import ProteanExceptionWithMessage, ValidationError
 
@@ -943,6 +947,29 @@ def _snapshot_data(obj: Any, exclude: list[str] | None = None) -> dict[str, Any]
     return data
 
 
+def _snapshot_json_default(obj: Any) -> Any:
+    """JSON serializer for known stable types only.
+
+    Raises ``TypeError`` for anything else so that non-deterministic
+    representations (e.g. ``str(obj)`` with memory addresses) never
+    silently slip into snapshots.
+    """
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, UUID):
+        return str(obj)
+    if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, Enum):
+        return obj.value
+    if isinstance(obj, Path):
+        return str(obj)
+    raise TypeError(
+        f"Object of type {type(obj).__name__} is not JSON serializable. "
+        "Convert it before passing to assert_snapshot()."
+    )
+
+
 def _snapshot_dir_for_caller() -> Path:
     """Return the ``__snapshots__/<test_module>`` directory for the calling test.
 
@@ -950,12 +977,19 @@ def _snapshot_dir_for_caller() -> Path:
     starts with ``test_``, and uses that module's name (without the ``.py``
     extension) as the snapshot subdirectory.
     """
-    for frame_info in inspect.stack():
+    stack = inspect.stack(context=0)
+    for frame_info in stack:
         filename = Path(frame_info.filename)
         if filename.name.startswith("test_"):
             return filename.parent / "__snapshots__" / filename.stem
-    # Fallback: use the direct caller's directory
-    caller = Path(inspect.stack()[1].filename)
+    # Fallback: use the first frame outside this module
+    this_file = Path(__file__).name
+    for frame_info in stack:
+        filename = Path(frame_info.filename)
+        if filename.name != this_file:
+            return filename.parent / "__snapshots__" / filename.stem
+    # Ultimate fallback: direct caller
+    caller = Path(stack[1].filename)
     return caller.parent / "__snapshots__" / caller.stem
 
 
@@ -1008,9 +1042,23 @@ def assert_snapshot(
     data = _snapshot_data(obj, exclude)
 
     snapshot_dir = _snapshot_dir_for_caller()
+
+    # Validate snapshot name to prevent path traversal
+    name_path = Path(name)
+    if name_path.is_absolute() or len(name_path.parts) != 1 or any(
+        part in (".", "..") for part in name_path.parts
+    ):
+        raise ValueError(
+            f"Invalid snapshot name {name!r}: "
+            "must be a simple file name without path separators"
+        )
+
     snapshot_file = snapshot_dir / f"{name}.json"
 
-    current_json = json.dumps(data, indent=2, sort_keys=True, default=str) + "\n"
+    current_json = (
+        json.dumps(data, indent=2, sort_keys=True, default=_snapshot_json_default)
+        + "\n"
+    )
 
     if _update_snapshots or not snapshot_file.exists():
         snapshot_dir.mkdir(parents=True, exist_ok=True)
