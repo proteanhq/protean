@@ -9,12 +9,18 @@ import os
 
 
 def pytest_addoption(parser):
-    """Add ``--protean-env`` CLI option (default: ``test``)."""
+    """Add ``--protean-env`` and ``--update-snapshots`` CLI options."""
     parser.addoption(
         "--protean-env",
         action="store",
         default="test",
         help="Protean environment overlay to activate (maps to PROTEAN_ENV)",
+    )
+    parser.addoption(
+        "--update-snapshots",
+        action="store_true",
+        default=False,
+        help="Regenerate all assert_snapshot() reference files",
     )
 
 
@@ -28,6 +34,12 @@ def pytest_configure(config):
     """
     env = config.getoption("--protean-env", default="test")
     os.environ.setdefault("PROTEAN_ENV", env)
+
+    # Propagate --update-snapshots to the testing module
+    if config.getoption("--update-snapshots", default=False):
+        import protean.testing as _testing
+
+        _testing._update_snapshots = True
 
     # Register standard markers so --strict-markers doesn't complain
     config.addinivalue_line("markers", "domain: pure domain logic tests (no DB)")
