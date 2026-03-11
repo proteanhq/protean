@@ -69,7 +69,7 @@ Learn more about stream categories and message routing in the [Stream Categories
       Command Handler->>Command Handler: Extract data and Load aggregate
       Command Handler->>Aggregate: Invoke method
       Aggregate->>Aggregate: Mutate
-      Aggregate-->>Command Handler:
+      Aggregate-->>Command Handler: Done
       Command Handler->>Command Handler: Persist aggregate
     ```
 

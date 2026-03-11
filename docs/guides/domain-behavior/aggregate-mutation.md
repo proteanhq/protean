@@ -17,11 +17,11 @@ A typical workflow of a state change is depicted below:
 sequenceDiagram
   autonumber
   ApplicationService->>Repository: Fetch Aggregate
-  Repository-->>ApplicationService: aggregate
-  ApplicationService->>aggregate: Call state change
-  aggregate->>aggregate: Mutate
-  aggregate-->>ApplicationService:
-  ApplicationService->>Repository: Persist aggregate
+  Repository-->>ApplicationService: Aggregate
+  ApplicationService->>Aggregate: Call state change
+  Aggregate->>Aggregate: Mutate
+  Aggregate-->>ApplicationService: Done
+  ApplicationService->>Repository: Persist Aggregate
 ```
 
 An Application Service (or another element from the Application Layer, like

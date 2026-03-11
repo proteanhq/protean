@@ -91,15 +91,15 @@ Out[8]: {
       autonumber
       Aggregate->>Domain: Publish Event
       Domain->>Event Store: Store Event
-      Event Store-->>Domain:
-      Domain-->>Aggregate:
+      Event Store-->>Domain: Done
+      Domain-->>Aggregate: Done
 
       Note over Domain,Event Handler: Asynchronous Processing
 
       Event Store->>Event Handler: Deliver Event
       Event Handler->>Event Handler: Process Event
       Event Handler->>Repository: Load/Update Aggregates
-      Repository-->>Event Handler:
+      Repository-->>Event Handler: Done
       Event Handler->>Event Handler: Perform Side Effects
       Event Handler->>Repository: Persist Aggregates
     ```

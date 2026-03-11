@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Think harder and thoroughly examine similar areas of the codebase to ensure your proposed approach fits seamlessly with the established patterns and architecture.
 - Aim to make only minimal and necessary changes, avoiding any disruption to the eisting design.
 - Whenever possible, take advantage of components, utilities, or logic that have already been implemented to maintain consistency, reduce duplication, and streamline integration with the current system.
+- Always use the `-R proteanhq/protean` flag with `gh` CLI commands to explicitly target the correct repository.
 
 
 ## Essential Commands

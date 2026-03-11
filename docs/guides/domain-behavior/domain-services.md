@@ -141,7 +141,7 @@ sequenceDiagram
   Domain Service->>Domain Service: Validate (pre-invariants)
   Domain Service->>Domain Service: Mutate aggregates
   Domain Service->>Domain Service: Validate (post-invariants)
-  Domain Service-->>Command Handler:
+  Domain Service-->>Command Handler: Done
   Command Handler->>Repository: Persist order (one aggregate)
 ```
 
