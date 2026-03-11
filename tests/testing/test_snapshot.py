@@ -6,7 +6,12 @@ and the ``--update-snapshots`` regeneration flow.
 
 import json
 import shutil
+from datetime import date, datetime
+from decimal import Decimal
+from enum import Enum
 from pathlib import Path
+from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 
@@ -14,7 +19,11 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
-from protean.testing import assert_snapshot
+from protean.testing import (
+    _snapshot_dir_for_caller,
+    _snapshot_json_default,
+    assert_snapshot,
+)
 
 # ---------------------------------------------------------------------------
 # Snapshot directory for *this* test module
@@ -269,3 +278,91 @@ class TestAssertSnapshotEdgeCases:
         # Pretty-printed JSON has newlines and indentation
         assert "\n" in content
         assert "  " in content
+
+    def test_dot_name_rejected(self):
+        with pytest.raises(ValueError, match="Invalid snapshot name"):
+            assert_snapshot({"a": 1}, ".")
+
+    def test_dotdot_name_rejected(self):
+        with pytest.raises(ValueError, match="Invalid snapshot name"):
+            assert_snapshot({"a": 1}, "..")
+
+    def test_slash_in_name_rejected(self):
+        with pytest.raises(ValueError, match="Invalid snapshot name"):
+            assert_snapshot({"a": 1}, "sub/path")
+
+
+class TestSnapshotJsonDefault:
+    """Tests for ``_snapshot_json_default`` serializer."""
+
+    def test_datetime_serialized(self):
+        dt = datetime(2024, 1, 15, 10, 30, 0)
+        assert _snapshot_json_default(dt) == "2024-01-15T10:30:00"
+
+    def test_date_serialized(self):
+        d = date(2024, 6, 1)
+        assert _snapshot_json_default(d) == "2024-06-01"
+
+    def test_uuid_serialized(self):
+        uid = UUID("12345678-1234-5678-1234-567812345678")
+        assert _snapshot_json_default(uid) == "12345678-1234-5678-1234-567812345678"
+
+    def test_decimal_serialized(self):
+        assert _snapshot_json_default(Decimal("19.99")) == "19.99"
+
+    def test_enum_serialized(self):
+        class Color(Enum):
+            RED = "red"
+
+        assert _snapshot_json_default(Color.RED) == "red"
+
+    def test_path_serialized(self):
+        assert _snapshot_json_default(Path("/tmp/test")) == "/tmp/test"
+
+    def test_unsupported_type_raises(self):
+        with pytest.raises(TypeError, match="not JSON serializable"):
+            _snapshot_json_default(object())
+
+    def test_datetime_in_snapshot(self):
+        """datetime values round-trip correctly through assert_snapshot."""
+        data = {"created": datetime(2024, 1, 15, 10, 30, 0)}
+        assert_snapshot(data, "with_datetime")
+
+        snapshot_file = SNAPSHOT_DIR / "with_datetime.json"
+        stored = json.loads(snapshot_file.read_text("utf-8"))
+        assert stored["created"] == "2024-01-15T10:30:00"
+
+    def test_uuid_in_snapshot(self):
+        """UUID values round-trip correctly through assert_snapshot."""
+        uid = UUID("12345678-1234-5678-1234-567812345678")
+        data = {"id": uid}
+        assert_snapshot(data, "with_uuid")
+
+        snapshot_file = SNAPSHOT_DIR / "with_uuid.json"
+        stored = json.loads(snapshot_file.read_text("utf-8"))
+        assert stored["id"] == "12345678-1234-5678-1234-567812345678"
+
+
+class TestSnapshotDirForCaller:
+    """Tests for ``_snapshot_dir_for_caller`` fallback paths."""
+
+    def test_finds_test_file_in_stack(self):
+        """Normal case — should resolve to this test file's snapshot dir."""
+        result = _snapshot_dir_for_caller()
+        assert result == SNAPSHOT_DIR
+
+    def test_fallback_when_no_test_file_in_stack(self):
+        """When no test_* file is in the stack, falls back to first non-testing.py frame."""
+        # Mock inspect.stack to return frames without any test_* files
+        fake_frame = type("FrameInfo", (), {
+            "filename": "/some/other/module.py",
+        })()
+        testing_frame = type("FrameInfo", (), {
+            "filename": str(Path(__file__).parent.parent.parent / "src" / "protean" / "testing.py"),
+        })()
+
+        with patch("protean.testing.inspect") as mock_inspect:
+            mock_inspect.stack.return_value = [testing_frame, fake_frame]
+            result = _snapshot_dir_for_caller()
+
+        assert result == Path("/some/other") / "__snapshots__" / "module"
