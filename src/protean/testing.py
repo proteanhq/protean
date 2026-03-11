@@ -82,6 +82,9 @@ Invariant helpers
 
 from __future__ import annotations
 
+import difflib
+import inspect
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -901,6 +904,136 @@ def assert_valid(operation: Callable[[], Any]) -> Any:
         raise AssertionError(
             f"Expected no ValidationError but got: {flat_messages}"
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Snapshot testing
+# ---------------------------------------------------------------------------
+
+# Module-level flag set by the pytest plugin when --update-snapshots is passed.
+_update_snapshots: bool = False
+
+
+def _snapshot_data(obj: Any, exclude: list[str] | None = None) -> dict[str, Any]:
+    """Convert *obj* to a JSON-serialisable dict suitable for snapshotting.
+
+    Supports domain objects (via ``.to_dict()``), plain dicts, and Pydantic
+    models (via ``.model_dump()``).
+
+    Args:
+        obj: The object to snapshot.
+        exclude: Field names to remove from the resulting dict.
+    """
+    if isinstance(obj, dict):
+        data = dict(obj)
+    elif hasattr(obj, "to_dict"):
+        data = obj.to_dict()
+    elif hasattr(obj, "model_dump"):
+        data = obj.model_dump()
+    else:
+        raise TypeError(
+            f"Cannot snapshot {type(obj).__name__}: "
+            "expected a dict, a domain object with .to_dict(), "
+            "or a Pydantic model with .model_dump()"
+        )
+
+    if exclude:
+        for key in exclude:
+            data.pop(key, None)
+    return data
+
+
+def _snapshot_dir_for_caller() -> Path:
+    """Return the ``__snapshots__/<test_module>`` directory for the calling test.
+
+    Walks up the call stack to find the first frame in a file whose name
+    starts with ``test_``, and uses that module's name (without the ``.py``
+    extension) as the snapshot subdirectory.
+    """
+    for frame_info in inspect.stack():
+        filename = Path(frame_info.filename)
+        if filename.name.startswith("test_"):
+            return filename.parent / "__snapshots__" / filename.stem
+    # Fallback: use the direct caller's directory
+    caller = Path(inspect.stack()[1].filename)
+    return caller.parent / "__snapshots__" / caller.stem
+
+
+def assert_snapshot(
+    obj: Any,
+    name: str,
+    *,
+    exclude: list[str] | None = None,
+) -> None:
+    """Compare *obj* against a stored JSON snapshot.
+
+    On first run (or when ``--update-snapshots`` is passed to pytest) the
+    snapshot file is created automatically.  On subsequent runs the current
+    state is compared against the stored snapshot and a unified diff is
+    shown on mismatch.
+
+    Snapshot files are stored under::
+
+        <test_file_dir>/__snapshots__/<test_module_name>/<name>.json
+
+    Args:
+        obj: A domain object (with ``.to_dict()``), a plain dict, or a
+            Pydantic model (with ``.model_dump()``).
+        name: A short, descriptive name for this snapshot (used as the
+            file stem).
+        exclude: Field names to strip before comparison (useful for
+            volatile fields like ``id`` or ``created_at``).
+
+    Raises:
+        AssertionError: If the current state does not match the stored
+            snapshot.
+        TypeError: If *obj* cannot be converted to a dict.
+
+    Examples::
+
+        from protean.testing import assert_snapshot
+
+        order = Order(customer_id="c1", items=[OrderItem(...)])
+        assert_snapshot(order, "order_with_items")
+
+        # Exclude volatile fields
+        assert_snapshot(order, "order_stable", exclude=["id", "created_at"])
+
+        # Works with plain dicts
+        assert_snapshot(result.to_dict(), "pm_state")
+
+        # Regenerate all snapshots:
+        #   pytest --update-snapshots
+    """
+    data = _snapshot_data(obj, exclude)
+
+    snapshot_dir = _snapshot_dir_for_caller()
+    snapshot_file = snapshot_dir / f"{name}.json"
+
+    current_json = json.dumps(data, indent=2, sort_keys=True, default=str) + "\n"
+
+    if _update_snapshots or not snapshot_file.exists():
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_file.write_text(current_json, encoding="utf-8")
+        return
+
+    stored_json = snapshot_file.read_text(encoding="utf-8")
+
+    if current_json == stored_json:
+        return
+
+    # Build a human-readable unified diff
+    diff = difflib.unified_diff(
+        stored_json.splitlines(keepends=True),
+        current_json.splitlines(keepends=True),
+        fromfile=f"stored: {name}.json",
+        tofile=f"current: {name}.json",
+    )
+    diff_text = "".join(diff)
+    raise AssertionError(
+        f"Snapshot mismatch for '{name}'.\n"
+        f"Run pytest --update-snapshots to update.\n\n{diff_text}"
+    )
 
 
 # ---------------------------------------------------------------------------
