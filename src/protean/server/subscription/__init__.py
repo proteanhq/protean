@@ -63,18 +63,38 @@ class BaseSubscription(ABC):
         Returns:
             None
         """
-        while self.keep_going and not self.engine.shutting_down:
-            with self.engine.domain.domain_context():
-                # Process messages
-                await self.tick()
+        consecutive_errors = 0
 
-                # Use minimal sleep for cooperative multitasking
-                # This ensures interleaving without blocking
-                if self.tick_interval > 0:
-                    await asyncio.sleep(self.tick_interval)
-                else:
-                    # Always yield control to allow other tasks to run
-                    await asyncio.sleep(0)
+        while self.keep_going and not self.engine.shutting_down:
+            try:
+                with self.engine.domain.domain_context():
+                    # Process messages
+                    await self.tick()
+
+                    # Reset error counter on successful tick
+                    consecutive_errors = 0
+
+                    # Use minimal sleep for cooperative multitasking
+                    # This ensures interleaving without blocking
+                    if self.tick_interval > 0:
+                        await asyncio.sleep(self.tick_interval)
+                    else:
+                        # Always yield control to allow other tasks to run
+                        await asyncio.sleep(0)
+
+            except asyncio.CancelledError:
+                logger.info(f"Subscription cancelled: {self.subscriber_name}")
+                break
+
+            except Exception as exc:
+                consecutive_errors += 1
+                logger.exception(
+                    f"Error in subscription {self.subscriber_name} "
+                    f"(attempt {consecutive_errors}): {exc}"
+                )
+                # Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s
+                backoff = min(2 ** (consecutive_errors - 1), 30)
+                await asyncio.sleep(backoff)
 
     async def tick(self):
         """

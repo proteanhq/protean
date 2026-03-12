@@ -150,9 +150,7 @@ class TestAssertInvalid:
             warehouse=Warehouse(location="NYC", contact="John"),
         )
 
-        exc = assert_invalid(
-            lambda: OrderPlacementService(order, [inventory])()
-        )
+        exc = assert_invalid(lambda: OrderPlacementService(order, [inventory])())
         assert isinstance(exc, ValidationError)
 
     def test_raises_when_no_error(self):
@@ -170,9 +168,7 @@ class TestAssertInvalid:
         )
 
         with pytest.raises(AssertionError, match="Expected ValidationError"):
-            assert_invalid(
-                lambda: OrderPlacementService(order, [inventory])()
-            )
+            assert_invalid(lambda: OrderPlacementService(order, [inventory])())
 
     def test_raises_when_message_not_found(self):
         """assert_invalid raises AssertionError when message doesn't match."""
@@ -273,7 +269,7 @@ class TestAssertValid:
 
     def test_error_message_includes_details(self):
         """assert_valid error message includes validation error details."""
-        with pytest.raises(AssertionError, match="Order must contain at least one item"):
-            assert_valid(
-                lambda: Order(customer_id=str(uuid4()), items=[])
-            )
+        with pytest.raises(
+            AssertionError, match="Order must contain at least one item"
+        ):
+            assert_valid(lambda: Order(customer_id=str(uuid4()), items=[]))

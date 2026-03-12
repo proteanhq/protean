@@ -202,18 +202,14 @@ class TestAssertSnapshotDomainObjects:
             customer_id="c1",
             billing_address=Address(street="123 Main St", city="Springfield"),
         )
-        assert_snapshot(
-            invoice, "aggregate_with_vo", exclude=["id", "items"]
-        )
+        assert_snapshot(invoice, "aggregate_with_vo", exclude=["id", "items"])
 
         # Second call should match
         invoice2 = Invoice(
             customer_id="c1",
             billing_address=Address(street="123 Main St", city="Springfield"),
         )
-        assert_snapshot(
-            invoice2, "aggregate_with_vo", exclude=["id", "items"]
-        )
+        assert_snapshot(invoice2, "aggregate_with_vo", exclude=["id", "items"])
 
     def test_aggregate_with_entities(self):
         invoice = Invoice(
@@ -354,12 +350,25 @@ class TestSnapshotDirForCaller:
     def test_fallback_when_no_test_file_in_stack(self):
         """When no test_* file is in the stack, falls back to first non-testing.py frame."""
         # Mock inspect.stack to return frames without any test_* files
-        fake_frame = type("FrameInfo", (), {
-            "filename": "/some/other/module.py",
-        })()
-        testing_frame = type("FrameInfo", (), {
-            "filename": str(Path(__file__).parent.parent.parent / "src" / "protean" / "testing.py"),
-        })()
+        fake_frame = type(
+            "FrameInfo",
+            (),
+            {
+                "filename": "/some/other/module.py",
+            },
+        )()
+        testing_frame = type(
+            "FrameInfo",
+            (),
+            {
+                "filename": str(
+                    Path(__file__).parent.parent.parent
+                    / "src"
+                    / "protean"
+                    / "testing.py"
+                ),
+            },
+        )()
 
         with patch("protean.testing.inspect") as mock_inspect:
             mock_inspect.stack.return_value = [testing_frame, fake_frame]

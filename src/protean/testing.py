@@ -867,9 +867,7 @@ def assert_invalid(
         operation()
     except ValidationError as exc:
         if message is not None:
-            flat_messages = [
-                msg for msgs in exc.messages.values() for msg in msgs
-            ]
+            flat_messages = [msg for msgs in exc.messages.values() for msg in msgs]
             if not any(message in m for m in flat_messages):
                 raise AssertionError(
                     f"Expected validation message containing {message!r}, "
@@ -902,9 +900,7 @@ def assert_valid(operation: Callable[[], Any]) -> Any:
     try:
         return operation()
     except ValidationError as exc:
-        flat_messages = [
-            msg for msgs in exc.messages.values() for msg in msgs
-        ]
+        flat_messages = [msg for msgs in exc.messages.values() for msg in msgs]
         raise AssertionError(
             f"Expected no ValidationError but got: {flat_messages}"
         ) from exc
@@ -1045,8 +1041,10 @@ def assert_snapshot(
 
     # Validate snapshot name to prevent path traversal
     name_path = Path(name)
-    if name_path.is_absolute() or len(name_path.parts) != 1 or any(
-        part in (".", "..") for part in name_path.parts
+    if (
+        name_path.is_absolute()
+        or len(name_path.parts) != 1
+        or any(part in (".", "..") for part in name_path.parts)
     ):
         raise ValueError(
             f"Invalid snapshot name {name!r}: "

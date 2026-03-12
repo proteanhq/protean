@@ -124,7 +124,9 @@ def payment_confirmed(order_id):
 
 @pytest.fixture
 def payment_failed(order_id):
-    return PaymentFailed(payment_id="PAY-1", order_id=order_id, reason="Insufficient funds")
+    return PaymentFailed(
+        payment_id="PAY-1", order_id=order_id, reason="Insufficient funds"
+    )
 
 
 @pytest.fixture
@@ -292,9 +294,9 @@ class TestResultsIn:
         self, order_id, order_placed, payment_confirmed, shipment_delivered
     ):
         """results_in() works through full lifecycle."""
-        result = given(
-            order_placed, payment_confirmed, shipment_delivered
-        ).results_in(OrderFulfillmentPM, id=order_id)
+        result = given(order_placed, payment_confirmed, shipment_delivered).results_in(
+            OrderFulfillmentPM, id=order_id
+        )
 
         assert result.is_complete
         assert result.status == "completed"
@@ -303,9 +305,7 @@ class TestResultsIn:
     @pytest.mark.eventstore
     def test_results_in_without_identity(self, order_placed, payment_confirmed):
         """results_in() without identity infers correlation from events."""
-        result = given(order_placed, payment_confirmed).results_in(
-            OrderFulfillmentPM
-        )
+        result = given(order_placed, payment_confirmed).results_in(OrderFulfillmentPM)
 
         assert result.status == "awaiting_shipment"
         assert result.transition_count == 2
@@ -367,8 +367,8 @@ class TestEdgeCases:
         result = given(
             OrderFulfillmentPM,
             order_placed,
-            payment_failed,      # end=True → marks complete
-            shipment_delivered,   # should be skipped
+            payment_failed,  # end=True → marks complete
+            shipment_delivered,  # should be skipped
         )
 
         assert result.status == "cancelled"
@@ -386,11 +386,9 @@ class TestEdgeCases:
     @pytest.mark.eventstore
     def test_infer_correlation_value_no_correlate_spec(self, order_placed):
         """_infer_correlation_value returns None when handler lacks correlate."""
-        result = ProcessManagerResult(OrderFulfillmentPM, [order_placed])
+        ProcessManagerResult(OrderFulfillmentPM, [order_placed])
         # Temporarily remove _correlate from the handler to test the guard
-        handlers = OrderFulfillmentPM._handlers.get(
-            order_placed.__class__.__type__
-        )
+        handlers = OrderFulfillmentPM._handlers.get(order_placed.__class__.__type__)
         handler = next(iter(handlers))
         original = handler._correlate
         try:
@@ -406,6 +404,7 @@ class TestEdgeCases:
     @pytest.mark.eventstore
     def test_unrecognized_event_type_results_not_started(self, test_domain):
         """An event with no matching PM handler results in not_started."""
+
         # Create a PM that only handles OrderPlaced — register a separate
         # one-handler PM for this test
         class MinimalPM(BaseProcessManager):

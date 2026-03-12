@@ -10,11 +10,11 @@ practices and metrics behind the framework.
 
 | Metric | Value |
 |---|---|
-| **Tests** | 3,826 |
-| **Test-to-Code Ratio** | 3.5:1 |
+| **Tests** | 7,674 |
+| **Test-to-Code Ratio** | 3.0:1 |
 | **Linting Violations** | 0 (Ruff) |
-| **Avg Cyclomatic Complexity** | 2.97 (A grade) |
-| **Maintainability Index** | A rank (97% of files) |
+| **Avg Cyclomatic Complexity** | 3.38 (A grade) |
+| **Maintainability Index** | A rank (95% of files) |
 | **Python Versions** | 3.11, 3.12, 3.13, 3.14 |
 | **CI Backing Services** | PostgreSQL, Redis, Elasticsearch, MessageDB, MSSQL |
 | **Releases** | 46 |
@@ -25,7 +25,7 @@ practices and metrics behind the framework.
 
 ## Test Suite
 
-Protean has a comprehensive test suite of **3,826 tests** covering domain
+Protean has a comprehensive test suite of **7,674 tests** covering domain
 logic, application services, infrastructure adapters, and integration
 scenarios.
 
@@ -33,18 +33,18 @@ scenarios.
 
 | Metric | Count |
 |---|---|
-| Total Tests | 3,826 |
-| Test Functions | 3,736 |
-| Test Classes | 646 |
-| Pytest Fixtures | 377 |
-| Parametrized Tests | 41 |
+| Total Tests | 7,674 |
+| Test Functions | 7,594 |
+| Test Classes | 1,712 |
+| Pytest Fixtures | 701 |
+| Parametrized Tests | 50 |
 
 ### Core vs. Integration
 
 | Category | Tests | Share |
 |---|---|---|
-| Core tests (in-memory, no infrastructure) | 2,723 | 71% |
-| Adapter/integration tests | ~1,103 | 29% |
+| Core tests (in-memory, no infrastructure) | 6,586 | 86% |
+| Adapter/integration tests | ~1,088 | 14% |
 
 Core tests run entirely in-memory with no external dependencies, making
 them fast and reliable for local development. Integration tests exercise
@@ -56,12 +56,12 @@ Every commit is tested against real backing services:
 
 | Technology | Marked Tests |
 |---|---|
-| Redis | 123 |
-| Database (generic) | 56 |
-| Event Store | 48 |
-| PostgreSQL | 26 |
-| Elasticsearch | 19 |
-| SQLite | 14 |
+| Event Store | 238 |
+| Redis | 157 |
+| Database (generic) | 78 |
+| PostgreSQL | 36 |
+| Elasticsearch | 33 |
+| SQLite | 20 |
 
 Branch coverage is enabled, and results are reported to
 [Codecov](https://codecov.io/gh/proteanhq/protean) on every CI run.
@@ -85,9 +85,9 @@ Measured with [Radon](https://radon.readthedocs.io/):
 
 | Metric | Value |
 |---|---|
-| **Average complexity** | **2.97** |
-| Blocks at A grade (1-5, simple) | 1,089 (78%) |
-| Total blocks analyzed | 1,399 |
+| **Average complexity** | **3.38** |
+| Blocks at A grade (1-5, simple) | 1,820 (84%) |
+| Total blocks analyzed | 2,167 |
 
 An average complexity under 5 indicates straightforward, easy-to-follow
 code paths throughout the framework.
@@ -96,13 +96,13 @@ code paths throughout the framework.
 
 | Rank | Files | Share |
 |---|---|---|
-| **A** (very maintainable, 20-100) | 94 | 97% |
-| **B** (moderate, 10-19) | 3 | 3% |
-| **C** (low, 0-9) | 0 | 0% |
+| **A** (very maintainable, 20-100) | 146 | 95% |
+| **B** (moderate, 10-19) | 6 | 4% |
+| **C** (low, 0-9) | 1 | 1% |
 
-**Average Maintainability Index: 66.73** (on a scale of 0-100).
+**Average Maintainability Index: 63.28** (on a scale of 0-100).
 
-97% of source files score in the highest maintainability tier.
+95% of source files score in the highest maintainability tier.
 
 ---
 
@@ -112,9 +112,9 @@ code paths throughout the framework.
 
 | Area | Python Files | Lines of Code | Documentation Lines |
 |---|---|---|---|
-| Source (`src/protean/`) | 97 | 12,894 | 6,604 |
-| Tests (`tests/`) | 572 | 45,613 | 7,611 |
-| **Total** | **669** | **58,507** | **14,215** |
+| Source (`src/protean/`) | 153 | 48,347 | 5,907 |
+| Tests (`tests/`) | 810 | 145,248 | 13,505 |
+| **Total** | **963** | **193,595** | **19,412** |
 
 ### Architecture
 
@@ -137,7 +137,7 @@ Protean's source is organized into 10 top-level packages:
 
 | Category | Count |
 |---|---|
-| Domain element types | 18 (Aggregate, Entity, Value Object, Command, Event, Domain Service, Command Handler, Event Handler, Application Service, Subscriber, Projection, Projector, Repository, Database Model, and more) |
+| Domain element types | 18 (Aggregate, Entity, Value Object, Command, Event, Domain Service, Command Handler, Event Handler, Query Handler, Application Service, Subscriber, Projection, Projector, Repository, Database Model, and more) |
 | Port interfaces | 5 (Provider, Broker, Event Store, Cache, DAO) |
 | Adapter implementations | 12 (Memory, SQLAlchemy, Elasticsearch, Redis Stream, Redis PubSub, Inline, MessageDB, SendGrid, and more) |
 
@@ -182,7 +182,7 @@ Protean maintains a lean dependency footprint:
 
 | Category | Count |
 |---|---|
-| Required runtime dependencies | 14 |
+| Required runtime dependencies | 16 |
 | Optional extras (adapters) | 8 groups |
 | Dev dependencies | 7 |
 | Test dependencies | 8 |
@@ -204,9 +204,9 @@ pip install protean[elasticsearch] # Adds elasticsearch + elasticsearch-dsl
 | Metric | Value |
 |---|---|
 | First commit | July 15, 2018 |
-| Total commits | 1,404 |
-| Commits since Jan 2024 | 432 |
-| Contributors | 12 |
+| Total commits | 1,619 |
+| Commits since Jan 2024 | 647 |
+| Contributors | 14 |
 | Published releases | 46 |
 | Current version | 0.14.2 |
 | Latest releases | v0.14.0, v0.14.1, v0.14.2 |
@@ -229,4 +229,4 @@ pip install protean[elasticsearch] # Adds elasticsearch + elasticsearch-dsl
 
 ---
 
-*Last updated: February 2026*
+*Last updated: March 2026*

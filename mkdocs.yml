@@ -478,7 +478,8 @@ nav:
 
   - Community:
     - community/index.md
-    - community/quality.md
-    - community/contributing/setup.md
-    - community/contributing/testing.md
-    - community/contributing/adapters.md
+    - Contributing:
+      - community/contributing/setup.md
+      - community/contributing/testing.md
+      - community/contributing/adapters.md
+    - Quality Report: community/quality.md
