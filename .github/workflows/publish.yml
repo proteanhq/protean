@@ -1,0 +1,58 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write  # Required for trusted publishing (OIDC)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/protean/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Build package
+        run: poetry build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Determine if pre-release
+        id: prerelease
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if echo "$TAG" | grep -qE 'rc|alpha|beta|dev'; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          PRERELEASE_FLAG=""
+          if [ "${{ steps.prerelease.outputs.is_prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            dist/*

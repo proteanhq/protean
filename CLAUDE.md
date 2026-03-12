@@ -68,6 +68,44 @@ ruff format         # Formatting
 mypy src/protean    # Type checking
 ```
 
+### Releasing
+
+See ADR-0004 (`docs/adr/0004-release-workflow-and-breaking-change-policy.md`) for the full release philosophy.
+
+```bash
+# Install bump-my-version (in dev dependencies)
+poetry install --with dev
+
+# Release candidate (e.g., 0.14.2 → 0.15.0rc1)
+bump-my-version bump minor          # Bumps minor and sets rc1
+
+# Next RC (e.g., 0.15.0rc1 → 0.15.0rc2)
+bump-my-version bump rc
+
+# Final release (e.g., 0.15.0rc2 → 0.15.0)
+bump-my-version bump rc             # rc goes from last value to "final", dropping the rc suffix
+
+# Patch release (e.g., 0.15.0 → 0.15.1)
+bump-my-version bump patch
+```
+
+Version is updated automatically in: `pyproject.toml`, `src/protean/__init__.py`, `src/protean/template/domain_template/pyproject.toml.jinja`, `docs/guides/getting-started/installation.md`.
+
+`bump-my-version` auto-creates a commit and tag (e.g., `v0.15.0rc1`). Push the tag to trigger the publish workflow:
+
+```bash
+git push origin main --tags
+```
+
+The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
+- Building with Poetry
+- Publishing to PyPI (trusted publishing)
+- Creating a GitHub Release (marked as pre-release for RC tags)
+
+**Post-release checklist:**
+1. Add a new `X.Y.0 (unreleased)` section to `CHANGELOG.rst`
+2. Verify the package on PyPI
+
 ## Architecture Overview
 
 Protean is an event-driven, domain-centric framework implementing DDD, CQRS, and Event Sourcing patterns:

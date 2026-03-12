@@ -1,8 +1,8 @@
 Release History
 ===============
 
-0.15.0 (unreleased)
--------------------
+0.15.0rc1
+---------
 
 **Pydantic v2 Foundation**
 
@@ -94,6 +94,108 @@ generation, and full ecosystem compatibility.
 * Comprehensive documentation overhaul: quickstart, long-form tutorial
   (Online Bookstore), testing guide, application services guide, subscribers
   guide, patterns & recipes, and landing page revamp.
+
+*Domain Compiler & IR:*
+
+* **Intermediate Representation (IR)** — ``domain.to_ir()`` captures complete
+  domain topology as a JSON document: aggregates, entities, value objects,
+  commands, events, handlers, flows, and infrastructure bindings.
+* **``protean check`` CLI** — validates domain definitions and reports errors,
+  warnings, and diagnostics with severity levels (ERROR, WARNING, INFO).
+* **Architecture documentation generation** — ``protean docs generate``
+  produces Mermaid diagrams for aggregate clusters, event flows, handler
+  wiring, and event catalogs.
+* **IR metadata enrichment** — contracts with language-neutral keys, version,
+  and field schemas; description and repository database in IR output.
+* **IR diff engine** — ``protean ir diff`` detects breaking changes between
+  IR snapshots with field-level comparison.
+
+*Testing DSL:*
+
+* **Testing DSL expansion** — ``protean.testing`` module with ``given()``,
+  ``EventSequence``, ``ProjectionResult``, ``ProcessManagerSetup``, and
+  ``ProcessManagerResult`` for expressive domain tests.
+* **Snapshot testing** — JSON snapshot files with ``assert_snapshot()`` and
+  ``--update-snapshots`` pytest flag.
+* **Assertion helpers** — ``assert_invalid()`` and ``assert_valid()`` for
+  concise validation testing.
+
+*Domain Elements & Patterns:*
+
+* **Process managers** — ``@domain.process_manager`` for multi-aggregate
+  process coordination with state transitions.
+* **Query handlers** — ``@domain.query_handler`` and ``domain.dispatch()``
+  for read-side CQRS pipeline.
+* **Query element** — first-class ``@domain.query`` for read-side CQRS.
+* **ReadView** — ``domain.view_for()`` for read-only projection access.
+* **ReadOnlyQuerySet** — ``domain.query_for()`` for CQRS read-side queries.
+* **ValueObject support in Projections** for CQRS read-side views.
+* **Status field** with state transition enforcement.
+* **Event upcasters** — ``@domain.upcaster`` for transparent event schema
+  evolution.
+* **Priority lanes** — two-lane event routing through Redis Streams (primary
+  + backfill).
+* **Domain decomposition** — ``Domain`` class refactored into 7 focused
+  helper classes using composition.
+
+*Server & Infrastructure:*
+
+* **Multi-worker supervisor** for the Protean Engine.
+* **Observatory dashboard** — ``protean observatory`` for real-time domain
+  monitoring with event flows, process managers, and infrastructure views.
+* **Dead letter queue management** — inspect, replay, and purge failed
+  messages.
+* **Subscription lag monitoring** via Observatory, Prometheus, and CLI.
+* **Database lifecycle API** — ``domain.create_database()``,
+  ``domain.drop_database()``, ``domain.truncate_database()`` with CLI
+  commands.
+* **Database capability system** — ``DatabaseCapabilities`` enum with
+  capability-based pytest markers.
+* **Entry-points adapter discovery** — provider registry migrated from
+  hardcoded dict to ``entry_points`` pattern.
+* **Adapter conformance testing** — ``protean test-adapter`` CLI with
+  generic test suites.
+
+*Observability & Debugging:*
+
+* **Structured logging** with ``structlog`` integration.
+* **FastAPI middleware** for ``DomainContext`` propagation.
+* **Correlation and causation IDs** — end-to-end message tracing with
+  ``correlation_id`` and ``causation_id``.
+* **Causation chain API** for traversing command/event causal relationships.
+* **Message enrichment hooks** for events and commands.
+* **Event store inspection CLI** — read, stats, search, history.
+* **Temporal queries** for event-sourced aggregates.
+* **Projection rebuilding** — CLI command and domain API.
+* **Manual snapshot triggers** for event-sourced aggregates.
+
+*Developer Experience:*
+
+* **Python 3.14 support** added; multi-version testing via ``nox``.
+* **pytest plugin** — ``DomainFixture`` and auto-env configuration.
+* **Enhanced domain linting** — custom lint rules with unified diagnostic
+  model and severity levels.
+* **``protean shell``** interactive shell with domain context.
+* **CloudEvents v1.0 serialization** as boundary contract.
+* **Multi-tenancy** documentation and context propagation pattern.
+* **ADR practice** established in ``docs/adr/``.
+
+*Upgrade notes:*
+
+* **Pydantic v2 is required.** All domain elements are now Pydantic
+  ``BaseModel`` subclasses. See the migration guide for upgrading from
+  0.12–0.14.
+* **``List`` import changed.** ``from protean.fields import List`` now
+  returns a ``FieldSpec`` factory. Use ``ValueObjectList`` for the previous
+  Value Object list descriptor.
+* **Value Objects reject unknown fields.** ``BaseValueObject`` uses
+  ``model_config = ConfigDict(extra="forbid")``.
+* **``from __future__ import annotations`` is incompatible** with
+  annotation-style field definitions. Use assignment style in those modules.
+* **Event/command ``__version__`` is now an integer**, not a string.
+* **``MessageRecord`` removed** — metadata attributes restructured.
+* **``update_all``/``delete_all`` removed** from ``QuerySet`` public API.
+* Run ``protean check`` against your domain to identify deprecated patterns.
 
 0.14.2
 ------
