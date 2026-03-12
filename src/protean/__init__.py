@@ -1,4 +1,4 @@
-__version__ = "0.14.2"
+__version__ = "0.15.0rc1"
 
 from .core.aggregate import apply, atomic_change
 from .core.application_service import use_case
