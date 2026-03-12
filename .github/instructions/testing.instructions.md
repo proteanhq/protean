@@ -46,6 +46,6 @@ If a test creates its own `Domain(name="Test")`, it must be marked `@pytest.mark
 
 - Missing `traverse=False` in `test_domain.init()` calls.
 - Tests that import from `tests/support/` without proper setup (support tests are excluded from collection).
-- Shared domain element definitions that should be in `elements.py` but are duplicated inline.
+- Shared domain element definitions duplicated inline instead of placed in an `elements.py` file (each test directory may have an `elements.py` for domain elements shared across its test files).
 - Mock overuse when in-memory adapters would suffice.
 - Missing markers on tests that require external services.

@@ -1,5 +1,5 @@
 ---
-applyTo: "src/**"
+applyTo: "src/**,tests/**"
 ---
 
 # Architecture Review Guidelines
@@ -28,6 +28,12 @@ All domain elements are registered via `@domain.<element>` decorators. The `Doma
 - The decorator is used (not manual registration)
 - `part_of` is specified for non-root elements (entities, value objects, events, commands)
 - Event/command handlers specify which events/commands they handle
+
+## CLI structure
+
+The CLI (`src/protean/cli/`) uses Click. Each command interacts with the `Domain` object. When reviewing CLI changes:
+- Commands should not contain business logic — they delegate to `Domain` methods
+- New commands need corresponding tests in `tests/cli/`
 
 ## Configuration
 
