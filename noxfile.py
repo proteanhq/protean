@@ -8,10 +8,14 @@ _C_EXT_PACKAGES = ["psycopg2-binary"]
 
 
 def _install(session: nox.Session) -> None:
-    """Install the project with all dev/test extras into the nox virtualenv."""
+    """Install the project with all dev/test extras into the nox session venv."""
+    # Use --python to point uv sync at the nox session's interpreter,
+    # ensuring dependencies land in the session venv (not the project .venv).
     session.run(
         "uv",
         "sync",
+        "--python",
+        str(session.virtualenv.location),
         "--group",
         "dev",
         "--group",
@@ -24,6 +28,8 @@ def _install(session: nox.Session) -> None:
         "uv",
         "pip",
         "install",
+        "--python",
+        str(session.virtualenv.location),
         "--reinstall",
         *_C_EXT_PACKAGES,
         external=True,
