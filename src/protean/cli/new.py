@@ -2,7 +2,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from typing import List, Optional
 
 import typer
@@ -19,8 +18,7 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
     """Run post-generation setup for the new project.
 
     This method handles:
-    - Creating virtual environment
-    - Installing dependencies with Poetry
+    - Installing dependencies with uv
     - Initializing git repository
     - Installing pre-commit hooks
     - Setting activation script permissions
@@ -36,53 +34,20 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
     os.chdir(project_directory)
 
     try:
-        # Create virtual environment
-        console.print("📦 Creating virtual environment...", style="cyan")
-        # Use python3 explicitly to create venv to avoid using any activated environment
-        venv_python = (
-            shutil.which("python3") or shutil.which("python") or sys.executable
-        )
-        subprocess.run([venv_python, "-m", "venv", ".venv"], check=True)
+        # Find uv executable
+        uv_path = shutil.which("uv")
+        if not uv_path:
+            console.print(
+                "  uv not found. Install it from https://docs.astral.sh/uv/",
+                style="yellow",
+            )
+            return
 
-        # Determine the correct paths based on OS
-        if os.name == "nt":  # Windows
-            pip_path = os.path.join(".venv", "Scripts", "pip")
-            python_path = os.path.join(".venv", "Scripts", "python")
-            poetry_path = os.path.join(".venv", "Scripts", "poetry")
-        else:  # Unix/Linux/Mac
-            pip_path = os.path.join(".venv", "bin", "pip")
-            python_path = os.path.join(".venv", "bin", "python")
-            poetry_path = os.path.join(".venv", "bin", "poetry")
-
-        # Upgrade pip and install poetry using the venv's pip
-        console.print("📚 Installing dependencies with Poetry...", style="cyan")
+        # Install project dependencies with uv (creates .venv automatically)
+        console.print("📚 Installing dependencies with uv...", style="cyan")
         subprocess.run(
-            [
-                python_path,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "pip",
-                "setuptools",
-                "wheel",
-            ],
+            [uv_path, "sync", "--all-extras", "--all-groups"],
             check=True,
-            capture_output=True,
-        )
-        subprocess.run([pip_path, "install", "poetry"], check=True, capture_output=True)
-
-        # Install project dependencies with the venv's poetry
-        # Set VIRTUAL_ENV to ensure poetry uses the right environment
-        env = os.environ.copy()
-        env["VIRTUAL_ENV"] = os.path.abspath(".venv")
-        # Unset any existing Python environment variables that might interfere
-        env.pop("CONDA_PREFIX", None)
-        env.pop("CONDA_DEFAULT_ENV", None)
-        subprocess.run(
-            [poetry_path, "install", "--with", "dev,test,docs,types", "--all-extras"],
-            check=True,
-            env=env,
         )
 
         # Initialize git repository first (required for pre-commit)
@@ -99,7 +64,7 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
         )
         if os.path.exists(pre_commit_path):
             # Run pre-commit install with the venv environment
-            subprocess.run([pre_commit_path, "install"], check=True, env=env)
+            subprocess.run([pre_commit_path, "install"], check=True)
         else:
             console.print(
                 "  Pre-commit not found, skipping hook installation", style="yellow"

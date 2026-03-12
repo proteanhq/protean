@@ -27,23 +27,16 @@ $ cd protean
 $ git remote add fork https://github.com/{username}/protean
 ```
 
-- [Create and activate virtualenv](https://docs.python.org/3/library/venv.html#creating-virtual-environments).
+- Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```sh
-$ python3 -m venv .venv
-$ source .venv/bin/activate
+$ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-- Install Poetry
+- Install development dependencies. uv will automatically create a virtual environment in `.venv`.
 
 ```sh
-$ pip install poetry
-```
-
-- Install development dependencies.
-
-```sh
-$ poetry install --with dev,test,docs,types --all-extras
+$ uv sync --all-extras --all-groups
 ```
 
 -   Install pre-commit hooks.

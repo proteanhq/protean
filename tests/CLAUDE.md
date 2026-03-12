@@ -8,9 +8,8 @@ Always use the virtual environment at `.venv` in the project root. If it
 doesn't exist, create it and install dependencies:
 
 ```bash
-python -m venv .venv
+uv sync --all-extras --all-groups
 source .venv/bin/activate
-poetry install --with dev,test,docs,types --all-extras
 ```
 
 All commands below assume this virtual environment is active.
@@ -22,8 +21,8 @@ All commands below assume this virtual environment is active.
 protean test
 
 # Run a specific test file or test
-poetry run pytest tests/aggregate/test_aggregate_initialization.py
-poetry run pytest tests/aggregate/test_aggregate_initialization.py::TestAggregateStructure::test_aggregate_inheritance
+uv run pytest tests/aggregate/test_aggregate_initialization.py
+uv run pytest tests/aggregate/test_aggregate_initialization.py::TestAggregateStructure::test_aggregate_inheritance
 
 # By category (runs all implementations of that adapter type)
 protean test -c BROKER          # All broker implementations
@@ -33,11 +32,11 @@ protean test -c FULL            # Full suite with coverage
 protean test -c COVERAGE        # Full suite + diff-coverage report
 
 # By specific technology (requires Docker services via `make up`)
-poetry run pytest --redis       # Redis-dependent tests
-poetry run pytest --postgresql  # PostgreSQL-dependent tests
-poetry run pytest --elasticsearch
-poetry run pytest --sqlite
-poetry run pytest --message_db
+uv run pytest --redis       # Redis-dependent tests
+uv run pytest --postgresql  # PostgreSQL-dependent tests
+uv run pytest --elasticsearch
+uv run pytest --sqlite
+uv run pytest --message_db
 ```
 
 Add "--ignore=tests/support/" if you are running `pytest` on the entire `tests/` directory

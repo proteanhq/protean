@@ -23,10 +23,10 @@ no infrastructure is required.
 pip install pytest-bdd
 ```
 
-Or with Poetry:
+Or with uv:
 
 ```shell
-poetry add --group test pytest-bdd
+uv add --group test pytest-bdd
 ```
 
 ## Project Structure

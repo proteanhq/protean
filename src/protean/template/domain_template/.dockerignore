@@ -17,8 +17,8 @@ env/
 ENV/
 .venv/
 
-# Poetry
-poetry.lock
+# uv
+uv.lock
 
 # Testing
 .pytest_cache/

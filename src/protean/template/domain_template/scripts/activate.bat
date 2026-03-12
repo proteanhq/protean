@@ -37,8 +37,8 @@ if exist "%PROJECT_DIR%\.venv\Scripts\activate.bat" (
     echo   protean server - Start the async message processor
     echo.
     echo Other useful commands:
-    echo   poetry add ^<package^>     - Add a new dependency
-    echo   poetry install          - Install all dependencies
+    echo   uv add ^<package^>         - Add a new dependency
+    echo   uv sync                 - Install all dependencies
     echo   ruff check              - Check code style
     echo   ruff format             - Format code
     echo   mypy src\{{ package_name }}  - Type check your code
@@ -48,6 +48,6 @@ if exist "%PROJECT_DIR%\.venv\Scripts\activate.bat" (
     echo Please run the following to set up your environment:
     echo   python -m venv .venv
     echo   .venv\Scripts\activate.bat
-    echo   pip install poetry
-    echo   poetry install --with dev,test,docs,types --all-extras
+    echo   pip install uv
+    echo   uv sync --all-groups --all-extras
 )

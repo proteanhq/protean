@@ -26,7 +26,7 @@
 ## Prerequisites
 
 - Python 3.11 or higher
-- Poetry (for dependency management)
+- [uv](https://docs.astral.sh/uv/) (for dependency management)
 - Docker and Docker Compose (for infrastructure services)
 - Make (optional, for convenience commands)
 
@@ -53,10 +53,10 @@ make docker-up
 
 ```bash
 # Install all dependencies
-poetry install --with dev,test,docs,types,lint
+uv sync --all-extras --all-groups
 
 # Install pre-commit hooks
-poetry run pre-commit install
+uv run pre-commit install
 
 # Start Docker services
 docker-compose up -d
@@ -331,7 +331,7 @@ make test-bdd         # BDD tests only
 make test-cov
 
 # Run in watch mode
-poetry run pytest-watch
+uv run pytest-watch
 ```
 
 ### Test Organization
@@ -368,7 +368,7 @@ pytest -m "not slow"       # Skip slow tests
 make format
 
 # Check formatting without changes
-poetry run ruff format --check src/ tests/
+uv run ruff format --check src/ tests/
 ```
 
 ### Linting
@@ -378,7 +378,7 @@ poetry run ruff format --check src/ tests/
 make lint
 
 # Fix auto-fixable issues
-poetry run ruff check --fix src/ tests/
+uv run ruff check --fix src/ tests/
 ```
 
 ### Type Checking
@@ -388,7 +388,7 @@ poetry run ruff check --fix src/ tests/
 make typecheck
 
 # Type check specific files
-poetry run mypy src/{{ package_name }}/specific_file.py
+uv run mypy src/{{ package_name }}/specific_file.py
 ```
 
 ### Pre-commit Checks
@@ -398,7 +398,7 @@ poetry run mypy src/{{ package_name }}/specific_file.py
 make pre-commit
 
 # Run specific hook
-poetry run pre-commit run ruff --all-files
+uv run pre-commit run ruff --all-files
 ```
 
 ## Configuration

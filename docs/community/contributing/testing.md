@@ -56,8 +56,8 @@ make test-matrix-full       # Full suite across all versions (starts Docker serv
 You can also target a single version:
 
 ```shell
-poetry run nox -s tests-3.13    # Core tests on 3.13 only
-poetry run nox -s full-3.12     # Full suite on 3.12 only
+uv run nox -s tests-3.13    # Core tests on 3.13 only
+uv run nox -s full-3.12     # Full suite on 3.12 only
 ```
 
 Nox runs sessions **serially** (not in parallel) because the full suite shares database services started by `make up`.

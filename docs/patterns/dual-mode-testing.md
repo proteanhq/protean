@@ -220,8 +220,9 @@ test-memory:
     - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-    - run: pip install poetry && poetry install --with test
-    - run: poetry run pytest --protean-env memory
+    - uses: astral-sh/setup-uv@v5
+    - run: uv sync --group test
+    - run: uv run pytest --protean-env memory
 ```
 
 The existing real-adapter CI job continues to run in parallel, catching

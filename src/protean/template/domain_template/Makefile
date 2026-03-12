@@ -8,67 +8,67 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
 # Installation and Setup
-install: ## Install dependencies using Poetry
-	poetry install --with dev,test,docs,types
+install: ## Install dependencies using uv
+	uv sync --all-extras --all-groups
 
 install-pre-commit: ## Install pre-commit hooks
-	poetry run pre-commit install
+	uv run pre-commit install
 
 # Testing
 test: ## Run all tests
-	poetry run pytest
+	uv run pytest
 
 test-domain: ## Run domain layer tests (100% coverage required)
-	poetry run pytest tests/{{ package_name }}/domain/ --cov=src/{{ package_name }} --cov-fail-under=100 --cov-report=term-missing
+	uv run pytest tests/{{ package_name }}/domain/ --cov=src/{{ package_name }} --cov-fail-under=100 --cov-report=term-missing
 
 test-application: ## Run application layer tests (100% coverage required)
-	poetry run pytest tests/{{ package_name }}/application/ --cov=src/{{ package_name }} --cov-fail-under=100 --cov-report=term-missing
+	uv run pytest tests/{{ package_name }}/application/ --cov=src/{{ package_name }} --cov-fail-under=100 --cov-report=term-missing
 
 test-integration: ## Run integration tests (90% coverage required)
-	poetry run pytest tests/{{ package_name }}/integration/ --cov=src/{{ package_name }} --cov-fail-under=90 --cov-report=term-missing
+	uv run pytest tests/{{ package_name }}/integration/ --cov=src/{{ package_name }} --cov-fail-under=90 --cov-report=term-missing
 
 test-fast: ## Run fast tests (domain + application)
-	poetry run pytest tests/{{ package_name }}/domain/ tests/{{ package_name }}/application/ -m "not slow"
+	uv run pytest tests/{{ package_name }}/domain/ tests/{{ package_name }}/application/ -m "not slow"
 
 test-cov: ## Run all tests with full coverage report
-	poetry run pytest --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html --cov-report=xml
+	uv run pytest --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html --cov-report=xml
 
 test-cov-domain: ## Run domain tests with coverage report
-	poetry run pytest tests/{{ package_name }}/domain/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/domain
+	uv run pytest tests/{{ package_name }}/domain/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/domain
 
 test-cov-application: ## Run application tests with coverage report
-	poetry run pytest tests/{{ package_name }}/application/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/application
+	uv run pytest tests/{{ package_name }}/application/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/application
 
 test-cov-integration: ## Run integration tests with coverage report
-	poetry run pytest tests/{{ package_name }}/integration/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/integration
+	uv run pytest tests/{{ package_name }}/integration/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/integration
 
 test-watch: ## Run tests in watch mode
-	poetry run pytest-watch
+	uv run pytest-watch
 
 # Code Quality
 lint: ## Run linting with ruff
-	poetry run ruff check src/ tests/
+	uv run ruff check src/ tests/
 
 format: ## Format code with ruff
-	poetry run ruff format src/ tests/
+	uv run ruff format src/ tests/
 
 typecheck: ## Run type checking with mypy
-	poetry run mypy src/
+	uv run mypy src/
 
 check: lint typecheck test ## Run all checks (lint, typecheck, test)
 
 pre-commit: ## Run pre-commit hooks on all files
-	poetry run pre-commit run --all-files
+	uv run pre-commit run --all-files
 
 # Protean Commands
 shell: ## Start Protean shell
-	poetry run protean shell
+	uv run protean shell
 
 server: ## Start Protean server for async message processing
-	poetry run protean server
+	uv run protean server
 
 generate-docker: ## Generate docker-compose file for infrastructure
-	poetry run protean generate docker
+	uv run protean generate docker
 
 # Docker
 docker-up: ## Start Docker services
@@ -146,7 +146,7 @@ clean: ## Clean up generated files
 
 # Documentation
 docs: ## Build documentation
-	poetry run mkdocs build
+	uv run mkdocs build
 
 docs-serve: ## Serve documentation locally
-	poetry run mkdocs serve
+	uv run mkdocs serve

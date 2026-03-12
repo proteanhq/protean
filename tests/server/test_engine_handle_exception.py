@@ -50,7 +50,21 @@ def test_handle_exception_with_exception(engine):
 
         # Ensure the logger captured the exception message
         mock_logger_error.assert_any_call("Caught exception: Test exception")
-        mock_print_exception.assert_called_once()
+
+        # Verify print_exception was called with our test exception.
+        # We check via filtering because pytest's capture mechanism may
+        # also trigger print_exception for I/O errors on closed handles.
+        exception_calls = [
+            c
+            for c in mock_print_exception.call_args_list
+            if len(c.args) >= 2
+            and isinstance(c.args[1], Exception)
+            and str(c.args[1]) == "Test exception"
+        ]
+        assert len(exception_calls) == 1, (
+            f"Expected exactly one print_exception call with 'Test exception', "
+            f"got {mock_print_exception.call_args_list}"
+        )
         mock_shutdown.assert_called_once_with(exit_code=1)
 
 
@@ -147,7 +161,21 @@ def test_handle_exception_while_running(engine):
         mock_logger_error.assert_any_call(
             "Caught exception: Test exception while running"
         )
-        mock_print_exception.assert_called_once()
+
+        # Verify print_exception was called with our test exception.
+        # We check via filtering because pytest's capture mechanism may
+        # also trigger print_exception for I/O errors on closed handles.
+        exception_calls = [
+            c
+            for c in mock_print_exception.call_args_list
+            if len(c.args) >= 2
+            and isinstance(c.args[1], Exception)
+            and str(c.args[1]) == "Test exception while running"
+        ]
+        assert len(exception_calls) == 1, (
+            f"Expected exactly one print_exception call with 'Test exception while running', "
+            f"got {mock_print_exception.call_args_list}"
+        )
         mock_shutdown.assert_called_once_with(exit_code=1)
 
 

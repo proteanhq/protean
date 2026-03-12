@@ -93,17 +93,17 @@ protean-kafka-broker/
 ### pyproject.toml
 
 ```toml
-[tool.poetry]
+[project]
 name = "protean-kafka-broker"
 version = "0.1.0"
 description = "Kafka broker for Protean"
+requires-python = ">=3.11"
+dependencies = [
+    "protean>=0.14",
+    "kafka-python>=2.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-protean = "^0.14"
-kafka-python = "^2.0"
-
-[tool.poetry.plugins."protean.brokers"]
+[project.entry-points."protean.brokers"]
 kafka = "protean_kafka:register"
 ```
 
@@ -257,7 +257,7 @@ If adding a broker to Protean itself:
 3. Add entry point in `pyproject.toml`:
 
 ```toml
-[tool.poetry.plugins."protean.brokers"]
+[project.entry-points."protean.brokers"]
 mybroker = "protean.adapters.broker.mybroker:register"
 ```
 
