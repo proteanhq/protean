@@ -1,16 +1,11 @@
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry]
+[project]
 name = "protean"
 version = "0.15.0rc1"
 description = "Protean Application Framework"
-authors = ["Subhash Bhushan C <subhash@team8solutions.com>"]
-license = "BSD 3-Clause"
+authors = [{name = "Subhash Bhushan C", email = "subhash@team8solutions.com"}]
+license = {text = "BSD-3-Clause"}
 readme = "README.md"
-repository = "https://github.com/proteanhq/protean"
-documentation = "https://protean.readthedocs.io/en/latest/"
+requires-python = ">=3.11"
 keywords = [
     "ddd",
     "domain-driven-design",
@@ -32,7 +27,7 @@ keywords = [
     "cqrs-framework",
     "event-sourcing-framework"
 ]
-classifiers=[
+classifiers = [
     # complete classifier list: http://pypi.python.org/pypi?%3Aaction=list_classifiers
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
@@ -49,118 +44,104 @@ classifiers=[
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-bleach = ">=4.1.0"
-copier = "^9.1.1"
-inflection = ">=0.5.1"
-ipython = ">=8.23,<10.0"
-marshmallow = ">=3.15.0"  # FIXME Remove core dependency
-python-dateutil = ">=2.8.2"
-typer = ">=0.12.3"
-fastapi = ">=0.110.0"
-jinja2 = ">=3.1.0"
-uvicorn = ">=0.27.1"
-structlog = ">=24.1.0"
-werkzeug = ">=2.0.0"
+dependencies = [
+    "bleach>=4.1.0",
+    "copier>=9.1.1,<10",
+    "inflection>=0.5.1",
+    "ipython>=8.23,<10.0",
+    "marshmallow>=3.15.0",
+    "python-dateutil>=2.8.2",
+    "typer>=0.12.3",
+    "fastapi>=0.110.0",
+    "jinja2>=3.1.0",
+    "uvicorn>=0.27.1",
+    "structlog>=24.1.0",
+    "werkzeug>=2.0.0",
+    "cffi>=1.16.5",
+    "pydantic>=2.10,<3.0",
+    "greenlet>=3.0.3,<4",
+]
 
-cffi = ">=1.16.5"
-pydantic = ">=2.10,<3.0"
-greenlet = "^3.0.3"
+[project.optional-dependencies]
+elasticsearch = ["elasticsearch~=7.17.9", "elasticsearch-dsl~=7.4.1"]
+redis = ["redis>=5.0.7,<7.4.0"]
+postgresql = ["sqlalchemy~=2.0.30", "psycopg2-binary>=2.9.9"]
+sqlite = ["sqlalchemy~=2.0.30"]
+mssql = ["sqlalchemy~=2.0.30", "pyodbc>=5.0.0"]
+message-db = ["message-db-py>=0.3.3"]
+flask = ["flask>=1.1.1"]
+sendgrid = ["sendgrid>=6.1.3"]
 
-##########
-# Extras *
-##########
-
-elasticsearch = {version = "~7.17.9", optional = true}
-elasticsearch-dsl = {version = "~7.4.1", optional = true}
-redis = {version = ">=5.0.7,<7.4.0", optional = true}
-sqlalchemy = {version = "~2.0.30", optional = true}
-psycopg2-binary = {version = ">=2.9.9", optional = true}
-pyodbc = {version = ">=5.0.0", optional = true}
-flask = {version = ">=1.1.1", optional = true}
-sendgrid = {version = ">=6.1.3", optional = true}
-message-db-py = {version = ">=0.3.3", optional = true}
-
-[tool.poetry.extras]
-elasticsearch = ["elasticsearch", "elasticsearch-dsl"]
-redis = ["redis"]
-postgresql = ["sqlalchemy", "psycopg2-binary"]
-sqlite = ["sqlalchemy"]
-mssql = ["sqlalchemy", "pyodbc"]
-message-db = ["message-db-py"]
-flask = ["flask"]
-sendgrid = ["sendgrid"]
-
-############################
-# Development Dependencies *
-############################
-
-[tool.poetry.group.dev]
-optional = true
-
-[tool.poetry.group.dev.dependencies]
-check-manifest = ">=0.49"
-coverage = ">=7.3.2"
-docutils = ">=0.20.1"
-pre-commit = ">=2.16.0"
-ruff = ">=0.4.3"
-twine = ">=4.0.2"
-nox = "^2026.2.9"
-bump-my-version = "^1.2.7"
-
-[tool.poetry.group.test]
-optional = true
-
-[tool.poetry.group.test.dependencies]
-diff-cover = ">=9.2.4"
-mock = "5.2.0"
-pytest-asyncio = ">=0.21.1"
-pytest-mock = "3.15.1"
-pytest = ">=8.2.1,<10.0.0"
-mypy = "^1.11.0"
-coverage = "^7.8.0"
-httpx = ">=0.27.0"  # For testing FastAPI
-jsonschema = ">=4.20.0"  # For IR schema validation tests
-
-[tool.poetry.group.docs]
-optional = true
-
-[tool.poetry.group.docs.dependencies]
-mkdocs = ">=1.6,<2"
-mkdocs-material = "^9.5.15"
-mdx-include = "^1.4.2"
-mkdocstrings = {version = ">=0.27,<2", extras = ["python"]}
-
-[tool.poetry.group.types]
-optional = true
-
-[tool.poetry.group.types.dependencies]
-types-mock = ">=0.1.3"
-types-python-dateutil = ">=0.1.6"
-types-redis = ">=3.5.4"
-types-Werkzeug = ">=1.0.5"
-
-[tool.poetry.scripts]
+[project.scripts]
 protean = "protean.cli:app"
 
-[tool.poetry.plugins."protean.brokers"]
+[project.entry-points."protean.brokers"]
 inline = "protean.adapters.broker.inline:register"
 redis = "protean.adapters.broker.redis:register"
 redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
 
-[tool.poetry.plugins."protean.providers"]
+[project.entry-points."protean.providers"]
 memory = "protean.adapters.repository.memory:register"
 postgresql = "protean.adapters.repository.sqlalchemy:register_postgresql"
 sqlite = "protean.adapters.repository.sqlalchemy:register_sqlite"
 mssql = "protean.adapters.repository.sqlalchemy:register_mssql"
 elasticsearch = "protean.adapters.repository.elasticsearch:register"
 
-[tool.poetry.plugins."pytest11"]
+[project.entry-points."pytest11"]
 protean = "protean.integrations.pytest.plugin"
 
-[tool.poetry.plugins."mypy.plugins"]
+[project.entry-points."mypy.plugins"]
 protean = "protean.ext.mypy_plugin:plugin"
+
+[project.urls]
+Repository = "https://github.com/proteanhq/protean"
+Documentation = "https://docs.proteanhq.com"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/protean"]
+
+############################
+# Development Dependencies *
+############################
+
+[dependency-groups]
+dev = [
+    "check-manifest>=0.49",
+    "coverage>=7.3.2",
+    "docutils>=0.20.1",
+    "pre-commit>=2.16.0",
+    "ruff>=0.4.3",
+    "twine>=4.0.2",
+    "nox>=2026.2.9",
+    "bump-my-version>=1.2.7",
+]
+test = [
+    "diff-cover>=9.2.4",
+    "mock==5.2.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-mock==3.15.1",
+    "pytest>=8.2.1,<10.0.0",
+    "mypy>=1.11.0",
+    "coverage>=7.8.0",
+    "httpx>=0.27.0",
+    "jsonschema>=4.20.0",
+]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.5.15",
+    "mdx-include>=1.4.2",
+    "mkdocstrings[python]>=0.27,<2",
+]
+types = [
+    "types-mock>=0.1.3",
+    "types-python-dateutil>=0.1.6",
+    "types-redis>=3.5.4",
+    "types-Werkzeug>=1.0.5",
+]
 
 ##################
 # Configurations #
@@ -209,7 +190,7 @@ markers = [
     "basic_pubsub: tests for basic pub/sub capability (publish/subscribe only)",
     "simple_queuing: tests for simple queuing capability (includes consumer groups)",
     "reliable_messaging: tests for reliable messaging capability (includes ack/nack)",
-    "ordered_messaging: tests for ordered messaging capability (includes message ordering)",
+    "ordered_messaging: tests for ordered messaging capability (includes message order)",
     "enterprise_streaming: tests for enterprise streaming capability (includes DLQ, replay, partitioning)",
     "sa_provider: tests requiring an SQLAlchemy-backed database provider",
     # Capability-based markers for database testing

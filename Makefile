@@ -20,10 +20,10 @@ test-full: up
 	protean test -c FULL
 
 test-matrix:
-	poetry run nox -s tests
+	uv run nox -s tests
 
 test-matrix-full: up
-	poetry run nox -s full
+	uv run nox -s full
 
 test-coverage: up
 	protean test -c COVERAGE

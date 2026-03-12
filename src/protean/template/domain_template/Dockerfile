@@ -13,19 +13,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-ENV POETRY_VERSION=1.7.1 \
-    POETRY_HOME="/opt/poetry" \
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
-    POETRY_NO_INTERACTION=1
-
-RUN pip install --no-cache-dir poetry==${POETRY_VERSION}
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Copy dependency files
-COPY pyproject.toml poetry.lock* ./
+COPY pyproject.toml uv.lock* ./
 
 # Install dependencies
-RUN poetry install --no-root --only main
+RUN uv sync --no-dev --no-install-project
 
 # Stage 2: Runtime stage
 FROM python:3.11-slim

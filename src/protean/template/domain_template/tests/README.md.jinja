@@ -67,13 +67,13 @@ make test-cov-integration
 ### By Markers
 ```bash
 # Run only database tests
-poetry run pytest -m database
+uv run pytest -m database
 
 # Run only broker tests
-poetry run pytest -m broker
+uv run pytest -m broker
 
 # Exclude slow tests
-poetry run pytest -m "not slow"
+uv run pytest -m "not slow"
 ```
 
 ## Test Organization

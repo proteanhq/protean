@@ -82,16 +82,15 @@ jobs:
           stack-version: 7.12.0
 {%- endif %}
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
       - uses: actions/setup-python@v5
         with:
           python-version: {{ '${{ matrix.python-version }}' }}
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: {{ '${{ runner.os }}' }}-pip-{{ '${{ matrix.python-version }}' }}-{{ '${{ hashFiles(\'**/poetry.lock\') }}' }}
-          restore-keys: |
-            {{ '${{ runner.os }}' }}-pip-{{ '${{ matrix.python-version }}' }}-
 
 {%- if database == "mssql" %}
       - name: Install Microsoft ODBC Driver 18 and tools
@@ -104,24 +103,17 @@ jobs:
           sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
 {%- endif %}
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: latest
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
       - name: Install dependencies
-        run: poetry install --with dev,test --all-extras
+        run: uv sync --all-extras --all-groups
 
       - name: Run linting
-        run: poetry run ruff check src/ tests/
+        run: uv run ruff check src/ tests/
 
       - name: Run type checking
-        run: poetry run mypy src/{{ package_name }}
+        run: uv run mypy src/{{ package_name }}
 
       - name: Run tests
-        run: poetry run pytest --cov=src/{{ package_name }} --cov-report=xml --cov-report=term-missing
+        run: uv run pytest --cov=src/{{ package_name }} --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'

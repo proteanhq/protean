@@ -187,12 +187,14 @@ WantedBy=multi-user.target
 ```dockerfile
 FROM python:3.12-slim
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 COPY . .
-RUN pip install poetry && poetry install
+RUN uv sync
 
 ENV PROTEAN_ENV=production
-CMD ["poetry", "run", "protean", "server", "--domain=my_domain", "--workers", "4"]
+CMD ["uv", "run", "protean", "server", "--domain=my_domain", "--workers", "4"]
 ```
 
 ### Kubernetes

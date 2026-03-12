@@ -28,10 +28,10 @@ They do *not* test business logic — that belongs in
 pip install fastapi httpx
 ```
 
-Or with Poetry:
+Or with uv:
 
 ```shell
-poetry add fastapi httpx
+uv add fastapi httpx
 ```
 
 !!! note

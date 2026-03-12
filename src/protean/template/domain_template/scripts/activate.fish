@@ -26,15 +26,10 @@ if not test -d $PROJECT_DIR/.venv
     echo 'Creating virtual environment...'
     python3 -m venv $PROJECT_DIR/.venv
 
-    # Install Poetry in the virtual environment
-    echo 'Installing Poetry...'
-    $PROJECT_DIR/.venv/bin/pip install --upgrade pip setuptools wheel >/dev/null 2>&1
-    $PROJECT_DIR/.venv/bin/pip install poetry >/dev/null 2>&1
-
-    # Install dependencies
+    # Install dependencies using uv
     echo 'Installing dependencies...'
     set -x VIRTUAL_ENV $PROJECT_DIR/.venv
-    $PROJECT_DIR/.venv/bin/poetry install --with dev,test,docs,types --all-extras
+    uv sync --all-groups --all-extras
 
     # Install pre-commit hooks
     if test -d $PROJECT_DIR/.git

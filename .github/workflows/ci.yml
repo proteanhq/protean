@@ -137,17 +137,15 @@ jobs:
 
           echo "All services are ready!"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Cache Poetry virtualenv
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-${{ runner.os }}-py${{ matrix.python-version }}-
 
       - name: Install Microsoft ODBC Driver 18 and tools
         run: |
@@ -160,16 +158,13 @@ jobs:
           echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
-        run: |
-          pip install poetry
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction --with dev,test,docs,types --all-extras
+        run: uv sync --all-extras --all-groups
 
       - name: Mypy Plugin Tests
-        run: poetry run pytest tests/ext/ -v
+        run: uv run pytest tests/ext/ -v
 
       - name: Tests
-        run: poetry run protean test -c FULL
+        run: uv run protean test -c FULL
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
@@ -204,6 +199,9 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
@@ -218,9 +216,6 @@ jobs:
             mkdocs-material-
 
       - name: Install dependencies
-        run: |
-          pip install poetry
-          poetry config virtualenvs.create false
-          poetry install --no-interaction --only docs
+        run: uv sync --group docs --no-dev
 
-      - run: mkdocs gh-deploy --force
+      - run: uv run mkdocs gh-deploy --force

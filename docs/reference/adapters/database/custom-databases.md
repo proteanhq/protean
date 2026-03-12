@@ -141,17 +141,17 @@ protean-dynamodb/
 ### pyproject.toml
 
 ```toml
-[tool.poetry]
+[project]
 name = "protean-dynamodb"
 version = "0.1.0"
 description = "DynamoDB database adapter for Protean"
+requires-python = ">=3.11"
+dependencies = [
+    "protean>=0.15",
+    "boto3>=1.28",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-protean = "^0.15"
-boto3 = "^1.28"
-
-[tool.poetry.plugins."protean.providers"]
+[project.entry-points."protean.providers"]
 dynamodb = "protean_dynamodb:register"
 ```
 

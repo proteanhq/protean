@@ -217,7 +217,7 @@ code changes.
 Protean's built-in providers are registered in `pyproject.toml`:
 
 ```toml
-[tool.poetry.plugins."protean.providers"]
+[project.entry-points."protean.providers"]
 memory = "protean.adapters.repository.memory:register"
 postgresql = "protean.adapters.repository.sqlalchemy:register_postgresql"
 sqlite = "protean.adapters.repository.sqlalchemy:register_sqlite"
@@ -236,7 +236,7 @@ External packages can register their own providers by adding an entry point in
 their `pyproject.toml`:
 
 ```toml
-[tool.poetry.plugins."protean.providers"]
+[project.entry-points."protean.providers"]
 dynamodb = "my_package:register"
 ```
 

@@ -152,3 +152,6 @@ tmp/*
 
 *.code-workspace
 .claude/
+
+# Poetry (legacy - removed in favor of uv)
+poetry.lock

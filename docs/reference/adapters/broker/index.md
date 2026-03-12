@@ -231,7 +231,7 @@ be pip-installed and automatically discovered by Protean.
 Protean's built-in brokers are registered in `pyproject.toml`:
 
 ```toml
-[tool.poetry.plugins."protean.brokers"]
+[project.entry-points."protean.brokers"]
 inline = "protean.adapters.broker.inline:register"
 redis = "protean.adapters.broker.redis:register"
 redis_pubsub = "protean.adapters.broker.redis_pubsub:register"

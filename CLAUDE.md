@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Development Setup
 ```bash
 # Install development dependencies
-poetry install --with dev,test,docs,types --all-extras
+uv sync --all-extras --all-groups
 
 # Install pre-commit hooks
 pre-commit install
@@ -38,12 +38,12 @@ protean test -c COVERAGE    # Coverage report
 protean test --redis --postgresql --elasticsearch --sqlite
 
 # Run specific tests with pytest
-poetry run pytest <individual tests or test files>
+uv run pytest <individual tests or test files>
 
 # Multi-version testing with nox (requires pyenv with 3.11, 3.12, 3.13, 3.14)
 make test-matrix           # Core tests across all Python versions
 make test-matrix-full      # Full suite across all Python versions (starts Docker services)
-poetry run nox -s tests-3.13   # Core tests on a specific version
+uv run nox -s tests-3.13   # Core tests on a specific version
 ```
 
 ### Docker Services
@@ -76,7 +76,7 @@ See ADR-0004 (`docs/adr/0004-release-workflow-and-breaking-change-policy.md`) fo
 
 ```bash
 # Install bump-my-version (in dev dependencies)
-poetry install --with dev
+uv sync --group dev
 
 # Release candidate (e.g., 0.14.2 → 0.15.0rc1)
 bump-my-version bump minor          # Bumps minor and sets rc1
@@ -96,7 +96,7 @@ Version is updated automatically in: `pyproject.toml`, `src/protean/__init__.py`
 `bump-my-version` auto-creates a commit and tag (e.g., `v0.15.0rc1`). Push the tag to trigger the publish workflow.
 
 The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
-- Building with Poetry
+- Building with uv
 - Publishing to PyPI (trusted publishing)
 - Creating a GitHub Release (marked as pre-release for RC tags)
 
@@ -253,9 +253,9 @@ The mypy plugin at `src/protean/ext/mypy_plugin.py` provides two hooks:
 
 ### Testing the plugin
 ```bash
-poetry run pytest tests/ext/ -v                    # All plugin tests
-poetry run pytest tests/ext/test_mypy_plugin.py -v  # Integration tests (runs mypy)
-poetry run pytest tests/ext/test_mypy_plugin_unit.py -v  # Unit tests
+uv run pytest tests/ext/ -v                    # All plugin tests
+uv run pytest tests/ext/test_mypy_plugin.py -v  # Integration tests (runs mypy)
+uv run pytest tests/ext/test_mypy_plugin_unit.py -v  # Unit tests
 ```
 
 ### Debug mode
@@ -330,7 +330,7 @@ Architectural decisions are recorded in `docs/adr/`. When a discussion leads to 
 ## Development Notes
 
 - Main branch: `main`
-- Use Poetry for dependency management
+- Use uv for dependency management
 - Pre-commit hooks enforce code quality
 - Support Python 3.11+
 - Framework follows Domain-Driven Design principles
