@@ -72,6 +72,8 @@ mypy src/protean    # Type checking
 
 See ADR-0004 (`docs/adr/0004-release-workflow-and-breaking-change-policy.md`) for the full release philosophy.
 
+#### Version bump commands
+
 ```bash
 # Install bump-my-version (in dev dependencies)
 poetry install --with dev
@@ -91,19 +93,61 @@ bump-my-version bump patch
 
 Version is updated automatically in: `pyproject.toml`, `src/protean/__init__.py`, `src/protean/template/domain_template/pyproject.toml.jinja`, `docs/guides/getting-started/installation.md`.
 
-`bump-my-version` auto-creates a commit and tag (e.g., `v0.15.0rc1`). Push the tag to trigger the publish workflow:
-
-```bash
-git push origin main --tags
-```
+`bump-my-version` auto-creates a commit and tag (e.g., `v0.15.0rc1`). Push the tag to trigger the publish workflow.
 
 The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
 - Building with Poetry
 - Publishing to PyPI (trusted publishing)
 - Creating a GitHub Release (marked as pre-release for RC tags)
 
+#### Release branch workflow
+
+When an RC is tagged, a release branch is created from that tag. Development continues on `main`; RC bugfixes are cherry-picked to the release branch.
+
+```
+main:              ──A──B──[tag rc1]──D──E(R2 work)──F──...
+                             │
+release/0.15.x:              └──cherry-pick(fix)──[tag rc2]──[tag v0.15.0]
+```
+
+**Starting an RC:**
+```bash
+# On main: bump version and tag
+bump-my-version bump minor                    # 0.14.2 → 0.15.0rc1
+git push origin main --tags
+
+# Create release branch from the RC tag
+git branch release/0.15.x v0.15.0rc1
+git push origin release/0.15.x
+```
+
+**Fixing an RC bug:**
+```bash
+# Fix the bug on main first (or on the release branch if main-only is impractical)
+# Then cherry-pick to the release branch:
+git checkout release/0.15.x
+git cherry-pick <commit-hash>
+bump-my-version bump rc                      # 0.15.0rc1 → 0.15.0rc2
+git push origin release/0.15.x --tags
+```
+
+**Cutting the final release:**
+```bash
+git checkout release/0.15.x
+bump-my-version bump rc                      # 0.15.0rcN → 0.15.0
+git push origin release/0.15.x --tags
+```
+
+**Hotfix after final:**
+```bash
+git checkout release/0.15.x
+git cherry-pick <fix-commit>
+bump-my-version bump patch                   # 0.15.0 → 0.15.1
+git push origin release/0.15.x --tags
+```
+
 **Post-release checklist:**
-1. Add a new `X.Y.0 (unreleased)` section to `CHANGELOG.rst`
+1. Add a new `X.Y.0 (unreleased)` section to `CHANGELOG.rst` on `main`
 2. Verify the package on PyPI
 
 ## Architecture Overview
