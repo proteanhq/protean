@@ -10,6 +10,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Whenever possible, take advantage of components, utilities, or logic that have already been implemented to maintain consistency, reduce duplication, and streamline integration with the current system.
 - Always use the `-R proteanhq/protean` flag with `gh` CLI commands to explicitly target the correct repository.
 
+## Breaking Change Policy
+
+Every PR that touches a public API must answer: **does this break existing usage?** If yes, classify the break and apply the correct mitigation in the same PR. See ADR-0004 for the full rationale.
+
+### Tier 1: Surface-Level Breaks (renamed class, moved import, changed signature)
+- Introduce the new API alongside the old
+- Old API emits `DeprecationWarning` with a specific removal version and delegates to the new implementation
+- Minimum survival: **2 minor versions** (deprecated in 0.15 → earliest removal in 0.17)
+
+```python
+import warnings
+
+def old_method(self):
+    warnings.warn(
+        "old_method() is deprecated. Use new_method() instead. "
+        "Will be removed in v0.17.0.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return self.new_method()
+```
+
+### Tier 2: Behavioral Breaks (same signature, different behavior)
+- Introduce new behavior behind a **configuration flag**, defaulting to old behavior
+- Minimum survival: **3 minor versions** (opt-in → warning → default flip)
+- Transition: v0.N opt-in → v0.N+1 warn if unset → v0.N+2 flip default
+
+### Tier 3: Structural Breaks (persistence format, event schema, serialization)
+- Version the schema or format explicitly
+- Document exact migration steps in the release's **Upgrade Notes**
+- Provide a migration script or CLI command where feasible
+
+### Checklist for every PR
+1. **Identify** — does this rename, remove, or change the behavior of anything in `protean.*` that user code could depend on?
+2. **Classify** — Tier 1 (surface), Tier 2 (behavioral), or Tier 3 (structural)?
+3. **Mitigate** — apply the deprecation/flag/migration strategy described above, in the same PR
+4. **Document** — add a `CHANGELOG.rst` entry under the appropriate section (Added, Changed, Deprecated, Removed, Fixed)
+5. **Test** — ensure `protean check` can detect the deprecated usage where applicable
 
 ## Essential Commands
 
