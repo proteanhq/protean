@@ -49,6 +49,7 @@ mypy src/protean           # Type checking
 - **Type hints** on all new code and any existing code touched.
 - **uv** for dependency management (not Poetry). Lock file is `uv.lock`, build backend is `hatchling`.
 - Follow ruff formatting and linting rules configured in `pyproject.toml`.
+- **Every PR must include a `CHANGELOG.md` entry** under `[Unreleased]` using [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) sections: Added, Changed, Deprecated, Removed, Fixed, or Security.
 
 ## Breaking change policy
 
@@ -63,7 +64,7 @@ Every PR that touches a public API must answer: **does this break existing usage
 1. **Identify** — does this rename, remove, or change behavior of anything in `protean.*` that user code could depend on?
 2. **Classify** — Tier 1, 2, or 3?
 3. **Mitigate** — apply the deprecation/flag/migration strategy in the same PR
-4. **Document** — add a `CHANGELOG.rst` entry (Added, Changed, Deprecated, Removed, Fixed)
+4. **Document** — add a `CHANGELOG.md` entry (Added, Changed, Deprecated, Removed, Fixed)
 5. **Test** — verify `protean check` detects deprecated usage where applicable
 
 ## Domain element patterns

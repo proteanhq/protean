@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Aim to make only minimal and necessary changes, avoiding any disruption to the eisting design.
 - Whenever possible, take advantage of components, utilities, or logic that have already been implemented to maintain consistency, reduce duplication, and streamline integration with the current system.
 - Always use the `-R proteanhq/protean` flag with `gh` CLI commands to explicitly target the correct repository.
+- **Every PR must include a `CHANGELOG.md` entry** under the `[Unreleased]` section. Use the appropriate subsection: Added, Changed, Deprecated, Removed, Fixed, or Security. The changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
 ## Breaking Change Policy
 
@@ -46,7 +47,7 @@ def old_method(self):
 1. **Identify** — does this rename, remove, or change the behavior of anything in `protean.*` that user code could depend on?
 2. **Classify** — Tier 1 (surface), Tier 2 (behavioral), or Tier 3 (structural)?
 3. **Mitigate** — apply the deprecation/flag/migration strategy described above, in the same PR
-4. **Document** — add a `CHANGELOG.rst` entry under the appropriate section (Added, Changed, Deprecated, Removed, Fixed)
+4. **Document** — add a `CHANGELOG.md` entry under the appropriate section (Added, Changed, Deprecated, Removed, Fixed)
 5. **Test** — ensure `protean check` can detect the deprecated usage where applicable
 
 ## Essential Commands
@@ -185,7 +186,7 @@ git push origin release/0.15.x --tags
 ```
 
 **Post-release checklist:**
-1. Add a new `X.Y.0 (unreleased)` section to `CHANGELOG.rst` on `main`
+1. Verify the `[Unreleased]` section in `CHANGELOG.md` on `main` is ready for the next cycle
 2. Verify the package on PyPI
 
 ## Architecture Overview
