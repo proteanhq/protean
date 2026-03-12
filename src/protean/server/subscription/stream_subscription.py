@@ -295,6 +295,7 @@ class StreamSubscription(BaseSubscription):
         primary stream frequently.
         """
         batches_processed = 0
+        consecutive_errors = 0
 
         while self.keep_going and not self.engine.shutting_down:
             try:
@@ -309,6 +310,7 @@ class StreamSubscription(BaseSubscription):
                         # Loop back immediately to check primary again
                         if batches_processed % 10 == 0:
                             await asyncio.sleep(0)
+                        consecutive_errors = 0
                         continue
 
                     # Step 2: Primary empty → blocking read on backfill stream
@@ -337,17 +339,20 @@ class StreamSubscription(BaseSubscription):
                         # This is normal, just yield control
                         await asyncio.sleep(0)
 
+                consecutive_errors = 0
+
             except asyncio.CancelledError:
                 logger.info(f"Subscription cancelled: {self.subscriber_name}")
                 break
             except Exception as e:
+                consecutive_errors += 1
                 logger.exception(
-                    f"Error processing messages for {self.subscriber_name}: {e}"
+                    f"Error in subscription {self.subscriber_name} "
+                    f"(attempt {consecutive_errors}): {e}"
                 )
-                # Exponential backoff on errors
-                await asyncio.sleep(
-                    min(0.1 * (2 ** min(batches_processed % 5, 4)), 1.0)
-                )
+                # Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s
+                backoff = min(2 ** (consecutive_errors - 1), 30)
+                await asyncio.sleep(backoff)
 
     async def _read_primary_nonblocking(self) -> List[tuple[str, dict]]:
         """Non-blocking read from primary (production) stream.
