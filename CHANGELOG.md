@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- JSON Schema generator (`protean.ir.generators.schema`) — pure functions that
+  convert IR element dicts into standard JSON Schema (Draft 2020-12) with
+  `x-protean-*` extension metadata for all data-carrying domain elements
+
 ## [0.15.0rc1] - 2026-03-11
 
 ### Added
