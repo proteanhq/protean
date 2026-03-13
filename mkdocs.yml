@@ -205,6 +205,7 @@ nav:
       - guides/compose-a-domain/activate-domain.md
       - guides/compose-a-domain/when-to-compose.md
       - guides/compose-a-domain/inspecting-the-ir.md
+      - guides/compose-a-domain/schema-generation.md
     - Model Your Domain:
       - guides/domain-definition/index.md
       - guides/domain-definition/aggregates.md

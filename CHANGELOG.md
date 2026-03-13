@@ -15,6 +15,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   generated JSON Schemas to a `.protean/schemas/` directory tree with
   cluster-aware grouping by aggregate, versioned filenames, and deterministic
   output
+- `protean schema generate` CLI command — generates JSON Schema files for all
+  data-carrying elements from a live domain (`--domain`) or IR file (`--ir`),
+  writing to `.protean/schemas/` by default with configurable `--output`
+- `protean schema show` CLI command — displays the JSON Schema for a specific
+  element by name or FQN, with syntax-highlighted output (default) or raw JSON
+  (`--raw`) for piping
+- Meta-schema validation tests — all generated schemas validated against JSON
+  Schema Draft 2020-12 meta-schema
+- End-to-end payload validation tests — sample payloads validated against
+  generated schemas
+- ADR-0005: IR-first schema generation rationale
+- ADR-0006: Standard JSON Schema with `x-protean-*` extensions rationale
+- Schema generation user guide (`docs/guides/compose-a-domain/schema-generation.md`)
 
 ## [0.15.0rc1] - 2026-03-11
 
