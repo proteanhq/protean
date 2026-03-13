@@ -28,6 +28,8 @@ load the domain.
 | [`protean dlq replay`](data/dlq.md)         | Replay a DLQ message to its original stream |
 | [`protean dlq replay-all`](data/dlq.md)     | Replay all DLQ messages for a subscription |
 | [`protean dlq purge`](data/dlq.md)          | Purge DLQ messages for a subscription |
+| [`protean schema generate`](schema.md)      | Generate JSON Schema files for all data-carrying elements |
+| [`protean schema show`](schema.md)          | Display the JSON Schema for a specific element |
 
 !!! note
 

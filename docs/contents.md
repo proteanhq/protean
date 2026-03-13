@@ -165,6 +165,7 @@ specific area.
 - [`protean docs`](./reference/cli/project/docs.md) -- Live preview server for documentation.
 - [`protean test`](./community/contributing/testing.md) -- Run Protean's framework test suite (development only).
 - [`protean ir show`](./reference/cli/ir.md) -- Display the domain's IR as JSON or a human-readable summary.
+- [`protean schema`](./reference/cli/schema.md) -- Generate and inspect JSON Schema files for data-carrying domain elements.
 - [`protean snapshot`](./reference/cli/data/snapshot.md) -- Create snapshots for event-sourced aggregates.
 - [`protean projection`](./reference/cli/data/projection.md) -- Rebuild projections by replaying events from the event store.
 - [`protean events`](./reference/cli/data/events.md) -- Inspect the event store: read streams, view stats, search events, trace aggregate history, and follow causal chains as a tree or flat table.

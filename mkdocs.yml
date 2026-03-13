@@ -296,6 +296,8 @@ nav:
         - reference/cli/runtime/subscriptions.md
       - IR:
         - reference/cli/ir.md
+      - Schema:
+        - reference/cli/schema.md
       - Data:
         - reference/cli/data/index.md
         - reference/cli/data/database.md
