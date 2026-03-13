@@ -135,7 +135,7 @@ def write_schemas(
             # Cluster-aware placement
             cluster_name = _cluster_for_fqn(fqn, ir)
             if cluster_name is None:
-                # Fallback: use short name from FQN module
+                # Fallback: use short name from FQN
                 cluster_name = short_name(fqn)
             subdir = _ELEMENT_TYPE_TO_DIR.get(element_type, "other")
             file_dir = schemas_dir / cluster_name / subdir

@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from protean.ir.builder import IRBuilder
-from protean.ir.generators.schema_writer import write_ir, write_schemas
+from protean.ir.generators.schema_writer import (
+    _cluster_for_fqn,
+    _element_version,
+    write_ir,
+    write_schemas,
+)
 
 from .elements import (
     build_cluster_test_domain,
@@ -363,3 +368,34 @@ class TestWriteIR:
         path = write_ir(ir, output)
 
         assert path.is_absolute()
+
+
+# ---------------------------------------------------------------------------
+# Helper function edge cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestHelperEdgeCases:
+    """Cover edge cases in helper functions."""
+
+    def test_cluster_for_fqn_returns_none_for_unknown(self):
+        ir = _ir_for(build_cluster_test_domain)
+        result = _cluster_for_fqn("nonexistent.Unknown", ir)
+        assert result is None
+
+    def test_cluster_for_fqn_empty_ir(self):
+        result = _cluster_for_fqn("any.Fqn", {})
+        assert result is None
+
+    def test_element_version_defaults_to_one(self):
+        assert _element_version({}) == 1
+
+    def test_element_version_reads_extension(self):
+        assert _element_version({"x-protean-version": 3}) == 3
+
+    def test_write_schemas_empty_ir(self, tmp_path: Path):
+        """Empty IR produces no files."""
+        output = tmp_path / ".protean"
+        written = write_schemas({}, output)
+        assert written == []
