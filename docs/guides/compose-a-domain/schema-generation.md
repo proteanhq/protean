@@ -41,7 +41,7 @@ schemas directly from it.
 ### Custom output directory
 
 ```bash
-protean schema generate --domain=my_app.domain --output=build/schemas
+protean schema generate --domain=my_app.domain --output=build
 ```
 
 ---

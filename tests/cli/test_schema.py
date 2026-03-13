@@ -9,9 +9,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
-
-import pytest
 from typer.testing import CliRunner
 
 from protean.cli.schema import app
@@ -160,17 +157,21 @@ class TestSchemaGenerateFromIR:
         )
         assert result.exit_code != 0
 
-    def test_generate_output_directory_default(self, tmp_path: Path):
+    def test_generate_default_output_directory(self, tmp_path: Path, monkeypatch):
+        """Without --output, schemas are written to .protean/ under cwd."""
         ir_file = tmp_path / "test-ir.json"
         ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
 
-        # Use default output (.protean) — patch cwd to tmp
-        with patch("os.getcwd", return_value=str(tmp_path)):
-            result = runner.invoke(
-                app,
-                ["generate", f"--ir={ir_file}", f"--output={tmp_path / '.protean'}"],
-            )
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}"],
+        )
         assert result.exit_code == 0
+
+        # Verify default .protean/ directory was created
+        assert (tmp_path / ".protean" / "schemas").exists()
+        assert (tmp_path / ".protean" / "ir.json").exists()
 
     def test_generate_writes_valid_json_schemas(self, tmp_path: Path):
         ir_file = tmp_path / "test-ir.json"
