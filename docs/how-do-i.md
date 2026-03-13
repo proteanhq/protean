@@ -154,6 +154,7 @@ need by what you're trying to accomplish.
 | Create and manage snapshots                     | [`protean snapshot`](./reference/cli/data/snapshot.md) |
 | Rebuild projections from events                 | [`protean projection`](./reference/cli/data/projection.md) |
 | Inspect events in the event store               | [`protean events`](./reference/cli/data/events.md) |
+| Generate JSON Schemas for domain elements       | [Schema Generation](./guides/compose-a-domain/schema-generation.md) |
 | View the event history of an aggregate          | [`protean events history`](./reference/cli/data/events.md) |
 | Follow a causal chain by correlation ID         | [`protean events trace`](./reference/cli/data/events.md) |
 

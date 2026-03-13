@@ -152,3 +152,20 @@ compatible -- new keys may appear, but existing keys retain their meaning.
 
 See the [IR specification](../../concepts/internals/ir-specification.md) for
 the full compatibility contract, field reference, and design decisions.
+
+---
+
+## From IR to JSON Schema
+
+Once you have an IR document, you can generate **JSON Schema (Draft 2020-12)**
+files for every data-carrying element -- aggregates, entities, value objects,
+commands, events, and projections. This is useful for contract validation,
+documentation, and integration with external tools.
+
+See the [Schema Generation guide](schema-generation.md) for details, or use
+the CLI directly:
+
+```bash
+protean schema generate --domain=my_app.domain
+protean schema show OrderPlaced --domain=my_app.domain
+```
