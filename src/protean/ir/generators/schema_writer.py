@@ -142,7 +142,7 @@ def write_schemas(
 
         file_dir.mkdir(parents=True, exist_ok=True)
         file_path = file_dir / filename
-        file_path.write_text(_serialize_schema(schema))
+        file_path.write_text(_serialize_schema(schema), encoding="utf-8")
         written.append(file_path.resolve())
 
     return sorted(written)
@@ -165,6 +165,7 @@ def write_ir(
     output.mkdir(parents=True, exist_ok=True)
     file_path = output / "ir.json"
     file_path.write_text(
-        json.dumps(ir, indent=2, sort_keys=True) + "\n"
+        json.dumps(ir, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
     return file_path.resolve()
