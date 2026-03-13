@@ -77,6 +77,7 @@ specific area.
 - [Activate the Domain](./guides/compose-a-domain/activate-domain.md) -- Bind the domain to a context for use.
 - [When to Compose](./guides/compose-a-domain/when-to-compose.md) -- Lifecycle and timing of domain composition.
 - [Inspecting the IR](./guides/compose-a-domain/inspecting-the-ir.md) -- Generate and explore the domain's Intermediate Representation.
+- [Schema Generation](./guides/compose-a-domain/schema-generation.md) -- Generate JSON Schema files for domain elements.
 - [Element Decorators](./reference/domain-elements/element-decorators.md) -- Decorators that construct and register domain elements.
 - [Object Model](./reference/domain-elements/object-model.md) -- Common structure and traits shared by all domain elements.
 
