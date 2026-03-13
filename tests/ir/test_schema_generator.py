@@ -236,8 +236,11 @@ class TestRefAndDefs:
 
     def test_value_object_ref(self):
         p = self.schema["properties"]["shipping_address"]
-        assert "$ref" in p
-        assert p["$ref"] == "#/$defs/ShippingAddress"
+        # Optional VO field is wrapped in anyOf with null
+        assert "anyOf" in p
+        ref_schema = p["anyOf"][0]
+        assert ref_schema["$ref"] == "#/$defs/ShippingAddress"
+        assert p["anyOf"][1] == {"type": "null"}
 
     def test_has_many_ref(self):
         p = self.schema["properties"]["items"]
@@ -294,8 +297,11 @@ class TestHasOneRef:
         element = _find_element(ir, "Catalog")
         schema = generate_element_schema(element, all_elements=flat)
 
-        assert "$ref" in schema["properties"]["featured"]
-        assert schema["properties"]["featured"]["$ref"] == "#/$defs/FeaturedItem"
+        # HasOne is optional, so wrapped in anyOf with null
+        p = schema["properties"]["featured"]
+        assert "anyOf" in p
+        assert p["anyOf"][0]["$ref"] == "#/$defs/FeaturedItem"
+        assert p["anyOf"][1] == {"type": "null"}
 
 
 # ---------------------------------------------------------------------------
@@ -790,3 +796,40 @@ class TestEdgeCases:
         element = _find_element(ir, "BankAccount")
         schema = generate_element_schema(element)
         assert schema.get("x-protean-is-event-sourced") is True
+
+    def test_auto_increment_maps_to_integer(self):
+        """Auto field with increment=True should map to integer."""
+        from protean.ir.generators.schema import _field_to_schema
+
+        field = {"kind": "auto", "type": "Auto", "increment": True}
+        schema = _field_to_schema(field)
+        assert schema == {"type": "integer"}
+
+    def test_auto_without_increment_maps_to_string(self):
+        """Auto field without increment should map to string."""
+        from protean.ir.generators.schema import _field_to_schema
+
+        field = {"kind": "auto", "type": "Auto"}
+        schema = _field_to_schema(field)
+        assert schema == {"type": "string"}
+
+    def test_cyclic_reference_does_not_recurse(self):
+        """Cyclic references should not cause infinite recursion."""
+        from protean.ir.generators.schema import _collect_defs
+
+        all_elements = {
+            "app.A": {
+                "fields": {
+                    "b": {"kind": "value_object", "target": "app.B"},
+                },
+            },
+            "app.B": {
+                "fields": {
+                    "a": {"kind": "has_one", "target": "app.A"},
+                },
+            },
+        }
+        # Should complete without RecursionError
+        defs = _collect_defs(all_elements["app.A"]["fields"], all_elements)
+        assert "B" in defs
+        assert "A" in defs

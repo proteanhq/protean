@@ -101,7 +101,13 @@ def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
     if kind == "dict":
         return {"type": "object"}
 
-    # standard / text / identifier / status / auto
+    # Auto fields: integer when increment is set, string otherwise
+    if kind == "auto" or ir_type == "Auto":
+        if field.get("increment"):
+            return {"type": "integer"}
+        return {"type": "string"}
+
+    # standard / text / identifier / status
     base = dict(_TYPE_MAP.get(ir_type, {"type": "string"}))
 
     # Constraints
@@ -132,13 +138,21 @@ def _wrap_optional(schema: dict[str, Any]) -> dict[str, Any]:
 def _collect_defs(
     fields: dict[str, dict[str, Any]],
     all_elements: dict[str, dict[str, Any]],
+    _visited: set[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Recursively collect ``$defs`` for referenced value objects and entities.
 
     Walks the fields looking for ``value_object``, ``value_object_list``,
     ``has_one``, and ``has_many`` kinds, then builds a schema for each
     referenced element and includes it in ``$defs``.
+
+    A shared ``_visited`` set (keyed by target FQN) prevents infinite
+    recursion on cyclic references and avoids expanding the same
+    definition more than once.
     """
+    if _visited is None:
+        _visited = set()
+
     defs: dict[str, dict[str, Any]] = {}
     ref_kinds = ("value_object", "value_object_list", "has_one", "has_many")
 
@@ -149,8 +163,10 @@ def _collect_defs(
 
         target_fqn = field.get("target", "")
         ref_name = short_name(target_fqn)
-        if not ref_name or ref_name in defs:
+        if not ref_name or target_fqn in _visited:
             continue
+
+        _visited.add(target_fqn)
 
         # Look up the referenced element in the flat index
         target_element = all_elements.get(target_fqn, {})
@@ -166,8 +182,10 @@ def _collect_defs(
                 nested_schema["required"] = nested_required
             defs[ref_name] = dict(sorted(nested_schema.items()))
 
-            # Recurse into nested refs
-            nested_defs = _collect_defs(target_fields, all_elements)
+            # Recurse into nested refs (shared visited set prevents cycles)
+            nested_defs = _collect_defs(
+                target_fields, all_elements, _visited
+            )
             defs.update(nested_defs)
         else:
             # No fields found — emit a minimal object schema
@@ -194,10 +212,8 @@ def _build_properties(
         if is_required:
             required.append(fname)
         else:
-            # Wrap optional fields with anyOf null
-            has_ref = "$ref" in prop_schema
-            if not has_ref:
-                prop_schema = _wrap_optional(prop_schema)
+            # Wrap all optional fields with anyOf null, including $ref
+            prop_schema = _wrap_optional(prop_schema)
 
         if fspec.get("description"):
             prop_schema["description"] = fspec["description"]
