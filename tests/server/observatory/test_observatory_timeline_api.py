@@ -332,6 +332,22 @@ class TestCollectAllEvents:
         positions = [e["global_position"] for e in events]
         assert positions == sorted(positions, reverse=True)
 
+    def test_desc_cursor_pagination(self, domain_with_events):
+        domain, _, _ = domain_with_events
+        # Get first 2 events in descending order
+        page1, cursor1 = collect_all_events([domain], order="desc", limit=2)
+        assert len(page1) == 2
+        assert cursor1 is not None
+        # Desc cursor should be less than the last position
+        assert cursor1 == page1[-1]["global_position"] - 1
+
+        # Follow cursor for remaining events
+        page2, cursor2 = collect_all_events(
+            [domain], order="desc", cursor=cursor1, limit=2
+        )
+        assert len(page2) == 1
+        assert cursor2 is None
+
     def test_filter_by_event_type(self, domain_with_events):
         domain, _, _ = domain_with_events
         events, _ = collect_all_events(
@@ -349,6 +365,21 @@ class TestCollectAllEvents:
         domain, user1_id, _ = domain_with_events
         events, _ = collect_all_events([domain], aggregate_id=user1_id)
         assert len(events) == 2  # UserRegistered + UserRenamed
+
+    def test_excludes_snapshots(self, domain_with_events):
+        domain, user1_id, _ = domain_with_events
+        # Write a snapshot to the event store
+        domain.event_store.store._write(
+            f"{User.meta_.stream_category}:snapshot-{user1_id}",
+            "SNAPSHOT",
+            {"user_id": user1_id, "name": "Alice Smith"},
+        )
+
+        # Snapshots should not appear in the timeline
+        events, _ = collect_all_events([domain])
+        assert len(events) == 3  # Only the 3 real events
+        for event in events:
+            assert event["type"] != "SNAPSHOT"
 
     def test_handles_broken_domain_gracefully(self):
         domain = MagicMock()

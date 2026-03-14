@@ -162,6 +162,10 @@ def collect_all_events(
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
 
                 for msg in raw_messages:
+                    # Exclude snapshot messages from the timeline
+                    stream = msg.get("stream_name", "")
+                    if ":snapshot-" in stream or msg.get("type") == "SNAPSHOT":
+                        continue
                     all_events.append((msg, domain.name))
         except Exception:
             logger.debug(
@@ -171,12 +175,18 @@ def collect_all_events(
     # Sort by global_position (ascending)
     all_events.sort(key=lambda x: x[0].get("global_position", 0))
 
-    # Apply cursor filter (global_position >= cursor)
+    # Apply cursor filter based on order direction
     if cursor > 0:
-        all_events = [
-            (msg, dn) for msg, dn in all_events
-            if msg.get("global_position", 0) >= cursor
-        ]
+        if order == "desc":
+            all_events = [
+                (msg, dn) for msg, dn in all_events
+                if msg.get("global_position", 0) <= cursor
+            ]
+        else:
+            all_events = [
+                (msg, dn) for msg, dn in all_events
+                if msg.get("global_position", 0) >= cursor
+            ]
 
     if order == "desc":
         all_events.reverse()
@@ -197,12 +207,15 @@ def collect_all_events(
     # Apply pagination limit
     page = filtered[:limit]
 
-    # Determine next cursor
+    # Determine next cursor based on order direction
     next_cursor: int | None = None
     if len(filtered) > limit and page:
         last_pos = page[-1].get("global_position")
         if last_pos is not None:
-            next_cursor = last_pos + 1
+            if order == "desc":
+                next_cursor = last_pos - 1
+            else:
+                next_cursor = last_pos + 1
 
     return page, next_cursor
 
@@ -250,11 +263,15 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
                 store = domain.event_store.store
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
 
-                total_events += len(raw_messages)
-
                 for msg in raw_messages:
+                    # Exclude snapshot messages from stats
                     stream = msg.get("stream_name", "")
-                    if stream and ":snapshot-" not in stream:
+                    if ":snapshot-" in stream or msg.get("type") == "SNAPSHOT":
+                        continue
+
+                    total_events += 1
+
+                    if stream:
                         active_streams.add(stream)
 
                     raw_time = msg.get("time")
