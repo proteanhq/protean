@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Event store timeline query API endpoints for the Observatory: `GET /api/timeline/events` (paginated, filterable event list from `$all` stream), `GET /api/timeline/events/{message_id}` (single event detail with full payload and metadata), and `GET /api/timeline/stats` (summary statistics including total events, active streams, and throughput)
 - JSON Schema generator (`protean.ir.generators.schema`) — pure functions that
   convert IR element dicts into standard JSON Schema (Draft 2020-12) with
   `x-protean-*` extension metadata for all data-carrying domain elements
