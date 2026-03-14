@@ -11,7 +11,8 @@ Covers:
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock
+from datetime import datetime as dt
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -201,6 +202,26 @@ class TestSerializeMessage:
         result = _serialize_message(raw_msg, "TestDomain")
         assert result["message_id"] is None
 
+    def test_handles_non_dict_headers_in_metadata(self):
+        raw_msg = {"type": "SomeEvent", "metadata": {"headers": "bad", "domain": "bad"}}
+        result = _serialize_message(raw_msg, "TestDomain")
+        assert result["message_id"] is None
+        assert result["kind"] is None
+
+    def test_handles_non_dict_event_store_meta(self):
+        raw_msg = {
+            "type": "SomeEvent",
+            "metadata": {
+                "headers": {"id": "x"},
+                "domain": {"kind": "EVENT"},
+                "event_store": "bad",
+            },
+        }
+        result = _serialize_message(raw_msg, "TestDomain")
+        assert result["message_id"] == "x"
+        # Falls back to top-level global_position (None here)
+        assert result["global_position"] is None
+
 
 class TestSerializeMessageDetail:
     def test_includes_data_and_metadata(self):
@@ -254,6 +275,22 @@ class TestExtractStreamCategory:
         msg = {"stream_name": "test::user-abc123", "metadata": {}}
         assert _extract_stream_category(msg) == "test::user"
 
+    def test_falls_through_when_no_stream_category_in_domain_meta(self):
+        """Covers partial branches 94→101, 96→101."""
+        msg = {
+            "stream_name": "test::order-abc",
+            "metadata": {"domain": {"kind": "EVENT"}},
+        }
+        assert _extract_stream_category(msg) == "test::order"
+
+    def test_falls_through_with_non_dict_domain_meta(self):
+        msg = {"stream_name": "test::order-abc", "metadata": {"domain": "bad"}}
+        assert _extract_stream_category(msg) == "test::order"
+
+    def test_falls_through_with_non_dict_metadata(self):
+        msg = {"stream_name": "test::order-abc", "metadata": "bad"}
+        assert _extract_stream_category(msg) == "test::order"
+
     def test_returns_empty_for_missing(self):
         assert _extract_stream_category({}) == ""
 
@@ -269,6 +306,12 @@ class TestExtractKind:
 
     def test_returns_none_for_missing(self):
         assert _extract_kind({}) is None
+
+    def test_returns_none_for_non_dict_metadata(self):
+        assert _extract_kind({"metadata": "invalid"}) is None
+
+    def test_returns_none_for_non_dict_domain(self):
+        assert _extract_kind({"metadata": {"domain": "invalid"}}) is None
 
 
 class TestExtractEventType:
@@ -295,6 +338,14 @@ class TestExtractAggregateId:
 
     def test_returns_none_for_missing(self):
         assert _extract_aggregate_id({}) is None
+
+    def test_returns_none_with_non_dict_metadata(self):
+        """Covers partial branch 128→133."""
+        assert _extract_aggregate_id({"metadata": "bad"}) is None
+
+    def test_returns_none_with_non_dict_headers(self):
+        """Covers partial branch 130→133."""
+        assert _extract_aggregate_id({"metadata": {"headers": "bad"}}) is None
 
 
 # ---------------------------------------------------------------------------
@@ -356,10 +407,24 @@ class TestCollectAllEvents:
         assert len(events) == 1
         assert events[0]["type"] == UserRenamed.__type__
 
+    def test_filter_by_stream_category(self, domain_with_events):
+        """Covers line 198: stream_category filter excludes non-matching events."""
+        domain, _, _ = domain_with_events
+        events, _ = collect_all_events(
+            [domain], stream_category="nonexistent::category"
+        )
+        assert len(events) == 0
+
     def test_filter_by_kind(self, domain_with_events):
         domain, _, _ = domain_with_events
         events, _ = collect_all_events([domain], kind="EVENT")
         assert len(events) == 3  # All are events
+
+    def test_filter_by_kind_excludes_mismatch(self, domain_with_events):
+        """Covers line 204: kind filter excludes non-matching events."""
+        domain, _, _ = domain_with_events
+        events, _ = collect_all_events([domain], kind="COMMAND")
+        assert len(events) == 0  # All events are EVENT, not COMMAND
 
     def test_filter_by_aggregate_id(self, domain_with_events):
         domain, user1_id, _ = domain_with_events
@@ -612,3 +677,230 @@ class TestCreateTimelineRouterStandalone:
 
         response = test_client.get("/api/timeline/events/some-id")
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Coverage-targeted tests for collect_timeline_stats edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestCollectTimelineStatsEdgeCases:
+    """Tests targeting uncovered lines and partial branches in collect_timeline_stats."""
+
+    def test_snapshot_excluded_from_stats(self, domain_with_events):
+        """Covers line 270: snapshot messages skipped in stats loop."""
+        domain, user1_id, _ = domain_with_events
+
+        # Write a snapshot message
+        domain.event_store.store._write(
+            f"{User.meta_.stream_category}:snapshot-{user1_id}",
+            "SNAPSHOT",
+            {"user_id": user1_id, "name": "Alice Smith"},
+        )
+
+        stats = collect_timeline_stats([domain])
+        # Should count only the 3 real events, not the snapshot
+        assert stats["total_events"] == 3
+
+    def test_datetime_object_time(self, event_domain):
+        """Covers line 280: isinstance(raw_time, datetime) branch."""
+        fake_messages = [
+            {
+                "stream_name": "test::manual-1",
+                "type": "Test.ManualEvent.v1",
+                "global_position": 1,
+                "time": dt(2025, 6, 15, 12, 0, 0),
+                "metadata": {},
+                "data": {},
+            },
+            {
+                "stream_name": "test::manual-2",
+                "type": "Test.ManualEvent.v1",
+                "global_position": 2,
+                "time": dt(2025, 6, 15, 12, 5, 0),
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with patch.object(
+            event_domain.event_store.store, "_read", return_value=fake_messages
+        ):
+            stats = collect_timeline_stats([event_domain])
+        assert stats["total_events"] == 2
+        assert stats["last_event_time"] is not None
+        assert stats["events_per_minute"] is not None
+
+    def test_invalid_time_format(self, event_domain):
+        """Covers lines 284-285: ValueError from fromisoformat."""
+        fake_messages = [
+            {
+                "stream_name": "test::badtime-1",
+                "type": "Test.BadTime.v1",
+                "global_position": 1,
+                "time": "not-a-date",
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with patch.object(
+            event_domain.event_store.store, "_read", return_value=fake_messages
+        ):
+            stats = collect_timeline_stats([event_domain])
+        assert stats["total_events"] == 1
+        assert stats["last_event_time"] is None
+
+    def test_non_string_non_datetime_time(self, event_domain):
+        """Covers lines 286-287: else branch for unrecognized time type."""
+        fake_messages = [
+            {
+                "stream_name": "test::weirdtime-1",
+                "type": "Test.WeirdTime.v1",
+                "global_position": 1,
+                "time": 12345,
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with patch.object(
+            event_domain.event_store.store, "_read", return_value=fake_messages
+        ):
+            stats = collect_timeline_stats([event_domain])
+        assert stats["total_events"] == 1
+        assert stats["last_event_time"] is None
+
+    def test_empty_stream_name_in_stats(self, event_domain):
+        """Covers partial 274→277: empty stream name doesn't get added to active_streams."""
+        fake_messages = [
+            {
+                "stream_name": "",
+                "type": "Test.Event.v1",
+                "global_position": 1,
+                "time": "2025-06-15T12:00:00",
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with patch.object(
+            event_domain.event_store.store, "_read", return_value=fake_messages
+        ):
+            stats = collect_timeline_stats([event_domain])
+        assert stats["total_events"] == 1
+        assert stats["active_streams"] == 0
+
+    def test_falsy_raw_time(self, event_domain):
+        """Covers partial 278→266: falsy raw_time skips time tracking."""
+        fake_messages = [
+            {
+                "stream_name": "test::notime-1",
+                "type": "Test.NoTime.v1",
+                "global_position": 1,
+                "time": None,
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with patch.object(
+            event_domain.event_store.store, "_read", return_value=fake_messages
+        ):
+            stats = collect_timeline_stats([event_domain])
+        assert stats["total_events"] == 1
+        assert stats["last_event_time"] is None
+
+    def test_events_same_timestamp_zero_duration(self, event_domain):
+        """Covers partial 307→310: duration == 0 means events_per_minute stays None."""
+        same_time = "2025-06-15T12:00:00"
+        fake_messages = [
+            {
+                "stream_name": "test::same-1",
+                "type": "Test.SameTime1.v1",
+                "global_position": 1,
+                "time": same_time,
+                "metadata": {},
+                "data": {},
+            },
+            {
+                "stream_name": "test::same-2",
+                "type": "Test.SameTime2.v1",
+                "global_position": 2,
+                "time": same_time,
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with patch.object(
+            event_domain.event_store.store, "_read", return_value=fake_messages
+        ):
+            stats = collect_timeline_stats([event_domain])
+        assert stats["total_events"] == 2
+        assert stats["events_per_minute"] is None
+
+    def test_first_event_datetime_comparison(self, event_domain):
+        """Covers partial 289→293: first_event_datetime comparison when msg_dt is not smaller."""
+        fake_messages = [
+            {
+                "stream_name": "test::first-1",
+                "type": "Test.First.v1",
+                "global_position": 1,
+                "time": "2025-06-15T12:00:00",
+                "metadata": {},
+                "data": {},
+            },
+            {
+                "stream_name": "test::first-2",
+                "type": "Test.First.v1",
+                "global_position": 2,
+                "time": "2025-06-15T12:05:00",
+                "metadata": {},
+                "data": {},
+            },
+            {
+                "stream_name": "test::first-3",
+                "type": "Test.First.v1",
+                "global_position": 3,
+                "time": "2025-06-15T12:03:00",
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with patch.object(
+            event_domain.event_store.store, "_read", return_value=fake_messages
+        ):
+            stats = collect_timeline_stats([event_domain])
+        assert stats["total_events"] == 3
+        assert stats["events_per_minute"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Coverage-targeted tests for collect_all_events edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestCollectAllEventsEdgeCases:
+    def test_last_pos_none_skips_next_cursor(self, event_domain):
+        """Covers partial 214→220: last_pos is None means next_cursor stays None."""
+        fake_messages = [
+            {
+                "stream_name": "test::npos-1",
+                "type": "Test.NoPos.v1",
+                "metadata": {},
+                "data": {},
+            },
+            {
+                "stream_name": "test::npos-2",
+                "type": "Test.NoPos.v1",
+                "metadata": {},
+                "data": {},
+            },
+            {
+                "stream_name": "test::npos-3",
+                "type": "Test.NoPos.v1",
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with patch.object(
+            event_domain.event_store.store, "_read", return_value=fake_messages
+        ):
+            events, cursor = collect_all_events([event_domain], limit=2)
+        assert len(events) == 2
+        assert cursor is None
