@@ -357,6 +357,7 @@ class Domain:
         # Lazy-initialized OpenTelemetry providers (set by init_telemetry)
         self._otel_tracer_provider = None
         self._otel_meter_provider = None
+        self._otel_init_attempted = False
 
     # ------------------------------------------------------------------
     # Property proxies for composed helper state (backward compatibility)
@@ -442,7 +443,7 @@ class Domain:
         """
         from protean.utils.telemetry import get_tracer, init_telemetry
 
-        if self._otel_tracer_provider is None:
+        if not self._otel_init_attempted:
             init_telemetry(self)
         return get_tracer(self)
 
@@ -456,7 +457,7 @@ class Domain:
         """
         from protean.utils.telemetry import get_meter, init_telemetry
 
-        if self._otel_meter_provider is None:
+        if not self._otel_init_attempted:
             init_telemetry(self)
         return get_meter(self)
 

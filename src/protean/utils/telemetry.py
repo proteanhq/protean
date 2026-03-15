@@ -27,19 +27,11 @@ _OTEL_AVAILABLE = False
 try:
     from opentelemetry import metrics as otel_metrics
     from opentelemetry import trace as otel_trace
-    from opentelemetry.metrics import Meter, MeterProvider, NoOpMeterProvider
     from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
-    from opentelemetry.sdk.metrics.export import (
-        InMemoryMetricReader,
-        PeriodicExportingMetricReader,
-    )
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
-    from opentelemetry.sdk.trace.export import (
-        BatchSpanProcessor,
-        SimpleSpanProcessor,
-    )
-    from opentelemetry.trace import Tracer, TracerProvider, get_tracer_provider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     _OTEL_AVAILABLE = True
 except ImportError:
@@ -52,14 +44,18 @@ except ImportError:
 
 _TRACER_PROVIDER_KEY = "_otel_tracer_provider"
 _METER_PROVIDER_KEY = "_otel_meter_provider"
+_TELEMETRY_INIT_KEY = "_otel_init_attempted"
 
 
 def init_telemetry(domain: Domain) -> Any:
     """Initialize TracerProvider and MeterProvider from domain config.
 
     Returns the ``TracerProvider`` when telemetry is enabled, ``None``
-    otherwise.
+    otherwise.  Marks the domain so initialization is only attempted once.
     """
+    # Mark that init was attempted so Domain properties don't retry
+    setattr(domain, _TELEMETRY_INIT_KEY, True)
+
     config = domain.config.get("telemetry", {})
     if not config.get("enabled", False):
         return None
@@ -72,7 +68,7 @@ def init_telemetry(domain: Domain) -> Any:
         return None
 
     service_name = config.get("service_name") or domain.normalized_name
-    resource_attrs: dict[str, str] = {
+    resource_attrs: dict[str, Any] = {
         "service.name": service_name,
     }
     resource_attrs.update(config.get("resource_attributes", {}))
@@ -85,17 +81,16 @@ def init_telemetry(domain: Domain) -> Any:
     if exporter is not None:
         tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
 
-    otel_trace.set_tracer_provider(tracer_provider)
-
     # --- Meter Provider ----------------------------------------------------
     metric_reader = _build_metric_reader(config)
     meter_provider = SDKMeterProvider(
         resource=resource,
         metric_readers=[metric_reader] if metric_reader else [],
     )
-    otel_metrics.set_meter_provider(meter_provider)
 
-    # Stash on the domain for later shutdown
+    # Stash on the domain for later shutdown — get_tracer()/get_meter()
+    # resolve from these domain-scoped providers rather than relying on
+    # the OTEL global, which is single-assignment.
     setattr(domain, _TRACER_PROVIDER_KEY, tracer_provider)
     setattr(domain, _METER_PROVIDER_KEY, meter_provider)
 
@@ -143,6 +138,9 @@ def shutdown_telemetry(domain: Domain) -> None:
     if meter_provider is not None and hasattr(meter_provider, "shutdown"):
         meter_provider.shutdown()
         setattr(domain, _METER_PROVIDER_KEY, None)
+
+    # Reset the init sentinel so telemetry can be re-initialized if needed
+    setattr(domain, _TELEMETRY_INIT_KEY, False)
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +202,10 @@ def _build_metric_reader(config: dict[str, Any]) -> Any:
     elif exporter_name == "console":
         from opentelemetry.sdk.metrics.export import (
             ConsoleMetricExporter,
-            PeriodicExportingMetricReader,
+            PeriodicExportingMetricReader as _PeriodicReader,
         )
 
-        return PeriodicExportingMetricReader(ConsoleMetricExporter())
+        return _PeriodicReader(ConsoleMetricExporter())
 
     logger.warning("Unknown telemetry exporter '%s'. No metrics will be exported.", exporter_name)
     return None
