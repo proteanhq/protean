@@ -25,9 +25,10 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
@@ -83,9 +84,51 @@ class OrderSummaryQueryHandler(BaseQueryHandler):
     @read(GetOrdersByCustomer)
     def get_by_customer(self, query: GetOrdersByCustomer):
         return [
-            {"order_id": "order-1", "customer_id": query.customer_id, "status": "shipped"},
-            {"order_id": "order-2", "customer_id": query.customer_id, "status": "pending"},
+            {
+                "order_id": "order-1",
+                "customer_id": query.customer_id,
+                "status": "shipped",
+            },
+            {
+                "order_id": "order-2",
+                "customer_id": query.customer_id,
+                "status": "pending",
+            },
         ]
+
+
+# Event-sourced aggregate elements for testing
+class WalletOpened(BaseEvent):
+    wallet_id = Identifier(identifier=True)
+    owner = String(required=True)
+
+
+class Wallet(BaseAggregate):
+    wallet_id = Identifier(identifier=True)
+    owner = String(required=True)
+
+    @classmethod
+    def open(cls, wallet_id: str, owner: str) -> "Wallet":
+        wallet = cls(wallet_id=wallet_id, owner=owner)
+        wallet.raise_(WalletOpened(wallet_id=wallet_id, owner=owner))
+        return wallet
+
+    @apply
+    def on_wallet_opened(self, event: WalletOpened) -> None:
+        self.owner = event.owner
+
+
+class OpenWallet(BaseCommand):
+    wallet_id = Identifier(identifier=True)
+    owner = String(required=True)
+
+
+class WalletCommandHandler(BaseCommandHandler):
+    @handle(OpenWallet)
+    def open_wallet(self, command: OpenWallet):
+        wallet = Wallet.open(wallet_id=command.wallet_id, owner=command.owner)
+        current_domain.repository_for(Wallet).add(wallet)
+        return {"opened": command.wallet_id}
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +165,14 @@ def register_elements(test_domain):
     test_domain.register(OrderSummary)
     test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
     test_domain.register(OrderSummaryQueryHandler, part_of=OrderSummary)
+    test_domain.register(Wallet, is_event_sourced=True)
+    test_domain.register(WalletOpened, part_of=Wallet)
+    test_domain.register(OpenWallet, part_of=Wallet)
+    test_domain.register(WalletCommandHandler, part_of=Wallet)
+    test_domain.register(AccountWithEvent)
+    test_domain.register(AccountOpened, part_of=AccountWithEvent)
+    test_domain.register(OpenAccountWithEvent, part_of=AccountWithEvent)
+    test_domain.register(AccountWithEventHandler, part_of=AccountWithEvent)
     test_domain.init(traverse=False)
 
 
@@ -263,7 +314,9 @@ class TestHandlerExecuteSpan:
 
         spans = span_exporter.get_finished_spans()
         handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        assert handler_span.attributes["protean.handler.name"] == "AccountCommandHandler"
+        assert (
+            handler_span.attributes["protean.handler.name"] == "AccountCommandHandler"
+        )
 
     def test_handler_span_has_type_attribute(self, test_domain, span_exporter):
         test_domain.process(
@@ -373,16 +426,22 @@ class TestQueryDispatchSpan:
 
         spans = span_exporter.get_finished_spans()
         query_span = next(s for s in spans if s.name == "protean.query.dispatch")
-        assert query_span.attributes["protean.query.type"] == GetOrdersByCustomer.__type__
+        assert (
+            query_span.attributes["protean.query.type"] == GetOrdersByCustomer.__type__
+        )
 
     def test_query_span_has_handler_name(self, test_domain, span_exporter):
         test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
 
         spans = span_exporter.get_finished_spans()
         query_span = next(s for s in spans if s.name == "protean.query.dispatch")
-        assert query_span.attributes["protean.handler.name"] == "OrderSummaryQueryHandler"
+        assert (
+            query_span.attributes["protean.handler.name"] == "OrderSummaryQueryHandler"
+        )
 
-    def test_handler_execute_span_inside_query_dispatch(self, test_domain, span_exporter):
+    def test_handler_execute_span_inside_query_dispatch(
+        self, test_domain, span_exporter
+    ):
         test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
 
         spans = span_exporter.get_finished_spans()
@@ -468,3 +527,553 @@ class TestNoOpWhenDisabled:
                 FailingCommand(account_id=str(uuid4())),
                 asynchronous=False,
             )
+
+
+# ---------------------------------------------------------------------------
+# Tests: UnitOfWork commit span
+# ---------------------------------------------------------------------------
+
+
+class TestUoWCommitSpan:
+    """UnitOfWork.commit() emits ``protean.uow.commit``."""
+
+    def test_uow_commit_span_emitted(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        span_names = [s.name for s in spans]
+        assert "protean.uow.commit" in span_names
+
+    def test_uow_commit_span_has_event_count(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        uow_span = next(s for s in spans if s.name == "protean.uow.commit")
+        assert "protean.uow.event_count" in uow_span.attributes
+        assert uow_span.attributes["protean.uow.event_count"] >= 0
+
+    def test_uow_commit_span_has_session_count(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        uow_span = next(s for s in spans if s.name == "protean.uow.commit")
+        assert "protean.uow.session_count" in uow_span.attributes
+        assert uow_span.attributes["protean.uow.session_count"] >= 0
+
+    def test_uow_commit_is_descendant_of_handler(self, test_domain, span_exporter):
+        """UoW commit is nested under handler (via repository.add)."""
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
+        uow_span = next(s for s in spans if s.name == "protean.uow.commit")
+
+        # UoW commit is a descendant of handler (parent chain goes through repository.add)
+        assert uow_span.parent is not None
+        assert uow_span.context.trace_id == handler_span.context.trace_id
+
+    def test_uow_commit_shares_trace_id(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        trace_ids = {s.context.trace_id for s in spans}
+        assert len(trace_ids) == 1
+
+
+class AccountOpened(BaseEvent):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class AccountWithEvent(BaseAggregate):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class OpenAccountWithEvent(BaseCommand):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class AccountWithEventHandler(BaseCommandHandler):
+    @handle(OpenAccountWithEvent)
+    def open(self, command: OpenAccountWithEvent):
+        acct = AccountWithEvent(
+            account_id=command.account_id, name=command.name
+        )
+        acct.raise_(AccountOpened(account_id=command.account_id, name=command.name))
+        current_domain.repository_for(AccountWithEvent).add(acct)
+        return {"opened": command.account_id}
+
+
+class TestUoWCommitSpanOnError:
+    """UoW commit span records errors when commit fails."""
+
+    def test_uow_commit_span_records_error_on_failure(
+        self, test_domain, span_exporter, monkeypatch
+    ):
+        """Force a commit failure during event store append and verify
+        the UoW commit span is marked ERROR with an exception event."""
+        store = test_domain.event_store.store
+        original_write = store._write
+        call_count = 0
+
+        def _exploding_write(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            # Let command append succeed (call 1), fail on event append (call 2+)
+            if call_count > 1:
+                raise RuntimeError("event store exploded")
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(store, "_write", _exploding_write)
+
+        with pytest.raises(Exception):
+            test_domain.process(
+                OpenAccountWithEvent(account_id=str(uuid4()), name="Acme"),
+                asynchronous=False,
+            )
+
+        spans = span_exporter.get_finished_spans()
+        uow_spans = [s for s in spans if s.name == "protean.uow.commit"]
+        assert len(uow_spans) >= 1
+
+        # Find the UoW commit span that recorded the error
+        # (there may be an earlier internal UoW span from the memory adapter)
+        error_spans = [
+            s for s in uow_spans if s.status.status_code == StatusCode.ERROR
+        ]
+        assert len(error_spans) == 1
+
+        uow_span = error_spans[0]
+        assert len(uow_span.events) > 0
+        exception_event = next(
+            e for e in uow_span.events if e.name == "exception"
+        )
+        assert "event store exploded" in exception_event.attributes["exception.message"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: Repository add span
+# ---------------------------------------------------------------------------
+
+
+class TestRepositoryAddSpan:
+    """BaseRepository.add() emits ``protean.repository.add``."""
+
+    def test_repository_add_span_emitted(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        span_names = [s.name for s in spans]
+        assert "protean.repository.add" in span_names
+
+    def test_repository_add_has_aggregate_type(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        add_spans = [s for s in spans if s.name == "protean.repository.add"]
+        account_add = next(
+            s
+            for s in add_spans
+            if s.attributes.get("protean.aggregate.type") == "Account"
+        )
+        assert account_add.attributes["protean.aggregate.type"] == "Account"
+
+    def test_repository_add_has_provider(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        add_spans = [s for s in spans if s.name == "protean.repository.add"]
+        account_add = next(
+            s
+            for s in add_spans
+            if s.attributes.get("protean.aggregate.type") == "Account"
+        )
+        assert "protean.provider" in account_add.attributes
+
+    def test_repository_add_is_child_of_handler(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
+        add_spans = [s for s in spans if s.name == "protean.repository.add"]
+        account_add = next(
+            s
+            for s in add_spans
+            if s.attributes.get("protean.aggregate.type") == "Account"
+        )
+
+        assert account_add.parent is not None
+        assert account_add.parent.span_id == handler_span.context.span_id
+
+
+# ---------------------------------------------------------------------------
+# Tests: Repository get span
+# ---------------------------------------------------------------------------
+
+
+class TestRepositoryGetSpan:
+    """BaseRepository.get() emits ``protean.repository.get``."""
+
+    def test_repository_get_span_emitted(self, test_domain, span_exporter):
+        acct_id = str(uuid4())
+        test_domain.process(
+            OpenAccount(account_id=acct_id, name="Acme"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        repo = test_domain.repository_for(Account)
+        repo.get(acct_id)
+
+        spans = span_exporter.get_finished_spans()
+        span_names = [s.name for s in spans]
+        assert "protean.repository.get" in span_names
+
+    def test_repository_get_has_aggregate_type(self, test_domain, span_exporter):
+        acct_id = str(uuid4())
+        test_domain.process(
+            OpenAccount(account_id=acct_id, name="Acme"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        repo = test_domain.repository_for(Account)
+        repo.get(acct_id)
+
+        spans = span_exporter.get_finished_spans()
+        get_span = next(s for s in spans if s.name == "protean.repository.get")
+        assert get_span.attributes["protean.aggregate.type"] == "Account"
+
+    def test_repository_get_has_provider(self, test_domain, span_exporter):
+        acct_id = str(uuid4())
+        test_domain.process(
+            OpenAccount(account_id=acct_id, name="Acme"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        repo = test_domain.repository_for(Account)
+        repo.get(acct_id)
+
+        spans = span_exporter.get_finished_spans()
+        get_span = next(s for s in spans if s.name == "protean.repository.get")
+        assert "protean.provider" in get_span.attributes
+
+
+# ---------------------------------------------------------------------------
+# Tests: Event store append span
+# ---------------------------------------------------------------------------
+
+
+class TestEventStoreAppendSpan:
+    """BaseEventStore.append() emits ``protean.event_store.append``."""
+
+    def test_event_store_append_span_emitted(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        span_names = [s.name for s in spans]
+        assert "protean.event_store.append" in span_names
+
+    def test_event_store_append_has_stream(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        append_span = next(s for s in spans if s.name == "protean.event_store.append")
+        assert "protean.event_store.stream" in append_span.attributes
+        assert append_span.attributes["protean.event_store.stream"] != ""
+
+    def test_event_store_append_has_message_type(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        append_span = next(s for s in spans if s.name == "protean.event_store.append")
+        assert "protean.event_store.message_type" in append_span.attributes
+
+    def test_event_store_append_has_position(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        append_span = next(s for s in spans if s.name == "protean.event_store.append")
+        assert "protean.event_store.position" in append_span.attributes
+
+    def test_event_store_append_shares_trace_with_command_process(
+        self, test_domain, span_exporter
+    ):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        process_span = next(s for s in spans if s.name == "protean.command.process")
+        append_span = next(s for s in spans if s.name == "protean.event_store.append")
+
+        # event_store.append is part of the same trace
+        assert append_span.parent is not None
+        assert append_span.context.trace_id == process_span.context.trace_id
+
+
+# ---------------------------------------------------------------------------
+# Tests: Full infrastructure span tree
+# ---------------------------------------------------------------------------
+
+
+class TestInfrastructureSpanTree:
+    """Verify the full span tree including infrastructure spans."""
+
+    def test_full_span_tree_with_infrastructure(self, test_domain, span_exporter):
+        """process → enrich + handler.execute → repository.add + uow.commit → event_store.append."""
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        span_names = {s.name for s in spans}
+
+        # All expected spans are present
+        assert "protean.command.process" in span_names
+        assert "protean.command.enrich" in span_names
+        assert "protean.handler.execute" in span_names
+        assert "protean.repository.add" in span_names
+        assert "protean.uow.commit" in span_names
+        assert "protean.event_store.append" in span_names
+
+    def test_all_infrastructure_spans_share_trace_id(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        trace_ids = {s.context.trace_id for s in spans}
+        assert len(trace_ids) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: Event-sourced repository spans
+# ---------------------------------------------------------------------------
+
+
+class TestEventSourcedRepositoryAddSpan:
+    """BaseEventSourcedRepository.add() emits ``protean.repository.add``."""
+
+    def test_es_repository_add_span_emitted(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        add_spans = [
+            s
+            for s in spans
+            if s.name == "protean.repository.add"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        ]
+        assert len(add_spans) >= 1
+
+    def test_es_repository_add_has_aggregate_type(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        add_span = next(
+            s
+            for s in spans
+            if s.name == "protean.repository.add"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        )
+        assert add_span.attributes["protean.aggregate.type"] == "Wallet"
+
+    def test_es_repository_add_has_kind_attribute(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        add_span = next(
+            s
+            for s in spans
+            if s.name == "protean.repository.add"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        )
+        assert add_span.attributes["protean.repository.kind"] == "event_sourced"
+
+    def test_es_repository_add_has_provider(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        add_span = next(
+            s
+            for s in spans
+            if s.name == "protean.repository.add"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        )
+        assert "protean.provider" in add_span.attributes
+
+
+class TestEventSourcedRepositoryGetSpan:
+    """BaseEventSourcedRepository.get() emits ``protean.repository.get``."""
+
+    def test_es_repository_get_span_emitted(self, test_domain, span_exporter):
+        wallet_id = str(uuid4())
+        test_domain.process(
+            OpenWallet(wallet_id=wallet_id, owner="Alice"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        repo = test_domain.repository_for(Wallet)
+        repo.get(wallet_id)
+
+        spans = span_exporter.get_finished_spans()
+        get_spans = [
+            s
+            for s in spans
+            if s.name == "protean.repository.get"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        ]
+        assert len(get_spans) >= 1
+
+    def test_es_repository_get_has_aggregate_type(self, test_domain, span_exporter):
+        wallet_id = str(uuid4())
+        test_domain.process(
+            OpenWallet(wallet_id=wallet_id, owner="Alice"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        repo = test_domain.repository_for(Wallet)
+        repo.get(wallet_id)
+
+        spans = span_exporter.get_finished_spans()
+        get_span = next(
+            s
+            for s in spans
+            if s.name == "protean.repository.get"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        )
+        assert get_span.attributes["protean.aggregate.type"] == "Wallet"
+
+    def test_es_repository_get_has_kind_attribute(self, test_domain, span_exporter):
+        wallet_id = str(uuid4())
+        test_domain.process(
+            OpenWallet(wallet_id=wallet_id, owner="Alice"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        repo = test_domain.repository_for(Wallet)
+        repo.get(wallet_id)
+
+        spans = span_exporter.get_finished_spans()
+        get_span = next(
+            s
+            for s in spans
+            if s.name == "protean.repository.get"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        )
+        assert get_span.attributes["protean.repository.kind"] == "event_sourced"
+
+    def test_es_repository_get_has_provider(self, test_domain, span_exporter):
+        wallet_id = str(uuid4())
+        test_domain.process(
+            OpenWallet(wallet_id=wallet_id, owner="Alice"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        repo = test_domain.repository_for(Wallet)
+        repo.get(wallet_id)
+
+        spans = span_exporter.get_finished_spans()
+        get_span = next(
+            s
+            for s in spans
+            if s.name == "protean.repository.get"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        )
+        assert "protean.provider" in get_span.attributes
+
+
+# ---------------------------------------------------------------------------
+# Tests: Event-sourced full span tree
+# ---------------------------------------------------------------------------
+
+
+class TestEventSourcedSpanTree:
+    """Verify span tree for event-sourced aggregate operations."""
+
+    def test_es_full_span_tree(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        span_names = {s.name for s in spans}
+
+        assert "protean.command.process" in span_names
+        assert "protean.handler.execute" in span_names
+        assert "protean.repository.add" in span_names
+        assert "protean.uow.commit" in span_names
+        assert "protean.event_store.append" in span_names
+
+    def test_es_all_spans_share_trace_id(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        trace_ids = {s.context.trace_id for s in spans}
+        assert len(trace_ids) == 1

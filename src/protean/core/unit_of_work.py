@@ -12,6 +12,7 @@ from protean.port.provider import DatabaseCapabilities
 from protean.utils import Processing
 from protean.utils.globals import _uow_context_stack, current_domain
 from protean.utils.reflection import id_field
+from protean.utils.telemetry import set_span_error
 
 logger = logging.getLogger(__name__)
 
@@ -120,16 +121,31 @@ class UnitOfWork:
             ExpectedVersionError: On optimistic concurrency conflict.
             TransactionError: If the underlying database commit fails.
         """
-        from protean.utils.outbox import Outbox
-        from protean.utils.processing import current_priority
-
         # Raise error if there the Unit Of Work is not active
         logger.debug(f"Committing {self}...")
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
 
+        tracer = self.domain.tracer
+
+        with tracer.start_as_current_span(
+            "protean.uow.commit",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            self._do_commit(span)
+
+    def _do_commit(self, span: Any) -> None:  # noqa: C901
+        """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
+        from protean.utils.outbox import Outbox
+        from protean.utils.processing import current_priority
+
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
+
+        # Compute event count for span attribute
+        total_events = sum(len(events) for events in all_events.values())
+        span.set_attribute("protean.uow.event_count", total_events)
 
         # Warn if multiple aggregate *classes* raised events in this UoW.
         # DDD prescribes one aggregate per transaction; modifying multiple
@@ -224,6 +240,9 @@ class UnitOfWork:
                             )
                             outbox_repo._dao.save(ext_outbox)
 
+        # Record final session count after all lazy sessions have been initialised
+        span.set_attribute("protean.uow.session_count", len(self._sessions))
+
         # Exit from Unit of Work
         # This is necessary to ensure that the context stack is cleared
         #   and any further operations are not considered part of this transaction
@@ -262,6 +281,7 @@ class UnitOfWork:
             logger.debug("Commit Successful")
         except ValueError as exc:
             logger.error(str(exc))
+            set_span_error(span, exc)
 
             # Extact message based on message store platform in use
             if str(exc).startswith("P0001-ERROR"):
@@ -272,11 +292,13 @@ class UnitOfWork:
         except ConfigurationError as exc:
             # Configuration errors can be raised if events are misconfigured
             #   We just re-raise it for the client to handle.
+            set_span_error(span, exc)
             raise exc
         except Exception as exc:
             logger.error(
                 f"Error during Commit: {str(exc)}. Rolling back Transaction..."
             )
+            set_span_error(span, exc)
             raise TransactionError(
                 f"Unit of Work commit failed: {str(exc)}",
                 extra_info={
