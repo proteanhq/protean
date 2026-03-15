@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- OpenTelemetry SDK foundation with optional `telemetry` extra (`pip install protean[telemetry]`), `[telemetry]` configuration section, `telemetry.py` module for provider initialization, and `Domain.tracer`/`Domain.meter` lazy properties — graceful no-op when packages are not installed or telemetry is disabled
 - Correlation chain and aggregate history API endpoints for the Observatory: `GET /api/timeline/correlation/{correlation_id}` (all events in a correlation chain with causation tree) and `GET /api/timeline/aggregate/{stream_category}/{aggregate_id}` (full event history for one aggregate instance with version info)
 - Event store timeline query API endpoints for the Observatory: `GET /api/timeline/events` (paginated, filterable event list from `$all` stream), `GET /api/timeline/events/{message_id}` (single event detail with full payload and metadata), and `GET /api/timeline/stats` (summary statistics including total events, active streams, and throughput)
 - JSON Schema generator (`protean.ir.generators.schema`) — pure functions that

@@ -135,6 +135,13 @@ def _default_config():
             "ttl": 86400,  # Default TTL for success entries: 24 hours (in seconds)
             "error_ttl": 60,  # TTL for error entries: 60 seconds
         },
+        "telemetry": {
+            "enabled": False,
+            "service_name": None,  # Defaults to domain name when None
+            "exporter": "otlp",
+            "endpoint": None,
+            "resource_attributes": {},
+        },
         "custom": {},
     }
 

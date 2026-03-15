@@ -354,6 +354,10 @@ class Domain:
         # Lazy-initialized trace emitter for command processing observability
         self._trace_emitter = None
 
+        # Lazy-initialized OpenTelemetry providers (set by init_telemetry)
+        self._otel_tracer_provider = None
+        self._otel_meter_provider = None
+
     # ------------------------------------------------------------------
     # Property proxies for composed helper state (backward compatibility)
     # ------------------------------------------------------------------
@@ -427,6 +431,34 @@ class Domain:
                 self, trace_retention_days=trace_retention_days
             )
         return self._trace_emitter
+
+    @property
+    def tracer(self):
+        """Return an OpenTelemetry ``Tracer`` for this domain.
+
+        Lazy-initializes the telemetry providers on first access when
+        telemetry is enabled. Returns a no-op tracer when telemetry is
+        disabled or the ``opentelemetry`` packages are not installed.
+        """
+        from protean.utils.telemetry import get_tracer, init_telemetry
+
+        if self._otel_tracer_provider is None:
+            init_telemetry(self)
+        return get_tracer(self)
+
+    @property
+    def meter(self):
+        """Return an OpenTelemetry ``Meter`` for this domain.
+
+        Lazy-initializes the telemetry providers on first access when
+        telemetry is enabled. Returns a no-op meter when telemetry is
+        disabled or the ``opentelemetry`` packages are not installed.
+        """
+        from protean.utils.telemetry import get_meter, init_telemetry
+
+        if self._otel_meter_provider is None:
+            init_telemetry(self)
+        return get_meter(self)
 
     @property
     @lru_cache()
