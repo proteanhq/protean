@@ -29,14 +29,13 @@ from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from protean.core.aggregate import BaseAggregate, apply
+from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.utils.eventing import (
-    DomainMeta,
     Message,
     MessageHeaders,
     Metadata,
@@ -289,25 +288,24 @@ class TestCommandProcessContextExtraction:
 class TestCommandEnrichContextInjection:
     """CommandProcessor.enrich() injects current span as traceparent."""
 
-    def test_enriched_command_has_traceparent(
+    def test_enriched_command_carries_traceparent(
         self, test_domain, span_exporter
     ):
+        uid = str(uuid4())
         command = RegisterUser(
-            user_id=str(uuid4()),
+            user_id=uid,
             name="Carol",
             email="carol@example.com",
         )
 
-        test_domain.process(command, asynchronous=False)
+        enriched = test_domain._enrich_command(command, asynchronous=False)
 
-        # Read events from event store to check enriched command traceparent
-        spans = span_exporter.get_finished_spans()
-        enrich_span = next(
-            s for s in spans if s.name == "protean.command.enrich"
-        )
-
-        # The enrich span should have been created (it's a child of process)
-        assert enrich_span is not None
+        # The enriched command must have a traceparent injected from the
+        # active enrich span.
+        tp = enriched._metadata.headers.traceparent
+        assert tp is not None
+        assert tp.trace_id is not None
+        assert tp.parent_id is not None
 
     def test_enriched_command_traceparent_matches_enrich_span(
         self, test_domain, span_exporter
@@ -321,8 +319,18 @@ class TestCommandEnrichContextInjection:
 
         enriched = test_domain._enrich_command(command, asynchronous=False)
 
-        # The enriched command should have a traceparent set
-        assert enriched._metadata.headers.traceparent is not None
+        tp = enriched._metadata.headers.traceparent
+        assert tp is not None
+
+        # The traceparent's trace_id and parent_id should match the enrich
+        # span that was active when the headers were created.
+        spans = span_exporter.get_finished_spans()
+        enrich_span = next(
+            s for s in spans if s.name == "protean.command.enrich"
+        )
+        assert tp.trace_id == f"{enrich_span.context.trace_id:032x}"
+        assert tp.parent_id == f"{enrich_span.context.span_id:016x}"
+        assert tp.sampled is True
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +426,9 @@ class TestRoundTripTracePropagation:
         user_registered = [
             e for e in events if e.metadata.headers.type == UserRegistered.__type__
         ]
+        assert len(user_registered) == 1
         event_tp = user_registered[0].metadata.headers.traceparent
+        assert event_tp is not None
         # The event's parent_id should be a child span, not the original external span
         assert event_tp.parent_id != EXTERNAL_SPAN_ID
 
