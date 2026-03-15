@@ -13,7 +13,6 @@ Verifies that:
 - Spans are not emitted when telemetry is not enabled.
 """
 
-import asyncio
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -33,7 +32,6 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.core.unit_of_work import UnitOfWork
 from protean.fields import Identifier, Integer, String
 from protean.server import Engine
 from protean.server.outbox_processor import OutboxProcessor
@@ -714,7 +712,6 @@ class TestOutboxPublishErrorSpan:
         await processor.initialize()
 
         # Make broker publish fail
-        original_publish = processor.broker.publish
         monkeypatch.setattr(
             processor.broker,
             "publish",

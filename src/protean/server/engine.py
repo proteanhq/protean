@@ -507,8 +507,8 @@ class Engine:
                 stream = (
                     message.metadata.domain.stream_category
                     if message.metadata.domain
-                    else "unknown"
-                )
+                    else None
+                ) or "unknown"
 
                 # Resolve actual handler name (for CommandDispatcher, look up the specific handler)
                 if hasattr(handler_cls, "resolve_handler"):

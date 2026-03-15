@@ -342,7 +342,8 @@ class OutboxProcessor(BaseSubscription):
                         logger.warning(
                             f"Publish failed for {message.message_id[:8]}...: {publish_error}"
                         )
-                        set_span_error(span, publish_error)
+                        if publish_error is not None:
+                            set_span_error(span, publish_error)
 
                     # Save the final status
                     self.outbox_repo.add(message)
