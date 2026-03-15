@@ -6,6 +6,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
 from protean.utils.eventing import Message
 from protean.utils.outbox import Outbox, OutboxRepository
+from protean.utils.telemetry import get_tracer, set_span_error
 
 from .subscription import BaseSubscription
 
@@ -177,18 +178,32 @@ class OutboxProcessor(BaseSubscription):
         Returns:
             int: The number of messages processed successfully.
         """
-        successful_count = 0
+        tracer = get_tracer(self.engine.domain)
+        with tracer.start_as_current_span(
+            "protean.outbox.process",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("protean.outbox.batch_size", len(messages))
+            span.set_attribute("protean.outbox.processor_id", self.subscription_id)
+            span.set_attribute("protean.outbox.is_external", self.is_external)
 
-        for message in messages:
-            success = await self._process_single_message(message)
-            if success:
-                successful_count += 1
-            # Yield control after each message for better interleaving
-            await asyncio.sleep(0)
+            successful_count = 0
 
-        if len(messages) > 0:
-            logger.debug(f"Outbox batch: {successful_count}/{len(messages)} processed")
-        return successful_count
+            for message in messages:
+                success = await self._process_single_message(message)
+                if success:
+                    successful_count += 1
+                # Yield control after each message for better interleaving
+                await asyncio.sleep(0)
+
+            span.set_attribute("protean.outbox.successful_count", successful_count)
+
+            if len(messages) > 0:
+                logger.debug(
+                    f"Outbox batch: {successful_count}/{len(messages)} processed"
+                )
+            return successful_count
 
     async def tick(self):
         """
@@ -252,89 +267,111 @@ class OutboxProcessor(BaseSubscription):
         """
         # Start processing single message
         assert self.outbox_repo is not None, "Outbox repository not initialized"
-        try:
-            # Use UnitOfWork for atomic transaction management
-            # This ensures all operations (lock, publish, status update) are atomic
-            with UnitOfWork():
-                # Atomically claim the message at the database level.
-                # Under READ COMMITTED isolation, concurrent UPDATEs on the same
-                # row block until the first transaction commits, then re-evaluate
-                # the WHERE clause — so only one worker can succeed.
-                if not self.outbox_repo.claim_for_processing(message, self.worker_id):
-                    logger.debug(
-                        f"Message {message.message_id[:8]}... already claimed by another worker"
-                    )
-                    return False
 
-                # Re-fetch the message to get the updated state
-                message = self.outbox_repo.get(message.id)
+        stream_category = (
+            message.metadata_.domain.stream_category
+            if message.metadata_ and message.metadata_.domain
+            else "unknown"
+        )
+        message_type = (
+            message.metadata_.headers.type
+            if message.metadata_ and message.metadata_.headers
+            else "unknown"
+        )
 
-                # Publish message to broker
-                publish_success, publish_error = await self._publish_message(message)
+        tracer = get_tracer(self.engine.domain)
+        with tracer.start_as_current_span(
+            "protean.outbox.publish",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("protean.outbox.message_id", message.message_id)
+            span.set_attribute("protean.outbox.stream_category", stream_category)
+            span.set_attribute("protean.outbox.message_type", message_type)
+            span.set_attribute("protean.outbox.is_external", self.is_external)
+            span.set_attribute("protean.outbox.processor_id", self.subscription_id)
 
-                # Update final status based on broker publish result
-                if publish_success:
-                    message.mark_published()
-                    logger.debug(
-                        f"Published to {message.stream_name}: {message.message_id[:8]}..."
-                    )
-
-                    # Emit trace event — distinguish internal from external
-                    stream_category = (
-                        message.metadata_.domain.stream_category
-                        if message.metadata_.domain
-                        else "unknown"
-                    )
-                    message_type = (
-                        message.metadata_.headers.type
-                        if message.metadata_.headers
-                        else "unknown"
-                    )
-                    trace_event = (
-                        "outbox.external_published"
-                        if self.is_external
-                        else "outbox.published"
-                    )
-                    self.engine.emitter.emit(
-                        event=trace_event,
-                        stream=stream_category,
-                        message_id=message.message_id,
-                        message_type=message_type,
-                        payload=message.data,
-                        worker_id=self.subscription_id,
-                    )
-                else:
-                    self._mark_message_failed(message, publish_error)
-                    logger.warning(
-                        f"Publish failed for {message.message_id[:8]}...: {publish_error}"
-                    )
-
-                # Save the final status
-                self.outbox_repo.add(message)
-
-                # UnitOfWork commits here - either all operations succeed or all rollback
-                return publish_success
-
-        except Exception as exc:
-            logger.exception(
-                f"Error processing message {message.message_id[:8]}...: {exc}"
-            )
-            # Transaction automatically rolls back on exception
-
-            # Try to save the error state in a separate transaction
             try:
+                # Use UnitOfWork for atomic transaction management
+                # This ensures all operations (lock, publish, status update) are atomic
                 with UnitOfWork():
-                    # Reload message to get fresh state (in case transaction rolled back)
-                    fresh_message = self.outbox_repo.get(message.id)
-                    if fresh_message:
-                        self._mark_message_failed(fresh_message, exc)
-                        self.outbox_repo.add(fresh_message)
-            except Exception as save_exc:
-                logger.error(
-                    f"Failed to save failed message status for {message.message_id}: {save_exc}"
-                )
+                    # Atomically claim the message at the database level.
+                    # Under READ COMMITTED isolation, concurrent UPDATEs on the same
+                    # row block until the first transaction commits, then re-evaluate
+                    # the WHERE clause — so only one worker can succeed.
+                    if not self.outbox_repo.claim_for_processing(
+                        message, self.worker_id
+                    ):
+                        logger.debug(
+                            f"Message {message.message_id[:8]}... already claimed by another worker"
+                        )
+                        span.set_attribute("protean.outbox.skipped", True)
+                        return False
 
-            return False
+                    # Re-fetch the message to get the updated state
+                    message = self.outbox_repo.get(message.id)
+
+                    # Publish message to broker
+                    publish_success, publish_error = await self._publish_message(
+                        message
+                    )
+
+                    # Update final status based on broker publish result
+                    if publish_success:
+                        message.mark_published()
+                        logger.debug(
+                            f"Published to {message.stream_name}: {message.message_id[:8]}..."
+                        )
+
+                        # Emit trace event — distinguish internal from external
+                        trace_event = (
+                            "outbox.external_published"
+                            if self.is_external
+                            else "outbox.published"
+                        )
+                        self.engine.emitter.emit(
+                            event=trace_event,
+                            stream=stream_category,
+                            message_id=message.message_id,
+                            message_type=message_type,
+                            payload=message.data,
+                            worker_id=self.subscription_id,
+                        )
+                    else:
+                        self._mark_message_failed(message, publish_error)
+                        logger.warning(
+                            f"Publish failed for {message.message_id[:8]}...: {publish_error}"
+                        )
+                        if publish_error is not None:
+                            set_span_error(span, publish_error)
+
+                    # Save the final status
+                    self.outbox_repo.add(message)
+
+                    # UnitOfWork commits here - either all operations succeed or all rollback
+                    return publish_success
+
+            except Exception as exc:
+                set_span_error(span, exc)
+                logger.exception(
+                    f"Error processing message {message.message_id[:8]}...: {exc}"
+                )
+                # Transaction automatically rolls back on exception
+
+                # Try to save the error state in a separate transaction
+                try:
+                    with UnitOfWork():
+                        # Reload message to get fresh state (in case transaction rolled back)
+                        fresh_message = self.outbox_repo.get(message.id)
+                        if fresh_message:
+                            self._mark_message_failed(fresh_message, exc)
+                            self.outbox_repo.add(fresh_message)
+                except Exception as save_exc:
+                    logger.error(
+                        f"Failed to save failed message status for {message.message_id}: {save_exc}"
+                    )
+
+                return False
 
     async def _publish_message(self, message: Outbox) -> tuple[bool, Exception | None]:
         """
