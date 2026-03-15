@@ -216,6 +216,51 @@ def _build_metric_reader(config: dict[str, Any]) -> Any:
 # ---------------------------------------------------------------------------
 
 
+def extract_context_from_traceparent(traceparent: Any) -> Any:
+    """Convert a Protean ``TraceParent`` value object into an OTEL ``Context``.
+
+    The returned context can be passed as the ``context`` keyword to
+    ``tracer.start_as_current_span()`` so the new span becomes a child
+    of the trace described by *traceparent*.
+
+    Returns ``None`` when OTEL is not available or *traceparent* is ``None``.
+    """
+    if traceparent is None:
+        return None
+
+    if not _OTEL_AVAILABLE:
+        return None
+
+    from opentelemetry.propagate import extract
+
+    carrier = {"traceparent": traceparent.to_w3c()}
+    return extract(carrier)
+
+
+def inject_traceparent_from_context() -> Any:
+    """Capture the current OTEL span context as a Protean ``TraceParent``.
+
+    If an active span exists, the function serialises its context into
+    the W3C ``traceparent`` header format and returns a ``TraceParent``
+    value object.  Returns ``None`` when OTEL is not available or there
+    is no active span.
+    """
+    if not _OTEL_AVAILABLE:
+        return None
+
+    from opentelemetry.propagate import inject
+
+    carrier: dict[str, str] = {}
+    inject(carrier)
+    w3c_header = carrier.get("traceparent")
+    if not w3c_header:
+        return None
+
+    from protean.utils.eventing import TraceParent
+
+    return TraceParent.build(w3c_header)
+
+
 def set_span_error(span: Any, exc: BaseException) -> None:
     """Record an exception on a span and set its status to ERROR.
 

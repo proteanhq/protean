@@ -160,8 +160,15 @@ class BaseEvent(BaseMessageType):
                 traceparent=incoming.headers.traceparent,
             )
         else:
+            # Inject the current OTEL span context as traceparent so that
+            # events raised during handler execution carry the trace forward.
+            from protean.utils.telemetry import inject_traceparent_from_context
+
+            traceparent = inject_traceparent_from_context()
             headers = MessageHeaders(
-                type=self.__class__.__type__, time=datetime.now(timezone.utc)
+                type=self.__class__.__type__,
+                time=datetime.now(timezone.utc),
+                traceparent=traceparent,
             )
 
         # If metadata already has domain with sequence_id and asynchronous set (from raise_),

@@ -15,7 +15,11 @@ from protean.exceptions import ConfigurationError
 from protean.utils.globals import g
 from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
 from protean.utils.processing import processing_priority
-from protean.utils.telemetry import get_tracer, set_span_error
+from protean.utils.telemetry import (
+    extract_context_from_traceparent,
+    get_tracer,
+    set_span_error,
+)
 
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.factory import SubscriptionFactory
@@ -533,8 +537,18 @@ class Engine:
                 start_time = time.monotonic()
 
                 tracer = get_tracer(self.domain)
+
+                # Extract incoming traceparent as parent OTEL context so the
+                # processing span becomes a child of the distributed trace.
+                parent_ctx = None
+                if message.metadata and message.metadata.headers:
+                    parent_ctx = extract_context_from_traceparent(
+                        message.metadata.headers.traceparent
+                    )
+
                 with tracer.start_as_current_span(
                     "protean.engine.handle_message",
+                    context=parent_ctx,
                     record_exception=False,
                     set_status_on_exception=False,
                 ) as span:

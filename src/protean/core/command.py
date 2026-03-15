@@ -143,16 +143,29 @@ class BaseCommand(BaseMessageType):
             incoming
             and hasattr(incoming, "headers")
             and incoming.headers
-            and (incoming.headers.type or incoming.headers.id)
-        )
-
-        headers = (
-            incoming.headers  # type: ignore[union-attr]
-            if has_meaningful_headers
-            else MessageHeaders(
-                type=self.__class__.__type__, time=datetime.now(timezone.utc)
+            and (
+                incoming.headers.type
+                or incoming.headers.id
+                or incoming.headers.traceparent
             )
         )
+
+        if has_meaningful_headers:
+            headers = incoming.headers  # type: ignore[union-attr]
+            # Ensure type is set even when headers were kept for traceparent
+            if not headers.type:
+                headers = MessageHeaders(
+                    id=headers.id,
+                    time=headers.time or datetime.now(timezone.utc),
+                    type=self.__class__.__type__,
+                    stream=headers.stream,
+                    traceparent=headers.traceparent,
+                    idempotency_key=headers.idempotency_key,
+                )
+        else:
+            headers = MessageHeaders(
+                type=self.__class__.__type__, time=datetime.now(timezone.utc)
+            )
 
         # If metadata already has domain with sequence_id and asynchronous set (from enrich),
         # preserve those values
