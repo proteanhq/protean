@@ -11,6 +11,11 @@ from protean.exceptions import ExpectedVersionError
 from protean.utils import DomainObjects
 from protean.utils.eventing import Message
 
+try:
+    from opentelemetry.trace import StatusCode as _StatusCode
+except ImportError:
+    _StatusCode = None  # type: ignore[assignment,misc]
+
 logger = logging.getLogger(__name__)
 
 
@@ -188,6 +193,7 @@ class HandlerMixin:
         Returns:
             Any: Return value from the handler method (for command and query handlers)
         """
+        from protean.utils.globals import current_domain
 
         # Convert Message to object if necessary
         item = item.to_domain_object() if isinstance(item, Message) else item
@@ -195,16 +201,41 @@ class HandlerMixin:
         # Use specific handlers if available, or fallback on `$any` if defined
         handlers = cls._handlers[item.__class__.__type__] or cls._handlers["$any"]
 
+        # Resolve handler type label for the span
+        handler_type = cls.element_type.value if cls.element_type else "unknown"
+
+        tracer = current_domain.tracer if current_domain else None
+
+        if tracer is None:
+            # No domain context — execute without tracing
+            return cls._dispatch_handlers(handlers, item)
+
+        with tracer.start_as_current_span(
+            "protean.handler.execute", record_exception=False, set_status_on_exception=False
+        ) as span:
+            span.set_attribute("protean.handler.name", cls.__name__)
+            span.set_attribute("protean.handler.type", handler_type)
+
+            try:
+                return cls._dispatch_handlers(handlers, item)
+            except Exception as exc:
+                span.record_exception(exc)
+                if _StatusCode is not None:
+                    span.set_status(_StatusCode.ERROR, description=str(exc))
+                raise
+
+    @classmethod
+    def _dispatch_handlers(
+        cls, handlers: set, item: Union[BaseCommand, BaseEvent]
+    ) -> Any:
+        """Dispatch item to registered handler methods."""
         if cls.element_type in (
             DomainObjects.COMMAND_HANDLER,
             DomainObjects.QUERY_HANDLER,
         ):
-            # Command/Query handlers only have one handler method per command/query
             handler_method = next(iter(handlers))
             return handler_method(cls(), item)
         else:
-            # Event handlers can have multiple handlers per event
-            # Execute all handlers but don't return anything
             for handler_method in handlers:
                 handler_method(cls(), item)
 
