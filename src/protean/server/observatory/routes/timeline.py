@@ -12,16 +12,22 @@ Endpoints:
     GET /timeline/events          — Paginated event list with filtering
     GET /timeline/events/{message_id} — Single event detail
     GET /timeline/stats           — Summary statistics
+    GET /timeline/correlation/{correlation_id} — Correlation chain + causation tree
+    GET /timeline/aggregate/{stream_category}/{aggregate_id} — Aggregate event history
 """
 
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
+from dataclasses import asdict
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
+
+from protean.port.event_store import CausationNode
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -316,6 +322,179 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Correlation chain helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_causation_tree_from_group(
+    store: Any, group: list[dict[str, Any]]
+) -> CausationNode | None:
+    """Build a causation tree from a pre-loaded correlation group.
+
+    Replicates the logic of ``BaseEventStore.build_causation_tree`` but
+    operates on an already-loaded group to avoid a redundant ``$all`` scan.
+    """
+    if not group:
+        return None
+
+    by_id: dict[str, dict[str, Any]] = {}
+    children_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    roots: list[dict[str, Any]] = []
+
+    for m in group:
+        hid = store._extract_message_id(m)
+        if hid:
+            by_id[hid] = m
+        cid = store._extract_causation_id(m)
+        if cid:
+            children_map[cid].append(m)
+        else:
+            roots.append(m)
+
+    for cid in children_map:
+        children_map[cid].sort(key=lambda m: m.get("global_position", 0))
+
+    visited: set[str] = set()
+
+    def _build_node(raw_msg: dict[str, Any]) -> CausationNode:
+        hid = store._extract_message_id(raw_msg) or "?"
+        visited.add(hid)
+
+        metadata = raw_msg.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        headers = metadata.get("headers", {})
+        if not isinstance(headers, dict):
+            headers = {}
+        domain_meta = metadata.get("domain", {})
+        if not isinstance(domain_meta, dict):
+            domain_meta = {}
+
+        node = CausationNode(
+            message_id=hid,
+            message_type=raw_msg.get("type", headers.get("type", "?")),
+            kind=domain_meta.get("kind", "?"),
+            stream=raw_msg.get("stream_name", headers.get("stream", "?")),
+            time=str(raw_msg.get("time", "")) if raw_msg.get("time") else None,
+            global_position=raw_msg.get("global_position"),
+        )
+
+        for child_msg in children_map.get(hid, []):
+            child_id = store._extract_message_id(child_msg)
+            if child_id and child_id not in visited:
+                node.children.append(_build_node(child_msg))
+
+        return node
+
+    if not roots:
+        root_candidates = [
+            m for m in group if store._extract_causation_id(m) not in by_id
+        ]
+        roots = root_candidates if root_candidates else [group[0]]
+
+    roots.sort(key=lambda m: m.get("global_position", 0))
+    return _build_node(roots[0])
+
+
+def build_correlation_response(
+    domains: list[Domain], correlation_id: str
+) -> dict[str, Any] | None:
+    """Build the correlation chain response for a given correlation ID.
+
+    Searches across all domains for the correlation group, builds the
+    causation tree, and returns the serialized result.  The correlation
+    group is loaded once and reused for both the flat event list and the
+    causation tree to avoid redundant ``$all`` scans.
+
+    Returns:
+        Dict with correlation_id, events, tree, and event_count; or None if
+        no events found.
+    """
+    for domain in domains:
+        try:
+            with domain.domain_context():
+                store = domain.event_store.store
+                group = store._load_correlation_group(correlation_id)
+                if not group:
+                    continue
+
+                # Serialize the flat event list
+                events = [_serialize_message(msg, domain.name) for msg in group]
+                events.sort(key=lambda e: e.get("global_position") or 0)
+
+                # Build the causation tree from the already-loaded group
+                tree_root = _build_causation_tree_from_group(store, group)
+                tree = asdict(tree_root) if tree_root else None
+
+                return {
+                    "correlation_id": correlation_id,
+                    "events": events,
+                    "tree": tree,
+                    "event_count": len(events),
+                }
+        except Exception:
+            logger.debug(
+                "Failed to build correlation chain from %s",
+                domain.name,
+                exc_info=True,
+            )
+
+    return None
+
+
+def collect_aggregate_history(
+    domains: list[Domain],
+    stream_category: str,
+    aggregate_id: str,
+) -> dict[str, Any] | None:
+    """Collect the full event history for one aggregate instance.
+
+    Reads the aggregate's stream and returns all events in position order
+    along with current version information.
+
+    Returns:
+        Dict with stream, aggregate_id, current_version, events, and
+        event_count; or None if no events found.
+    """
+    stream_name = f"{stream_category}-{aggregate_id}"
+
+    for domain in domains:
+        try:
+            with domain.domain_context():
+                store = domain.event_store.store
+                raw_messages = store._read(
+                    stream_name, no_of_messages=1_000_000
+                )
+                if not raw_messages:
+                    continue
+
+                events = [
+                    _serialize_message(msg, domain.name) for msg in raw_messages
+                ]
+
+                # Derive stream version from the last message's position
+                last_msg = raw_messages[-1]
+                current_version = last_msg.get("position")
+
+                return {
+                    "stream": stream_name,
+                    "aggregate_id": aggregate_id,
+                    "stream_category": stream_category,
+                    "current_version": current_version,
+                    "events": events,
+                    "event_count": len(events),
+                }
+        except Exception:
+            logger.debug(
+                "Failed to read aggregate history from %s",
+                domain.name,
+                exc_info=True,
+            )
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Router factory
 # ---------------------------------------------------------------------------
 
@@ -369,5 +548,31 @@ def create_timeline_router(domains: list["Domain"]) -> APIRouter:
         """Summary statistics for the event store timeline."""
         stats = collect_timeline_stats(domains)
         return JSONResponse(content=stats)
+
+    @router.get("/timeline/correlation/{correlation_id}")
+    async def get_correlation_chain(correlation_id: str) -> JSONResponse:
+        """All events in a correlation chain with causation tree."""
+        result = build_correlation_response(domains, correlation_id)
+        if result is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No events found for correlation ID",
+            )
+        return JSONResponse(content=result)
+
+    @router.get("/timeline/aggregate/{stream_category}/{aggregate_id}")
+    async def get_aggregate_history(
+        stream_category: str, aggregate_id: str
+    ) -> JSONResponse:
+        """Full event history for one aggregate instance."""
+        result = collect_aggregate_history(
+            domains, stream_category, aggregate_id
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No events found for aggregate",
+            )
+        return JSONResponse(content=result)
 
     return router

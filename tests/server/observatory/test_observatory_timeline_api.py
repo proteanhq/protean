@@ -2,7 +2,8 @@
 
 Covers:
 - routes/timeline.py: collect_all_events, find_event_by_id,
-  collect_timeline_stats, create_timeline_router
+  collect_timeline_stats, create_timeline_router,
+  build_correlation_response, collect_aggregate_history
 - Helper functions: _serialize_message, _serialize_message_detail,
   _extract_stream_category, _extract_kind, _extract_event_type,
   _extract_aggregate_id
@@ -24,6 +25,7 @@ from protean.domain import Domain
 from protean.fields import Identifier, String
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import (
+    _build_causation_tree_from_group,
     _extract_aggregate_id,
     _extract_event_type,
     _extract_kind,
@@ -31,6 +33,8 @@ from protean.server.observatory.routes.timeline import (
     _extract_stream_category,
     _serialize_message,
     _serialize_message_detail,
+    build_correlation_response,
+    collect_aggregate_history,
     collect_all_events,
     collect_timeline_stats,
     create_timeline_router,
@@ -904,3 +908,371 @@ class TestCollectAllEventsEdgeCases:
             events, cursor = collect_all_events([event_domain], limit=2)
         assert len(events) == 2
         assert cursor is None
+
+
+# ---------------------------------------------------------------------------
+# Fixtures for correlation chain and aggregate history tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def correlated_domain(tmp_path):
+    """Create a domain and write messages with correlation/causation metadata."""
+    domain = Domain(name="CorrelationTests", root_path=str(tmp_path))
+    domain._initialize()
+
+    domain.register(User)
+    domain.register(UserRegistered, part_of=User)
+    domain.register(UserRenamed, part_of=User)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        corr_id = "corr-chain-001"
+        user_id = str(uuid.uuid4())
+        stream = f"{User.meta_.stream_category}-{user_id}"
+
+        # Root command (no causation_id)
+        domain.event_store.store._write(
+            stream,
+            "Test.RegisterUser.v1",
+            {"user_id": user_id, "name": "Alice"},
+            metadata={
+                "headers": {
+                    "id": "msg-root-cmd",
+                    "type": "Test.RegisterUser.v1",
+                    "stream": stream,
+                },
+                "domain": {
+                    "kind": "COMMAND",
+                    "correlation_id": corr_id,
+                    "causation_id": None,
+                },
+            },
+        )
+
+        # Event caused by the command
+        domain.event_store.store._write(
+            stream,
+            "Test.UserRegistered.v1",
+            {"user_id": user_id, "name": "Alice"},
+            metadata={
+                "headers": {
+                    "id": "msg-evt-registered",
+                    "type": "Test.UserRegistered.v1",
+                    "stream": stream,
+                },
+                "domain": {
+                    "kind": "EVENT",
+                    "correlation_id": corr_id,
+                    "causation_id": "msg-root-cmd",
+                },
+            },
+        )
+
+        # Another event caused by the first event
+        domain.event_store.store._write(
+            stream,
+            "Test.UserRenamed.v1",
+            {"user_id": user_id, "name": "Alice Smith"},
+            metadata={
+                "headers": {
+                    "id": "msg-evt-renamed",
+                    "type": "Test.UserRenamed.v1",
+                    "stream": stream,
+                },
+                "domain": {
+                    "kind": "EVENT",
+                    "correlation_id": corr_id,
+                    "causation_id": "msg-evt-registered",
+                },
+            },
+        )
+
+        yield domain, corr_id, user_id, stream
+
+
+@pytest.fixture
+def correlated_client(correlated_domain):
+    domain, _, _, _ = correlated_domain
+    obs = Observatory(domains=[domain])
+    return TestClient(obs.app)
+
+
+# ---------------------------------------------------------------------------
+# build_correlation_response
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCausationTreeFromGroup:
+    def test_returns_none_for_empty_group(self, correlated_domain):
+        domain, _, _, _ = correlated_domain
+        store = domain.event_store.store
+        result = _build_causation_tree_from_group(store, [])
+        assert result is None
+
+    def test_builds_tree_from_group(self, correlated_domain):
+        domain, corr_id, _, _ = correlated_domain
+        store = domain.event_store.store
+        group = store._load_correlation_group(corr_id)
+        tree = _build_causation_tree_from_group(store, group)
+
+        assert tree is not None
+        assert tree.message_id == "msg-root-cmd"
+        assert len(tree.children) == 1
+        assert tree.children[0].message_id == "msg-evt-registered"
+
+    def test_handles_malformed_metadata(self, correlated_domain):
+        """Covers branches for non-dict metadata/headers/domain."""
+        domain, _, _, _ = correlated_domain
+        store = domain.event_store.store
+        group = [
+            {
+                "type": "Test.Bad.v1",
+                "stream_name": "test::bad-1",
+                "global_position": 1,
+                "metadata": "not-a-dict",
+            }
+        ]
+        tree = _build_causation_tree_from_group(store, group)
+        assert tree is not None
+        assert tree.kind == "?"
+
+    def test_handles_non_dict_headers_and_domain(self, correlated_domain):
+        """Covers branches for non-dict headers and domain inside metadata."""
+        domain, _, _, _ = correlated_domain
+        store = domain.event_store.store
+        group = [
+            {
+                "type": "Test.BadInner.v1",
+                "stream_name": "test::bad-inner",
+                "global_position": 1,
+                "metadata": {
+                    "headers": "not-a-dict",
+                    "domain": "not-a-dict",
+                },
+            }
+        ]
+        tree = _build_causation_tree_from_group(store, group)
+        assert tree is not None
+        assert tree.kind == "?"
+        assert tree.message_type == "Test.BadInner.v1"
+
+    def test_handles_all_messages_with_causation_id(self, correlated_domain):
+        """Covers the 'not roots' fallback when all messages have causation_id."""
+        domain, _, _, _ = correlated_domain
+        store = domain.event_store.store
+        group = [
+            {
+                "type": "Test.Orphan.v1",
+                "stream_name": "test::orphan-1",
+                "global_position": 1,
+                "metadata": {
+                    "headers": {"id": "orphan-1"},
+                    "domain": {
+                        "kind": "EVENT",
+                        "causation_id": "external-parent",
+                        "correlation_id": "corr-orphan",
+                    },
+                },
+            },
+            {
+                "type": "Test.Orphan.v1",
+                "stream_name": "test::orphan-2",
+                "global_position": 2,
+                "metadata": {
+                    "headers": {"id": "orphan-2"},
+                    "domain": {
+                        "kind": "EVENT",
+                        "causation_id": "orphan-1",
+                        "correlation_id": "corr-orphan",
+                    },
+                },
+            },
+        ]
+        tree = _build_causation_tree_from_group(store, group)
+        assert tree is not None
+        # orphan-1's causation_id points outside the group, so it's the root
+        assert tree.message_id == "orphan-1"
+        assert len(tree.children) == 1
+
+
+class TestBuildCorrelationResponse:
+    def test_returns_correlation_chain(self, correlated_domain):
+        domain, corr_id, _, _ = correlated_domain
+        result = build_correlation_response([domain], corr_id)
+
+        assert result is not None
+        assert result["correlation_id"] == corr_id
+        assert result["event_count"] == 3
+        assert len(result["events"]) == 3
+
+    def test_events_sorted_by_global_position(self, correlated_domain):
+        domain, corr_id, _, _ = correlated_domain
+        result = build_correlation_response([domain], corr_id)
+
+        positions = [e["global_position"] for e in result["events"]]
+        assert positions == sorted(positions)
+
+    def test_includes_causation_tree(self, correlated_domain):
+        domain, corr_id, _, _ = correlated_domain
+        result = build_correlation_response([domain], corr_id)
+
+        tree = result["tree"]
+        assert tree is not None
+        assert tree["message_id"] == "msg-root-cmd"
+        assert tree["kind"] == "COMMAND"
+        assert len(tree["children"]) == 1
+
+        child = tree["children"][0]
+        assert child["message_id"] == "msg-evt-registered"
+        assert len(child["children"]) == 1
+        assert child["children"][0]["message_id"] == "msg-evt-renamed"
+
+    def test_returns_none_for_unknown_correlation(self, correlated_domain):
+        domain, _, _, _ = correlated_domain
+        result = build_correlation_response([domain], "nonexistent-corr")
+        assert result is None
+
+    def test_handles_broken_domain_gracefully(self):
+        domain = MagicMock()
+        domain.name = "Broken"
+        domain.domain_context.side_effect = Exception("Store unavailable")
+
+        result = build_correlation_response([domain], "any-id")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# collect_aggregate_history
+# ---------------------------------------------------------------------------
+
+
+class TestCollectAggregateHistory:
+    def test_returns_aggregate_events(self, correlated_domain):
+        domain, _, user_id, stream = correlated_domain
+        stream_category = User.meta_.stream_category
+        result = collect_aggregate_history([domain], stream_category, user_id)
+
+        assert result is not None
+        assert result["aggregate_id"] == user_id
+        assert result["stream"] == stream
+        assert result["stream_category"] == stream_category
+        assert result["event_count"] == 3
+
+    def test_includes_current_version(self, correlated_domain):
+        domain, _, user_id, _ = correlated_domain
+        stream_category = User.meta_.stream_category
+        result = collect_aggregate_history([domain], stream_category, user_id)
+
+        assert result is not None
+        # current_version should be the head position of the stream
+        assert result["current_version"] is not None
+
+    def test_returns_none_for_unknown_aggregate(self, correlated_domain):
+        domain, _, _, _ = correlated_domain
+        stream_category = User.meta_.stream_category
+        result = collect_aggregate_history(
+            [domain], stream_category, "nonexistent-id"
+        )
+        assert result is None
+
+    def test_returns_none_for_unknown_stream_category(self, correlated_domain):
+        domain, _, user_id, _ = correlated_domain
+        result = collect_aggregate_history(
+            [domain], "nonexistent::category", user_id
+        )
+        assert result is None
+
+    def test_handles_broken_domain_gracefully(self):
+        domain = MagicMock()
+        domain.name = "Broken"
+        domain.domain_context.side_effect = Exception("Store unavailable")
+
+        result = collect_aggregate_history([domain], "cat", "id")
+        assert result is None
+
+    def test_current_version_is_stream_position(self, correlated_domain):
+        """current_version is the last message's stream position, not global."""
+        domain, _, user_id, _ = correlated_domain
+        stream_category = User.meta_.stream_category
+        result = collect_aggregate_history(
+            [domain], stream_category, user_id
+        )
+
+        assert result is not None
+        # Stream position for the 3rd event (0-indexed) should be 2
+        assert result["current_version"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Endpoint: GET /timeline/correlation/{correlation_id}
+# ---------------------------------------------------------------------------
+
+
+class TestCorrelationEndpoint:
+    def test_returns_200_with_chain(self, correlated_client):
+        response = correlated_client.get("/api/timeline/correlation/corr-chain-001")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["correlation_id"] == "corr-chain-001"
+        assert data["event_count"] == 3
+        assert "events" in data
+        assert "tree" in data
+
+    def test_tree_structure(self, correlated_client):
+        response = correlated_client.get("/api/timeline/correlation/corr-chain-001")
+        tree = response.json()["tree"]
+        assert tree["message_id"] == "msg-root-cmd"
+        assert len(tree["children"]) == 1
+        assert tree["children"][0]["message_id"] == "msg-evt-registered"
+
+    def test_returns_404_for_unknown(self, correlated_client):
+        response = correlated_client.get("/api/timeline/correlation/nonexistent")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "No events found for correlation ID"
+
+
+# ---------------------------------------------------------------------------
+# Endpoint: GET /timeline/aggregate/{stream_category}/{aggregate_id}
+# ---------------------------------------------------------------------------
+
+
+class TestAggregateHistoryEndpoint:
+    def test_returns_200_with_history(self, correlated_domain, correlated_client):
+        _, _, user_id, _ = correlated_domain
+        stream_category = User.meta_.stream_category
+        response = correlated_client.get(
+            f"/api/timeline/aggregate/{stream_category}/{user_id}"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["aggregate_id"] == user_id
+        assert data["event_count"] == 3
+        assert "events" in data
+        assert "current_version" in data
+
+    def test_returns_404_for_unknown(self, correlated_client):
+        response = correlated_client.get(
+            "/api/timeline/aggregate/nonexistent/unknown-id"
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "No events found for aggregate"
+
+
+# ---------------------------------------------------------------------------
+# Route wiring for new endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestNewRouteWiring:
+    def test_correlation_route_included(self, correlated_domain):
+        domain, _, _, _ = correlated_domain
+        obs = Observatory(domains=[domain])
+        routes = [r.path for r in obs.app.routes]
+        assert "/api/timeline/correlation/{correlation_id}" in routes
+
+    def test_aggregate_route_included(self, correlated_domain):
+        domain, _, _, _ = correlated_domain
+        obs = Observatory(domains=[domain])
+        routes = [r.path for r in obs.app.routes]
+        assert "/api/timeline/aggregate/{stream_category}/{aggregate_id}" in routes
