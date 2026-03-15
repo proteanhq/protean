@@ -18,6 +18,7 @@ from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import association_fields, has_association_fields
+from protean.utils.telemetry import set_span_error
 
 if TYPE_CHECKING:
     from protean.core.queryset import QuerySet, ResultSet
@@ -203,6 +204,24 @@ class BaseRepository(Element, OptionsMixin):
         transaction in progress, changes are committed immediately to the persistence store. This mechanism
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
         """
+        tracer = self._domain.tracer
+
+        with tracer.start_as_current_span(
+            "protean.repository.add",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("protean.aggregate.type", item.__class__.__name__)
+            span.set_attribute("protean.provider", self._provider.name)
+
+            try:
+                return self._do_add(item)
+            except Exception as exc:
+                set_span_error(span, exc)
+                raise
+
+    def _do_add(self, item: Any) -> Any:  # noqa: C901
+        """Internal add logic wrapped by the ``protean.repository.add`` span."""
         # `add` is typically invoked in handler methods in Command Handlers and Event Handlers, which are
         #   enclosed in a UoW automatically. Therefore, if there is a UoW in progress, we can assume
         #   that it is the active session. If not, we will start a new UoW and commit it after the operation
@@ -385,9 +404,23 @@ class BaseRepository(Element, OptionsMixin):
         `find_residents_of_area(zipcode)`, etc. It is also possible to make use of more complicated,
         domain-friendly design patterns like the `Specification` pattern.
         """
-        item = self._dao.get(identifier)
-        self._prewarm_associations(item)
-        return item
+        tracer = self._domain.tracer
+
+        with tracer.start_as_current_span(
+            "protean.repository.get",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("protean.aggregate.type", self.meta_.part_of.__name__)
+            span.set_attribute("protean.provider", self._provider.name)
+
+            try:
+                item = self._dao.get(identifier)
+                self._prewarm_associations(item)
+                return item
+            except Exception as exc:
+                set_span_error(span, exc)
+                raise
 
 
 _T = TypeVar("_T")

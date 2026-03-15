@@ -9,6 +9,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
 from protean.utils.eventing import Message
+from protean.utils.telemetry import set_span_error
 
 
 @dataclass
@@ -117,20 +118,39 @@ class BaseEventStore(metaclass=ABCMeta):
         return None
 
     def append(self, object: Union[BaseEvent, BaseCommand]) -> int:
-        message = Message.from_domain_object(object)
-        assert message.metadata is not None, "Message metadata cannot be None"
+        tracer = self.domain.tracer
 
-        position = self._write(
-            message.metadata.headers.stream,
-            message.metadata.headers.type,
-            message.data,
-            metadata=message.metadata.to_dict(),
-            expected_version=message.metadata.domain.expected_version
-            if message.metadata.domain
-            else None,
-        )
+        with tracer.start_as_current_span(
+            "protean.event_store.append",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            message = Message.from_domain_object(object)
+            assert message.metadata is not None, "Message metadata cannot be None"
 
-        return position
+            span.set_attribute(
+                "protean.event_store.stream", message.metadata.headers.stream
+            )
+            span.set_attribute(
+                "protean.event_store.message_type", message.metadata.headers.type
+            )
+
+            try:
+                position = self._write(
+                    message.metadata.headers.stream,
+                    message.metadata.headers.type,
+                    message.data,
+                    metadata=message.metadata.to_dict(),
+                    expected_version=message.metadata.domain.expected_version
+                    if message.metadata.domain
+                    else None,
+                )
+
+                span.set_attribute("protean.event_store.position", position)
+                return position
+            except Exception as exc:
+                set_span_error(span, exc)
+                raise
 
     def load_aggregate(
         self,

@@ -12,6 +12,7 @@ from protean.exceptions import (
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
+from protean.utils.telemetry import set_span_error
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,26 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         self._domain = domain
 
     def add(self, aggregate: BaseAggregate) -> None:
+        tracer = self._domain.tracer
+
+        with tracer.start_as_current_span(
+            "protean.repository.add",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute(
+                "protean.aggregate.type",
+                aggregate.__class__.__name__ if aggregate else "",
+            )
+            span.set_attribute("protean.repository.kind", "event_sourced")
+
+            try:
+                self._do_add(aggregate)
+            except Exception as exc:
+                set_span_error(span, exc)
+                raise
+
+    def _do_add(self, aggregate: BaseAggregate) -> None:
         if aggregate is None:
             raise IncorrectUsageError("Aggregate object to persist is invalid")
 
@@ -102,6 +123,30 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         Returns:
             The fully-loaded aggregate object.
         """
+        tracer = self._domain.tracer
+
+        with tracer.start_as_current_span(
+            "protean.repository.get",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("protean.aggregate.type", self.meta_.part_of.__name__)
+            span.set_attribute("protean.repository.kind", "event_sourced")
+
+            try:
+                return self._do_get(identifier, at_version=at_version, as_of=as_of)
+            except Exception as exc:
+                set_span_error(span, exc)
+                raise
+
+    def _do_get(
+        self,
+        identifier: str,
+        *,
+        at_version: int | None = None,
+        as_of: datetime | None = None,
+    ) -> Any:
+        """Internal get logic wrapped by the ``protean.repository.get`` span."""
         if at_version is not None and as_of is not None:
             raise IncorrectUsageError(
                 "Cannot specify both `at_version` and `as_of`; "
