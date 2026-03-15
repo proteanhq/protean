@@ -121,9 +121,6 @@ class UnitOfWork:
             ExpectedVersionError: On optimistic concurrency conflict.
             TransactionError: If the underlying database commit fails.
         """
-        from protean.utils.outbox import Outbox
-        from protean.utils.processing import current_priority
-
         # Raise error if there the Unit Of Work is not active
         logger.debug(f"Committing {self}...")
         if not self._in_progress:
@@ -136,17 +133,19 @@ class UnitOfWork:
             record_exception=False,
             set_status_on_exception=False,
         ) as span:
-            self._do_commit(span, Outbox, current_priority)
+            self._do_commit(span)
 
-    def _do_commit(self, span, Outbox, current_priority) -> None:  # noqa: C901, N803
+    def _do_commit(self, span: Any) -> None:  # noqa: C901
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
+        from protean.utils.outbox import Outbox
+        from protean.utils.processing import current_priority
+
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
 
-        # Compute counts for span attributes
+        # Compute event count for span attribute
         total_events = sum(len(events) for events in all_events.values())
         span.set_attribute("protean.uow.event_count", total_events)
-        span.set_attribute("protean.uow.session_count", len(self._sessions))
 
         # Warn if multiple aggregate *classes* raised events in this UoW.
         # DDD prescribes one aggregate per transaction; modifying multiple
@@ -240,6 +239,9 @@ class UnitOfWork:
                                 target_broker=ext_broker,
                             )
                             outbox_repo._dao.save(ext_outbox)
+
+        # Record final session count after all lazy sessions have been initialised
+        span.set_attribute("protean.uow.session_count", len(self._sessions))
 
         # Exit from Unit of Work
         # This is necessary to ensure that the context stack is cleared

@@ -169,6 +169,10 @@ def register_elements(test_domain):
     test_domain.register(WalletOpened, part_of=Wallet)
     test_domain.register(OpenWallet, part_of=Wallet)
     test_domain.register(WalletCommandHandler, part_of=Wallet)
+    test_domain.register(AccountWithEvent)
+    test_domain.register(AccountOpened, part_of=AccountWithEvent)
+    test_domain.register(OpenAccountWithEvent, part_of=AccountWithEvent)
+    test_domain.register(AccountWithEventHandler, part_of=AccountWithEvent)
     test_domain.init(traverse=False)
 
 
@@ -591,6 +595,79 @@ class TestUoWCommitSpan:
         assert len(trace_ids) == 1
 
 
+class AccountOpened(BaseEvent):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class AccountWithEvent(BaseAggregate):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class OpenAccountWithEvent(BaseCommand):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class AccountWithEventHandler(BaseCommandHandler):
+    @handle(OpenAccountWithEvent)
+    def open(self, command: OpenAccountWithEvent):
+        acct = AccountWithEvent(
+            account_id=command.account_id, name=command.name
+        )
+        acct.raise_(AccountOpened(account_id=command.account_id, name=command.name))
+        current_domain.repository_for(AccountWithEvent).add(acct)
+        return {"opened": command.account_id}
+
+
+class TestUoWCommitSpanOnError:
+    """UoW commit span records errors when commit fails."""
+
+    def test_uow_commit_span_records_error_on_failure(
+        self, test_domain, span_exporter, monkeypatch
+    ):
+        """Force a commit failure during event store append and verify
+        the UoW commit span is marked ERROR with an exception event."""
+        store = test_domain.event_store.store
+        original_write = store._write
+        call_count = 0
+
+        def _exploding_write(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            # Let command append succeed (call 1), fail on event append (call 2+)
+            if call_count > 1:
+                raise RuntimeError("event store exploded")
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(store, "_write", _exploding_write)
+
+        with pytest.raises(Exception):
+            test_domain.process(
+                OpenAccountWithEvent(account_id=str(uuid4()), name="Acme"),
+                asynchronous=False,
+            )
+
+        spans = span_exporter.get_finished_spans()
+        uow_spans = [s for s in spans if s.name == "protean.uow.commit"]
+        assert len(uow_spans) >= 1
+
+        # Find the UoW commit span that recorded the error
+        # (there may be an earlier internal UoW span from the memory adapter)
+        error_spans = [
+            s for s in uow_spans if s.status.status_code == StatusCode.ERROR
+        ]
+        assert len(error_spans) == 1
+
+        uow_span = error_spans[0]
+        assert len(uow_span.events) > 0
+        exception_event = next(
+            e for e in uow_span.events if e.name == "exception"
+        )
+        assert "event store exploded" in exception_event.attributes["exception.message"]
+
+
 # ---------------------------------------------------------------------------
 # Tests: Repository add span
 # ---------------------------------------------------------------------------
@@ -868,6 +945,21 @@ class TestEventSourcedRepositoryAddSpan:
         )
         assert add_span.attributes["protean.repository.kind"] == "event_sourced"
 
+    def test_es_repository_add_has_provider(self, test_domain, span_exporter):
+        test_domain.process(
+            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        add_span = next(
+            s
+            for s in spans
+            if s.name == "protean.repository.add"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        )
+        assert "protean.provider" in add_span.attributes
+
 
 class TestEventSourcedRepositoryGetSpan:
     """BaseEventSourcedRepository.get() emits ``protean.repository.get``."""
@@ -931,6 +1023,26 @@ class TestEventSourcedRepositoryGetSpan:
             and s.attributes.get("protean.repository.kind") == "event_sourced"
         )
         assert get_span.attributes["protean.repository.kind"] == "event_sourced"
+
+    def test_es_repository_get_has_provider(self, test_domain, span_exporter):
+        wallet_id = str(uuid4())
+        test_domain.process(
+            OpenWallet(wallet_id=wallet_id, owner="Alice"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        repo = test_domain.repository_for(Wallet)
+        repo.get(wallet_id)
+
+        spans = span_exporter.get_finished_spans()
+        get_span = next(
+            s
+            for s in spans
+            if s.name == "protean.repository.get"
+            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        )
+        assert "protean.provider" in get_span.attributes
 
 
 # ---------------------------------------------------------------------------

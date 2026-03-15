@@ -46,6 +46,10 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
                 aggregate.__class__.__name__ if aggregate else "",
             )
             span.set_attribute("protean.repository.kind", "event_sourced")
+            span.set_attribute(
+                "protean.provider",
+                self._domain.event_store.store.__class__.__name__,
+            )
 
             try:
                 self._do_add(aggregate)
@@ -132,6 +136,10 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         ) as span:
             span.set_attribute("protean.aggregate.type", self.meta_.part_of.__name__)
             span.set_attribute("protean.repository.kind", "event_sourced")
+            span.set_attribute(
+                "protean.provider",
+                self._domain.event_store.store.__class__.__name__,
+            )
 
             try:
                 return self._do_get(identifier, at_version=at_version, as_of=as_of)
