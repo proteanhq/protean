@@ -179,6 +179,19 @@ class BaseAggregate(BaseEntity):
             event_identity = f"{stream}-{aggregate_version}.{event_number}"
             sequence_id = f"{aggregate_version}.{event_number}"
 
+        # Carry forward an existing traceparent from the event's original
+        # metadata, or inject the current OTEL span context so that events
+        # raised during handler execution remain part of the distributed trace.
+        traceparent = (
+            event._metadata.headers.traceparent
+            if event._metadata.headers and event._metadata.headers.traceparent
+            else None
+        )
+        if traceparent is None:
+            from protean.utils.telemetry import inject_traceparent_from_context
+
+            traceparent = inject_traceparent_from_context()
+
         headers = MessageHeaders(
             id=event_identity,
             type=event.__class__.__type__,
@@ -186,6 +199,7 @@ class BaseAggregate(BaseEntity):
             time=event._metadata.headers.time
             if (event._metadata.headers and event._metadata.headers.time)
             else None,
+            traceparent=traceparent,
         )
 
         envelope = MessageEnvelope.build(event.payload)

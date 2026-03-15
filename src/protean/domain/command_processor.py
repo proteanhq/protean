@@ -50,6 +50,8 @@ class CommandProcessor:
         correlation_id: Optional[str] = None,
     ) -> BaseCommand:
         """Enrich a command with metadata (stream, type, headers, etc.)."""
+        from protean.utils.telemetry import inject_traceparent_from_context
+
         tracer = self._domain.tracer
         with tracer.start_as_current_span("protean.command.enrich") as span:
             span.set_attribute("protean.command.type", command.__class__.__type__)
@@ -82,6 +84,10 @@ class CommandProcessor:
             if inherited_correlation_id is None:
                 inherited_correlation_id = new_correlation_id()
 
+            # Capture the current OTEL span context as a traceparent header
+            # so that downstream handlers can continue the distributed trace.
+            traceparent = inject_traceparent_from_context()
+
             headers = MessageHeaders(
                 id=identifier,  # FIXME Double check command ID format and construction
                 type=command.__class__.__type__,
@@ -89,6 +95,7 @@ class CommandProcessor:
                 time=command._metadata.headers.time
                 if (command._metadata.headers and command._metadata.headers.time)
                 else None,
+                traceparent=traceparent,
                 idempotency_key=idempotency_key,
             )
 
@@ -186,11 +193,24 @@ class CommandProcessor:
         from protean.utils.eventing import Message
         from protean.utils.processing import current_priority, processing_priority
 
+        from protean.utils.telemetry import extract_context_from_traceparent
+
         domain = self._domain
         tracer = domain.tracer
 
+        # Extract incoming traceparent as parent OTEL context so the
+        # processing span becomes a child of the distributed trace.
+        parent_ctx = None
+        if command._metadata and command._metadata.headers:
+            parent_ctx = extract_context_from_traceparent(
+                command._metadata.headers.traceparent
+            )
+
         with tracer.start_as_current_span(
-            "protean.command.process", record_exception=False, set_status_on_exception=False
+            "protean.command.process",
+            context=parent_ctx,
+            record_exception=False,
+            set_status_on_exception=False,
         ) as span:
             span.set_attribute("protean.command.type", command.__class__.__type__)
 
