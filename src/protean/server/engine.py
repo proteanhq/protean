@@ -15,6 +15,7 @@ from protean.exceptions import ConfigurationError
 from protean.utils.globals import g
 from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
 from protean.utils.processing import processing_priority
+from protean.utils.telemetry import get_tracer, set_span_error
 
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.factory import SubscriptionFactory
@@ -531,15 +532,52 @@ class Engine:
 
                 start_time = time.monotonic()
 
-                # Reconstruct the processing priority context from the
-                # message metadata so that UoW.commit() tags outbox records
-                # with the correct priority (important for async commands
-                # where the original processing_priority() context is gone).
-                msg_priority = 0
-                if message.metadata.domain:
-                    msg_priority = getattr(message.metadata.domain, "priority", 0)
-                with processing_priority(msg_priority):
-                    handler_cls._handle(message)
+                tracer = get_tracer(self.domain)
+                with tracer.start_as_current_span(
+                    "protean.engine.handle_message",
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ) as span:
+                    span.set_attribute("protean.handler.name", handler_name)
+                    span.set_attribute("protean.message.type", message_type)
+                    span.set_attribute("protean.message.id", message_id)
+                    span.set_attribute("protean.stream_category", stream)
+                    if worker_id:
+                        span.set_attribute("protean.worker_id", worker_id)
+
+                    # Determine subscription type from handler
+                    if hasattr(handler_cls, "resolve_handler"):
+                        span.set_attribute(
+                            "protean.subscription_type", "command_dispatcher"
+                        )
+                    elif issubclass(handler_cls, BaseProcessManager):
+                        span.set_attribute(
+                            "protean.subscription_type", "process_manager"
+                        )
+                    elif issubclass(handler_cls, BaseEventHandler):
+                        span.set_attribute(
+                            "protean.subscription_type", "event_handler"
+                        )
+                    elif issubclass(handler_cls, BaseCommandHandler):
+                        span.set_attribute(
+                            "protean.subscription_type", "command_handler"
+                        )
+
+                    try:
+                        # Reconstruct the processing priority context from the
+                        # message metadata so that UoW.commit() tags outbox records
+                        # with the correct priority (important for async commands
+                        # where the original processing_priority() context is gone).
+                        msg_priority = 0
+                        if message.metadata.domain:
+                            msg_priority = getattr(
+                                message.metadata.domain, "priority", 0
+                            )
+                        with processing_priority(msg_priority):
+                            handler_cls._handle(message)
+                    except Exception as exc:
+                        set_span_error(span, exc)
+                        raise
 
                 duration_ms = (time.monotonic() - start_time) * 1000
                 logger.debug(
