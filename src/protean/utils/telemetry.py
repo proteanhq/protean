@@ -212,6 +212,26 @@ def _build_metric_reader(config: dict[str, Any]) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Span error helpers
+# ---------------------------------------------------------------------------
+
+
+def set_span_error(span: Any, exc: BaseException) -> None:
+    """Record an exception on a span and set its status to ERROR.
+
+    Centralizes OTEL ``StatusCode`` access so that other modules never
+    need to import ``opentelemetry`` directly.
+    """
+    span.record_exception(exc)
+    if _OTEL_AVAILABLE:
+        from opentelemetry.trace import StatusCode
+
+        span.set_status(StatusCode.ERROR, description=str(exc))
+    else:
+        span.set_status("ERROR", description=str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Lightweight no-op fallbacks (used when OTEL is not installed)
 # ---------------------------------------------------------------------------
 

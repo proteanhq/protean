@@ -25,11 +25,6 @@ from protean.utils.eventing import (
 from protean.utils.globals import g
 from protean.utils.reflection import id_field
 
-try:
-    from opentelemetry.trace import StatusCode as _StatusCode
-except ImportError:
-    _StatusCode = None  # type: ignore[assignment,misc]
-
 if TYPE_CHECKING:
     from protean.domain import Domain
 
@@ -295,11 +290,9 @@ class CommandProcessor:
                         duration_ms = (time.monotonic() - start_time) * 1000
 
                         # Record exception on the OTEL span
-                        span.record_exception(exc)
-                        if _StatusCode is not None:
-                            span.set_status(
-                                _StatusCode.ERROR, description=str(exc)
-                            )
+                        from protean.utils.telemetry import set_span_error
+
+                        set_span_error(span, exc)
 
                         # Emit handler.failed trace
                         emitter.emit(

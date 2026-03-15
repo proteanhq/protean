@@ -6,15 +6,11 @@ from typing import Any, Callable, Union
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
+from protean.core.query import BaseQuery
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.utils import DomainObjects
 from protean.utils.eventing import Message
-
-try:
-    from opentelemetry.trace import StatusCode as _StatusCode
-except ImportError:
-    _StatusCode = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +183,7 @@ class HandlerMixin:
         setattr(cls, "_handlers", defaultdict(set))
 
     @classmethod
-    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> Any:
+    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent, BaseQuery]) -> Any:
         """Handle a message, command, event, or query.
 
         Returns:
@@ -219,14 +215,14 @@ class HandlerMixin:
             try:
                 return cls._dispatch_handlers(handlers, item)
             except Exception as exc:
-                span.record_exception(exc)
-                if _StatusCode is not None:
-                    span.set_status(_StatusCode.ERROR, description=str(exc))
+                from protean.utils.telemetry import set_span_error
+
+                set_span_error(span, exc)
                 raise
 
     @classmethod
     def _dispatch_handlers(
-        cls, handlers: set, item: Union[BaseCommand, BaseEvent]
+        cls, handlers: set, item: Union[BaseCommand, BaseEvent, BaseQuery]
     ) -> Any:
         """Dispatch item to registered handler methods."""
         if cls.element_type in (
