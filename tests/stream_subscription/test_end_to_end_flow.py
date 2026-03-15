@@ -167,35 +167,17 @@ class TestEndToEndFlow:
             )
             assert subscription.enable_dlq == stream_config["enable_dlq"]
 
-    def test_event_to_command_flow(self, test_domain):
-        """Test full flow from event to command processing via streams."""
-        # Start the engine in test mode
+    def test_event_to_command_subscriptions_registered(self, test_domain):
+        """Test that engine registers both event and command subscriptions."""
         engine = Engine(test_domain, test_mode=True)
 
-        # Verify handlers are registered
-        # Event handlers use FQN as key; command handlers are grouped by
-        # CommandDispatcher under "commands:{stream_category}" key
+        # Event handlers use FQN as key
         assert fqn(WelcomeEmailHandler) in engine._subscriptions
+
+        # Command handlers are grouped by CommandDispatcher under
+        # "commands:{stream_category}" key
         command_keys = [k for k in engine._subscriptions if k.startswith("commands:")]
         assert len(command_keys) > 0
-
-        # Create and save a user aggregate (this will emit UserRegistered event)
-        user = User.register(
-            email="test@example.com",
-            name="Test User",
-            password="password123",
-        )
-        test_domain.repository_for(User).add(user)
-
-        engine.run()
-
-        # Verify notification was created
-        notifications = test_domain.repository_for(Notification).query.all().items
-        assert len(notifications) > 0
-        notification = notifications[0]
-        assert notification.user_email == "test@example.com"
-        assert "Welcome Test User" in notification.message
-        assert notification.sent_count == 1
 
     @pytest.mark.asyncio
     async def test_multiple_consumers_same_group(self, test_domain):

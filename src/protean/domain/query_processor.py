@@ -66,7 +66,11 @@ class QueryProcessor:
                 f"No Query Handler registered for `{query.__class__.__name__}`"
             )
 
-        return handler_cls._handle(query)
+        tracer = self._domain.tracer
+        with tracer.start_as_current_span("protean.query.dispatch") as span:
+            span.set_attribute("protean.query.type", query.__class__.__type__)
+            span.set_attribute("protean.handler.name", handler_cls.__name__)
+            return handler_cls._handle(query)
 
     def handler_for(self, query: Any) -> type | None:
         """Find the QueryHandler class registered to handle *query*.
