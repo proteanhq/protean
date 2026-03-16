@@ -488,6 +488,126 @@ Spans and metrics are printed to stdout.
 
 ---
 
+## Contributor conventions
+
+When adding new instrumentation to Protean, follow these established
+patterns to keep the telemetry codebase consistent.
+
+### Import rule
+
+Never import `opentelemetry` outside of `src/protean/utils/telemetry.py`.
+All OTEL interaction must go through the gateway module's public API.
+If you need a new OTEL capability (e.g., span links, baggage), add a
+helper to `telemetry.py` and call that helper from your instrumented code.
+
+See [ADR-0008](../../adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md)
+for the rationale.
+
+### Adding a new span
+
+Use this pattern at every instrumented callsite:
+
+```python
+from protean.utils.telemetry import get_tracer, set_span_error
+
+tracer = get_tracer(domain)  # or self._domain.tracer, current_domain.tracer
+
+with tracer.start_as_current_span(
+    "protean.<subsystem>.<operation>",
+    record_exception=False,
+    set_status_on_exception=False,
+) as span:
+    span.set_attribute("protean.<subsystem>.<attribute>", value)
+    try:
+        # ... actual work ...
+    except Exception as exc:
+        set_span_error(span, exc)
+        raise
+```
+
+Key rules:
+
+- **Span name**: `protean.<subsystem>.<operation>` (e.g.,
+  `protean.cache.get`, `protean.broker.publish`).
+- **Attribute prefix**: `protean.<subsystem>.<attribute>` (e.g.,
+  `protean.cache.key`, `protean.broker.stream`).
+- **Always disable automatic exception recording** with
+  `record_exception=False, set_status_on_exception=False`. Then call
+  `set_span_error(span, exc)` explicitly in your exception handler.
+  This gives precise control over what gets recorded and keeps the
+  `StatusCode` import centralized in the gateway module.
+- **Never import** `StatusCode`, `Status`, or any `opentelemetry` symbol
+  in the instrumented file. Use `set_span_error()` instead.
+
+### Why explicit error recording?
+
+OTEL's default behavior records every exception that escapes the span's
+context manager, including exceptions that are expected and handled
+upstream (e.g., `ObjectNotFoundError` in a repository `get` that returns
+`None`). By disabling automatic recording and calling `set_span_error()`
+only in the appropriate `except` block, Protean ensures:
+
+1. Only genuine failures are marked as errors in traces.
+2. The `StatusCode.ERROR` import stays in `telemetry.py`, preserving
+   the import boundary.
+3. Exception messages and stack traces are attached at the point where
+   the error is best understood, not where it happens to propagate.
+
+### Adding a new metric
+
+Metrics are defined as a fixed set of instruments in the `DomainMetrics`
+class (`src/protean/utils/telemetry.py`). To add a new metric:
+
+1. **Add the instrument** to `DomainMetrics.__init__()`:
+
+    ```python
+    self.my_new_counter = meter.create_counter(
+        name="protean.subsystem.metric_name",
+        unit="{item}",          # OTEL unit string
+        description="What this measures",
+    )
+    ```
+
+2. **Record at the callsite** using `get_domain_metrics()`:
+
+    ```python
+    from protean.utils.telemetry import get_domain_metrics
+
+    metrics = get_domain_metrics(domain)
+    metrics.my_new_counter.add(1, {"label_name": label_value})
+    ```
+
+Key rules:
+
+- **Metric name**: `protean.<subsystem>.<metric>` (e.g.,
+  `protean.cache.hits`).
+- **Units**: Use OTEL conventions -- `"s"` for seconds, `"{item}"` for
+  counts, `"By"` for bytes.
+- **Labels at recording time**, not at creation time. The instrument is
+  created once; labels are passed with each `.add()` or `.record()` call.
+- **Counters** for events that happened (commands processed, messages
+  published). **Histograms** for distributions (latency, batch sizes).
+- The `DomainMetrics` instance is **cached per domain** -- created on
+  first access via `get_domain_metrics(domain)` and cleared on
+  `shutdown_telemetry()`. Never create instruments outside this class.
+
+### Adding TraceParent propagation to a new message pathway
+
+If you add a new message pathway (e.g., a new subscription type or a
+new way commands enter the system), ensure trace continuity:
+
+- **On message creation**: call `inject_traceparent_from_context()` and
+  store the result in the message's `MessageHeaders.traceparent`.
+- **On message arrival**: call `extract_context_from_traceparent(msg.metadata.headers.traceparent)`
+  and pass the result as `context=` to `start_as_current_span()`.
+
+If either side is missed, the distributed trace will break at that
+boundary. See the three existing injection/extraction points in
+[ADR-0008](../../adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md)
+for reference.
+
+---
+
 ## Next steps
 
 - [Observability reference](../../reference/server/observability.md) -- Full

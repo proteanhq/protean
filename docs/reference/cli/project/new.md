@@ -50,7 +50,7 @@ The command creates a complete project structure with the following components:
 
 ### Root Files
 
-- `pyproject.toml` - Python project configuration with Poetry
+- `pyproject.toml` - Python project configuration with uv
 - `README.md` - Project documentation
 - `Makefile` - Common development tasks
 - `.gitignore` - Git ignore patterns

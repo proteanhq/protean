@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/pypi/v/protean?label=Release)](https://pypi.org/project/protean/)
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
-[![Tests](https://img.shields.io/badge/tests-3%2C826-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-7%2C674-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 A Python framework for domain-driven systems. Sketch aggregates, events,
@@ -138,11 +138,11 @@ Not sure? Start with DDD -- you can evolve later. See
 
 <div class="grid cards" markdown>
 
--   __:material-test-tube: 3,826 Tests__
+-   __:material-test-tube: 7,674 Tests__
 
     ---
 
-    3.5:1 test-to-code ratio. Every commit validated against PostgreSQL,
+    3.0:1 test-to-code ratio. Every commit validated against PostgreSQL,
     Redis, Elasticsearch, MessageDB, and MSSQL.
 
 -   __:material-check-decagram: Zero Lint Violations__
@@ -156,8 +156,8 @@ Not sure? Start with DDD -- you can evolve later. See
 
     ---
 
-    97% of source files score in the highest maintainability tier.
-    Average cyclomatic complexity of 2.97.
+    95% of source files score in the highest maintainability tier.
+    Average cyclomatic complexity of 3.38.
 
 -   __:material-puzzle-outline: 12 Adapters, 5 Ports__
 

@@ -11,6 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Always use the `-R proteanhq/protean` flag with `gh` CLI commands to explicitly target the correct repository.
 - **Every PR must include a `CHANGELOG.md` entry** under the `[Unreleased]` section. Use the appropriate subsection: Added, Changed, Deprecated, Removed, Fixed, or Security. The changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## Git
+- Never override `git user.name` or `git user.email` — they are already configured correctly.
+
 ## Breaking Change Policy
 
 Every PR that touches a public API must answer: **does this break existing usage?** If yes, classify the break and apply the correct mitigation in the same PR. See ADR-0004 for the full rationale.
@@ -332,14 +335,18 @@ When planning and executing an epic, follow this structured workflow. The goal i
 
 1. **Review the epic** on the GitHub Project (private, `github.com/orgs/proteanhq/projects/15`) and the roadmap (`todo/0-ROADMAP.md`).
 2. **Deep-dive into the codebase** — understand what exists, what's missing, what patterns to follow.
-3. **Break down into sub-issues** — each sub-issue is a coherent, PR-sized unit of work. Tests ship with the code they test.
+3. **Break down into sub-issues** — each sub-issue is a coherent, PR-sized unit of work. Tests ship with the code they test. Avoid mocks. Aim for 100% coverage.
 
 ### Phase 2: Create Tracking Artifacts
 
 Single layer — all tracking uses **real GitHub Issues**:
 
-- **Epic issue** — labeled `epic`, added to the project board with Item Type = Epic. Sub-issues are linked using GitHub's native sub-issues feature for automatic progress tracking.
-- **Sub-issues** — real GitHub Issues linked as native sub-issues of the epic. Each sub-issue = one PR. Added to the project board with Item Type = Task.
+- **Epic issue** — Every epic already exists as a **draft item** in the GitHub Project with its Sequence, Release, Requires, and Item Type fields pre-populated. **Do not create a new issue.** Instead, convert the existing draft item to a real issue:
+  1. Open the draft item in the project board
+  2. Click the item title → select **"Convert to issue"** → choose the `proteanhq/protean` repository
+  3. Add the `epic` label and flesh out the body with outcome, why, and success criteria
+  4. The project fields (Sequence, Release, Requires, Status, Item Type) are preserved automatically
+- **Sub-issues** — real GitHub Issues linked as native sub-issues of the epic. Each sub-issue = one PR. Added to the project board with Item Type = Task and the same Release field as the parent epic.
 - PR descriptions reference "Closes #N" to create permanent cross-references.
 - Use GitHub's **issue relationships** ("Blocked by" / "Blocks") for dependencies between sub-issues.
 
@@ -361,6 +368,58 @@ No draft issues or internal numbering schemes (N.M.x). Everything is public and 
 - **Commits and PRs are the durable artifacts** — project boards get archived, but PR descriptions, commit messages, and review threads are the permanent trail
 - **One issue = one PR** — every sub-issue maps to exactly one PR
 - **Tests ship with code** — never as a separate PR; each PR is independently verifiable
+
+### GitHub Project API Reference
+
+Useful GraphQL mutations and queries for project management tasks. Project ID: `PVT_kwDOAmXm_s4BRFMC`.
+
+**Convert a draft item to a real issue** (preserves all project fields):
+```
+mutation { convertProjectV2DraftIssueItemToIssue(input: {
+  projectId: "PVT_kwDOAmXm_s4BRFMC"
+  itemId: "<draft-item-id>"
+  repositoryId: "<repo-node-id>"
+}) { item { id } } }
+```
+
+**Set a field value on a project item** (works for Status, Release, Sequence, Requires, Item Type):
+```
+mutation { updateProjectV2ItemFieldValue(input: {
+  projectId: "PVT_kwDOAmXm_s4BRFMC"
+  itemId: "<item-id>"
+  fieldId: "<field-id>"
+  value: { singleSelectOptionId: "<option-id>" }  # or: { text: "..." } / { number: N }
+}) { projectV2Item { id } } }
+```
+
+**Add a blocked-by relationship between two real issues** (`issueId` is the blocked one):
+```
+mutation { addBlockedBy(input: {
+  issueId: "<blocked-issue-node-id>"
+  blockingIssueId: "<blocking-issue-node-id>"
+}) { issue { number } blockingIssue { number } } }
+```
+Returns "already taken" validation error if the relationship already exists — safe to treat as a no-op.
+
+**Query blocked-by/blocking on an issue:**
+```
+{ repository(owner: "proteanhq", name: "protean") {
+  issue(number: N) {
+    blockedBy(first: 10) { nodes { number title } }
+    blocking(first: 10) { nodes { number title } }
+  }
+} }
+```
+
+**Key field IDs** (project #15):
+
+| Field | ID | Notes |
+|-------|----|-------|
+| Status | `PVTSSF_lADOAmXm_s4BRFMCzg_A5gY` | Backlog=`f75ad846`, Active=`5a1d9210`, In Progress=`47fc9ee4`, Done=`98236657` |
+| Item Type | `PVTSSF_lADOAmXm_s4BRFMCzg_KRSg` | Epic=`1acf4758`, Task=`ae8e6519` |
+| Release | `PVTSSF_lADOAmXm_s4BRFMCzg_A5uY` | R1=`10eabad0`, R2=`38bb22fc`, R3=`821b3922` |
+| Sequence | `PVTF_lADOAmXm_s4BRFMCzg_kOnU` | Number field (1–37 global execution order) |
+| Requires | `PVTF_lADOAmXm_s4BRFMCzg_kQTc` | Text field, e.g. `"1.1, 1.6"` |
 
 ## Architecture Decision Records (ADRs)
 

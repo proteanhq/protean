@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/pypi/v/protean?label=Release&style=flat-square)](https://pypi.org/project/protean/)
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
-[![Tests](https://img.shields.io/badge/tests-3%2C826-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-7%2C674-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 ## Installation
@@ -54,10 +54,10 @@ Protean is tested against 5 backing services across 4 Python versions on every c
 
 | Metric | Value |
 |---|---|
-| Tests | 3,826 (3.5:1 test-to-code ratio) |
+| Tests | 7,674 (3.0:1 test-to-code ratio) |
 | Linting | Zero violations (Ruff) |
-| Complexity | Avg 2.97 cyclomatic (A grade) |
-| Maintainability | A rank (97% of files) |
+| Complexity | Avg 3.38 cyclomatic (A grade) |
+| Maintainability | A rank (95% of files) |
 | CI Matrix | Python 3.11-3.14 x PostgreSQL, Redis, Elasticsearch, MessageDB, MSSQL |
 
 See the full [Quality Report](https://docs.proteanhq.com/community/quality/) for details.

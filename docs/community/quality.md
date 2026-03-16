@@ -163,7 +163,7 @@ all infrastructure adapters exercised**.
 ### Pipeline Steps
 
 1. Start all 5 backing service containers
-2. Install dependencies via Poetry
+2. Install dependencies via uv
 3. Run the full test suite (`protean test -c FULL`)
 4. Upload coverage to Codecov
 5. Deploy documentation (on merge to `main`)
@@ -222,7 +222,7 @@ pip install protean[elasticsearch] # Adds elasticsearch + elasticsearch-dsl
 | Test framework | pytest (with pytest-asyncio) |
 | Coverage | coverage.py + Codecov |
 | Complexity analysis | Radon |
-| Dependency management | Poetry |
+| Dependency management | uv |
 | Multi-version testing | Nox |
 | CI/CD | GitHub Actions |
 | Documentation | MkDocs Material |
