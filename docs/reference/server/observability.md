@@ -550,8 +550,22 @@ The Observatory server requires the `fastapi` and `uvicorn` packages:
 pip install fastapi uvicorn
 ```
 
+## OpenTelemetry integration
+
+For production APM environments, Protean supports native OpenTelemetry
+distributed tracing and metrics alongside the Observatory. When OTel is
+enabled, spans cover every layer of the stack (commands, handlers, UoW,
+repositories, event store, server, outbox) and the `/metrics` endpoint
+automatically converges on OTel-powered Prometheus exposition.
+
+See [OpenTelemetry Integration](../../guides/server/opentelemetry.md) for
+configuration, span and metric catalogs, APM setup guides, and TraceParent
+propagation details.
+
 ## Next steps
 
+- [OpenTelemetry Integration](../../guides/server/opentelemetry.md) -- Distributed
+  tracing, metrics, APM setup, and TraceParent propagation with OpenTelemetry
 - [Message Tracing](../../guides/domain-behavior/message-tracing.md) -- Correlation
   and causation IDs for end-to-end traceability across commands and events
 - [Engine Architecture](../../concepts/async-processing/engine.md) -- How the engine manages subscriptions

@@ -253,6 +253,7 @@ nav:
       - guides/server/production-deployment.md
       - guides/server/logging.md
       - guides/server/monitoring.md
+      - guides/server/opentelemetry.md
       - guides/server/using-priority-lanes.md
       - guides/server/external-event-dispatch.md
     - Multi-Domain Applications:

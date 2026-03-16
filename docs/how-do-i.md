@@ -127,6 +127,9 @@ need by what you're trying to accomplish.
 | Monitor message flow in real time               | [Observability](./reference/server/observability.md) |
 | Expose Prometheus metrics for the message pipeline | [Observability](./reference/server/observability.md) |
 | Stream trace events via SSE                     | [Observability](./reference/server/observability.md) |
+| Add distributed tracing with OpenTelemetry      | [OpenTelemetry Integration](./guides/server/opentelemetry.md) |
+| Send spans and metrics to Jaeger, Datadog, or Grafana | [OpenTelemetry Integration](./guides/server/opentelemetry.md) |
+| Instrument FastAPI endpoints with OTel          | [OpenTelemetry Integration](./guides/server/opentelemetry.md) |
 | Run the async background server                 | [`protean server`](./reference/cli/runtime/server.md) |
 | Use the CLI for development and operations      | [CLI](./reference/cli/index.md) |
 | Understand the server engine architecture       | [Engine](./concepts/async-processing/engine.md) |

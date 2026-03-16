@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- OpenTelemetry integration documentation: comprehensive guide covering configuration, span catalog, metrics catalog, TraceParent propagation, FastAPI auto-instrumentation, APM setup guides (Jaeger, Grafana Tempo, Datadog), Observatory vs OTel positioning, and `/metrics` convergence
 - End-to-end integration tests for unified OTel span hierarchy and Observatory trace emission: validates complete span tree from command → handler → UoW → repository → event store, verifies parent-child relationships across all layers, confirms complementary (non-redundant) attributes at each span level, and ensures Observatory traces fire correctly alongside OTel spans both with telemetry enabled and disabled
 - OpenTelemetry SDK foundation with optional `telemetry` extra (`pip install protean[telemetry]`), `[telemetry]` configuration section, `telemetry.py` module for provider initialization, and `Domain.tracer`/`Domain.meter` lazy properties — graceful no-op when packages are not installed or telemetry is disabled
 - OpenTelemetry spans for command processing and handler dispatch: `protean.command.process` (with command type, id, stream, correlation_id attributes), `protean.command.enrich` (child span), `protean.handler.execute` (with handler name and type, covers command handlers, event handlers, projectors, and process managers), and `protean.query.dispatch` — with exception recording and ERROR status on handler failures
