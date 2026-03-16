@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix flaky `test_mixed_error_scenarios` in `test_server_robustness.py`: increase Engine test_mode processing cycles from 3 to 10 so all subscription types (events, commands, broker messages) have enough time to be scheduled and process their messages under CI load
+
 ### Added
 
 - End-to-end integration tests for unified OTel span hierarchy and Observatory trace emission: validates complete span tree from command → handler → UoW → repository → event store, verifies parent-child relationships across all layers, confirms complementary (non-redundant) attributes at each span level, and ensures Observatory traces fire correctly alongside OTel spans both with telemetry enabled and disabled

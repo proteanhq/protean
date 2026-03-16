@@ -884,15 +884,25 @@ class Engine:
                         + outbox_processor_tasks
                     )
 
-                    # Run for a few cycles to allow message propagation
-                    # Each cycle gives time for: outbox -> broker -> handler -> new messages -> repeat
-                    for cycle in range(3):
-                        logger.debug(f"Test mode cycle {cycle + 1}/3")
+                    # Run enough cycles to allow message propagation across
+                    # all subscription types (events, commands, broker).
+                    # Each cycle yields control so poll() tasks can process
+                    # their next batch.  Under CI load the original 3 cycles
+                    # (300 ms) was too tight — some subscriptions never got
+                    # scheduled before shutdown.  10 cycles (1 s) provides
+                    # adequate headroom while keeping tests fast.
+                    max_cycles = 10
+                    for cycle in range(max_cycles):
+                        logger.debug(
+                            f"Test mode cycle {cycle + 1}/{max_cycles}"
+                        )
                         # Give tasks time to process messages
                         await asyncio.sleep(0.1)
 
-                        # Check if all tasks are still running
-                        still_running = [t for t in all_tasks if not t.done()]
+                        # Check if all tasks have finished
+                        still_running = [
+                            t for t in all_tasks if not t.done()
+                        ]
                         if not still_running:
                             logger.debug("All tasks completed")
                             break
