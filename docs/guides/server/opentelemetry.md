@@ -91,14 +91,20 @@ instrumentation point creates an OTel span with relevant attributes.
 | `protean.command.enrich` | `CommandProcessor.enrich()` | Command enrichment (identity, metadata, TraceParent injection) |
 | `protean.command.process` | `CommandProcessor.process()` | Full command processing lifecycle |
 
-**Attributes:**
+**`protean.command.enrich` attributes:**
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `protean.command.type` | string | Command class type identifier |
-| `protean.command.id` | string | Command message ID |
-| `protean.stream` | string | Target stream name |
-| `protean.handler.name` | string | Resolved handler class name |
+
+**`protean.command.process` attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `protean.command.type` | string | Command class type identifier |
+| `protean.command.id` | string | Command message ID (set after enrichment) |
+| `protean.stream` | string | Target stream name (set after enrichment) |
+| `protean.correlation_id` | string | Correlation ID (when present) |
 
 #### Handler execution
 
@@ -140,16 +146,15 @@ instrumentation point creates an OTel span with relevant attributes.
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `protean.aggregate.type` | string | Aggregate class name |
-| `protean.provider` | string | Database provider name (CRUD repositories) |
-| `protean.repository.kind` | string | `"event_sourced"` for ES repositories |
-| `protean.aggregate.id` | string | Aggregate identity value |
+| `protean.provider` | string | Database provider name (CRUD and ES repositories) |
+| `protean.repository.kind` | string | `"event_sourced"` (ES repositories only) |
 
 **Event store attributes:**
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `protean.event_store.stream` | string | Stream name |
-| `protean.event_store.type` | string | Event/command type |
+| `protean.event_store.message_type` | string | Event/command type |
 | `protean.event_store.position` | int | Resulting stream position |
 
 **UoW attributes:**
@@ -189,7 +194,7 @@ instrumentation point creates an OTel span with relevant attributes.
 | `protean.outbox.stream_category` | string | Target stream |
 | `protean.outbox.message_type` | string | Message class name |
 | `protean.outbox.successful_count` | int | Successfully published messages in batch |
-| `protean.outbox.skipped` | bool | Message skipped (already published) |
+| `protean.outbox.skipped` | bool | Message skipped (already claimed by another worker) |
 
 ### Span hierarchy
 
@@ -213,9 +218,11 @@ protean.command.process                (CommandProcessor)
         └── protean.uow.commit         (UnitOfWork)
 ```
 
-All spans are created with `record_exception=False` and
+Most spans (command process, handler execute, UoW commit, repository, event
+store, engine, outbox) are created with `record_exception=False` and
 `set_status_on_exception=False` so that Protean can record errors with precise
-context using `set_span_error()` from `protean.utils.telemetry`.
+context using `set_span_error()`. Lightweight spans like `command.enrich` and
+`query.dispatch` use OTel defaults for exception handling.
 
 ---
 
@@ -246,8 +253,21 @@ OTel counters and histograms. These are created lazily per domain via the
 | `protean.uow.events_per_commit` | `{event}` | Events gathered per UoW commit |
 | `protean.outbox.latency` | `s` | Time from outbox write to publish |
 
-All metrics carry labels like `command_type`, `handler_name`, and
-`stream_category` for grouping in your APM dashboard.
+### Metric labels
+
+Different metrics carry different label sets:
+
+| Metric | Labels |
+|--------|--------|
+| `protean.command.processed` | `command_type`, `status` (`ok`, `error`, `enqueued`) |
+| `protean.command.duration` | `command_type`, `status` |
+| `protean.handler.invocations` | `handler_name`, `handler_type`, `status` (`ok`, `error`) |
+| `protean.handler.duration` | `handler_name`, `handler_type`, `status` |
+| `protean.uow.commits` | *(none)* |
+| `protean.uow.events_per_commit` | *(none)* |
+| `protean.outbox.published` | *(none)* |
+| `protean.outbox.failed` | *(none)* |
+| `protean.outbox.latency` | *(none)* |
 
 ---
 
