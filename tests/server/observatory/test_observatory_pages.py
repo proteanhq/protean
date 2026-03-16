@@ -421,10 +421,6 @@ class TestTimelinePage:
         assert 'id="event-detail-payload"' in html
         assert 'id="event-detail-metadata"' in html
 
-    def test_contains_correlation_link(self, client):
-        html = client.get("/timeline").text
-        assert 'id="event-detail-correlation-link"' in html
-
     def test_includes_timeline_js(self, client):
         html = client.get("/timeline").text
         assert "/static/js/timeline.js" in html

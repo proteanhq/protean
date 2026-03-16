@@ -31,7 +31,7 @@
     const params = new URLSearchParams();
     params.set('limit', '50');
     params.set('order', _order);
-    if (cursor) params.set('cursor', String(cursor));
+    if (cursor != null) params.set('cursor', String(cursor));
     if (_streamCategory) params.set('stream_category', _streamCategory);
     if (_eventType) params.set('event_type', _eventType);
     if (_aggregateId) params.set('aggregate_id', _aggregateId);
@@ -200,13 +200,11 @@
     var $meta = document.getElementById('event-detail-meta');
     var $payload = document.getElementById('event-detail-payload');
     var $metadata = document.getElementById('event-detail-metadata');
-    var $corrLink = document.getElementById('event-detail-correlation-link');
     if (!modal || !$meta) return;
 
     $meta.innerHTML = '<div class="col-span-2 text-center"><span class="loading loading-spinner loading-sm"></span></div>';
     if ($payload) $payload.textContent = 'Loading...';
     if ($metadata) $metadata.textContent = 'Loading...';
-    if ($corrLink) $corrLink.classList.add('hidden');
     modal.showModal();
 
     try {
@@ -240,11 +238,6 @@
           : '(no metadata)';
       }
 
-      // Show correlation link if available
-      if ($corrLink && data.correlation_id) {
-        $corrLink.href = '/timeline?correlation=' + encodeURIComponent(data.correlation_id);
-        $corrLink.classList.remove('hidden');
-      }
     } catch (e) {
       $meta.innerHTML = '<div class="col-span-2 text-error">Failed to load: ' + Observatory.escapeHtml(e.message) + '</div>';
       if ($payload) $payload.textContent = '';
