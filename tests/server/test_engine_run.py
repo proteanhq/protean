@@ -111,12 +111,12 @@ def test_engine_run_non_test_mode(test_domain, caplog):
 
 
 def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog):
-    """Test that test mode cancels tasks still running after 3 cycles."""
+    """Test that test mode cancels tasks still running after all cycles."""
     engine = Engine(domain=test_domain, test_mode=True)
 
     # Replace the subscriptions with a mock that has a long-running start()
     async def long_running_start():
-        """A start() coroutine that blocks for longer than the 3 test cycles."""
+        """A start() coroutine that blocks for longer than the test cycles."""
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -135,6 +135,6 @@ def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog):
     with caplog.at_level(logging.DEBUG, logger="protean.server.engine"):
         engine.run()
 
-    # Verify all 3 cycles ran (task was still running through all cycles)
+    # Verify all 10 cycles ran (task was still running through all cycles)
     cycle_msgs = [r.message for r in caplog.records if "Test mode cycle" in r.message]
-    assert len(cycle_msgs) == 3
+    assert len(cycle_msgs) == 10

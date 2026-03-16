@@ -6,8 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix flaky `test_mixed_error_scenarios` in `test_server_robustness.py`: increase Engine test_mode processing cycles from 3 to 10 so all subscription types (events, commands, broker messages) have enough time to be scheduled and process their messages under CI load
+
 ### Added
 
+- End-to-end integration tests for unified OTel span hierarchy and Observatory trace emission: validates complete span tree from command → handler → UoW → repository → event store, verifies parent-child relationships across all layers, confirms complementary (non-redundant) attributes at each span level, and ensures Observatory traces fire correctly alongside OTel spans both with telemetry enabled and disabled
 - OpenTelemetry SDK foundation with optional `telemetry` extra (`pip install protean[telemetry]`), `[telemetry]` configuration section, `telemetry.py` module for provider initialization, and `Domain.tracer`/`Domain.meter` lazy properties — graceful no-op when packages are not installed or telemetry is disabled
 - OpenTelemetry spans for command processing and handler dispatch: `protean.command.process` (with command type, id, stream, correlation_id attributes), `protean.command.enrich` (child span), `protean.handler.execute` (with handler name and type, covers command handlers, event handlers, projectors, and process managers), and `protean.query.dispatch` — with exception recording and ERROR status on handler failures
 - OpenTelemetry spans for infrastructure operations: `protean.uow.commit` (with event_count and session_count attributes), `protean.repository.add` and `protean.repository.get` (with aggregate type and provider attributes, covers both standard and event-sourced repositories), and `protean.event_store.append` (with stream, message_type, and position attributes) — all spans participate in the same trace as the originating command/query
