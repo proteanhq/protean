@@ -376,6 +376,7 @@ const Observatory = (() => {
     'h': '/handlers',
     'p': '/processes',
     'e': '/eventstore',
+    't': '/timeline',
     'i': '/infrastructure',
     'm': '/messages',
   };

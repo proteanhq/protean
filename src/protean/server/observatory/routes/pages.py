@@ -58,6 +58,13 @@ def create_page_router(
             request, "eventstore.html", _ctx("eventstore")
         )
 
+    @router.get("/timeline")
+    async def timeline(request: Request):
+        """Timeline — Browse domain events and commands chronologically."""
+        return templates.TemplateResponse(
+            request, "timeline.html", _ctx("timeline")
+        )
+
     @router.get("/infrastructure")
     async def infrastructure(request: Request):
         """Infrastructure — Monitor infrastructure dependencies."""

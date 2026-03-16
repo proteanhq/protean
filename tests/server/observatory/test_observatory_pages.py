@@ -96,7 +96,7 @@ class TestCreatePageRouter:
         router = create_page_router([test_domain], templates)
         assert isinstance(router, APIRouter)
 
-    def test_registers_six_routes(self, test_domain):
+    def test_registers_seven_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -107,6 +107,7 @@ class TestCreatePageRouter:
             "/handlers",
             "/processes",
             "/eventstore",
+            "/timeline",
             "/infrastructure",
             "/messages",
         }
@@ -139,7 +140,7 @@ class TestCreateAllRoutes:
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
         page_router, _ = create_all_routes([test_domain], templates)
-        assert len(page_router.routes) == 6
+        assert len(page_router.routes) == 7
 
     def test_api_router_includes_handler_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
@@ -209,6 +210,11 @@ class TestObservatoryStaticFiles:
         response = client.get("/static/css/observatory.css")
         assert response.status_code == 200
         assert "text/css" in response.headers["content-type"]
+
+    def test_serves_timeline_js(self, client):
+        response = client.get("/static/js/timeline.js")
+        assert response.status_code == 200
+        assert "javascript" in response.headers["content-type"]
 
     def test_nonexistent_static_returns_404(self, client):
         response = client.get("/static/nonexistent.js")
@@ -359,6 +365,71 @@ class TestEventstorePage:
         assert "Observatory" in html
 
 
+class TestTimelinePage:
+    def test_returns_200(self, client):
+        response = client.get("/timeline")
+        assert response.status_code == 200
+
+    def test_returns_html(self, client):
+        assert "text/html" in client.get("/timeline").headers["content-type"]
+
+    def test_contains_page_heading(self, client):
+        html = client.get("/timeline").text
+        assert "Timeline" in html
+
+    def test_extends_base_template(self, client):
+        html = client.get("/timeline").text
+        assert "Observatory" in html
+        assert "drawer" in html
+
+    def test_contains_summary_cards(self, client):
+        html = client.get("/timeline").text
+        assert 'id="stats-total-events"' in html
+        assert 'id="stats-active-streams"' in html
+        assert 'id="stats-events-per-min"' in html
+        assert 'id="stats-last-event"' in html
+
+    def test_contains_filter_controls(self, client):
+        html = client.get("/timeline").text
+        assert 'id="filter-stream"' in html
+        assert 'id="filter-event-type"' in html
+        assert 'id="filter-aggregate-id"' in html
+        assert 'id="filter-kind"' in html
+
+    def test_contains_order_buttons(self, client):
+        html = client.get("/timeline").text
+        assert 'id="btn-order-asc"' in html
+        assert 'id="btn-order-desc"' in html
+
+    def test_contains_clear_filters_button(self, client):
+        html = client.get("/timeline").text
+        assert 'id="btn-clear-filters"' in html
+
+    def test_contains_events_table(self, client):
+        html = client.get("/timeline").text
+        assert 'id="events-tbody"' in html
+
+    def test_contains_load_more_control(self, client):
+        html = client.get("/timeline").text
+        assert 'id="load-more"' in html
+        assert 'id="btn-load-more"' in html
+
+    def test_contains_event_detail_modal(self, client):
+        html = client.get("/timeline").text
+        assert 'id="event-detail-modal"' in html
+        assert 'id="event-detail-meta"' in html
+        assert 'id="event-detail-payload"' in html
+        assert 'id="event-detail-metadata"' in html
+
+    def test_includes_timeline_js(self, client):
+        html = client.get("/timeline").text
+        assert "/static/js/timeline.js" in html
+
+    def test_timeline_nav_is_active(self, client):
+        html = client.get("/timeline").text
+        assert 'href="/timeline"' in html
+
+
 class TestInfrastructurePage:
     def test_returns_200(self, client):
         response = client.get("/infrastructure")
@@ -400,6 +471,9 @@ class TestNavigationLinks:
     def test_has_link_to_eventstore(self, overview_html):
         assert 'href="/eventstore"' in overview_html
 
+    def test_has_link_to_timeline(self, overview_html):
+        assert 'href="/timeline"' in overview_html
+
     def test_has_link_to_infrastructure(self, overview_html):
         assert 'href="/infrastructure"' in overview_html
 
@@ -412,6 +486,7 @@ class TestActivePageHighlighting:
         ("/handlers", "handlers"),
         ("/processes", "processes"),
         ("/eventstore", "eventstore"),
+        ("/timeline", "timeline"),
         ("/infrastructure", "infrastructure"),
     ]
 
@@ -520,8 +595,58 @@ class TestBaseTemplateElements:
         assert "Handlers" in html
         assert "Processes" in html
         assert "Event Store" in html
+        assert "Timeline" in html
         assert "Infrastructure" in html
 
     def test_has_observatory_branding(self, html):
         assert "Observatory" in html
         assert "Protean Monitoring" in html
+
+    def test_has_timeline_keyboard_shortcut(self, html):
+        """The keyboard shortcuts modal should include the g→t shortcut."""
+        assert "Go to Timeline" in html
+
+
+class TestKeyboardShortcutsInCoreJS:
+    """Verify that core.js includes the Timeline keyboard shortcut."""
+
+    def test_core_js_has_timeline_shortcut(self, client):
+        js = client.get("/static/js/core.js").text
+        assert "'t': '/timeline'" in js
+
+
+class TestTimelineJSContent:
+    """Verify that timeline.js contains essential functionality."""
+
+    def test_fetches_timeline_events(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "/api/timeline/events" in js
+
+    def test_fetches_timeline_stats(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "/api/timeline/stats" in js
+
+    def test_registers_stats_poller(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "timeline-stats" in js
+
+    def test_has_event_detail_function(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "_showEventDetail" in js
+
+    def test_has_filter_change_handler(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "_onFilterChange" in js
+
+    def test_has_infinite_scroll(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "scroll" in js
+
+    def test_has_deep_linking(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "_readURL" in js
+        assert "_updateURL" in js
+
+    def test_fetches_stream_categories(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "/api/eventstore/streams" in js
