@@ -57,12 +57,18 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     if not domains:
         return
 
-    from protean.utils.telemetry import create_observation, get_meter, get_meter_provider
+    from protean.utils.telemetry import (
+        _TELEMETRY_INIT_KEY,
+        create_observation,
+        get_meter,
+        get_meter_provider,
+    )
 
-    # Find the first domain that has a configured meter provider
+    # Find the first domain that went through init_telemetry() and has a meter provider.
+    # The init flag check prevents MagicMock/test doubles from matching.
     target_domain: Domain | None = None
     for d in domains:
-        if get_meter_provider(d) is not None:
+        if getattr(d, _TELEMETRY_INIT_KEY, False) is True and get_meter_provider(d) is not None:
             target_domain = d
             break
 

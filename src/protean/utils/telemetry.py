@@ -260,6 +260,12 @@ def get_prometheus_text(domain: Domain) -> str | None:
     Returns ``None`` when no PrometheusMetricReader is configured (i.e. the
     exporter package is not installed or telemetry is disabled).
     """
+    # Only consider domains that went through init_telemetry().
+    # This prevents MagicMock or other test doubles from accidentally
+    # matching because getattr returns a truthy mock object.
+    if not getattr(domain, _TELEMETRY_INIT_KEY, False) is True:
+        return None
+
     reader = getattr(domain, _PROMETHEUS_READER_KEY, None)
     if reader is None:
         return None
