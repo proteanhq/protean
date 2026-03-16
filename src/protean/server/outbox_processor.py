@@ -6,7 +6,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
 from protean.utils.eventing import Message
 from protean.utils.outbox import Outbox, OutboxRepository
-from protean.utils.telemetry import get_tracer, set_span_error
+from protean.utils.telemetry import get_domain_metrics, get_tracer, set_span_error
 
 from .subscription import BaseSubscription
 
@@ -317,11 +317,28 @@ class OutboxProcessor(BaseSubscription):
                     )
 
                     # Update final status based on broker publish result
+                    metrics = get_domain_metrics(self.engine.domain)
                     if publish_success:
                         message.mark_published()
                         logger.debug(
                             f"Published to {message.stream_name}: {message.message_id[:8]}..."
                         )
+
+                        # Record OTel metrics for published message
+                        metrics.outbox_published.add(1)
+                        # Compute outbox latency from created_at to now
+                        if hasattr(message, "created_at") and message.created_at:
+                            import datetime
+
+                            now = datetime.datetime.now(datetime.timezone.utc)
+                            created = message.created_at
+                            if created.tzinfo is None:
+                                created = created.replace(
+                                    tzinfo=datetime.timezone.utc
+                                )
+                            latency_s = (now - created).total_seconds()
+                            if latency_s >= 0:
+                                metrics.outbox_latency.record(latency_s)
 
                         # Emit trace event — distinguish internal from external
                         trace_event = (
@@ -342,6 +359,8 @@ class OutboxProcessor(BaseSubscription):
                         logger.warning(
                             f"Publish failed for {message.message_id[:8]}...: {publish_error}"
                         )
+                        # Record OTel metrics for failed message
+                        metrics.outbox_failed.add(1)
                         if publish_error is not None:
                             set_span_error(span, publish_error)
 
