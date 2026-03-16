@@ -24,6 +24,7 @@ from protean.utils.eventing import (
 )
 from protean.utils.globals import g
 from protean.utils.reflection import id_field
+from protean.utils.telemetry import get_domain_metrics
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -197,6 +198,9 @@ class CommandProcessor:
 
         domain = self._domain
         tracer = domain.tracer
+        metrics = get_domain_metrics(domain)
+        command_type = command.__class__.__type__
+        process_start = time.monotonic()
 
         # Extract incoming traceparent as parent OTEL context so the
         # processing span becomes a child of the distributed trace.
@@ -308,11 +312,17 @@ class CommandProcessor:
                             result = handler_class._handle(command_with_metadata)
                     except Exception as exc:
                         duration_ms = (time.monotonic() - start_time) * 1000
+                        duration_s = (time.monotonic() - process_start)
 
                         # Record exception on the OTEL span
                         from protean.utils.telemetry import set_span_error
 
                         set_span_error(span, exc)
+
+                        # Record OTel metrics for failed command
+                        cmd_attrs = {"command_type": command_type, "status": "error"}
+                        metrics.command_processed.add(1, cmd_attrs)
+                        metrics.command_duration.record(duration_s, cmd_attrs)
 
                         # Emit handler.failed trace
                         emitter.emit(
@@ -335,6 +345,12 @@ class CommandProcessor:
                         g.pop("message_in_context", None)
 
                     duration_ms = (time.monotonic() - start_time) * 1000
+                    duration_s = (time.monotonic() - process_start)
+
+                    # Record OTel metrics for successful command
+                    cmd_attrs = {"command_type": command_type, "status": "ok"}
+                    metrics.command_processed.add(1, cmd_attrs)
+                    metrics.command_duration.record(duration_s, cmd_attrs)
 
                     # Emit handler.completed trace
                     emitter.emit(
@@ -352,7 +368,12 @@ class CommandProcessor:
                         store.record_success(idempotency_key, result)
                     return result
 
-            # Async path: cache the position as the result
+            # Async path: record counter (no duration - async processing happens later)
+            async_attrs = {"command_type": command_type, "status": "ok"}
+            metrics.command_processed.add(1, async_attrs)
+            duration_s = time.monotonic() - process_start
+            metrics.command_duration.record(duration_s, async_attrs)
+
             if idempotency_key and store.is_active:
                 store.record_success(idempotency_key, position)
 

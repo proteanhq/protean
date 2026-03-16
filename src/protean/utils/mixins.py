@@ -206,6 +206,11 @@ class HandlerMixin:
             # No domain context — execute without tracing
             return cls._dispatch_handlers(handlers, item)
 
+        from protean.utils.telemetry import get_domain_metrics
+
+        metrics = get_domain_metrics(current_domain)
+        handler_start = time.monotonic()
+
         with tracer.start_as_current_span(
             "protean.handler.execute", record_exception=False, set_status_on_exception=False
         ) as span:
@@ -213,12 +218,33 @@ class HandlerMixin:
             span.set_attribute("protean.handler.type", handler_type)
 
             try:
-                return cls._dispatch_handlers(handlers, item)
+                result = cls._dispatch_handlers(handlers, item)
             except Exception as exc:
                 from protean.utils.telemetry import set_span_error
 
                 set_span_error(span, exc)
+
+                # Record handler metrics on error
+                duration_s = time.monotonic() - handler_start
+                handler_attrs = {
+                    "handler_name": cls.__name__,
+                    "handler_type": handler_type,
+                    "status": "error",
+                }
+                metrics.handler_invocations.add(1, handler_attrs)
+                metrics.handler_duration.record(duration_s, handler_attrs)
                 raise
+
+            # Record handler metrics on success
+            duration_s = time.monotonic() - handler_start
+            handler_attrs = {
+                "handler_name": cls.__name__,
+                "handler_type": handler_type,
+                "status": "ok",
+            }
+            metrics.handler_invocations.add(1, handler_attrs)
+            metrics.handler_duration.record(duration_s, handler_attrs)
+            return result
 
     @classmethod
     def _dispatch_handlers(

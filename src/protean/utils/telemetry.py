@@ -45,6 +45,7 @@ except ImportError:
 _TRACER_PROVIDER_KEY = "_otel_tracer_provider"
 _METER_PROVIDER_KEY = "_otel_meter_provider"
 _TELEMETRY_INIT_KEY = "_otel_init_attempted"
+_PROMETHEUS_READER_KEY = "_otel_prometheus_reader"
 
 
 def init_telemetry(domain: Domain) -> Any:
@@ -82,10 +83,19 @@ def init_telemetry(domain: Domain) -> Any:
         tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
 
     # --- Meter Provider ----------------------------------------------------
+    metric_readers = []
     metric_reader = _build_metric_reader(config)
+    if metric_reader:
+        metric_readers.append(metric_reader)
+
+    # Add PrometheusMetricReader for the /metrics endpoint when available
+    prometheus_reader = _build_prometheus_reader()
+    if prometheus_reader is not None:
+        metric_readers.append(prometheus_reader)
+
     meter_provider = SDKMeterProvider(
         resource=resource,
-        metric_readers=[metric_reader] if metric_reader else [],
+        metric_readers=metric_readers,
     )
 
     # Stash on the domain for later shutdown — get_tracer()/get_meter()
@@ -93,6 +103,8 @@ def init_telemetry(domain: Domain) -> Any:
     # the OTEL global, which is single-assignment.
     setattr(domain, _TRACER_PROVIDER_KEY, tracer_provider)
     setattr(domain, _METER_PROVIDER_KEY, meter_provider)
+    if prometheus_reader is not None:
+        setattr(domain, _PROMETHEUS_READER_KEY, prometheus_reader)
 
     logger.info(
         "OpenTelemetry initialized for domain '%s' (exporter=%s)",
@@ -151,6 +163,14 @@ def shutdown_telemetry(domain: Domain) -> None:
 
     # Reset the init sentinel so telemetry can be re-initialized if needed
     setattr(domain, _TELEMETRY_INIT_KEY, False)
+
+    # Clear the prometheus reader reference
+    if hasattr(domain, _PROMETHEUS_READER_KEY):
+        delattr(domain, _PROMETHEUS_READER_KEY)
+
+    # Clear cached metric instruments so they are re-created on next access
+    if hasattr(domain, _DOMAIN_METRICS_KEY):
+        delattr(domain, _DOMAIN_METRICS_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +239,37 @@ def _build_metric_reader(config: dict[str, Any]) -> Any:
 
     logger.warning("Unknown telemetry exporter '%s'. No metrics will be exported.", exporter_name)
     return None
+
+
+def _build_prometheus_reader() -> Any:
+    """Build a ``PrometheusMetricReader`` if the exporter package is installed.
+
+    Returns ``None`` when the package is not available.
+    """
+    try:
+        from opentelemetry.exporter.prometheus import PrometheusMetricReader
+
+        return PrometheusMetricReader()
+    except ImportError:
+        return None
+
+
+def get_prometheus_text(domain: Domain) -> str | None:
+    """Return Prometheus text exposition from the domain's PrometheusMetricReader.
+
+    Returns ``None`` when no PrometheusMetricReader is configured (i.e. the
+    exporter package is not installed or telemetry is disabled).
+    """
+    reader = getattr(domain, _PROMETHEUS_READER_KEY, None)
+    if reader is None:
+        return None
+
+    try:
+        from prometheus_client import generate_latest
+
+        return generate_latest().decode("utf-8")
+    except ImportError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -371,3 +422,82 @@ class _NoOpMeter:
 
     def create_up_down_counter(self, name: str, **kwargs: Any) -> _NoOpCounter:
         return _NoOpCounter()
+
+    def create_observable_gauge(self, name: str, callbacks: Any = None, **kwargs: Any) -> Any:
+        return _NoOpCounter()
+
+
+# ---------------------------------------------------------------------------
+# Domain-scoped metric instruments
+# ---------------------------------------------------------------------------
+
+_DOMAIN_METRICS_KEY = "_otel_domain_metrics"
+
+
+class DomainMetrics:
+    """Lazily created, domain-scoped OTel metric instruments.
+
+    One instance per domain.  All counters and histograms specified in
+    issue #749 are created here and cached for the domain's lifetime.
+    """
+
+    def __init__(self, domain: Domain) -> None:
+        meter = get_meter(domain)
+
+        # --- Counters ---------------------------------------------------------
+        self.command_processed = meter.create_counter(
+            "protean.command.processed",
+            description="Commands processed",
+            unit="{command}",
+        )
+        self.handler_invocations = meter.create_counter(
+            "protean.handler.invocations",
+            description="Handler invocations",
+            unit="{invocation}",
+        )
+        self.uow_commits = meter.create_counter(
+            "protean.uow.commits",
+            description="UoW commits",
+            unit="{commit}",
+        )
+        self.outbox_published = meter.create_counter(
+            "protean.outbox.published",
+            description="Outbox messages published",
+            unit="{message}",
+        )
+        self.outbox_failed = meter.create_counter(
+            "protean.outbox.failed",
+            description="Outbox publish failures",
+            unit="{message}",
+        )
+
+        # --- Histograms -------------------------------------------------------
+        self.command_duration = meter.create_histogram(
+            "protean.command.duration",
+            description="Command processing latency",
+            unit="s",
+        )
+        self.handler_duration = meter.create_histogram(
+            "protean.handler.duration",
+            description="Handler execution latency",
+            unit="s",
+        )
+        self.uow_events_per_commit = meter.create_histogram(
+            "protean.uow.events_per_commit",
+            description="Events gathered per UoW commit",
+            unit="{event}",
+        )
+        self.outbox_latency = meter.create_histogram(
+            "protean.outbox.latency",
+            description="Time from outbox write to publish",
+            unit="s",
+        )
+
+
+def get_domain_metrics(domain: Domain) -> DomainMetrics:
+    """Return (and lazily create) the ``DomainMetrics`` for *domain*."""
+    metrics = getattr(domain, _DOMAIN_METRICS_KEY, None)
+    if metrics is None:
+        metrics = DomainMetrics(domain)
+        setattr(domain, _DOMAIN_METRICS_KEY, metrics)
+    return metrics

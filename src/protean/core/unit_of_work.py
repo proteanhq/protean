@@ -12,7 +12,7 @@ from protean.port.provider import DatabaseCapabilities
 from protean.utils import Processing
 from protean.utils.globals import _uow_context_stack, current_domain
 from protean.utils.reflection import id_field
-from protean.utils.telemetry import set_span_error
+from protean.utils.telemetry import get_domain_metrics, set_span_error
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +277,11 @@ class UnitOfWork:
 
             # Clear events from items in identity map
             self._clear_events_from_items()
+
+            # Record OTel metrics for successful commit
+            metrics = get_domain_metrics(self.domain)
+            metrics.uow_commits.add(1)
+            metrics.uow_events_per_commit.record(total_events)
 
             logger.debug("Commit Successful")
         except ValueError as exc:
