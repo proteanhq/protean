@@ -34,9 +34,8 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
-from protean.server.engine import Engine
+from protean.server import Engine
 from protean.utils.eventing import (
-    DomainMeta,
     Message,
     MessageHeaders,
     Metadata,
@@ -394,8 +393,10 @@ class TestCommandProcessingSpanTree:
                 f"Span '{span.name}' has wrong trace_id"
             )
             if span.parent is not None:
-                # The parent should either be another span in our tree
-                # or an external parent (for traceparent propagation)
+                # Every non-root span's parent must exist within this trace
+                assert span.parent.span_id in span_ids, (
+                    f"Span '{span.name}' has parent span_id not in the span tree"
+                )
                 assert span.parent.trace_id == trace_id, (
                     f"Span '{span.name}' parent has different trace_id"
                 )
