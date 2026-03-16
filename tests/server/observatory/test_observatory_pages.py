@@ -429,67 +429,12 @@ class TestTimelinePage:
         html = client.get("/timeline").text
         assert 'href="/timeline"' in html
 
-    def test_contains_correlation_view(self, client):
-        html = client.get("/timeline").text
-        assert 'id="correlation-view"' in html
-        assert "Correlation Chain" in html
-
-    def test_correlation_view_has_back_button(self, client):
-        html = client.get("/timeline").text
-        assert 'id="btn-back-from-correlation"' in html
-
-    def test_correlation_view_has_summary_cards(self, client):
-        html = client.get("/timeline").text
-        assert 'id="correlation-event-count"' in html
-        assert 'id="correlation-root-type"' in html
-        assert 'id="correlation-depth"' in html
-
-    def test_correlation_view_has_tree_container(self, client):
-        html = client.get("/timeline").text
-        assert 'id="correlation-tree"' in html
-
-    def test_correlation_view_has_event_list(self, client):
-        html = client.get("/timeline").text
-        assert 'id="correlation-events-tbody"' in html
-
-    def test_contains_aggregate_view(self, client):
-        html = client.get("/timeline").text
-        assert 'id="aggregate-view"' in html
-        assert "Aggregate History" in html
-
-    def test_aggregate_view_has_back_button(self, client):
-        html = client.get("/timeline").text
-        assert 'id="btn-back-from-aggregate"' in html
-
-    def test_aggregate_view_has_summary_cards(self, client):
-        html = client.get("/timeline").text
-        assert 'id="aggregate-category"' in html
-        assert 'id="aggregate-id-display"' in html
-        assert 'id="aggregate-version"' in html
-
-    def test_aggregate_view_has_timeline_container(self, client):
-        html = client.get("/timeline").text
-        assert 'id="aggregate-timeline"' in html
-
-    def test_aggregate_view_has_empty_state(self, client):
-        html = client.get("/timeline").text
-        assert 'id="aggregate-empty"' in html
-
-    def test_correlation_view_starts_hidden(self, client):
-        """Correlation view should be hidden by default."""
-        html = client.get("/timeline").text
-        # The correlation view div has the 'hidden' class
-        assert 'id="correlation-view" class="hidden"' in html
-
-    def test_aggregate_view_starts_hidden(self, client):
-        """Aggregate view should be hidden by default."""
-        html = client.get("/timeline").text
-        assert 'id="aggregate-view" class="hidden"' in html
-
-    def test_list_view_wraps_original_content(self, client):
-        """The main timeline content is wrapped in a list view container."""
+    def test_contains_sub_view_containers(self, client):
+        """Smoke test: correlation and aggregate sub-views are present."""
         html = client.get("/timeline").text
         assert 'id="timeline-list-view"' in html
+        assert 'id="correlation-view"' in html
+        assert 'id="aggregate-view"' in html
 
 
 class TestInfrastructurePage:
@@ -603,111 +548,6 @@ class TestActivityTimelineBootstrap:
         assert "data.buckets" in js
         assert "data.bucket_ms" in js
         assert "_currentBucketMs" in js
-
-
-# ---------------------------------------------------------------------------
-# Timeline Sub-View Features
-# ---------------------------------------------------------------------------
-
-
-class TestTimelineCorrelationViewJS:
-    """Verify the timeline JS contains correlation chain view logic."""
-
-    def test_timeline_js_has_correlation_view_function(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_showCorrelationView" in js
-
-    def test_timeline_js_has_causation_tree_renderer(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_renderCausationTree" in js
-
-    def test_timeline_js_has_tree_depth_computation(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_computeTreeDepth" in js
-
-    def test_timeline_js_fetches_correlation_api(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "/api/timeline/correlation/" in js
-
-    def test_timeline_js_has_correlation_deep_link(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "params.set('correlation'" in js
-
-
-class TestTimelineAggregateViewJS:
-    """Verify the timeline JS contains aggregate history view logic."""
-
-    def test_timeline_js_has_aggregate_view_function(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_showAggregateView" in js
-
-    def test_timeline_js_has_aggregate_timeline_renderer(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_renderAggregateTimeline" in js
-
-    def test_timeline_js_fetches_aggregate_api(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "/api/timeline/aggregate/" in js
-
-    def test_timeline_js_has_aggregate_deep_link(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "params.set('stream'" in js
-        assert "params.set('aggregate'" in js
-
-
-class TestTimelineViewManagementJS:
-    """Verify the timeline JS manages view switching correctly."""
-
-    def test_timeline_js_has_view_management(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_showView" in js
-        assert "_currentView" in js
-
-    def test_timeline_js_has_back_to_list(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_backToList" in js
-
-    def test_timeline_js_has_popstate_handler(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "popstate" in js
-
-    def test_timeline_js_has_parse_stream_helper(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_parseStream" in js
-
-    def test_timeline_js_has_clickable_correlation_link(self, client):
-        """Event detail shows clickable correlation ID."""
-        js = client.get("/static/js/timeline.js").text
-        assert "detail-correlation-link" in js
-
-    def test_timeline_js_has_clickable_stream_link(self, client):
-        """Event detail shows clickable stream name."""
-        js = client.get("/static/js/timeline.js").text
-        assert "detail-stream-link" in js
-
-
-class TestTimelineVerticalTimelineCSS:
-    """Verify the observatory CSS contains vertical timeline styles."""
-
-    def test_css_has_correlation_tree_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".correlation-tree" in css
-
-    def test_css_has_vtl_node_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".vtl-node" in css
-        assert ".vtl-root" in css
-        assert ".vtl-card" in css
-        assert ".vtl-children" in css
-
-    def test_css_has_aggregate_timeline_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".aggregate-timeline" in css
-        assert ".agg-tl-node" in css
-        assert ".agg-tl-dot" in css
-        assert ".agg-tl-line" in css
-        assert ".agg-tl-content" in css
-        assert ".agg-tl-marker" in css
 
 
 class TestMultiDomainContext:

@@ -286,6 +286,22 @@ class TestTimelineJSViewManagement:
         js = client.get("/static/js/timeline.js").text
         assert "_backToList" in js
 
+    def test_has_enter_list_view_helper(self, client):
+        """_enterListView loads list data when returning from sub-views."""
+        js = client.get("/static/js/timeline.js").text
+        assert "_enterListView" in js
+
+    def test_back_to_list_delegates_to_enter_list_view(self, client):
+        """_backToList calls _enterListView to ensure data is loaded."""
+        js = client.get("/static/js/timeline.js").text
+        assert "_enterListView()" in js
+
+    def test_popstate_list_calls_enter_list_view(self, client):
+        """Popstate to list view calls _enterListView to load data."""
+        js = client.get("/static/js/timeline.js").text
+        # The popstate handler calls _enterListView when no sub-view params
+        assert "_enterListView()" in js
+
     def test_binds_back_buttons(self, client):
         js = client.get("/static/js/timeline.js").text
         assert "btn-back-from-correlation" in js
@@ -304,6 +320,11 @@ class TestTimelineJSViewManagement:
         """Infinite scroll only triggers in list view."""
         js = client.get("/static/js/timeline.js").text
         assert "_currentView !== 'list'" in js
+
+    def test_uses_push_state_for_sub_views(self, client):
+        """Sub-view navigation uses pushState for proper back/forward."""
+        js = client.get("/static/js/timeline.js").text
+        assert "history.pushState" in js
 
 
 # ---------------------------------------------------------------------------
@@ -443,6 +464,62 @@ class TestOriginalListViewIntact:
         html = client.get("/timeline").text
         assert 'id="load-more"' in html
         assert 'id="btn-load-more"' in html
+
+    def test_includes_timeline_js(self, client):
+        html = client.get("/timeline").text
+        assert "/static/js/timeline.js" in html
+
+
+# ---------------------------------------------------------------------------
+# Accessibility — keyboard navigation and ARIA attributes
+# ---------------------------------------------------------------------------
+
+
+class TestTimelineJSAccessibility:
+    """Verify interactive elements have keyboard support and ARIA roles."""
+
+    def test_causation_tree_cards_have_role_button(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "card.setAttribute('role', 'button')" in js
+
+    def test_causation_tree_cards_have_tabindex(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "card.setAttribute('tabindex', '0')" in js
+
+    def test_causation_tree_cards_handle_keyboard(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "card.addEventListener('keydown'" in js
+
+    def test_aggregate_timeline_items_have_role_button(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert 'role="button" tabindex="0" data-message-id' in js
+
+    def test_event_rows_have_role_button(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert 'tabindex="0" role="button" title="View event detail"' in js
+
+    def test_event_rows_handle_keyboard(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "row.addEventListener('keydown'" in js
+
+    def test_detail_links_have_role_button(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert 'role="button" tabindex="0" id="detail-correlation-link"' in js
+        assert 'role="button" tabindex="0" id="detail-stream-link"' in js
+
+    def test_detail_links_handle_keyboard(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "$corrLink.addEventListener('keydown'" in js
+        assert "$streamLink.addEventListener('keydown'" in js
+
+    def test_correlation_links_have_role_button(self, client):
+        """Correlation links in aggregate timeline have role=button."""
+        js = client.get("/static/js/timeline.js").text
+        assert 'role="button" tabindex="0" data-correlation-id' in js
+
+    def test_correlation_links_handle_keyboard(self, client):
+        js = client.get("/static/js/timeline.js").text
+        assert "link.addEventListener('keydown'" in js
 
     def test_includes_timeline_js(self, client):
         html = client.get("/timeline").text

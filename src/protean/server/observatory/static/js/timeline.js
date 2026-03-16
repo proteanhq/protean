@@ -42,12 +42,16 @@
     if ($agg) $agg.classList.toggle('hidden', view !== 'aggregate');
   }
 
-  function _backToList() {
+  function _enterListView() {
     _showView('list');
-    // Restore URL to list view state
+    _syncUIFromState();
     _updateURL();
-    // Scroll to top
+    fetchEvents(false);
     window.scrollTo(0, 0);
+  }
+
+  function _backToList() {
+    _enterListView();
   }
 
   // ---------------------------------------------------------------------------
@@ -144,10 +148,10 @@
     if ($tree) $tree.innerHTML = '<div class="text-center py-8"><span class="loading loading-spinner loading-sm"></span></div>';
     if ($corrTbody) $corrTbody.innerHTML = '<tr><td colspan="5" class="text-center text-base-content/50 py-4">Loading...</td></tr>';
 
-    // Update URL for deep linking
+    // Push a new history entry so browser Back returns to the previous view
     var params = new URLSearchParams();
     params.set('correlation', correlationId);
-    history.replaceState(null, '', window.location.pathname + '?' + params.toString());
+    history.pushState({view: 'correlation', correlationId: correlationId}, '', window.location.pathname + '?' + params.toString());
 
     try {
       var data = await Observatory.fetchJSON('/api/timeline/correlation/' + encodeURIComponent(correlationId));
@@ -205,7 +209,10 @@
 
     var card = document.createElement('div');
     card.className = 'vtl-card cursor-pointer';
-    card.setAttribute('data-message-id', Observatory.escapeHtml(node.message_id || ''));
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('data-message-id', node.message_id || '');
+    card.setAttribute('title', 'View event detail for ' + (node.message_type || 'event'));
     card.innerHTML =
       '<div class="flex items-center gap-2 mb-1">' +
         '<span class="badge badge-xs ' + kindClass + '">' + kindLabel + '</span>' +
@@ -218,8 +225,15 @@
         (timeAgo ? '<span class="text-base-content/40">' + timeAgo + '</span>' : '') +
       '</div>';
 
-    card.addEventListener('click', function () {
+    var _onCardActivate = function () {
       _showEventDetail(node.message_id);
+    };
+    card.addEventListener('click', _onCardActivate);
+    card.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        _onCardActivate();
+      }
     });
 
     container.appendChild(card);
@@ -258,11 +272,11 @@
     if ($timeline) $timeline.innerHTML = '<div class="text-center py-8"><span class="loading loading-spinner loading-sm"></span></div>';
     if ($aggEmpty) $aggEmpty.classList.add('hidden');
 
-    // Update URL for deep linking
+    // Push a new history entry so browser Back returns to the previous view
     var params = new URLSearchParams();
     params.set('stream', streamCategory);
     params.set('aggregate', aggregateId);
-    history.replaceState(null, '', window.location.pathname + '?' + params.toString());
+    history.pushState({view: 'aggregate', stream: streamCategory, aggregate: aggregateId}, '', window.location.pathname + '?' + params.toString());
 
     try {
       var data = await Observatory.fetchJSON(
@@ -301,14 +315,14 @@
       var timeTitle = evt.time ? Observatory.fmt.datetime(evt.time) : '';
       var timeAgo = evt.time ? Observatory.fmt.timeAgo(evt.time) : '';
       var version = evt.position != null ? 'v' + evt.position : '';
-      var msgId = Observatory.escapeHtml(evt.message_id || '');
+      var msgId = evt.message_id || '';
 
       node.innerHTML =
         '<div class="agg-tl-marker">' +
           '<div class="agg-tl-dot"></div>' +
           (i < events.length - 1 ? '<div class="agg-tl-line"></div>' : '') +
         '</div>' +
-        '<div class="agg-tl-content cursor-pointer" data-message-id="' + msgId + '">' +
+        '<div class="agg-tl-content cursor-pointer" role="button" tabindex="0" data-message-id="' + Observatory.escapeHtml(msgId) + '" title="View event detail">' +
           '<div class="flex items-center gap-2 mb-1">' +
             (version ? '<span class="badge badge-xs badge-outline font-mono-metric">' + version + '</span>' : '') +
             '<span class="badge badge-xs ' + kindClass + '">' + kindLabel + '</span>' +
@@ -319,8 +333,8 @@
           '</div>' +
           (evt.correlation_id ?
             '<div class="text-xs text-base-content/40 mt-1">' +
-              'Correlation: <a class="link link-hover link-primary correlation-link" data-correlation-id="' +
-              Observatory.escapeHtml(evt.correlation_id) + '">' +
+              'Correlation: <a class="link link-hover link-primary correlation-link" role="button" tabindex="0" data-correlation-id="' +
+              Observatory.escapeHtml(evt.correlation_id) + '" title="View correlation chain">' +
               Observatory.escapeHtml(evt.correlation_id.substring(0, 8)) + '...</a>' +
             '</div>'
           : '') +
@@ -329,21 +343,36 @@
       $container.appendChild(node);
     }
 
-    // Bind click events for event detail
+    // Bind click and keyboard events for event detail
     $container.querySelectorAll('.agg-tl-content[data-message-id]').forEach(function (el) {
-      el.addEventListener('click', function (e) {
-        // Don't open detail if clicking a correlation link
+      var _onActivate = function (e) {
+        // Don't open detail if activating a correlation link
         if (e.target.classList.contains('correlation-link')) return;
         _showEventDetail(el.getAttribute('data-message-id'));
+      };
+      el.addEventListener('click', _onActivate);
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          _onActivate(e);
+        }
       });
     });
 
-    // Bind correlation links
+    // Bind correlation links (click and keyboard)
     $container.querySelectorAll('.correlation-link').forEach(function (link) {
-      link.addEventListener('click', function (e) {
+      var _onActivate = function (e) {
         e.preventDefault();
         e.stopPropagation();
         _showCorrelationView(link.getAttribute('data-correlation-id'));
+      };
+      link.addEventListener('click', _onActivate);
+      link.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          _onActivate(e);
+        }
       });
     });
   }
@@ -382,7 +411,7 @@
       var globalPos = evt.global_position != null ? evt.global_position : '--';
       var msgId = Observatory.escapeHtml(evt.message_id || '');
 
-      return '<tr class="hover cursor-pointer event-row" data-message-id="' + msgId + '">' +
+      return '<tr class="hover cursor-pointer event-row" data-message-id="' + msgId + '" tabindex="0" role="button" title="View event detail">' +
         '<td class="text-xs whitespace-nowrap" title="' + timeTitle + '">' +
           '<div>' + time + '</div>' +
           '<div class="text-base-content/40">' + timeAgo + '</div>' +
@@ -394,10 +423,17 @@
       '</tr>';
     }).join('');
 
-    // Bind row click for detail panel
+    // Bind row click and keyboard for detail panel
     $target.querySelectorAll('.event-row').forEach(function (row) {
-      row.addEventListener('click', function () {
+      var _onActivate = function () {
         _showEventDetail(row.getAttribute('data-message-id'));
+      };
+      row.addEventListener('click', _onActivate);
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          _onActivate();
+        }
       });
     });
   }
@@ -472,7 +508,7 @@
       // Build correlation link (clickable if present)
       var correlationHtml;
       if (data.correlation_id && data.correlation_id !== '--') {
-        correlationHtml = '<a class="link link-hover link-primary font-mono text-xs cursor-pointer" id="detail-correlation-link">' +
+        correlationHtml = '<a class="link link-hover link-primary font-mono text-xs cursor-pointer" role="button" tabindex="0" id="detail-correlation-link" title="View correlation chain">' +
           Observatory.escapeHtml(data.correlation_id) + '</a>';
       } else {
         correlationHtml = '<span class="font-mono text-xs">--</span>';
@@ -481,7 +517,7 @@
       // Build stream link (clickable to navigate to aggregate history)
       var streamHtml;
       if (data.stream) {
-        streamHtml = '<a class="link link-hover link-primary font-mono text-xs cursor-pointer" id="detail-stream-link">' +
+        streamHtml = '<a class="link link-hover link-primary font-mono text-xs cursor-pointer" role="button" tabindex="0" id="detail-stream-link" title="View aggregate history">' +
           Observatory.escapeHtml(data.stream) + '</a>';
       } else {
         streamHtml = '<span class="font-mono text-xs">--</span>';
@@ -499,23 +535,37 @@
         '<div class="font-semibold">Causation ID</div><div class="font-mono text-xs">' + Observatory.escapeHtml(data.causation_id || '--') + '</div>' +
         '<div class="font-semibold">Domain</div><div>' + Observatory.escapeHtml(data.domain || '--') + '</div>';
 
-      // Bind correlation link click
+      // Bind correlation link click and keyboard
       var $corrLink = document.getElementById('detail-correlation-link');
       if ($corrLink) {
-        $corrLink.addEventListener('click', function () {
+        var _onCorrActivate = function () {
           modal.close();
           _showCorrelationView(data.correlation_id);
+        };
+        $corrLink.addEventListener('click', _onCorrActivate);
+        $corrLink.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            _onCorrActivate();
+          }
         });
       }
 
-      // Bind stream link click (navigate to aggregate history)
+      // Bind stream link click and keyboard (navigate to aggregate history)
       var $streamLink = document.getElementById('detail-stream-link');
       if ($streamLink && data.stream) {
-        $streamLink.addEventListener('click', function () {
+        var _onStreamActivate = function () {
           var parts = _parseStream(data.stream);
           if (parts) {
             modal.close();
             _showAggregateView(parts.category, parts.id);
+          }
+        };
+        $streamLink.addEventListener('click', _onStreamActivate);
+        $streamLink.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            _onStreamActivate();
           }
         });
       }
@@ -764,7 +814,7 @@
       } else if (params.has('stream') && params.has('aggregate')) {
         _showAggregateView(params.get('stream'), params.get('aggregate'));
       } else {
-        _showView('list');
+        _enterListView();
       }
     });
   }
