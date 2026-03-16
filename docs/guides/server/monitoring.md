@@ -95,3 +95,6 @@ scrape_configs:
 
 For the full observability guide including trace events, SSE filtering, and
 zero-overhead design, see [Observability](../../reference/server/observability.md).
+
+For distributed tracing and APM integration with OpenTelemetry, see
+[OpenTelemetry Integration](./opentelemetry.md).

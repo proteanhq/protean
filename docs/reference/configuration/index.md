@@ -92,6 +92,12 @@ database_uri = "postgresql://message_store@localhost:5433/message_store"
 
 [prod.custom]
 foo = "quux"
+
+[prod.telemetry]
+enabled = true
+service_name = "my-service"
+exporter = "otlp"
+endpoint = "http://otel-collector:4317"
 ```
 
 ## Basic Configuration Parameters
@@ -366,6 +372,34 @@ abandoned_retention_hours = 720   # Keep abandoned for 30 days
 ```
 
 Read more in [Server → Outbox Pattern](../../concepts/async-processing/outbox.md) section.
+
+### `telemetry`
+
+This section configures OpenTelemetry distributed tracing and metrics.
+
+```toml
+[telemetry]
+enabled = true
+service_name = "my-service"
+exporter = "otlp"
+endpoint = "http://localhost:4317"
+
+[telemetry.resource_attributes]
+"deployment.environment" = "production"
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Master switch for all OTel instrumentation |
+| `service_name` | string | domain name | Populates the OTel `service.name` resource attribute |
+| `exporter` | string | `"otlp"` | Span and metric exporter: `"otlp"` or `"console"` |
+| `endpoint` | string | SDK default | OTLP collector endpoint (gRPC) |
+| `resource_attributes` | table | `{}` | Additional OTel resource attributes |
+
+When disabled (the default), all tracing and metrics are no-ops with zero
+overhead. Requires `pip install "protean[telemetry]"`.
+
+Read more in [OpenTelemetry Integration](../../guides/server/opentelemetry.md).
 
 ### `idempotency`
 

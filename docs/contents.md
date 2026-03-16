@@ -151,6 +151,7 @@ specific area.
 - [Subscription Configuration](./reference/server/configuration.md) -- Flexible configuration with priority hierarchy.
 - [Outbox Pattern](./concepts/async-processing/outbox.md) -- Reliable message delivery via same-transaction storage.
 - [Observability](./reference/server/observability.md) -- Real-time tracing, the Observatory monitoring server, SSE streaming, and Prometheus metrics.
+- [OpenTelemetry Integration](./guides/server/opentelemetry.md) -- Distributed tracing, metrics, APM setup, and TraceParent propagation with OpenTelemetry.
 - [Running the Server](./guides/server/index.md) -- Start, configure, and operate the Protean server.
 - [Error Handling](./guides/server/error-handling.md) -- Retry logic, dead letter queues, and recovery mechanisms for message processing failures.
 - [Dispatching Published Events to External Brokers](./guides/server/external-event-dispatch.md) -- Configure external brokers to deliver published events to other bounded contexts.
