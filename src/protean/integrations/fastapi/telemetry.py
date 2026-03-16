@@ -11,8 +11,8 @@ Usage::
 
     instrument_app(app, domain)
 
-The call is safe even when ``opentelemetry`` is not installed — it becomes
-a silent no-op.
+The call is safe even when ``opentelemetry`` is not installed — it returns
+``False`` and logs a warning.
 """
 
 from __future__ import annotations
@@ -60,46 +60,37 @@ def instrument_app(
     if not config.get("enabled", False):
         return False
 
-    try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    except ImportError:
-        logger.warning(
-            "FastAPI telemetry instrumentation requires "
-            "opentelemetry-instrumentation-fastapi. "
-            "Install with: pip install protean[telemetry]"
-        )
-        return False
-
-    # Ensure domain telemetry providers are initialized
-    from protean.utils.telemetry import (
-        _METER_PROVIDER_KEY,
-        _TRACER_PROVIDER_KEY,
-        init_telemetry,
-    )
-
-    if not getattr(domain, "_otel_init_attempted", False):
-        init_telemetry(domain)
-
-    tracer_provider = getattr(domain, _TRACER_PROVIDER_KEY, None)
-    meter_provider = getattr(domain, _METER_PROVIDER_KEY, None)
-
-    # Check if the app is already instrumented to avoid double-instrumentation
+    # Check early to avoid side-effects when already instrumented
     if getattr(app, "_is_instrumented_by_opentelemetry", False):
         logger.debug(
             "FastAPI app is already instrumented with OpenTelemetry, skipping."
         )
         return False
 
+    from protean.utils.telemetry import (
+        get_meter_provider,
+        get_tracer_provider,
+        init_telemetry,
+        instrument_fastapi_app,
+    )
+
+    # Ensure domain telemetry providers are initialized
+    if not getattr(domain, "_otel_init_attempted", False):
+        init_telemetry(domain)
+
     instrument_kwargs: dict[str, Any] = {}
+    tracer_provider = get_tracer_provider(domain)
     if tracer_provider is not None:
         instrument_kwargs["tracer_provider"] = tracer_provider
+    meter_provider = get_meter_provider(domain)
     if meter_provider is not None:
         instrument_kwargs["meter_provider"] = meter_provider
     if excluded_urls is not None:
         instrument_kwargs["excluded_urls"] = excluded_urls
     instrument_kwargs.update(kwargs)
 
-    FastAPIInstrumentor.instrument_app(app, **instrument_kwargs)
+    if not instrument_fastapi_app(app, **instrument_kwargs):
+        return False
 
     logger.info(
         "FastAPI app instrumented with OpenTelemetry for domain '%s'",

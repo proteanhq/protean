@@ -84,7 +84,15 @@ def _init_telemetry_in_memory(domain):
 
 def _find_root_http_span(spans):
     """Find the root HTTP span (not a child send/receive span)."""
-    return next(s for s in spans if s.parent is None and s.name.startswith(("GET", "POST", "PUT", "PATCH", "DELETE")))
+    _http_methods = ("GET", "POST", "PUT", "PATCH", "DELETE")
+    span = next(
+        (s for s in spans if s.parent is None and s.name.startswith(_http_methods)),
+        None,
+    )
+    assert span is not None, (
+        f"No root HTTP span found among: {[s.name for s in spans]}"
+    )
+    return span
 
 
 def _make_app(domain, *, excluded_urls=None):
