@@ -102,6 +102,16 @@ def init_telemetry(domain: Domain) -> Any:
     return tracer_provider
 
 
+def get_tracer_provider(domain: Domain) -> Any:
+    """Return the domain's ``TracerProvider``, or ``None`` if not initialized."""
+    return getattr(domain, _TRACER_PROVIDER_KEY, None)
+
+
+def get_meter_provider(domain: Domain) -> Any:
+    """Return the domain's ``MeterProvider``, or ``None`` if not initialized."""
+    return getattr(domain, _METER_PROVIDER_KEY, None)
+
+
 def get_tracer(domain: Domain, name: str = "protean") -> Any:
     """Return a configured ``Tracer``, or a no-op tracer."""
     if not _OTEL_AVAILABLE:
@@ -259,6 +269,29 @@ def inject_traceparent_from_context() -> Any:
     from protean.utils.eventing import TraceParent
 
     return TraceParent.build(w3c_header)
+
+
+def instrument_fastapi_app(app: Any, **kwargs: Any) -> bool:
+    """Apply ``FastAPIInstrumentor`` to a FastAPI app.
+
+    Returns ``True`` if instrumentation was applied, ``False`` if the
+    instrumentor package is not installed or the app is already instrumented.
+    """
+    if getattr(app, "_is_instrumented_by_opentelemetry", False):
+        return False
+
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    except ImportError:
+        logger.warning(
+            "FastAPI telemetry instrumentation requires "
+            "opentelemetry-instrumentation-fastapi. "
+            "Install with: pip install protean[telemetry]"
+        )
+        return False
+
+    FastAPIInstrumentor.instrument_app(app, **kwargs)
+    return True
 
 
 def set_span_error(span: Any, exc: BaseException) -> None:
