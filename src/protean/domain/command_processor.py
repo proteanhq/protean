@@ -368,8 +368,8 @@ class CommandProcessor:
                         store.record_success(idempotency_key, result)
                     return result
 
-            # Async path: record counter (no duration - async processing happens later)
-            async_attrs = {"command_type": command_type, "status": "ok"}
+            # Async path: record enqueue (actual processing happens later)
+            async_attrs = {"command_type": command_type, "status": "enqueued"}
             metrics.command_processed.add(1, async_attrs)
             duration_s = time.monotonic() - process_start
             metrics.command_duration.record(duration_s, async_attrs)

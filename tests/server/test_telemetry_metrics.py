@@ -227,8 +227,11 @@ class TestCommandProcessedCounter:
         assert len(error_points) == 1
         assert error_points[0].value == 1
 
-    def test_async_path_increments_counter(self, test_domain, telemetry):
+    def test_async_path_increments_counter_with_enqueued_status(self, test_domain, telemetry):
         _, metric_reader = telemetry
+
+        # Force async processing so the async path is taken
+        test_domain.config["command_processing"] = "async"
 
         test_domain.process(
             OpenAccount(account_id=str(uuid4()), name="Async Corp"),
@@ -236,11 +239,11 @@ class TestCommandProcessedCounter:
         )
 
         points = _get_metric_data_points(metric_reader, "protean.command.processed")
-        ok_points = [
-            p for p in points if dict(p.attributes).get("status") == "ok"
+        enqueued_points = [
+            p for p in points if dict(p.attributes).get("status") == "enqueued"
         ]
-        assert len(ok_points) == 1
-        assert ok_points[0].value == 1
+        assert len(enqueued_points) == 1
+        assert enqueued_points[0].value == 1
 
     def test_multiple_commands_accumulate(self, test_domain, telemetry):
         _, metric_reader = telemetry
@@ -302,8 +305,11 @@ class TestCommandDurationHistogram:
         assert len(error_points) == 1
         assert error_points[0].sum > 0
 
-    def test_async_path_records_duration(self, test_domain, telemetry):
+    def test_async_path_records_duration_with_enqueued_status(self, test_domain, telemetry):
         _, metric_reader = telemetry
+
+        # Force async processing so the async path is taken
+        test_domain.config["command_processing"] = "async"
 
         test_domain.process(
             OpenAccount(account_id=str(uuid4()), name="Async Corp"),
@@ -312,11 +318,11 @@ class TestCommandDurationHistogram:
 
         points = _get_metric_data_points(metric_reader, "protean.command.duration")
         assert len(points) >= 1
-        ok_points = [
-            p for p in points if dict(p.attributes).get("status") == "ok"
+        enqueued_points = [
+            p for p in points if dict(p.attributes).get("status") == "enqueued"
         ]
-        assert len(ok_points) == 1
-        assert ok_points[0].sum > 0
+        assert len(enqueued_points) == 1
+        assert enqueued_points[0].sum > 0
 
 
 # ---------------------------------------------------------------------------

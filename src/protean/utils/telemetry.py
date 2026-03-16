@@ -322,6 +322,21 @@ def inject_traceparent_from_context() -> Any:
     return TraceParent.build(w3c_header)
 
 
+def create_observation(value: int | float, attributes: dict[str, Any] | None = None) -> Any:
+    """Create an OpenTelemetry ``Observation`` without leaking the OTel import.
+
+    Returns a no-op named tuple when the SDK is not installed so that
+    callback code never needs conditional guards.
+    """
+    if _OTEL_AVAILABLE:
+        from opentelemetry.metrics import Observation
+
+        return Observation(value, attributes)
+
+    # Lightweight stand-in when OTel is absent
+    return _NoOpObservation(value, attributes)
+
+
 def instrument_fastapi_app(app: Any, **kwargs: Any) -> bool:
     """Apply ``FastAPIInstrumentor`` to a FastAPI app.
 
@@ -401,6 +416,14 @@ class _NoOpTracer:
         return _NoOpSpan()
 
 
+class _NoOpObservation:
+    """Lightweight stand-in for ``opentelemetry.metrics.Observation``."""
+
+    def __init__(self, value: int | float, attributes: dict[str, Any] | None = None) -> None:
+        self.value = value
+        self.attributes = attributes
+
+
 class _NoOpCounter:
     def add(self, amount: int | float, attributes: dict[str, Any] | None = None) -> None:
         pass
@@ -409,6 +432,12 @@ class _NoOpCounter:
 class _NoOpHistogram:
     def record(self, amount: int | float, attributes: dict[str, Any] | None = None) -> None:
         pass
+
+
+class _NoOpObservableGauge:
+    """Minimal no-op observable gauge returned when OTEL is not installed."""
+
+    pass
 
 
 class _NoOpMeter:
@@ -424,7 +453,7 @@ class _NoOpMeter:
         return _NoOpCounter()
 
     def create_observable_gauge(self, name: str, callbacks: Any = None, **kwargs: Any) -> Any:
-        return _NoOpCounter()
+        return _NoOpObservableGauge()
 
 
 # ---------------------------------------------------------------------------

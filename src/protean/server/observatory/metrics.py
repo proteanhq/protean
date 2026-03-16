@@ -49,7 +49,7 @@ _GAUGES_REGISTERED_KEY = "_otel_infra_gauges_registered"
 
 
 def _register_infrastructure_gauges(domains: List[Domain]) -> None:
-    """Register ``ObservableGauge`` callbacks on the first domain's meter.
+    """Register ``ObservableGauge`` callbacks on the first domain with an active meter.
 
     These callbacks are invoked on every Prometheus scrape and yield
     the same infrastructure metrics the hand-rolled endpoint produced.
@@ -57,24 +57,26 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     if not domains:
         return
 
-    first_domain = domains[0]
+    from protean.utils.telemetry import create_observation, get_meter, get_meter_provider
+
+    # Find the first domain that has a configured meter provider
+    target_domain: Domain | None = None
+    for d in domains:
+        if get_meter_provider(d) is not None:
+            target_domain = d
+            break
+
+    if target_domain is None:
+        return
 
     # Only register once per domain lifetime
-    if getattr(first_domain, _GAUGES_REGISTERED_KEY, False):
+    if getattr(target_domain, _GAUGES_REGISTERED_KEY, False):
         return
 
-    from protean.utils.telemetry import get_meter, get_meter_provider
-
-    provider = get_meter_provider(first_domain)
-    if provider is None:
-        return
-
-    meter = get_meter(first_domain, name="protean.infrastructure")
+    meter = get_meter(target_domain, name="protean.infrastructure")
 
     # --- Outbox gauges ---
     def _outbox_callback(_options):
-        from opentelemetry.metrics import Observation
-
         observations = []
         for domain in domains:
             try:
@@ -83,97 +85,89 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                     counts = outbox_repo.count_by_status()
                     for status, count in counts.items():
                         observations.append(
-                            Observation(
+                            create_observation(
                                 count,
                                 {"domain": domain.name, "status": status},
                             )
                         )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Gauge callback: outbox query failed for %s: %s", domain.name, exc)
         return observations
 
     meter.create_observable_gauge(
-        "protean.infra.outbox_pending",
+        "protean_outbox_pending",
         callbacks=[_outbox_callback],
         description="Current pending outbox messages",
     )
 
     # --- Broker gauges ---
     def _broker_up_callback(_options):
-        from opentelemetry.metrics import Observation
-
         try:
-            with first_domain.domain_context():
-                broker = first_domain.brokers.get("default")
+            with target_domain.domain_context():
+                broker = target_domain.brokers.get("default")
                 if broker:
                     health = broker.health_stats()
                     details = health.get("details", {})
                     is_up = 1 if health.get("connected") and details.get("healthy") else 0
-                    return [Observation(is_up)]
-        except Exception:
-            pass
-        return [Observation(0)]
+                    return [create_observation(is_up)]
+        except Exception as exc:
+            logger.debug("Gauge callback: broker_up query failed: %s", exc)
+        return [create_observation(0)]
 
     def _broker_memory_callback(_options):
-        from opentelemetry.metrics import Observation
-
         try:
-            with first_domain.domain_context():
-                broker = first_domain.brokers.get("default")
+            with target_domain.domain_context():
+                broker = target_domain.brokers.get("default")
                 if broker:
                     health = broker.health_stats()
                     mem = health.get("details", {}).get("used_memory", 0)
-                    return [Observation(mem)]
-        except Exception:
-            pass
-        return [Observation(0)]
+                    return [create_observation(mem)]
+        except Exception as exc:
+            logger.debug("Gauge callback: broker_memory query failed: %s", exc)
+        return [create_observation(0)]
 
     def _broker_clients_callback(_options):
-        from opentelemetry.metrics import Observation
-
         try:
-            with first_domain.domain_context():
-                broker = first_domain.brokers.get("default")
+            with target_domain.domain_context():
+                broker = target_domain.brokers.get("default")
                 if broker:
                     health = broker.health_stats()
                     clients = health.get("details", {}).get("connected_clients", 0)
-                    return [Observation(clients)]
-        except Exception:
-            pass
-        return [Observation(0)]
+                    return [create_observation(clients)]
+        except Exception as exc:
+            logger.debug("Gauge callback: broker_clients query failed: %s", exc)
+        return [create_observation(0)]
 
     def _broker_ops_callback(_options):
-        from opentelemetry.metrics import Observation
-
         try:
-            with first_domain.domain_context():
-                broker = first_domain.brokers.get("default")
+            with target_domain.domain_context():
+                broker = target_domain.brokers.get("default")
                 if broker:
                     health = broker.health_stats()
                     ops = health.get("details", {}).get("instantaneous_ops_per_sec", 0)
-                    return [Observation(ops)]
-        except Exception:
-            pass
-        return [Observation(0)]
+                    return [create_observation(ops)]
+        except Exception as exc:
+            logger.debug("Gauge callback: broker_ops query failed: %s", exc)
+        return [create_observation(0)]
 
     meter.create_observable_gauge(
-        "protean.infra.broker_up",
+        "protean_broker_up",
         callbacks=[_broker_up_callback],
         description="Broker health (1=up, 0=down)",
     )
     meter.create_observable_gauge(
-        "protean.infra.broker_memory_bytes",
+        "protean_broker_memory_bytes",
         callbacks=[_broker_memory_callback],
         description="Broker memory usage in bytes",
         unit="By",
     )
     meter.create_observable_gauge(
-        "protean.infra.broker_connected_clients",
+        "protean_broker_connected_clients",
         callbacks=[_broker_clients_callback],
         description="Number of connected broker clients",
     )
     meter.create_observable_gauge(
-        "protean.infra.broker_ops_per_sec",
+        "protean_broker_ops_per_sec",
         callbacks=[_broker_ops_callback],
         description="Broker operations per second",
         unit="{operation}/s",
@@ -181,8 +175,6 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
 
     # --- Subscription gauges ---
     def _subscription_lag_callback(_options):
-        from opentelemetry.metrics import Observation
-
         from protean.server.subscription_status import collect_subscription_statuses
 
         observations = []
@@ -197,14 +189,12 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                         "type": s.subscription_type,
                     }
                     if s.lag is not None:
-                        observations.append(Observation(s.lag, attrs))
-            except Exception:
-                pass
+                        observations.append(create_observation(s.lag, attrs))
+            except Exception as exc:
+                logger.debug("Gauge callback: subscription_lag failed for %s: %s", domain.name, exc)
         return observations
 
     def _subscription_pending_callback(_options):
-        from opentelemetry.metrics import Observation
-
         from protean.server.subscription_status import collect_subscription_statuses
 
         observations = []
@@ -218,14 +208,12 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                         "stream": s.stream_category,
                         "type": s.subscription_type,
                     }
-                    observations.append(Observation(s.pending, attrs))
-            except Exception:
-                pass
+                    observations.append(create_observation(s.pending, attrs))
+            except Exception as exc:
+                logger.debug("Gauge callback: subscription_pending failed for %s: %s", domain.name, exc)
         return observations
 
     def _subscription_dlq_callback(_options):
-        from opentelemetry.metrics import Observation
-
         from protean.server.subscription_status import collect_subscription_statuses
 
         observations = []
@@ -239,14 +227,12 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                         "stream": s.stream_category,
                         "type": s.subscription_type,
                     }
-                    observations.append(Observation(s.dlq_depth, attrs))
-            except Exception:
-                pass
+                    observations.append(create_observation(s.dlq_depth, attrs))
+            except Exception as exc:
+                logger.debug("Gauge callback: subscription_dlq failed for %s: %s", domain.name, exc)
         return observations
 
     def _subscription_status_callback(_options):
-        from opentelemetry.metrics import Observation
-
         from protean.server.subscription_status import collect_subscription_statuses
 
         observations = []
@@ -261,34 +247,34 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                         "type": s.subscription_type,
                     }
                     observations.append(
-                        Observation(1 if s.status == "ok" else 0, attrs)
+                        create_observation(1 if s.status == "ok" else 0, attrs)
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Gauge callback: subscription_status failed for %s: %s", domain.name, exc)
         return observations
 
     meter.create_observable_gauge(
-        "protean.infra.subscription_lag",
+        "protean_subscription_lag",
         callbacks=[_subscription_lag_callback],
         description="Messages behind stream head",
     )
     meter.create_observable_gauge(
-        "protean.infra.subscription_pending",
+        "protean_subscription_pending",
         callbacks=[_subscription_pending_callback],
         description="Unacknowledged messages",
     )
     meter.create_observable_gauge(
-        "protean.infra.subscription_dlq_depth",
+        "protean_subscription_dlq_depth",
         callbacks=[_subscription_dlq_callback],
         description="Dead letter queue depth",
     )
     meter.create_observable_gauge(
-        "protean.infra.subscription_status",
+        "protean_subscription_status",
         callbacks=[_subscription_status_callback],
         description="Subscription health (1=ok, 0=not ok)",
     )
 
-    setattr(first_domain, _GAUGES_REGISTERED_KEY, True)
+    setattr(target_domain, _GAUGES_REGISTERED_KEY, True)
 
 
 # ---------------------------------------------------------------------------
@@ -542,13 +528,23 @@ def create_metrics_endpoint(domains: List[Domain]):
 
     Otherwise, the endpoint falls back to the original hand-rolled
     implementation with zero behavioral change.
+
+    Gauge registration is deferred to the first request so that the meter
+    provider has time to be fully initialized after domain activation.
     """
 
-    # Attempt to register ObservableGauge callbacks on first domain's meter
-    _register_infrastructure_gauges(domains)
+    gauges_attempted = False
 
     async def metrics():
         """Prometheus text exposition format metrics."""
+        nonlocal gauges_attempted
+
+        # Lazy gauge registration: attempt on first request, not at
+        # endpoint creation time, so the meter provider is available.
+        if not gauges_attempted:
+            _register_infrastructure_gauges(domains)
+            gauges_attempted = True
+
         from protean.utils.telemetry import get_prometheus_text
 
         # Try OTel-powered path first
