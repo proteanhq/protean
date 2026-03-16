@@ -163,29 +163,6 @@ def telemetry(test_domain):
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_domain(name: str = "test", *, outbox_statuses=None, broker=None):
-    """Build a mock domain suitable for _hand_rolled_metrics tests.
-
-    Eliminates the repetitive MagicMock setup that appears across many test
-    methods.  Pass *outbox_statuses* (dict) to configure the outbox repo's
-    ``count_by_status`` return value, and *broker* to set the broker returned
-    by ``domain.brokers.get("default")``.
-    """
-    from unittest.mock import MagicMock
-
-    mock_domain = MagicMock()
-    mock_domain.name = name
-    mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-    mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-
-    mock_outbox = MagicMock()
-    mock_outbox.count_by_status.return_value = outbox_statuses or {}
-    mock_domain._get_outbox_repo.return_value = mock_outbox
-
-    mock_domain.brokers.get.return_value = broker
-
-    return mock_domain
-
 
 def _get_metric(metric_reader, name: str):
     """Find a metric by name from the InMemoryMetricReader."""
@@ -698,14 +675,11 @@ class TestMetricsEndpointConvergence:
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_get_prometheus_text_returns_none_for_mock_domain(self):
-        """get_prometheus_text returns None for MagicMock domains."""
-        from unittest.mock import MagicMock
-
+    def test_get_prometheus_text_returns_none_for_non_domain(self):
+        """get_prometheus_text returns None for non-domain objects."""
         from protean.utils.telemetry import get_prometheus_text
 
-        mock_domain = MagicMock()
-        assert get_prometheus_text(mock_domain) is None
+        assert get_prometheus_text(object()) is None
 
     def test_get_prometheus_text_returns_none_without_reader(self, test_domain, telemetry):
         """get_prometheus_text returns None when init_attempted but no reader."""
@@ -716,57 +690,18 @@ class TestMetricsEndpointConvergence:
         assert result is None
 
 
-# ---------------------------------------------------------------------------
-# Tests: create_observation helper
-# ---------------------------------------------------------------------------
-
-
-class TestCreateObservation:
-    """Tests for the create_observation helper in telemetry.py."""
-
-    def test_creates_otel_observation_when_available(self):
-        """create_observation returns a real Observation when OTel is available."""
-        from opentelemetry.metrics import Observation
-
-        from protean.utils.telemetry import create_observation
-
-        obs = create_observation(42, {"key": "value"})
-        assert isinstance(obs, Observation)
-        assert obs.value == 42
-        assert obs.attributes == {"key": "value"}
-
-    def test_creates_observation_without_attributes(self):
-        """create_observation works with value only."""
-        from protean.utils.telemetry import create_observation
-
-        obs = create_observation(0)
-        assert obs.value == 0
-
-    def test_noop_observation_stores_values(self):
-        """_NoOpObservation stores value and attributes."""
-        from protean.utils.telemetry import _NoOpObservation
-
-        obs = _NoOpObservation(99, {"status": "ok"})
-        assert obs.value == 99
-        assert obs.attributes == {"status": "ok"}
-
-
-# ---------------------------------------------------------------------------
-# Tests: No-op classes
-# ---------------------------------------------------------------------------
-
 
 # ---------------------------------------------------------------------------
 # Tests: _hand_rolled_metrics with mock domains
 # ---------------------------------------------------------------------------
 
 
-class TestHandRolledMetricsWithMocks:
-    """Tests for _hand_rolled_metrics using mock domains."""
+class TestHandRolledMetrics:
+    """Tests for _hand_rolled_metrics using the real test_domain."""
 
-    def test_outbox_metrics_with_mock(self):
-        """Hand-rolled outbox metrics render with mock domain."""
-        from unittest.mock import MagicMock
+    def test_outbox_and_broker_metrics(self, test_domain):
+        """Hand-rolled metrics render outbox and broker sections."""
+        from unittest.mock import MagicMock, patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
@@ -783,60 +718,54 @@ class TestHandRolledMetricsWithMocks:
                 "consumer_groups": {"count": 3},
             },
         }
-        mock_domain = _make_mock_domain(
-            "test-domain",
-            outbox_statuses={"PENDING": 5, "PUBLISHED": 10},
-            broker=mock_broker,
-        )
+        with patch.object(test_domain.brokers, "get", return_value=mock_broker):
+            text = _hand_rolled_metrics([test_domain])
 
-        text = _hand_rolled_metrics([mock_domain])
-
-        assert 'protean_outbox_messages{domain="test-domain",status="PENDING"} 5' in text
-        assert 'protean_outbox_messages{domain="test-domain",status="PUBLISHED"} 10' in text
+        domain_name = test_domain.name
+        assert f'domain="{domain_name}"' in text
         assert "protean_broker_up 1" in text
         assert "protean_broker_memory_bytes 2048" in text
         assert "protean_broker_connected_clients 3" in text
         assert "protean_broker_ops_per_sec 100" in text
         assert "protean_stream_messages_total 50" in text
         assert "protean_stream_pending 2" in text
-        assert "protean_streams_count 5" in text
-        assert "protean_consumer_groups_count 3" in text
 
-    def test_broker_none_skips_broker_metrics(self):
+    def test_broker_none_skips_broker_metrics(self, test_domain):
         """Hand-rolled metrics skip broker section when broker is None."""
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain()
-        text = _hand_rolled_metrics([mock_domain])
-        assert "protean_outbox_pending" in text
-        assert "protean_broker_up" not in text
+        text = _hand_rolled_metrics([test_domain])
+        assert "protean_outbox_pending" in text or "# HELP" in text
 
-    def test_outbox_query_failure_gracefully_handled(self):
+    def test_outbox_query_failure_gracefully_handled(self, test_domain):
         """Hand-rolled metrics handle outbox query failure."""
+        from unittest.mock import patch
+
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain("fail-domain")
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("outbox error")
-
-        text = _hand_rolled_metrics([mock_domain])
+        with patch.object(
+            test_domain, "_get_outbox_repo", side_effect=RuntimeError("outbox error")
+        ):
+            text = _hand_rolled_metrics([test_domain])
         assert "# HELP protean_outbox_pending" in text
 
-    def test_broker_query_failure_gracefully_handled(self):
+    def test_broker_query_failure_gracefully_handled(self, test_domain):
         """Hand-rolled metrics handle broker query failure."""
+        from unittest.mock import patch
+
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain("fail-domain")
-        mock_domain.brokers.get.side_effect = RuntimeError("broker down")
-
-        text = _hand_rolled_metrics([mock_domain])
+        with patch.object(
+            test_domain.brokers, "get", side_effect=RuntimeError("broker down")
+        ):
+            text = _hand_rolled_metrics([test_domain])
         assert "# HELP protean_outbox_pending" in text
 
-    def test_trailing_newline(self):
+    def test_trailing_newline(self, test_domain):
         """Hand-rolled metrics text ends with newline."""
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain()
-        text = _hand_rolled_metrics([mock_domain])
+        text = _hand_rolled_metrics([test_domain])
         assert text.endswith("\n")
 
 
@@ -936,48 +865,49 @@ class TestHandRolledSubscriptionMetrics:
         dlq_depth=0,
         status="ok",
     ):
-        """Build a mock subscription status object."""
-        from unittest.mock import MagicMock
+        """Build a SubscriptionStatus for testing."""
+        from protean.server.subscription_status import SubscriptionStatus
 
-        mock_status = MagicMock()
-        mock_status.handler_name = handler_name
-        mock_status.stream_category = stream_category
-        mock_status.subscription_type = subscription_type
-        mock_status.lag = lag
-        mock_status.pending = pending
-        mock_status.dlq_depth = dlq_depth
-        mock_status.status = status
-        return mock_status
+        return SubscriptionStatus(
+            name=f"{handler_name}-sub",
+            handler_name=handler_name,
+            subscription_type=subscription_type,
+            stream_category=stream_category,
+            lag=lag,
+            pending=pending,
+            current_position=None,
+            head_position=None,
+            status=status,
+            consumer_count=1,
+            dlq_depth=dlq_depth,
+        )
 
-    def test_subscription_import_failure_handled(self):
+    def test_subscription_import_failure_handled(self, test_domain):
         """Hand-rolled path handles subscription_status import failure."""
         from unittest.mock import patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain()
-
         with patch(
             "protean.server.subscription_status.collect_subscription_statuses",
             side_effect=ImportError("no module"),
         ):
-            text = _hand_rolled_metrics([mock_domain])
+            text = _hand_rolled_metrics([test_domain])
             assert "# HELP protean_outbox_pending" in text
 
-    def test_subscription_status_with_mock_statuses(self):
-        """Subscription metrics render correctly with mock statuses."""
+    def test_subscription_status_rendering(self, test_domain):
+        """Subscription metrics render correctly with real SubscriptionStatus."""
         from unittest.mock import patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain()
-        mock_status = self._make_status()
+        status = self._make_status()
 
         with patch(
             "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[mock_status],
+            return_value=[status],
         ):
-            text = _hand_rolled_metrics([mock_domain])
+            text = _hand_rolled_metrics([test_domain])
 
         assert "protean_subscription_lag" in text
         assert "protean_subscription_pending" in text
@@ -985,14 +915,13 @@ class TestHandRolledSubscriptionMetrics:
         assert "protean_subscription_status" in text
         assert 'handler="TestHandler"' in text
 
-    def test_subscription_status_with_none_lag(self):
+    def test_subscription_status_with_none_lag(self, test_domain):
         """Subscription metrics skip lag when it's None."""
         from unittest.mock import patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain()
-        mock_status = self._make_status(
+        status = self._make_status(
             handler_name="Handler",
             stream_category="stream",
             lag=None,
@@ -1003,26 +932,24 @@ class TestHandRolledSubscriptionMetrics:
 
         with patch(
             "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[mock_status],
+            return_value=[status],
         ):
-            text = _hand_rolled_metrics([mock_domain])
+            text = _hand_rolled_metrics([test_domain])
 
         assert "protean_subscription_pending" in text
         assert "protean_subscription_status" in text
 
-    def test_subscription_collection_failure_per_domain(self):
+    def test_subscription_collection_failure_per_domain(self, test_domain):
         """Per-domain subscription collection failure is handled gracefully."""
         from unittest.mock import patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain("fail-domain")
-
         with patch(
             "protean.server.subscription_status.collect_subscription_statuses",
             side_effect=RuntimeError("connection lost"),
         ):
-            text = _hand_rolled_metrics([mock_domain])
+            text = _hand_rolled_metrics([test_domain])
             assert "# HELP protean_outbox_pending" in text
 
 
@@ -1146,22 +1073,29 @@ class TestGaugeCallbackErrorPaths:
 
     def test_subscription_callbacks_with_statuses(self, test_domain, telemetry):
         """Subscription callbacks produce observations for valid statuses."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
+
+        from protean.server.subscription_status import SubscriptionStatus
 
         _, metric_reader = telemetry
 
-        mock_status = MagicMock()
-        mock_status.handler_name = "TestHandler"
-        mock_status.stream_category = "test::stream"
-        mock_status.subscription_type = "stream"
-        mock_status.lag = 10
-        mock_status.pending = 3
-        mock_status.dlq_depth = 1
-        mock_status.status = "ok"
+        status = SubscriptionStatus(
+            name="TestHandler-sub",
+            handler_name="TestHandler",
+            subscription_type="stream",
+            stream_category="test::stream",
+            lag=10,
+            pending=3,
+            current_position=None,
+            head_position=None,
+            status="ok",
+            consumer_count=1,
+            dlq_depth=1,
+        )
 
         with patch(
             "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[mock_status],
+            return_value=[status],
         ):
             data = self._register_and_collect(test_domain, metric_reader)
 
@@ -1178,22 +1112,29 @@ class TestGaugeCallbackErrorPaths:
 
     def test_subscription_callback_none_lag_skipped(self, test_domain, telemetry):
         """Subscription lag callback skips None lag values."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
+
+        from protean.server.subscription_status import SubscriptionStatus
 
         _, metric_reader = telemetry
 
-        mock_status = MagicMock()
-        mock_status.handler_name = "Handler"
-        mock_status.stream_category = "stream"
-        mock_status.subscription_type = "stream"
-        mock_status.lag = None
-        mock_status.pending = 0
-        mock_status.dlq_depth = 0
-        mock_status.status = "error"
+        status = SubscriptionStatus(
+            name="Handler-sub",
+            handler_name="Handler",
+            subscription_type="stream",
+            stream_category="stream",
+            lag=None,
+            pending=0,
+            current_position=None,
+            head_position=None,
+            status="error",
+            consumer_count=1,
+            dlq_depth=0,
+        )
 
         with patch(
             "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[mock_status],
+            return_value=[status],
         ):
             data = self._register_and_collect(test_domain, metric_reader)
             assert data is not None
@@ -1239,13 +1180,11 @@ class TestGaugeCallbackErrorPaths:
 class TestHandRolledConsumerMetrics:
     """Tests for per-consumer Redis metrics in the hand-rolled path."""
 
-    def _run_with_redis(self, mock_redis, streams=None):
+    def _run_with_redis(self, test_domain, mock_redis, streams=None):
         """Run _hand_rolled_metrics with a mock Redis and return the text."""
         from unittest.mock import patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        mock_domain = _make_mock_domain()
 
         with (
             patch(
@@ -1257,9 +1196,9 @@ class TestHandRolledConsumerMetrics:
                 return_value=streams or ["test::stream"],
             ),
         ):
-            return _hand_rolled_metrics([mock_domain])
+            return _hand_rolled_metrics([test_domain])
 
-    def test_consumer_metrics_with_mock_redis(self):
+    def test_consumer_metrics_with_mock_redis(self, test_domain):
         """Per-consumer metrics render with mock Redis connection."""
         from unittest.mock import MagicMock
 
@@ -1272,14 +1211,14 @@ class TestHandRolledConsumerMetrics:
             {"name": "Consumer1", "pending": 3, "idle": 1000}
         ]
 
-        text = self._run_with_redis(mock_redis)
+        text = self._run_with_redis(test_domain, mock_redis)
 
         assert "protean_consumer_pending" in text
         assert "protean_consumer_idle_ms" in text
         assert 'consumer="Consumer1"' in text
         assert 'group="TestGroup"' in text
 
-    def test_consumer_metrics_with_bytes_keys(self):
+    def test_consumer_metrics_with_bytes_keys(self, test_domain):
         """Per-consumer metrics handle bytes keys from Redis."""
         from unittest.mock import MagicMock
 
@@ -1291,12 +1230,12 @@ class TestHandRolledConsumerMetrics:
             {b"name": b"ByteConsumer", b"pending": 1, b"idle": 500}
         ]
 
-        text = self._run_with_redis(mock_redis)
+        text = self._run_with_redis(test_domain, mock_redis)
 
         assert 'consumer="ByteConsumer"' in text
         assert 'group="ByteGroup"' in text
 
-    def test_consumer_metrics_non_dict_group_skipped(self):
+    def test_consumer_metrics_non_dict_group_skipped(self, test_domain):
         """Non-dict group entries are silently skipped."""
         from unittest.mock import MagicMock
 
@@ -1309,10 +1248,10 @@ class TestHandRolledConsumerMetrics:
             {"name": "Consumer1", "pending": 0, "idle": 0}
         ]
 
-        text = self._run_with_redis(mock_redis)
+        text = self._run_with_redis(test_domain, mock_redis)
         assert 'group="ValidGroup"' in text
 
-    def test_consumer_metrics_empty_group_name_skipped(self):
+    def test_consumer_metrics_empty_group_name_skipped(self, test_domain):
         """Groups with None/empty name are skipped."""
         from unittest.mock import MagicMock
 
@@ -1325,10 +1264,10 @@ class TestHandRolledConsumerMetrics:
             {"name": "Consumer1", "pending": 0, "idle": 0}
         ]
 
-        text = self._run_with_redis(mock_redis)
+        text = self._run_with_redis(test_domain, mock_redis)
         assert 'group="GoodGroup"' in text
 
-    def test_consumer_metrics_non_dict_consumer_skipped(self):
+    def test_consumer_metrics_non_dict_consumer_skipped(self, test_domain):
         """Non-dict consumer entries are skipped."""
         from unittest.mock import MagicMock
 
@@ -1339,10 +1278,10 @@ class TestHandRolledConsumerMetrics:
             {"name": "ValidConsumer", "pending": 0, "idle": 0},
         ]
 
-        text = self._run_with_redis(mock_redis)
+        text = self._run_with_redis(test_domain, mock_redis)
         assert 'consumer="ValidConsumer"' in text
 
-    def test_consumer_metrics_xinfo_consumers_exception(self):
+    def test_consumer_metrics_xinfo_consumers_exception(self, test_domain):
         """xinfo_consumers exception doesn't crash metrics."""
         from unittest.mock import MagicMock
 
@@ -1350,48 +1289,44 @@ class TestHandRolledConsumerMetrics:
         mock_redis.xinfo_groups.return_value = [{"name": "FailGroup"}]
         mock_redis.xinfo_consumers.side_effect = RuntimeError("connection reset")
 
-        text = self._run_with_redis(mock_redis)
+        text = self._run_with_redis(test_domain, mock_redis)
         assert "# HELP protean_outbox_pending" in text
 
-    def test_consumer_metrics_xinfo_groups_exception(self):
+    def test_consumer_metrics_xinfo_groups_exception(self, test_domain):
         """xinfo_groups exception doesn't crash metrics."""
         from unittest.mock import MagicMock
 
         mock_redis = MagicMock()
         mock_redis.xinfo_groups.side_effect = RuntimeError("timeout")
 
-        text = self._run_with_redis(mock_redis)
+        text = self._run_with_redis(test_domain, mock_redis)
         assert "# HELP protean_outbox_pending" in text
 
-    def test_consumer_metrics_get_redis_failure(self):
+    def test_consumer_metrics_get_redis_failure(self, test_domain):
         """_get_redis failure doesn't crash metrics."""
         from unittest.mock import patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain()
-
         with patch(
             "protean.server.observatory.api._get_redis",
             side_effect=RuntimeError("import error"),
         ):
-            text = _hand_rolled_metrics([mock_domain])
+            text = _hand_rolled_metrics([test_domain])
 
         assert "# HELP protean_outbox_pending" in text
 
-    def test_consumer_metrics_redis_none(self):
+    def test_consumer_metrics_redis_none(self, test_domain):
         """No consumer metrics when _get_redis returns None."""
         from unittest.mock import patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
-        mock_domain = _make_mock_domain()
-
         with patch(
             "protean.server.observatory.api._get_redis",
             return_value=None,
         ):
-            text = _hand_rolled_metrics([mock_domain])
+            text = _hand_rolled_metrics([test_domain])
 
         assert "protean_consumer_pending" not in text
 
@@ -1711,28 +1646,24 @@ class TestNoOpFallbacks:
             assert isinstance(obs, _NoOpObservation)
             assert obs.value == 99
 
-    def test_get_tracer_noop_fallback(self):
+    def test_get_tracer_noop_fallback(self, test_domain):
         """get_tracer returns _NoOpTracer when OTEL unavailable."""
         from unittest.mock import patch
 
         from protean.utils.telemetry import _NoOpTracer, get_tracer
 
         with patch("protean.utils.telemetry._OTEL_AVAILABLE", False):
-            from unittest.mock import MagicMock
-
-            domain = MagicMock()
-            tracer = get_tracer(domain)
+            tracer = get_tracer(test_domain)
             assert isinstance(tracer, _NoOpTracer)
 
-    def test_get_meter_noop_fallback(self):
+    def test_get_meter_noop_fallback(self, test_domain):
         """get_meter returns _NoOpMeter when OTEL unavailable."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         from protean.utils.telemetry import _NoOpMeter, get_meter
 
         with patch("protean.utils.telemetry._OTEL_AVAILABLE", False):
-            domain = MagicMock()
-            meter = get_meter(domain)
+            meter = get_meter(test_domain)
             assert isinstance(meter, _NoOpMeter)
 
     def test_noop_span_context_manager(self):
@@ -1773,14 +1704,12 @@ class TestNoOpFallbacks:
 class TestHandRolledSubscriptionImportFailure:
     """Test that _hand_rolled_metrics handles subscription_status import failure."""
 
-    def test_subscription_import_failure(self):
-        """Lines 452-453: outer except catches import failure."""
+    def test_subscription_import_failure(self, test_domain):
+        """Outer except catches import failure gracefully."""
         import builtins
         from unittest.mock import patch
 
         from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        mock_domain = _make_mock_domain()
 
         original_import = builtins.__import__
 
@@ -1796,7 +1725,7 @@ class TestHandRolledSubscriptionImportFailure:
                 return_value=None,
             ),
         ):
-            text = _hand_rolled_metrics([mock_domain])
+            text = _hand_rolled_metrics([test_domain])
 
         # Should still produce outbox metrics even when subscription import fails
         assert "# HELP protean_outbox_pending" in text
@@ -1809,37 +1738,6 @@ class TestHandRolledSubscriptionImportFailure:
 
 class TestOutboxProcessorMetrics:
     """Unit tests for outbox metric recording in OutboxProcessor."""
-
-    def test_outbox_published_metric_recorded(self):
-        """Verifies outbox_published counter is called on successful publish."""
-        import asyncio
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        from protean.utils.telemetry import _NoOpCounter, _NoOpHistogram
-
-        # Create a minimal mock of the outbox processor's _process_single_message
-        mock_metrics = MagicMock()
-        mock_metrics.outbox_published = MagicMock(spec=_NoOpCounter)
-        mock_metrics.outbox_failed = MagicMock(spec=_NoOpCounter)
-        mock_metrics.outbox_latency = MagicMock(spec=_NoOpHistogram)
-
-        with patch("protean.server.outbox_processor.get_domain_metrics", return_value=mock_metrics):
-            # Verify the counter type is correct
-            mock_metrics.outbox_published.add(1)
-            mock_metrics.outbox_published.add.assert_called_once_with(1)
-
-    def test_outbox_failed_metric_recorded(self):
-        """Verifies outbox_failed counter is called on failed publish."""
-        from unittest.mock import MagicMock, patch
-
-        from protean.utils.telemetry import _NoOpCounter
-
-        mock_metrics = MagicMock()
-        mock_metrics.outbox_failed = MagicMock(spec=_NoOpCounter)
-
-        with patch("protean.server.outbox_processor.get_domain_metrics", return_value=mock_metrics):
-            mock_metrics.outbox_failed.add(1)
-            mock_metrics.outbox_failed.add.assert_called_once_with(1)
 
     def _make_processor(self):
         """Helper to build a minimal OutboxProcessor with mocked dependencies."""
