@@ -429,6 +429,13 @@ class TestTimelinePage:
         html = client.get("/timeline").text
         assert 'href="/timeline"' in html
 
+    def test_contains_sub_view_containers(self, client):
+        """Smoke test: correlation and aggregate sub-views are present."""
+        html = client.get("/timeline").text
+        assert 'id="timeline-list-view"' in html
+        assert 'id="correlation-view"' in html
+        assert 'id="aggregate-view"' in html
+
 
 class TestInfrastructurePage:
     def test_returns_200(self, client):

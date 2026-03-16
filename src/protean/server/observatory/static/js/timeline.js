@@ -3,7 +3,8 @@
  *
  * Chronological event browser for the Observatory. Fetches events from
  * /api/timeline/* endpoints, renders the event list with filtering,
- * cursor-based pagination, and an event detail panel.
+ * cursor-based pagination, event detail panel, correlation chain view,
+ * and aggregate history view.
  */
 (function () {
   'use strict';
@@ -20,15 +21,45 @@
   let _aggregateId = '';
   let _kind = '';
 
+  // Current view: 'list' | 'correlation' | 'aggregate'
+  let _currentView = 'list';
+
   // DOM refs
   let $tbody, $empty, $loadMore, $loadingMore;
+
+  // ---------------------------------------------------------------------------
+  // View Management
+  // ---------------------------------------------------------------------------
+
+  function _showView(view) {
+    _currentView = view;
+    var $list = document.getElementById('timeline-list-view');
+    var $corr = document.getElementById('correlation-view');
+    var $agg = document.getElementById('aggregate-view');
+
+    if ($list) $list.classList.toggle('hidden', view !== 'list');
+    if ($corr) $corr.classList.toggle('hidden', view !== 'correlation');
+    if ($agg) $agg.classList.toggle('hidden', view !== 'aggregate');
+  }
+
+  function _enterListView() {
+    _showView('list');
+    _syncUIFromState();
+    _updateURL();
+    fetchEvents(false);
+    window.scrollTo(0, 0);
+  }
+
+  function _backToList() {
+    _enterListView();
+  }
 
   // ---------------------------------------------------------------------------
   // Data Fetching
   // ---------------------------------------------------------------------------
 
   function _buildQueryString(cursor) {
-    const params = new URLSearchParams();
+    var params = new URLSearchParams();
     params.set('limit', '50');
     params.set('order', _order);
     if (cursor != null) params.set('cursor', String(cursor));
@@ -48,7 +79,7 @@
       _nextCursor = null;
     }
 
-    const cursor = append ? _nextCursor : 0;
+    var cursor = append ? _nextCursor : 0;
     if (append && cursor == null) {
       _loading = false;
       return;
@@ -57,9 +88,9 @@
     if ($loadingMore) $loadingMore.classList.remove('hidden');
 
     try {
-      const qs = _buildQueryString(cursor);
-      const data = await Observatory.fetchJSON('/api/timeline/events?' + qs);
-      const newEvents = data.events || [];
+      var qs = _buildQueryString(cursor);
+      var data = await Observatory.fetchJSON('/api/timeline/events?' + qs);
+      var newEvents = data.events || [];
 
       if (append) {
         _events = _events.concat(newEvents);
@@ -80,7 +111,7 @@
 
   async function fetchStats() {
     try {
-      const data = await Observatory.fetchJSON('/api/timeline/stats');
+      var data = await Observatory.fetchJSON('/api/timeline/stats');
       _renderStats(data);
     } catch (e) {
       console.warn('Failed to fetch timeline stats:', e.message);
@@ -89,11 +120,261 @@
 
   async function fetchStreams() {
     try {
-      const data = await Observatory.fetchJSON('/api/eventstore/streams');
+      var data = await Observatory.fetchJSON('/api/eventstore/streams');
       _populateStreamFilter(data.aggregates || []);
     } catch (e) {
       console.warn('Failed to fetch stream categories:', e.message);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Correlation Chain
+  // ---------------------------------------------------------------------------
+
+  async function _showCorrelationView(correlationId) {
+    _showView('correlation');
+
+    var $idDisplay = document.getElementById('correlation-id-display');
+    var $eventCount = document.getElementById('correlation-event-count');
+    var $rootType = document.getElementById('correlation-root-type');
+    var $depth = document.getElementById('correlation-depth');
+    var $tree = document.getElementById('correlation-tree');
+    var $corrTbody = document.getElementById('correlation-events-tbody');
+
+    if ($idDisplay) $idDisplay.textContent = correlationId;
+    if ($eventCount) $eventCount.textContent = '--';
+    if ($rootType) $rootType.textContent = 'Loading...';
+    if ($depth) $depth.textContent = '--';
+    if ($tree) $tree.innerHTML = '<div class="text-center py-8"><span class="loading loading-spinner loading-sm"></span></div>';
+    if ($corrTbody) $corrTbody.innerHTML = '<tr><td colspan="5" class="text-center text-base-content/50 py-4">Loading...</td></tr>';
+
+    // Push a new history entry so browser Back returns to the previous view
+    var params = new URLSearchParams();
+    params.set('correlation', correlationId);
+    history.pushState({view: 'correlation', correlationId: correlationId}, '', window.location.pathname + '?' + params.toString());
+
+    try {
+      var data = await Observatory.fetchJSON('/api/timeline/correlation/' + encodeURIComponent(correlationId));
+
+      if ($eventCount) $eventCount.textContent = data.event_count || 0;
+
+      // Render causation tree
+      if (data.tree && $tree) {
+        var treeDepth = _computeTreeDepth(data.tree);
+        if ($depth) $depth.textContent = treeDepth;
+        if ($rootType) $rootType.textContent = _shortTypeName(data.tree.message_type || '');
+        $tree.innerHTML = '';
+        $tree.appendChild(_renderCausationTree(data.tree, 0));
+      } else {
+        if ($tree) $tree.innerHTML = '<div class="text-center py-4 text-base-content/40">No causation tree available</div>';
+        if ($depth) $depth.textContent = '0';
+        if ($rootType) $rootType.textContent = '--';
+      }
+
+      // Render flat event list
+      if ($corrTbody && data.events) {
+        _renderEventRows($corrTbody, data.events);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch correlation chain:', e.message);
+      if ($tree) $tree.innerHTML = '<div class="text-center py-4 text-error">Failed to load correlation chain</div>';
+      if ($corrTbody) $corrTbody.innerHTML = '<tr><td colspan="5" class="text-center text-error py-4">Failed to load</td></tr>';
+    }
+
+    window.scrollTo(0, 0);
+  }
+
+  function _computeTreeDepth(node) {
+    if (!node || !node.children || node.children.length === 0) return 1;
+    var maxChild = 0;
+    for (var i = 0; i < node.children.length; i++) {
+      var d = _computeTreeDepth(node.children[i]);
+      if (d > maxChild) maxChild = d;
+    }
+    return 1 + maxChild;
+  }
+
+  function _renderCausationTree(node, depth) {
+    var container = document.createElement('div');
+    container.className = 'vtl-node' + (depth === 0 ? ' vtl-root' : '');
+
+    var kindClass = node.kind === 'COMMAND' ? 'badge-secondary' : 'badge-primary';
+    var kindLabel = node.kind === 'COMMAND' ? 'CMD' : 'EVT';
+    var shortType = Observatory.escapeHtml(_shortTypeName(node.message_type || ''));
+    var fullType = Observatory.escapeHtml(node.message_type || '');
+    var stream = Observatory.escapeHtml(node.stream || '--');
+    var time = node.time ? Observatory.fmt.time(node.time) : '--';
+    var timeAgo = node.time ? Observatory.fmt.timeAgo(node.time) : '';
+    var pos = node.global_position != null ? node.global_position : '--';
+
+    var card = document.createElement('div');
+    card.className = 'vtl-card cursor-pointer';
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('data-message-id', node.message_id || '');
+    card.setAttribute('title', 'View event detail for ' + (node.message_type || 'event'));
+    card.innerHTML =
+      '<div class="flex items-center gap-2 mb-1">' +
+        '<span class="badge badge-xs ' + kindClass + '">' + kindLabel + '</span>' +
+        '<span class="font-semibold text-sm" title="' + fullType + '">' + shortType + '</span>' +
+        '<span class="text-xs text-base-content/40 ml-auto font-mono-metric">#' + pos + '</span>' +
+      '</div>' +
+      '<div class="flex items-center gap-3 text-xs text-base-content/60">' +
+        '<span class="font-mono">' + stream + '</span>' +
+        '<span>' + time + '</span>' +
+        (timeAgo ? '<span class="text-base-content/40">' + timeAgo + '</span>' : '') +
+      '</div>';
+
+    var _onCardActivate = function () {
+      _showEventDetail(node.message_id);
+    };
+    card.addEventListener('click', _onCardActivate);
+    card.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        _onCardActivate();
+      }
+    });
+
+    container.appendChild(card);
+
+    // Render children
+    if (node.children && node.children.length > 0) {
+      var childrenWrap = document.createElement('div');
+      childrenWrap.className = 'vtl-children';
+      for (var i = 0; i < node.children.length; i++) {
+        childrenWrap.appendChild(_renderCausationTree(node.children[i], depth + 1));
+      }
+      container.appendChild(childrenWrap);
+    }
+
+    return container;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Aggregate History
+  // ---------------------------------------------------------------------------
+
+  async function _showAggregateView(streamCategory, aggregateId) {
+    _showView('aggregate');
+
+    var $streamDisplay = document.getElementById('aggregate-stream-display');
+    var $category = document.getElementById('aggregate-category');
+    var $aggId = document.getElementById('aggregate-id-display');
+    var $version = document.getElementById('aggregate-version');
+    var $timeline = document.getElementById('aggregate-timeline');
+    var $aggEmpty = document.getElementById('aggregate-empty');
+
+    if ($streamDisplay) $streamDisplay.textContent = streamCategory + '-' + aggregateId;
+    if ($category) $category.textContent = streamCategory;
+    if ($aggId) $aggId.textContent = aggregateId;
+    if ($version) $version.textContent = '--';
+    if ($timeline) $timeline.innerHTML = '<div class="text-center py-8"><span class="loading loading-spinner loading-sm"></span></div>';
+    if ($aggEmpty) $aggEmpty.classList.add('hidden');
+
+    // Push a new history entry so browser Back returns to the previous view
+    var params = new URLSearchParams();
+    params.set('stream', streamCategory);
+    params.set('aggregate', aggregateId);
+    history.pushState({view: 'aggregate', stream: streamCategory, aggregate: aggregateId}, '', window.location.pathname + '?' + params.toString());
+
+    try {
+      var data = await Observatory.fetchJSON(
+        '/api/timeline/aggregate/' + encodeURIComponent(streamCategory) +
+        '/' + encodeURIComponent(aggregateId)
+      );
+
+      if ($version) $version.textContent = data.current_version != null ? data.current_version : '--';
+
+      if (data.events && data.events.length > 0 && $timeline) {
+        $timeline.innerHTML = '';
+        _renderAggregateTimeline($timeline, data.events);
+      } else {
+        if ($timeline) $timeline.innerHTML = '';
+        if ($aggEmpty) $aggEmpty.classList.remove('hidden');
+      }
+    } catch (e) {
+      console.warn('Failed to fetch aggregate history:', e.message);
+      if ($timeline) $timeline.innerHTML = '<div class="text-center py-4 text-error">Failed to load aggregate history</div>';
+    }
+
+    window.scrollTo(0, 0);
+  }
+
+  function _renderAggregateTimeline($container, events) {
+    for (var i = 0; i < events.length; i++) {
+      var evt = events[i];
+      var node = document.createElement('div');
+      node.className = 'agg-tl-node';
+
+      var kindClass = evt.kind === 'COMMAND' ? 'badge-secondary' : 'badge-primary';
+      var kindLabel = evt.kind === 'COMMAND' ? 'CMD' : 'EVT';
+      var shortType = Observatory.escapeHtml(_shortTypeName(evt.type || ''));
+      var fullType = Observatory.escapeHtml(evt.type || '');
+      var time = evt.time ? Observatory.fmt.time(evt.time) : '--';
+      var timeTitle = evt.time ? Observatory.fmt.datetime(evt.time) : '';
+      var timeAgo = evt.time ? Observatory.fmt.timeAgo(evt.time) : '';
+      var version = evt.position != null ? 'v' + evt.position : '';
+      var msgId = evt.message_id || '';
+
+      node.innerHTML =
+        '<div class="agg-tl-marker">' +
+          '<div class="agg-tl-dot"></div>' +
+          (i < events.length - 1 ? '<div class="agg-tl-line"></div>' : '') +
+        '</div>' +
+        '<div class="agg-tl-content cursor-pointer" role="button" tabindex="0" data-message-id="' + Observatory.escapeHtml(msgId) + '" title="View event detail">' +
+          '<div class="flex items-center gap-2 mb-1">' +
+            (version ? '<span class="badge badge-xs badge-outline font-mono-metric">' + version + '</span>' : '') +
+            '<span class="badge badge-xs ' + kindClass + '">' + kindLabel + '</span>' +
+            '<span class="font-semibold text-sm" title="' + fullType + '">' + shortType + '</span>' +
+          '</div>' +
+          '<div class="text-xs text-base-content/60" title="' + Observatory.escapeHtml(timeTitle) + '">' +
+            time + (timeAgo ? ' <span class="text-base-content/40">' + timeAgo + '</span>' : '') +
+          '</div>' +
+          (evt.correlation_id ?
+            '<div class="text-xs text-base-content/40 mt-1">' +
+              'Correlation: <a class="link link-hover link-primary correlation-link" role="button" tabindex="0" data-correlation-id="' +
+              Observatory.escapeHtml(evt.correlation_id) + '" title="View correlation chain">' +
+              Observatory.escapeHtml(evt.correlation_id.substring(0, 8)) + '...</a>' +
+            '</div>'
+          : '') +
+        '</div>';
+
+      $container.appendChild(node);
+    }
+
+    // Bind click and keyboard events for event detail
+    $container.querySelectorAll('.agg-tl-content[data-message-id]').forEach(function (el) {
+      var _onActivate = function (e) {
+        // Don't open detail if activating a correlation link
+        if (e.target.classList.contains('correlation-link')) return;
+        _showEventDetail(el.getAttribute('data-message-id'));
+      };
+      el.addEventListener('click', _onActivate);
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          _onActivate(e);
+        }
+      });
+    });
+
+    // Bind correlation links (click and keyboard)
+    $container.querySelectorAll('.correlation-link').forEach(function (link) {
+      var _onActivate = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        _showCorrelationView(link.getAttribute('data-correlation-id'));
+      };
+      link.addEventListener('click', _onActivate);
+      link.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          _onActivate(e);
+        }
+      });
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -110,24 +391,27 @@
     }
 
     if ($empty) $empty.classList.add('hidden');
+    _renderEventRows($tbody, _events);
+  }
 
-    $tbody.innerHTML = _events.map(evt => {
-      const time = evt.time ? Observatory.fmt.time(evt.time) : '--';
-      const timeTitle = evt.time ? Observatory.fmt.datetime(evt.time) : '';
-      const timeAgo = evt.time ? Observatory.fmt.timeAgo(evt.time) : '';
+  function _renderEventRows($target, events) {
+    $target.innerHTML = events.map(function (evt) {
+      var time = evt.time ? Observatory.fmt.time(evt.time) : '--';
+      var timeTitle = evt.time ? Observatory.fmt.datetime(evt.time) : '';
+      var timeAgo = evt.time ? Observatory.fmt.timeAgo(evt.time) : '';
 
-      const kindBadge = evt.kind === 'COMMAND'
+      var kindBadge = evt.kind === 'COMMAND'
         ? '<span class="badge badge-xs badge-secondary">CMD</span>'
         : '<span class="badge badge-xs badge-primary">EVT</span>';
 
-      const stream = Observatory.escapeHtml(_extractStreamCategory(evt.stream || ''));
-      const streamFull = Observatory.escapeHtml(evt.stream || '--');
-      const msgType = Observatory.escapeHtml(_shortTypeName(evt.type || ''));
-      const msgTypeFull = Observatory.escapeHtml(evt.type || '');
-      const globalPos = evt.global_position != null ? evt.global_position : '--';
-      const msgId = Observatory.escapeHtml(evt.message_id || '');
+      var stream = Observatory.escapeHtml(_extractStreamCategory(evt.stream || ''));
+      var streamFull = Observatory.escapeHtml(evt.stream || '--');
+      var msgType = Observatory.escapeHtml(_shortTypeName(evt.type || ''));
+      var msgTypeFull = Observatory.escapeHtml(evt.type || '');
+      var globalPos = evt.global_position != null ? evt.global_position : '--';
+      var msgId = Observatory.escapeHtml(evt.message_id || '');
 
-      return '<tr class="hover cursor-pointer event-row" data-message-id="' + msgId + '">' +
+      return '<tr class="hover cursor-pointer event-row" data-message-id="' + msgId + '" tabindex="0" role="button" title="View event detail">' +
         '<td class="text-xs whitespace-nowrap" title="' + timeTitle + '">' +
           '<div>' + time + '</div>' +
           '<div class="text-base-content/40">' + timeAgo + '</div>' +
@@ -139,10 +423,17 @@
       '</tr>';
     }).join('');
 
-    // Bind row click for detail panel
-    $tbody.querySelectorAll('.event-row').forEach(function (row) {
-      row.addEventListener('click', function () {
+    // Bind row click and keyboard for detail panel
+    $target.querySelectorAll('.event-row').forEach(function (row) {
+      var _onActivate = function () {
         _showEventDetail(row.getAttribute('data-message-id'));
+      };
+      row.addEventListener('click', _onActivate);
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          _onActivate();
+        }
       });
     });
   }
@@ -214,17 +505,70 @@
         ? '<span class="badge badge-sm badge-secondary">COMMAND</span>'
         : '<span class="badge badge-sm badge-primary">EVENT</span>';
 
+      // Build correlation link (clickable if present)
+      var correlationHtml;
+      if (data.correlation_id && data.correlation_id !== '--') {
+        correlationHtml = '<a class="link link-hover link-primary font-mono text-xs cursor-pointer" role="button" tabindex="0" id="detail-correlation-link" title="View correlation chain">' +
+          Observatory.escapeHtml(data.correlation_id) + '</a>';
+      } else {
+        correlationHtml = '<span class="font-mono text-xs">--</span>';
+      }
+
+      // Build stream link (clickable to navigate to aggregate history)
+      var streamHtml;
+      if (data.stream) {
+        streamHtml = '<a class="link link-hover link-primary font-mono text-xs cursor-pointer" role="button" tabindex="0" id="detail-stream-link" title="View aggregate history">' +
+          Observatory.escapeHtml(data.stream) + '</a>';
+      } else {
+        streamHtml = '<span class="font-mono text-xs">--</span>';
+      }
+
       $meta.innerHTML =
         '<div class="font-semibold">Message ID</div><div class="font-mono text-xs">' + Observatory.escapeHtml(data.message_id || '') + '</div>' +
         '<div class="font-semibold">Type</div><div class="font-mono text-xs">' + Observatory.escapeHtml(data.type || '') + '</div>' +
         '<div class="font-semibold">Kind</div><div>' + kindBadge + '</div>' +
-        '<div class="font-semibold">Stream</div><div class="font-mono text-xs">' + Observatory.escapeHtml(data.stream || '') + '</div>' +
+        '<div class="font-semibold">Stream</div><div>' + streamHtml + '</div>' +
         '<div class="font-semibold">Time</div><div>' + (data.time ? Observatory.fmt.datetime(data.time) : '--') + '</div>' +
         '<div class="font-semibold">Global Position</div><div class="font-mono-metric">' + (data.global_position != null ? data.global_position : '--') + '</div>' +
         '<div class="font-semibold">Position</div><div class="font-mono-metric">' + (data.position != null ? data.position : '--') + '</div>' +
-        '<div class="font-semibold">Correlation ID</div><div class="font-mono text-xs">' + Observatory.escapeHtml(data.correlation_id || '--') + '</div>' +
+        '<div class="font-semibold">Correlation ID</div><div>' + correlationHtml + '</div>' +
         '<div class="font-semibold">Causation ID</div><div class="font-mono text-xs">' + Observatory.escapeHtml(data.causation_id || '--') + '</div>' +
         '<div class="font-semibold">Domain</div><div>' + Observatory.escapeHtml(data.domain || '--') + '</div>';
+
+      // Bind correlation link click and keyboard
+      var $corrLink = document.getElementById('detail-correlation-link');
+      if ($corrLink) {
+        var _onCorrActivate = function () {
+          modal.close();
+          _showCorrelationView(data.correlation_id);
+        };
+        $corrLink.addEventListener('click', _onCorrActivate);
+        $corrLink.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            _onCorrActivate();
+          }
+        });
+      }
+
+      // Bind stream link click and keyboard (navigate to aggregate history)
+      var $streamLink = document.getElementById('detail-stream-link');
+      if ($streamLink && data.stream) {
+        var _onStreamActivate = function () {
+          var parts = _parseStream(data.stream);
+          if (parts) {
+            modal.close();
+            _showAggregateView(parts.category, parts.id);
+          }
+        };
+        $streamLink.addEventListener('click', _onStreamActivate);
+        $streamLink.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            _onStreamActivate();
+          }
+        });
+      }
 
       if ($payload) {
         $payload.textContent = data.data
@@ -257,12 +601,22 @@
 
   function _shortTypeName(fullType) {
     if (!fullType) return '';
-    // "SomeModule.UserRegistered.v1" → "UserRegistered"
+    // "SomeModule.UserRegistered.v1" -> "UserRegistered"
     var parts = fullType.split('.');
     if (parts.length >= 2) {
       return parts[parts.length - 2];
     }
     return parts[parts.length - 1];
+  }
+
+  function _parseStream(stream) {
+    if (!stream) return null;
+    var idx = stream.indexOf('-');
+    if (idx <= 0) return null;
+    return {
+      category: stream.substring(0, idx),
+      id: stream.substring(idx + 1)
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -271,11 +625,25 @@
 
   function _readURL() {
     var params = new URLSearchParams(window.location.search);
+
+    // Check for sub-view deep links first
+    if (params.has('correlation')) {
+      _showCorrelationView(params.get('correlation'));
+      return true; // Signal that we're in a sub-view
+    }
+    if (params.has('stream') && params.has('aggregate')) {
+      _showAggregateView(params.get('stream'), params.get('aggregate'));
+      return true;
+    }
+
+    // Normal list view filters
     if (params.has('stream_category')) _streamCategory = params.get('stream_category');
     if (params.has('event_type')) _eventType = params.get('event_type');
     if (params.has('aggregate_id')) _aggregateId = params.get('aggregate_id');
     if (params.has('kind')) _kind = params.get('kind');
     if (params.has('order')) _order = params.get('order') === 'asc' ? 'asc' : 'desc';
+
+    return false; // Normal list view
   }
 
   function _updateURL() {
@@ -418,13 +786,36 @@
     window.addEventListener('scroll', function () {
       clearTimeout(_scrollTimer);
       _scrollTimer = setTimeout(function () {
-        if (_loading || _nextCursor == null) return;
+        if (_loading || _nextCursor == null || _currentView !== 'list') return;
         var scrollBottom = window.innerHeight + window.scrollY;
         var docHeight = document.documentElement.scrollHeight;
         if (docHeight - scrollBottom < 300) {
           fetchEvents(true);
         }
       }, 100);
+    });
+
+    // Back buttons
+    var $backCorr = document.getElementById('btn-back-from-correlation');
+    if ($backCorr) {
+      $backCorr.addEventListener('click', _backToList);
+    }
+
+    var $backAgg = document.getElementById('btn-back-from-aggregate');
+    if ($backAgg) {
+      $backAgg.addEventListener('click', _backToList);
+    }
+
+    // Browser back/forward navigation
+    window.addEventListener('popstate', function () {
+      var params = new URLSearchParams(window.location.search);
+      if (params.has('correlation')) {
+        _showCorrelationView(params.get('correlation'));
+      } else if (params.has('stream') && params.has('aggregate')) {
+        _showAggregateView(params.get('stream'), params.get('aggregate'));
+      } else {
+        _enterListView();
+      }
     });
   }
 
@@ -438,12 +829,17 @@
     $loadMore = document.getElementById('load-more');
     $loadingMore = document.getElementById('loading-more');
 
-    _readURL();
-    _syncUIFromState();
     _bindEvents();
 
-    // Fetch initial data
-    fetchEvents(false);
+    // Read URL — may switch to sub-view
+    var isSubView = _readURL();
+
+    if (!isSubView) {
+      _syncUIFromState();
+      fetchEvents(false);
+    }
+
+    // Always fetch stats and streams (needed for list view)
     fetchStats();
     fetchStreams();
 
