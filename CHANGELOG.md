@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Correlation chain and aggregate history sub-views for the Observatory Timeline page: vertical causation tree visualization for correlation chains, chronological aggregate event history with version labels, clickable correlation ID and stream name links in event detail panel, URL deep-linking (`/timeline?correlation={id}`, `/timeline?stream={category}&aggregate={id}`), and back-to-list navigation with browser history support
 - Observatory Timeline page: chronological event browser with filter bar (stream category, event type, aggregate ID, kind), cursor-based pagination with infinite scroll, event detail panel with full payload/metadata and correlation chain links, summary stat cards, deep-linking support, and `g→t` keyboard shortcut
 - OpenTelemetry integration documentation: comprehensive guide covering configuration, span catalog, metrics catalog, TraceParent propagation, FastAPI auto-instrumentation, APM setup guides (Jaeger, Grafana Tempo, Datadog), Observatory vs OTel positioning, and `/metrics` convergence
 - End-to-end integration tests for unified OTel span hierarchy and Observatory trace emission: validates complete span tree from command → handler → UoW → repository → event store, verifies parent-child relationships across all layers, confirms complementary (non-redundant) attributes at each span level, and ensures Observatory traces fire correctly alongside OTel spans both with telemetry enabled and disabled
