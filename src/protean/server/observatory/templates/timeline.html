@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Timeline{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Timeline</h1>
+  <div class="text-sm text-base-content/50">Browse domain events and commands chronologically</div>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="stat bg-base-100 shadow-sm rounded-lg p-4">
+    <div class="stat-title text-xs">Total Events</div>
+    <div class="stat-value text-2xl font-mono-metric" id="stats-total-events">--</div>
+  </div>
+  <div class="stat bg-base-100 shadow-sm rounded-lg p-4">
+    <div class="stat-title text-xs">Active Streams</div>
+    <div class="stat-value text-2xl font-mono-metric" id="stats-active-streams">--</div>
+  </div>
+  <div class="stat bg-base-100 shadow-sm rounded-lg p-4">
+    <div class="stat-title text-xs">Events / min</div>
+    <div class="stat-value text-2xl font-mono-metric" id="stats-events-per-min">--</div>
+  </div>
+  <div class="stat bg-base-100 shadow-sm rounded-lg p-4">
+    <div class="stat-title text-xs">Last Event</div>
+    <div class="stat-value text-sm font-mono-metric" id="stats-last-event">--</div>
+  </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- Stream category dropdown -->
+      <select id="filter-stream" class="select select-sm select-bordered w-48">
+        <option value="">All Streams</option>
+      </select>
+
+      <!-- Event type input -->
+      <input type="text" id="filter-event-type" placeholder="Event type..."
+             class="input input-sm input-bordered w-48" />
+
+      <!-- Aggregate ID input -->
+      <input type="text" id="filter-aggregate-id" placeholder="Aggregate ID..."
+             class="input input-sm input-bordered w-48" data-search-input />
+
+      <!-- Kind selector -->
+      <select id="filter-kind" class="select select-sm select-bordered w-32">
+        <option value="">All Kinds</option>
+        <option value="EVENT">EVENT</option>
+        <option value="COMMAND">COMMAND</option>
+      </select>
+
+      <!-- Order toggle -->
+      <div class="join">
+        <button class="join-item btn btn-xs btn-ghost" id="btn-order-asc" title="Oldest first">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h5.25m5.25 0H21m-3-3v9m0 0-3-3m3 3 3-3" />
+          </svg>
+        </button>
+        <button class="join-item btn btn-xs btn-primary" id="btn-order-desc" title="Newest first">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0-3.75-3.75M17.25 21l3.75-3.75" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Clear filters -->
+      <button class="btn btn-xs btn-ghost" id="btn-clear-filters" title="Clear all filters">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+        Clear
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Event List -->
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <div class="overflow-x-auto">
+      <table class="table table-sm table-zebra">
+        <thead>
+          <tr class="text-xs uppercase text-base-content/60">
+            <th>Time</th>
+            <th>Kind</th>
+            <th>Stream</th>
+            <th>Message Type</th>
+            <th class="text-right">Position</th>
+          </tr>
+        </thead>
+        <tbody id="events-tbody">
+          <tr><td colspan="5" class="text-center text-base-content/50 py-8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="events-empty" class="text-center py-8 text-base-content/40 hidden">
+      No events match the current filters
+    </div>
+    <!-- Load More / Infinite Scroll Sentinel -->
+    <div id="load-more" class="text-center py-4 hidden">
+      <button class="btn btn-sm btn-ghost" id="btn-load-more">Load more events</button>
+    </div>
+    <div id="loading-more" class="text-center py-4 hidden">
+      <span class="loading loading-spinner loading-sm"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Event Detail Slide-out Panel -->
+<dialog id="event-detail-modal" class="modal modal-bottom sm:modal-middle">
+  <div class="modal-box max-w-3xl">
+    <h3 class="font-bold text-lg mb-4">Event Detail</h3>
+    <div id="event-detail-content">
+      <!-- Metadata grid -->
+      <div class="grid grid-cols-2 gap-2 text-sm mb-4" id="event-detail-meta"></div>
+
+      <!-- Payload -->
+      <h4 class="font-semibold text-sm mb-2">Payload</h4>
+      <div class="bg-base-200 rounded-lg p-3 text-xs max-h-96 overflow-auto font-mono whitespace-pre-wrap" id="event-detail-payload"></div>
+
+      <!-- Full Metadata -->
+      <h4 class="font-semibold text-sm mb-2 mt-4">Metadata</h4>
+      <div class="bg-base-200 rounded-lg p-3 text-xs max-h-48 overflow-auto font-mono whitespace-pre-wrap" id="event-detail-metadata"></div>
+    </div>
+    <div class="modal-action">
+      <a id="event-detail-correlation-link" class="btn btn-sm btn-ghost hidden" href="#">
+        View Correlation Chain
+      </a>
+      <form method="dialog"><button class="btn btn-sm">Close</button></form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/timeline.js" defer></script>
+{% endblock %}
