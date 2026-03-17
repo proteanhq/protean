@@ -80,11 +80,51 @@ class TestDirectMutation:
 
         assert "terminal state" in str(exc.value.messages["status"])
 
-    def test_same_value_no_op(self):
+    def test_same_value_raises_when_not_in_own_targets(self):
         order = self.Order()
-        # DRAFT -> DRAFT should always succeed (no transition)
-        order.status = "DRAFT"
-        assert order.status == "DRAFT"
+        # DRAFT -> DRAFT is not listed in transitions, so it's an error
+        with pytest.raises(ValidationError) as exc:
+            order.status = "DRAFT"
+
+        assert "Re-entry into 'DRAFT' is not allowed" in str(
+            exc.value.messages["status"]
+        )
+
+    def test_same_value_allowed_when_in_own_targets(self, test_domain):
+        """A state that lists itself as a target is idempotent."""
+
+        idempotent_transitions = {
+            OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.CANCELLED],
+            OrderStatus.PLACED: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+            OrderStatus.CONFIRMED: [OrderStatus.SHIPPED],
+            OrderStatus.SHIPPED: [OrderStatus.DELIVERED],
+            # CANCELLED is idempotent — re-entry allowed
+            OrderStatus.CANCELLED: [OrderStatus.CANCELLED],
+        }
+
+        @test_domain.aggregate
+        class IdempotentOrder:
+            status = Status(
+                OrderStatus, default="DRAFT", transitions=idempotent_transitions
+            )
+
+        test_domain.init(traverse=False)
+
+        order = IdempotentOrder()
+        order.status = "CANCELLED"
+        # Re-entry allowed because CANCELLED lists itself
+        order.status = "CANCELLED"
+        assert order.status == "CANCELLED"
+
+    def test_terminal_state_rejects_self_assignment(self):
+        """Terminal states reject self-assignment (no outgoing transitions at all)."""
+        order = self.Order()
+        order.status = "CANCELLED"
+
+        with pytest.raises(ValidationError) as exc:
+            order.status = "CANCELLED"
+
+        assert "terminal state" in str(exc.value.messages["status"])
 
     def test_none_to_any_allowed(self, test_domain):
         """None -> any value is allowed (initialization path)."""
@@ -218,6 +258,26 @@ class TestAtomicChange:
 
         assert order.status == "DRAFT"
         assert order.amount == 99.0
+
+    def test_same_value_in_atomic_block(self):
+        """Same-value assignment inside atomic_change is validated on exit.
+
+        atomic_change checks start-to-end: if start == end and the state
+        doesn't list itself as a target, this is indistinguishable from
+        'no change' at the block level (deferred validation sees no net
+        transition). Individual assignments within the block have per-assignment
+        validation disabled, so the self-transition is not caught.
+
+        This is by design: atomic_change validates the overall transition,
+        not intermediate steps. The primary guard for self-transitions is
+        the per-assignment validation outside atomic_change blocks.
+        """
+        order = self.Order()
+        # Inside atomic_change, invariant checks are disabled and
+        # start==end is treated as no net change
+        with atomic_change(order):
+            order.status = "DRAFT"  # Same value — no net change
+        assert order.status == "DRAFT"
 
 
 # ============================================================
@@ -410,8 +470,25 @@ class TestCanTransitionTo:
         order.status = "CANCELLED"
         assert order.can_transition_to("status", "DRAFT") is False
 
-    def test_same_value_returns_true(self):
+    def test_same_value_returns_false_when_not_in_own_targets(self):
         order = self.Order()
+        # DRAFT doesn't list itself as a target
+        assert order.can_transition_to("status", "DRAFT") is False
+
+    def test_same_value_returns_true_when_in_own_targets(self, test_domain):
+        idempotent_transitions = {
+            OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.DRAFT],
+        }
+
+        @test_domain.aggregate
+        class IdempotentOrder:
+            status = Status(
+                OrderStatus, default="DRAFT", transitions=idempotent_transitions
+            )
+
+        test_domain.init(traverse=False)
+
+        order = IdempotentOrder()
         assert order.can_transition_to("status", "DRAFT") is True
 
     def test_none_returns_true(self, test_domain):

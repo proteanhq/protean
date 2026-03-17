@@ -68,7 +68,7 @@ redis = ["redis>=5.0.7,<7.4.0"]
 postgresql = ["sqlalchemy~=2.0.30", "psycopg2-binary>=2.9.9"]
 sqlite = ["sqlalchemy~=2.0.30"]
 mssql = ["sqlalchemy~=2.0.30", "pyodbc>=5.0.0"]
-message-db = ["message-db-py>=0.3.3"]
+message-db = ["message-db-py>=0.3.4"]
 flask = ["flask>=1.1.1"]
 sendgrid = ["sendgrid>=6.1.3"]
 telemetry = [

@@ -79,14 +79,52 @@ Attempting to leave a terminal state produces a different message:
 ValidationError: {'status': ["Invalid status transition from 'DELIVERED'. 'DELIVERED' is a terminal state with no allowed transitions"]}
 ```
 
-### Same-value assignment
+### Same-value assignment (self-transitions)
 
-Setting a status to its current value is always allowed — it's a no-op, not
-a transition:
+By default, assigning a status to its current value is **rejected** — it is
+treated as a transition and must appear in the transition map like any other.
+This catches re-entry bugs (calling `approve()` on an already-approved item)
+at the framework level instead of requiring manual guards.
 
 ```python
-order.status = "DRAFT"  # No error, even if DRAFT → DRAFT is not in the map
+order = Order()           # status = "DRAFT"
+order.status = "DRAFT"    # ValidationError — DRAFT is not in DRAFT's target list
 ```
+
+The error message guides you toward the fix:
+
+```
+ValidationError: {'status': ["Re-entry into 'DRAFT' is not allowed. If this operation should be idempotent, add 'DRAFT' to its own target list in transitions"]}
+```
+
+To make a transition **idempotent** (e.g., `cancel()` on an already-cancelled
+order should be a safe no-op for race condition resilience), add the state to
+its own target list:
+
+```python
+@domain.aggregate
+class Order:
+    status = Status(OrderStatus, default="DRAFT", transitions={
+        OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.CANCELLED],
+        OrderStatus.PLACED: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+        OrderStatus.CONFIRMED: [OrderStatus.SHIPPED],
+        OrderStatus.SHIPPED: [OrderStatus.DELIVERED],
+        # CANCELLED is idempotent — re-entry is explicitly allowed
+        OrderStatus.CANCELLED: [OrderStatus.CANCELLED],
+    })
+```
+
+Now `order.status = "CANCELLED"` succeeds when the order is already cancelled.
+
+!!! note "Three categories of same-value behavior"
+    When designing your transition map, classify each state:
+
+    1. **Re-entry is a business error** (most common) — don't list the state
+       in its own targets. `approve()` on a published review fails.
+    2. **Idempotent by design** — list the state in its own targets.
+       `cancel()` on a cancelled order succeeds as a no-op.
+    3. **Terminal state** — omit it from the map entirely. No transitions
+       (including self-transitions) are allowed.
 
 ### Initialization
 
@@ -204,11 +242,16 @@ class Order:
    outgoing transitions (absent from the map's keys). Design them as
    deliberate end-of-lifecycle markers.
 
-4. **Combine with invariants.** `Status` handles *which* transitions are
+4. **Think about idempotency for every state.** For each state, decide
+   whether re-entry is an error or a deliberate no-op. If a `cancel()`
+   operation should be safe to call twice (e.g., for race conditions), add
+   the state to its own target list: `CANCELLED: [CANCELLED]`.
+
+5. **Combine with invariants.** `Status` handles *which* transitions are
    legal. Use `@invariant.pre` for *under what conditions* — for example,
    "can only confirm an order if payment has been received."
 
-5. **Status on Value Objects is not allowed.** Value Objects are immutable
+6. **Status on Value Objects is not allowed.** Value Objects are immutable
    and cannot transition. `Status` with `transitions` on a Value Object
    raises `IncorrectUsageError` at class creation time.
 

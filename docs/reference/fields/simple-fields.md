@@ -261,6 +261,13 @@ class Order:
 States not appearing as keys in the transitions dict are **terminal states** — no
 outgoing transitions are allowed from them.
 
+Same-value assignments are also validated against the map. To make a state
+**idempotent** (self-transition allowed), include it in its own target list:
+
+```python
+OrderStatus.CANCELLED: [OrderStatus.CANCELLED],  # cancel() is idempotent
+```
+
 ```shell hl_lines="6 11"
 In [1]: order = Order()
 
@@ -284,7 +291,8 @@ order.can_transition_to("status", OrderStatus.CONFIRMED)  # True
 
 - **`transitions`**: A dict mapping each status to a list of allowed target
 statuses. When provided, the framework prevents illegal transitions. Accepts
-both Enum members and raw strings as keys/values.
+both Enum members and raw strings as keys/values. A state must list itself
+as a target to allow idempotent self-transitions.
 
 Refer to the [Status Transitions](../../guides/domain-behavior/status-transitions.md)
 guide for detailed usage patterns including `atomic_change` and event-sourced
