@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Status field self-transitions are now validated against the transition map instead of being silently allowed. Assigning a status to its current value is rejected unless the state lists itself as a target (e.g., `CANCELLED: [CANCELLED]`). This catches re-entry bugs at the framework level and makes idempotent operations explicit in the transition declaration. Terminal states also reject self-assignment.
+
 ### Fixed
 
 - Fix flaky `test_mixed_error_scenarios` in `test_server_robustness.py`: increase Engine test_mode processing cycles from 3 to 10 so all subscription types (events, commands, broker messages) have enough time to be scheduled and process their messages under CI load

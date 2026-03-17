@@ -715,10 +715,6 @@ class BaseEntity(BaseModel, OptionsMixin):
             current_value.value if isinstance(current_value, Enum) else current_value
         )
 
-        # Same-value assignment is always allowed (no-op)
-        if current == target:
-            return
-
         # None -> any value is allowed (initial assignment / reconstitution)
         if current is None:
             return
@@ -737,15 +733,19 @@ class BaseEntity(BaseModel, OptionsMixin):
 
         allowed = transitions[current]
         if target not in allowed:
-            allowed_str = ", ".join(allowed)
-            raise ValidationError(
-                {
-                    field_name: [
-                        f"Invalid status transition from '{current}' to '{target}'. "
-                        f"Allowed transitions: {allowed_str}"
-                    ]
-                }
-            )
+            if current == target:
+                msg = (
+                    f"Re-entry into '{current}' is not allowed. "
+                    f"If this operation should be idempotent, "
+                    f"add '{current}' to its own target list in transitions"
+                )
+            else:
+                allowed_str = ", ".join(allowed)
+                msg = (
+                    f"Invalid status transition from '{current}' to '{target}'. "
+                    f"Allowed transitions: {allowed_str}"
+                )
+            raise ValidationError({field_name: [msg]})
 
     def can_transition_to(self, field_name: str, target_value: Any) -> bool:
         """Check whether a status field can transition to the given value.
@@ -774,8 +774,6 @@ class BaseEntity(BaseModel, OptionsMixin):
             current_value.value if isinstance(current_value, Enum) else current_value
         )
 
-        if current == target:
-            return True
         if current is None:
             return True
 

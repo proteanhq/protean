@@ -11,7 +11,7 @@ from typing import Any  # type: ignore[reportAssignmentType]
 
 import sqlalchemy.dialects.postgresql as psql
 import sqlalchemy.dialects.mssql as mssql
-from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm, text
+from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm, text, true
 from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
@@ -447,6 +447,8 @@ class SADAO(BaseDAO):
                 else:
                     params.append(lookup.as_expression())
 
+        if not params:
+            return true()
         return func(*params)
 
     def _filter(

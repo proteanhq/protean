@@ -440,12 +440,20 @@ class Order:
     }
 ```
 
-!!! warning "The map is documentation, not enforcement"
-    The `TRANSITIONS` dictionary is a helpful reference for developers, but
-    it does not replace the guards inside each method. The guards are the
-    enforcement mechanism. The dictionary is a convenience for
-    documentation, debugging, and potentially building admin UIs that show
-    available actions.
+!!! tip "Use the `Status` field for automatic enforcement"
+    Protean's `Status` field can enforce this transition map automatically —
+    no manual guards required. Pass the map as the `transitions` argument.
+    The `TRANSITIONS` dict then becomes both documentation *and*
+    enforcement. See the
+    [Status Transitions](../guides/domain-behavior/status-transitions.md)
+    guide for details.
+
+!!! note "Idempotent transitions"
+    Some operations should be safe to call twice — e.g., `cancel()` on an
+    already-cancelled order. With `Status` field transitions, add the state
+    to its own target list (`"cancelled": {"cancel": "cancelled"}`).
+    Without `Status` transitions, add an explicit early return in the
+    method guard.
 
 ---
 

@@ -11,7 +11,7 @@ from protean.utils.reflection import declared_fields
 
 class Money(BaseValueObject):
     amount: Float(required=True)
-    currency: String(required=True, max_length=3, default="USD")
+    currency: String(max_length=3, default="USD")
 
 
 class Address(BaseValueObject):
