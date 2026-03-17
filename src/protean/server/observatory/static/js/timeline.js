@@ -27,6 +27,7 @@
   // SSE real-time state
   let _pendingNewEvents = 0;   // Count of events arrived while scrolled down
   let _lastKnownPosition = 0;  // Highest global_position we know about
+  let _sseDebounceTimer = null; // Debounce timer for SSE trace handling
 
   // DOM refs
   let $tbody, $empty, $loadMore, $loadingMore, $toast;
@@ -849,16 +850,24 @@
    * outbox publishes, new events may have landed in the event store.
    * Fetch the latest event and, if it matches the active filters, prepend
    * it to the list (when sorted newest-first).
+   *
+   * Debounced to coalesce bursts of traces into a single API call, and
+   * skipped entirely while a fetchEvents() call is in progress to avoid
+   * race conditions with _events mutations.
    */
   function _onTraceEvent(trace) {
     if (!_LIVE_TRACE_EVENTS[trace.event]) return;
     if (_currentView !== 'list') return;
+    if (_loading) return;
 
-    // Refresh stats immediately on every relevant trace
-    fetchStats();
-
-    // Fetch the newest event from the API
-    _fetchLatestEvent();
+    // Debounce: coalesce rapid traces into one fetch
+    clearTimeout(_sseDebounceTimer);
+    _sseDebounceTimer = setTimeout(function () {
+      // Refresh stats
+      fetchStats();
+      // Fetch the newest event
+      _fetchLatestEvent();
+    }, 300);
   }
 
   /**
@@ -918,7 +927,8 @@
         fetchEvents(false);
       }
     } catch (e) {
-      // Silently ignore — the poller will catch up
+      // Non-fatal: the next SSE trace or manual refresh will retry
+      console.warn('SSE fetch latest event failed:', e.message);
     }
   }
 
@@ -999,14 +1009,6 @@
 
     // SSE: listen for trace events that indicate new events in the store
     Observatory.sse.onTrace(_onTraceEvent);
-
-    // Track the highest known position from the initial load
-    if (_events.length > 0 && _order === 'desc') {
-      var firstPos = _events[0].global_position;
-      if (firstPos != null && firstPos > _lastKnownPosition) {
-        _lastKnownPosition = firstPos;
-      }
-    }
   }
 
   // Wait for Observatory core

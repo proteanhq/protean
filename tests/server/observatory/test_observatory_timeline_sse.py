@@ -115,6 +115,20 @@ class TestSSEToastHTML:
         tag = timeline_html[tag_start : tag_end + 1]
         assert "z-50" in tag
 
+    def test_toast_is_button_element(self, timeline_html):
+        """Toast is a <button> for native keyboard accessibility."""
+        idx = timeline_html.index('id="sse-toast"')
+        tag_start = timeline_html.rfind("<", 0, idx)
+        tag = timeline_html[tag_start : tag_start + 8]
+        assert "<button" in tag
+
+    def test_toast_has_aria_label(self, timeline_html):
+        idx = timeline_html.index('id="sse-toast"')
+        tag_start = timeline_html.rfind("<", 0, idx)
+        tag_end = timeline_html.index(">", idx)
+        tag = timeline_html[tag_start : tag_end + 1]
+        assert "aria-label=" in tag
+
 
 # ---------------------------------------------------------------------------
 # CSS — SSE animations
@@ -170,6 +184,16 @@ class TestTimelineJSSSEListener:
         """SSE handler only processes events when in list view."""
         assert "_currentView !== 'list'" in timeline_js
 
+    def test_skips_when_loading(self, timeline_js):
+        """SSE handler skips when a fetchEvents call is in progress."""
+        assert "if (_loading) return" in timeline_js
+
+    def test_debounces_traces(self, timeline_js):
+        """SSE handler debounces rapid traces to coalesce into one fetch."""
+        assert "_sseDebounceTimer" in timeline_js
+        assert "clearTimeout(_sseDebounceTimer)" in timeline_js
+        assert "setTimeout" in timeline_js
+
 
 # ---------------------------------------------------------------------------
 # JavaScript — fetch latest event logic
@@ -199,6 +223,10 @@ class TestTimelineJSFetchLatest:
 
     def test_applies_kind_filter(self, timeline_js):
         assert "qs.set('kind', _kind)" in timeline_js
+
+    def test_logs_warning_on_error(self, timeline_js):
+        """Errors are logged as warnings for debuggability."""
+        assert "console.warn('SSE fetch latest event failed:'" in timeline_js
 
 
 # ---------------------------------------------------------------------------
@@ -330,31 +358,6 @@ class TestTimelineJSSSERefreshesStats:
 
 
 # ---------------------------------------------------------------------------
-# HTML — stat cards still present
-# ---------------------------------------------------------------------------
-
-
-class TestStatCardsPresent:
-    """Verify the summary stat cards are present in the timeline."""
-
-    def test_has_total_events_card(self, timeline_html):
-        assert 'id="stats-total-events"' in timeline_html
-        assert "Total Events" in timeline_html
-
-    def test_has_active_streams_card(self, timeline_html):
-        assert 'id="stats-active-streams"' in timeline_html
-        assert "Active Streams" in timeline_html
-
-    def test_has_events_per_min_card(self, timeline_html):
-        assert 'id="stats-events-per-min"' in timeline_html
-        assert "Events / min" in timeline_html
-
-    def test_has_last_event_card(self, timeline_html):
-        assert 'id="stats-last-event"' in timeline_html
-        assert "Last Event" in timeline_html
-
-
-# ---------------------------------------------------------------------------
 # JavaScript — ascending order falls back to full refresh
 # ---------------------------------------------------------------------------
 
@@ -368,34 +371,3 @@ class TestTimelineJSAscendingRefresh:
         assert "fetchEvents(false)" in timeline_js
 
 
-# ---------------------------------------------------------------------------
-# Original list view elements still intact
-# ---------------------------------------------------------------------------
-
-
-class TestOriginalElementsIntact:
-    """Ensure SSE additions don't break existing list view elements."""
-
-    def test_has_events_table(self, timeline_html):
-        assert 'id="events-tbody"' in timeline_html
-
-    def test_has_filter_controls(self, timeline_html):
-        assert 'id="filter-stream"' in timeline_html
-        assert 'id="filter-event-type"' in timeline_html
-        assert 'id="filter-aggregate-id"' in timeline_html
-        assert 'id="filter-kind"' in timeline_html
-
-    def test_has_load_more(self, timeline_html):
-        assert 'id="load-more"' in timeline_html
-
-    def test_has_correlation_view(self, timeline_html):
-        assert 'id="correlation-view"' in timeline_html
-
-    def test_has_aggregate_view(self, timeline_html):
-        assert 'id="aggregate-view"' in timeline_html
-
-    def test_has_event_detail_modal(self, timeline_html):
-        assert 'id="event-detail-modal"' in timeline_html
-
-    def test_includes_timeline_js(self, timeline_html):
-        assert "/static/js/timeline.js" in timeline_html

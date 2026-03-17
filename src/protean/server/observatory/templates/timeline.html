@@ -80,16 +80,17 @@
   </div>
 
   <!-- SSE new-event toast -->
-  <div id="sse-toast" class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 cursor-pointer
-        alert alert-info shadow-lg px-5 py-2 text-sm animate-bounce-in"
-       role="status" aria-live="polite">
+  <button type="button" id="sse-toast"
+          class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 cursor-pointer
+                 alert alert-info shadow-lg px-5 py-2 text-sm animate-bounce-in"
+          role="status" aria-live="polite" aria-label="New events arrived, click to scroll to top">
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
          stroke-width="1.5" stroke="currentColor" class="w-4 h-4 flex-shrink-0">
       <path stroke-linecap="round" stroke-linejoin="round"
             d="M4.5 10.5 12 3m0 0 7.5 7.5M12 3v18" />
     </svg>
     <span class="toast-label">New events</span>
-  </div>
+  </button>
 
   <!-- Event List -->
   <div class="card bg-base-100 shadow-sm mb-6">
