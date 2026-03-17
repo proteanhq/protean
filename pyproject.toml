@@ -63,7 +63,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-elasticsearch = ["elasticsearch~=7.17.9", "elasticsearch-dsl>=7.4.1,<8.19.0"]
+elasticsearch = ["elasticsearch>=7.17.9,<9.4.0", "elasticsearch-dsl>=7.4.1,<8.19.0"]
 redis = ["redis>=5.0.7,<7.4.0"]
 postgresql = ["sqlalchemy~=2.0.30", "psycopg2-binary>=2.9.9"]
 sqlite = ["sqlalchemy~=2.0.30"]
