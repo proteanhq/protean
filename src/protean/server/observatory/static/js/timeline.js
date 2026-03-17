@@ -24,8 +24,13 @@
   // Current view: 'list' | 'correlation' | 'aggregate'
   let _currentView = 'list';
 
+  // SSE real-time state
+  let _pendingNewEvents = 0;   // Count of events arrived while scrolled down
+  let _lastKnownPosition = 0;  // Highest global_position we know about
+  let _sseDebounceTimer = null; // Debounce timer for SSE trace handling
+
   // DOM refs
-  let $tbody, $empty, $loadMore, $loadingMore;
+  let $tbody, $empty, $loadMore, $loadingMore, $toast;
 
   // ---------------------------------------------------------------------------
   // View Management
@@ -107,6 +112,16 @@
     if ($loadingMore) $loadingMore.classList.add('hidden');
     _renderTable();
     _updateLoadMore();
+
+    // Track highest known position for SSE deduplication
+    if (_events.length > 0) {
+      for (var k = 0; k < _events.length; k++) {
+        var p = _events[k].global_position;
+        if (p != null && p > _lastKnownPosition) {
+          _lastKnownPosition = p;
+        }
+      }
+    }
   }
 
   async function fetchStats() {
@@ -820,6 +835,137 @@
   }
 
   // ---------------------------------------------------------------------------
+  // SSE Real-Time Updates
+  // ---------------------------------------------------------------------------
+
+  /** Trace event types that signal new events in the event store. */
+  var _LIVE_TRACE_EVENTS = {
+    'handler.completed': true,
+    'outbox.published': true,
+    'outbox.external_published': true,
+  };
+
+  /**
+   * Handle an incoming SSE trace event.  When a handler completes or an
+   * outbox publishes, new events may have landed in the event store.
+   * Fetch the latest event and, if it matches the active filters, prepend
+   * it to the list (when sorted newest-first).
+   *
+   * Debounced to coalesce bursts of traces into a single API call, and
+   * skipped entirely while a fetchEvents() call is in progress to avoid
+   * race conditions with _events mutations.
+   */
+  function _onTraceEvent(trace) {
+    if (!_LIVE_TRACE_EVENTS[trace.event]) return;
+    if (_currentView !== 'list') return;
+    if (_loading) return;
+
+    // Debounce: coalesce rapid traces into one fetch
+    clearTimeout(_sseDebounceTimer);
+    _sseDebounceTimer = setTimeout(function () {
+      // Refresh stats
+      fetchStats();
+      // Fetch the newest event
+      _fetchLatestEvent();
+    }, 300);
+  }
+
+  /**
+   * Fetch the most recent event from the event store and prepend it to the
+   * list if it's genuinely new and matches the current filters.
+   */
+  async function _fetchLatestEvent() {
+    try {
+      var qs = new URLSearchParams();
+      qs.set('limit', '1');
+      qs.set('order', 'desc');
+      if (_streamCategory) qs.set('stream_category', _streamCategory);
+      if (_eventType) qs.set('event_type', _eventType);
+      if (_aggregateId) qs.set('aggregate_id', _aggregateId);
+      if (_kind) qs.set('kind', _kind);
+
+      var data = await Observatory.fetchJSON('/api/timeline/events?' + qs.toString());
+      var newEvents = data.events || [];
+      if (newEvents.length === 0) return;
+
+      var latest = newEvents[0];
+      var latestPos = latest.global_position;
+
+      // Skip if we already have this event
+      if (latestPos != null && latestPos <= _lastKnownPosition) return;
+
+      // Update high-water mark
+      if (latestPos != null) _lastKnownPosition = latestPos;
+
+      if (_order === 'desc') {
+        // Check if already present by message_id
+        var dominated = false;
+        for (var i = 0; i < _events.length; i++) {
+          if (_events[i].message_id === latest.message_id) {
+            dominated = true;
+            break;
+          }
+        }
+        if (dominated) return;
+
+        // Prepend to the list
+        _events.unshift(latest);
+        _renderTable();
+
+        // Highlight the new row
+        if ($tbody && $tbody.firstElementChild) {
+          $tbody.firstElementChild.classList.add('sse-new-event');
+        }
+
+        // If user is scrolled down, show/update toast
+        if (_isScrolledDown()) {
+          _pendingNewEvents++;
+          _showToast(_pendingNewEvents);
+        }
+      } else {
+        // In ascending order, new events belong at the end — just refresh
+        fetchEvents(false);
+      }
+    } catch (e) {
+      // Non-fatal: the next SSE trace or manual refresh will retry
+      console.warn('SSE fetch latest event failed:', e.message);
+    }
+  }
+
+  /**
+   * Check whether the user has scrolled away from the top.
+   */
+  function _isScrolledDown() {
+    return window.scrollY > 200;
+  }
+
+  /**
+   * Show or update the "N new events" toast at the top of the timeline.
+   */
+  function _showToast(count) {
+    if (!$toast) return;
+    var label = count === 1 ? '1 new event' : count + ' new events';
+    $toast.querySelector('.toast-label').textContent = label + ' \u2014 click to scroll to top';
+    $toast.classList.remove('hidden');
+  }
+
+  /**
+   * Hide the toast and reset the pending counter.
+   */
+  function _dismissToast() {
+    _pendingNewEvents = 0;
+    if ($toast) $toast.classList.add('hidden');
+  }
+
+  /**
+   * Scroll to the top and dismiss the toast.
+   */
+  function _scrollToTopAndDismiss() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    _dismissToast();
+  }
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -828,8 +974,21 @@
     $empty = document.getElementById('events-empty');
     $loadMore = document.getElementById('load-more');
     $loadingMore = document.getElementById('loading-more');
+    $toast = document.getElementById('sse-toast');
 
     _bindEvents();
+
+    // Bind toast click
+    if ($toast) {
+      $toast.addEventListener('click', _scrollToTopAndDismiss);
+    }
+
+    // Dismiss toast when user scrolls back to top
+    window.addEventListener('scroll', function () {
+      if (!_isScrolledDown() && _pendingNewEvents > 0) {
+        _dismissToast();
+      }
+    });
 
     // Read URL — may switch to sub-view
     var isSubView = _readURL();
@@ -847,6 +1006,9 @@
     Observatory.poller.register('timeline-stats', '/api/timeline/stats', 15000, function (data) {
       if (data) _renderStats(data);
     });
+
+    // SSE: listen for trace events that indicate new events in the store
+    Observatory.sse.onTrace(_onTraceEvent);
   }
 
   // Wait for Observatory core

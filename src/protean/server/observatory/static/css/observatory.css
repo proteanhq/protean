@@ -223,3 +223,38 @@
 .agg-tl-node:last-child .agg-tl-content {
   border-bottom: none;
 }
+
+/* ===== SSE Real-Time — New Event Highlight ===== */
+
+.sse-new-event {
+  animation: sse-highlight 1.5s ease-out;
+}
+
+@keyframes sse-highlight {
+  0% {
+    background-color: oklch(var(--su) / 0.2);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* ===== SSE Toast — Bounce-In Animation ===== */
+
+.animate-bounce-in {
+  animation: bounce-in 0.4s ease-out;
+}
+
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px) scale(0.95);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(4px) scale(1.02);
+  }
+  100% {
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
