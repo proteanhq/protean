@@ -441,17 +441,17 @@ class Order:
 ```
 
 !!! tip "Use the `Status` field for automatic enforcement"
-    Protean's `Status` field can enforce this transition map automatically —
-    no manual guards required. Pass the map as the `transitions` argument.
-    The `TRANSITIONS` dict then becomes both documentation *and*
-    enforcement. See the
+    Protean's `Status` field can enforce transitions automatically —
+    no manual guards required. The `Status` field uses a simpler format
+    (`state → [allowed_targets]`) rather than the method-mapped dict above.
+    See the
     [Status Transitions](../guides/domain-behavior/status-transitions.md)
     guide for details.
 
 !!! note "Idempotent transitions"
     Some operations should be safe to call twice — e.g., `cancel()` on an
     already-cancelled order. With `Status` field transitions, add the state
-    to its own target list (`"cancelled": {"cancel": "cancelled"}`).
+    to its own target list (`OrderStatus.CANCELLED: [OrderStatus.CANCELLED]`).
     Without `Status` transitions, add an explicit early return in the
     method guard.
 

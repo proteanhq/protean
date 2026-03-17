@@ -259,6 +259,26 @@ class TestAtomicChange:
         assert order.status == "DRAFT"
         assert order.amount == 99.0
 
+    def test_same_value_in_atomic_block(self):
+        """Same-value assignment inside atomic_change is validated on exit.
+
+        atomic_change checks start-to-end: if start == end and the state
+        doesn't list itself as a target, this is indistinguishable from
+        'no change' at the block level (deferred validation sees no net
+        transition). Individual assignments within the block have per-assignment
+        validation disabled, so the self-transition is not caught.
+
+        This is by design: atomic_change validates the overall transition,
+        not intermediate steps. The primary guard for self-transitions is
+        the per-assignment validation outside atomic_change blocks.
+        """
+        order = self.Order()
+        # Inside atomic_change, invariant checks are disabled and
+        # start==end is treated as no net change
+        with atomic_change(order):
+            order.status = "DRAFT"  # Same value — no net change
+        assert order.status == "DRAFT"
+
 
 # ============================================================
 # Event-sourced aggregate tests
