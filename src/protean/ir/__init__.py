@@ -15,6 +15,9 @@ __all__ = [
     "SCHEMA_PATH",
     "EXAMPLES_DIR",
     "IRBuilder",
+    "CompatibilityChange",
+    "CompatibilityReport",
+    "classify_changes",
     "diff_ir",
     "load_schema",
 ]
@@ -41,4 +44,16 @@ def __getattr__(name: str) -> Any:
         from protean.ir.diff import diff_ir
 
         return diff_ir
+    if name == "classify_changes":
+        from protean.ir.diff import classify_changes
+
+        return classify_changes
+    if name == "CompatibilityChange":
+        from protean.ir.diff import CompatibilityChange
+
+        return CompatibilityChange
+    if name == "CompatibilityReport":
+        from protean.ir.diff import CompatibilityReport
+
+        return CompatibilityReport
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

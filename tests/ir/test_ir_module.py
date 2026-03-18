@@ -18,6 +18,38 @@ class TestIRModuleGetattr:
         assert diff_ir is not None
         assert callable(diff_ir)
 
+    def test_import_classify_changes(self):
+        from protean.ir import classify_changes
+
+        assert classify_changes is not None
+        assert callable(classify_changes)
+
+    def test_import_compatibility_change(self):
+        from protean.ir import CompatibilityChange
+
+        assert CompatibilityChange is not None
+        change = CompatibilityChange(
+            severity="safe",
+            element_fqn="app.Order",
+            change_type="element_added",
+            message="AGGREGATE 'app.Order' was added",
+        )
+        assert change.severity == "safe"
+
+    def test_import_compatibility_report(self):
+        from protean.ir import CompatibilityReport
+
+        assert CompatibilityReport is not None
+        report = CompatibilityReport()
+        assert report.is_breaking is False
+
+    def test_load_schema_returns_dict(self):
+        from protean.ir import load_schema
+
+        schema = load_schema()
+        assert isinstance(schema, dict)
+        assert "$schema" in schema or "type" in schema or "properties" in schema
+
     def test_unknown_attribute_raises(self):
         import protean.ir
 
