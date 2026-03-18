@@ -144,6 +144,15 @@ need by what you're trying to accomplish.
 | Inspect and replay dead letter queue messages   | [Error Handling](./guides/server/error-handling.md#dead-letter-queue-lifecycle) |
 | Configure retry and DLQ settings                | [Error Handling](./guides/server/error-handling.md#configuration-reference) |
 
+## Check Compatibility
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| Detect breaking changes in my domain model      | [Compatibility Checking](./guides/compatibility-checking.md) |
+| Configure compatibility check strictness        | [Compatibility Checking](./guides/compatibility-checking.md#configuration) |
+| Set up pre-commit hooks for IR checks           | [Compatibility Checking](./guides/compatibility-checking.md#pre-commit-hooks) |
+| Add IR compatibility checks to CI               | [Compatibility Checking](./guides/compatibility-checking.md#ci-integration) |
+
 ## Use the CLI
 
 | I want to...                                    | Guide |

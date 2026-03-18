@@ -14,15 +14,17 @@ __all__ = [
     "SCHEMA_VERSION",
     "SCHEMA_PATH",
     "EXAMPLES_DIR",
-    "GitError",
-    "IRBuilder",
+    "CompatConfig",
     "CompatibilityChange",
+    "IRBuilder",
     "CompatibilityReport",
+    "GitError",
     "StalenessResult",
     "StalenessStatus",
-    "classify_changes",
     "check_staleness",
+    "classify_changes",
     "diff_ir",
+    "load_config",
     "load_ir_from_commit",
     "load_schema",
 ]
@@ -81,4 +83,12 @@ def __getattr__(name: str) -> Any:
         from protean.ir.git import load_ir_from_commit
 
         return load_ir_from_commit
+    if name == "CompatConfig":
+        from protean.ir.config import CompatConfig
+
+        return CompatConfig
+    if name == "load_config":
+        from protean.ir.config import load_config
+
+        return load_config
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

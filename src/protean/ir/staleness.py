@@ -20,7 +20,10 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from protean.ir.config import CompatConfig
 
 __all__ = [
     "StalenessStatus",
@@ -85,6 +88,8 @@ def load_stored_ir(protean_dir: Path | str) -> tuple[dict[str, Any], Path] | Non
 def check_staleness(
     domain_module: str,
     protean_dir: Path | str = ".protean",
+    *,
+    config: CompatConfig | None = None,
 ) -> StalenessResult:
     """Compare the live domain's IR checksum against the materialized IR.
 
@@ -96,16 +101,33 @@ def check_staleness(
     protean_dir:
         Path to the directory that holds the materialized ``ir.json``.
         Defaults to ``.protean`` relative to the current working directory.
+    config:
+        Optional :class:`~protean.ir.config.CompatConfig`.  When ``None``,
+        loaded automatically from *protean_dir*/config.toml.
 
     Returns
     -------
     StalenessResult
-        - ``status=FRESH`` — checksums match.
+        - ``status=FRESH`` — checksums match, or staleness checking is
+          disabled via config.
         - ``status=STALE`` — checksums differ.
         - ``status=NO_IR`` — no ``ir.json`` found in *protean_dir*.
     """
     from protean.ir.builder import IRBuilder
+    from protean.ir.config import load_config
     from protean.utils.domain_discovery import derive_domain
+
+    if config is None:
+        config = load_config(protean_dir)
+
+    # If staleness checking is disabled, return FRESH immediately
+    if not config.staleness_enabled:
+        return StalenessResult(
+            status=StalenessStatus.FRESH,
+            domain_checksum=None,
+            stored_checksum=None,
+            ir_file=None,
+        )
 
     # ------------------------------------------------------------------ #
     # 1. Load and check the stored IR                                      #
