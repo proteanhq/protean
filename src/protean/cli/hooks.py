@@ -69,6 +69,7 @@ def check_staleness_hook() -> None:
         raise SystemExit(0)
 
     # Stale or no IR — block the commit
+    target_path = Path(args.dir) / "ir.json"
     if result.status == StalenessStatus.STALE:
         print(
             "IR is stale — domain has changed since last materialization.",
@@ -80,12 +81,12 @@ def check_staleness_hook() -> None:
             print(f"  current: {result.domain_checksum[:16]}…", file=sys.stderr)
     else:
         print(
-            f"No materialized IR found in '{args.dir}/ir.json'.",
+            f"No materialized IR found in '{target_path}'.",
             file=sys.stderr,
         )
 
     print(
-        "\nRun `protean ir show --domain <module> > .protean/ir.json` to update.",
+        f"\nRun `protean ir show --domain <module> > {target_path}` to update.",
         file=sys.stderr,
     )
     raise SystemExit(1)

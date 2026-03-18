@@ -146,7 +146,7 @@ class TestLoadLiveIr:
         assert exc_info.value.code == 1
 
     def test_exits_on_domain_init_error(self, monkeypatch):
-        """If domain.to_ir() raises, _load_live_ir should exit 1."""
+        """If domain.init() raises, _load_live_ir should exit 1."""
         from protean.utils import domain_discovery
 
         class FakeDomain:
@@ -402,7 +402,7 @@ class TestCheckCompatHookNoBreaking:
                         f.unlink()
                 subprocess.run(
                     ["git", "checkout", "--", "."],
-                    capture_output=True, env=env,
+                    capture_output=True, check=True, env=env,
                     cwd=self._repo_root,
                 )
 
@@ -479,7 +479,7 @@ class TestCheckCompatHookBreaking:
                         f.unlink()
                 subprocess.run(
                     ["git", "checkout", "--", "."],
-                    capture_output=True, env=env,
+                    capture_output=True, check=True, env=env,
                     cwd=self._repo_root,
                 )
 
