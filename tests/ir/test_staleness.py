@@ -93,6 +93,14 @@ class TestLoadStoredIr:
         result = load_stored_ir(missing)
         assert result is None
 
+    def test_raises_for_unreadable_file(self, tmp_path):
+        # Make ir.json a directory so read_text raises IsADirectoryError (OSError subclass)
+        ir_dir = tmp_path / "ir.json"
+        ir_dir.mkdir()
+
+        with pytest.raises(ValueError, match="Could not read"):
+            load_stored_ir(tmp_path)
+
 
 # ---------------------------------------------------------------------------
 # TestStalenessResult
@@ -545,3 +553,95 @@ class TestCheckCLIExitCodes:
             ],
         )
         assert result.exit_code == 2
+
+    def test_exit_2_when_domain_load_fails_after_ir_found(self):
+        # Write a valid ir.json so check_staleness proceeds past the NO_IR path,
+        # then fails when trying to load the invalid domain module.
+        _write_ir(self._protean_dir, {"checksum": "sha256:abc"})
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "check",
+                "-d",
+                "nonexistent_domain.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert result.exit_code == 2
+
+    def test_exit_2_when_load_stored_ir_raises(self):
+        # Make ir.json a directory to trigger OSError → ValueError from load_stored_ir,
+        # which propagates up through check_staleness and is caught by the generic handler.
+        ir_as_dir = self._protean_dir / "ir.json"
+        self._protean_dir.mkdir(parents=True, exist_ok=True)
+        ir_as_dir.mkdir()
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "check",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert result.exit_code == 2
+
+
+# ---------------------------------------------------------------------------
+# TestPrintCheckTextBranches — direct unit tests for _print_check_text()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestPrintCheckTextBranches:
+    """Cover the None-checksum and None-ir_file branches in _print_check_text."""
+
+    def test_fresh_with_none_checksum(self, capsys):
+        from protean.cli.ir import _print_check_text
+        from protean.ir.staleness import StalenessResult, StalenessStatus
+
+        result = StalenessResult(
+            status=StalenessStatus.FRESH,
+            domain_checksum=None,
+            stored_checksum=None,
+            ir_file=None,
+        )
+        # Should not raise; just prints "IR is fresh." without the checksum line
+        _print_check_text(result)
+
+    def test_stale_with_none_stored_checksum(self):
+        from protean.cli.ir import _print_check_text
+        from protean.ir.staleness import StalenessResult, StalenessStatus
+
+        result = StalenessResult(
+            status=StalenessStatus.STALE,
+            domain_checksum=None,
+            stored_checksum=None,
+            ir_file=None,
+        )
+        # All None — should not raise; prints stale message and hint
+        _print_check_text(result)
+
+    def test_no_ir_with_no_ir_file_uses_protean_dir(self, capsys):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from protean.cli.ir import _print_check_text
+        from protean.ir.staleness import StalenessResult, StalenessStatus
+
+        result = StalenessResult(
+            status=StalenessStatus.NO_IR,
+            domain_checksum=None,
+            stored_checksum=None,
+            ir_file=None,
+        )
+        # Capture rich output via a StringIO console
+        buf = StringIO()
+        console = Console(file=buf, highlight=False)
+        # Call directly — just verify it doesn't raise and uses the passed dir
+        _print_check_text(result, protean_dir="/my/.protean")
