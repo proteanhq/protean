@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `.protean/config.toml` configuration support for IR compatibility checking: `CompatConfig` dataclass and `load_config()` loader in `protean.ir.config`. Supports `compatibility.strictness` (`strict`/`warn`/`off`), `compatibility.exclude` (FQN patterns), `compatibility.deprecation.min_versions_before_removal`, and `staleness.enabled`. Integrated with `protean ir diff`, `protean ir check`, and both pre-commit hooks (`protean-check-staleness`, `protean-check-compat`). `CompatConfig` and `load_config` are exported from `protean.ir`.
+- Compatibility checking documentation guide covering `.protean/` directory structure, `config.toml` reference, breaking change rules, CLI commands, pre-commit hook setup, CI integration patterns, and deprecation lifecycle.
+
 ### Changed
 
 - Status field self-transitions are now validated against the transition map instead of being silently allowed. Assigning a status to its current value is rejected unless the state lists itself as a target (e.g., `CANCELLED: [CANCELLED]`). This catches re-entry bugs at the framework level and makes idempotent operations explicit in the transition declaration. Terminal states also reject self-assignment.

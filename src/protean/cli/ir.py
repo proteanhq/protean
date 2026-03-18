@@ -145,7 +145,22 @@ def diff(
       1 — breaking changes found
       2 — non-breaking changes only
     """
+    from protean.ir.config import load_config
     from protean.ir.diff import classify_changes, diff_ir
+
+    # ------------------------------------------------------------------ #
+    # Load config                                                          #
+    # ------------------------------------------------------------------ #
+    try:
+        config = load_config(dir)
+    except ValueError as exc:
+        print(f"[red]Error:[/red] Invalid .protean/config.toml: {exc}")
+        raise typer.Abort()
+
+    # If compatibility checking is disabled, skip entirely
+    if config.strictness == "off":
+        print("[dim]Compatibility checking is disabled (strictness=off).[/dim]")
+        raise typer.Exit(code=0)
 
     # ------------------------------------------------------------------ #
     # Validate argument combinations                                      #
@@ -196,6 +211,17 @@ def diff(
     result = diff_ir(baseline_ir, current_ir)
     report = classify_changes(result, baseline_ir, current_ir)
 
+    # Filter out excluded elements from the report
+    if config.exclude:
+        report.breaking_changes = [
+            c
+            for c in report.breaking_changes
+            if not config.is_excluded(c.element_fqn)
+        ]
+        report.safe_changes = [
+            c for c in report.safe_changes if not config.is_excluded(c.element_fqn)
+        ]
+
     if format == "json":
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
@@ -207,7 +233,18 @@ def diff(
     summary = result.get("summary", {})
     if not summary.get("has_changes", False):
         raise typer.Exit(code=0)
-    elif report.is_breaking or summary.get("has_breaking_changes", False):
+    elif report.is_breaking:
+        if config.strictness == "warn":
+            print(
+                "[yellow]Warning:[/yellow] Breaking changes detected "
+                "(strictness=warn, not blocking)."
+            )
+            raise typer.Exit(code=0)
+        raise typer.Exit(code=1)
+    elif summary.get("has_breaking_changes", False):
+        # Contract-level breaking changes from diff (not in report)
+        if config.strictness == "warn":
+            raise typer.Exit(code=0)
         raise typer.Exit(code=1)
     else:
         raise typer.Exit(code=2)
@@ -479,10 +516,17 @@ def check(
     from pathlib import Path
 
     from protean.exceptions import NoDomainException
+    from protean.ir.config import load_config
     from protean.ir.staleness import StalenessStatus, check_staleness
 
     try:
-        result = check_staleness(domain, Path(dir))
+        config = load_config(dir)
+    except ValueError as exc:
+        print(f"[red]Error:[/red] Invalid .protean/config.toml: {exc}")
+        raise typer.Exit(code=2)
+
+    try:
+        result = check_staleness(domain, Path(dir), config=config)
     except NoDomainException as exc:
         print(f"[red]Error:[/red] {exc.args[0]}")
         raise typer.Exit(code=2)

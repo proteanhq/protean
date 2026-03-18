@@ -11,6 +11,8 @@ All commands accept a `--domain` option to specify the domain module path.
 | Command | Description |
 |---------|-------------|
 | `protean ir show` | Generate and display the domain's IR |
+| `protean ir diff` | Compare two IR snapshots and classify breaking changes |
+| `protean ir check` | Check whether the materialized IR is fresh or stale |
 
 ## `protean ir show`
 
@@ -73,6 +75,69 @@ Clusters: 2
   Order: 1 entities, 1 VOs, 2 commands, 3 events
   Payment: 0 entities, 0 VOs, 1 commands, 1 events
 ```
+
+## `protean ir diff`
+
+Compare two IR snapshots and classify changes as breaking or safe.
+
+```bash
+# Auto-baseline: compare live domain against .protean/ir.json
+protean ir diff --domain my_app.domain
+
+# Compare against a git commit
+protean ir diff --domain my_app.domain --base HEAD
+
+# Compare two explicit files
+protean ir diff --left baseline.json --right current.json
+```
+
+**Options**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--domain`, `-d` | Domain module path | |
+| `--left`, `-l` | Path to baseline IR JSON file | |
+| `--right`, `-r` | Path to current IR JSON file | |
+| `--base`, `-b` | Git commit/branch/tag for baseline | |
+| `--dir` | Path to `.protean/` directory | `.protean` |
+| `--format`, `-f` | Output format: `text` or `json` | `text` |
+
+**Exit codes (CI-friendly)**
+
+| Code | Meaning |
+|------|---------|
+| 0 | No changes detected |
+| 1 | Breaking changes found |
+| 2 | Non-breaking changes only |
+
+Respects `.protean/config.toml` settings. See
+[Compatibility Checking](../../guides/compatibility-checking.md) for
+configuration details.
+
+## `protean ir check`
+
+Check whether the materialized IR matches the live domain.
+
+```bash
+protean ir check --domain my_app.domain
+protean ir check --domain my_app.domain --format json
+```
+
+**Options**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--domain`, `-d` | Path to the domain module | Required |
+| `--dir` | Path to `.protean/` directory | `.protean` |
+| `--format`, `-f` | Output format: `text` or `json` | `text` |
+
+**Exit codes**
+
+| Code | Meaning |
+|------|---------|
+| 0 | IR is fresh (matches live domain) |
+| 1 | IR is stale (domain has changed) |
+| 2 | No materialized IR found |
 
 ## Programmatic access
 
