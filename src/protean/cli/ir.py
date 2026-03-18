@@ -13,6 +13,10 @@ Usage::
 
     # Diff live domain against a saved baseline
     protean ir diff --domain=my_app --right=baseline.json
+
+    # Check whether the materialized IR is fresh or stale
+    protean ir check --domain=my_domain
+    protean ir check --domain=my_domain --dir=.protean --format=json
 """
 
 import json
@@ -321,6 +325,104 @@ def _print_element_changes(
             label = sub.replace("_", " ")
             print(f"{pad}[dim]{label}:[/dim]")
             _print_section_changes(sub_changes, indent + 2)
+
+
+@app.command()
+def check(
+    domain: Annotated[
+        str,
+        typer.Option(
+            "--domain",
+            "-d",
+            help="Path to the domain module (e.g. 'my_app.domain')",
+        ),
+    ],
+    dir: Annotated[
+        str,
+        typer.Option(
+            "--dir",
+            help="Path to the .protean/ directory (default: auto-detect from CWD)",
+        ),
+    ] = ".protean",
+    format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            "-f",
+            help="Output format: 'text' (default) or 'json'",
+        ),
+    ] = "text",
+) -> None:
+    """Check whether the materialized IR is fresh or stale.
+
+    Exit codes:
+      0 — IR is fresh (matches live domain)
+      1 — IR is stale (domain has changed)
+      2 — No materialized IR found in the given directory
+    """
+    from pathlib import Path
+
+    from protean.exceptions import NoDomainException
+    from protean.ir.staleness import StalenessStatus, check_staleness
+
+    try:
+        result = check_staleness(domain, Path(dir))
+    except NoDomainException as exc:
+        print(f"[red]Error:[/red] {exc.args[0]}")
+        raise typer.Exit(code=2)
+    except Exception as exc:
+        print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=2)
+
+    if format == "json":
+        import json as _json
+
+        payload = {
+            "status": result.status.value,
+            "domain_checksum": result.domain_checksum,
+            "stored_checksum": result.stored_checksum,
+            "ir_file": str(result.ir_file) if result.ir_file else None,
+        }
+        typer.echo(_json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        _print_check_text(result, dir)
+
+    # Map status → exit code
+    _exit_codes = {
+        StalenessStatus.FRESH: 0,
+        StalenessStatus.STALE: 1,
+        StalenessStatus.NO_IR: 2,
+    }
+    raise typer.Exit(code=_exit_codes[result.status])
+
+
+def _print_check_text(result: Any, protean_dir: str = ".protean") -> None:
+    """Print a human-readable staleness check result."""
+    from protean.ir.staleness import StalenessStatus
+
+    if result.status == StalenessStatus.FRESH:
+        print("[green]IR is fresh.[/green]")
+        if result.domain_checksum:
+            print(f"  checksum: {result.domain_checksum[:16]}…")
+    elif result.status == StalenessStatus.STALE:
+        print("[yellow]IR is stale — domain has changed since last materialization.[/yellow]")
+        if result.stored_checksum:
+            print(f"  stored:  {result.stored_checksum[:16]}…")
+        if result.domain_checksum:
+            print(f"  current: {result.domain_checksum[:16]}…")
+        if result.ir_file:
+            print(f"  file:    {result.ir_file}")
+        print(
+            "\n  Run [bold]protean ir show --domain <module> > .protean/ir.json[/bold]"
+            " to update."
+        )
+    else:  # NO_IR
+        location = str(result.ir_file) if result.ir_file else protean_dir
+        print(f"[red]No materialized IR found in '{location}'.[/red]")
+        print(
+            "\n  Run [bold]protean ir show --domain <module> > .protean/ir.json[/bold]"
+            " to generate one."
+        )
 
 
 def _print_summary(ir: dict) -> None:

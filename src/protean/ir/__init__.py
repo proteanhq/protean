@@ -17,7 +17,10 @@ __all__ = [
     "IRBuilder",
     "CompatibilityChange",
     "CompatibilityReport",
+    "StalenessResult",
+    "StalenessStatus",
     "classify_changes",
+    "check_staleness",
     "diff_ir",
     "load_schema",
 ]
@@ -56,4 +59,16 @@ def __getattr__(name: str) -> Any:
         from protean.ir.diff import CompatibilityReport
 
         return CompatibilityReport
+    if name == "StalenessResult":
+        from protean.ir.staleness import StalenessResult
+
+        return StalenessResult
+    if name == "StalenessStatus":
+        from protean.ir.staleness import StalenessStatus
+
+        return StalenessStatus
+    if name == "check_staleness":
+        from protean.ir.staleness import check_staleness
+
+        return check_staleness
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

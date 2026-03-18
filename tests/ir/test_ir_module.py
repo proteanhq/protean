@@ -55,3 +55,21 @@ class TestIRModuleGetattr:
 
         with pytest.raises(AttributeError, match="has no attribute"):
             protean.ir.__getattr__("NoSuchThing")
+
+    def test_import_staleness_result(self):
+        from protean.ir import StalenessResult
+
+        assert StalenessResult is not None
+        assert StalenessResult.__name__ == "StalenessResult"
+
+    def test_import_staleness_status(self):
+        from protean.ir import StalenessStatus
+
+        assert StalenessStatus is not None
+        assert StalenessStatus.FRESH.value == "fresh"
+
+    def test_import_check_staleness(self):
+        from protean.ir import check_staleness
+
+        assert check_staleness is not None
+        assert callable(check_staleness)
