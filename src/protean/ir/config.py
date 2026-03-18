@@ -16,7 +16,7 @@ Usage::
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +43,7 @@ class CompatConfig:
         - ``"warn"`` — report breaking changes but allow the operation.
         - ``"off"`` — skip compatibility checking entirely.
     exclude:
-        FQN patterns of elements to exclude from compatibility checks.
+        Fully-qualified names of elements to exclude from compatibility checks.
     min_versions_before_removal:
         Minimum number of minor versions a deprecated element/field must
         survive before it can be removed.
@@ -62,9 +62,15 @@ class CompatConfig:
                 f"Invalid strictness value: {self.strictness!r}. "
                 f"Must be one of: {', '.join(sorted(_STRICTNESS_VALUES))}"
             )
+        if not isinstance(self.min_versions_before_removal, int) or self.min_versions_before_removal < 1:
+            raise ValueError(
+                "min_versions_before_removal must be a positive integer"
+            )
+        if not isinstance(self.staleness_enabled, bool):
+            raise ValueError("staleness_enabled must be a boolean")
 
     def is_excluded(self, fqn: str) -> bool:
-        """Return ``True`` if *fqn* matches any pattern in ``exclude``."""
+        """Return ``True`` if *fqn* matches any entry in ``exclude``."""
         return fqn in self.exclude
 
 
@@ -98,8 +104,24 @@ def load_config(protean_dir: Path | str = ".protean") -> CompatConfig:
 def _parse_config(data: dict[str, Any]) -> CompatConfig:
     """Build a ``CompatConfig`` from parsed TOML data."""
     compat = data.get("compatibility", {})
+    if not isinstance(compat, dict):
+        raise ValueError(
+            "compatibility must be a TOML table, not "
+            + type(compat).__name__
+        )
+
     staleness = data.get("staleness", {})
+    if not isinstance(staleness, dict):
+        raise ValueError(
+            "staleness must be a TOML table, not " + type(staleness).__name__
+        )
+
     deprecation = compat.get("deprecation", {})
+    if not isinstance(deprecation, dict):
+        raise ValueError(
+            "compatibility.deprecation must be a TOML table, not "
+            + type(deprecation).__name__
+        )
 
     kwargs: dict[str, Any] = {}
 

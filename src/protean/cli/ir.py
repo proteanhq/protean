@@ -151,7 +151,11 @@ def diff(
     # ------------------------------------------------------------------ #
     # Load config                                                          #
     # ------------------------------------------------------------------ #
-    config = load_config(dir)
+    try:
+        config = load_config(dir)
+    except ValueError as exc:
+        print(f"[red]Error:[/red] Invalid .protean/config.toml: {exc}")
+        raise typer.Abort()
 
     # If compatibility checking is disabled, skip entirely
     if config.strictness == "off":
@@ -515,7 +519,11 @@ def check(
     from protean.ir.config import load_config
     from protean.ir.staleness import StalenessStatus, check_staleness
 
-    config = load_config(dir)
+    try:
+        config = load_config(dir)
+    except ValueError as exc:
+        print(f"[red]Error:[/red] Invalid .protean/config.toml: {exc}")
+        raise typer.Exit(code=2)
 
     try:
         result = check_staleness(domain, Path(dir), config=config)

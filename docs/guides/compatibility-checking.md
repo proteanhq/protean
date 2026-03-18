@@ -51,7 +51,7 @@ enabled = true
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `strictness` | string | `"strict"` | `"strict"` exits non-zero on breaking changes. `"warn"` reports but allows. `"off"` skips checking entirely. |
-| `exclude` | list of strings | `[]` | FQN patterns of elements to exclude from compatibility checks. |
+| `exclude` | list of strings | `[]` | Fully-qualified names of elements to exclude from compatibility checks. |
 
 ### `[compatibility.deprecation]`
 
@@ -89,7 +89,7 @@ objects, commands, events, database models, and projections.
 ### Three-tier breaking change taxonomy
 
 Protean follows a tiered approach to breaking changes (see
-[ADR-0004](../../adr/0004-release-workflow-and-breaking-change-policy.md)):
+[ADR-0004](../adr/0004-release-workflow-and-breaking-change-policy.md)):
 
 - **Tier 1 (Surface):** Renamed classes, moved imports, changed signatures.
   Mitigated with `DeprecationWarning` surviving 2+ minor versions.

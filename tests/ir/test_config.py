@@ -581,3 +581,149 @@ class TestModuleExports:
         import protean.ir
 
         assert "load_config" in protean.ir.__all__
+
+
+# ---------------------------------------------------------------------------
+# TestCompatConfigPostInitValidation — __post_init__ validates all fields
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestCompatConfigPostInitValidation:
+    """CompatConfig.__post_init__ validates all fields."""
+
+    def test_rejects_zero_min_versions_direct(self):
+        with pytest.raises(ValueError, match="positive integer"):
+            CompatConfig(min_versions_before_removal=0)
+
+    def test_rejects_negative_min_versions_direct(self):
+        with pytest.raises(ValueError, match="positive integer"):
+            CompatConfig(min_versions_before_removal=-1)
+
+    def test_rejects_non_bool_staleness_direct(self):
+        with pytest.raises(ValueError, match="boolean"):
+            CompatConfig(staleness_enabled="yes")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# TestParseConfigSectionTypeChecks — non-table sections raise ValueError
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestParseConfigSectionTypeChecks:
+    """_parse_config() rejects non-table sections."""
+
+    def test_compatibility_not_a_table(self):
+        with pytest.raises(ValueError, match="compatibility must be a TOML table"):
+            _parse_config({"compatibility": "strict"})
+
+    def test_staleness_not_a_table(self):
+        with pytest.raises(ValueError, match="staleness must be a TOML table"):
+            _parse_config({"staleness": True})
+
+    def test_deprecation_not_a_table(self):
+        with pytest.raises(ValueError, match="compatibility.deprecation must be a TOML table"):
+            _parse_config({"compatibility": {"deprecation": "fast"}})
+
+
+# ---------------------------------------------------------------------------
+# TestLoadConfigErrorHandling — CLI/hooks handle config errors gracefully
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestDiffCLIConfigError:
+    """protean ir diff handles invalid config gracefully."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_diff_aborts_on_invalid_config(self):
+        _write_config(self._protean_dir, "{ invalid toml }")
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--domain",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert result.exit_code != 0
+
+
+@pytest.mark.no_test_domain
+class TestCheckCLIConfigError:
+    """protean ir check handles invalid config gracefully."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_check_exits_2_on_invalid_config(self):
+        _write_config(self._protean_dir, "{ invalid toml }")
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "check",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert result.exit_code == 2
+
+
+@pytest.mark.no_test_domain
+class TestStalenessHookConfigError:
+    """check_staleness_hook handles invalid config gracefully."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_exits_1_on_invalid_config(self, capsys):
+        from protean.cli.hooks import check_staleness_hook
+
+        _write_config(self._protean_dir, "{ invalid toml }")
+
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                check_staleness_hook()
+            assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "config.toml" in captured.err.lower()

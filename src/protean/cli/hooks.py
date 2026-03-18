@@ -59,7 +59,11 @@ def check_staleness_hook() -> None:
     parser = _build_staleness_parser()
     args = parser.parse_args()
 
-    config = load_config(args.dir)
+    try:
+        config = load_config(args.dir)
+    except ValueError as exc:
+        print(f"Error: Invalid .protean/config.toml: {exc}", file=sys.stderr)
+        raise SystemExit(1)
 
     try:
         result = check_staleness(args.domain, Path(args.dir), config=config)
@@ -167,7 +171,11 @@ def check_compat_hook() -> None:
     parser = _build_compat_parser()
     args = parser.parse_args()
 
-    config = load_config(args.dir)
+    try:
+        config = load_config(args.dir)
+    except ValueError as exc:
+        print(f"Error: Invalid .protean/config.toml: {exc}", file=sys.stderr)
+        raise SystemExit(1)
 
     # If compatibility checking is disabled, exit immediately
     if config.strictness == "off":
@@ -198,10 +206,13 @@ def check_compat_hook() -> None:
     if not summary.get("has_changes", False):
         raise SystemExit(0)
 
-    if report.is_breaking:
-        print("Breaking IR changes detected:", file=sys.stderr)
-        for change in report.breaking_changes:
-            print(f"  ! {change.message}", file=sys.stderr)
+    has_breaking = report.is_breaking or summary.get("has_breaking_changes", False)
+
+    if has_breaking:
+        if report.is_breaking:
+            print("Breaking IR changes detected:", file=sys.stderr)
+            for change in report.breaking_changes:
+                print(f"  ! {change.message}", file=sys.stderr)
 
         if config.strictness == "warn":
             print(
