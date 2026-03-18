@@ -247,6 +247,31 @@ class TestCheckStalenessHookStale:
         captured = capsys.readouterr()
         assert "protean ir show" in captured.err
 
+    def test_stale_without_stored_checksum(self, capsys):
+        """Stale result where stored IR has no checksum field — covers branch partial."""
+        _write_ir(self._protean_dir, {"ir_version": "0.1.0"})
+
+        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+            with pytest.raises(SystemExit) as exc_info:
+                check_staleness_hook()
+            assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "stale" in captured.err.lower()
+        # stored_checksum is None, so "stored:" line should NOT appear
+        assert "stored:" not in captured.err
+
+    def test_prints_update_hint_uses_configured_dir(self, capsys):
+        """The update hint uses the configured --dir, not hardcoded .protean."""
+        _write_ir(self._protean_dir, {"checksum": "sha256:old"})
+
+        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+            with pytest.raises(SystemExit):
+                check_staleness_hook()
+
+        captured = capsys.readouterr()
+        assert str(self._protean_dir) in captured.err
+
 
 # ---------------------------------------------------------------------------
 # TestCheckStalenessHook — no IR
@@ -301,10 +326,24 @@ class TestCheckStalenessHookErrors:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_exits_1_on_invalid_domain(self):
+    def test_exits_1_on_invalid_domain_without_ir(self):
+        """No ir.json + invalid domain — NO_IR path (not NoDomainException)."""
         with patch("sys.argv", ["protean-check-staleness", "-d", "nonexistent_domain.py", "--dir", str(self._protean_dir)]):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
+
+    def test_exits_1_on_no_domain_exception(self, capsys):
+        """Valid ir.json + invalid domain — NoDomainException from check_staleness."""
+        _write_ir(self._protean_dir, {"checksum": "sha256:abc"})
+
+        with patch("sys.argv", ["protean-check-staleness", "-d", "nonexistent_domain.py", "--dir", str(self._protean_dir)]):
+            with pytest.raises(SystemExit) as exc_info:
+                check_staleness_hook()
+            assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "error" in captured.err.lower()
+
             assert exc_info.value.code == 1
 
     def test_exits_1_on_generic_exception(self, capsys):
@@ -551,7 +590,8 @@ class TestCheckCompatHookErrors:
                 check_compat_hook()
             assert exc_info.value.code == 1
 
-    def test_exits_1_on_invalid_domain(self):
+    def test_exits_1_on_invalid_domain_without_ir(self):
+        """No ir.json + invalid domain — NO_IR path (not NoDomainException)."""
         """Invalid domain → exit 1 from _load_live_ir."""
         with patch("protean.ir.git.load_ir_from_commit", return_value={"checksum": "sha256:abc"}):
             with patch("sys.argv", [
