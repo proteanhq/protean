@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import PurePosixPath
 from typing import Any
 
 __all__ = ["load_ir_from_commit", "GitError"]
@@ -51,12 +52,15 @@ def load_ir_from_commit(
         If the git command fails (e.g. commit not found, file doesn't
         exist at that commit, not a git repository).
     """
-    ref = f"{commit}:{path}"
+    # Normalize to forward slashes — git show always expects POSIX paths.
+    posix_path = PurePosixPath(path).as_posix()
+    ref = f"{commit}:{posix_path}"
     try:
         result = subprocess.run(
             ["git", "show", ref],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
     except FileNotFoundError:
@@ -64,10 +68,12 @@ def load_ir_from_commit(
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip()
         raise GitError(
-            f"Failed to load '{path}' from commit '{commit}': {stderr}"
+            f"Failed to load '{posix_path}' from commit '{commit}': {stderr}"
         ) from exc
 
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise GitError(f"Invalid JSON in '{path}' at commit '{commit}': {exc}") from exc
+        raise GitError(
+            f"Invalid JSON in '{posix_path}' at commit '{commit}': {exc}"
+        ) from exc

@@ -97,8 +97,9 @@ def diff(
             "--domain",
             "-d",
             help=(
-                "Domain module path. Used as the 'current' side of the diff. "
-                "When given alone, loads .protean/ir.json as the baseline."
+                "Domain module path. With --base or alone: live domain is the "
+                "'current' (right) side. With --right: live domain is the "
+                "'baseline' (left) side."
             ),
         ),
     ] = "",
@@ -214,9 +215,11 @@ def diff(
 
 def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:
     """Load .protean/ir.json from a git commit, or abort on error."""
+    from pathlib import PurePosixPath
+
     from protean.ir.git import GitError, load_ir_from_commit
 
-    ir_path = f"{protean_dir}/ir.json"
+    ir_path = PurePosixPath(protean_dir, "ir.json").as_posix()
     try:
         return load_ir_from_commit(commit, ir_path)
     except GitError as exc:
@@ -230,7 +233,12 @@ def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
 
     from protean.ir.staleness import load_stored_ir
 
-    stored = load_stored_ir(Path(protean_dir))
+    try:
+        stored = load_stored_ir(Path(protean_dir))
+    except ValueError as exc:
+        print(f"[red]Error:[/red] {exc}")
+        raise typer.Abort()
+
     if stored is None:
         print(
             f"[red]Error:[/red] No materialized IR found in '{protean_dir}/ir.json'.\n"

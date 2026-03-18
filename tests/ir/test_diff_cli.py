@@ -18,7 +18,7 @@ runner = CliRunner()
 def _write_ir(tmp_path, filename, ir_dict):
     """Write an IR dict to a JSON file and return the path string."""
     path = tmp_path / filename
-    path.write_text(json.dumps(ir_dict, indent=2))
+    path.write_text(json.dumps(ir_dict, indent=2), encoding="utf-8")
     return str(path)
 
 
@@ -732,7 +732,9 @@ class TestDiffAutoBaseline:
     def test_auto_baseline_no_changes(self):
         live_ir = self._live_ir()
         self._protean_dir.mkdir(parents=True)
-        (self._protean_dir / "ir.json").write_text(json.dumps(live_ir))
+        (self._protean_dir / "ir.json").write_text(
+            json.dumps(live_ir), encoding="utf-8"
+        )
 
         result = runner.invoke(
             app,
@@ -757,7 +759,9 @@ class TestDiffAutoBaseline:
         stale_ir["clusters"] = {}  # Remove all clusters
         stale_ir["checksum"] = "sha256:fake"
         self._protean_dir.mkdir(parents=True)
-        (self._protean_dir / "ir.json").write_text(json.dumps(stale_ir))
+        (self._protean_dir / "ir.json").write_text(
+            json.dumps(stale_ir), encoding="utf-8"
+        )
 
         result = runner.invoke(
             app,
@@ -791,10 +795,30 @@ class TestDiffAutoBaseline:
         assert result.exit_code != 0
         assert "No materialized IR" in result.output
 
+    def test_auto_baseline_aborts_on_invalid_json(self):
+        """ValueError from load_stored_ir is caught and produces a clean error."""
+        self._protean_dir.mkdir(parents=True)
+        (self._protean_dir / "ir.json").write_text("{ bad json }", encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Invalid JSON" in result.output
+
     def test_auto_baseline_text_output(self):
         live_ir = self._live_ir()
         self._protean_dir.mkdir(parents=True)
-        (self._protean_dir / "ir.json").write_text(json.dumps(live_ir))
+        (self._protean_dir / "ir.json").write_text(
+            json.dumps(live_ir), encoding="utf-8"
+        )
 
         result = runner.invoke(
             app,
@@ -830,7 +854,21 @@ def _git_env() -> dict[str, str]:
     return env
 
 
+def _has_git_repo() -> bool:
+    """Return True if we're inside a git repository with git available."""
+    try:
+        subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            check=True,
+        )
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+
+
 @pytest.mark.no_test_domain
+@pytest.mark.skipif(not _has_git_repo(), reason="requires git and a .git directory")
 class TestDiffGitBaseline:
     """Git baseline mode: `protean ir diff --domain my_app --base HEAD`."""
 
@@ -890,19 +928,24 @@ class TestDiffGitBaseline:
                 subprocess.run(
                     ["git", "reset", "HEAD~1"],
                     capture_output=True,
+                    check=True,
                     env=env,
                     cwd=self._repo_root,
                 )
-                # Remove test files from index and disk
+                # Remove test files from disk and unstage them.
+                # After `git reset HEAD~1` the files are untracked, so
+                # `git checkout` would fail — just delete and clean index.
                 for f in files:
+                    if f.exists():
+                        f.unlink()
+                    # Ensure file is not left staged
                     subprocess.run(
-                        ["git", "checkout", "--", str(f)],
+                        ["git", "rm", "--cached", "--ignore-unmatch", str(f)],
                         capture_output=True,
+                        check=True,
                         env=env,
                         cwd=self._repo_root,
                     )
-                    if f.exists():
-                        f.unlink()
                     parent = f.parent
                     if parent.exists() and not list(parent.iterdir()):
                         parent.rmdir()
@@ -915,7 +958,7 @@ class TestDiffGitBaseline:
         protean_dir = self._test7_dir / ".protean"
         protean_dir.mkdir(exist_ok=True)
         ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(live_ir))
+        ir_file.write_text(json.dumps(live_ir), encoding="utf-8")
 
         # The --dir path for git show must be relative to repo root
         dir_rel = self._rel_path(".protean")
@@ -946,7 +989,7 @@ class TestDiffGitBaseline:
         protean_dir = self._test7_dir / ".protean"
         protean_dir.mkdir(exist_ok=True)
         ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(stale_ir))
+        ir_file.write_text(json.dumps(stale_ir), encoding="utf-8")
 
         dir_rel = self._rel_path(".protean")
         env = _git_env()
@@ -989,7 +1032,7 @@ class TestDiffGitBaseline:
         custom_dir = self._test7_dir / "custom_ir"
         custom_dir.mkdir(exist_ok=True)
         ir_file = custom_dir / "ir.json"
-        ir_file.write_text(json.dumps(stale_ir))
+        ir_file.write_text(json.dumps(stale_ir), encoding="utf-8")
 
         dir_rel = self._rel_path("custom_ir")
         env = _git_env()

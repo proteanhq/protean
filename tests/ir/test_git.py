@@ -39,7 +39,7 @@ def _commit_ir(tmp_path, ir_dict: dict, env: dict[str, str], msg: str = "ir") ->
     """Write ir_dict to .protean/ir.json, commit, and return the SHA."""
     ir_dir = tmp_path / ".protean"
     ir_dir.mkdir(exist_ok=True)
-    (ir_dir / "ir.json").write_text(json.dumps(ir_dict))
+    (ir_dir / "ir.json").write_text(json.dumps(ir_dict), encoding="utf-8")
     subprocess.run(
         ["git", "add", ".protean/ir.json"],
         cwd=tmp_path,
@@ -117,7 +117,7 @@ class TestLoadIrFromCommit:
         env = _init_repo(self.tmp_path)
         ir_dir = self.tmp_path / ".protean"
         ir_dir.mkdir()
-        (ir_dir / "ir.json").write_text("{ not valid json }")
+        (ir_dir / "ir.json").write_text("{ not valid json }", encoding="utf-8")
         subprocess.run(
             ["git", "add", "."],
             cwd=self.tmp_path,
@@ -165,7 +165,7 @@ class TestLoadIrFromCommit:
         ir_dict = {"checksum": "sha256:custom"}
         custom_dir = self.tmp_path / "custom"
         custom_dir.mkdir()
-        (custom_dir / "ir.json").write_text(json.dumps(ir_dict))
+        (custom_dir / "ir.json").write_text(json.dumps(ir_dict), encoding="utf-8")
         subprocess.run(
             ["git", "add", "."],
             cwd=self.tmp_path,
