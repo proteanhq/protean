@@ -599,3 +599,26 @@ class TestCheckCompatHookErrors:
                 with pytest.raises(SystemExit) as exc_info:
                     check_compat_hook()
                 assert exc_info.value.code == 1
+
+    def test_exits_0_on_non_breaking_changes(self):
+        """Non-breaking changes only — exit 0."""
+        live_ir = _live_ir_for_test7()
+
+        # Make baseline missing an optional field → live domain "added" it → safe
+        baseline_ir = json.loads(json.dumps(live_ir))
+        baseline_ir["checksum"] = "sha256:stripped_baseline"
+        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+            fields = cluster["aggregate"]["fields"]
+            for field_name, field_info in list(fields.items()):
+                if not field_info.get("identifier") and not field_info.get("required"):
+                    del fields[field_name]
+                    break
+            break
+
+        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
+            with patch("sys.argv", [
+                "protean-check-compat", "-d", "publishing7.py",
+            ]):
+                with pytest.raises(SystemExit) as exc_info:
+                    check_compat_hook()
+                assert exc_info.value.code == 0
