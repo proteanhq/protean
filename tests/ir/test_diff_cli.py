@@ -1,6 +1,10 @@
 """Tests for CLI `protean ir diff` command."""
 
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -116,7 +120,7 @@ class TestDiffJSON:
         result = runner.invoke(
             app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
         )
-        assert result.exit_code == 0
+        assert result.exit_code in (0, 1, 2)
         parsed = json.loads(result.output)
         assert "summary" in parsed
         assert "clusters" in parsed
@@ -143,7 +147,7 @@ class TestDiffText:
     def test_text_output_shows_changes(self, ir_pair):
         left, right = ir_pair
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert result.exit_code == 0
+        assert result.exit_code in (1, 2)
         assert "IR Diff" in result.output
 
     def test_text_output_no_changes(self, identical_pair):
@@ -172,7 +176,7 @@ class TestDiffTextCoverage:
             _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
         )
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert result.exit_code == 0
+        assert result.exit_code in (1, 2)
         assert "Clusters" in result.output
         assert "Order" in result.output
 
@@ -561,3 +565,471 @@ class TestDiffArgumentValidation:
         right.write_text("{}")
         result = runner.invoke(app, ["ir", "diff", "-l", str(left), "-r", str(right)])
         assert result.exit_code != 0
+
+    def test_base_without_domain_aborts(self, tmp_path):
+        result = runner.invoke(app, ["ir", "diff", "--base", "HEAD"])
+        assert result.exit_code != 0
+
+    def test_base_with_left_aborts(self, tmp_path):
+        left = tmp_path / "left.json"
+        left.write_text("{}")
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--base",
+                "HEAD",
+                "-l",
+                str(left),
+                "-d",
+                "some_domain",
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_base_with_right_aborts(self, tmp_path):
+        right = tmp_path / "right.json"
+        right.write_text("{}")
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--base",
+                "HEAD",
+                "-r",
+                str(right),
+                "-d",
+                "some_domain",
+            ],
+        )
+        assert result.exit_code != 0
+
+
+# ------------------------------------------------------------------
+# CI Exit Codes
+# ------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestDiffExitCodes:
+    """CI-friendly exit codes: 0 = no changes, 1 = breaking, 2 = non-breaking."""
+
+    def test_exit_0_when_no_changes(self, tmp_path):
+        ir = _minimal_ir()
+        left = _write_ir(tmp_path, "left.json", ir)
+        right = _write_ir(tmp_path, "right.json", ir)
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
+        )
+        assert result.exit_code == 0
+
+    def test_exit_1_when_breaking_changes(self, tmp_path):
+        """Removing a published event is breaking → exit 1."""
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(
+                contracts={
+                    "events": [
+                        {
+                            "__type__": "Test.OrderPlaced.v1",
+                            "fqn": "app.OrderPlaced",
+                            "type": "Test.OrderPlaced.v1",
+                        }
+                    ]
+                }
+            ),
+        )
+        right = _write_ir(tmp_path, "right.json", _minimal_ir())
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
+        )
+        assert result.exit_code == 1
+
+    def test_exit_2_when_non_breaking_changes_only(self, tmp_path):
+        """Adding a new cluster is safe → exit 2."""
+        left = _write_ir(tmp_path, "left.json", _minimal_ir())
+        right = _write_ir(
+            tmp_path,
+            "right.json",
+            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
+        )
+        assert result.exit_code == 2
+
+    def test_exit_1_for_element_removal(self, tmp_path):
+        """Removing a cluster (aggregate) is breaking → exit 1."""
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
+        )
+        right = _write_ir(tmp_path, "right.json", _minimal_ir())
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
+        )
+        assert result.exit_code == 1
+
+    def test_exit_2_for_added_optional_field(self, tmp_path):
+        """Adding an optional field is safe → exit 2."""
+        left_cluster = _make_cluster("Order", fields={})
+        right_cluster = _make_cluster(
+            "Order",
+            fields={"notes": {"kind": "standard", "type": "String"}},
+        )
+        left = _write_ir(
+            tmp_path, "left.json", _minimal_ir(clusters={"app.Order": left_cluster})
+        )
+        right = _write_ir(
+            tmp_path, "right.json", _minimal_ir(clusters={"app.Order": right_cluster})
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
+        )
+        assert result.exit_code == 2
+
+    def test_exit_codes_work_with_text_format(self, tmp_path):
+        """Exit codes work for text format too, not just JSON."""
+        ir = _minimal_ir()
+        left = _write_ir(tmp_path, "left.json", ir)
+        right = _write_ir(tmp_path, "right.json", ir)
+        result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
+        assert result.exit_code == 0
+
+
+# ------------------------------------------------------------------
+# Auto-baseline: --domain only (no --left/--right)
+# ------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestDiffAutoBaseline:
+    """Auto-baseline mode: `protean ir diff --domain my_app`."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, tmp_path):
+        from tests.shared import change_working_directory_to
+
+        self._original_path = sys.path[:]
+        self._cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = self._original_path
+        os.chdir(self._cwd)
+
+    def _live_ir(self) -> dict:
+        from protean.utils.domain_discovery import derive_domain
+
+        domain = derive_domain("publishing7.py")
+        domain.init(traverse=False)
+        return IRBuilder(domain).build()
+
+    def test_auto_baseline_no_changes(self):
+        live_ir = self._live_ir()
+        self._protean_dir.mkdir(parents=True)
+        (self._protean_dir / "ir.json").write_text(json.dumps(live_ir))
+
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+                "-f",
+                "json",
+            ],
+        )
+        parsed = json.loads(result.output)
+        assert parsed["summary"]["has_changes"] is False
+        assert result.exit_code == 0
+
+    def test_auto_baseline_detects_changes(self):
+        # Store a different IR as baseline
+        stale_ir = self._live_ir()
+        stale_ir["clusters"] = {}  # Remove all clusters
+        stale_ir["checksum"] = "sha256:fake"
+        self._protean_dir.mkdir(parents=True)
+        (self._protean_dir / "ir.json").write_text(json.dumps(stale_ir))
+
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+                "-f",
+                "json",
+            ],
+        )
+        parsed = json.loads(result.output)
+        assert parsed["summary"]["has_changes"] is True
+
+    def test_auto_baseline_aborts_when_no_ir_file(self):
+        # No .protean/ir.json exists
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert result.exit_code != 0
+        assert "No materialized IR" in result.output
+
+    def test_auto_baseline_text_output(self):
+        live_ir = self._live_ir()
+        self._protean_dir.mkdir(parents=True)
+        (self._protean_dir / "ir.json").write_text(json.dumps(live_ir))
+
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert "No changes" in result.output
+        assert result.exit_code == 0
+
+
+# ------------------------------------------------------------------
+# Git baseline: --domain --base <commit>
+# ------------------------------------------------------------------
+
+# Helpers for git-based tests
+_GIT_ENV_KEYS = {
+    "GIT_AUTHOR_NAME": "test",
+    "GIT_AUTHOR_EMAIL": "test@test.com",
+    "GIT_COMMITTER_NAME": "test",
+    "GIT_COMMITTER_EMAIL": "test@test.com",
+}
+
+
+def _git_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env.update(_GIT_ENV_KEYS)
+    return env
+
+
+@pytest.mark.no_test_domain
+class TestDiffGitBaseline:
+    """Git baseline mode: `protean ir diff --domain my_app --base HEAD`."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, tmp_path):
+        from tests.shared import change_working_directory_to
+
+        self._original_path = sys.path[:]
+        self._cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._test7_dir = Path.cwd()
+        # Compute the relative path from repo root to test7/.protean
+        self._repo_root = Path(
+            subprocess.check_output(
+                ["git", "rev-parse", "--show-toplevel"], text=True
+            ).strip()
+        )
+        yield
+        sys.path[:] = self._original_path
+        os.chdir(self._cwd)
+
+    def _live_ir(self) -> dict:
+        from protean.utils.domain_discovery import derive_domain
+
+        domain = derive_domain("publishing7.py")
+        domain.init(traverse=False)
+        return IRBuilder(domain).build()
+
+    def _rel_path(self, *parts: str) -> str:
+        """Return the path relative to the git repo root."""
+        abs_path = self._test7_dir.joinpath(*parts)
+        return str(abs_path.relative_to(self._repo_root))
+
+    def _commit_and_cleanup(self, files: list[Path], env: dict[str, str]):
+        """Context-manager-like helper: commit files, yield, then clean up."""
+
+        class _Ctx:
+            def __enter__(self_ctx):
+                for f in files:
+                    subprocess.run(
+                        ["git", "add", str(f)],
+                        capture_output=True,
+                        check=True,
+                        env=env,
+                        cwd=self._repo_root,
+                    )
+                subprocess.run(
+                    ["git", "commit", "-m", "test: ir diff git baseline"],
+                    capture_output=True,
+                    check=True,
+                    env=env,
+                    cwd=self._repo_root,
+                )
+                return self_ctx
+
+            def __exit__(self_ctx, *_):
+                subprocess.run(
+                    ["git", "reset", "HEAD~1"],
+                    capture_output=True,
+                    env=env,
+                    cwd=self._repo_root,
+                )
+                # Remove test files from index and disk
+                for f in files:
+                    subprocess.run(
+                        ["git", "checkout", "--", str(f)],
+                        capture_output=True,
+                        env=env,
+                        cwd=self._repo_root,
+                    )
+                    if f.exists():
+                        f.unlink()
+                    parent = f.parent
+                    if parent.exists() and not list(parent.iterdir()):
+                        parent.rmdir()
+
+        return _Ctx()
+
+    def test_base_head_no_changes(self):
+        """When the committed IR matches the live domain → exit 0."""
+        live_ir = self._live_ir()
+        protean_dir = self._test7_dir / ".protean"
+        protean_dir.mkdir(exist_ok=True)
+        ir_file = protean_dir / "ir.json"
+        ir_file.write_text(json.dumps(live_ir))
+
+        # The --dir path for git show must be relative to repo root
+        dir_rel = self._rel_path(".protean")
+        env = _git_env()
+        with self._commit_and_cleanup([ir_file], env):
+            result = runner.invoke(
+                app,
+                [
+                    "ir",
+                    "diff",
+                    "-d",
+                    "publishing7.py",
+                    "--base",
+                    "HEAD",
+                    "--dir",
+                    dir_rel,
+                    "-f",
+                    "json",
+                ],
+            )
+            parsed = json.loads(result.output)
+            assert parsed["summary"]["has_changes"] is False
+            assert result.exit_code == 0
+
+    def test_base_detects_changes(self):
+        """When the committed IR differs from live domain → changes detected."""
+        stale_ir = _minimal_ir()  # Minimal IR with no clusters
+        protean_dir = self._test7_dir / ".protean"
+        protean_dir.mkdir(exist_ok=True)
+        ir_file = protean_dir / "ir.json"
+        ir_file.write_text(json.dumps(stale_ir))
+
+        dir_rel = self._rel_path(".protean")
+        env = _git_env()
+        with self._commit_and_cleanup([ir_file], env):
+            result = runner.invoke(
+                app,
+                [
+                    "ir",
+                    "diff",
+                    "-d",
+                    "publishing7.py",
+                    "--base",
+                    "HEAD",
+                    "--dir",
+                    dir_rel,
+                    "-f",
+                    "json",
+                ],
+            )
+            parsed = json.loads(result.output)
+            assert parsed["summary"]["has_changes"] is True
+
+    def test_base_aborts_on_missing_commit(self):
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-d",
+                "publishing7.py",
+                "--base",
+                "nonexistent_ref_xyz",
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_base_custom_dir(self):
+        """--dir changes the path used for git show."""
+        stale_ir = _minimal_ir()
+        custom_dir = self._test7_dir / "custom_ir"
+        custom_dir.mkdir(exist_ok=True)
+        ir_file = custom_dir / "ir.json"
+        ir_file.write_text(json.dumps(stale_ir))
+
+        dir_rel = self._rel_path("custom_ir")
+        env = _git_env()
+        with self._commit_and_cleanup([ir_file], env):
+            result = runner.invoke(
+                app,
+                [
+                    "ir",
+                    "diff",
+                    "-d",
+                    "publishing7.py",
+                    "--base",
+                    "HEAD",
+                    "--dir",
+                    dir_rel,
+                    "-f",
+                    "json",
+                ],
+            )
+            parsed = json.loads(result.output)
+            assert "summary" in parsed
+
+
+# ------------------------------------------------------------------
+# Module-level import tests for new exports
+# ------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestIRModuleGitExports:
+    """Verify new git-related exports from protean.ir."""
+
+    def test_import_git_error(self):
+        from protean.ir import GitError
+
+        assert GitError is not None
+        assert issubclass(GitError, Exception)
+
+    def test_import_load_ir_from_commit(self):
+        from protean.ir import load_ir_from_commit
+
+        assert load_ir_from_commit is not None
+        assert callable(load_ir_from_commit)
