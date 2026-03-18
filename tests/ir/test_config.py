@@ -727,3 +727,413 @@ class TestStalenessHookConfigError:
 
         captured = capsys.readouterr()
         assert "config.toml" in captured.err.lower()
+
+
+# ---------------------------------------------------------------------------
+# TestCompatHookConfigError — compat hook handles invalid config
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestCompatHookConfigError:
+    """check_compat_hook handles invalid config gracefully."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_exits_1_on_invalid_config(self, capsys):
+        from protean.cli.hooks import check_compat_hook
+
+        _write_config(self._protean_dir, "{ invalid toml }")
+
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-compat",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                check_compat_hook()
+            assert exc_info.value.code == 1
+
+        captured = capsys.readouterr()
+        assert "config.toml" in captured.err.lower()
+
+
+# ---------------------------------------------------------------------------
+# TestCompatHookContractBreaking — has_breaking_changes path in compat hook
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestCompatHookContractBreaking:
+    """check_compat_hook() handles contract-level breaking changes."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_exits_1_on_contract_breaking_changes(self):
+        """Removed published event -> has_breaking_changes=True -> exit 1."""
+        from protean.cli.hooks import check_compat_hook
+
+        live_ir = _live_ir_for_test7()
+
+        # Create baseline with an extra published event
+        baseline_ir = json.loads(json.dumps(live_ir))
+        baseline_ir["checksum"] = "sha256:hook_contract_breaking"
+        baseline_events = baseline_ir.get("contracts", {}).get("events", [])
+        baseline_events.append(
+            {
+                "fqn": "tests.fake.HookRemovedEvent",
+                "type": "Tests.Fake.HookRemovedEvent.v1",
+                "version": "v1",
+                "fields": {"data": {"type": "String", "required": True}},
+            }
+        )
+        baseline_ir.setdefault("contracts", {})["events"] = baseline_events
+
+        with patch(
+            "protean.ir.git.load_ir_from_commit", return_value=baseline_ir
+        ):
+            with patch(
+                "sys.argv",
+                [
+                    "protean-check-compat",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    check_compat_hook()
+                assert exc_info.value.code == 1
+
+    def test_exits_0_on_contract_breaking_warn_mode(self):
+        """Contract breaking + strictness=warn -> exit 0."""
+        from protean.cli.hooks import check_compat_hook
+
+        live_ir = _live_ir_for_test7()
+
+        baseline_ir = json.loads(json.dumps(live_ir))
+        baseline_ir["checksum"] = "sha256:hook_contract_warn"
+        baseline_events = baseline_ir.get("contracts", {}).get("events", [])
+        baseline_events.append(
+            {
+                "fqn": "tests.fake.HookRemovedEventWarn",
+                "type": "Tests.Fake.HookRemovedEventWarn.v1",
+                "version": "v1",
+                "fields": {"data": {"type": "String", "required": True}},
+            }
+        )
+        baseline_ir.setdefault("contracts", {})["events"] = baseline_events
+
+        _write_config(
+            self._protean_dir, '[compatibility]\nstrictness = "warn"\n'
+        )
+
+        with patch(
+            "protean.ir.git.load_ir_from_commit", return_value=baseline_ir
+        ):
+            with patch(
+                "sys.argv",
+                [
+                    "protean-check-compat",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    check_compat_hook()
+                assert exc_info.value.code == 0
+
+
+# ---------------------------------------------------------------------------
+# TestCompatHookWarnMode — warn strictness in compat hook
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestCompatHookWarnMode:
+    """check_compat_hook() with strictness=warn prints but exits 0."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_exits_0_with_breaking_changes_in_warn_mode(self, capsys):
+        from protean.cli.hooks import check_compat_hook
+
+        live_ir = _live_ir_for_test7()
+
+        # Create baseline with an extra required field
+        baseline_ir = json.loads(json.dumps(live_ir))
+        baseline_ir["checksum"] = "sha256:modified_baseline"
+        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+            cluster["aggregate"]["fields"]["extra_required_field"] = {
+                "type": "String",
+                "required": True,
+                "unique": False,
+                "identifier": False,
+            }
+            break
+
+        _write_config(
+            self._protean_dir, '[compatibility]\nstrictness = "warn"\n'
+        )
+
+        with patch(
+            "protean.ir.git.load_ir_from_commit", return_value=baseline_ir
+        ):
+            with patch(
+                "sys.argv",
+                [
+                    "protean-check-compat",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    check_compat_hook()
+                assert exc_info.value.code == 0
+
+        captured = capsys.readouterr()
+        assert "breaking" in captured.err.lower()
+        assert "warn" in captured.err.lower()
+
+
+# ---------------------------------------------------------------------------
+# TestCompatHookExclude — exclude filter in compat hook
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestCompatHookExclude:
+    """check_compat_hook() filters excluded elements."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_excluded_elements_not_counted_as_breaking(self):
+        from protean.cli.hooks import check_compat_hook
+
+        live_ir = _live_ir_for_test7()
+
+        # Create baseline with an extra required field on the first aggregate
+        baseline_ir = json.loads(json.dumps(live_ir))
+        baseline_ir["checksum"] = "sha256:modified_baseline"
+        target_fqn = None
+        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+            target_fqn = cluster_fqn
+            cluster["aggregate"]["fields"]["extra_required_field"] = {
+                "type": "String",
+                "required": True,
+                "unique": False,
+                "identifier": False,
+            }
+            break
+
+        # Exclude the aggregate that has the breaking change
+        _write_config(
+            self._protean_dir,
+            f'[compatibility]\nexclude = ["{target_fqn}"]\n',
+        )
+
+        with patch(
+            "protean.ir.git.load_ir_from_commit", return_value=baseline_ir
+        ):
+            with patch(
+                "sys.argv",
+                [
+                    "protean-check-compat",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    check_compat_hook()
+                # Should exit 0 since the only breaking element is excluded
+                assert exc_info.value.code == 0
+
+
+# ---------------------------------------------------------------------------
+# TestDiffCLIExcludeFilter — exclude filter in diff CLI
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestDiffCLIExcludeFilter:
+    """protean ir diff filters excluded elements from the report."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_excluded_breaking_change_exits_2_not_1(self):
+        """With exclude, breaking changes are filtered; exits 2 (non-breaking)."""
+        live_ir = _live_ir_for_test7()
+
+        # Create baseline with an extra required field
+        baseline_ir = json.loads(json.dumps(live_ir))
+        baseline_ir["checksum"] = "sha256:modified_baseline"
+        target_fqn = None
+        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+            target_fqn = cluster_fqn
+            cluster["aggregate"]["fields"]["extra_required_field"] = {
+                "type": "String",
+                "required": True,
+                "unique": False,
+                "identifier": False,
+            }
+            break
+
+        _write_config(
+            self._protean_dir,
+            f'[compatibility]\nexclude = ["{target_fqn}"]\n',
+        )
+        _write_ir(self._protean_dir, baseline_ir)
+
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--domain",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        # Breaking change was excluded, so exit code should be 2 (non-breaking)
+        assert result.exit_code == 2
+
+
+# ---------------------------------------------------------------------------
+# TestDiffCLIContractBreaking — summary.has_breaking_changes path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestDiffCLIContractBreaking:
+    """protean ir diff handles contract-level breaking changes."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_contract_breaking_exits_1(self):
+        """Removed published event triggers summary.has_breaking_changes."""
+        live_ir = _live_ir_for_test7()
+
+        # Create baseline with an extra published event contract
+        baseline_ir = json.loads(json.dumps(live_ir))
+        baseline_ir["checksum"] = "sha256:modified_baseline_contracts"
+        baseline_events = baseline_ir.get("contracts", {}).get("events", [])
+        baseline_events.append(
+            {
+                "fqn": "tests.fake.RemovedEvent",
+                "type": "Tests.Fake.RemovedEvent.v1",
+                "version": "v1",
+                "fields": {"data": {"type": "String", "required": True}},
+            }
+        )
+        baseline_ir.setdefault("contracts", {})["events"] = baseline_events
+
+        _write_ir(self._protean_dir, baseline_ir)
+
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--domain",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert result.exit_code == 1
+
+    def test_contract_breaking_warn_exits_0(self):
+        """With strictness=warn, contract breaking changes exit 0."""
+        live_ir = _live_ir_for_test7()
+
+        baseline_ir = json.loads(json.dumps(live_ir))
+        baseline_ir["checksum"] = "sha256:modified_baseline_contracts_warn"
+        baseline_events = baseline_ir.get("contracts", {}).get("events", [])
+        baseline_events.append(
+            {
+                "fqn": "tests.fake.RemovedEvent2",
+                "type": "Tests.Fake.RemovedEvent2.v1",
+                "version": "v1",
+                "fields": {"data": {"type": "String", "required": True}},
+            }
+        )
+        baseline_ir.setdefault("contracts", {})["events"] = baseline_events
+
+        _write_config(
+            self._protean_dir, '[compatibility]\nstrictness = "warn"\n'
+        )
+        _write_ir(self._protean_dir, baseline_ir)
+
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--domain",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        )
+        assert result.exit_code == 0
