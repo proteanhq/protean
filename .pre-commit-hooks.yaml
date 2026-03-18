@@ -1,0 +1,17 @@
+- id: protean-check-staleness
+  name: Check IR staleness
+  description: Block commit if .protean/ir.json is stale (checksum mismatch with live domain)
+  entry: protean-check-staleness
+  language: python
+  pass_filenames: false
+  always_run: true
+  stages: [pre-commit]
+
+- id: protean-check-compat
+  name: Check IR compatibility
+  description: Block commit if breaking IR changes are detected against the baseline
+  entry: protean-check-compat
+  language: python
+  pass_filenames: false
+  always_run: true
+  stages: [pre-commit]
