@@ -383,9 +383,9 @@ def check(
             "stored_checksum": result.stored_checksum,
             "ir_file": str(result.ir_file) if result.ir_file else None,
         }
-        typer.echo(_json.dumps(payload, indent=2))
+        typer.echo(_json.dumps(payload, indent=2, sort_keys=True))
     else:
-        _print_check_text(result)
+        _print_check_text(result, dir)
 
     # Map status → exit code
     _exit_codes = {
@@ -396,7 +396,7 @@ def check(
     raise typer.Exit(code=_exit_codes[result.status])
 
 
-def _print_check_text(result: Any) -> None:
+def _print_check_text(result: Any, protean_dir: str = ".protean") -> None:
     """Print a human-readable staleness check result."""
     from protean.ir.staleness import StalenessStatus
 
@@ -417,7 +417,8 @@ def _print_check_text(result: Any) -> None:
             " to update."
         )
     else:  # NO_IR
-        print(f"[red]No materialized IR found in '{result.ir_file or dir}'.[/red]")
+        location = str(result.ir_file) if result.ir_file else protean_dir
+        print(f"[red]No materialized IR found in '{location}'.[/red]")
         print(
             "\n  Run [bold]protean ir show --domain <module> > .protean/ir.json[/bold]"
             " to generate one."

@@ -126,7 +126,7 @@ def check_staleness(
     # 2. Build the live IR and compute its checksum                        #
     # ------------------------------------------------------------------ #
     domain = derive_domain(domain_module)
-    domain.init()
+    domain.init(traverse=False)
     live_ir = IRBuilder(domain).build()
     domain_checksum: str = live_ir["checksum"]
 

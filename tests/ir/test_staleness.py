@@ -43,7 +43,7 @@ def _live_ir_for_test7() -> dict:
     from protean.utils.domain_discovery import derive_domain
 
     domain = derive_domain("publishing7.py")
-    domain.init()
+    domain.init(traverse=False)
     return IRBuilder(domain).build()
 
 
@@ -507,7 +507,7 @@ class TestCheckCLIExitCodes:
         from protean.utils.domain_discovery import derive_domain
 
         domain = derive_domain("publishing7.py")
-        domain.init()
+        domain.init(traverse=False)
         live_ir = IRBuilder(domain).build()
         _write_ir(self._protean_dir, live_ir)
 
@@ -544,4 +544,4 @@ class TestCheckCLIExitCodes:
                 str(self._protean_dir),
             ],
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
