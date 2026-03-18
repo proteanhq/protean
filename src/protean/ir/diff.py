@@ -561,14 +561,12 @@ def _prune_empty(d: dict[str, Any]) -> dict[str, Any]:
 # Compatibility classification
 # ------------------------------------------------------------------
 
-_PERSISTED_CLUSTER_SUBSECTIONS: frozenset[str] = frozenset(
-    {
-        "entities",
-        "value_objects",
-        "commands",
-        "events",
-        "database_models",
-    }
+_PERSISTED_CLUSTER_SUBSECTIONS: tuple[str, ...] = (
+    "entities",
+    "value_objects",
+    "commands",
+    "events",
+    "database_models",
 )
 
 _SECTION_TO_ELEMENT_TYPE: dict[str, str] = {
@@ -608,21 +606,26 @@ def classify_changes(
     left_ir: dict[str, Any],
     right_ir: dict[str, Any],
 ) -> CompatibilityReport:
-    """Classify all changes in a diff result as breaking or safe.
+    """Classify persisted-schema changes in a diff result as breaking or safe.
 
-    Applies a comprehensive ruleset to walk all sections of the diff result
-    and classify each change.
+    Walks the ``clusters`` and ``projections`` sections of *diff_result* and
+    applies the following ruleset to each persisted/serialized element
+    (aggregates, entities, value objects, commands, events, database models,
+    and projections).  Non-persisted runtime sections (command_handlers,
+    event_handlers, repositories, application_services, flows) are not
+    classified.
 
     Rules:
 
-    - Add optional field (or with default): safe
-    - Add required field without default: breaking
+    - Add optional field (no ``required`` flag, or has ``default``): safe
+    - Add required field with a ``default`` value: safe
+    - Add required field without a ``default``: breaking
     - Remove field from any persisted element: breaking
     - Change field type: breaking
     - Remove an element: breaking
     - Add a new element: safe
-    - Visibility public → internal: breaking
-    - Visibility internal → public: safe
+    - Visibility public → internal (``published: True`` → absent): breaking
+    - Visibility internal → public (absent → ``published: True``): safe
     - Change ``__type__`` string: breaking
     """
     report = CompatibilityReport()
@@ -754,6 +757,18 @@ def _classify_field_changes(
                     message=(
                         f"Required field '{field_name}' added to {element_type} "
                         f"'{fqn}' without a default value"
+                    ),
+                )
+            )
+        elif is_required and has_default:
+            report.safe_changes.append(
+                CompatibilityChange(
+                    severity="safe",
+                    element_fqn=fqn,
+                    change_type="required_field_with_default_added",
+                    message=(
+                        f"Required field '{field_name}' added to {element_type} "
+                        f"'{fqn}' with a default value"
                     ),
                 )
             )

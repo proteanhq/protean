@@ -334,7 +334,8 @@ class TestClassifyAggregateFieldChanges:
         report = _run(left, right)
         assert report.is_breaking is False
         change = report.safe_changes[0]
-        assert change.change_type == "optional_field_added"
+        assert change.change_type == "required_field_with_default_added"
+        assert "with a default" in change.message
 
     def test_removed_field_is_breaking(self):
         left = _minimal_ir(
