@@ -331,6 +331,7 @@ class TestCheckStalenessHookErrors:
         with patch("sys.argv", ["protean-check-staleness", "-d", "nonexistent_domain.py", "--dir", str(self._protean_dir)]):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
+            assert exc_info.value.code == 1
 
     def test_exits_1_on_no_domain_exception(self, capsys):
         """Valid ir.json + invalid domain — NoDomainException from check_staleness."""
@@ -344,7 +345,6 @@ class TestCheckStalenessHookErrors:
         captured = capsys.readouterr()
         assert "error" in captured.err.lower()
 
-            assert exc_info.value.code == 1
 
     def test_exits_1_on_generic_exception(self, capsys):
         """Trigger a generic exception in check_staleness (not NoDomainException)."""
@@ -590,8 +590,7 @@ class TestCheckCompatHookErrors:
                 check_compat_hook()
             assert exc_info.value.code == 1
 
-    def test_exits_1_on_invalid_domain_without_ir(self):
-        """No ir.json + invalid domain — NO_IR path (not NoDomainException)."""
+    def test_exits_1_on_invalid_domain(self):
         """Invalid domain → exit 1 from _load_live_ir."""
         with patch("protean.ir.git.load_ir_from_commit", return_value={"checksum": "sha256:abc"}):
             with patch("sys.argv", [
