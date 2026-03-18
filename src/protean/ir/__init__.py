@@ -14,6 +14,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "SCHEMA_PATH",
     "EXAMPLES_DIR",
+    "GitError",
     "IRBuilder",
     "CompatibilityChange",
     "CompatibilityReport",
@@ -22,6 +23,7 @@ __all__ = [
     "classify_changes",
     "check_staleness",
     "diff_ir",
+    "load_ir_from_commit",
     "load_schema",
 ]
 
@@ -71,4 +73,12 @@ def __getattr__(name: str) -> Any:
         from protean.ir.staleness import check_staleness
 
         return check_staleness
+    if name == "GitError":
+        from protean.ir.git import GitError
+
+        return GitError
+    if name == "load_ir_from_commit":
+        from protean.ir.git import load_ir_from_commit
+
+        return load_ir_from_commit
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

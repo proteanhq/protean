@@ -14,6 +14,13 @@ Usage::
     # Diff live domain against a saved baseline
     protean ir diff --domain=my_app --right=baseline.json
 
+    # Auto-baseline: diff live domain against .protean/ir.json
+    protean ir diff --domain=my_app
+
+    # Diff live domain against IR from a git commit
+    protean ir diff --domain=my_app --base=HEAD
+    protean ir diff --domain=my_app --base=main
+
     # Check whether the materialized IR is fresh or stale
     protean ir check --domain=my_domain
     protean ir check --domain=my_domain --dir=.protean --format=json
@@ -89,9 +96,31 @@ def diff(
         typer.Option(
             "--domain",
             "-d",
-            help="Load live domain IR as the left side (alternative to --left)",
+            help=(
+                "Domain module path. With --base or alone: live domain is the "
+                "'current' (right) side. With --right: live domain is the "
+                "'baseline' (left) side."
+            ),
         ),
     ] = "",
+    base: Annotated[
+        str,
+        typer.Option(
+            "--base",
+            "-b",
+            help=(
+                "Git commit/branch/tag to load the baseline .protean/ir.json from "
+                "(e.g. HEAD, main, v0.15.0). Requires --domain."
+            ),
+        ),
+    ] = "",
+    dir: Annotated[
+        str,
+        typer.Option(
+            "--dir",
+            help="Path to the .protean/ directory (default: .protean)",
+        ),
+    ] = ".protean",
     format: Annotated[
         str,
         typer.Option(
@@ -101,38 +130,125 @@ def diff(
         ),
     ] = "text",
 ) -> None:
-    """Compare two IR snapshots and show differences."""
-    from protean.ir.diff import diff_ir
+    """Compare two IR snapshots and show differences.
 
-    # Validate arguments
-    if not right:
-        print("[red]Error:[/red] --right is required")
+    Modes of operation:
+
+    \b
+    1. Explicit files:  --left baseline.json --right current.json
+    2. Domain vs file:  --domain my_app --right current.json
+    3. Auto-baseline:   --domain my_app  (loads .protean/ir.json as baseline)
+    4. Git baseline:    --domain my_app --base HEAD
+
+    Exit codes (CI-friendly):
+      0 — no changes detected
+      1 — breaking changes found
+      2 — non-breaking changes only
+    """
+    from protean.ir.diff import classify_changes, diff_ir
+
+    # ------------------------------------------------------------------ #
+    # Validate argument combinations                                      #
+    # ------------------------------------------------------------------ #
+    if base and not domain:
+        print("[red]Error:[/red] --base requires --domain")
+        raise typer.Abort()
+
+    if base and (left or right):
+        print("[red]Error:[/red] --base cannot be combined with --left/--right")
         raise typer.Abort()
 
     if left and domain:
         print("[red]Error:[/red] --left and --domain are mutually exclusive")
         raise typer.Abort()
 
+    if left and not right:
+        print("[red]Error:[/red] --right is required when using --left")
+        raise typer.Abort()
+
     if not left and not domain:
         print("[red]Error:[/red] provide either --left or --domain")
         raise typer.Abort()
 
-    # Load left IR
-    if domain:
-        left_ir = load_domain_ir(domain)
+    # ------------------------------------------------------------------ #
+    # Load IRs based on mode                                              #
+    # ------------------------------------------------------------------ #
+    if base:
+        # Mode 4: git baseline — load IR from a commit
+        baseline_ir = _load_ir_from_git(base, dir)
+        current_ir = load_domain_ir(domain)
+    elif domain and not right:
+        # Mode 3: auto-baseline — load .protean/ir.json as baseline
+        baseline_ir = _load_auto_baseline(dir)
+        current_ir = load_domain_ir(domain)
+    elif domain and right:
+        # Mode 2: domain (left) vs file (right)
+        baseline_ir = load_domain_ir(domain)
+        current_ir = load_ir_file(right)
     else:
-        left_ir = load_ir_file(left)
+        # Mode 1: explicit files
+        baseline_ir = load_ir_file(left)
+        current_ir = load_ir_file(right)
 
-    # Load right IR
-    right_ir = load_ir_file(right)
-
-    # Compute diff
-    result = diff_ir(left_ir, right_ir)
+    # ------------------------------------------------------------------ #
+    # Compute diff and classify                                           #
+    # ------------------------------------------------------------------ #
+    result = diff_ir(baseline_ir, current_ir)
+    report = classify_changes(result, baseline_ir, current_ir)
 
     if format == "json":
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
         _print_diff_text(result)
+
+    # ------------------------------------------------------------------ #
+    # CI exit codes                                                       #
+    # ------------------------------------------------------------------ #
+    summary = result.get("summary", {})
+    if not summary.get("has_changes", False):
+        raise typer.Exit(code=0)
+    elif report.is_breaking or summary.get("has_breaking_changes", False):
+        raise typer.Exit(code=1)
+    else:
+        raise typer.Exit(code=2)
+
+
+def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:
+    """Load .protean/ir.json from a git commit, or abort on error."""
+    from pathlib import PurePosixPath
+
+    from protean.ir.git import GitError, load_ir_from_commit
+
+    ir_path = PurePosixPath(protean_dir, "ir.json").as_posix()
+    try:
+        return load_ir_from_commit(commit, ir_path)
+    except GitError as exc:
+        print(f"[red]Error:[/red] {exc}")
+        raise typer.Abort()
+
+
+def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
+    """Load .protean/ir.json from disk, or abort if not found."""
+    from pathlib import Path
+
+    from protean.ir.staleness import load_stored_ir
+
+    try:
+        stored = load_stored_ir(Path(protean_dir))
+    except ValueError as exc:
+        print(f"[red]Error:[/red] {exc}")
+        raise typer.Abort()
+
+    if stored is None:
+        print(
+            f"[red]Error:[/red] No materialized IR found in '{protean_dir}/ir.json'.\n"
+            "  Run [bold]protean ir show --domain <module> > "
+            f"{protean_dir}/ir.json[/bold] to generate one,\n"
+            "  or use --left/--right to specify files explicitly."
+        )
+        raise typer.Abort()
+    ir_dict, _ = stored
+    return ir_dict
 
 
 # ------------------------------------------------------------------
@@ -405,7 +521,9 @@ def _print_check_text(result: Any, protean_dir: str = ".protean") -> None:
         if result.domain_checksum:
             print(f"  checksum: {result.domain_checksum[:16]}…")
     elif result.status == StalenessStatus.STALE:
-        print("[yellow]IR is stale — domain has changed since last materialization.[/yellow]")
+        print(
+            "[yellow]IR is stale — domain has changed since last materialization.[/yellow]"
+        )
         if result.stored_checksum:
             print(f"  stored:  {result.stored_checksum[:16]}…")
         if result.domain_checksum:
