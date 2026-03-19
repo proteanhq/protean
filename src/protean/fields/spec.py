@@ -76,6 +76,8 @@ class FieldSpec:
         # Status transitions
         transitions: dict
         | None = None,  # For Status fields — {state: [allowed_targets]}
+        # Deprecation metadata
+        deprecated: str | dict | None = None,
     ) -> None:
         self.python_type = python_type
         self.field_kind = field_kind
@@ -98,6 +100,9 @@ class FieldSpec:
             self._normalize_transitions(transitions) if transitions else None
         )
         self._auto_generated = False
+        from protean.fields.base import normalize_field_deprecated
+
+        self.deprecated = normalize_field_deprecated(deprecated)
 
         # Warn if required=True with an explicit default
         if self.required and self.default is not _UNSET:
@@ -241,6 +246,8 @@ class FieldSpec:
             json_extra["_auto_generated"] = True
         if self.transitions is not None:
             json_extra["transitions"] = self.transitions
+        if self.deprecated is not None:
+            json_extra["_deprecated"] = self.deprecated
 
         if json_extra:
             kwargs["json_schema_extra"] = json_extra

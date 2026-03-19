@@ -78,6 +78,18 @@ class IRBuilder:
         }
 
     # ------------------------------------------------------------------
+    # Deprecation extraction
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_deprecated(cls: type) -> dict[str, str] | None:
+        """Return the normalized ``deprecated`` metadata from an element's meta_.
+
+        Returns ``None`` when the element is not deprecated (sparse IR).
+        """
+        return getattr(getattr(cls, "meta_", None), "deprecated", None)
+
+    # ------------------------------------------------------------------
     # Field extraction
     # ------------------------------------------------------------------
 
@@ -138,6 +150,13 @@ class IRBuilder:
             else:
                 # Unknown field type — skip
                 continue
+
+            # Deprecated — for non-ResolvedField types (ResolvedField handles
+            # this in _extract_resolved_field via the FieldSpec).
+            if not isinstance(field_obj, ResolvedField):
+                deprecated = getattr(field_obj, "deprecated", None)
+                if deprecated is not None:
+                    entry["deprecated"] = deprecated
 
             result[name] = dict(sorted(entry.items()))
 
@@ -207,6 +226,10 @@ class IRBuilder:
         # Transitions — from ResolvedField
         if getattr(field, "transitions", None) is not None:
             entry["transitions"] = field.transitions
+
+        # Deprecated — from FieldSpec
+        if spec is not None and getattr(spec, "deprecated", None) is not None:
+            entry["deprecated"] = spec.deprecated
 
         # Default — from FieldSpec for accurate representation
         if spec is not None:
@@ -350,6 +373,11 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
 
+        # Sparse: only emit deprecated when set
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         # Apply handlers (ES aggregates only)
         if cls.meta_.is_event_sourced:
             projections = getattr(cls, "_projections", {})
@@ -396,6 +424,10 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
 
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -433,6 +465,10 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
 
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -456,6 +492,10 @@ class IRBuilder:
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
         entry["__version__"] = getattr(cls, "__version__", 1)
+
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -483,6 +523,10 @@ class IRBuilder:
 
         if record.auto_generated:
             entry["auto_generated"] = True
+
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -531,6 +575,10 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
 
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -555,6 +603,10 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -582,6 +634,10 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
 
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -602,6 +658,10 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -633,6 +693,10 @@ class IRBuilder:
         if database is not None:
             entry["database"] = database
 
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -662,6 +726,10 @@ class IRBuilder:
         from protean.utils.reflection import _ID_FIELD_NAME
 
         entry: dict[str, Any] = {}
+
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -698,6 +766,10 @@ class IRBuilder:
         aggregates = getattr(cls.meta_, "aggregates", [])
         entry["aggregates"] = sorted(fqn(a) for a in aggregates) if aggregates else []
 
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -724,6 +796,10 @@ class IRBuilder:
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
 
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -745,6 +821,10 @@ class IRBuilder:
         from protean.utils import fqn
 
         entry: dict[str, Any] = {}
+
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -830,6 +910,10 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
 
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -855,6 +939,10 @@ class IRBuilder:
         from protean.utils.reflection import _ID_FIELD_NAME
 
         entry: dict[str, Any] = {}
+
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -906,6 +994,10 @@ class IRBuilder:
 
         entry: dict[str, Any] = {}
         entry["broker"] = getattr(cls.meta_, "broker", "default")
+
+        deprecated = self._extract_deprecated(cls)
+        if deprecated is not None:
+            entry["deprecated"] = deprecated
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -1165,14 +1257,16 @@ class IRBuilder:
         for record in registry._elements.get("EVENT", {}).values():
             cls = record.cls
             if getattr(cls.meta_, "published", False):
-                published_events.append(
-                    {
-                        "fields": self._extract_fields(cls),
-                        "fqn": fqn(cls),
-                        "type": getattr(cls, "__type__", ""),
-                        "version": getattr(cls, "__version__", 1),
-                    }
-                )
+                contract: dict[str, Any] = {
+                    "fields": self._extract_fields(cls),
+                    "fqn": fqn(cls),
+                    "type": getattr(cls, "__type__", ""),
+                    "version": getattr(cls, "__version__", 1),
+                }
+                deprecated = self._extract_deprecated(cls)
+                if deprecated is not None:
+                    contract["deprecated"] = deprecated
+                published_events.append(contract)
 
         return {"events": sorted(published_events, key=lambda e: e.get("type", ""))}
 
@@ -1193,6 +1287,7 @@ class IRBuilder:
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
         self._diagnose_event_without_data(ir)
+        self._diagnose_deprecated_elements(ir)
         # Custom lint rules from config
         self._run_custom_lint_rules(ir)
 
@@ -1477,6 +1572,96 @@ class IRBuilder:
                             ),
                         }
                     )
+
+    def _diagnose_deprecated_elements(self, ir: dict[str, Any]) -> None:
+        """DEPRECATED_ELEMENT: elements or fields marked as deprecated.
+
+        Reports deprecated elements and deprecated fields as INFO-level
+        diagnostics so that ``protean check`` surfaces them.
+        """
+        _subsections = (
+            "entities",
+            "value_objects",
+            "commands",
+            "events",
+            "command_handlers",
+            "event_handlers",
+            "repositories",
+            "database_models",
+            "application_services",
+        )
+
+        # Scan clusters (aggregates + sub-elements)
+        for cluster in ir["clusters"].values():
+            self._check_element_deprecated(cluster["aggregate"])
+            for section in _subsections:
+                for element in cluster.get(section, {}).values():
+                    self._check_element_deprecated(element)
+
+        # Scan projections
+        for proj_entry in ir["projections"].values():
+            self._check_element_deprecated(proj_entry["projection"])
+            for section in ("projectors", "queries", "query_handlers"):
+                for element in proj_entry.get(section, {}).values():
+                    self._check_element_deprecated(element)
+
+        # Scan flows
+        for section in ("domain_services", "process_managers", "subscribers"):
+            for element in ir["flows"].get(section, {}).values():
+                self._check_element_deprecated(element)
+
+    def _check_element_deprecated(self, element: dict[str, Any]) -> None:
+        """Emit DEPRECATED_ELEMENT / DEPRECATED_FIELD diagnostics."""
+        name = element.get("name", element.get("fqn", "unknown"))
+        fqn_val = element.get("fqn", name)
+
+        # Element-level deprecation
+        deprecated = element.get("deprecated")
+        if deprecated is not None:
+            since = deprecated.get("since", "?")
+            removal = deprecated.get("removal")
+            if removal:
+                msg = (
+                    f"`{name}` is deprecated since v{since}, "
+                    f"scheduled for removal in v{removal}"
+                )
+            else:
+                msg = f"`{name}` is deprecated since v{since}"
+
+            self._diagnostics.append(
+                {
+                    "code": "DEPRECATED_ELEMENT",
+                    "element": fqn_val,
+                    "level": "info",
+                    "message": msg,
+                }
+            )
+
+        # Field-level deprecation (independent of element deprecation)
+        for field_name, field_info in element.get("fields", {}).items():
+            field_deprecated = field_info.get("deprecated")
+            if field_deprecated is not None:
+                f_since = field_deprecated.get("since", "?")
+                f_removal = field_deprecated.get("removal")
+                if f_removal:
+                    f_msg = (
+                        f"Field `{name}.{field_name}` is deprecated since "
+                        f"v{f_since}, scheduled for removal in v{f_removal}"
+                    )
+                else:
+                    f_msg = (
+                        f"Field `{name}.{field_name}` is deprecated since "
+                        f"v{f_since}"
+                    )
+                self._diagnostics.append(
+                    {
+                        "code": "DEPRECATED_FIELD",
+                        "element": fqn_val,
+                        "field": field_name,
+                        "level": "info",
+                        "message": f_msg,
+                    }
+                )
 
     # ------------------------------------------------------------------
     # Custom lint rules

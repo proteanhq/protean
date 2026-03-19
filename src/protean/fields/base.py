@@ -14,6 +14,40 @@ MISSING_ERROR_MESSAGE = (
 )
 
 
+def normalize_field_deprecated(
+    value: str | dict | None,
+) -> dict[str, str] | None:
+    """Normalize the ``deprecated`` field parameter.
+
+    Accepts:
+    - ``None`` / ``False`` → ``None``
+    - ``"0.15"`` (shorthand) → ``{"since": "0.15"}``
+    - ``{"since": "0.15"}`` → as-is
+    - ``{"since": "0.15", "removal": "0.18"}`` → as-is
+
+    Raises :class:`ValueError` on invalid input.
+    """
+    if value is None or value is False:
+        return None
+    if isinstance(value, str):
+        return {"since": value}
+    if isinstance(value, dict):
+        if "since" not in value:
+            raise ValueError(
+                "The `deprecated` parameter must include a 'since' key "
+                f"(got {value!r})"
+            )
+        result: dict[str, str] = {"since": str(value["since"])}
+        if "removal" in value:
+            result["removal"] = str(value["removal"])
+        return result
+    raise ValueError(
+        f"Invalid `deprecated` value: {value!r}. "
+        "Expected a version string or dict with 'since' "
+        "(and optional 'removal') keys."
+    )
+
+
 class FieldBase:
     """Base class for all Protean fields.
 
@@ -76,12 +110,14 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         choices: enum.Enum = None,
         validators: Iterable = (),
         error_messages: dict = None,
+        deprecated: str | dict | None = None,
     ):
         # Pass to FieldDescriptorMixin for initialization
         super().__init__(referenced_as=referenced_as, description=description)
 
         self.identifier = identifier
         self.default = default
+        self.deprecated = normalize_field_deprecated(deprecated)
 
         # Indicates if field values need to be unique within the repository
         # always True for identifier field
@@ -234,6 +270,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
             choices=self.choices,
             validators=self._validators,
             error_messages=self.error_messages,
+            deprecated=self.deprecated,
         )
 
     def _load(self, value: Any):

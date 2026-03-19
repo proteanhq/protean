@@ -82,3 +82,7 @@ class OptionsMixin:
         for key, default in cls._default_options():
             if not hasattr(cls.meta_, key):
                 setattr(cls.meta_, key, default)
+
+        # Universal option: `deprecated` defaults to None for all elements
+        if not hasattr(cls.meta_, "deprecated"):
+            cls.meta_.deprecated = None

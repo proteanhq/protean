@@ -161,8 +161,9 @@ def test_retry_with_multiple_messages(broker):
     consumer_group = "test_consumer_group"
     messages = [{"id": i} for i in range(3)]
 
-    # Configure retry
-    broker._retry_delay = 0.02
+    # Configure retry with a delay large enough that NACKed messages
+    # are never ready for retry before the explicit sleep below.
+    broker._retry_delay = 0.5
 
     # Publish messages
     identifiers = []
@@ -180,7 +181,7 @@ def test_retry_with_multiple_messages(broker):
     assert result is None
 
     # Wait for retry delay
-    time.sleep(0.03)
+    time.sleep(0.6)
 
     # All messages should be available for retry
     retried = []
@@ -198,8 +199,8 @@ def test_retry_with_mixed_ack_nack(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
 
-    # Configure retry
-    broker._retry_delay = 0.02
+    # Configure retry with a delay large enough to avoid race conditions on slow CI
+    broker._retry_delay = 0.5
 
     # Publish messages
     broker.publish(stream, {"id": 1})
@@ -221,7 +222,7 @@ def test_retry_with_mixed_ack_nack(broker):
     assert result is None
 
     # Wait for retry
-    time.sleep(0.03)
+    time.sleep(0.6)
 
     # Only NACKed message should be available
     result = broker.get_next(stream, consumer_group)

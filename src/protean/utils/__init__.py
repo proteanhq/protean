@@ -376,6 +376,37 @@ def _track_id_field(cls: type) -> None:
 _T = TypeVar("_T")
 
 
+def _normalize_deprecated(value: Any) -> dict[str, str] | None:
+    """Normalize the ``deprecated`` decorator option.
+
+    Accepts:
+    - ``None`` / ``False`` → ``None``
+    - ``"0.15"`` (shorthand) → ``{"since": "0.15"}``
+    - ``{"since": "0.15"}`` → as-is
+    - ``{"since": "0.15", "removal": "0.18"}`` → as-is
+
+    Raises :class:`ConfigurationError` on invalid input.
+    """
+    if value is None or value is False:
+        return None
+    if isinstance(value, str):
+        return {"since": value}
+    if isinstance(value, dict):
+        if "since" not in value:
+            raise ConfigurationError(
+                "The `deprecated` option must include a 'since' key "
+                f"(got {value!r})"
+            )
+        result: dict[str, str] = {"since": str(value["since"])}
+        if "removal" in value:
+            result["removal"] = str(value["removal"])
+        return result
+    raise ConfigurationError(
+        f"Invalid `deprecated` value: {value!r}. "
+        "Expected a version string or dict with 'since' (and optional 'removal') keys."
+    )
+
+
 def derive_element_class(
     element_cls: type[_T],
     base_cls: type,
@@ -384,6 +415,11 @@ def derive_element_class(
     from pydantic import BaseModel
 
     from protean.utils.container import Options
+
+    # Extract and normalize the universal `deprecated` option before
+    # checking against element-specific known options.
+    raw_deprecated = opts.pop("deprecated", None)
+    normalized_deprecated = _normalize_deprecated(raw_deprecated)
 
     # Ensure options being passed in are known
     known_options = [name for (name, _) in base_cls._default_options()]
@@ -436,6 +472,10 @@ def derive_element_class(
 
     # Assign default options for remaining items
     element_cls._set_defaults()
+
+    # Set the universal `deprecated` option on meta_ (after _set_defaults
+    # so it doesn't interfere with element-specific default logic).
+    element_cls.meta_.deprecated = normalized_deprecated
 
     # Re-trigger identity field tracking when a previously-abstract class
     # is registered as concrete (e.g. via domain.register()).  During normal

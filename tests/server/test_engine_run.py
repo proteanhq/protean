@@ -135,6 +135,6 @@ def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog):
     with caplog.at_level(logging.DEBUG, logger="protean.server.engine"):
         engine.run()
 
-    # Verify all 10 cycles ran (task was still running through all cycles)
+    # Verify all 50 cycles ran (task was still running through all cycles)
     cycle_msgs = [r.message for r in caplog.records if "Test mode cycle" in r.message]
-    assert len(cycle_msgs) == 10
+    assert len(cycle_msgs) == 50

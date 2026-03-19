@@ -336,9 +336,6 @@ def test_get_retry_count_exception_handling(broker):
     assert count == 0
 
 
-@pytest.mark.xfail(
-    reason="Flaky — cleanup_stale_messages may raise on invalid in-flight data"
-)
 def test_cleanup_stale_messages_exception_in_processing(broker):
     """Test cleanup_stale_messages with processing errors."""
     consumer_group = "test_consumer_group"
