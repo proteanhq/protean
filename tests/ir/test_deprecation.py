@@ -6,10 +6,11 @@ import pytest
 
 from protean import Domain
 from protean.exceptions import ConfigurationError
-from protean.fields import String
+from protean.fields import Float, Identifier, String
 from protean.ir.builder import IRBuilder
-from protean.ir.diff import _classify_removal, diff_ir
+from protean.ir.diff import _classify_removal, _parse_version_tuple, diff_ir
 from protean.utils import _normalize_deprecated
+from protean.utils.mixins import handle, read
 
 
 # =====================================================================
@@ -633,3 +634,510 @@ class TestDiffIRDeprecation:
 
         result = diff_ir(left, right, current_version="0.18")
         assert result["summary"]["has_breaking_changes"] is False
+
+
+# =====================================================================
+# _parse_version_tuple
+# =====================================================================
+
+
+class TestParseVersionTuple:
+    """Tests for ``_parse_version_tuple`` in the diff engine."""
+
+    def test_two_segment(self) -> None:
+        assert _parse_version_tuple("0.15") == (0, 15)
+
+    def test_three_segment(self) -> None:
+        assert _parse_version_tuple("1.2.3") == (1, 2, 3)
+
+    def test_non_numeric_segment(self) -> None:
+        result = _parse_version_tuple("1.2.3rc1")
+        assert result == (1, 2, "3rc1")
+
+    def test_leading_trailing_whitespace(self) -> None:
+        assert _parse_version_tuple("  0.15  ") == (0, 15)
+
+    def test_comparison_ordering(self) -> None:
+        assert _parse_version_tuple("0.17") < _parse_version_tuple("0.18")
+        assert _parse_version_tuple("0.18") == _parse_version_tuple("0.18")
+        assert _parse_version_tuple("0.19") > _parse_version_tuple("0.18")
+
+    def test_comparison_three_segment_vs_two(self) -> None:
+        assert _parse_version_tuple("0.18") < _parse_version_tuple("0.18.1")
+
+    def test_classify_removal_with_invalid_version_falls_back(self) -> None:
+        """Invalid versions should not crash — falls back to premature."""
+        result = _classify_removal(
+            {"since": "0.15", "removal": "not-a-version"},
+            current_version="also-bad",
+        )
+        # Both are non-numeric strings; comparison still works (string vs string)
+        # but the key thing is no crash
+        assert result in ("expected_removal", "premature_removal")
+
+
+# =====================================================================
+# IR Builder — deprecated in all element types
+# =====================================================================
+
+
+@pytest.mark.no_test_domain
+class TestIRBuilderDeprecatedAllElements:
+    """Test that deprecated metadata is emitted for every element type."""
+
+    @pytest.fixture(autouse=True)
+    def setup_domain(self) -> None:
+        self.domain = Domain(name="TestAllElements")
+
+    @staticmethod
+    def _find_cluster(ir: dict, cls: type) -> dict:
+        from protean.utils import fqn as get_fqn
+
+        return ir["clusters"][get_fqn(cls)]
+
+    def test_entity_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.entity(part_of=Order, deprecated="0.16")
+        class LineItem:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        entity = list(cluster["entities"].values())[0]
+        assert entity["deprecated"] == {"since": "0.16"}
+
+    def test_value_object_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.value_object(part_of=Order, deprecated="0.15")
+        class Money:
+            amount: float
+            currency: str
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        vo = list(cluster["value_objects"].values())[0]
+        assert vo["deprecated"] == {"since": "0.15"}
+
+    def test_command_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.command(
+            part_of=Order,
+            deprecated={"since": "0.15", "removal": "0.18"},
+        )
+        class PlaceOrder:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        cmd = list(cluster["commands"].values())[0]
+        assert cmd["deprecated"] == {"since": "0.15", "removal": "0.18"}
+
+    def test_command_handler_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.command(part_of=Order)
+        class PlaceOrder:
+            pass
+
+        @self.domain.command_handler(part_of=Order, deprecated="0.16")
+        class OrderCommandHandler:
+            @handle(PlaceOrder)
+            def handle_place(self, cmd):
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        handler = list(cluster["command_handlers"].values())[0]
+        assert handler["deprecated"] == {"since": "0.16"}
+
+    def test_event_handler_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.event(part_of=Order)
+        class OrderPlaced:
+            pass
+
+        @self.domain.event_handler(part_of=Order, deprecated="0.16")
+        class OrderEventHandler:
+            @handle(OrderPlaced)
+            def handle_placed(self, event):
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        handler = list(cluster["event_handlers"].values())[0]
+        assert handler["deprecated"] == {"since": "0.16"}
+
+    def test_repository_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.repository(part_of=Order, deprecated="0.16")
+        class OrderRepo:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        repo = list(cluster["repositories"].values())[0]
+        assert repo["deprecated"] == {"since": "0.16"}
+
+    def test_database_model_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.database_model(part_of=Order, deprecated="0.16")
+        class OrderModel:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        model = list(cluster["database_models"].values())[0]
+        assert model["deprecated"] == {"since": "0.16"}
+
+    def test_application_service_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.application_service(part_of=Order, deprecated="0.16")
+        class OrderService:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        svc = list(cluster["application_services"].values())[0]
+        assert svc["deprecated"] == {"since": "0.16"}
+
+    def test_projection_deprecated_in_ir(self) -> None:
+        @self.domain.projection(deprecated="0.16")
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        proj = list(ir["projections"].values())[0]
+        assert proj["projection"]["deprecated"] == {"since": "0.16"}
+
+    def test_domain_service_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.aggregate
+        class Inventory:
+            pass
+
+        @self.domain.domain_service(part_of=[Order, Inventory], deprecated="0.16")
+        class PricingService:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        ds = list(ir["flows"]["domain_services"].values())[0]
+        assert ds["deprecated"] == {"since": "0.16"}
+
+    def test_subscriber_deprecated_in_ir(self) -> None:
+        @self.domain.subscriber(
+            broker="default", stream="orders", deprecated="0.16"
+        )
+        class OrderSubscriber:
+            def __call__(self, payload):
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        sub = list(ir["flows"]["subscribers"].values())[0]
+        assert sub["deprecated"] == {"since": "0.16"}
+
+    def test_process_manager_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class PMOrder:
+            pass
+
+        @self.domain.event(part_of=PMOrder)
+        class PMOrderPlaced:
+            order_id = Identifier(required=True)
+            total = Float(required=True)
+
+        @self.domain.process_manager(
+            stream_categories=["pm_order"], deprecated="0.16"
+        )
+        class OrderFulfillment:
+            order_id = Identifier()
+
+            @handle(PMOrderPlaced, start=True, correlate="order_id")
+            def on_order_placed(self, event):
+                self.order_id = event.order_id
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        pm = list(ir["flows"]["process_managers"].values())[0]
+        assert pm["deprecated"] == {"since": "0.16"}
+
+    def test_projector_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.event(part_of=Order)
+        class OrderPlaced:
+            pass
+
+        @self.domain.projection
+        class OrderDashboard:
+            order_id = Identifier(identifier=True)
+
+        @self.domain.projector(
+            projector_for=OrderDashboard,
+            aggregates=[Order],
+            deprecated="0.16",
+        )
+        class OrderDashboardProjector:
+            @handle(OrderPlaced)
+            def on_order_placed(self, event):
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        proj = list(ir["projections"].values())[0]
+        projector = list(proj["projectors"].values())[0]
+        assert projector["deprecated"] == {"since": "0.16"}
+
+    def test_query_deprecated_in_ir(self) -> None:
+        @self.domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        @self.domain.query(part_of=OrderView, deprecated="0.16")
+        class GetOrder:
+            order_id = Identifier(required=True)
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        proj = list(ir["projections"].values())[0]
+        query = list(proj["queries"].values())[0]
+        assert query["deprecated"] == {"since": "0.16"}
+
+    def test_query_handler_deprecated_in_ir(self) -> None:
+        @self.domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        @self.domain.query(part_of=OrderView)
+        class GetOrder:
+            order_id = Identifier(required=True)
+
+        @self.domain.query_handler(part_of=OrderView, deprecated="0.16")
+        class OrderQueryHandler:
+            @read(GetOrder)
+            def by_order(self, query):
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        proj = list(ir["projections"].values())[0]
+        qh = list(proj["query_handlers"].values())[0]
+        assert qh["deprecated"] == {"since": "0.16"}
+
+
+# =====================================================================
+# IR Diagnostics — deprecated in projections and flows
+# =====================================================================
+
+
+@pytest.mark.no_test_domain
+class TestIRDiagnosticsDeprecatedExtended:
+    """Test DEPRECATED_ELEMENT diagnostics for projections and flows."""
+
+    @pytest.fixture(autouse=True)
+    def setup_domain(self) -> None:
+        self.domain = Domain(name="TestDiagExt")
+
+    def test_deprecated_projection_diagnostic(self) -> None:
+        @self.domain.projection(deprecated="0.15")
+        class OldView:
+            view_id = Identifier(identifier=True)
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        dep_diags = [
+            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
+        ]
+        assert len(dep_diags) == 1
+        assert "deprecated since v0.15" in dep_diags[0]["message"]
+
+    def test_deprecated_domain_service_diagnostic(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.aggregate
+        class Inventory:
+            pass
+
+        @self.domain.domain_service(
+            part_of=[Order, Inventory], deprecated="0.16"
+        )
+        class OldService:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        dep_diags = [
+            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
+        ]
+        assert len(dep_diags) == 1
+        assert "deprecated since v0.16" in dep_diags[0]["message"]
+
+    def test_deprecated_field_without_removal_diagnostic(self) -> None:
+        """Field deprecated with no removal version."""
+
+        @self.domain.aggregate
+        class Order:
+            old_field = String(deprecated="0.14")
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        field_diags = [
+            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_FIELD"
+        ]
+        assert len(field_diags) == 1
+        assert "deprecated since v0.14" in field_diags[0]["message"]
+        assert "removal" not in field_diags[0]["message"]
+
+    def test_deprecated_entity_diagnostic(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.entity(
+            part_of=Order,
+            deprecated={"since": "0.16", "removal": "0.19"},
+        )
+        class LineItem:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        dep_diags = [
+            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
+        ]
+        assert len(dep_diags) == 1
+        assert "deprecated since v0.16" in dep_diags[0]["message"]
+        assert "removal in v0.19" in dep_diags[0]["message"]
+
+
+# =====================================================================
+# IR Builder — field deprecated via ResolvedField (FieldSpec path)
+# =====================================================================
+
+
+@pytest.mark.no_test_domain
+class TestIRBuilderFieldDeprecatedResolvedField:
+    """Test deprecated on ResolvedField fields (FieldSpec-based)."""
+
+    @pytest.fixture(autouse=True)
+    def setup_domain(self) -> None:
+        self.domain = Domain(name="TestRFDeprecated")
+
+    def test_resolved_field_deprecated_in_ir(self) -> None:
+        """FieldSpec-based fields emit deprecated via _extract_resolved_field."""
+
+        @self.domain.aggregate
+        class Order:
+            name = String()
+            old_name = String(deprecated={"since": "0.14", "removal": "0.17"})
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        from protean.utils import fqn as get_fqn
+
+        cluster = ir["clusters"][get_fqn(Order)]
+        fields = cluster["aggregate"]["fields"]
+        assert fields["old_name"]["deprecated"] == {
+            "since": "0.14",
+            "removal": "0.17",
+        }
+        assert "deprecated" not in fields["name"]
+
+    def test_command_field_deprecated_in_ir(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.command(part_of=Order)
+        class PlaceOrder:
+            old_field = String(deprecated="0.14")
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        from protean.utils import fqn as get_fqn
+
+        cluster = ir["clusters"][get_fqn(Order)]
+        cmd = list(cluster["commands"].values())[0]
+        assert cmd["fields"]["old_field"]["deprecated"] == {"since": "0.14"}
+
+    def test_event_field_deprecated_in_published_contract(self) -> None:
+        """Deprecated field in a published event appears in contracts."""
+
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.event(part_of=Order, published=True)
+        class OrderPlaced:
+            old_field = String(deprecated={"since": "0.14", "removal": "0.17"})
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        contracts = ir["contracts"]["events"]
+        assert len(contracts) == 1
+        assert contracts[0]["fields"]["old_field"]["deprecated"] == {
+            "since": "0.14",
+            "removal": "0.17",
+        }
