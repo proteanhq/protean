@@ -109,6 +109,10 @@ The `checksum` field (SHA-256 of the canonical JSON) provides a quick
 staleness check -- if the checksum hasn't changed, the domain structure
 hasn't changed.
 
+See the [Compatibility Checking](../compatibility-checking.md) guide for
+how to use IR diffing, pre-commit hooks, and CI integration to detect
+breaking changes automatically.
+
 ---
 
 ## The `$schema` URI

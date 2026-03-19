@@ -139,3 +139,4 @@ domain = Domain(
 - [Object Model](../../reference/domain-elements/object-model.md) - Understand the common structure and traits shared by all domain elements
 - [Inspecting the IR](./inspecting-the-ir.md) - Generate and explore the domain's Intermediate Representation
 - [Schema Generation](./schema-generation.md) - Generate JSON Schema files for domain elements
+- [Compatibility Checking](../compatibility-checking.md) - Detect breaking changes with IR diffing, hooks, and CI

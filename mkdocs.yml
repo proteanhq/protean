@@ -258,6 +258,8 @@ nav:
       - guides/server/external-event-dispatch.md
     - Multi-Domain Applications:
       - guides/multi-domain-applications.md
+    - Compatibility Checking:
+      - guides/compatibility-checking.md
     - Test Your Application:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md

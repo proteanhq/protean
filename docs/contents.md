@@ -174,6 +174,7 @@ specific area.
 
 ### Test Your Application
 
+- [Compatibility Checking](./guides/compatibility-checking.md) -- Detect breaking changes to your domain model with IR diffing, pre-commit hooks, and CI integration.
 - [Testing Strategy](./guides/testing/index.md) -- Layered testing approach with fast in-memory adapters.
 - [Domain Model Tests](./guides/testing/domain-model-tests.md) -- Unit tests for aggregates, entities, value objects, and invariants.
 - [Application Tests](./guides/testing/application-tests.md) -- Validate commands, handlers, and services.

@@ -81,6 +81,8 @@ telemetry = [
 
 [project.scripts]
 protean = "protean.cli:app"
+protean-check-staleness = "protean.cli.hooks:check_staleness_hook"
+protean-check-compat = "protean.cli.hooks:check_compat_hook"
 
 [project.entry-points."protean.brokers"]
 inline = "protean.adapters.broker.inline:register"

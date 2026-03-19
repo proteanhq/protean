@@ -2,13 +2,15 @@
 
 Public API::
 
-    from protean.ir.diff import diff_ir
+    from protean.ir.diff import diff_ir, classify_changes
 
     result = diff_ir(left_ir, right_ir)
+    report = classify_changes(result, left_ir, right_ir)
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -675,3 +677,304 @@ def _build_summary(
 def _prune_empty(d: dict[str, Any]) -> dict[str, Any]:
     """Remove keys whose values are empty dicts, lists, or None."""
     return {k: v for k, v in d.items() if v}
+
+
+# ------------------------------------------------------------------
+# Compatibility classification
+# ------------------------------------------------------------------
+
+_PERSISTED_CLUSTER_SUBSECTIONS: tuple[str, ...] = (
+    "entities",
+    "value_objects",
+    "commands",
+    "events",
+    "database_models",
+)
+
+_SECTION_TO_ELEMENT_TYPE: dict[str, str] = {
+    "entities": "ENTITY",
+    "value_objects": "VALUE_OBJECT",
+    "commands": "COMMAND",
+    "events": "EVENT",
+    "database_models": "DATABASE_MODEL",
+}
+
+
+@dataclass
+class CompatibilityChange:
+    """A single entry in a compatibility report."""
+
+    severity: str  # "breaking" or "safe"
+    element_fqn: str
+    change_type: str
+    message: str
+
+
+@dataclass
+class CompatibilityReport:
+    """Report of compatibility changes between two IR snapshots."""
+
+    breaking_changes: list[CompatibilityChange] = field(default_factory=list)
+    safe_changes: list[CompatibilityChange] = field(default_factory=list)
+
+    @property
+    def is_breaking(self) -> bool:
+        """Return True if there are any breaking changes."""
+        return bool(self.breaking_changes)
+
+
+def classify_changes(
+    diff_result: dict[str, Any],
+    left_ir: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> CompatibilityReport:
+    """Classify persisted-schema changes in a diff result as breaking or safe.
+
+    Walks the ``clusters`` and ``projections`` sections of *diff_result* and
+    applies the following ruleset to each persisted/serialized element
+    (aggregates, entities, value objects, commands, events, database models,
+    and projections).  Non-persisted runtime sections (command_handlers,
+    event_handlers, repositories, application_services, flows) are not
+    classified.
+
+    Rules:
+
+    - Add optional field (no ``required`` flag, or has ``default``): safe
+    - Add required field with a ``default`` value: safe
+    - Add required field without a ``default``: breaking
+    - Remove field from any persisted element: breaking
+    - Change field type: breaking
+    - Remove an element: breaking
+    - Add a new element: safe
+    - Visibility public → internal (``published: True`` → absent): breaking
+    - Visibility internal → public (absent → ``published: True``): safe
+    - Change ``__type__`` string: breaking
+    """
+    report = CompatibilityReport()
+
+    _classify_clusters(diff_result.get("clusters", {}), report)
+    _classify_projections(diff_result.get("projections", {}), report)
+
+    return report
+
+
+def _classify_clusters(
+    clusters_diff: dict[str, Any],
+    report: CompatibilityReport,
+) -> None:
+    for fqn in clusters_diff.get("added", {}):
+        report.safe_changes.append(
+            CompatibilityChange(
+                severity="safe",
+                element_fqn=fqn,
+                change_type="element_added",
+                message=f"AGGREGATE '{fqn}' was added",
+            )
+        )
+
+    for fqn in clusters_diff.get("removed", {}):
+        report.breaking_changes.append(
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="element_removed",
+                message=f"AGGREGATE '{fqn}' was removed",
+            )
+        )
+
+    for cluster_fqn, cluster_delta in clusters_diff.get("changed", {}).items():
+        agg_delta = cluster_delta.get("aggregate", {})
+        if agg_delta:
+            _classify_element_delta(agg_delta, cluster_fqn, "AGGREGATE", report)
+
+        for section in _PERSISTED_CLUSTER_SUBSECTIONS:
+            section_diff = cluster_delta.get(section, {})
+            if not section_diff:
+                continue
+            element_type = _SECTION_TO_ELEMENT_TYPE[section]
+
+            for fqn in section_diff.get("added", {}):
+                report.safe_changes.append(
+                    CompatibilityChange(
+                        severity="safe",
+                        element_fqn=fqn,
+                        change_type="element_added",
+                        message=f"{element_type} '{fqn}' was added",
+                    )
+                )
+
+            for fqn in section_diff.get("removed", {}):
+                report.breaking_changes.append(
+                    CompatibilityChange(
+                        severity="breaking",
+                        element_fqn=fqn,
+                        change_type="element_removed",
+                        message=f"{element_type} '{fqn}' was removed",
+                    )
+                )
+
+            for fqn, element_delta in section_diff.get("changed", {}).items():
+                _classify_element_delta(element_delta, fqn, element_type, report)
+
+
+def _classify_projections(
+    projections_diff: dict[str, Any],
+    report: CompatibilityReport,
+) -> None:
+    for fqn in projections_diff.get("added", {}):
+        report.safe_changes.append(
+            CompatibilityChange(
+                severity="safe",
+                element_fqn=fqn,
+                change_type="element_added",
+                message=f"PROJECTION '{fqn}' was added",
+            )
+        )
+
+    for fqn in projections_diff.get("removed", {}):
+        report.breaking_changes.append(
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="element_removed",
+                message=f"PROJECTION '{fqn}' was removed",
+            )
+        )
+
+    for proj_fqn, proj_delta in projections_diff.get("changed", {}).items():
+        proj_element_delta = proj_delta.get("projection", {})
+        if proj_element_delta:
+            _classify_element_delta(
+                proj_element_delta, proj_fqn, "PROJECTION", report
+            )
+
+
+def _classify_element_delta(
+    element_delta: dict[str, Any],
+    fqn: str,
+    element_type: str,
+    report: CompatibilityReport,
+) -> None:
+    _classify_field_changes(
+        element_delta.get("fields", {}), fqn, element_type, report
+    )
+    _classify_attribute_changes(element_delta.get("attributes", {}), fqn, report)
+
+
+def _classify_field_changes(
+    fields_diff: dict[str, Any],
+    fqn: str,
+    element_type: str,
+    report: CompatibilityReport,
+) -> None:
+    for field_name, field_dict in fields_diff.get("added", {}).items():
+        is_required = field_dict.get("required", False)
+        has_default = "default" in field_dict
+        if is_required and not has_default:
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="required_field_added",
+                    message=(
+                        f"Required field '{field_name}' added to {element_type} "
+                        f"'{fqn}' without a default value"
+                    ),
+                )
+            )
+        elif is_required and has_default:
+            report.safe_changes.append(
+                CompatibilityChange(
+                    severity="safe",
+                    element_fqn=fqn,
+                    change_type="required_field_with_default_added",
+                    message=(
+                        f"Required field '{field_name}' added to {element_type} "
+                        f"'{fqn}' with a default value"
+                    ),
+                )
+            )
+        else:
+            report.safe_changes.append(
+                CompatibilityChange(
+                    severity="safe",
+                    element_fqn=fqn,
+                    change_type="optional_field_added",
+                    message=(
+                        f"Optional field '{field_name}' added to "
+                        f"{element_type} '{fqn}'"
+                    ),
+                )
+            )
+
+    for field_name in fields_diff.get("removed", {}):
+        report.breaking_changes.append(
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="field_removed",
+                message=f"Field '{field_name}' removed from {element_type} '{fqn}'",
+            )
+        )
+
+    for field_name, field_changes in fields_diff.get("changed", {}).items():
+        if "type" in field_changes:
+            left_type = field_changes["type"].get("left")
+            right_type = field_changes["type"].get("right")
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="field_type_changed",
+                    message=(
+                        f"Field '{field_name}' type changed from '{left_type}' to "
+                        f"'{right_type}' in {element_type} '{fqn}'"
+                    ),
+                )
+            )
+
+
+def _classify_attribute_changes(
+    attrs_diff: dict[str, Any],
+    fqn: str,
+    report: CompatibilityReport,
+) -> None:
+    changed = attrs_diff.get("changed", {})
+
+    if "__type__" in changed:
+        type_change = changed["__type__"]
+        left_type = type_change.get("left")
+        right_type = type_change.get("right")
+        report.breaking_changes.append(
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="type_string_changed",
+                message=(
+                    f"Type string changed for '{fqn}': '{left_type}' → '{right_type}'"
+                ),
+            )
+        )
+
+    if "published" in changed:
+        pub_change = changed["published"]
+        left_published = pub_change.get("left")
+        right_published = pub_change.get("right")
+        if left_published and not right_published:
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="visibility_public_to_internal",
+                    message=f"'{fqn}' changed from public to internal (breaking change)",
+                )
+            )
+        elif not left_published and right_published:
+            report.safe_changes.append(
+                CompatibilityChange(
+                    severity="safe",
+                    element_fqn=fqn,
+                    change_type="visibility_internal_to_public",
+                    message=f"'{fqn}' changed from internal to public",
+                )
+            )
