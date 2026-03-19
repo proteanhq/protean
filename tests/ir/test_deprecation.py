@@ -183,6 +183,15 @@ class TestFieldDeprecated:
         with pytest.raises(ValueError, match="'since' key"):
             String(deprecated={"removal": "0.18"})
 
+    def test_deprecated_preserved_in_field_attribute(self) -> None:
+        """Verify deprecated metadata survives on the field object for IR extraction."""
+        from protean.fields.association import Reference
+
+        field = Reference(
+            "SomeClass", deprecated={"since": "0.15", "removal": "0.18"}
+        )
+        assert field.deprecated == {"since": "0.15", "removal": "0.18"}
+
 
 # =====================================================================
 # FieldSpec deprecated
@@ -210,7 +219,7 @@ class TestFieldSpecDeprecated:
         fs = FieldSpec(str, deprecated={"since": "0.15", "removal": "0.18"})
         kwargs = fs.resolve_field_kwargs()
         extra = kwargs.get("json_schema_extra", {})
-        assert extra.get("deprecated") == {"since": "0.15", "removal": "0.18"}
+        assert extra.get("_deprecated") == {"since": "0.15", "removal": "0.18"}
 
     def test_fieldspec_not_deprecated_no_extra(self) -> None:
         from protean.fields.spec import FieldSpec
@@ -218,7 +227,7 @@ class TestFieldSpecDeprecated:
         fs = FieldSpec(str)
         kwargs = fs.resolve_field_kwargs()
         extra = kwargs.get("json_schema_extra", {})
-        assert "deprecated" not in extra
+        assert "_deprecated" not in extra
 
 
 # =====================================================================

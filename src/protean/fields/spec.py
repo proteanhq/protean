@@ -247,7 +247,7 @@ class FieldSpec:
         if self.transitions is not None:
             json_extra["transitions"] = self.transitions
         if self.deprecated is not None:
-            json_extra["deprecated"] = self.deprecated
+            json_extra["_deprecated"] = self.deprecated
 
         if json_extra:
             kwargs["json_schema_extra"] = json_extra

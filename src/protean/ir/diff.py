@@ -378,6 +378,22 @@ def _diff_flows(
     return delta
 
 
+def _parse_version_tuple(version_str: str) -> tuple[int | str, ...]:
+    """Parse a version string into a comparable tuple.
+
+    Handles versions like ``"0.15"``, ``"0.15.0"``, ``"1.2.3"``.
+    Non-numeric segments are kept as strings so that pre-release
+    suffixes sort correctly (e.g. ``"rc1"`` < any int).
+    """
+    parts: list[int | str] = []
+    for segment in version_str.strip().split("."):
+        try:
+            parts.append(int(segment))
+        except ValueError:
+            parts.append(segment)
+    return tuple(parts)
+
+
 def _classify_removal(
     deprecated: dict[str, str] | None,
     current_version: str | None = None,
@@ -400,9 +416,9 @@ def _classify_removal(
 
     if current_version is not None:
         try:
-            from packaging.version import Version
-
-            if Version(current_version) >= Version(removal):
+            if _parse_version_tuple(current_version) >= _parse_version_tuple(
+                removal
+            ):
                 return "expected_removal"
         except Exception:
             pass

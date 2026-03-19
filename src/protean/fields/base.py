@@ -270,6 +270,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
             choices=self.choices,
             validators=self._validators,
             error_messages=self.error_messages,
+            deprecated=self.deprecated,
         )
 
     def _load(self, value: Any):
