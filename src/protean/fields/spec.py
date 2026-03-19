@@ -100,7 +100,9 @@ class FieldSpec:
             self._normalize_transitions(transitions) if transitions else None
         )
         self._auto_generated = False
-        self.deprecated = self._normalize_deprecated(deprecated)
+        from protean.fields.base import normalize_field_deprecated
+
+        self.deprecated = normalize_field_deprecated(deprecated)
 
         # Warn if required=True with an explicit default
         if self.required and self.default is not _UNSET:
@@ -323,38 +325,6 @@ class FieldSpec:
                 *extra_validators,
             ]
         return Annotated[resolved_type, pydantic_field]
-
-    @staticmethod
-    def _normalize_deprecated(
-        value: str | dict | None,
-    ) -> dict[str, str] | None:
-        """Normalize the ``deprecated`` field parameter.
-
-        Accepts:
-        - ``None`` → ``None``
-        - ``"0.15"`` (shorthand) → ``{"since": "0.15"}``
-        - ``{"since": "0.15"}`` → as-is
-        - ``{"since": "0.15", "removal": "0.18"}`` → as-is
-        """
-        if value is None or value is False:
-            return None
-        if isinstance(value, str):
-            return {"since": value}
-        if isinstance(value, dict):
-            if "since" not in value:
-                raise ValueError(
-                    "The `deprecated` parameter must include a 'since' key "
-                    f"(got {value!r})"
-                )
-            result: dict[str, str] = {"since": str(value["since"])}
-            if "removal" in value:
-                result["removal"] = str(value["removal"])
-            return result
-        raise ValueError(
-            f"Invalid `deprecated` value: {value!r}. "
-            "Expected a version string or dict with 'since' "
-            "(and optional 'removal') keys."
-        )
 
     @staticmethod
     def _normalize_transitions(transitions: dict) -> dict[str, list[str]]:
