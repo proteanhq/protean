@@ -887,11 +887,10 @@ class Engine:
                     # Run enough cycles to allow message propagation across
                     # all subscription types (events, commands, broker).
                     # Each cycle yields control so poll() tasks can process
-                    # their next batch.  Under CI load the original 3 cycles
-                    # (300 ms) was too tight — some subscriptions never got
-                    # scheduled before shutdown.  10 cycles (1 s) provides
-                    # adequate headroom while keeping tests fast.
-                    max_cycles = 10
+                    # their next batch.  Under heavy CI load, subscriptions
+                    # may need many cycles to all get scheduled and complete.
+                    # 50 cycles × 100ms = 5s max, but exits early when done.
+                    max_cycles = 50
                     for cycle in range(max_cycles):
                         logger.debug(
                             f"Test mode cycle {cycle + 1}/{max_cycles}"
