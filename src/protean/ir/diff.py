@@ -12,7 +12,12 @@ from __future__ import annotations
 from typing import Any
 
 
-def diff_ir(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+def diff_ir(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    *,
+    current_version: str | None = None,
+) -> dict[str, Any]:
     """Compare two IR dicts and return a structured diff.
 
     The result contains per-section diffs (clusters, projections, flows,
@@ -21,6 +26,12 @@ def diff_ir(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
 
     Skips derived/volatile keys: ``$schema``, ``ir_version``,
     ``generated_at``, ``checksum``, ``elements``.
+
+    Args:
+        current_version: When provided, used to classify removals of
+            deprecated elements/fields as "expected" (safe) vs "premature"
+            (breaking) based on the ``removal`` version in the deprecation
+            metadata.
     """
     result: dict[str, Any] = {}
 
@@ -41,6 +52,7 @@ def diff_ir(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     result["contracts"] = _diff_contracts(
         left.get("contracts", {}),
         right.get("contracts", {}),
+        current_version=current_version,
     )
     result["diagnostics"] = _diff_diagnostics(
         left.get("diagnostics", []),
@@ -366,14 +378,54 @@ def _diff_flows(
     return delta
 
 
+def _classify_removal(
+    deprecated: dict[str, str] | None,
+    current_version: str | None = None,
+) -> str:
+    """Classify a removal based on deprecation metadata.
+
+    Returns one of:
+    - ``"expected_removal"`` — deprecated and past the removal version (safe)
+    - ``"premature_removal"`` — deprecated but before removal version (breaking)
+    - ``"unexpected_removal"`` — not deprecated at all (breaking)
+    """
+    if deprecated is None:
+        return "unexpected_removal"
+
+    removal = deprecated.get("removal")
+    if removal is None:
+        # Deprecated without explicit removal version — still breaking if
+        # removed, since consumers may not have migrated yet.
+        return "premature_removal"
+
+    if current_version is not None:
+        try:
+            from packaging.version import Version
+
+            if Version(current_version) >= Version(removal):
+                return "expected_removal"
+        except Exception:
+            pass
+
+    # Without a current version to compare, we can't confirm the removal
+    # is past the deadline — treat as premature.
+    return "premature_removal"
+
+
 def _diff_contracts(
     left_contracts: dict[str, Any],
     right_contracts: dict[str, Any],
+    current_version: str | None = None,
 ) -> dict[str, Any]:
     """Diff the contracts section and detect breaking changes.
 
     Contract entries use language-neutral keys: ``type`` (not ``__type__``),
     ``version``, ``fields``, and ``fqn``.
+
+    Deprecation-aware classification:
+    - Removing a deprecated element **after** its removal version → safe
+    - Removing a deprecated element **before** its removal version → breaking
+    - Removing a non-deprecated element → breaking
     """
     left_events = left_contracts.get("events", [])
     right_events = right_contracts.get("events", [])
@@ -388,18 +440,48 @@ def _diff_contracts(
     removed = [left_by_fqn[f] for f in sorted(left_fqns - right_fqns)]
 
     breaking: list[dict[str, Any]] = []
+    expected_removals: list[dict[str, Any]] = []
 
-    # Removed published events are breaking
+    # Removed published events — classify by deprecation status
     for event in removed:
         event_label = event.get("type", event["fqn"])
-        breaking.append(
-            {
+        deprecated = event.get("deprecated")
+        classification = _classify_removal(deprecated, current_version)
+
+        if classification == "expected_removal":
+            expected_removals.append(
+                {
+                    "type": "contract_event_removed",
+                    "classification": "expected_removal",
+                    "event": event_label,
+                    "fqn": event["fqn"],
+                    "deprecated": deprecated,
+                    "message": (
+                        f"Published event '{event_label}' was removed "
+                        f"(deprecated since v{deprecated['since']}, "
+                        f"removal expected in v{deprecated.get('removal', '?')})"
+                    ),
+                }
+            )
+        else:
+            entry: dict[str, Any] = {
                 "type": "contract_event_removed",
+                "classification": classification,
                 "event": event_label,
                 "fqn": event["fqn"],
                 "message": f"Published event '{event_label}' was removed",
             }
-        )
+            if deprecated:
+                entry["deprecated"] = deprecated
+                entry["message"] += (
+                    f" (deprecated since v{deprecated['since']}"
+                )
+                if deprecated.get("removal"):
+                    entry["message"] += (
+                        f", scheduled for removal in v{deprecated['removal']}"
+                    )
+                entry["message"] += " — removed prematurely)"
+            breaking.append(entry)
 
     # Check events present in both for type/version/field changes
     for event_fqn in sorted(left_fqns & right_fqns):
@@ -423,14 +505,34 @@ def _diff_contracts(
                 }
             )
 
-        # Field-level changes — fields are embedded in contract entries
+        # Field-level changes — classify removed fields by deprecation
         left_fields = left_evt.get("fields", {})
         right_fields = right_evt.get("fields", {})
         removed_fields = set(left_fields.keys()) - set(right_fields.keys())
         for field_name in sorted(removed_fields):
-            breaking.append(
-                {
+            field_deprecated = left_fields[field_name].get("deprecated")
+            field_classification = _classify_removal(
+                field_deprecated, current_version
+            )
+
+            if field_classification == "expected_removal":
+                expected_removals.append(
+                    {
+                        "type": "contract_field_removed",
+                        "classification": "expected_removal",
+                        "fqn": event_fqn,
+                        "field": field_name,
+                        "deprecated": field_deprecated,
+                        "message": (
+                            f"Field '{field_name}' removed from published "
+                            f"event '{left_type}' (expected removal)"
+                        ),
+                    }
+                )
+            else:
+                f_entry: dict[str, Any] = {
                     "type": "contract_field_removed",
+                    "classification": field_classification,
                     "fqn": event_fqn,
                     "field": field_name,
                     "message": (
@@ -438,7 +540,9 @@ def _diff_contracts(
                         f"'{left_type}'"
                     ),
                 }
-            )
+                if field_deprecated:
+                    f_entry["deprecated"] = field_deprecated
+                breaking.append(f_entry)
 
     result: dict[str, Any] = {}
     if added:
@@ -447,6 +551,8 @@ def _diff_contracts(
         result["removed"] = removed
     if breaking:
         result["breaking_changes"] = breaking
+    if expected_removals:
+        result["expected_removals"] = expected_removals
 
     return result
 

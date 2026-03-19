@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Deprecation support for domain elements and fields: new `deprecated` decorator option for all domain element types (`@domain.aggregate(deprecated={"since": "0.15", "removal": "0.18"})`) and `deprecated` parameter for fields (`String(deprecated="0.15")`), with normalized two-field metadata (`since` required, `removal` optional), sparse IR representation, `DEPRECATED_ELEMENT` and `DEPRECATED_FIELD` info-level diagnostics in `protean check`, and deprecation-aware contract diffing that classifies removals as "expected" (safe), "premature" (breaking), or "unexpected" (breaking) based on version comparison
+
 ### Changed
 
 - Status field self-transitions are now validated against the transition map instead of being silently allowed. Assigning a status to its current value is rejected unless the state lists itself as a target (e.g., `CANCELLED: [CANCELLED]`). This catches re-entry bugs at the framework level and makes idempotent operations explicit in the transition declaration. Terminal states also reject self-assignment.

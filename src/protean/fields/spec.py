@@ -76,6 +76,8 @@ class FieldSpec:
         # Status transitions
         transitions: dict
         | None = None,  # For Status fields — {state: [allowed_targets]}
+        # Deprecation metadata
+        deprecated: str | dict | None = None,
     ) -> None:
         self.python_type = python_type
         self.field_kind = field_kind
@@ -98,6 +100,7 @@ class FieldSpec:
             self._normalize_transitions(transitions) if transitions else None
         )
         self._auto_generated = False
+        self.deprecated = self._normalize_deprecated(deprecated)
 
         # Warn if required=True with an explicit default
         if self.required and self.default is not _UNSET:
@@ -241,6 +244,8 @@ class FieldSpec:
             json_extra["_auto_generated"] = True
         if self.transitions is not None:
             json_extra["transitions"] = self.transitions
+        if self.deprecated is not None:
+            json_extra["deprecated"] = self.deprecated
 
         if json_extra:
             kwargs["json_schema_extra"] = json_extra
@@ -318,6 +323,38 @@ class FieldSpec:
                 *extra_validators,
             ]
         return Annotated[resolved_type, pydantic_field]
+
+    @staticmethod
+    def _normalize_deprecated(
+        value: str | dict | None,
+    ) -> dict[str, str] | None:
+        """Normalize the ``deprecated`` field parameter.
+
+        Accepts:
+        - ``None`` → ``None``
+        - ``"0.15"`` (shorthand) → ``{"since": "0.15"}``
+        - ``{"since": "0.15"}`` → as-is
+        - ``{"since": "0.15", "removal": "0.18"}`` → as-is
+        """
+        if value is None or value is False:
+            return None
+        if isinstance(value, str):
+            return {"since": value}
+        if isinstance(value, dict):
+            if "since" not in value:
+                raise ValueError(
+                    "The `deprecated` parameter must include a 'since' key "
+                    f"(got {value!r})"
+                )
+            result: dict[str, str] = {"since": str(value["since"])}
+            if "removal" in value:
+                result["removal"] = str(value["removal"])
+            return result
+        raise ValueError(
+            f"Invalid `deprecated` value: {value!r}. "
+            "Expected a version string or dict with 'since' "
+            "(and optional 'removal') keys."
+        )
 
     @staticmethod
     def _normalize_transitions(transitions: dict) -> dict[str, list[str]]:
