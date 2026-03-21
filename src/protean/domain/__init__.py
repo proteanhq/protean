@@ -1992,3 +1992,47 @@ class Domain:
     def drop_database(self) -> None:
         """Drop all database tables."""
         self._infrastructure.drop_database()
+
+    # ------------------------------------------------------------------
+    # Logging
+    # ------------------------------------------------------------------
+
+    def configure_logging(self, **kwargs: Any) -> None:
+        """Set up structured logging with automatic correlation context injection.
+
+        Calls :func:`protean.utils.logging.configure_logging` with the given
+        keyword arguments **and** inserts a
+        :class:`~protean.integrations.logging.ProteanCorrelationFilter` on the
+        root logger and a
+        :func:`~protean.integrations.logging.protean_correlation_processor`
+        into the structlog pipeline so that every log record automatically
+        includes ``correlation_id`` and ``causation_id`` from the active
+        domain context.
+
+        Args:
+            **kwargs: Forwarded to :func:`protean.utils.logging.configure_logging`
+                (``level``, ``format``, ``log_dir``, etc.).
+
+        Example::
+
+            domain.configure_logging()           # sensible defaults
+            domain.configure_logging(level="DEBUG", format="json")
+        """
+        from protean.integrations.logging import (
+            ProteanCorrelationFilter,
+            protean_correlation_processor,
+        )
+        from protean.utils.logging import configure_logging
+
+        # Merge caller-supplied extra_processors with the correlation processor
+        extra = kwargs.pop("extra_processors", None) or []
+        extra.insert(0, protean_correlation_processor)
+
+        configure_logging(extra_processors=extra, **kwargs)
+
+        # Attach the correlation filter to the root logger so that *all*
+        # stdlib handlers benefit from it.
+        root = __import__("logging").getLogger()
+        # Avoid adding duplicate filters on repeated calls.
+        if not any(isinstance(f, ProteanCorrelationFilter) for f in root.filters):
+            root.addFilter(ProteanCorrelationFilter())
