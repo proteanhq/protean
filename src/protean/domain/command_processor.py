@@ -314,6 +314,11 @@ class CommandProcessor:
                     )
 
                     start_time = time.monotonic()
+                    # Save any existing message context (e.g. a broker stub
+                    # message) so it can be restored after this command
+                    # finishes.  This keeps the outer correlation chain intact
+                    # when a subscriber dispatches multiple commands.
+                    _prev_context = g.get("message_in_context")
                     try:
                         # Build a Message for context propagation so that events
                         # raised during sync handling inherit trace IDs.
@@ -358,7 +363,13 @@ class CommandProcessor:
                             store.record_error(idempotency_key, "handler_failed")
                         raise
                     finally:
-                        g.pop("message_in_context", None)
+                        # Restore the previous message context (or remove if
+                        # there was none) so the outer caller's context is
+                        # preserved.
+                        if _prev_context is not None:
+                            g.message_in_context = _prev_context
+                        else:
+                            g.pop("message_in_context", None)
 
                     duration_ms = (time.monotonic() - start_time) * 1000
                     duration_s = time.monotonic() - process_start

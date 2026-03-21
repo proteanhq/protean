@@ -13,7 +13,13 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.utils.globals import g
-from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
+from protean.utils.eventing import (
+    DomainMeta,
+    Message,
+    MessageHeaders,
+    Metadata,
+    new_correlation_id,
+)
 from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
     extract_context_from_traceparent,
@@ -119,6 +125,42 @@ class CommandDispatcher:
         handler_cls = self._last_resolved_handler
         if handler_cls and hasattr(handler_cls, "handle_error"):
             handler_cls.handle_error(exc, message)
+
+
+def _extract_correlation_id(message: dict) -> str:
+    """Extract correlation_id from an incoming broker message dict.
+
+    Checks the Protean external message format paths, in order:
+    ``metadata.domain.correlation_id``, ``metadata.correlation_id``,
+    and top-level ``correlation_id``.  Returns a fresh UUID when the
+    incoming message carries no usable correlation context (the subscriber
+    acts as an ACL and legitimately starts a new causal chain).
+    Empty or whitespace-only values are treated as missing.
+    """
+
+    def _normalize(value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    for path in (
+        ("metadata", "domain", "correlation_id"),
+        ("metadata", "correlation_id"),
+        ("correlation_id",),
+    ):
+        try:
+            current: object = message
+            for key in path:
+                current = current[key]  # type: ignore[index]
+        except (KeyError, TypeError):
+            continue
+
+        normalized = _normalize(current)
+        if normalized is not None:
+            return normalized
+
+    return new_correlation_id()
 
 
 class Engine:
@@ -447,11 +489,20 @@ class Engine:
             # as internal handlers.  Commands processed by the subscriber
             # will inherit causation_id = message_id automatically.
             if message_id is not None and stream is not None:
+                # Extract correlation_id from the incoming broker message.
+                # Protean's external message format nests it under
+                # metadata.domain.correlation_id.  If not present,
+                # generate a fresh ID (subscriber as ACL starts a new chain).
+                correlation_id = _extract_correlation_id(message)
+
                 g.message_in_context = Message(
                     data=message,
                     metadata=Metadata(
                         headers=MessageHeaders(id=message_id, stream=stream),
-                        domain=DomainMeta(kind="BROKER_MESSAGE"),
+                        domain=DomainMeta(
+                            kind="BROKER_MESSAGE",
+                            correlation_id=correlation_id,
+                        ),
                     ),
                 )
 
