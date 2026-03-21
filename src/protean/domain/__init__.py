@@ -2024,9 +2024,12 @@ class Domain:
         )
         from protean.utils.logging import configure_logging
 
-        # Merge caller-supplied extra_processors with the correlation processor
-        extra = kwargs.pop("extra_processors", None) or []
-        extra.insert(0, protean_correlation_processor)
+        # Build processor list without mutating any caller-supplied sequence
+        extra_processors = kwargs.pop("extra_processors", None)
+        extra: list = [
+            protean_correlation_processor,
+            *list(extra_processors or []),
+        ]
 
         configure_logging(extra_processors=extra, **kwargs)
 

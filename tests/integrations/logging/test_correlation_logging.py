@@ -353,6 +353,20 @@ class TestDomainConfigureLogging:
         root = logging.getLogger()
         assert root.level == logging.ERROR
 
+    def test_structlog_pipeline_includes_correlation_processor(self, test_domain):
+        """configure_logging() injects protean_correlation_processor into structlog."""
+        import structlog
+
+        test_domain.configure_logging(level="WARNING")
+
+        config = structlog.get_config()
+        processors = config.get("processors", [])
+        assert len(processors) > 0
+        assert protean_correlation_processor in processors
+        # Processor should appear before the renderer (last element)
+        proc_index = processors.index(protean_correlation_processor)
+        assert proc_index < len(processors) - 1
+
 
 # ---------------------------------------------------------------------------
 # End-to-end: correlation context in logs during command processing

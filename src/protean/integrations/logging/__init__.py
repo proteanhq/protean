@@ -42,25 +42,24 @@ def _get_correlation_context() -> tuple[str, str]:
 
     Returns a ``(correlation_id, causation_id)`` tuple.  Both values default
     to ``""`` when no domain context or message context is available.
+
+    Uses the public ``has_domain_context()`` and ``g`` proxy rather than
+    reaching into private stack internals.
     """
     try:
-        from protean.utils.globals import _domain_context_stack
+        from protean.domain.context import has_domain_context
+        from protean.utils.globals import g
     except ImportError:
         return ("", "")
 
-    top = _domain_context_stack.top
-    if top is None:
-        return ("", "")
-
-    g = getattr(top, "g", None)
-    if g is None:
+    if not has_domain_context():
         return ("", "")
 
     msg = g.get("message_in_context") if hasattr(g, "get") else None
     if msg is None:
         return ("", "")
 
-    metadata = getattr(msg, "metadata", None) if msg else None
+    metadata = getattr(msg, "metadata", None)
     domain_meta = getattr(metadata, "domain", None) if metadata else None
 
     if domain_meta is None:
