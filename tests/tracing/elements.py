@@ -10,6 +10,9 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector, on
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import Float, Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
@@ -135,3 +138,61 @@ class OrderPlacedAutoConfirmHandler(BaseEventHandler):
             ConfirmOrder(order_id=event.order_id),
             asynchronous=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# Event Handler that dispatches a new command (for causation chain testing)
+#
+# When an OrderConfirmed event is processed, this handler automatically
+# dispatches a ShipOrder command, extending the causal chain:
+#   ... -> ConfirmOrder -> OrderConfirmed -> ShipOrder -> OrderShipped
+# ---------------------------------------------------------------------------
+class OrderConfirmedAutoShipHandler(BaseEventHandler):
+    @handle(OrderConfirmed)
+    def on_order_confirmed(self, event: OrderConfirmed) -> None:
+        current_domain.process(
+            ShipOrder(order_id=event.order_id, tracking_number="TRACK-001"),
+            asynchronous=False,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Projection and Projector (for end-to-end tracing through projections)
+# ---------------------------------------------------------------------------
+class OrderSummary(BaseProjection):
+    order_id = Identifier(identifier=True)
+    customer = String()
+    amount = Float()
+    status = String(default="PENDING")
+
+
+class OrderSummaryProjector(BaseProjector):
+    @on(OrderPlaced)
+    def on_order_placed(self, event: OrderPlaced) -> None:
+        summary = OrderSummary(
+            order_id=event.order_id,
+            customer=event.customer,
+            amount=event.amount,
+            status="PLACED",
+        )
+        current_domain.repository_for(OrderSummary).add(summary)
+
+    @on(OrderConfirmed)
+    def on_order_confirmed(self, event: OrderConfirmed) -> None:
+        repo = current_domain.repository_for(OrderSummary)
+        try:
+            summary = repo.get(event.order_id)
+            summary.status = "CONFIRMED"
+            repo.add(summary)
+        except ObjectNotFoundError:
+            pass
+
+    @on(OrderShipped)
+    def on_order_shipped(self, event: OrderShipped) -> None:
+        repo = current_domain.repository_for(OrderSummary)
+        try:
+            summary = repo.get(event.order_id)
+            summary.status = "SHIPPED"
+            repo.add(summary)
+        except ObjectNotFoundError:
+            pass
