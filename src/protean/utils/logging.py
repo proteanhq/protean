@@ -85,6 +85,7 @@ def configure_logging(
     log_file_prefix: Optional[str] = None,
     max_bytes: int = 10 * 1024 * 1024,
     backup_count: int = 5,
+    extra_processors: Optional[list] = None,
 ) -> None:
     """Configure structured logging for a Protean application.
 
@@ -108,6 +109,8 @@ def configure_logging(
             ``"protean"`` if not specified.
         max_bytes: Maximum size in bytes before log file rotation. Default 10 MB.
         backup_count: Number of rotated log files to keep. Default 5.
+        extra_processors: Optional list of additional structlog processors to
+            insert before the renderer (e.g. correlation-context injection).
     """
     env = _detect_env()
 
@@ -129,7 +132,7 @@ def configure_logging(
     )
 
     # --- structlog setup ---
-    _setup_structlog(env=env, format=format)
+    _setup_structlog(env=env, format=format, extra_processors=extra_processors)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
@@ -280,8 +283,19 @@ def _setup_stdlib_logging(
             logging.getLogger(logger_name).setLevel(logger_level)
 
 
-def _setup_structlog(env: str, format: str) -> None:
-    """Configure structlog processors and renderer."""
+def _setup_structlog(
+    env: str,
+    format: str,
+    extra_processors: Optional[list] = None,
+) -> None:
+    """Configure structlog processors and renderer.
+
+    Args:
+        env: Runtime environment name (production, development, test, ...).
+        format: ``"json"``, ``"console"``, or ``"auto"``.
+        extra_processors: Optional list of additional processors to insert
+            before the renderer (e.g. correlation-context injection).
+    """
     processors: list = [
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
@@ -300,6 +314,10 @@ def _setup_structlog(env: str, format: str) -> None:
             ]
         ),
     ]
+
+    # Inject caller-supplied processors just before the renderer
+    if extra_processors:
+        processors.extend(extra_processors)
 
     # Choose renderer
     use_json = format == "json" or (
