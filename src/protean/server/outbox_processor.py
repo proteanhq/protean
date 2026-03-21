@@ -188,6 +188,24 @@ class OutboxProcessor(BaseSubscription):
             span.set_attribute("protean.outbox.processor_id", self.subscription_id)
             span.set_attribute("protean.outbox.is_external", self.is_external)
 
+            # Propagate correlation/causation IDs only when uniform across the batch
+            if messages:
+                correlation_ids = {
+                    msg.correlation_id for msg in messages if msg.correlation_id
+                }
+                causation_ids = {
+                    msg.causation_id for msg in messages if msg.causation_id
+                }
+
+                if len(correlation_ids) == 1:
+                    span.set_attribute(
+                        "protean.correlation_id", next(iter(correlation_ids))
+                    )
+                if len(causation_ids) == 1:
+                    span.set_attribute(
+                        "protean.causation_id", next(iter(causation_ids))
+                    )
+
             successful_count = 0
 
             for message in messages:
@@ -290,6 +308,10 @@ class OutboxProcessor(BaseSubscription):
             span.set_attribute("protean.outbox.message_type", message_type)
             span.set_attribute("protean.outbox.is_external", self.is_external)
             span.set_attribute("protean.outbox.processor_id", self.subscription_id)
+            if message.correlation_id:
+                span.set_attribute("protean.correlation_id", message.correlation_id)
+            if message.causation_id:
+                span.set_attribute("protean.causation_id", message.causation_id)
 
             try:
                 # Use UnitOfWork for atomic transaction management
@@ -333,9 +355,7 @@ class OutboxProcessor(BaseSubscription):
                             now = datetime.datetime.now(datetime.timezone.utc)
                             created = message.created_at
                             if created.tzinfo is None:
-                                created = created.replace(
-                                    tzinfo=datetime.timezone.utc
-                                )
+                                created = created.replace(tzinfo=datetime.timezone.utc)
                             latency_s = (now - created).total_seconds()
                             if latency_s >= 0:
                                 metrics.outbox_latency.record(latency_s)

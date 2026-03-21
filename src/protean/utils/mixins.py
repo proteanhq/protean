@@ -212,10 +212,28 @@ class HandlerMixin:
         handler_start = time.monotonic()
 
         with tracer.start_as_current_span(
-            "protean.handler.execute", record_exception=False, set_status_on_exception=False
+            "protean.handler.execute",
+            record_exception=False,
+            set_status_on_exception=False,
         ) as span:
             span.set_attribute("protean.handler.name", cls.__name__)
             span.set_attribute("protean.handler.type", handler_type)
+
+            # Propagate correlation/causation IDs from the message being handled
+            from protean.utils.globals import g
+
+            msg = g.get("message_in_context")
+            if msg is not None and hasattr(msg, "metadata") and msg.metadata:
+                domain_meta = getattr(msg.metadata, "domain", None)
+                if domain_meta is not None:
+                    if domain_meta.correlation_id:
+                        span.set_attribute(
+                            "protean.correlation_id", domain_meta.correlation_id
+                        )
+                    if domain_meta.causation_id:
+                        span.set_attribute(
+                            "protean.causation_id", domain_meta.causation_id
+                        )
 
             try:
                 result = cls._dispatch_handlers(handlers, item)
