@@ -373,6 +373,8 @@ class OutboxProcessor(BaseSubscription):
                             message_type=message_type,
                             payload=message.data,
                             worker_id=self.subscription_id,
+                            correlation_id=message.correlation_id,
+                            causation_id=message.causation_id,
                         )
                     else:
                         self._mark_message_failed(message, publish_error)
@@ -516,4 +518,6 @@ class OutboxProcessor(BaseSubscription):
             error=str(error),
             metadata={"retry_count": getattr(message, "retry_count", 0)},
             worker_id=self.subscription_id,
+            correlation_id=message.correlation_id,
+            causation_id=message.causation_id,
         )

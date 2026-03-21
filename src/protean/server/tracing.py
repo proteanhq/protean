@@ -47,6 +47,8 @@ class MessageTrace:
     metadata: Optional[dict] = field(default_factory=dict)  # Extra context
     payload: Optional[dict] = None  # Message payload (event/command data)
     worker_id: Optional[str] = None  # Subscription instance that processed this message
+    correlation_id: Optional[str] = None  # Correlation chain identifier
+    causation_id: Optional[str] = None  # Parent message identifier
     timestamp: str = ""  # ISO 8601, filled automatically
 
     def __post_init__(self) -> None:
@@ -139,6 +141,8 @@ class TraceEmitter:
         metadata: Optional[dict[str, Any]] = None,
         payload: Optional[dict[str, Any]] = None,
         worker_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        causation_id: Optional[str] = None,
     ) -> None:
         """Emit a trace event. No-op when nobody is listening and persistence is off."""
         has_subscribers = self._check_subscribers()
@@ -166,6 +170,8 @@ class TraceEmitter:
                 metadata=metadata or {},
                 payload=payload,
                 worker_id=worker_id,
+                correlation_id=correlation_id,
+                causation_id=causation_id,
             )
             json_str = trace.to_json()
 

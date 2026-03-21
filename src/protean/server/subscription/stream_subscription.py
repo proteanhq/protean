@@ -540,6 +540,16 @@ class StreamSubscription(BaseSubscription):
                     message_type=message.metadata.headers.type or "unknown",
                     handler=self.subscriber_class_name,
                     worker_id=self.subscription_id,
+                    correlation_id=(
+                        message.metadata.domain.correlation_id
+                        if message.metadata.domain
+                        else None
+                    ),
+                    causation_id=(
+                        message.metadata.domain.causation_id
+                        if message.metadata.domain
+                        else None
+                    ),
                 )
 
             return True
@@ -663,9 +673,9 @@ class StreamSubscription(BaseSubscription):
             logger.info(f"Moved message {identifier} to DLQ stream {dlq_target}")
 
             # Emit message.dlq trace
-            message_type = (
-                payload.get("metadata", {}).get("headers", {}).get("type", "unknown")
-            )
+            msg_metadata = payload.get("metadata", {})
+            message_type = msg_metadata.get("headers", {}).get("type", "unknown")
+            domain_meta = msg_metadata.get("domain", {})
             self.engine.emitter.emit(
                 event="message.dlq",
                 stream=stream,
@@ -678,6 +688,8 @@ class StreamSubscription(BaseSubscription):
                     "retry_count": self.retry_counts.get(identifier, self.max_retries),
                 },
                 worker_id=self.subscription_id,
+                correlation_id=domain_meta.get("correlation_id"),
+                causation_id=domain_meta.get("causation_id"),
             )
         except Exception as e:
             logger.exception(f"Failed to move message {identifier} to DLQ: {e}")

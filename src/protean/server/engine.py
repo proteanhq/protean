@@ -564,6 +564,16 @@ class Engine:
                     if message.metadata.domain
                     else None
                 ) or "unknown"
+                correlation_id = (
+                    message.metadata.domain.correlation_id
+                    if message.metadata.domain
+                    else None
+                )
+                causation_id = (
+                    message.metadata.domain.causation_id
+                    if message.metadata.domain
+                    else None
+                )
 
                 # Resolve actual handler name (for CommandDispatcher, look up the specific handler)
                 if hasattr(handler_cls, "resolve_handler"):
@@ -583,6 +593,8 @@ class Engine:
                     handler=handler_name,
                     payload=message.data,
                     worker_id=worker_id,
+                    correlation_id=correlation_id,
+                    causation_id=causation_id,
                 )
 
                 start_time = time.monotonic()
@@ -659,6 +671,8 @@ class Engine:
                     handler=handler_name,
                     duration_ms=round(duration_ms, 2),
                     worker_id=worker_id,
+                    correlation_id=correlation_id,
+                    causation_id=causation_id,
                 )
 
                 # Emit pm.transition trace for process managers
@@ -677,6 +691,8 @@ class Engine:
                         },
                         duration_ms=round(duration_ms, 2),
                         worker_id=worker_id,
+                        correlation_id=correlation_id,
+                        causation_id=causation_id,
                     )
 
                 return True
@@ -698,6 +714,8 @@ class Engine:
                     duration_ms=round(duration_ms, 2),
                     error=str(exc),
                     worker_id=worker_id,
+                    correlation_id=correlation_id,
+                    causation_id=causation_id,
                 )
 
                 try:
