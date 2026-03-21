@@ -2,8 +2,8 @@
 
 Verifies that correlation_id and causation_id flow correctly across:
 1. Multi-step command → event → handler → command → event → projection chains
-2. External X-Correlation-ID through HTTP to event store
-3. Broker subscriber context propagation
+2. External correlation_id propagation through event handler chains
+3. Command correlation_id → event context propagation (subscriber-style)
 4. Event handler causation chain correctness
 5. OTEL span attribute verification
 """
@@ -225,12 +225,12 @@ class TestFullChainCorrelationPropagation:
 
 
 # ===========================================================================
-# Scenario 2: External X-Correlation-ID flows end-to-end via FastAPI
+# Scenario 2: External correlation_id propagation through event handler chains
 # ===========================================================================
 class TestExternalCorrelationIdE2E:
-    """HTTP request with X-Correlation-ID header → command → events →
+    """Caller-provided correlation_id via domain.process() → command → events →
     handler-dispatched commands — the exact external ID appears on all
-    messages in the event store.
+    messages in the event store and the causation tree.
     """
 
     @pytest.fixture(autouse=True)
@@ -298,23 +298,22 @@ class TestExternalCorrelationIdE2E:
 
 
 # ===========================================================================
-# Scenario 3: Broker message → subscriber context propagation
+# Scenario 3: Command correlation_id → event context propagation
 #
-# This uses the inline broker and sync processing to verify that when a
-# command is dispatched (as would happen from a subscriber), the correlation_id
-# is consistent throughout. In the inline broker, messages are processed
-# synchronously through the same pipeline.
+# This scenario verifies that when a command is dispatched into the domain
+# with an explicit correlation_id (as a subscriber would do after decoding a
+# broker message), the generated events preserve that same correlation_id.
 # ===========================================================================
-class TestBrokerContextPropagation:
-    """Verify that commands dispatched with a correlation_id (as a subscriber
-    would do after receiving an external broker message) produce events
-    with the same correlation_id.
+class TestCommandCorrelationPropagation:
+    """Verify that commands dispatched with a correlation_id (simulating a
+    subscriber passing along a broker-provided ID) produce events with the
+    same correlation_id.
     """
 
     @pytest.mark.eventstore
     def test_subscriber_style_correlation_propagation(self, test_domain, order_id):
-        """Simulating subscriber dispatching a command with a correlation_id
-        from an incoming broker message — events inherit the same ID."""
+        """Simulate a subscriber dispatching a command with a broker-provided
+        correlation_id — events inherit the same ID."""
         broker_corr_id = "broker-msg-correlation-xyz"
         test_domain.process(
             PlaceOrder(order_id=order_id, customer="Charlie", amount=75.0),
@@ -421,12 +420,21 @@ class TestEventHandlerCausationChain:
         assert events[0].metadata.domain.causation_id == root_cmd_id
 
     @pytest.mark.eventstore
-    def test_chained_event_has_causation_id(self, test_domain, order_id):
-        """OrderConfirmed (from chained ConfirmOrder) has a non-None causation_id."""
+    def test_chained_event_causation_points_to_root_command(self, test_domain, order_id):
+        """OrderConfirmed (from chained ConfirmOrder) has causation_id = root command ID.
+
+        In sync mode, g.message_in_context still points to the root command
+        during UoW.commit() event handler dispatch, so the chained command and
+        its events inherit the root command's ID as their causation_id.
+        """
         test_domain.process(
             PlaceOrder(order_id=order_id, customer="Frank", amount=150.0),
             asynchronous=False,
         )
+
+        commands = _read_commands(test_domain, order_id)
+        assert len(commands) >= 1
+        root_cmd_id = commands[0].metadata.headers.id
 
         events = _read_events(test_domain, order_id)
         assert len(events) >= 2
@@ -434,7 +442,7 @@ class TestEventHandlerCausationChain:
         confirmed_event = next(
             e for e in events if e.metadata.headers.type == OrderConfirmed.__type__
         )
-        assert confirmed_event.metadata.domain.causation_id is not None
+        assert confirmed_event.metadata.domain.causation_id == root_cmd_id
 
     @pytest.mark.eventstore
     def test_chained_events_causation_ids_are_not_self_referential(
@@ -555,8 +563,8 @@ class TestOtelSpanCorrelationAttributes:
     def test_handler_execute_span_has_causation_id(
         self, test_domain, span_exporter, order_id
     ):
-        """protean.handler.execute span has protean.causation_id when processing
-        a command that was triggered from a parent context."""
+        """protean.handler.execute span has both protean.correlation_id and
+        protean.causation_id attributes when processing a chained command."""
         test_domain.register(OrderPlacedAutoConfirmHandler, part_of=Order)
         test_domain.init(traverse=False)
 
@@ -574,6 +582,19 @@ class TestOtelSpanCorrelationAttributes:
         # All handler spans should have correlation_id
         for hs in handler_spans:
             assert hs.attributes.get("protean.correlation_id") == external_corr
+
+        # The chained handler (processing ConfirmOrder) should have causation_id
+        # pointing to the root command's message ID
+        spans_with_causation = [
+            s
+            for s in handler_spans
+            if s.attributes.get("protean.causation_id") is not None
+        ]
+        assert len(spans_with_causation) >= 1, (
+            "Expected at least one handler span with causation_id"
+        )
+        for hs in spans_with_causation:
+            assert hs.attributes["protean.causation_id"] != ""
 
     def test_auto_generated_correlation_id_on_spans(
         self, test_domain, span_exporter, order_id

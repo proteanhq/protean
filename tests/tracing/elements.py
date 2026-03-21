@@ -140,21 +140,6 @@ class OrderPlacedAutoConfirmHandler(BaseEventHandler):
         )
 
 
-# ---------------------------------------------------------------------------
-# Event Handler that dispatches a new command (for causation chain testing)
-#
-# When an OrderConfirmed event is processed, this handler automatically
-# dispatches a ShipOrder command, extending the causal chain:
-#   ... -> ConfirmOrder -> OrderConfirmed -> ShipOrder -> OrderShipped
-# ---------------------------------------------------------------------------
-class OrderConfirmedAutoShipHandler(BaseEventHandler):
-    @handle(OrderConfirmed)
-    def on_order_confirmed(self, event: OrderConfirmed) -> None:
-        current_domain.process(
-            ShipOrder(order_id=event.order_id, tracking_number="TRACK-001"),
-            asynchronous=False,
-        )
-
 
 # ---------------------------------------------------------------------------
 # Projection and Projector (for end-to-end tracing through projections)
