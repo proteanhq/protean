@@ -302,9 +302,9 @@ class BrokerSubscription(BaseSubscription):
             )
 
             # Emit trace event
-            message_type = (
-                payload.get("metadata", {}).get("headers", {}).get("type", "unknown")
-            )
+            msg_metadata = payload.get("metadata") or {}
+            message_type = msg_metadata.get("headers", {}).get("type", "unknown")
+            domain_meta = msg_metadata.get("domain") or {}
             self.engine.emitter.emit(
                 event="message.dlq",
                 stream=self.stream_name,
@@ -317,6 +317,8 @@ class BrokerSubscription(BaseSubscription):
                     "retry_count": self.retry_counts.get(identifier, self.max_retries),
                 },
                 worker_id=self.subscription_id,
+                correlation_id=domain_meta.get("correlation_id"),
+                causation_id=domain_meta.get("causation_id"),
             )
         except Exception as e:
             logger.exception(
