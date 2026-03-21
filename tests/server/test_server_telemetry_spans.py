@@ -197,6 +197,36 @@ def _persist_outbox_messages(domain, count: int = 3) -> list[Outbox]:
     return messages
 
 
+def _persist_outbox_messages_uniform(
+    domain, count: int = 2, causation_id: str | None = None
+) -> list[Outbox]:
+    """Create outbox messages sharing the same correlation/causation IDs."""
+    outbox_repo = domain._get_outbox_repo("default")
+
+    messages = []
+    for i in range(count):
+        headers = MessageHeaders(
+            id=f"msg-uniform-{i}", type="DummyEvent", stream="test-stream"
+        )
+        domain_meta = DomainMeta(stream_category="test-stream")
+        metadata = Metadata(headers=headers, domain=domain_meta)
+
+        msg = Outbox.create_message(
+            message_id=f"msg-uniform-{i}",
+            stream_name="test-stream",
+            message_type="DummyEvent",
+            data={"name": f"Test {i}", "count": i},
+            metadata=metadata,
+            priority=0,
+            correlation_id="shared-corr-id",
+            causation_id=causation_id,
+        )
+        outbox_repo.add(msg)
+        messages.append(msg)
+
+    return messages
+
+
 # ---------------------------------------------------------------------------
 # Tests: Engine.handle_message() span
 # ---------------------------------------------------------------------------
@@ -545,6 +575,62 @@ class TestOutboxProcessBatchSpan:
         span = next(s for s in spans if s.name == "protean.outbox.process")
         assert "protean.outbox.successful_count" in span.attributes
         assert span.attributes["protean.outbox.successful_count"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_process_span_has_uniform_correlation_id(
+        self, test_domain, span_exporter
+    ):
+        """Batch span sets correlation_id when all messages share the same one."""
+        _persist_outbox_messages_uniform(test_domain, count=2)
+
+        engine = MockEngine(test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        messages = await processor.get_next_batch_of_messages()
+        await processor.process_batch(messages)
+
+        spans = span_exporter.get_finished_spans()
+        span = next(s for s in spans if s.name == "protean.outbox.process")
+        assert span.attributes["protean.correlation_id"] == "shared-corr-id"
+
+    @pytest.mark.asyncio
+    async def test_process_span_omits_mixed_correlation_ids(
+        self, test_domain, span_exporter
+    ):
+        """Batch span omits correlation_id when messages have different ones."""
+        _persist_outbox_messages(test_domain, count=2)
+
+        engine = MockEngine(test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        messages = await processor.get_next_batch_of_messages()
+        await processor.process_batch(messages)
+
+        spans = span_exporter.get_finished_spans()
+        span = next(s for s in spans if s.name == "protean.outbox.process")
+        assert "protean.correlation_id" not in span.attributes
+
+    @pytest.mark.asyncio
+    async def test_process_span_has_uniform_causation_id(
+        self, test_domain, span_exporter
+    ):
+        """Batch span sets causation_id when all messages share the same one."""
+        _persist_outbox_messages_uniform(
+            test_domain, count=2, causation_id="shared-cause-id"
+        )
+
+        engine = MockEngine(test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        messages = await processor.get_next_batch_of_messages()
+        await processor.process_batch(messages)
+
+        spans = span_exporter.get_finished_spans()
+        span = next(s for s in spans if s.name == "protean.outbox.process")
+        assert span.attributes["protean.causation_id"] == "shared-cause-id"
 
 
 # ---------------------------------------------------------------------------

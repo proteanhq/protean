@@ -35,7 +35,8 @@ from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
 from protean.fields import Float, Identifier, String
-from protean.utils.globals import current_domain
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
+from protean.utils.globals import current_domain, g
 from protean.utils.mixins import handle, read
 
 
@@ -1125,6 +1126,42 @@ class TestHandlerSpanCorrelationAttributes:
         # causation_id (the parent message's ID).
         assert "protean.causation_id" not in handler_span.attributes
 
+    def test_handler_span_has_causation_id_from_parent_context(
+        self, test_domain, span_exporter
+    ):
+        """When a parent message context exists, the handler span carries causation_id."""
+        # Simulate a parent event context (as if this command was dispatched from
+        # an event handler processing a prior message).
+        parent_msg_id = "test::parent-msg-001"
+        fake_parent = type(
+            "FakeMessage",
+            (),
+            {
+                "metadata": Metadata(
+                    headers=MessageHeaders(
+                        id=parent_msg_id, type="ParentEvent", stream="test-stream"
+                    ),
+                    domain=DomainMeta(
+                        kind="EVENT",
+                        correlation_id="parent-corr-id",
+                        causation_id=None,
+                    ),
+                )
+            },
+        )()
+        g.message_in_context = fake_parent
+        try:
+            test_domain.process(
+                OpenAccount(account_id=str(uuid4()), name="Acme"),
+                asynchronous=False,
+            )
+        finally:
+            g.pop("message_in_context", None)
+
+        spans = span_exporter.get_finished_spans()
+        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
+        assert handler_span.attributes["protean.causation_id"] == parent_msg_id
+
     def test_handler_span_correlation_matches_process_span(
         self, test_domain, span_exporter
     ):
@@ -1204,6 +1241,49 @@ class TestUoWSpanCorrelationAttributes:
         spans = span_exporter.get_finished_spans()
         uow_span = self._find_uow_span_with_correlation(spans)
         assert "protean.causation_id" not in uow_span.attributes
+
+    def test_uow_span_has_causation_id_from_parent_context(
+        self, test_domain, span_exporter
+    ):
+        """When a parent message context exists, the UoW commit span carries causation_id."""
+        parent_msg_id = "test::parent-uow-001"
+        fake_parent = type(
+            "FakeMessage",
+            (),
+            {
+                "metadata": Metadata(
+                    headers=MessageHeaders(
+                        id=parent_msg_id, type="ParentEvent", stream="test-stream"
+                    ),
+                    domain=DomainMeta(
+                        kind="EVENT",
+                        correlation_id="parent-corr-uow",
+                        causation_id=None,
+                    ),
+                )
+            },
+        )()
+        g.message_in_context = fake_parent
+        try:
+            test_domain.process(
+                OpenAccount(account_id=str(uuid4()), name="Acme"),
+                asynchronous=False,
+            )
+        finally:
+            g.pop("message_in_context", None)
+
+        spans = span_exporter.get_finished_spans()
+        # There may be multiple UoW commit spans (event store append + handler).
+        # The handler-level UoW runs while g.message_in_context has the enriched
+        # command (which inherits causation_id from the parent context).
+        uow_spans = [s for s in spans if s.name == "protean.uow.commit"]
+        causation_spans = [
+            s for s in uow_spans if "protean.causation_id" in s.attributes
+        ]
+        assert len(causation_spans) >= 1, (
+            "Expected at least one UoW commit span with protean.causation_id"
+        )
+        assert causation_spans[0].attributes["protean.causation_id"] == parent_msg_id
 
     def test_uow_span_correlation_matches_process_span(
         self, test_domain, span_exporter
