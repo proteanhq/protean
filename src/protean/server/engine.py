@@ -130,17 +130,36 @@ class CommandDispatcher:
 def _extract_correlation_id(message: dict) -> str:
     """Extract correlation_id from an incoming broker message dict.
 
-    Checks the Protean external message format path
-    ``metadata.domain.correlation_id``.  Returns a fresh UUID when
-    the incoming message carries no correlation context (the subscriber
+    Checks the Protean external message format paths, in order:
+    ``metadata.domain.correlation_id``, ``metadata.correlation_id``,
+    and top-level ``correlation_id``.  Returns a fresh UUID when the
+    incoming message carries no usable correlation context (the subscriber
     acts as an ACL and legitimately starts a new causal chain).
+    Empty or whitespace-only values are treated as missing.
     """
-    try:
-        value = message["metadata"]["domain"]["correlation_id"]
-        if value is not None:
-            return str(value)
-    except (KeyError, TypeError):
-        pass
+
+    def _normalize(value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    for path in (
+        ("metadata", "domain", "correlation_id"),
+        ("metadata", "correlation_id"),
+        ("correlation_id",),
+    ):
+        try:
+            current: object = message
+            for key in path:
+                current = current[key]  # type: ignore[index]
+        except (KeyError, TypeError):
+            continue
+
+        normalized = _normalize(current)
+        if normalized is not None:
+            return normalized
+
     return new_correlation_id()
 
 

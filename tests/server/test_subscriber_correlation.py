@@ -471,3 +471,65 @@ class TestExtractCorrelationIdHelper:
         }
         result = _extract_correlation_id(msg)
         assert result == "12345"
+
+    def test_extracts_from_metadata_correlation_id(self):
+        from protean.server.engine import _extract_correlation_id
+
+        msg = {
+            "data": {"foo": "bar"},
+            "metadata": {"correlation_id": "meta-corr-456"},
+        }
+        assert _extract_correlation_id(msg) == "meta-corr-456"
+
+    def test_extracts_from_top_level_correlation_id(self):
+        from protean.server.engine import _extract_correlation_id
+
+        msg = {"data": {"foo": "bar"}, "correlation_id": "top-corr-789"}
+        assert _extract_correlation_id(msg) == "top-corr-789"
+
+    def test_prefers_metadata_domain_over_metadata(self):
+        from protean.server.engine import _extract_correlation_id
+
+        msg = {
+            "metadata": {
+                "domain": {"correlation_id": "deep"},
+                "correlation_id": "shallow",
+            },
+            "correlation_id": "top",
+        }
+        assert _extract_correlation_id(msg) == "deep"
+
+    def test_falls_back_from_metadata_domain_to_metadata(self):
+        from protean.server.engine import _extract_correlation_id
+
+        msg = {
+            "metadata": {"correlation_id": "shallow"},
+            "correlation_id": "top",
+        }
+        assert _extract_correlation_id(msg) == "shallow"
+
+    def test_generates_new_for_empty_string(self):
+        from protean.server.engine import _extract_correlation_id
+
+        msg = {"metadata": {"domain": {"correlation_id": ""}}}
+        result = _extract_correlation_id(msg)
+        assert result != ""
+        assert len(result) > 0
+
+    def test_generates_new_for_whitespace_only(self):
+        from protean.server.engine import _extract_correlation_id
+
+        msg = {"metadata": {"domain": {"correlation_id": "   "}}}
+        result = _extract_correlation_id(msg)
+        assert result.strip() != ""
+
+    def test_skips_blank_and_falls_back(self):
+        from protean.server.engine import _extract_correlation_id
+
+        msg = {
+            "metadata": {
+                "domain": {"correlation_id": "  "},
+                "correlation_id": "valid-fallback",
+            },
+        }
+        assert _extract_correlation_id(msg) == "valid-fallback"
