@@ -212,7 +212,9 @@ class HandlerMixin:
         handler_start = time.monotonic()
 
         with tracer.start_as_current_span(
-            "protean.handler.execute", record_exception=False, set_status_on_exception=False
+            "protean.handler.execute",
+            record_exception=False,
+            set_status_on_exception=False,
         ) as span:
             span.set_attribute("protean.handler.name", cls.__name__)
             span.set_attribute("protean.handler.type", handler_type)

@@ -615,9 +615,7 @@ class OpenAccountWithEvent(BaseCommand):
 class AccountWithEventHandler(BaseCommandHandler):
     @handle(OpenAccountWithEvent)
     def open(self, command: OpenAccountWithEvent):
-        acct = AccountWithEvent(
-            account_id=command.account_id, name=command.name
-        )
+        acct = AccountWithEvent(account_id=command.account_id, name=command.name)
         acct.raise_(AccountOpened(account_id=command.account_id, name=command.name))
         current_domain.repository_for(AccountWithEvent).add(acct)
         return {"opened": command.account_id}
@@ -657,16 +655,12 @@ class TestUoWCommitSpanOnError:
 
         # Find the UoW commit span that recorded the error
         # (there may be an earlier internal UoW span from the memory adapter)
-        error_spans = [
-            s for s in uow_spans if s.status.status_code == StatusCode.ERROR
-        ]
+        error_spans = [s for s in uow_spans if s.status.status_code == StatusCode.ERROR]
         assert len(error_spans) == 1
 
         uow_span = error_spans[0]
         assert len(uow_span.events) > 0
-        exception_event = next(
-            e for e in uow_span.events if e.name == "exception"
-        )
+        exception_event = next(e for e in uow_span.events if e.name == "exception")
         assert "event store exploded" in exception_event.attributes["exception.message"]
 
 
@@ -1165,9 +1159,7 @@ class TestUoWSpanCorrelationAttributes:
         """Return the UoW commit span that has protean.correlation_id."""
         uow_spans = [s for s in spans if s.name == "protean.uow.commit"]
         assert len(uow_spans) >= 1, "Expected at least one protean.uow.commit span"
-        correlated = [
-            s for s in uow_spans if "protean.correlation_id" in s.attributes
-        ]
+        correlated = [s for s in uow_spans if "protean.correlation_id" in s.attributes]
         assert len(correlated) >= 1, (
             "Expected at least one UoW commit span with protean.correlation_id"
         )
