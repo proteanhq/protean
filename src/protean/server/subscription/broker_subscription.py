@@ -302,9 +302,9 @@ class BrokerSubscription(BaseSubscription):
             )
 
             # Emit trace event
-            msg_metadata = payload.get("metadata", {})
+            msg_metadata = payload.get("metadata") or {}
             message_type = msg_metadata.get("headers", {}).get("type", "unknown")
-            domain_meta = msg_metadata.get("domain", {})
+            domain_meta = msg_metadata.get("domain") or {}
             self.engine.emitter.emit(
                 event="message.dlq",
                 stream=self.stream_name,

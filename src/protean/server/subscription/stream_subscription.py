@@ -673,9 +673,9 @@ class StreamSubscription(BaseSubscription):
             logger.info(f"Moved message {identifier} to DLQ stream {dlq_target}")
 
             # Emit message.dlq trace
-            msg_metadata = payload.get("metadata", {})
+            msg_metadata = payload.get("metadata") or {}
             message_type = msg_metadata.get("headers", {}).get("type", "unknown")
-            domain_meta = msg_metadata.get("domain", {})
+            domain_meta = msg_metadata.get("domain") or {}
             self.engine.emitter.emit(
                 event="message.dlq",
                 stream=stream,

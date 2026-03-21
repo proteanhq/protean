@@ -554,6 +554,16 @@ class Engine:
             #   carry the metadata forward.
             g.message_in_context = message
 
+            # Initialize variables used in the except block to avoid
+            # UnboundLocalError if an exception occurs before assignment.
+            message_id = "unknown"
+            message_type = "unknown"
+            stream = "unknown"
+            handler_name = "unknown"
+            start_time = time.monotonic()
+            correlation_id = None
+            causation_id = None
+
             try:
                 assert message.metadata is not None, "Message metadata cannot be None"
 
