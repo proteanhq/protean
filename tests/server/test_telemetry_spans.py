@@ -7,7 +7,9 @@ Verifies that:
 - ``CommandProcessor.enrich()`` emits a child ``protean.command.enrich``
   span nested under the process span.
 - ``HandlerMixin._handle()`` emits a ``protean.handler.execute`` span
-  with handler name and type.
+  with handler name, type, and correlation/causation IDs.
+- ``UnitOfWork.commit()`` emits a ``protean.uow.commit`` span with
+  correlation_id.
 - ``QueryProcessor.dispatch()`` emits a ``protean.query.dispatch`` span.
 - Errors in handlers record exceptions and set ERROR status on spans.
 - Parent-child span relationships are correct.
@@ -1077,3 +1079,136 @@ class TestEventSourcedSpanTree:
         spans = span_exporter.get_finished_spans()
         trace_ids = {s.context.trace_id for s in spans}
         assert len(trace_ids) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests: Correlation/causation IDs on handler.execute span
+# ---------------------------------------------------------------------------
+
+
+class TestHandlerSpanCorrelationAttributes:
+    """protean.handler.execute span carries correlation_id and causation_id."""
+
+    def test_handler_span_has_correlation_id(self, test_domain, span_exporter):
+        corr_id = "test-corr-handler-123"
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+            correlation_id=corr_id,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
+        assert handler_span.attributes["protean.correlation_id"] == corr_id
+
+    def test_handler_span_has_auto_generated_correlation_id(
+        self, test_domain, span_exporter
+    ):
+        """When no explicit correlation_id is provided, an auto-generated one appears."""
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
+        assert "protean.correlation_id" in handler_span.attributes
+        assert handler_span.attributes["protean.correlation_id"] != ""
+
+    def test_handler_span_has_causation_id(self, test_domain, span_exporter):
+        """causation_id on handler span matches the command's message ID."""
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
+        # causation_id is not set on the command itself (it's a root command),
+        # so it should be absent from the handler span
+        assert "protean.causation_id" not in handler_span.attributes
+
+    def test_handler_span_correlation_matches_process_span(
+        self, test_domain, span_exporter
+    ):
+        """Handler span's correlation_id matches the process span's."""
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        process_span = next(s for s in spans if s.name == "protean.command.process")
+        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
+        assert (
+            handler_span.attributes["protean.correlation_id"]
+            == process_span.attributes["protean.correlation_id"]
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests: Correlation ID on uow.commit span
+# ---------------------------------------------------------------------------
+
+
+class TestUoWSpanCorrelationAttributes:
+    """protean.uow.commit span carries correlation_id when message context is set.
+
+    Note: There may be multiple UoW commit spans during command processing
+    (e.g. one for event store command append, one for handler-level persistence).
+    The handler-level UoW commit runs while g.message_in_context is set and
+    therefore carries the correlation_id attribute.
+    """
+
+    @staticmethod
+    def _find_uow_span_with_correlation(spans):
+        """Return the UoW commit span that has protean.correlation_id."""
+        uow_spans = [s for s in spans if s.name == "protean.uow.commit"]
+        assert len(uow_spans) >= 1, "Expected at least one protean.uow.commit span"
+        correlated = [
+            s for s in uow_spans if "protean.correlation_id" in s.attributes
+        ]
+        assert len(correlated) >= 1, (
+            "Expected at least one UoW commit span with protean.correlation_id"
+        )
+        return correlated[0]
+
+    def test_uow_span_has_correlation_id(self, test_domain, span_exporter):
+        corr_id = "test-corr-uow-456"
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+            correlation_id=corr_id,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        uow_span = self._find_uow_span_with_correlation(spans)
+        assert uow_span.attributes["protean.correlation_id"] == corr_id
+
+    def test_uow_span_has_auto_generated_correlation_id(
+        self, test_domain, span_exporter
+    ):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        uow_span = self._find_uow_span_with_correlation(spans)
+        assert uow_span.attributes["protean.correlation_id"] != ""
+
+    def test_uow_span_correlation_matches_process_span(
+        self, test_domain, span_exporter
+    ):
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        process_span = next(s for s in spans if s.name == "protean.command.process")
+        uow_span = self._find_uow_span_with_correlation(spans)
+        assert (
+            uow_span.attributes["protean.correlation_id"]
+            == process_span.attributes["protean.correlation_id"]
+        )

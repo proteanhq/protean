@@ -188,6 +188,18 @@ class OutboxProcessor(BaseSubscription):
             span.set_attribute("protean.outbox.processor_id", self.subscription_id)
             span.set_attribute("protean.outbox.is_external", self.is_external)
 
+            # Propagate correlation/causation IDs from the first message in batch
+            if messages:
+                first = messages[0]
+                if first.correlation_id:
+                    span.set_attribute(
+                        "protean.correlation_id", first.correlation_id
+                    )
+                if first.causation_id:
+                    span.set_attribute(
+                        "protean.causation_id", first.causation_id
+                    )
+
             successful_count = 0
 
             for message in messages:
@@ -290,6 +302,14 @@ class OutboxProcessor(BaseSubscription):
             span.set_attribute("protean.outbox.message_type", message_type)
             span.set_attribute("protean.outbox.is_external", self.is_external)
             span.set_attribute("protean.outbox.processor_id", self.subscription_id)
+            if message.correlation_id:
+                span.set_attribute(
+                    "protean.correlation_id", message.correlation_id
+                )
+            if message.causation_id:
+                span.set_attribute(
+                    "protean.causation_id", message.causation_id
+                )
 
             try:
                 # Use UnitOfWork for atomic transaction management

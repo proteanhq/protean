@@ -133,6 +133,17 @@ class UnitOfWork:
             record_exception=False,
             set_status_on_exception=False,
         ) as span:
+            # Propagate correlation ID from the message being processed
+            from protean.utils.globals import g
+
+            msg = g.get("message_in_context")
+            if msg is not None and hasattr(msg, "metadata") and msg.metadata:
+                domain_meta = getattr(msg.metadata, "domain", None)
+                if domain_meta is not None and domain_meta.correlation_id:
+                    span.set_attribute(
+                        "protean.correlation_id", domain_meta.correlation_id
+                    )
+
             self._do_commit(span)
 
     def _do_commit(self, span: Any) -> None:  # noqa: C901
