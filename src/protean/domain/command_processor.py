@@ -97,10 +97,7 @@ class CommandProcessor:
 
             # Store the resolved correlation ID so the HTTP middleware can
             # reflect it in the response header (even when auto-generated).
-            try:
-                g.used_correlation_id = inherited_correlation_id
-            except AttributeError:
-                pass  # No active domain context (e.g. bare domain.process() call)
+            g.used_correlation_id = inherited_correlation_id
 
             # Capture the current OTEL span context as a traceparent header
             # so that downstream handlers can continue the distributed trace.
