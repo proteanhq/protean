@@ -13,7 +13,13 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.utils.globals import g
-from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
+from protean.utils.eventing import (
+    DomainMeta,
+    Message,
+    MessageHeaders,
+    Metadata,
+    new_correlation_id,
+)
 from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
     extract_context_from_traceparent,
@@ -119,6 +125,23 @@ class CommandDispatcher:
         handler_cls = self._last_resolved_handler
         if handler_cls and hasattr(handler_cls, "handle_error"):
             handler_cls.handle_error(exc, message)
+
+
+def _extract_correlation_id(message: dict) -> str:
+    """Extract correlation_id from an incoming broker message dict.
+
+    Checks the Protean external message format path
+    ``metadata.domain.correlation_id``.  Returns a fresh UUID when
+    the incoming message carries no correlation context (the subscriber
+    acts as an ACL and legitimately starts a new causal chain).
+    """
+    try:
+        value = message["metadata"]["domain"]["correlation_id"]
+        if value is not None:
+            return str(value)
+    except (KeyError, TypeError):
+        pass
+    return new_correlation_id()
 
 
 class Engine:
@@ -447,11 +470,20 @@ class Engine:
             # as internal handlers.  Commands processed by the subscriber
             # will inherit causation_id = message_id automatically.
             if message_id is not None and stream is not None:
+                # Extract correlation_id from the incoming broker message.
+                # Protean's external message format nests it under
+                # metadata.domain.correlation_id.  If not present,
+                # generate a fresh ID (subscriber as ACL starts a new chain).
+                correlation_id = _extract_correlation_id(message)
+
                 g.message_in_context = Message(
                     data=message,
                     metadata=Metadata(
                         headers=MessageHeaders(id=message_id, stream=stream),
-                        domain=DomainMeta(kind="BROKER_MESSAGE"),
+                        domain=DomainMeta(
+                            kind="BROKER_MESSAGE",
+                            correlation_id=correlation_id,
+                        ),
                     ),
                 )
 
