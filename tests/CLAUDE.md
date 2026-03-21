@@ -48,6 +48,36 @@ without a specific file or directory.
 - **Check for tests with every change** and add if necessary.
 - Tests in `tests/support/` are excluded from collection (`--ignore=tests/support/`).
 
+### Marker-Based Test Selection (Important)
+
+Tests are selected or skipped **purely based on pytest markers** — never by
+directory or file path. The two run modes are:
+
+- **`protean test`** (CORE): Runs all tests that have **no** adapter marker.
+  No external services are needed. Tests use in-memory adapters by default.
+- **`protean test -c FULL`**: External services (PostgreSQL, Redis,
+  Elasticsearch, etc.) are started via Docker and adapter-specific CLI flags
+  are passed, enabling the marked tests.
+
+**Rules for writing tests:**
+
+1. If a test needs an external service (database server, message broker,
+   search engine, etc.), it **must** carry the corresponding marker
+   (`@pytest.mark.postgresql`, `@pytest.mark.redis`, etc.). Without the
+   marker, the test will run during `protean test` and fail because the
+   service is absent.
+2. If a test needs multiple services, apply **all** relevant markers.
+3. Tests that use in-memory exporters or mocks for the external side
+   (e.g., OpenTelemetry tests with `InMemorySpanExporter`) do **not**
+   need a marker — they are core tests.
+4. Optional adapter packages (`sqlalchemy`, `redis`, `elasticsearch`,
+   `opentelemetry`, etc.) are expected to be installed in the dev
+   environment via `uv sync --all-extras --all-groups`. They are defined
+   under `[project.optional-dependencies]` in `pyproject.toml` and must
+   remain there (not moved to dev dependencies).
+5. Never skip or ignore tests based on directory structure. The directory
+   a test lives in does not determine whether it runs — only its markers do.
+
 ## Test Domain Fixture
 
 Almost every test uses the `test_domain` autouse fixture from `conftest.py`.

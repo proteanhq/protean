@@ -64,10 +64,14 @@ class CommandProcessor:
             else:
                 identifier = str(uuid4())
 
-            stream = f"{command.meta_.part_of.meta_.stream_category}:command-{identifier}"
+            stream = (
+                f"{command.meta_.part_of.meta_.stream_category}:command-{identifier}"
+            )
 
             origin_stream = None
-            inherited_correlation_id = correlation_id  # Caller-provided takes precedence
+            inherited_correlation_id = (
+                correlation_id  # Caller-provided takes precedence
+            )
             causation_id = None
 
             if hasattr(g, "message_in_context"):
@@ -81,9 +85,19 @@ class CommandProcessor:
                 if msg_ctx.metadata.headers:
                     causation_id = msg_ctx.metadata.headers.id
 
+            # Fall back to HTTP request header correlation ID (set by middleware)
+            if inherited_correlation_id is None and hasattr(
+                g, "request_correlation_id"
+            ):
+                inherited_correlation_id = g.request_correlation_id
+
             # Generate new correlation_id if this is a root entry point
             if inherited_correlation_id is None:
                 inherited_correlation_id = new_correlation_id()
+
+            # Store the resolved correlation ID so the HTTP middleware can
+            # reflect it in the response header (even when auto-generated).
+            g.used_correlation_id = inherited_correlation_id
 
             # Capture the current OTEL span context as a traceparent header
             # so that downstream handlers can continue the distributed trace.
@@ -220,7 +234,9 @@ class CommandProcessor:
 
             # If asynchronous is not specified, use the command_processing setting from config
             if asynchronous is None:
-                asynchronous = domain.config["command_processing"] == Processing.ASYNC.value
+                asynchronous = (
+                    domain.config["command_processing"] == Processing.ASYNC.value
+                )
 
             if (
                 fqn(command.__class__)
@@ -312,7 +328,7 @@ class CommandProcessor:
                             result = handler_class._handle(command_with_metadata)
                     except Exception as exc:
                         duration_ms = (time.monotonic() - start_time) * 1000
-                        duration_s = (time.monotonic() - process_start)
+                        duration_s = time.monotonic() - process_start
 
                         # Record exception on the OTEL span
                         from protean.utils.telemetry import set_span_error
@@ -345,7 +361,7 @@ class CommandProcessor:
                         g.pop("message_in_context", None)
 
                     duration_ms = (time.monotonic() - start_time) * 1000
-                    duration_s = (time.monotonic() - process_start)
+                    duration_s = time.monotonic() - process_start
 
                     # Record OTel metrics for successful command
                     cmd_attrs = {"command_type": command_type, "status": "ok"}
