@@ -1109,8 +1109,10 @@ class TestHandlerSpanCorrelationAttributes:
         assert "protean.correlation_id" in handler_span.attributes
         assert handler_span.attributes["protean.correlation_id"] != ""
 
-    def test_handler_span_has_causation_id(self, test_domain, span_exporter):
-        """causation_id on handler span matches the command's message ID."""
+    def test_handler_span_omits_causation_id_for_root_command(
+        self, test_domain, span_exporter
+    ):
+        """Root commands have no causation_id, so the handler span omits it."""
         test_domain.process(
             OpenAccount(account_id=str(uuid4()), name="Acme"),
             asynchronous=False,
@@ -1118,8 +1120,9 @@ class TestHandlerSpanCorrelationAttributes:
 
         spans = span_exporter.get_finished_spans()
         handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        # causation_id is not set on the command itself (it's a root command),
-        # so it should be absent from the handler span
+        # A root command has no causation chain, so causation_id is absent.
+        # Derived events/commands processed by downstream handlers WILL carry
+        # causation_id (the parent message's ID).
         assert "protean.causation_id" not in handler_span.attributes
 
     def test_handler_span_correlation_matches_process_span(
@@ -1146,12 +1149,12 @@ class TestHandlerSpanCorrelationAttributes:
 
 
 class TestUoWSpanCorrelationAttributes:
-    """protean.uow.commit span carries correlation_id when message context is set.
+    """protean.uow.commit span carries correlation/causation IDs when message context is set.
 
     Note: There may be multiple UoW commit spans during command processing
     (e.g. one for event store command append, one for handler-level persistence).
     The handler-level UoW commit runs while g.message_in_context is set and
-    therefore carries the correlation_id attribute.
+    therefore carries the correlation_id (and causation_id when present) attributes.
     """
 
     @staticmethod
@@ -1188,6 +1191,19 @@ class TestUoWSpanCorrelationAttributes:
         spans = span_exporter.get_finished_spans()
         uow_span = self._find_uow_span_with_correlation(spans)
         assert uow_span.attributes["protean.correlation_id"] != ""
+
+    def test_uow_span_omits_causation_id_for_root_command(
+        self, test_domain, span_exporter
+    ):
+        """Root commands have no causation_id, so UoW commit span omits it."""
+        test_domain.process(
+            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            asynchronous=False,
+        )
+
+        spans = span_exporter.get_finished_spans()
+        uow_span = self._find_uow_span_with_correlation(spans)
+        assert "protean.causation_id" not in uow_span.attributes
 
     def test_uow_span_correlation_matches_process_span(
         self, test_domain, span_exporter

@@ -188,13 +188,23 @@ class OutboxProcessor(BaseSubscription):
             span.set_attribute("protean.outbox.processor_id", self.subscription_id)
             span.set_attribute("protean.outbox.is_external", self.is_external)
 
-            # Propagate correlation/causation IDs from the first message in batch
+            # Propagate correlation/causation IDs only when uniform across the batch
             if messages:
-                first = messages[0]
-                if first.correlation_id:
-                    span.set_attribute("protean.correlation_id", first.correlation_id)
-                if first.causation_id:
-                    span.set_attribute("protean.causation_id", first.causation_id)
+                correlation_ids = {
+                    msg.correlation_id for msg in messages if msg.correlation_id
+                }
+                causation_ids = {
+                    msg.causation_id for msg in messages if msg.causation_id
+                }
+
+                if len(correlation_ids) == 1:
+                    span.set_attribute(
+                        "protean.correlation_id", next(iter(correlation_ids))
+                    )
+                if len(causation_ids) == 1:
+                    span.set_attribute(
+                        "protean.causation_id", next(iter(causation_ids))
+                    )
 
             successful_count = 0
 
