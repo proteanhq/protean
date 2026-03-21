@@ -259,6 +259,17 @@ Uses `domain.toml`, `.domain.toml`, or `pyproject.toml` with environment variabl
 - Test all adapter implementations with configuration flags
 - Capability-based broker testing with tier system
 
+### Marker-Based Test Selection
+
+Test selection is **purely marker-based** — never directory or file-path based.
+
+- **`protean test`** (CORE): Runs all unmarked tests with in-memory adapters. No external services needed.
+- **`protean test -c FULL`**: Starts external services via Docker and passes adapter-specific CLI flags (`--redis`, `--postgresql`, etc.) to enable marked tests.
+
+Every test that requires an external service (PostgreSQL, Redis, Elasticsearch, MessageDB, etc.) **must** carry the corresponding pytest marker. Tests that use in-memory exporters or mocks for the external side (e.g., OpenTelemetry with `InMemorySpanExporter`) are core tests and need no marker.
+
+Optional adapter packages (`sqlalchemy`, `redis`, `elasticsearch`, `opentelemetry`, etc.) live under `[project.optional-dependencies]` in `pyproject.toml` and are expected to be installed in dev environments via `uv sync --all-extras --all-groups`.
+
 ### Test Placement
 
 Tests are organized by feature into directories under `tests/`. Always place new tests in the directory that matches the source code being tested — never create monolithic test files that mix unrelated concerns.
