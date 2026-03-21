@@ -20,6 +20,7 @@ Usage::
 from __future__ import annotations
 
 from typing import Callable, Optional
+from uuid import uuid4
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -107,16 +108,19 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
 
         if domain is not None:
             with domain.domain_context():
-                if correlation_id is not None:
-                    g.request_correlation_id = correlation_id
+                # Always ensure a correlation ID exists for domain-mapped
+                # requests: use the header value or generate a new one.
+                if correlation_id is None:
+                    correlation_id = uuid4().hex
+                g.request_correlation_id = correlation_id
+
                 response = await call_next(request)
                 # Inject correlation ID into the response.  Prefer the ID that
                 # command processing actually used (stored in g by enrich()),
                 # falling back to the request-supplied value if no command was
                 # processed during this request.
                 used_id = getattr(g, "used_correlation_id", None) or correlation_id
-                if used_id is not None:
-                    response.headers[_CORRELATION_HEADER] = used_id
+                response.headers[_CORRELATION_HEADER] = used_id
                 return response
 
         return await call_next(request)

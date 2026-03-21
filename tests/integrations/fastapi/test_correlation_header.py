@@ -5,8 +5,8 @@ Verifies that:
   and used as the default correlation ID during command processing.
 - ``X-Request-ID`` is used as a fallback when ``X-Correlation-ID`` is absent.
 - ``domain.process(cmd, correlation_id=...)`` beats the header value.
-- Requests without either header auto-generate a correlation ID.
-- The response always includes ``X-Correlation-ID`` reflecting the ID used.
+- Requests without either header auto-generate a correlation ID (for domain-mapped routes).
+- The response always includes ``X-Correlation-ID`` for domain-mapped routes.
 """
 
 from uuid import uuid4
@@ -102,7 +102,7 @@ def _make_app(domain) -> FastAPI:
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(Order)
+    test_domain.register(Order, fact_events=True)
     test_domain.register(PlaceOrder, part_of=Order)
     test_domain.register(OrderCommandHandler, part_of=Order)
     test_domain.init(traverse=False)
@@ -156,11 +156,13 @@ class TestCorrelationHeaderExtraction:
         assert response.status_code == 200
         assert response.json()["request_correlation_id"] == "corr-wins"
 
-    def test_no_header_means_no_g_attribute(self, client):
-        """Without either header, g.request_correlation_id is not set."""
+    def test_auto_generated_when_no_header(self, client):
+        """Without either header, a correlation ID is still auto-generated."""
         response = client.get("/orders/inspect-g")
         assert response.status_code == 200
-        assert response.json()["request_correlation_id"] is None
+        auto_id = response.json()["request_correlation_id"]
+        assert auto_id is not None
+        assert len(auto_id) == 32  # UUID4 hex
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +272,13 @@ class TestResponseCorrelationHeader:
         assert response.status_code == 200
         assert response.headers["X-Correlation-ID"] == "read-req-id"
 
+    def test_response_header_for_read_endpoint_without_header(self, client):
+        """Domain-mapped read endpoints get an auto-generated correlation ID."""
+        response = client.get("/orders/inspect-g")
+        assert response.status_code == 200
+        assert "X-Correlation-ID" in response.headers
+        assert len(response.headers["X-Correlation-ID"]) == 32
+
 
 # ---------------------------------------------------------------------------
 # Tests: Event propagation (existing mechanism)
@@ -287,11 +296,11 @@ class TestEventCorrelationPropagation:
         )
         assert response.status_code == 200
 
-        # Read events from the event store — they should carry the same correlation
+        # Read fact events from the event store — they should carry the same correlation
         order_id = response.json()["order_id"]
-        events = test_domain.event_store.store.read(f"order-{order_id}")
+        events = test_domain.event_store.store.read(
+            f"test::order-fact-{order_id}"
+        )
+        assert len(events) > 0, "Expected at least one fact event"
         for event_msg in events:
-            if event_msg.metadata.domain.kind == "EVENT":
-                assert (
-                    event_msg.metadata.domain.correlation_id == "trace-through-events"
-                )
+            assert event_msg.metadata.domain.correlation_id == "trace-through-events"
