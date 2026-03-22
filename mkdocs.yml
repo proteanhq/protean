@@ -256,6 +256,8 @@ nav:
       - guides/server/opentelemetry.md
       - guides/server/using-priority-lanes.md
       - guides/server/external-event-dispatch.md
+    - Observe Your System:
+      - guides/observability/correlation-and-causation.md
     - Multi-Domain Applications:
       - guides/multi-domain-applications.md
     - Compatibility Checking:

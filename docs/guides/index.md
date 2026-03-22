@@ -59,7 +59,8 @@ to use? Start with DDD and evolve later.
     Run the async processing server and integrate with FastAPI.
 
     [:material-arrow-right-box: Run the Server](./server/index.md) ·
-    [:material-arrow-right-box: FastAPI](./fastapi/index.md)
+    [:material-arrow-right-box: FastAPI](./fastapi/index.md) ·
+    [:material-arrow-right-box: Correlation IDs](./observability/correlation-and-causation.md)
 
     *See also:* [Configuration](../reference/configuration/index.md) ·
     [CLI](../reference/cli/index.md) ·

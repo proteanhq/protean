@@ -121,6 +121,10 @@ need by what you're trying to accomplish.
 | Understand subscriptions and event processing   | [Subscriptions](./concepts/async-processing/subscriptions.md) |
 | Use the outbox pattern for reliable messaging   | [Outbox](./concepts/async-processing/outbox.md) |
 | Dispatch published events to external brokers   | [External Event Dispatch](./guides/server/external-event-dispatch.md) |
+| Understand how correlation IDs propagate end-to-end | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md) |
+| Inject correlation IDs into logs automatically  | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#structured-logging-setup) |
+| Pass a correlation ID from an API gateway       | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#passing-correlation-ids-from-external-callers) |
+| Preserve correlation chains across services     | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#service-boundary-handling) |
 | Set up structured logging                       | [Running the Server](./guides/server/index.md) |
 | Add request-scoped context to logs              | [Running the Server](./guides/server/index.md) |
 | Minimize logging noise in tests                 | [Running the Server](./guides/server/index.md#test-mode) |

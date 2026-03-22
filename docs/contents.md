@@ -110,6 +110,7 @@ specific area.
 - [Status Transitions](./guides/domain-behavior/status-transitions.md) -- Enforce lifecycle state machines with the Status field.
 - [Raising Events](./guides/domain-behavior/raising-events.md) -- Notify other parts of the system through domain events.
 - [Message Tracing](./guides/domain-behavior/message-tracing.md) -- Track the full causal chain of commands and events with correlation and causation IDs, and traverse causation chains programmatically.
+- [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md) -- Complete guide to correlation and causation ID propagation across HTTP headers, OTEL spans, Observatory traces, structured logging, and cross-service boundaries.
 - [Domain Services](./guides/domain-behavior/domain-services.md) -- Complex domain logic that spans multiple aggregates.
 
 ### Change State

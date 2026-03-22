@@ -100,6 +100,28 @@ app.add_middleware(
 )
 ```
 
+### Correlation ID header
+
+The middleware automatically extracts `X-Correlation-ID` (falling back to
+`X-Request-ID`) from incoming request headers and makes it available as the
+default correlation ID for command processing. The response always includes an
+`X-Correlation-ID` header reflecting the ID that was used -- from the request
+header, an explicit `domain.process()` parameter, or an auto-generated UUID.
+
+This means no manual header extraction is needed in your endpoints:
+
+```python
+@app.post("/orders")
+async def place_order(payload: dict):
+    # Correlation ID from X-Correlation-ID header is picked up automatically.
+    current_domain.process(PlaceOrder(**payload))
+    return {"status": "accepted"}
+```
+
+For the full story on how correlation IDs propagate through commands, events,
+logging, and OTEL spans, see
+[Correlation and Causation IDs](../observability/correlation-and-causation.md).
+
 ---
 
 ## Exception handlers

@@ -83,6 +83,41 @@ logger.info("processing")  # Includes request_id and customer_id
 clear_context()  # Clean up at request end
 ```
 
+## Automatic correlation context
+
+During message processing, Protean can automatically inject `correlation_id`
+and `causation_id` into every log record -- no manual `add_context()` needed.
+
+**stdlib logging:** Add the `ProteanCorrelationFilter` to any handler:
+
+```python
+import logging
+
+from protean.integrations.logging import ProteanCorrelationFilter
+
+handler = logging.StreamHandler()
+handler.addFilter(ProteanCorrelationFilter())
+handler.setFormatter(
+    logging.Formatter("%(message)s correlation_id=%(correlation_id)s")
+)
+```
+
+**structlog:** Add the `protean_correlation_processor` to your pipeline:
+
+```python
+import structlog
+
+from protean.integrations.logging import protean_correlation_processor
+
+structlog.configure(
+    processors=[protean_correlation_processor, structlog.dev.ConsoleRenderer()]
+)
+```
+
+Both integrations are safe no-ops when no domain context is active. For the
+full setup details and how correlation IDs propagate, see
+[Correlation and Causation IDs](../observability/correlation-and-causation.md#structured-logging-setup).
+
 ## Method call tracing
 
 The `@log_method_call` decorator logs entry, exit, and exceptions for handler

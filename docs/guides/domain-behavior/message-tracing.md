@@ -276,6 +276,8 @@ This is useful for operational dashboards and debugging delivery issues.
 ---
 
 !!! tip "See also"
+    **Complete guide:** [Correlation and Causation IDs](../observability/correlation-and-causation.md) -- End-to-end guide covering HTTP headers, OTEL span attributes, Observatory traces, structured logging, and cross-service propagation.
+
     **Related guide:** [Message Enrichment](message-enrichment.md) -- Automatically add custom metadata (user context, tenant ID, audit data) to every event and command via enricher hooks.
 
     **Pattern:** [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md) -- Design considerations, when to use external vs generated IDs, and multi-service tracing strategies.

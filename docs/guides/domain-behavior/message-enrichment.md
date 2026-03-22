@@ -175,5 +175,6 @@ are enriched automatically.
     **Related guides:**
 
     - [Message Tracing](message-tracing.md) -- Correlation and causation IDs for distributed tracing, plus the programmatic causation chain API
+    - [Correlation and Causation IDs](../observability/correlation-and-causation.md) -- Complete guide covering HTTP headers, OTEL spans, Observatory, logging, and cross-service propagation
     - [Raising Events](raising-events.md) -- How aggregates raise domain events
     - [Commands](../../guides/change-state/commands.md) -- Command processing via `domain.process()`
