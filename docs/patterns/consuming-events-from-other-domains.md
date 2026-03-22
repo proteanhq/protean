@@ -321,6 +321,14 @@ class OrderEventsSubscriber:
 **Key principle:** Never trust external data. Validate it at the subscriber
 boundary before passing it into your domain.
 
+!!! tip "Preserving the correlation chain"
+    When consuming events from external services, the `correlation_id` from the
+    source event is automatically bridged into your subscriber's processing
+    context. Any commands dispatched inside the subscriber inherit it, stitching
+    the causal chain across service boundaries. See
+    [Correlation and Causation IDs](../guides/observability/correlation-and-causation.md#service-boundary-handling)
+    for details.
+
 ---
 
 ## Anti-Patterns

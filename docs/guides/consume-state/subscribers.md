@@ -306,10 +306,16 @@ The context `Message` wraps the broker metadata:
 Because this is the same `message_in_context` used for domain events and
 commands, any commands dispatched by the subscriber via `domain.process()`
 automatically inherit the broker message ID as their `causation_id`, linking
-the full trace chain back to the original external message.
+the full trace chain back to the original external message. The
+`correlation_id` from the source service is also preserved automatically,
+stitching the causal chain across service boundaries.
 
 The context is automatically set before `__call__` is invoked and cleaned up
 afterward — even if the subscriber raises an exception.
+
+For a complete guide on how correlation and causation IDs flow across service
+boundaries, see
+[Correlation and Causation IDs](../observability/correlation-and-causation.md#service-boundary-handling).
 
 ## Subscribers vs. Event Handlers
 

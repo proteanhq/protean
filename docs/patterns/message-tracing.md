@@ -267,6 +267,8 @@ assert result2.events[0]._metadata.domain.correlation_id == corr_id
 ---
 
 !!! tip "Related reading"
+    **Complete guide:** [Correlation and Causation IDs](../guides/observability/correlation-and-causation.md) -- End-to-end guide covering HTTP headers, OTEL spans, Observatory traces, structured logging, and cross-service propagation.
+
     **Guide:** [Message Tracing](../guides/domain-behavior/message-tracing.md) -- How-to guide with code examples for setting up tracing.
 
     **Reference:** [`protean events trace`](../reference/cli/data/events.md) -- CLI command for following causal chains.

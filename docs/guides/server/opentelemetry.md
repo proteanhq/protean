@@ -312,6 +312,15 @@ The key functions are in `protean.utils.telemetry`:
 - `extract_context_from_traceparent(traceparent)` -- converts a `TraceParent`
   back to an OTel `Context`
 
+!!! note "Domain-level correlation vs. distributed tracing"
+    `TraceParent` provides *infrastructure* span lineage (parent-child spans
+    in Jaeger/Datadog). Protean's `correlation_id` and `causation_id` provide
+    *business* operation lineage (which command caused which event). Both are
+    complementary -- the `correlation_id` attribute on OTEL spans bridges the
+    two layers. See
+    [Correlation and Causation IDs](../observability/correlation-and-causation.md#relationship-to-opentelemetry)
+    for the full picture.
+
 ---
 
 ## FastAPI auto-instrumentation

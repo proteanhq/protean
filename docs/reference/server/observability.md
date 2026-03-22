@@ -59,6 +59,9 @@ the message processing pipeline. Each trace event captures:
 | `duration_ms` | Processing time in milliseconds (handler stages) |
 | `error` | Error message (failure stages) |
 | `metadata` | Extra context dict |
+| `correlation_id` | Correlation chain identifier (shared by all messages in a business operation) |
+| `causation_id` | Parent message identifier (the `headers.id` of the message that caused this one) |
+| `worker_id` | Subscription instance that processed this message |
 | `timestamp` | ISO 8601 UTC timestamp |
 
 ### Event types
@@ -73,6 +76,11 @@ the message processing pipeline. Each trace event captures:
 | `message.dlq` | StreamSubscription | When a message is moved to the dead letter queue |
 | `outbox.published` | OutboxProcessor | After a message is published to the broker |
 | `outbox.failed` | OutboxProcessor | When outbox publishing fails |
+
+The `correlation_id` and `causation_id` fields enable grouping and filtering
+trace events by business operation in the Observatory dashboard. For a
+complete guide on how these IDs propagate through the system, see
+[Correlation and Causation IDs](../../guides/observability/correlation-and-causation.md).
 
 ## Trace persistence and retention
 
