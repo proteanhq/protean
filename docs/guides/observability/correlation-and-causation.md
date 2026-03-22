@@ -52,10 +52,11 @@ domain.process(
 
 When using the `DomainContextMiddleware` with FastAPI, the middleware
 extracts `X-Correlation-ID` (falling back to `X-Request-ID`) from the
-incoming request and stores it in the global context. `domain.process()`
+incoming request and stores it in the global context. `current_domain.process()`
 picks it up automatically:
 
 ```python
+from protean.globals import current_domain
 from protean.integrations.fastapi import DomainContextMiddleware
 
 app.add_middleware(
@@ -67,7 +68,7 @@ app.add_middleware(
 async def place_order(request: PlaceOrderRequest):
     # No need to extract headers -- the middleware already did it.
     # The correlation ID flows through automatically.
-    domain.process(PlaceOrder(**request.dict()))
+    current_domain.process(PlaceOrder(**request.model_dump()))
 ```
 
 The middleware also injects `X-Correlation-ID` into the response, reflecting
@@ -263,9 +264,10 @@ Protean maintains two distinct tracing layers that complement each other:
 The `correlation_id` bridges both layers -- it identifies the same business
 operation whether you're looking at domain metadata or a Jaeger trace.
 
-When OTel is enabled, Protean sets `protean.correlation_id` and
-`protean.causation_id` as span attributes on all major spans. This lets you
-filter and group spans by business operation in your APM dashboard.
+When OTel is enabled, Protean sets `protean.correlation_id` on all major
+spans, and `protean.causation_id` wherever a single parent message is
+well-defined. This lets you filter and group spans by business operation in
+your APM dashboard.
 
 ### OTEL span attribute reference
 
@@ -306,7 +308,10 @@ of all messages in the chain.
 
 ### Trace events that carry correlation context
 
-Every trace event type includes `correlation_id` and `causation_id`:
+Most trace event types include `correlation_id` and `causation_id` when
+available. Handler and outbox events always carry these fields; acknowledgment
+and dead-letter events may have `null` values when correlation context is
+not available at the point of emission.
 
 | Trace event | Description |
 |-------------|-------------|
@@ -369,14 +374,16 @@ structlog.configure(
 ### With `configure_logging()`
 
 The domain's `configure_logging()` convenience method wires up both the
-filter and the processor in one call. Pass `extra_processors` to include
-the correlation processor alongside your own:
+standard library filter and the `protean_correlation_processor` in one call.
+Use the `extra_processors` argument only for *additional* structlog processors:
 
 ```python
-from protean.integrations.logging import protean_correlation_processor
+import structlog
 
 domain.configure_logging(
-    extra_processors=[protean_correlation_processor],
+    extra_processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+    ],
 )
 ```
 

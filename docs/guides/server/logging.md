@@ -91,6 +91,8 @@ and `causation_id` into every log record -- no manual `add_context()` needed.
 **stdlib logging:** Add the `ProteanCorrelationFilter` to any handler:
 
 ```python
+import logging
+
 from protean.integrations.logging import ProteanCorrelationFilter
 
 handler = logging.StreamHandler()
@@ -103,6 +105,8 @@ handler.setFormatter(
 **structlog:** Add the `protean_correlation_processor` to your pipeline:
 
 ```python
+import structlog
+
 from protean.integrations.logging import protean_correlation_processor
 
 structlog.configure(
