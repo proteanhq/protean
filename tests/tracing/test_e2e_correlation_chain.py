@@ -2,8 +2,8 @@
 
 Verifies that correlation_id and causation_id flow correctly across:
 1. Multi-step command → event → handler → command → event → projection chains
-2. External correlation_id propagation through event handler chains
-3. Command correlation_id → event context propagation (subscriber-style)
+2. External X-Correlation-ID header through HTTP middleware to event store
+3. External broker message → subscriber → domain.process → events
 4. Event handler causation chain correctness
 5. OTEL span attribute verification
 """
@@ -12,6 +12,8 @@ from uuid import uuid4
 
 import pytest
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -19,7 +21,11 @@ from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from protean.core.subscriber import BaseSubscriber
+from protean.integrations.fastapi import DomainContextMiddleware
+from protean.server import Engine
 from protean.utils.eventing import Message
+from protean.utils.globals import current_domain
 
 from tests.tracing.elements import (
     ConfirmOrder,
@@ -225,146 +231,219 @@ class TestFullChainCorrelationPropagation:
 
 
 # ===========================================================================
-# Scenario 2: External correlation_id propagation through event handler chains
+# Scenario 2: External X-Correlation-ID flows end-to-end through HTTP
 # ===========================================================================
-class TestExternalCorrelationIdE2E:
-    """Caller-provided correlation_id via domain.process() → command → events →
-    handler-dispatched commands — the exact external ID appears on all
-    messages in the event store and the causation tree.
+class TestExternalCorrelationIdViaHTTP:
+    """HTTP request with X-Correlation-ID header → DomainContextMiddleware →
+    command processing → events in event store.
+
+    The exact caller-provided ID appears on commands, events, and the
+    HTTP response header.
     """
 
-    @pytest.fixture(autouse=True)
-    def register_chain_handler(self, test_domain):
-        """Register the auto-confirm handler for chaining."""
-        test_domain.register(OrderPlacedAutoConfirmHandler, part_of=Order)
+    @pytest.fixture()
+    def app(self, test_domain) -> FastAPI:
+        app = FastAPI()
+        app.add_middleware(
+            DomainContextMiddleware,
+            route_domain_map={"/orders": test_domain},
+        )
+
+        @app.post("/orders")
+        def create_order():
+            oid = str(uuid4())
+            current_domain.process(
+                PlaceOrder(order_id=oid, customer="Bob", amount=50.0),
+                asynchronous=False,
+            )
+            return {"order_id": oid}
+
+        return app
+
+    @pytest.fixture()
+    def client(self, app) -> TestClient:
+        return TestClient(app)
+
+    @pytest.mark.eventstore
+    def test_header_correlation_id_on_command(self, client, test_domain):
+        """X-Correlation-ID from request header propagates to the stored command."""
+        response = client.post(
+            "/orders",
+            headers={"X-Correlation-ID": "caller-provided-id"},
+        )
+        assert response.status_code == 200
+
+        order_id = response.json()["order_id"]
+        commands = _read_commands(test_domain, order_id)
+        assert len(commands) >= 1
+        assert commands[0].metadata.domain.correlation_id == "caller-provided-id"
+
+    @pytest.mark.eventstore
+    def test_header_correlation_id_on_events(self, client, test_domain):
+        """X-Correlation-ID propagates through command processing to events."""
+        response = client.post(
+            "/orders",
+            headers={"X-Correlation-ID": "caller-provided-id"},
+        )
+        assert response.status_code == 200
+
+        order_id = response.json()["order_id"]
+        events = _read_events(test_domain, order_id)
+        assert len(events) >= 1, "Expected at least one event"
+        for event_msg in events:
+            assert event_msg.metadata.domain.correlation_id == "caller-provided-id"
+
+    def test_response_header_echoes_correlation_id(self, client):
+        """The HTTP response includes the same X-Correlation-ID."""
+        response = client.post(
+            "/orders",
+            headers={"X-Correlation-ID": "caller-provided-id"},
+        )
+        assert response.status_code == 200
+        assert response.headers["X-Correlation-ID"] == "caller-provided-id"
+
+    def test_auto_generated_when_no_header(self, client):
+        """Without X-Correlation-ID header, a correlation ID is auto-generated
+        and included in the response."""
+        response = client.post("/orders")
+        assert response.status_code == 200
+        assert "X-Correlation-ID" in response.headers
+        assert len(response.headers["X-Correlation-ID"]) > 0
+
+
+# ===========================================================================
+# Scenario 3: External broker message → subscriber → domain.process → events
+# ===========================================================================
+
+
+class _PlaceOrderSubscriber(BaseSubscriber):
+    """Subscriber that places an order from an external broker message."""
+
+    def __call__(self, data: dict) -> None:
+        payload = data.get("data", data)
+        current_domain.process(
+            PlaceOrder(
+                order_id=payload["order_id"],
+                customer=payload["customer"],
+                amount=payload["amount"],
+            ),
+            asynchronous=False,
+        )
+
+
+class TestBrokerSubscriberCorrelationPropagation:
+    """External broker message with correlation_id in metadata →
+    Engine.handle_broker_message() → subscriber → domain.process() → events.
+
+    Uses the inline broker (no external Redis required).
+    """
+
+    def _register_subscriber(self, test_domain):
+        test_domain.register(
+            _PlaceOrderSubscriber, stream="external_orders"
+        )
         test_domain.init(traverse=False)
 
+    @pytest.mark.asyncio
     @pytest.mark.eventstore
-    def test_external_id_on_all_events_in_chain(self, test_domain, order_id):
-        """External correlation_id propagates through event handler chain."""
-        external_id = "caller-provided-id"
-        test_domain.process(
-            PlaceOrder(order_id=order_id, customer="Bob", amount=50.0),
-            asynchronous=False,
-            correlation_id=external_id,
-        )
+    async def test_broker_correlation_id_flows_to_command(
+        self, test_domain, order_id
+    ):
+        """correlation_id from incoming broker message propagates to the
+        subscriber-triggered command in the event store."""
+        self._register_subscriber(test_domain)
+        engine = Engine(domain=test_domain, test_mode=True)
 
-        events = _read_events(test_domain, order_id)
-        assert len(events) >= 2, (
-            f"Expected OrderPlaced + OrderConfirmed, got {len(events)}"
-        )
+        message = {
+            "data": {
+                "order_id": order_id,
+                "customer": "Charlie",
+                "amount": 75.0,
+            },
+            "metadata": {
+                "domain": {"correlation_id": "broker-corr-001"},
+            },
+        }
 
-        for event_msg in events:
-            assert event_msg.metadata.domain.correlation_id == external_id
-
-    @pytest.mark.eventstore
-    def test_external_id_on_root_command(self, test_domain, order_id):
-        """The root command in the event store carries the external correlation_id."""
-        external_id = "caller-provided-id"
-        test_domain.process(
-            PlaceOrder(order_id=order_id, customer="Bob", amount=50.0),
-            asynchronous=False,
-            correlation_id=external_id,
+        result = await engine.handle_broker_message(
+            _PlaceOrderSubscriber,
+            message,
+            message_id="broker-msg-100",
+            stream="external_orders",
         )
+        assert result is True
 
         commands = _read_commands(test_domain, order_id)
         assert len(commands) >= 1
-        assert commands[0].metadata.domain.correlation_id == external_id
+        assert commands[0].metadata.domain.correlation_id == "broker-corr-001"
 
+    @pytest.mark.asyncio
     @pytest.mark.eventstore
-    def test_external_id_consistent_with_causation_tree(self, test_domain, order_id):
-        """The causation tree for the external correlation_id has the expected
-        structure: root command with event children."""
-        external_id = "caller-provided-id"
-        test_domain.process(
-            PlaceOrder(order_id=order_id, customer="Bob", amount=50.0),
-            asynchronous=False,
-            correlation_id=external_id,
-        )
+    async def test_broker_correlation_id_flows_to_events(
+        self, test_domain, order_id
+    ):
+        """correlation_id from incoming broker message propagates through
+        subscriber-triggered command to the resulting events."""
+        self._register_subscriber(test_domain)
+        engine = Engine(domain=test_domain, test_mode=True)
 
-        tree = test_domain.event_store.store.build_causation_tree(external_id)
-        assert tree is not None, "Expected a causation tree root node"
+        message = {
+            "data": {
+                "order_id": order_id,
+                "customer": "Diana",
+                "amount": 120.0,
+            },
+            "metadata": {
+                "domain": {"correlation_id": "broker-corr-002"},
+            },
+        }
 
-        def _count_nodes(node):
-            count = 1
-            for child in node.children:
-                count += _count_nodes(child)
-            return count
-
-        total = _count_nodes(tree)
-        assert total >= 2, (
-            f"Expected command + events in tree, got {total}"
-        )
-
-
-# ===========================================================================
-# Scenario 3: Command correlation_id → event context propagation
-#
-# This scenario verifies that when a command is dispatched into the domain
-# with an explicit correlation_id (as a subscriber would do after decoding a
-# broker message), the generated events preserve that same correlation_id.
-# ===========================================================================
-class TestCommandCorrelationPropagation:
-    """Verify that commands dispatched with a correlation_id (simulating a
-    subscriber passing along a broker-provided ID) produce events with the
-    same correlation_id.
-    """
-
-    @pytest.mark.eventstore
-    def test_subscriber_style_correlation_propagation(self, test_domain, order_id):
-        """Simulate a subscriber dispatching a command with a broker-provided
-        correlation_id — events inherit the same ID."""
-        broker_corr_id = "broker-msg-correlation-xyz"
-        test_domain.process(
-            PlaceOrder(order_id=order_id, customer="Charlie", amount=75.0),
-            asynchronous=False,
-            correlation_id=broker_corr_id,
+        await engine.handle_broker_message(
+            _PlaceOrderSubscriber,
+            message,
+            message_id="broker-msg-200",
+            stream="external_orders",
         )
 
         events = _read_events(test_domain, order_id)
-        assert len(events) >= 1
+        assert len(events) >= 1, "Expected at least one event"
         for event_msg in events:
-            assert event_msg.metadata.domain.correlation_id == broker_corr_id
+            assert event_msg.metadata.domain.correlation_id == "broker-corr-002"
 
+    @pytest.mark.asyncio
     @pytest.mark.eventstore
-    def test_auto_generated_correlation_when_no_broker_id(self, test_domain, order_id):
-        """When no correlation_id is provided (broker message without one),
-        an auto-generated ID is used consistently."""
-        test_domain.process(
-            PlaceOrder(order_id=order_id, customer="Diana", amount=120.0),
-            asynchronous=False,
+    async def test_auto_generated_when_no_broker_correlation(
+        self, test_domain, order_id
+    ):
+        """When the incoming broker message has no correlation_id, a consistent
+        auto-generated one is used on both command and events."""
+        self._register_subscriber(test_domain)
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        # Plain message with no Protean metadata
+        message = {
+            "order_id": order_id,
+            "customer": "Eve",
+            "amount": 200.0,
+        }
+
+        await engine.handle_broker_message(
+            _PlaceOrderSubscriber,
+            message,
+            message_id="broker-msg-300",
+            stream="external_orders",
         )
 
         commands = _read_commands(test_domain, order_id)
         assert len(commands) >= 1
         auto_corr = commands[0].metadata.domain.correlation_id
         assert auto_corr is not None
+        assert len(auto_corr) > 0
 
         events = _read_events(test_domain, order_id)
         assert len(events) >= 1
         for event_msg in events:
             assert event_msg.metadata.domain.correlation_id == auto_corr
-
-    @pytest.mark.eventstore
-    def test_chained_handler_preserves_broker_correlation(self, test_domain, order_id):
-        """When a subscriber triggers a command chain, correlation_id is
-        preserved through event handler dispatches."""
-        test_domain.register(OrderPlacedAutoConfirmHandler, part_of=Order)
-        test_domain.init(traverse=False)
-
-        broker_corr_id = "broker-chain-corr"
-        test_domain.process(
-            PlaceOrder(order_id=order_id, customer="Eve", amount=200.0),
-            asynchronous=False,
-            correlation_id=broker_corr_id,
-        )
-
-        events = _read_events(test_domain, order_id)
-        assert len(events) >= 2, (
-            f"Expected OrderPlaced + OrderConfirmed, got {len(events)}"
-        )
-        for event_msg in events:
-            assert event_msg.metadata.domain.correlation_id == broker_corr_id
 
 
 # ===========================================================================
