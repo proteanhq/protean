@@ -1,0 +1,48 @@
+name: Documentation Issue
+description: Report an error, gap, or confusing section in the documentation
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Found something wrong or missing in the docs? Let us know so we can fix it.
+
+  - type: input
+    id: page
+    attributes:
+      label: Page or Section
+      description: Which documentation page or section is this about?
+      placeholder: "e.g., https://docs.proteanhq.com/guides/getting-started or 'Aggregate documentation'"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What kind of documentation issue is this?
+      options:
+        - Incorrect information
+        - Missing information
+        - Confusing or unclear explanation
+        - Outdated content
+        - Broken link or formatting issue
+        - Missing example or code sample
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe what's wrong or what's missing. If something is incorrect, include what the correct information should be.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Fix
+      description: If you have a suggestion for how to fix or improve it, include it here.
+    validations:
+      required: false

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussion
+    url: https://github.com/proteanhq/protean/discussions
+    about: Ask questions and get help from the community — please don't open an issue for general questions.
+  - name: Security Vulnerability
+    url: https://github.com/proteanhq/protean/security/advisories/new
+    about: Report security vulnerabilities privately using GitHub's security advisory feature.

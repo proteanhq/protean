@@ -1,0 +1,91 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in Protean
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: input
+    id: protean-version
+    attributes:
+      label: Protean Version
+      description: "Run `pip show protean` or check your pyproject.toml"
+      placeholder: "e.g., 0.14.2"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      description: "Run `python --version`"
+      placeholder: "e.g., 3.12.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: adapters
+    attributes:
+      label: Adapters in Use
+      description: Select all adapters relevant to this bug
+      multiple: true
+      options:
+        - Memory (default)
+        - SQLAlchemy / PostgreSQL
+        - SQLAlchemy / SQLite
+        - Elasticsearch
+        - Redis (Broker)
+        - Redis (Cache)
+        - MessageDB (Event Store)
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the bug
+      placeholder: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproduction
+      description: |
+        Provide the smallest possible code example that reproduces the bug.
+        Include domain element definitions, configuration, and the code that triggers the issue.
+      render: python
+      placeholder: |
+        from protean import Domain
+
+        domain = Domain(__name__)
+
+        @domain.aggregate
+        class MyAggregate:
+            ...
+
+        # Steps to trigger the bug
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Traceback / Error Output
+      description: Paste the full traceback or error output, if any
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other context — OS, database version, broker version, relevant config, etc.
+    validations:
+      required: false
