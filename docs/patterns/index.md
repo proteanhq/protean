@@ -53,6 +53,7 @@ If you are new to these patterns, these sequences build on each other:
 **Production resilience** -- errors, concurrency, and operational concerns:
 :   [Classify Async Processing Errors](classify-async-processing-errors.md) →
     [Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-tool.md) →
+    [Designing for Concurrent Event Processing](designing-for-concurrent-event-processing.md) →
     [Aggregate State Machines](aggregate-state-machines.md)
 
 ---
@@ -261,6 +262,12 @@ If you are new to these patterns, these sequences build on each other:
   -- Use `at_version` and `as_of` on event-sourced repositories as first-class
   operations for compliance audits, incident investigation, and customer support.
   Returned aggregates are read-only, safe to expose through API endpoints.
+
+- **[Designing for Concurrent Event Processing](designing-for-concurrent-event-processing.md)**
+  -- Prevent race conditions when multiple event handlers process events for
+  the same aggregate concurrently. Maps four concurrency problem classes to
+  existing Protean solutions: combining handlers, Process Managers, OCC, and
+  idempotent operations.
 
 ---
 

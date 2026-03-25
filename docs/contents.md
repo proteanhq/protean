@@ -299,6 +299,7 @@ Protean supports but does not enforce.
 - [Design Small Aggregates](./patterns/design-small-aggregates.md) -- Draw boundaries around consistency requirements, not data relationships.
 - [One Aggregate Per Transaction](./patterns/one-aggregate-per-transaction.md) -- Modify one aggregate per handler; use events for cross-aggregate side effects.
 - [Optimistic Concurrency as a Design Tool](./patterns/optimistic-concurrency-as-design-tool.md) -- Classify version conflicts by business meaning: last-writer-wins, business rejection, or conditional merge.
+- [Designing for Concurrent Event Processing](./patterns/designing-for-concurrent-event-processing.md) -- Prevent race conditions when multiple handlers process events for the same aggregate concurrently.
 - [Encapsulate State Changes](./patterns/encapsulate-state-changes.md) -- Express every state change as a named method capturing business intent.
 - [Replace Primitives with Value Objects](./patterns/replace-primitives-with-value-objects.md) -- Extract strings and numbers into value objects with format rules and operations.
 - [Factory Methods for Aggregate Creation](./patterns/factory-methods-for-aggregate-creation.md) -- Encapsulate complex construction in factory classmethods on the aggregate or standalone factory classes.
