@@ -60,13 +60,16 @@ def _aggregate_stereotype(aggregate: dict[str, Any]) -> str:
 
 
 def _render_invariant_notes(sid: str, invariants: dict[str, list[str]]) -> list[str]:
-    """Render invariant names as Mermaid notes attached to a class."""
+    """Render invariant names as Mermaid notes attached to a class.
+
+    Each invariant gets its own ``note for`` line.  The text is always
+    double-quoted because Mermaid's classDiagram ``note for`` syntax
+    requires a quoted string — unquoted text causes parse errors.
+    """
     names = invariants.get("pre", []) + invariants.get("post", [])
     if not names:
         return []
-    label = ", ".join(names)
-    escaped_label = mermaid_escape(label)
-    return [f"    note for {sid} {escaped_label}"]
+    return [f'    note for {sid} "{name}"' for name in names]
 
 
 def _render_cluster(

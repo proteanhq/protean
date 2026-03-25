@@ -174,7 +174,8 @@ class TestInvariantNotes:
             )
         )
         result = generate_cluster_diagram(ir)
-        assert "pre_check, post_check" in result
+        assert 'note for app_Order "pre_check"' in result
+        assert 'note for app_Order "post_check"' in result
 
 
 # ------------------------------------------------------------------

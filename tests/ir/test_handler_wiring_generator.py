@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from protean.ir.generators.handlers import generate_handler_wiring_diagram
+from protean.ir.generators.handlers import (
+    generate_cluster_command_handler_diagram,
+    generate_command_handler_diagram,
+    generate_event_handler_diagram,
+    generate_handler_wiring_diagram,
+    generate_process_manager_diagram,
+    generate_projector_diagram,
+    generate_single_projector_diagram,
+    generate_subscriber_diagram,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -636,3 +645,288 @@ class TestFullIntegration:
         last_end_idx = max(i for i, line in enumerate(lines) if line.strip() == "end")
         edge_lines = [i for i, line in enumerate(lines) if "-->" in line]
         assert all(idx > last_end_idx for idx in edge_lines)
+
+
+# ===========================================================================
+# Per-category generator tests
+# ===========================================================================
+
+
+class TestPerCategoryEmpty:
+    """All per-category generators return 'flowchart TD' for empty IR."""
+
+    def test_command_handler_empty(self):
+        assert generate_command_handler_diagram({}) == "flowchart TD"
+
+    def test_event_handler_empty(self):
+        assert generate_event_handler_diagram({}) == "flowchart TD"
+
+    def test_process_manager_empty(self):
+        assert generate_process_manager_diagram({}) == "flowchart TD"
+
+    def test_projector_empty(self):
+        assert generate_projector_diagram({}) == "flowchart TD"
+
+    def test_subscriber_empty(self):
+        assert generate_subscriber_diagram({}) == "flowchart TD"
+
+
+class TestCommandHandlerDiagram:
+    def test_contains_only_command_handlers(self):
+        cmds = _command("app.PlaceOrder")
+        ch = _command_handler(
+            "app.OrderCH",
+            handlers={"Test.PlaceOrder.v1": ["handle_place"]},
+        )
+        evts = _event("app.OrderPlaced")
+        eh = _event_handler(
+            "app.NotifyHandler",
+            handlers={"Test.OrderPlaced.v1": ["send_email"]},
+        )
+        ir = _ir(
+            clusters=_cluster(
+                "app.Order",
+                commands=cmds,
+                events=evts,
+                command_handlers=ch,
+                event_handlers=eh,
+            )
+        )
+        result = generate_command_handler_diagram(ir)
+        assert "Command Handlers" in result
+        assert "OrderCH" in result
+        assert "PlaceOrder" in result
+        # Should NOT contain event handler content
+        assert "NotifyHandler" not in result
+        assert "Event Handlers" not in result
+
+    def test_command_to_handler_to_aggregate_edges(self):
+        cmds = _command("app.PlaceOrder")
+        ch = _command_handler(
+            "app.OrderCH",
+            handlers={"Test.PlaceOrder.v1": ["handle_place"]},
+        )
+        ir = _ir(clusters=_cluster("app.Order", commands=cmds, command_handlers=ch))
+        result = generate_command_handler_diagram(ir)
+        assert "cmd_app_PlaceOrder" in result
+        assert "ch_app_OrderCH" in result
+        assert "agg_app_Order" in result
+
+
+class TestEventHandlerDiagram:
+    def test_contains_only_event_handlers(self):
+        evts = _event("app.OrderPlaced")
+        eh = _event_handler(
+            "app.NotifyHandler",
+            handlers={"Test.OrderPlaced.v1": ["send_email"]},
+        )
+        cmds = _command("app.PlaceOrder")
+        ch = _command_handler(
+            "app.OrderCH",
+            handlers={"Test.PlaceOrder.v1": ["handle_place"]},
+        )
+        ir = _ir(
+            clusters=_cluster(
+                "app.Order",
+                commands=cmds,
+                events=evts,
+                command_handlers=ch,
+                event_handlers=eh,
+            )
+        )
+        result = generate_event_handler_diagram(ir)
+        assert "Event Handlers" in result
+        assert "NotifyHandler" in result
+        # Should NOT contain command handler content
+        assert "OrderCH" not in result
+        assert "Command Handlers" not in result
+
+
+class TestProcessManagerDiagram:
+    def test_contains_only_process_managers(self):
+        evts = _event("app.OrderPlaced")
+        pm = _process_manager(
+            "app.FulfillmentPM",
+            handlers={
+                "Test.OrderPlaced.v1": {
+                    "start": True,
+                    "end": False,
+                    "correlate": "order_id",
+                    "methods": ["on_order_placed"],
+                }
+            },
+        )
+        sub = _subscriber("app.StripeSubscriber", stream="stripe_webhooks")
+        ir = _ir(
+            clusters=_cluster("app.Order", events=evts),
+            process_managers=pm,
+            subscribers=sub,
+        )
+        result = generate_process_manager_diagram(ir)
+        assert "Process Managers" in result
+        assert "FulfillmentPM" in result
+        assert "|start|" in result
+        # Should NOT contain subscriber content
+        assert "StripeSubscriber" not in result
+        assert "Subscribers" not in result
+
+
+class TestProjectorDiagram:
+    def test_contains_only_projectors(self):
+        evts = _event("app.OrderPlaced")
+        proj = _projector(
+            "app.DashProjector",
+            projector_for="app.Dashboard",
+            handlers={"Test.OrderPlaced.v1": ["on_placed"]},
+        )
+        sub = _subscriber("app.StripeSubscriber", stream="stripe_webhooks")
+        ir = _ir(
+            clusters=_cluster("app.Order", events=evts),
+            projections={"app.Dashboard": {"projectors": proj}},
+            subscribers=sub,
+        )
+        result = generate_projector_diagram(ir)
+        assert "Projectors" in result
+        assert "DashProjector" in result
+        assert "Dashboard" in result
+        # Should NOT contain subscriber content
+        assert "StripeSubscriber" not in result
+
+
+class TestSubscriberDiagram:
+    def test_contains_only_subscribers(self):
+        sub = _subscriber("app.StripeSubscriber", stream="stripe_webhooks")
+        evts = _event("app.OrderPlaced")
+        eh = _event_handler(
+            "app.NotifyHandler",
+            handlers={"Test.OrderPlaced.v1": ["send_email"]},
+        )
+        ir = _ir(
+            clusters=_cluster("app.Order", events=evts, event_handlers=eh),
+            subscribers=sub,
+        )
+        result = generate_subscriber_diagram(ir)
+        assert "Subscribers" in result
+        assert "StripeSubscriber" in result
+        assert "stripe_webhooks" in result
+        # Should NOT contain event handler content
+        assert "NotifyHandler" not in result
+
+
+# ===========================================================================
+# Per-cluster command handler tests
+# ===========================================================================
+
+
+class TestClusterCommandHandlerDiagram:
+    def test_empty_ir(self):
+        assert (
+            generate_cluster_command_handler_diagram({}, "app.Order") == "flowchart LR"
+        )
+
+    def test_unknown_cluster(self):
+        ir = _ir(clusters=_cluster("app.Order"))
+        assert (
+            generate_cluster_command_handler_diagram(ir, "app.Missing")
+            == "flowchart LR"
+        )
+
+    def test_cluster_without_handlers(self):
+        ir = _ir(clusters=_cluster("app.Order"))
+        assert (
+            generate_cluster_command_handler_diagram(ir, "app.Order") == "flowchart LR"
+        )
+
+    def test_single_cluster(self):
+        cmds = _command("app.PlaceOrder")
+        ch = _command_handler(
+            "app.OrderCH",
+            handlers={"Test.PlaceOrder.v1": ["handle_place"]},
+        )
+        ir = _ir(clusters=_cluster("app.Order", commands=cmds, command_handlers=ch))
+        result = generate_cluster_command_handler_diagram(ir, "app.Order")
+        assert "OrderCH" in result
+        assert "PlaceOrder" in result
+        assert "Order" in result
+
+    def test_excludes_other_clusters(self):
+        order_cmds = _command("app.PlaceOrder")
+        order_ch = _command_handler(
+            "app.OrderCH",
+            handlers={"Test.PlaceOrder.v1": ["handle_place"]},
+        )
+        payment_cmds = _command("app.ConfirmPayment")
+        payment_ch = _command_handler(
+            "app.PaymentCH",
+            handlers={"Test.ConfirmPayment.v1": ["handle_confirm"]},
+        )
+        clusters = {
+            **_cluster("app.Order", commands=order_cmds, command_handlers=order_ch),
+            **_cluster(
+                "app.Payment", commands=payment_cmds, command_handlers=payment_ch
+            ),
+        }
+        ir = _ir(clusters=clusters)
+        result = generate_cluster_command_handler_diagram(ir, "app.Order")
+        assert "OrderCH" in result
+        assert "PlaceOrder" in result
+        # Should NOT contain Payment cluster content
+        assert "PaymentCH" not in result
+        assert "ConfirmPayment" not in result
+
+
+# ===========================================================================
+# Per-projector tests
+# ===========================================================================
+
+
+class TestSingleProjectorDiagram:
+    def test_empty_ir(self):
+        assert generate_single_projector_diagram({}, "app.Dashboard") == "flowchart LR"
+
+    def test_unknown_projection(self):
+        ir = _ir()
+        assert generate_single_projector_diagram(ir, "app.Missing") == "flowchart LR"
+
+    def test_single_projector(self):
+        evts = _event("app.OrderPlaced")
+        proj = _projector(
+            "app.DashProjector",
+            projector_for="app.Dashboard",
+            handlers={"Test.OrderPlaced.v1": ["on_placed"]},
+        )
+        ir = _ir(
+            clusters=_cluster("app.Order", events=evts),
+            projections={"app.Dashboard": {"projectors": proj}},
+        )
+        result = generate_single_projector_diagram(ir, "app.Dashboard")
+        assert "DashProjector" in result
+        assert "Dashboard" in result
+        assert "OrderPlaced" in result
+
+    def test_excludes_other_projections(self):
+        evts = {
+            **_event("app.OrderPlaced"),
+            **_event("app.OrderCancelled"),
+        }
+        proj1 = _projector(
+            "app.DashProjector",
+            projector_for="app.Dashboard",
+            handlers={"Test.OrderPlaced.v1": ["on_placed"]},
+        )
+        proj2 = _projector(
+            "app.StatsProjector",
+            projector_for="app.Stats",
+            handlers={"Test.OrderCancelled.v1": ["on_cancelled"]},
+        )
+        ir = _ir(
+            clusters=_cluster("app.Order", events=evts),
+            projections={
+                "app.Dashboard": {"projectors": proj1},
+                "app.Stats": {"projectors": proj2},
+            },
+        )
+        result = generate_single_projector_diagram(ir, "app.Dashboard")
+        assert "DashProjector" in result
+        # Should NOT contain Stats projector content
+        assert "StatsProjector" not in result
