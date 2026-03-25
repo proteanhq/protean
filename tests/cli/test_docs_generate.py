@@ -264,7 +264,8 @@ class TestDomainLoading:
             ["generate", "--domain=my_app", "--type=events"],
         )
         assert result.exit_code == 0
-        assert "flowchart LR" in result.output
+        # Per-cluster event flows use flowchart TD
+        assert "flowchart TD" in result.output
         mock_derive.assert_called_once_with("my_app")
         mock_domain.init.assert_called_once()
 
@@ -313,7 +314,8 @@ class TestGeneratorTypes:
             ["generate", f"--ir={ir_file}", "--type=events"],
         )
         assert result.exit_code == 0
-        assert "flowchart LR" in result.output
+        # Per-cluster event flows use flowchart TD
+        assert "flowchart TD" in result.output
         assert "```mermaid" in result.output
 
     def test_type_handlers(self, ir_file):
@@ -322,7 +324,8 @@ class TestGeneratorTypes:
             ["generate", f"--ir={ir_file}", "--type=handlers"],
         )
         assert result.exit_code == 0
-        assert "flowchart TD" in result.output
+        # Per-cluster command handlers use flowchart LR
+        assert "flowchart LR" in result.output
         assert "```mermaid" in result.output
 
     def test_type_catalog(self, ir_file):
@@ -373,7 +376,8 @@ class TestOutputFormat:
         )
         assert result.exit_code == 0
         assert "```mermaid" in result.output
-        assert "## Event Flows" in result.output
+        # Per-cluster event flow titles use "Event Flow: <name>"
+        assert "## Event Flow: Order" in result.output
 
     def test_mermaid_format(self, ir_file):
         """--format=mermaid outputs raw Mermaid syntax."""
@@ -515,9 +519,9 @@ class TestClusterFiltering:
         )
         assert result.exit_code == 0
         # Cluster section should be filtered
-        # But event flow and handler sections should still include both clusters
-        assert "flowchart LR" in result.output
+        # Event flows use TD (per-cluster), other sections also present
         assert "flowchart TD" in result.output
+        assert "classDiagram" in result.output
 
     def test_cluster_filter_mermaid_format(self, multi_cluster_ir_file):
         """--cluster with --format=mermaid outputs raw Mermaid for filtered cluster."""
@@ -583,7 +587,8 @@ class TestFileOutput:
             ["generate", f"--ir={ir_file}", "--type=events"],
         )
         assert result.exit_code == 0
-        assert "flowchart LR" in result.output
+        # Per-cluster event flows use flowchart TD
+        assert "flowchart TD" in result.output
 
 
 # ---------------------------------------------------------------------------
