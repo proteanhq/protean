@@ -142,15 +142,11 @@ class UnitOfWork:
                 if domain_meta is not None:
                     correlation_id = getattr(domain_meta, "correlation_id", None)
                     if correlation_id:
-                        span.set_attribute(
-                            "protean.correlation_id", correlation_id
-                        )
+                        span.set_attribute("protean.correlation_id", correlation_id)
 
                     causation_id = getattr(domain_meta, "causation_id", None)
                     if causation_id:
-                        span.set_attribute(
-                            "protean.causation_id", causation_id
-                        )
+                        span.set_attribute("protean.causation_id", causation_id)
 
             self._do_commit(span)
 

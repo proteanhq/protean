@@ -405,9 +405,7 @@ class TestCollectAllEvents:
 
     def test_filter_by_event_type(self, domain_with_events):
         domain, _, _ = domain_with_events
-        events, _ = collect_all_events(
-            [domain], event_type=UserRenamed.__type__
-        )
+        events, _ = collect_all_events([domain], event_type=UserRenamed.__type__)
         assert len(events) == 1
         assert events[0]["type"] == UserRenamed.__type__
 
@@ -1171,16 +1169,12 @@ class TestCollectAggregateHistory:
     def test_returns_none_for_unknown_aggregate(self, correlated_domain):
         domain, _, _, _ = correlated_domain
         stream_category = User.meta_.stream_category
-        result = collect_aggregate_history(
-            [domain], stream_category, "nonexistent-id"
-        )
+        result = collect_aggregate_history([domain], stream_category, "nonexistent-id")
         assert result is None
 
     def test_returns_none_for_unknown_stream_category(self, correlated_domain):
         domain, _, user_id, _ = correlated_domain
-        result = collect_aggregate_history(
-            [domain], "nonexistent::category", user_id
-        )
+        result = collect_aggregate_history([domain], "nonexistent::category", user_id)
         assert result is None
 
     def test_handles_broken_domain_gracefully(self):
@@ -1195,9 +1189,7 @@ class TestCollectAggregateHistory:
         """current_version is the last message's stream position, not global."""
         domain, _, user_id, _ = correlated_domain
         stream_category = User.meta_.stream_category
-        result = collect_aggregate_history(
-            [domain], stream_category, user_id
-        )
+        result = collect_aggregate_history([domain], stream_category, user_id)
 
         assert result is not None
         # Stream position for the 3rd event (0-indexed) should be 2

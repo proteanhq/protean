@@ -147,7 +147,9 @@ class TestMultiClusterDomain:
         assert (self.schemas_dir / "Shipment").is_dir()
 
     def test_order_has_commands(self):
-        assert (self.schemas_dir / "Order" / "commands" / "PlaceOrder.v1.json").is_file()
+        assert (
+            self.schemas_dir / "Order" / "commands" / "PlaceOrder.v1.json"
+        ).is_file()
 
     def test_order_has_events(self):
         assert (self.schemas_dir / "Order" / "events" / "OrderPlaced.v1.json").is_file()

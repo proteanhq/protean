@@ -171,9 +171,7 @@ def show(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_element(
-    name: str, schemas: dict[str, dict[str, Any]]
-) -> dict[str, Any]:
+def _resolve_element(name: str, schemas: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Resolve an element by exact FQN or short name.
 
     If the name matches exactly as a key, return that schema.

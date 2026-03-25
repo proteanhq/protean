@@ -140,7 +140,6 @@ class OrderPlacedAutoConfirmHandler(BaseEventHandler):
         )
 
 
-
 # ---------------------------------------------------------------------------
 # Projection and Projector (for end-to-end tracing through projections)
 # ---------------------------------------------------------------------------

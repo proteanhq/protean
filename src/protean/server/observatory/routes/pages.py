@@ -61,9 +61,7 @@ def create_page_router(
     @router.get("/timeline")
     async def timeline(request: Request):
         """Timeline — Browse domain events and commands chronologically."""
-        return templates.TemplateResponse(
-            request, "timeline.html", _ctx("timeline")
-        )
+        return templates.TemplateResponse(request, "timeline.html", _ctx("timeline"))
 
     @router.get("/infrastructure")
     async def infrastructure(request: Request):

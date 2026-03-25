@@ -117,9 +117,7 @@ class TestSchemaGenerateValidation:
         assert "provide either --domain or --ir" in result.output
 
     def test_both_domain_and_ir_aborts(self):
-        result = runner.invoke(
-            app, ["generate", "--domain=x", "--ir=y"]
-        )
+        result = runner.invoke(app, ["generate", "--domain=x", "--ir=y"])
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output
 
@@ -152,9 +150,7 @@ class TestSchemaGenerateFromIR:
         assert ir_out.exists()
 
     def test_generate_from_nonexistent_ir_aborts(self):
-        result = runner.invoke(
-            app, ["generate", "--ir=/nonexistent/path.json"]
-        )
+        result = runner.invoke(app, ["generate", "--ir=/nonexistent/path.json"])
         assert result.exit_code != 0
 
     def test_generate_default_output_directory(self, tmp_path: Path, monkeypatch):
@@ -203,9 +199,7 @@ class TestSchemaShowValidation:
         assert "provide either --domain or --ir" in result.output
 
     def test_both_domain_and_ir_aborts(self):
-        result = runner.invoke(
-            app, ["show", "Order", "--domain=x", "--ir=y"]
-        )
+        result = runner.invoke(app, ["show", "Order", "--domain=x", "--ir=y"])
         assert result.exit_code != 0
         assert "mutually exclusive" in result.output
 
@@ -220,9 +214,7 @@ class TestSchemaShowLookup:
         ir_file = tmp_path / "test-ir.json"
         ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
 
-        result = runner.invoke(
-            app, ["show", "Order", f"--ir={ir_file}", "--raw"]
-        )
+        result = runner.invoke(app, ["show", "Order", f"--ir={ir_file}", "--raw"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["title"] == "Order"
@@ -232,9 +224,7 @@ class TestSchemaShowLookup:
         ir_file = tmp_path / "test-ir.json"
         ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
 
-        result = runner.invoke(
-            app, ["show", "test.Order", f"--ir={ir_file}", "--raw"]
-        )
+        result = runner.invoke(app, ["show", "test.Order", f"--ir={ir_file}", "--raw"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["title"] == "Order"
@@ -243,9 +233,7 @@ class TestSchemaShowLookup:
         ir_file = tmp_path / "test-ir.json"
         ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
 
-        result = runner.invoke(
-            app, ["show", "OrderPlaced", f"--ir={ir_file}", "--raw"]
-        )
+        result = runner.invoke(app, ["show", "OrderPlaced", f"--ir={ir_file}", "--raw"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["title"] == "OrderPlaced"
@@ -255,9 +243,7 @@ class TestSchemaShowLookup:
         ir_file = tmp_path / "test-ir.json"
         ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
 
-        result = runner.invoke(
-            app, ["show", "DoesNotExist", f"--ir={ir_file}"]
-        )
+        result = runner.invoke(app, ["show", "DoesNotExist", f"--ir={ir_file}"])
         assert result.exit_code != 0
         assert "not found" in result.output
 
@@ -295,9 +281,7 @@ class TestSchemaShowLookup:
         ir_file = tmp_path / "test-ir.json"
         ir_file.write_text(json.dumps(ir), encoding="utf-8")
 
-        result = runner.invoke(
-            app, ["show", "Order", f"--ir={ir_file}"]
-        )
+        result = runner.invoke(app, ["show", "Order", f"--ir={ir_file}"])
         assert result.exit_code != 0
         assert "Multiple elements" in result.output
         assert "test.Order" in result.output
@@ -308,9 +292,7 @@ class TestSchemaShowLookup:
         ir_file = tmp_path / "test-ir.json"
         ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
 
-        result = runner.invoke(
-            app, ["show", "Order", f"--ir={ir_file}"]
-        )
+        result = runner.invoke(app, ["show", "Order", f"--ir={ir_file}"])
         assert result.exit_code == 0
         # Pretty-printed output contains the schema content
         assert "Order" in result.output
@@ -320,9 +302,7 @@ class TestSchemaShowLookup:
         ir_file = tmp_path / "test-ir.json"
         ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
 
-        result = runner.invoke(
-            app, ["show", "Order", f"--ir={ir_file}", "--raw"]
-        )
+        result = runner.invoke(app, ["show", "Order", f"--ir={ir_file}", "--raw"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, dict)

@@ -61,9 +61,7 @@ def _find_element(ir: dict, name: str) -> dict:
 
 def _validate_against_meta_schema(schema: dict) -> None:
     """Validate a schema dict against JSON Schema Draft 2020-12 meta-schema."""
-    validator_cls = jsonschema.validators.validator_for(
-        {"$schema": _META_SCHEMA_URI}
-    )
+    validator_cls = jsonschema.validators.validator_for({"$schema": _META_SCHEMA_URI})
     validator_cls.check_schema(schema)
 
 
@@ -137,9 +135,7 @@ class TestEmptyAggregate:
         ir = IRBuilder(domain).build()
         schemas = generate_schemas(ir)
 
-        marker_schemas = {
-            fqn: s for fqn, s in schemas.items() if "Marker" in fqn
-        }
+        marker_schemas = {fqn: s for fqn, s in schemas.items() if "Marker" in fqn}
         assert len(marker_schemas) == 1
 
         schema = next(iter(marker_schemas.values()))
@@ -236,16 +232,20 @@ class TestStatusWithTransitions:
         ir = _ir_for(build_status_field_domain)
         schemas = generate_schemas(ir)
 
-        order_schemas = {
-            fqn: s for fqn, s in schemas.items() if "Order" in fqn
-        }
+        order_schemas = {fqn: s for fqn, s in schemas.items() if "Order" in fqn}
         assert order_schemas
 
         schema = next(iter(order_schemas.values()))
         status_prop = schema["properties"]["status"]
         inner = status_prop["anyOf"][0] if "anyOf" in status_prop else status_prop
         assert "enum" in inner
-        assert set(inner["enum"]) >= {"DRAFT", "PLACED", "CONFIRMED", "SHIPPED", "CANCELLED"}
+        assert set(inner["enum"]) >= {
+            "DRAFT",
+            "PLACED",
+            "CONFIRMED",
+            "SHIPPED",
+            "CANCELLED",
+        }
 
         _validate_against_meta_schema(schema)
 
@@ -283,9 +283,7 @@ class TestEventSourcedAggregate:
         ir = _ir_for(build_es_aggregate_domain)
         schemas = generate_schemas(ir)
 
-        ba_schemas = {
-            fqn: s for fqn, s in schemas.items() if "BankAccount" in fqn
-        }
+        ba_schemas = {fqn: s for fqn, s in schemas.items() if "BankAccount" in fqn}
         assert ba_schemas
 
         schema = next(iter(ba_schemas.values()))
@@ -338,24 +336,18 @@ class TestEndToEndPayloadValidation:
 
     def test_valid_command_payload(self):
         """A valid PlaceOrder payload passes validation."""
-        schema = next(
-            s for fqn, s in self.schemas.items() if "PlaceOrder" in fqn
-        )
+        schema = next(s for fqn, s in self.schemas.items() if "PlaceOrder" in fqn)
         jsonschema.validate({"customer_name": "Alice"}, schema)
 
     def test_invalid_command_payload_missing_required(self):
         """PlaceOrder payload missing required field fails validation."""
-        schema = next(
-            s for fqn, s in self.schemas.items() if "PlaceOrder" in fqn
-        )
+        schema = next(s for fqn, s in self.schemas.items() if "PlaceOrder" in fqn)
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate({}, schema)
 
     def test_valid_event_payload(self):
         """A valid OrderPlaced payload passes validation."""
-        schema = next(
-            s for fqn, s in self.schemas.items() if "OrderPlaced" in fqn
-        )
+        schema = next(s for fqn, s in self.schemas.items() if "OrderPlaced" in fqn)
         payload = {
             "order_id": "order-123",
             "customer_name": "Alice",
@@ -365,9 +357,7 @@ class TestEndToEndPayloadValidation:
 
     def test_invalid_event_payload_wrong_type(self):
         """OrderPlaced payload with wrong type fails validation."""
-        schema = next(
-            s for fqn, s in self.schemas.items() if "OrderPlaced" in fqn
-        )
+        schema = next(s for fqn, s in self.schemas.items() if "OrderPlaced" in fqn)
         payload = {
             "order_id": "order-123",
             "customer_name": "Alice",

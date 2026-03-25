@@ -163,7 +163,6 @@ def telemetry(test_domain):
 # ---------------------------------------------------------------------------
 
 
-
 def _get_metric(metric_reader, name: str):
     """Find a metric by name from the InMemoryMetricReader."""
     data = metric_reader.get_metrics_data()
@@ -203,9 +202,7 @@ class TestCommandProcessedCounter:
         assert len(points) >= 1
 
         # Find the ok data point
-        ok_points = [
-            p for p in points if dict(p.attributes).get("status") == "ok"
-        ]
+        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
         assert len(ok_points) == 1
         assert ok_points[0].value == 1
         assert "OpenAccount" in dict(ok_points[0].attributes)["command_type"]
@@ -228,7 +225,9 @@ class TestCommandProcessedCounter:
         assert len(error_points) == 1
         assert error_points[0].value == 1
 
-    def test_async_path_increments_counter_with_enqueued_status(self, test_domain, telemetry):
+    def test_async_path_increments_counter_with_enqueued_status(
+        self, test_domain, telemetry
+    ):
         _, metric_reader = telemetry
 
         # Force async processing so the async path is taken
@@ -256,9 +255,7 @@ class TestCommandProcessedCounter:
             )
 
         points = _get_metric_data_points(metric_reader, "protean.command.processed")
-        ok_points = [
-            p for p in points if dict(p.attributes).get("status") == "ok"
-        ]
+        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
         assert len(ok_points) == 1
         assert ok_points[0].value == 3
 
@@ -282,9 +279,7 @@ class TestCommandDurationHistogram:
         points = _get_metric_data_points(metric_reader, "protean.command.duration")
         assert len(points) >= 1
 
-        ok_points = [
-            p for p in points if dict(p.attributes).get("status") == "ok"
-        ]
+        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
         assert len(ok_points) == 1
         # Duration should be > 0
         assert ok_points[0].sum > 0
@@ -306,7 +301,9 @@ class TestCommandDurationHistogram:
         assert len(error_points) == 1
         assert error_points[0].sum > 0
 
-    def test_async_path_records_duration_with_enqueued_status(self, test_domain, telemetry):
+    def test_async_path_records_duration_with_enqueued_status(
+        self, test_domain, telemetry
+    ):
         _, metric_reader = telemetry
 
         # Force async processing so the async path is taken
@@ -342,22 +339,13 @@ class TestHandlerInvocationsCounter:
             asynchronous=False,
         )
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.handler.invocations"
-        )
-        ok_points = [
-            p for p in points if dict(p.attributes).get("status") == "ok"
-        ]
+        points = _get_metric_data_points(metric_reader, "protean.handler.invocations")
+        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
         assert len(ok_points) >= 1
         assert ok_points[0].value >= 1
-        assert (
-            dict(ok_points[0].attributes)["handler_name"]
-            == "AccountCommandHandler"
-        )
+        assert dict(ok_points[0].attributes)["handler_name"] == "AccountCommandHandler"
 
-    def test_error_increments_handler_counter_with_error(
-        self, test_domain, telemetry
-    ):
+    def test_error_increments_handler_counter_with_error(self, test_domain, telemetry):
         _, metric_reader = telemetry
 
         with pytest.raises(RuntimeError):
@@ -366,17 +354,14 @@ class TestHandlerInvocationsCounter:
                 asynchronous=False,
             )
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.handler.invocations"
-        )
+        points = _get_metric_data_points(metric_reader, "protean.handler.invocations")
         error_points = [
             p for p in points if dict(p.attributes).get("status") == "error"
         ]
         assert len(error_points) == 1
         assert error_points[0].value == 1
         assert (
-            dict(error_points[0].attributes)["handler_name"]
-            == "FailingCommandHandler"
+            dict(error_points[0].attributes)["handler_name"] == "FailingCommandHandler"
         )
 
 
@@ -397,9 +382,7 @@ class TestHandlerDurationHistogram:
         )
 
         points = _get_metric_data_points(metric_reader, "protean.handler.duration")
-        ok_points = [
-            p for p in points if dict(p.attributes).get("status") == "ok"
-        ]
+        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
         assert len(ok_points) >= 1
         assert ok_points[0].sum > 0
         assert ok_points[0].count == 1
@@ -460,9 +443,7 @@ class TestUoWEventsPerCommitHistogram:
             asynchronous=False,
         )
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.uow.events_per_commit"
-        )
+        points = _get_metric_data_points(metric_reader, "protean.uow.events_per_commit")
         # Should have at least one data point
         assert len(points) >= 1
 
@@ -474,9 +455,7 @@ class TestUoWEventsPerCommitHistogram:
             asynchronous=False,
         )
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.uow.events_per_commit"
-        )
+        points = _get_metric_data_points(metric_reader, "protean.uow.events_per_commit")
         assert len(points) >= 1
         # At least one commit should have recorded events > 0
         total_events = sum(p.sum for p in points)
@@ -583,7 +562,9 @@ class TestMetricsEndpointConvergence:
         # Should not raise
         _register_infrastructure_gauges([])
 
-    def test_register_infrastructure_gauges_with_telemetry(self, test_domain, telemetry):
+    def test_register_infrastructure_gauges_with_telemetry(
+        self, test_domain, telemetry
+    ):
         """_register_infrastructure_gauges registers gauges when telemetry is active."""
         from protean.server.observatory.metrics import (
             _GAUGES_REGISTERED_KEY,
@@ -681,14 +662,15 @@ class TestMetricsEndpointConvergence:
 
         assert get_prometheus_text(object()) is None
 
-    def test_get_prometheus_text_returns_none_without_reader(self, test_domain, telemetry):
+    def test_get_prometheus_text_returns_none_without_reader(
+        self, test_domain, telemetry
+    ):
         """get_prometheus_text returns None when init_attempted but no reader."""
         from protean.utils.telemetry import get_prometheus_text
 
         # telemetry fixture sets _otel_init_attempted = True but no prometheus reader
         result = get_prometheus_text(test_domain)
         assert result is None
-
 
 
 # ---------------------------------------------------------------------------
@@ -1058,7 +1040,9 @@ class TestGaugeCallbackErrorPaths:
             data = self._register_and_collect(test_domain, metric_reader)
             assert data is not None
 
-    def test_subscription_pending_callback_handles_exception(self, test_domain, telemetry):
+    def test_subscription_pending_callback_handles_exception(
+        self, test_domain, telemetry
+    ):
         """Subscription pending callback handles failures."""
         from unittest.mock import patch
 
@@ -1204,9 +1188,7 @@ class TestHandRolledConsumerMetrics:
 
         mock_redis = MagicMock()
         mock_redis.scan.return_value = (0, [b"test::stream"])
-        mock_redis.xinfo_groups.return_value = [
-            {"name": "TestGroup", "pending": 5}
-        ]
+        mock_redis.xinfo_groups.return_value = [{"name": "TestGroup", "pending": 5}]
         mock_redis.xinfo_consumers.return_value = [
             {"name": "Consumer1", "pending": 3, "idle": 1000}
         ]
@@ -1223,9 +1205,7 @@ class TestHandRolledConsumerMetrics:
         from unittest.mock import MagicMock
 
         mock_redis = MagicMock()
-        mock_redis.xinfo_groups.return_value = [
-            {b"name": b"ByteGroup", b"pending": 2}
-        ]
+        mock_redis.xinfo_groups.return_value = [{b"name": b"ByteGroup", b"pending": 2}]
         mock_redis.xinfo_consumers.return_value = [
             {b"name": b"ByteConsumer", b"pending": 1, b"idle": 500}
         ]
@@ -1715,7 +1695,9 @@ class TestHandRolledSubscriptionImportFailure:
 
         def failing_import(name, *args, **kwargs):
             if "subscription_status" in name:
-                raise ImportError("No module named 'protean.server.subscription_status'")
+                raise ImportError(
+                    "No module named 'protean.server.subscription_status'"
+                )
             return original_import(name, *args, **kwargs)
 
         with (
@@ -1793,19 +1775,35 @@ class TestOutboxProcessorMetrics:
         from unittest.mock import AsyncMock, MagicMock, patch
 
         processor = self._make_processor()
-        created = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+        created = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            seconds=1
+        )
         mock_message = self._make_message(created_at=created)
         processor.outbox_repo.get.return_value = mock_message
 
         mock_metrics = MagicMock()
 
-        with patch("protean.server.outbox_processor.get_domain_metrics", return_value=mock_metrics), \
-             patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer, \
-             patch("protean.server.outbox_processor.UnitOfWork") as mock_uow, \
-             patch.object(processor, "_publish_message", new_callable=AsyncMock, return_value=(True, None)):
+        with (
+            patch(
+                "protean.server.outbox_processor.get_domain_metrics",
+                return_value=mock_metrics,
+            ),
+            patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer,
+            patch("protean.server.outbox_processor.UnitOfWork") as mock_uow,
+            patch.object(
+                processor,
+                "_publish_message",
+                new_callable=AsyncMock,
+                return_value=(True, None),
+            ),
+        ):
             mock_span = MagicMock()
-            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(return_value=mock_span)
-            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = MagicMock(return_value=False)
+            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = (
+                MagicMock(return_value=False)
+            )
             mock_uow.return_value.__enter__ = MagicMock()
             mock_uow.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -1829,13 +1827,27 @@ class TestOutboxProcessorMetrics:
         mock_metrics = MagicMock()
         publish_error = RuntimeError("broker down")
 
-        with patch("protean.server.outbox_processor.get_domain_metrics", return_value=mock_metrics), \
-             patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer, \
-             patch("protean.server.outbox_processor.UnitOfWork") as mock_uow, \
-             patch.object(processor, "_publish_message", new_callable=AsyncMock, return_value=(False, publish_error)):
+        with (
+            patch(
+                "protean.server.outbox_processor.get_domain_metrics",
+                return_value=mock_metrics,
+            ),
+            patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer,
+            patch("protean.server.outbox_processor.UnitOfWork") as mock_uow,
+            patch.object(
+                processor,
+                "_publish_message",
+                new_callable=AsyncMock,
+                return_value=(False, publish_error),
+            ),
+        ):
             mock_span = MagicMock()
-            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(return_value=mock_span)
-            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = MagicMock(return_value=False)
+            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = (
+                MagicMock(return_value=False)
+            )
             mock_uow.return_value.__enter__ = MagicMock()
             mock_uow.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -1857,13 +1869,27 @@ class TestOutboxProcessorMetrics:
 
         mock_metrics = MagicMock()
 
-        with patch("protean.server.outbox_processor.get_domain_metrics", return_value=mock_metrics), \
-             patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer, \
-             patch("protean.server.outbox_processor.UnitOfWork") as mock_uow, \
-             patch.object(processor, "_publish_message", new_callable=AsyncMock, return_value=(True, None)):
+        with (
+            patch(
+                "protean.server.outbox_processor.get_domain_metrics",
+                return_value=mock_metrics,
+            ),
+            patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer,
+            patch("protean.server.outbox_processor.UnitOfWork") as mock_uow,
+            patch.object(
+                processor,
+                "_publish_message",
+                new_callable=AsyncMock,
+                return_value=(True, None),
+            ),
+        ):
             mock_span = MagicMock()
-            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(return_value=mock_span)
-            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = MagicMock(return_value=False)
+            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = (
+                MagicMock(return_value=False)
+            )
             mock_uow.return_value.__enter__ = MagicMock()
             mock_uow.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -1888,13 +1914,27 @@ class TestOutboxProcessorMetrics:
 
         mock_metrics = MagicMock()
 
-        with patch("protean.server.outbox_processor.get_domain_metrics", return_value=mock_metrics), \
-             patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer, \
-             patch("protean.server.outbox_processor.UnitOfWork") as mock_uow, \
-             patch.object(processor, "_publish_message", new_callable=AsyncMock, return_value=(True, None)):
+        with (
+            patch(
+                "protean.server.outbox_processor.get_domain_metrics",
+                return_value=mock_metrics,
+            ),
+            patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer,
+            patch("protean.server.outbox_processor.UnitOfWork") as mock_uow,
+            patch.object(
+                processor,
+                "_publish_message",
+                new_callable=AsyncMock,
+                return_value=(True, None),
+            ),
+        ):
             mock_span = MagicMock()
-            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(return_value=mock_span)
-            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = MagicMock(return_value=False)
+            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = (
+                MagicMock(return_value=False)
+            )
             mock_uow.return_value.__enter__ = MagicMock()
             mock_uow.return_value.__exit__ = MagicMock(return_value=False)
 

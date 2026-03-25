@@ -71,9 +71,7 @@ def _init_telemetry_in_memory(domain):
     tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
 
     metric_reader = InMemoryMetricReader()
-    meter_provider = SDKMeterProvider(
-        resource=resource, metric_readers=[metric_reader]
-    )
+    meter_provider = SDKMeterProvider(resource=resource, metric_readers=[metric_reader])
 
     domain._otel_tracer_provider = tracer_provider
     domain._otel_meter_provider = meter_provider
@@ -89,9 +87,7 @@ def _find_root_http_span(spans):
         (s for s in spans if s.parent is None and s.name.startswith(_http_methods)),
         None,
     )
-    assert span is not None, (
-        f"No root HTTP span found among: {[s.name for s in spans]}"
-    )
+    assert span is not None, f"No root HTTP span found among: {[s.name for s in spans]}"
     return span
 
 
@@ -252,9 +248,7 @@ class TestSpanParenting:
 
         spans = span_exporter.get_finished_spans()
         http_span = _find_root_http_span(spans)
-        command_span = next(
-            s for s in spans if s.name == "protean.command.process"
-        )
+        command_span = next(s for s in spans if s.name == "protean.command.process")
 
         # The command span's parent should be the HTTP span
         assert command_span.parent is not None
@@ -289,7 +283,6 @@ class TestSpanParenting:
         client.post("/orders")
 
         spans = span_exporter.get_finished_spans()
-        span_map = {s.context.span_id: s for s in spans}
         span_names = {s.name for s in spans}
 
         # Expected spans present
@@ -298,16 +291,12 @@ class TestSpanParenting:
         assert "protean.handler.execute" in span_names
 
         # command.process → its parent is the HTTP span
-        command_span = next(
-            s for s in spans if s.name == "protean.command.process"
-        )
+        command_span = next(s for s in spans if s.name == "protean.command.process")
         http_span = _find_root_http_span(spans)
         assert command_span.parent.span_id == http_span.context.span_id
 
         # handler.execute → its parent is command.process
-        handler_span = next(
-            s for s in spans if s.name == "protean.handler.execute"
-        )
+        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
         assert handler_span.parent.span_id == command_span.context.span_id
 
 
@@ -332,10 +321,12 @@ class TestGracefulDegradation:
         test_domain.config["telemetry"]["enabled"] = True
         test_domain._otel_init_attempted = True
 
-        import protean.integrations.fastapi.telemetry as tel_mod
-
         # Simulate import failure by patching the import
-        original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+        original_import = (
+            __builtins__.__import__
+            if hasattr(__builtins__, "__import__")
+            else __import__
+        )
 
         def mock_import(name, *args, **kwargs):
             if "opentelemetry.instrumentation.fastapi" in name:

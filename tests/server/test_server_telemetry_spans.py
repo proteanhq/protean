@@ -176,9 +176,7 @@ def _persist_outbox_messages(domain, count: int = 3) -> list[Outbox]:
 
     messages = []
     for i in range(count):
-        headers = MessageHeaders(
-            id=f"msg-{i}", type="DummyEvent", stream="test-stream"
-        )
+        headers = MessageHeaders(id=f"msg-{i}", type="DummyEvent", stream="test-stream")
         domain_meta = DomainMeta(stream_category="test-stream")
         metadata = Metadata(headers=headers, domain=domain_meta)
 
@@ -312,9 +310,7 @@ class TestEngineHandleMessageSpan:
         engine = Engine(domain=test_domain, test_mode=True)
         message = _make_event_message(test_domain)
 
-        await engine.handle_message(
-            UserEventHandler, message, worker_id="worker-42"
-        )
+        await engine.handle_message(UserEventHandler, message, worker_id="worker-42")
 
         spans = span_exporter.get_finished_spans()
         span = next(s for s in spans if s.name == "protean.engine.handle_message")

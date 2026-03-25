@@ -339,16 +339,12 @@ class TestBrokerSubscriberCorrelationPropagation:
     """
 
     def _register_subscriber(self, test_domain):
-        test_domain.register(
-            _PlaceOrderSubscriber, stream="external_orders"
-        )
+        test_domain.register(_PlaceOrderSubscriber, stream="external_orders")
         test_domain.init(traverse=False)
 
     @pytest.mark.asyncio
     @pytest.mark.eventstore
-    async def test_broker_correlation_id_flows_to_command(
-        self, test_domain, order_id
-    ):
+    async def test_broker_correlation_id_flows_to_command(self, test_domain, order_id):
         """correlation_id from incoming broker message propagates to the
         subscriber-triggered command in the event store."""
         self._register_subscriber(test_domain)
@@ -379,9 +375,7 @@ class TestBrokerSubscriberCorrelationPropagation:
 
     @pytest.mark.asyncio
     @pytest.mark.eventstore
-    async def test_broker_correlation_id_flows_to_events(
-        self, test_domain, order_id
-    ):
+    async def test_broker_correlation_id_flows_to_events(self, test_domain, order_id):
         """correlation_id from incoming broker message propagates through
         subscriber-triggered command to the resulting events."""
         self._register_subscriber(test_domain)
@@ -499,7 +493,9 @@ class TestEventHandlerCausationChain:
         assert events[0].metadata.domain.causation_id == root_cmd_id
 
     @pytest.mark.eventstore
-    def test_chained_event_causation_points_to_root_command(self, test_domain, order_id):
+    def test_chained_event_causation_points_to_root_command(
+        self, test_domain, order_id
+    ):
         """OrderConfirmed (from chained ConfirmOrder) has causation_id = root command ID.
 
         In sync mode, g.message_in_context still points to the root command
@@ -537,7 +533,9 @@ class TestEventHandlerCausationChain:
         assert len(events) >= 2
 
         for event_msg in events:
-            assert event_msg.metadata.domain.causation_id != event_msg.metadata.headers.id
+            assert (
+                event_msg.metadata.domain.causation_id != event_msg.metadata.headers.id
+            )
 
 
 # ===========================================================================

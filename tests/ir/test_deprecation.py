@@ -188,9 +188,7 @@ class TestFieldDeprecated:
         """Verify deprecated metadata survives on the field object for IR extraction."""
         from protean.fields.association import Reference
 
-        field = Reference(
-            "SomeClass", deprecated={"since": "0.15", "removal": "0.18"}
-        )
+        field = Reference("SomeClass", deprecated={"since": "0.15", "removal": "0.18"})
         assert field.deprecated == {"since": "0.15", "removal": "0.18"}
 
 
@@ -357,9 +355,7 @@ class TestIRDiagnosticsDeprecated:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        dep_diags = [
-            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
-        ]
+        dep_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"]
         assert len(dep_diags) == 1
         assert "deprecated since v0.15" in dep_diags[0]["message"]
         assert "removal in v0.18" in dep_diags[0]["message"]
@@ -372,9 +368,7 @@ class TestIRDiagnosticsDeprecated:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        dep_diags = [
-            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
-        ]
+        dep_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"]
         assert len(dep_diags) == 1
         assert "deprecated since v0.15" in dep_diags[0]["message"]
         assert "removal" not in dep_diags[0]["message"]
@@ -390,9 +384,7 @@ class TestIRDiagnosticsDeprecated:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        field_diags = [
-            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_FIELD"
-        ]
+        field_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_FIELD"]
         assert len(field_diags) == 1
         assert "FieldDiagOrder.old_field" in field_diags[0]["message"]
         assert "deprecated since v0.14" in field_diags[0]["message"]
@@ -424,9 +416,7 @@ class TestIRDiagnosticsDeprecated:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        dep_diags = [
-            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
-        ]
+        dep_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"]
         assert len(dep_diags) == 2
 
 
@@ -870,9 +860,7 @@ class TestIRBuilderDeprecatedAllElements:
         assert ds["deprecated"] == {"since": "0.16"}
 
     def test_subscriber_deprecated_in_ir(self) -> None:
-        @self.domain.subscriber(
-            broker="default", stream="orders", deprecated="0.16"
-        )
+        @self.domain.subscriber(broker="default", stream="orders", deprecated="0.16")
         class OrderSubscriber:
             def __call__(self, payload):
                 pass
@@ -893,9 +881,7 @@ class TestIRBuilderDeprecatedAllElements:
             order_id = Identifier(required=True)
             total = Float(required=True)
 
-        @self.domain.process_manager(
-            stream_categories=["pm_order"], deprecated="0.16"
-        )
+        @self.domain.process_manager(stream_categories=["pm_order"], deprecated="0.16")
         class OrderFulfillment:
             order_id = Identifier()
 
@@ -999,9 +985,7 @@ class TestIRDiagnosticsDeprecatedExtended:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        dep_diags = [
-            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
-        ]
+        dep_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"]
         assert len(dep_diags) == 1
         assert "deprecated since v0.15" in dep_diags[0]["message"]
 
@@ -1014,18 +998,14 @@ class TestIRDiagnosticsDeprecatedExtended:
         class Inventory:
             pass
 
-        @self.domain.domain_service(
-            part_of=[Order, Inventory], deprecated="0.16"
-        )
+        @self.domain.domain_service(part_of=[Order, Inventory], deprecated="0.16")
         class OldService:
             pass
 
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        dep_diags = [
-            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
-        ]
+        dep_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"]
         assert len(dep_diags) == 1
         assert "deprecated since v0.16" in dep_diags[0]["message"]
 
@@ -1039,9 +1019,7 @@ class TestIRDiagnosticsDeprecatedExtended:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        field_diags = [
-            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_FIELD"
-        ]
+        field_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_FIELD"]
         assert len(field_diags) == 1
         assert "deprecated since v0.14" in field_diags[0]["message"]
         assert "removal" not in field_diags[0]["message"]
@@ -1061,9 +1039,7 @@ class TestIRDiagnosticsDeprecatedExtended:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        dep_diags = [
-            d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
-        ]
+        dep_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"]
         assert len(dep_diags) == 1
         assert "deprecated since v0.16" in dep_diags[0]["message"]
         assert "removal in v0.19" in dep_diags[0]["message"]

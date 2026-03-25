@@ -3,8 +3,6 @@
 import logging
 from unittest.mock import patch
 
-import pytest
-
 
 # ============= ACK Error Handling Tests =============
 

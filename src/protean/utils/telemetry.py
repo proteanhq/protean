@@ -204,7 +204,9 @@ def _build_span_exporter(config: dict[str, Any]) -> Any:
 
         return ConsoleSpanExporter()
 
-    logger.warning("Unknown telemetry exporter '%s'. No spans will be exported.", exporter_name)
+    logger.warning(
+        "Unknown telemetry exporter '%s'. No spans will be exported.", exporter_name
+    )
     return None
 
 
@@ -237,7 +239,9 @@ def _build_metric_reader(config: dict[str, Any]) -> Any:
 
         return _PeriodicReader(ConsoleMetricExporter())
 
-    logger.warning("Unknown telemetry exporter '%s'. No metrics will be exported.", exporter_name)
+    logger.warning(
+        "Unknown telemetry exporter '%s'. No metrics will be exported.", exporter_name
+    )
     return None
 
 
@@ -263,7 +267,7 @@ def get_prometheus_text(domain: Domain) -> str | None:
     # Only consider domains that went through init_telemetry().
     # This prevents MagicMock or other test doubles from accidentally
     # matching because getattr returns a truthy mock object.
-    if not getattr(domain, _TELEMETRY_INIT_KEY, False) is True:
+    if getattr(domain, _TELEMETRY_INIT_KEY, False) is not True:
         return None
 
     reader = getattr(domain, _PROMETHEUS_READER_KEY, None)
@@ -328,7 +332,9 @@ def inject_traceparent_from_context() -> Any:
     return TraceParent.build(w3c_header)
 
 
-def create_observation(value: int | float, attributes: dict[str, Any] | None = None) -> Any:
+def create_observation(
+    value: int | float, attributes: dict[str, Any] | None = None
+) -> Any:
     """Create an OpenTelemetry ``Observation`` without leaking the OTel import.
 
     Returns a no-op named tuple when the SDK is not installed so that
@@ -425,18 +431,24 @@ class _NoOpTracer:
 class _NoOpObservation:
     """Lightweight stand-in for ``opentelemetry.metrics.Observation``."""
 
-    def __init__(self, value: int | float, attributes: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self, value: int | float, attributes: dict[str, Any] | None = None
+    ) -> None:
         self.value = value
         self.attributes = attributes
 
 
 class _NoOpCounter:
-    def add(self, amount: int | float, attributes: dict[str, Any] | None = None) -> None:
+    def add(
+        self, amount: int | float, attributes: dict[str, Any] | None = None
+    ) -> None:
         pass
 
 
 class _NoOpHistogram:
-    def record(self, amount: int | float, attributes: dict[str, Any] | None = None) -> None:
+    def record(
+        self, amount: int | float, attributes: dict[str, Any] | None = None
+    ) -> None:
         pass
 
 
@@ -458,7 +470,9 @@ class _NoOpMeter:
     def create_up_down_counter(self, name: str, **kwargs: Any) -> _NoOpCounter:
         return _NoOpCounter()
 
-    def create_observable_gauge(self, name: str, callbacks: Any = None, **kwargs: Any) -> Any:
+    def create_observable_gauge(
+        self, name: str, callbacks: Any = None, **kwargs: Any
+    ) -> Any:
         return _NoOpObservableGauge()
 
 

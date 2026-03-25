@@ -94,7 +94,9 @@ def _make_cluster(
     }
 
 
-def _make_event(name: str, fqn: str, fields: dict | None = None, **extra: object) -> dict:
+def _make_event(
+    name: str, fqn: str, fields: dict | None = None, **extra: object
+) -> dict:
     entry: dict = {
         "__type__": f"Test.{name}.v1",
         "__version__": 1,
@@ -270,9 +272,7 @@ class TestClassifyClusterAddedRemoved:
 
 class TestClassifyAggregateFieldChanges:
     def test_added_optional_field_is_safe(self):
-        left = _minimal_ir(
-            clusters={"app.Order": _make_cluster("Order", fields={})}
-        )
+        left = _minimal_ir(clusters={"app.Order": _make_cluster("Order", fields={})})
         right = _minimal_ir(
             clusters={
                 "app.Order": _make_cluster(
@@ -289,9 +289,7 @@ class TestClassifyAggregateFieldChanges:
         assert "note" in change.message
 
     def test_added_required_field_without_default_is_breaking(self):
-        left = _minimal_ir(
-            clusters={"app.Order": _make_cluster("Order", fields={})}
-        )
+        left = _minimal_ir(clusters={"app.Order": _make_cluster("Order", fields={})})
         right = _minimal_ir(
             clusters={
                 "app.Order": _make_cluster(
@@ -313,9 +311,7 @@ class TestClassifyAggregateFieldChanges:
         assert "amount" in change.message
 
     def test_added_required_field_with_default_is_safe(self):
-        left = _minimal_ir(
-            clusters={"app.Order": _make_cluster("Order", fields={})}
-        )
+        left = _minimal_ir(clusters={"app.Order": _make_cluster("Order", fields={})})
         right = _minimal_ir(
             clusters={
                 "app.Order": _make_cluster(
@@ -393,7 +389,13 @@ class TestClassifyAggregateFieldChanges:
             clusters={
                 "app.Order": _make_cluster(
                     "Order",
-                    fields={"name": {"kind": "standard", "type": "String", "max_length": 100}},
+                    fields={
+                        "name": {
+                            "kind": "standard",
+                            "type": "String",
+                            "max_length": 100,
+                        }
+                    },
                 )
             }
         )
@@ -401,7 +403,13 @@ class TestClassifyAggregateFieldChanges:
             clusters={
                 "app.Order": _make_cluster(
                     "Order",
-                    fields={"name": {"kind": "standard", "type": "String", "max_length": 200}},
+                    fields={
+                        "name": {
+                            "kind": "standard",
+                            "type": "String",
+                            "max_length": 200,
+                        }
+                    },
                 )
             }
         )
@@ -453,7 +461,9 @@ class TestClassifyTypeStringChanged:
         right = _minimal_ir(clusters={"app.Order": right_cluster})
         report = _run(left, right)
         assert report.is_breaking is True
-        assert any(c.change_type == "type_string_changed" for c in report.breaking_changes)
+        assert any(
+            c.change_type == "type_string_changed" for c in report.breaking_changes
+        )
 
 
 # ------------------------------------------------------------------
@@ -523,9 +533,7 @@ class TestClassifyEventChanges:
         left = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
         right = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order", events={"app.OrderShipped": event}
-                )
+                "app.Order": _make_cluster("Order", events={"app.OrderShipped": event})
             }
         )
         report = _run(left, right)
@@ -538,9 +546,7 @@ class TestClassifyEventChanges:
         event = _make_event("OrderPlaced", "app.OrderPlaced")
         left = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order", events={"app.OrderPlaced": event}
-                )
+                "app.Order": _make_cluster("Order", events={"app.OrderPlaced": event})
             }
         )
         right = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
@@ -647,9 +653,7 @@ class TestClassifyCommandChanges:
         left = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
         right = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order", commands={"app.CancelOrder": cmd}
-                )
+                "app.Order": _make_cluster("Order", commands={"app.CancelOrder": cmd})
             }
         )
         report = _run(left, right)
@@ -662,9 +666,7 @@ class TestClassifyCommandChanges:
         cmd = _make_command("PlaceOrder", "app.PlaceOrder")
         left = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order", commands={"app.PlaceOrder": cmd}
-                )
+                "app.Order": _make_cluster("Order", commands={"app.PlaceOrder": cmd})
             }
         )
         right = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
@@ -679,7 +681,9 @@ class TestClassifyCommandChanges:
         right_cmd = _make_command(
             "PlaceOrder",
             "app.PlaceOrder",
-            fields={"quantity": {"kind": "standard", "type": "Integer", "required": True}},
+            fields={
+                "quantity": {"kind": "standard", "type": "Integer", "required": True}
+            },
         )
 
         left = _minimal_ir(
@@ -714,9 +718,7 @@ class TestClassifyEntityChanges:
         left = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
         right = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order", entities={"app.OrderLine": entity}
-                )
+                "app.Order": _make_cluster("Order", entities={"app.OrderLine": entity})
             }
         )
         report = _run(left, right)
@@ -729,9 +731,7 @@ class TestClassifyEntityChanges:
         entity = _make_entity("OrderLine", "app.OrderLine")
         left = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order", entities={"app.OrderLine": entity}
-                )
+                "app.Order": _make_cluster("Order", entities={"app.OrderLine": entity})
             }
         )
         right = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
@@ -794,9 +794,7 @@ class TestClassifyValueObjectChanges:
         left = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
         right = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order", value_objects={"app.Address": vo}
-                )
+                "app.Order": _make_cluster("Order", value_objects={"app.Address": vo})
             }
         )
         report = _run(left, right)
@@ -814,9 +812,7 @@ class TestClassifyValueObjectChanges:
         }
         left = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order", value_objects={"app.Address": vo}
-                )
+                "app.Order": _make_cluster("Order", value_objects={"app.Address": vo})
             }
         )
         right = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
@@ -1110,9 +1106,7 @@ class TestClassifyMultipleChanges:
                 )
             }
         )
-        right = _minimal_ir(
-            clusters={"app.Order": _make_cluster("Order", fields={})}
-        )
+        right = _minimal_ir(clusters={"app.Order": _make_cluster("Order", fields={})})
         report = _run(left, right)
         assert len(report.breaking_changes) == 3
         removed_fields = {c.message for c in report.breaking_changes}

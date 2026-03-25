@@ -67,10 +67,7 @@ class TestSchemaEnvelope:
         self.schema = generate_element_schema(element)
 
     def test_schema_dialect(self):
-        assert (
-            self.schema["$schema"]
-            == "https://json-schema.org/draft/2020-12/schema"
-        )
+        assert self.schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
 
     def test_type_is_object(self):
         assert self.schema["type"] == "object"
@@ -583,11 +580,15 @@ class TestGenerateSchemas:
 
     def test_includes_aggregate(self):
         found = any("Order" in fqn for fqn in self.schemas if "Memory" not in fqn)
-        assert found, f"Order aggregate not found in schemas: {list(self.schemas.keys())}"
+        assert found, (
+            f"Order aggregate not found in schemas: {list(self.schemas.keys())}"
+        )
 
     def test_includes_entity(self):
         found = any("LineItem" in fqn for fqn in self.schemas)
-        assert found, f"LineItem entity not found in schemas: {list(self.schemas.keys())}"
+        assert found, (
+            f"LineItem entity not found in schemas: {list(self.schemas.keys())}"
+        )
 
     def test_includes_value_object(self):
         found = any("ShippingAddress" in fqn for fqn in self.schemas)

@@ -71,8 +71,7 @@ def _init_with_in_memory(domain):
     from opentelemetry.sdk.resources import Resource
 
     service_name = (
-        domain.config.get("telemetry", {}).get("service_name")
-        or domain.normalized_name
+        domain.config.get("telemetry", {}).get("service_name") or domain.normalized_name
     )
     resource = Resource.create({"service.name": service_name})
 
@@ -83,9 +82,7 @@ def _init_with_in_memory(domain):
 
     # Meter with in-memory reader
     metric_reader = InMemoryMetricReader()
-    meter_provider = SDKMeterProvider(
-        resource=resource, metric_readers=[metric_reader]
-    )
+    meter_provider = SDKMeterProvider(resource=resource, metric_readers=[metric_reader])
 
     # Stash on domain (same keys as init_telemetry uses)
     domain._otel_tracer_provider = tracer_provider

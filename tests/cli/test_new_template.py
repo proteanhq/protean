@@ -154,7 +154,10 @@ class TestTemplateGeneration:
             # Check pyproject.toml contains correct metadata
             pyproject_content = (project_path / "pyproject.toml").read_text()
             assert 'name = "my-awesome-project"' in pyproject_content
-            assert 'authors = [{name = "Jane Doe", email = "jane@doe.com"}]' in pyproject_content
+            assert (
+                'authors = [{name = "Jane Doe", email = "jane@doe.com"}]'
+                in pyproject_content
+            )
             assert 'description = "An awesome Protean project"' in pyproject_content
 
             # Check package name is correctly transformed

@@ -394,8 +394,7 @@ def _normalize_deprecated(value: Any) -> dict[str, str] | None:
     if isinstance(value, dict):
         if "since" not in value:
             raise ConfigurationError(
-                "The `deprecated` option must include a 'since' key "
-                f"(got {value!r})"
+                f"The `deprecated` option must include a 'since' key (got {value!r})"
             )
         result: dict[str, str] = {"since": str(value["since"])}
         if "removal" in value:

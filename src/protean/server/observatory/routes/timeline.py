@@ -64,7 +64,9 @@ def _serialize_message(raw_msg: dict[str, Any], domain_name: str) -> dict[str, A
         "type": raw_msg.get("type", headers.get("type")),
         "stream": raw_msg.get("stream_name", headers.get("stream")),
         "kind": domain_meta.get("kind"),
-        "global_position": raw_msg.get("global_position", event_store_meta.get("global_position")),
+        "global_position": raw_msg.get(
+            "global_position", event_store_meta.get("global_position")
+        ),
         "position": raw_msg.get("position", event_store_meta.get("position")),
         "time": str(raw_msg["time"]) if raw_msg.get("time") else headers.get("time"),
         "correlation_id": domain_meta.get("correlation_id"),
@@ -174,9 +176,7 @@ def collect_all_events(
                         continue
                     all_events.append((msg, domain.name))
         except Exception:
-            logger.debug(
-                "Failed to read events from %s", domain.name, exc_info=True
-            )
+            logger.debug("Failed to read events from %s", domain.name, exc_info=True)
 
     # Sort by global_position (ascending)
     all_events.sort(key=lambda x: x[0].get("global_position", 0))
@@ -185,12 +185,14 @@ def collect_all_events(
     if cursor > 0:
         if order == "desc":
             all_events = [
-                (msg, dn) for msg, dn in all_events
+                (msg, dn)
+                for msg, dn in all_events
                 if msg.get("global_position", 0) <= cursor
             ]
         else:
             all_events = [
-                (msg, dn) for msg, dn in all_events
+                (msg, dn)
+                for msg, dn in all_events
                 if msg.get("global_position", 0) >= cursor
             ]
 
@@ -226,9 +228,7 @@ def collect_all_events(
     return page, next_cursor
 
 
-def find_event_by_id(
-    domains: list[Domain], message_id: str
-) -> dict[str, Any] | None:
+def find_event_by_id(domains: list[Domain], message_id: str) -> dict[str, Any] | None:
     """Find a single event by its message ID across all domains.
 
     Returns the full event detail dict, or None if not found.
@@ -243,9 +243,7 @@ def find_event_by_id(
                     if _extract_message_id(msg) == message_id:
                         return _serialize_message_detail(msg, domain.name)
         except Exception:
-            logger.debug(
-                "Failed to search events in %s", domain.name, exc_info=True
-            )
+            logger.debug("Failed to search events in %s", domain.name, exc_info=True)
 
     return None
 
@@ -296,12 +294,13 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
                             last_event_datetime = msg_dt
                             last_event_time = str(raw_time)
 
-                        if first_event_datetime is None or msg_dt < first_event_datetime:
+                        if (
+                            first_event_datetime is None
+                            or msg_dt < first_event_datetime
+                        ):
                             first_event_datetime = msg_dt
         except Exception:
-            logger.debug(
-                "Failed to collect stats from %s", domain.name, exc_info=True
-            )
+            logger.debug("Failed to collect stats from %s", domain.name, exc_info=True)
 
     # Calculate events per minute
     events_per_minute: float | None = None
@@ -462,15 +461,11 @@ def collect_aggregate_history(
         try:
             with domain.domain_context():
                 store = domain.event_store.store
-                raw_messages = store._read(
-                    stream_name, no_of_messages=1_000_000
-                )
+                raw_messages = store._read(stream_name, no_of_messages=1_000_000)
                 if not raw_messages:
                     continue
 
-                events = [
-                    _serialize_message(msg, domain.name) for msg in raw_messages
-                ]
+                events = [_serialize_message(msg, domain.name) for msg in raw_messages]
 
                 # Derive stream version from the last message's position
                 last_msg = raw_messages[-1]
@@ -510,10 +505,14 @@ def create_timeline_router(domains: list["Domain"]) -> APIRouter:
             _DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT, description="Page size"
         ),
         order: str = Query("asc", pattern="^(asc|desc)$", description="Sort order"),
-        stream_category: str | None = Query(None, description="Filter by stream category"),
+        stream_category: str | None = Query(
+            None, description="Filter by stream category"
+        ),
         event_type: str | None = Query(None, description="Filter by event type"),
         aggregate_id: str | None = Query(None, description="Filter by aggregate ID"),
-        kind: str | None = Query(None, pattern="^(EVENT|COMMAND)$", description="Filter by kind"),
+        kind: str | None = Query(
+            None, pattern="^(EVENT|COMMAND)$", description="Filter by kind"
+        ),
     ) -> JSONResponse:
         """Paginated event list from the $all stream with filtering."""
         events, next_cursor = collect_all_events(
@@ -565,9 +564,7 @@ def create_timeline_router(domains: list["Domain"]) -> APIRouter:
         stream_category: str, aggregate_id: str
     ) -> JSONResponse:
         """Full event history for one aggregate instance."""
-        result = collect_aggregate_history(
-            domains, stream_category, aggregate_id
-        )
+        result = collect_aggregate_history(domains, stream_category, aggregate_id)
         if result is None:
             raise HTTPException(
                 status_code=404,

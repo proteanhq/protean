@@ -151,9 +151,7 @@ def _init_telemetry_in_memory(domain):
     tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
 
     metric_reader = InMemoryMetricReader()
-    meter_provider = SDKMeterProvider(
-        resource=resource, metric_readers=[metric_reader]
-    )
+    meter_provider = SDKMeterProvider(resource=resource, metric_readers=[metric_reader])
 
     domain._otel_tracer_provider = tracer_provider
     domain._otel_meter_provider = meter_provider
@@ -282,9 +280,7 @@ class TestCommandProcessingSpanTree:
 
     def test_all_spans_share_single_trace_id(self, test_domain, span_exporter):
         test_domain.process(
-            RegisterCustomer(
-                customer_id=str(uuid4()), name="Bob", email="b@test.com"
-            ),
+            RegisterCustomer(customer_id=str(uuid4()), name="Bob", email="b@test.com"),
             asynchronous=False,
         )
 
@@ -309,9 +305,7 @@ class TestCommandProcessingSpanTree:
 
     def test_command_handler_is_child_of_process(self, test_domain, span_exporter):
         test_domain.process(
-            RegisterCustomer(
-                customer_id=str(uuid4()), name="Dave", email="d@test.com"
-            ),
+            RegisterCustomer(customer_id=str(uuid4()), name="Dave", email="d@test.com"),
             asynchronous=False,
         )
 
@@ -335,9 +329,7 @@ class TestCommandProcessingSpanTree:
         self, test_domain, span_exporter
     ):
         test_domain.process(
-            RegisterCustomer(
-                customer_id=str(uuid4()), name="Eve", email="e@test.com"
-            ),
+            RegisterCustomer(customer_id=str(uuid4()), name="Eve", email="e@test.com"),
             asynchronous=False,
         )
 
@@ -438,9 +430,7 @@ class TestComplementaryAttributes:
         self, test_domain, span_exporter
     ):
         test_domain.process(
-            RegisterCustomer(
-                customer_id=str(uuid4()), name="Comp", email="c@test.com"
-            ),
+            RegisterCustomer(customer_id=str(uuid4()), name="Comp", email="c@test.com"),
             asynchronous=False,
         )
 
@@ -454,14 +444,14 @@ class TestComplementaryAttributes:
         )
 
         # Handler span provides handler identity
-        assert cmd_handler.attributes["protean.handler.name"] == "CustomerCommandHandler"
+        assert (
+            cmd_handler.attributes["protean.handler.name"] == "CustomerCommandHandler"
+        )
         assert cmd_handler.attributes["protean.handler.type"] == "COMMAND_HANDLER"
 
     def test_uow_span_attributes(self, test_domain, span_exporter):
         test_domain.process(
-            RegisterCustomer(
-                customer_id=str(uuid4()), name="UoW", email="u@test.com"
-            ),
+            RegisterCustomer(customer_id=str(uuid4()), name="UoW", email="u@test.com"),
             asynchronous=False,
         )
 
@@ -475,9 +465,7 @@ class TestComplementaryAttributes:
 
     def test_repository_span_attributes(self, test_domain, span_exporter):
         test_domain.process(
-            RegisterCustomer(
-                customer_id=str(uuid4()), name="Repo", email="r@test.com"
-            ),
+            RegisterCustomer(customer_id=str(uuid4()), name="Repo", email="r@test.com"),
             asynchronous=False,
         )
 
@@ -495,9 +483,7 @@ class TestComplementaryAttributes:
 
     def test_event_store_span_attributes(self, test_domain, span_exporter):
         test_domain.process(
-            RegisterCustomer(
-                customer_id=str(uuid4()), name="ES", email="e@test.com"
-            ),
+            RegisterCustomer(customer_id=str(uuid4()), name="ES", email="e@test.com"),
             asynchronous=False,
         )
 
@@ -561,9 +547,7 @@ class TestEngineSpanHierarchy:
         self, test_domain, span_exporter, engine
     ):
         message = _make_event_message(test_domain)
-        await engine.handle_message(
-            CustomerEventHandler, message, worker_id="worker-1"
-        )
+        await engine.handle_message(CustomerEventHandler, message, worker_id="worker-1")
 
         spans = span_exporter.get_finished_spans()
         engine_span = _span_by_name(spans, "protean.engine.handle_message")
@@ -746,9 +730,7 @@ class TestObservatoryTraceAlignment:
         assert "handler.started" in trace_events
         assert "handler.completed" in trace_events
 
-    def test_observatory_traces_include_handler_name(
-        self, test_domain, span_exporter
-    ):
+    def test_observatory_traces_include_handler_name(self, test_domain, span_exporter):
         emitter = test_domain.trace_emitter
         calls = []
         original_emit = emitter.emit
@@ -996,9 +978,7 @@ class TestDistributedTracePropagation:
                 f"{span.context.trace_id:032x}, expected {EXTERNAL_TRACE_ID}"
             )
 
-    def test_events_carry_traceparent_from_processing(
-        self, test_domain, span_exporter
-    ):
+    def test_events_carry_traceparent_from_processing(self, test_domain, span_exporter):
         """Events raised during handler execution carry the active span's traceparent."""
         uid = str(uuid4())
         test_domain.process(
@@ -1011,9 +991,7 @@ class TestDistributedTracePropagation:
         events = test_domain.event_store.store.read(stream)
 
         customer_registered = [
-            e
-            for e in events
-            if e.metadata.headers.type == CustomerRegistered.__type__
+            e for e in events if e.metadata.headers.type == CustomerRegistered.__type__
         ]
         assert len(customer_registered) == 1
 
@@ -1040,9 +1018,7 @@ class TestDistributedTracePropagation:
         events = test_domain.event_store.store.read(stream)
 
         customer_registered = [
-            e
-            for e in events
-            if e.metadata.headers.type == CustomerRegistered.__type__
+            e for e in events if e.metadata.headers.type == CustomerRegistered.__type__
         ]
         assert len(customer_registered) == 1
 
