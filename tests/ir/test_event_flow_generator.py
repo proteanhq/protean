@@ -841,3 +841,102 @@ class TestDownstreamConsumers:
         # Should include event handler in a subgraph
         assert "OrderNotifier" in result
         assert "Event Handlers" in result
+
+    def test_all_consumer_types_together(self):
+        """All three consumer types appear with subgraphs in one diagram."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.FulfillmentPM",
+                    "name": "FulfillmentPM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": True,
+                            "end": True,
+                            "methods": ["on_order_placed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        projections = {
+            "app.Dashboard": {
+                "projectors": {
+                    "app.DashProjector": {
+                        "element_type": "PROJECTOR",
+                        "fqn": "app.DashProjector",
+                        "name": "DashProjector",
+                        "projector_for": "app.Dashboard",
+                        "handlers": {
+                            "App.OrderPlaced.v1": ["on_placed"],
+                        },
+                    }
+                },
+            }
+        }
+        result = generate_downstream_consumers_diagram(
+            _ir(clusters=clusters, flows=flows, projections=projections)
+        )
+        # All three subgraphs present
+        assert "Event Handlers" in result
+        assert "Process Managers" in result
+        assert "Projectors" in result
+        # Event nodes pre-declared with short labels
+        assert "OrderPlaced" in result
+        # Lifecycle labels on PM edges
+        assert "|start, end|" in result
+        # Projector target label
+        assert "Dashboard" in result
+
+    def test_pm_plain_edge_in_downstream(self):
+        """PM without lifecycle markers has plain edges."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.SimplePM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.SimplePM",
+                    "name": "SimplePM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": False,
+                            "end": False,
+                            "methods": ["on_placed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        result = generate_downstream_consumers_diagram(
+            _ir(clusters=clusters, flows=flows)
+        )
+        assert "SimplePM" in result
+        assert "-->|" not in result  # No lifecycle labels

@@ -325,8 +325,6 @@ def generate_cluster_command_handler_diagram(
     }
     cmd_type_to_fqn = build_cmd_type_to_fqn(ir)
     subgraph, edges = _render_command_handlers(single_ir, cmd_type_to_fqn)
-    if not subgraph:
-        return "flowchart LR"
     lines: list[str] = ["flowchart LR", *subgraph]
     lines.extend(edges)
     return "\n".join(lines)
@@ -367,8 +365,6 @@ def generate_single_projector_diagram(ir: dict[str, Any], projection_fqn: str) -
     }
     evt_type_to_fqn = build_evt_type_to_fqn(ir)
     subgraph, edges = _render_projectors(single_ir, evt_type_to_fqn)
-    if not subgraph:
-        return "flowchart LR"
     lines: list[str] = ["flowchart LR", *subgraph]
     lines.extend(edges)
     return "\n".join(lines)
