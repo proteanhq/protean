@@ -136,56 +136,8 @@ In test mode, the server:
 3. Allows message chain propagation
 4. Shuts down after processing completes
 
-## Using Test Mode in Tests
-
-Test mode enables deterministic testing of async message flows:
-
-```python
-import pytest
-from protean.server import Engine
-
-def test_order_creates_inventory_reservation():
-    """Test that creating an order reserves inventory."""
-    # Arrange: Create order (raises events)
-    with domain.domain_context():
-        order = Order.create(
-            customer_id="123",
-            items=[OrderItem(product_id="ABC", quantity=5)]
-        )
-        domain.repository_for(Order).add(order)
-
-    # Act: Process events in test mode
-    engine = Engine(domain, test_mode=True)
-    engine.run()
-
-    # Assert: Verify inventory was reserved
-    with domain.domain_context():
-        reservation = domain.repository_for(Reservation).get_by_order(order.id)
-        assert reservation is not None
-        assert reservation.quantity == 5
-```
-
-### Testing Multi-Step Flows
-
-Test mode handles cascading events automatically:
-
-```python
-def test_order_fulfillment_flow():
-    """Test complete order fulfillment flow."""
-    # Order created -> Inventory reserved -> Payment processed -> Order shipped
-
-    with domain.domain_context():
-        order = Order.create(...)
-        domain.repository_for(Order).add(order)
-
-    # Process all cascading events
-    engine = Engine(domain, test_mode=True)
-    engine.run()
-
-    with domain.domain_context():
-        order = domain.repository_for(Order).get(order.id)
-        assert order.status == "shipped"
-```
+For examples of using test mode in your test suite, see
+[Integration Tests](../testing/integration-tests.md).
 
 ## Programmatic Usage
 
@@ -209,20 +161,6 @@ engine = Engine(
     debug=True,
 )
 engine.run()
-```
-
-### Accessing Engine State
-
-```python
-engine = Engine(domain)
-
-# Check subscriptions
-print(f"Handler subscriptions: {len(engine._subscriptions)}")
-print(f"Broker subscriptions: {len(engine._broker_subscriptions)}")
-print(f"Outbox processors: {len(engine._outbox_processors)}")
-
-# Access subscription factory
-factory = engine.subscription_factory
 ```
 
 ## Signal Handling

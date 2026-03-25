@@ -48,7 +48,12 @@ When events need to cross system boundaries — external APIs, Kafka topics, web
 
 [Learn more about CloudEvents interoperability →](./cloudevents.md)
 
-## Supporting Topics
+### Event Upcasting <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-- [Stream Categories](../../concepts/async-processing/stream-categories.md) — How messages are organized and routed through named streams.
-- [Event Upcasting](./event-upcasting.md) <span class="pathway-tag pathway-tag-es">ES</span> — Transforming old event schemas to match the current version during replay.
+When event schemas evolve, upcasters transform old event versions to match the current schema during replay. This is essential for long-lived event-sourced systems.
+
+[Learn more about event upcasting →](./event-upcasting.md)
+
+!!! tip "See also"
+    [Stream Categories](../../concepts/async-processing/stream-categories.md)
+    — How messages are organized and routed through named streams.

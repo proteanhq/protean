@@ -59,3 +59,21 @@ Reconstitute event-sourced aggregates at a specific version or point in time, en
 The Unit of Work pattern provides automatic transaction management, ensuring that all changes within a single operation are committed or rolled back together.
 
 [Learn more about the Unit of Work →](./unit-of-work.md)
+
+### Custom Database Models <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
+
+Override the auto-generated storage schema with adapter-specific field types, custom table names, or multi-database deployments.
+
+[Learn more about custom database models →](./database-models.md)
+
+### Event Store Setup <span class="pathway-tag pathway-tag-es">ES</span>
+
+Choose, configure, and operate an event store for event-sourced aggregates. Read events, inspect streams, and understand stream naming.
+
+[Learn more about event store setup →](./event-store-setup.md)
+
+### Snapshots <span class="pathway-tag pathway-tag-es">ES</span>
+
+Optimize event-sourced aggregate loading with periodic state checkpoints. Configure thresholds and manage snapshots via CLI or API.
+
+[Learn more about snapshots →](./snapshots.md)

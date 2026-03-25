@@ -1,9 +1,7 @@
 # Guides
 
-The guides section is your comprehensive reference for building applications
-with Protean. Whether you're modeling your first aggregate or architecting an
-event-sourced system, you'll find detailed, practical guidance for every
-concept and pattern Protean supports.
+Goal-oriented guides for building applications with Protean. Each guide
+covers a specific task with practical code examples.
 
 If you haven't already, start with
 [Hello, Protean!](./getting-started/hello.md) for a quick first taste, then
@@ -60,7 +58,7 @@ to use? Start with DDD and evolve later.
 
     [:material-arrow-right-box: Run the Server](./server/index.md) ·
     [:material-arrow-right-box: FastAPI](./fastapi/index.md) ·
-    [:material-arrow-right-box: Correlation IDs](./observability/correlation-and-causation.md)
+    [:material-arrow-right-box: Observability](./observability/correlation-and-causation.md)
 
     *See also:* [Configuration](../reference/configuration/index.md) ·
     [CLI](../reference/cli/index.md) ·
@@ -78,45 +76,4 @@ to use? Start with DDD and evolve later.
 
 ## How Do I...?
 
-A quick reference for common tasks. See the
-[full task index](../how-do-i.md) for more.
-
-| I want to...                          | Go to                                                                 |
-|---------------------------------------|-----------------------------------------------------------------------|
-| Define an aggregate                   | [Aggregates](./domain-definition/aggregates.md)                       |
-| Add a child entity                    | [Entities](./domain-definition/entities.md)                           |
-| Enforce business rules                | [Invariants](./domain-behavior/invariants.md)                         |
-| Handle a request (synchronous)        | [Application Services](./change-state/application-services.md)        |
-| Handle a request (via commands)       | [Commands](./change-state/commands.md) + [Handlers](./change-state/command-handlers.md) |
-| Save or load an aggregate             | [Persist](./change-state/persist-aggregates.md) · [Retrieve](./change-state/retrieve-aggregates.md) |
-| Trace a causal chain of messages      | [Message Tracing](./domain-behavior/message-tracing.md)               |
-| React to a domain event               | [Event Handlers](./consume-state/event-handlers.md)                   |
-| Build a read-optimized view           | [Projections](./consume-state/projections.md)                         |
-| Choose between CQRS and ES            | [Architecture Decision](../concepts/architecture/architecture-decision.md)    |
-| Use Protean with FastAPI              | [FastAPI Integration](./fastapi/index.md)                             |
-| Test my domain logic                  | [Testing](./testing/index.md)                                         |
-
-## What Elements Do I Need?
-
-This matrix shows which Protean domain elements are used in each
-architectural approach:
-
-| Element              | DDD | CQRS | Event Sourcing |
-|----------------------|:---:|:----:|:--------------:|
-| Aggregates           |  ✓  |  ✓   |  ✓             |
-| Entities             |  ✓  |  ✓   |  ✓             |
-| Value Objects        |  ✓  |  ✓   |  ✓             |
-| Domain Services      |  ✓  |  ✓   |  ✓             |
-| Repositories         |  ✓  |  ✓   |  —             |
-| Application Services |  ✓  |  —   |  —             |
-| Commands             |  —  |  ✓   |  ✓             |
-| Command Handlers     |  —  |  ✓   |  ✓             |
-| Events               |  ✓  |  ✓   |  ✓             |
-| Event Handlers       |  ✓  |  ✓   |  ✓             |
-| Subscribers          |  ✓  |  ✓   |  ✓             |
-| Projections          |  —  |  ✓   |  ✓             |
-| Projectors           |  —  |  ✓   |  ✓             |
-| ES Repositories      |  —  |  —   |  ✓             |
-| `@apply` decorator   |  —  |  —   |  ✓             |
-
-✓ = core to this path, — = not used
+For the full task index, see [How Do I...?](../how-do-i.md).

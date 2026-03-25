@@ -76,8 +76,10 @@ specific area.
 - [Initialize the Domain](./guides/compose-a-domain/initialize-domain.md) -- Call `init()` to wire everything together.
 - [Activate the Domain](./guides/compose-a-domain/activate-domain.md) -- Bind the domain to a context for use.
 - [When to Compose](./guides/compose-a-domain/when-to-compose.md) -- Lifecycle and timing of domain composition.
+- [Configure for Production](./guides/compose-a-domain/production-configuration.md) -- Environment overlays, env var substitution, adapter selection.
 - [Inspecting the IR](./guides/compose-a-domain/inspecting-the-ir.md) -- Generate and explore the domain's Intermediate Representation.
 - [Schema Generation](./guides/compose-a-domain/schema-generation.md) -- Generate JSON Schema files for domain elements.
+- [Domain Constructor](./reference/domain-elements/domain-constructor.md) -- `Domain()` parameters: root_path, name, config, identity_function.
 - [Element Decorators](./reference/domain-elements/element-decorators.md) -- Decorators that construct and register domain elements.
 - [Object Model](./reference/domain-elements/object-model.md) -- Common structure and traits shared by all domain elements.
 
@@ -112,6 +114,7 @@ specific area.
 - [Message Tracing](./guides/domain-behavior/message-tracing.md) -- Track the full causal chain of commands and events with correlation and causation IDs, and traverse causation chains programmatically.
 - [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md) -- Complete guide to correlation and causation ID propagation across HTTP headers, OTEL spans, Observatory traces, structured logging, and cross-service boundaries.
 - [Domain Services](./guides/domain-behavior/domain-services.md) -- Complex domain logic that spans multiple aggregates.
+- [Error Handling](./guides/domain-behavior/error-handling.md) -- Raise, propagate, and handle domain exceptions.
 
 ### Change State
 
@@ -124,6 +127,9 @@ specific area.
 - [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) -- QuerySets, filtering, Q objects, bulk operations, and result navigation.
 - [Temporal Queries](./guides/change-state/temporal-queries.md) -- Reconstitute event-sourced aggregates at a specific version or point in time.
 - [Unit of Work](./guides/change-state/unit-of-work.md) -- Automatic transaction management for aggregate changes.
+- [Custom Database Models](./guides/change-state/database-models.md) -- Override auto-generated storage schemas with adapter-specific tuning.
+- [Event Store Setup](./guides/change-state/event-store-setup.md) -- Choose, configure, and operate an event store.
+- [Snapshots](./guides/change-state/snapshots.md) -- Optimize event-sourced aggregate loading with periodic checkpoints.
 
 ### React to Changes
 
@@ -366,6 +372,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 ## Migration
 
+- [Compatibility Reference](./reference/compatibility/index.md) -- Breaking change rules, three-tier taxonomy, deprecation lifecycle, and config.toml reference.
 - [Migrating to 0.15](./reference/migration/v0-15.md) -- Upgrade guide for the Pydantic v2 foundation release. Covers breaking changes, field style migration, and new features.
 
 ---

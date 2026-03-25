@@ -1,24 +1,23 @@
 # Compatibility checking
 
 Protean's IR (Intermediate Representation) tooling helps you detect breaking
-changes to your domain model before they reach production. This guide covers
-the `.protean/` directory, configuration, pre-commit hooks, and CI
-integration.
+changes to your domain model before they reach production. This guide walks
+you through setting up the `.protean/` directory, configuring pre-commit
+hooks, and adding compatibility checks to CI.
+
+For the classification rules that determine what counts as a breaking change,
+see the [Compatibility Reference](../reference/compatibility/index.md).
 
 ---
 
-## The `.protean/` directory
+## Step 1: Materialize the IR baseline
 
-The `.protean/` directory is your project's materialized IR workspace. It
-contains:
+The `.protean/` directory holds your materialized IR snapshot -- the
+baseline that changes are compared against. The easiest way to create it
+is with the pre-commit hook's `--fix` flag (see [Step 3](#step-3-add-pre-commit-hooks)),
+which auto-creates the directory and generates the IR on every commit.
 
-```
-.protean/
-├── ir.json        # Materialized IR snapshot of your domain
-└── config.toml    # Optional configuration for compatibility checks
-```
-
-Generate the IR snapshot with:
+To generate the baseline manually:
 
 ```bash
 protean ir show --domain my_app.domain > .protean/ir.json
@@ -35,22 +34,28 @@ Projects with multiple bounded contexts use a subdirectory per domain:
 .protean/
 ├── config.toml             # Shared configuration (includes [domains] table)
 ├── identity/
-│   └── ir.json             # IR for the identity bounded context
+│   └── ir.json
 ├── catalogue/
-│   └── ir.json             # IR for the catalogue bounded context
+│   └── ir.json
 └── ordering/
-    └── ir.json             # IR for the ordering bounded context
+    └── ir.json
 ```
 
-See the [`[domains]` configuration](#domains) and
-[multi-domain hooks](#multi-domain-support) sections below.
+Configure the `[domains]` table in `.protean/config.toml`:
+
+```toml
+[domains]
+identity = "identity.domain"
+catalogue = "catalogue.domain"
+ordering = "ordering.domain"
+```
 
 ---
 
-## Configuration
+## Step 2: Configure strictness
 
-Create `.protean/config.toml` to customize compatibility checking behavior.
-All settings are optional --- sensible defaults apply when the file is absent.
+Create `.protean/config.toml` to customize behavior. All settings are
+optional -- sensible defaults apply when the file is absent:
 
 ```toml
 [compatibility]
@@ -62,87 +67,100 @@ min_versions_before_removal = 3
 
 [staleness]
 enabled = true
-
-[domains]
-identity = "identity.domain"
-catalogue = "catalogue.domain"
-ordering = "ordering.domain"
 ```
 
-### `[compatibility]`
+For the full list of configuration keys, see the
+[config reference](../reference/compatibility/index.md#proteanconfigtoml-reference).
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `strictness` | string | `"strict"` | `"strict"` exits non-zero on breaking changes. `"warn"` reports but allows. `"off"` skips checking entirely. |
-| `exclude` | list of strings | `[]` | Fully-qualified names of elements to exclude from compatibility checks. |
+---
 
-### `[compatibility.deprecation]`
+## Step 3: Add pre-commit hooks
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `min_versions_before_removal` | integer | `3` | Minimum minor versions a deprecated element must survive before removal. |
+Protean ships two [pre-commit](https://pre-commit.com/) hooks. Add them to
+your project's `.pre-commit-config.yaml`:
 
-### `[staleness]`
+```yaml
+- repo: https://github.com/proteanhq/protean
+  rev: v0.15.0  # use the version you depend on
+  hooks:
+    - id: protean-check-staleness
+      args: [--domain=myapp.domain]
+    - id: protean-check-compat
+      args: [--domain=myapp.domain]
+```
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `enabled` | boolean | `true` | Whether the staleness check (`protean ir check`) is active. Set to `false` to skip. |
+### `protean-check-staleness`
 
-### `[domains]`
+Blocks the commit if `.protean/ir.json` is out of date.
 
-Maps logical domain names to their module paths. When present, pre-commit
-hooks iterate over all configured domains automatically --- no `--domain`
-argument needed. Each domain's IR is stored under `.protean/<name>/ir.json`.
+Without `--fix`, a stale check prints the mismatch and suggests a manual
+regeneration command. With `--fix`, the hook regenerates the IR, stages the
+file with `git add`, and exits 0 -- allowing the commit to proceed.
+
+```yaml
+# Auto-fix mode -- never blocks on stale IR
+- id: protean-check-staleness
+  args: [--domain=myapp.domain, --fix]
+```
+
+### `protean-check-compat`
+
+Blocks the commit if breaking IR changes are detected against the baseline
+in `HEAD`.
+
+### Multi-domain support
+
+When your `config.toml` has a `[domains]` table, omit the `--domain`
+argument. Both hooks iterate over all configured domains automatically:
+
+```yaml
+# No --domain needed -- reads [domains] from .protean/config.toml
+- repo: https://github.com/proteanhq/protean
+  rev: v0.15.0
+  hooks:
+    - id: protean-check-staleness
+      args: [--fix]
+    - id: protean-check-compat
+```
+
+Each domain's IR is checked against its own subdirectory
+(`.protean/<name>/ir.json`). The hooks exit non-zero if *any* domain fails
+its check.
+
+---
+
+## Step 4: Add CI checks
+
+### GitHub Actions
+
+Add a compatibility check step to your CI workflow:
+
+```yaml
+- name: Check IR compatibility
+  run: |
+    protean ir diff --domain myapp.domain --base origin/main
+```
+
+The command exits with code 1 on breaking changes, which fails the CI step.
+
+### pytest warning filters
+
+Turn Protean deprecation warnings into test failures:
 
 ```toml
-[domains]
-identity = "identity.domain"
-catalogue = "catalogue.domain"
-ordering = "ordering.domain"
+# pyproject.toml
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error::DeprecationWarning:protean.*",
+]
 ```
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `<name>` | string | Dotted module path to the domain (e.g. `"identity.domain"`). The key is the logical name used as the subdirectory. |
+This catches deprecated API usage during development rather than after a
+breaking release.
 
 ---
 
-## Breaking change rules
-
-Protean classifies changes to persisted domain elements using these rules:
-
-| Change | Classification |
-|--------|---------------|
-| Add optional field (or with default) | Safe |
-| Add required field without default | **Breaking** |
-| Remove field from any persisted element | **Breaking** |
-| Change field type | **Breaking** |
-| Remove an element | **Breaking** |
-| Add a new element | Safe |
-| Visibility public to internal | **Breaking** |
-| Visibility internal to public | Safe |
-| Change `__type__` string | **Breaking** |
-
-These rules apply to all persisted elements: aggregates, entities, value
-objects, commands, events, database models, and projections.
-
-### Three-tier breaking change taxonomy
-
-Protean follows a tiered approach to breaking changes (see
-[ADR-0004](../adr/0004-release-workflow-and-breaking-change-policy.md)):
-
-- **Tier 1 (Surface):** Renamed classes, moved imports, changed signatures.
-  Mitigated with `DeprecationWarning` surviving 2+ minor versions.
-- **Tier 2 (Behavioral):** Same signature, different behavior. Mitigated
-  with opt-in flags over 3 minor versions.
-- **Tier 3 (Structural):** Persistence format, event schema, serialization
-  changes. Mitigated with versioned schemas and migration documentation.
-
-The IR compatibility checker focuses on **Tier 3** structural changes.
-
----
-
-## CLI commands
+## Using the CLI
 
 ### `protean ir check`
 
@@ -174,125 +192,15 @@ Exit codes: 0 (no changes), 1 (breaking changes), 2 (non-breaking only).
 When `strictness = "warn"`, breaking changes are reported but the exit code
 is 0. When `strictness = "off"`, the command exits 0 immediately.
 
----
-
-## Pre-commit hooks
-
-Protean ships two [pre-commit](https://pre-commit.com/) hooks. Add them to
-your project's `.pre-commit-config.yaml`:
-
-```yaml
-- repo: https://github.com/proteanhq/protean
-  rev: v0.15.0  # use the version you depend on
-  hooks:
-    - id: protean-check-staleness
-      args: [--domain=myapp.domain]
-    - id: protean-check-compat
-      args: [--domain=myapp.domain]
-```
-
-### `protean-check-staleness`
-
-Blocks the commit if `.protean/ir.json` is out of date.
-
-| Flag | Description |
-|------|-------------|
-| `--domain`, `-d` | Domain module path (optional when `[domains]` is configured). |
-| `--dir` | Path to the `.protean/` directory (default: `.protean`). |
-| `--fix`, `-f` | Auto-regenerate stale IR and stage the updated file. |
-
-Without `--fix`, a stale check prints the mismatch and suggests a manual
-regeneration command. With `--fix`, the hook regenerates the IR, writes it
-to `ir.json`, stages the file with `git add`, and exits 0 --- allowing the
-commit to proceed.
-
-```yaml
-# Auto-fix mode --- never blocks on stale IR
-- id: protean-check-staleness
-  args: [--domain=myapp.domain, --fix]
-```
-
-Respects `staleness.enabled` in `config.toml`.
-
-### `protean-check-compat`
-
-Blocks the commit if breaking IR changes are detected against the baseline
-in `HEAD`.
-
-| Flag | Description |
-|------|-------------|
-| `--domain`, `-d` | Domain module path (optional when `[domains]` is configured). |
-| `--base`, `-b` | Git ref for baseline IR (default: `HEAD`). |
-| `--dir` | Path to the `.protean/` directory (default: `.protean`). |
-
-Respects `compatibility.strictness` and `compatibility.exclude`
-in `config.toml`.
-
-### Multi-domain support
-
-When your project has multiple bounded contexts, configure the `[domains]`
-table in `.protean/config.toml` (see [Configuration](#domains) above) and
-omit the `--domain` argument. Both hooks will iterate over all configured
-domains automatically:
-
-```yaml
-# No --domain needed --- reads [domains] from .protean/config.toml
-- repo: https://github.com/proteanhq/protean
-  rev: v0.15.0
-  hooks:
-    - id: protean-check-staleness
-      args: [--fix]
-    - id: protean-check-compat
-```
-
-Each domain's IR is checked against its own subdirectory
-(`.protean/<name>/ir.json`). The hooks exit non-zero if *any* domain fails
-its check.
+For the full CLI reference, see [`protean ir`](../reference/cli/ir.md).
 
 ---
 
-## CI integration
-
-### GitHub Actions
-
-Add a compatibility check step to your CI workflow:
-
-```yaml
-- name: Check IR compatibility
-  run: |
-    protean ir diff --domain myapp.domain --base origin/main
-```
-
-The command exits with code 1 on breaking changes, which fails the CI step.
-
-### pytest warning filters
-
-Turn Protean deprecation warnings into test failures:
-
-```toml
-# pyproject.toml
-[tool.pytest.ini_options]
-filterwarnings = [
-    "error::DeprecationWarning:protean.*",
-]
-```
-
-This catches deprecated API usage during development rather than after a
-breaking release.
-
----
-
-## Deprecation lifecycle
-
-When deprecating a domain element or field:
-
-1. **Mark as deprecated** with a `DeprecationWarning` that includes the
-   removal version (see CLAUDE.md for the pattern).
-2. **Keep the deprecated API** for at least `min_versions_before_removal`
-   minor versions (default: 3).
-3. **Add to `exclude`** in `config.toml` if the element should not trigger
-   breaking change alerts during its deprecation period.
-4. **Remove** in a cleanup release after the survival window.
-
-The `protean ir diff` command distinguishes expected removals (deprecated
-elements past their removal version) from unexpected removals.
+!!! tip "See also"
+    - [Compatibility Reference](../reference/compatibility/index.md)
+      -- Breaking change rules, three-tier taxonomy, deprecation lifecycle,
+      and config key reference.
+    - [`protean ir` CLI Reference](../reference/cli/ir.md)
+      -- Full CLI command documentation.
+    - [ADR-0004](../adr/0004-release-workflow-and-breaking-change-policy.md)
+      -- Release workflow and breaking change policy.

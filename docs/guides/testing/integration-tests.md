@@ -70,6 +70,64 @@ def domain_initialized():
     after each test. The same application code and domain elements are
     used — only the infrastructure changes.
 
+## Using Server Test Mode
+
+For integration tests that exercise async message flows (event handlers,
+projectors, process managers), use the server's **test mode**. It processes
+all available messages and cascading events, then exits:
+
+```python
+from protean.server import Engine
+
+def test_order_creates_inventory_reservation():
+    """Test that creating an order reserves inventory."""
+    # Arrange: Create order (raises events)
+    with domain.domain_context():
+        order = Order.create(
+            customer_id="123",
+            items=[OrderItem(product_id="ABC", quantity=5)]
+        )
+        domain.repository_for(Order).add(order)
+
+    # Act: Process events in test mode
+    engine = Engine(domain, test_mode=True)
+    engine.run()
+
+    # Assert: Verify inventory was reserved
+    with domain.domain_context():
+        reservation = domain.repository_for(Reservation).get_by_order(order.id)
+        assert reservation is not None
+        assert reservation.quantity == 5
+```
+
+Test mode handles cascading events automatically -- if processing one event
+raises another, the engine continues until all chains are complete:
+
+```python
+def test_order_fulfillment_flow():
+    """Test complete order fulfillment flow."""
+    # Order created -> Inventory reserved -> Payment processed -> Order shipped
+    with domain.domain_context():
+        order = Order.create(...)
+        domain.repository_for(Order).add(order)
+
+    # Process all cascading events
+    engine = Engine(domain, test_mode=True)
+    engine.run()
+
+    with domain.domain_context():
+        order = domain.repository_for(Order).get(order.id)
+        assert order.status == "shipped"
+```
+
+You can also invoke test mode from the CLI:
+
+```bash
+protean server --domain=my_domain --test-mode
+```
+
+See [Run the Server](../server/index.md#test-mode) for CLI details.
+
 ## Full-Flow Feature Files
 
 Integration tests exercise complete flows from command to projection,
