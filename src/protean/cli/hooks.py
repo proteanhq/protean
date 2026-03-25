@@ -11,20 +11,21 @@ that cannot import user domain modules.
 
 Usage (downstream ``.pre-commit-config.yaml``)::
 
-    - repo: local
-      hooks:
-        - id: protean-check-staleness
-          name: Check IR staleness
-          entry: protean-check-staleness --domain=myapp.domain
-          language: system
-          pass_filenames: false
-          always_run: true
-        - id: protean-check-compat
-          name: Check IR compatibility
-          entry: protean-check-compat --domain=myapp.domain
-          language: system
-          pass_filenames: false
-          always_run: true
+    repos:
+      - repo: local
+        hooks:
+          - id: protean-check-staleness
+            name: Check IR staleness
+            entry: uv run protean-check-staleness --domain=myapp.domain
+            language: system
+            pass_filenames: false
+            always_run: true
+          - id: protean-check-compat
+            name: Check IR compatibility
+            entry: uv run protean-check-compat --domain=myapp.domain
+            language: system
+            pass_filenames: false
+            always_run: true
 
 Multi-domain support (config-driven)::
 
@@ -34,14 +35,21 @@ Multi-domain support (config-driven)::
     catalogue = "catalogue.domain"
 
     # .pre-commit-config.yaml — no --domain needed
-    - repo: local
-      hooks:
-        - id: protean-check-staleness
-          name: Check IR staleness
-          entry: protean-check-staleness --fix
-          language: system
-          pass_filenames: false
-          always_run: true
+    repos:
+      - repo: local
+        hooks:
+          - id: protean-check-staleness
+            name: Check IR staleness
+            entry: uv run protean-check-staleness --fix
+            language: system
+            pass_filenames: false
+            always_run: true
+          - id: protean-check-compat
+            name: Check IR compatibility
+            entry: uv run protean-check-compat
+            language: system
+            pass_filenames: false
+            always_run: true
 """
 
 from __future__ import annotations

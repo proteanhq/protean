@@ -20,7 +20,7 @@ which auto-creates the directory and generates the IR on every commit.
 To generate the baseline manually:
 
 ```bash
-protean ir show --domain my_app.domain > .protean/ir.json
+protean ir show --domain myapp.domain > .protean/ir.json
 ```
 
 Commit `.protean/ir.json` to version control. It serves as the baseline for
@@ -80,28 +80,31 @@ Protean ships two [pre-commit](https://pre-commit.com/) hooks. Add them to
 your project's `.pre-commit-config.yaml`:
 
 ```yaml
-- repo: local
-  hooks:
-    - id: protean-check-staleness
-      name: Check IR staleness
-      entry: protean-check-staleness --domain=myapp.domain
-      language: system
-      pass_filenames: false
-      always_run: true
-    - id: protean-check-compat
-      name: Check IR compatibility
-      entry: protean-check-compat --domain=myapp.domain
-      language: system
-      pass_filenames: false
-      always_run: true
+repos:
+  - repo: local
+    hooks:
+      - id: protean-check-staleness
+        name: Check IR staleness
+        entry: uv run protean-check-staleness --domain=myapp.domain
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: protean-check-compat
+        name: Check IR compatibility
+        entry: uv run protean-check-compat --domain=myapp.domain
+        language: system
+        pass_filenames: false
+        always_run: true
 ```
 
 !!! note "Why `repo: local`?"
     Protean hooks call `derive_domain()` which imports your application's
     domain modules. A remote `repo:` installs hooks in an isolated virtualenv
     that does not have access to your source code, so the import will fail.
-    Using `repo: local` with `language: system` runs the hook inside your
-    project's own environment where your code is importable.
+    Using `repo: local` with `language: system` runs the hook in the caller's
+    environment. Prefix the `entry` with `uv run` (or activate your virtualenv)
+    to ensure the hook executes inside your project's environment where your
+    code is importable.
 
 ### `protean-check-staleness`
 
@@ -113,14 +116,15 @@ file with `git add`, and exits 0 -- allowing the commit to proceed.
 
 ```yaml
 # Auto-fix mode -- never blocks on stale IR
-- repo: local
-  hooks:
-    - id: protean-check-staleness
-      name: Check IR staleness
-      entry: protean-check-staleness --domain=myapp.domain --fix
-      language: system
-      pass_filenames: false
-      always_run: true
+repos:
+  - repo: local
+    hooks:
+      - id: protean-check-staleness
+        name: Check IR staleness
+        entry: uv run protean-check-staleness --domain=myapp.domain --fix
+        language: system
+        pass_filenames: false
+        always_run: true
 ```
 
 ### `protean-check-compat`
@@ -135,20 +139,21 @@ argument. Both hooks iterate over all configured domains automatically:
 
 ```yaml
 # No --domain needed -- reads [domains] from .protean/config.toml
-- repo: local
-  hooks:
-    - id: protean-check-staleness
-      name: Check IR staleness
-      entry: protean-check-staleness --fix
-      language: system
-      pass_filenames: false
-      always_run: true
-    - id: protean-check-compat
-      name: Check IR compatibility
-      entry: protean-check-compat
-      language: system
-      pass_filenames: false
-      always_run: true
+repos:
+  - repo: local
+    hooks:
+      - id: protean-check-staleness
+        name: Check IR staleness
+        entry: uv run protean-check-staleness --fix
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: protean-check-compat
+        name: Check IR compatibility
+        entry: uv run protean-check-compat
+        language: system
+        pass_filenames: false
+        always_run: true
 ```
 
 Each domain's IR is checked against its own subdirectory
@@ -195,7 +200,7 @@ breaking release.
 Compare the live domain against the materialized IR:
 
 ```bash
-protean ir check --domain my_app.domain
+protean ir check --domain myapp.domain
 ```
 
 Exit codes: 0 (fresh), 1 (stale), 2 (no IR found).
@@ -206,10 +211,10 @@ Compare two IR snapshots with full breaking-change classification:
 
 ```bash
 # Auto-baseline: compare live domain against .protean/ir.json
-protean ir diff --domain my_app.domain
+protean ir diff --domain myapp.domain
 
 # Compare against a specific git commit
-protean ir diff --domain my_app.domain --base HEAD
+protean ir diff --domain myapp.domain --base HEAD
 
 # Compare two explicit files
 protean ir diff --left baseline.json --right current.json
