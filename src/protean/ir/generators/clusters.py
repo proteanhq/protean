@@ -60,13 +60,16 @@ def _aggregate_stereotype(aggregate: dict[str, Any]) -> str:
 
 
 def _render_invariant_notes(sid: str, invariants: dict[str, list[str]]) -> list[str]:
-    """Render invariant names as Mermaid notes attached to a class."""
+    """Render invariant names as Mermaid notes attached to a class.
+
+    Each invariant gets its own ``note for`` line.  The text is always
+    double-quoted because Mermaid's classDiagram ``note for`` syntax
+    requires a quoted string — unquoted text causes parse errors.
+    """
     names = invariants.get("pre", []) + invariants.get("post", [])
     if not names:
         return []
-    label = ", ".join(names)
-    escaped_label = mermaid_escape(label)
-    return [f"    note for {sid} {escaped_label}"]
+    return [f'    note for {sid} "{name.replace(chr(34), "#quot;")}"' for name in names]
 
 
 def _render_cluster(
@@ -86,31 +89,28 @@ def _render_cluster(
     # Entities
     for entity_fqn, entity in sorted(cluster.get("entities", {}).items()):
         entity_sid = sanitize_mermaid_id(entity_fqn)
-        entity_short = short_name(entity_fqn)
         lines.extend(_render_class(entity_fqn, entity, stereotype="Entity"))
         lines.extend(_render_invariant_notes(entity_sid, entity.get("invariants", {})))
 
         # has_many from aggregate to entity
-        for _fname, fspec in sorted(agg.get("fields", {}).items()):
+        for fname, fspec in sorted(agg.get("fields", {}).items()):
             if fspec.get("kind") == "has_many" and fspec.get("target") == entity_fqn:
                 lines.append(
-                    f'    {agg_sid} "1" o-- "*" {entity_sid}'
-                    f" : {mermaid_escape(entity_short)}"
+                    f'    {agg_sid} "1" o-- "*" {entity_sid} : {mermaid_escape(fname)}'
                 )
 
     # Value Objects
     for vo_fqn, vo in sorted(cluster.get("value_objects", {}).items()):
         vo_sid = sanitize_mermaid_id(vo_fqn)
-        vo_short = short_name(vo_fqn)
         lines.extend(_render_class(vo_fqn, vo, stereotype="ValueObject"))
         lines.extend(_render_invariant_notes(vo_sid, vo.get("invariants", {})))
 
         # composition from aggregate to VO
-        for _fname, fspec in sorted(agg.get("fields", {}).items()):
+        for fname, fspec in sorted(agg.get("fields", {}).items()):
             if fspec.get("kind") in ("value_object", "value_object_list"):
                 if fspec.get("target") == vo_fqn:
                     lines.append(
-                        f"    {agg_sid} *-- {vo_sid} : {mermaid_escape(vo_short)}"
+                        f"    {agg_sid} *-- {vo_sid} : {mermaid_escape(fname)}"
                     )
 
     return lines

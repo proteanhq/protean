@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Fix unreadable handler wiring and event flow diagrams by splitting into per-concern diagrams in Markdown output (#821)
+- Fix Mermaid parse errors in cluster diagrams when invariant names contain commas or are unquoted
 - Fix `TypeError: can't compare offset-naive and offset-aware datetimes` in outbox retry logic. Database adapters may return timezone-naive datetimes for `next_retry_at` and `locked_until`, causing comparisons with `datetime.now(timezone.utc)` to crash and block all outbox processing. Added shared `ensure_utc_aware()` utility to normalize naive datetimes before comparison.
 - Fix flaky `test_mixed_error_scenarios` in `test_server_robustness.py`: increase Engine test_mode processing cycles from 3 to 10 so all subscription types (events, commands, broker messages) have enough time to be scheduled and process their messages under CI load
 - Bridge `correlation_id` from external broker messages to subscriber-triggered commands: `Engine.handle_broker_message()` now extracts `correlation_id` from the incoming message's `metadata.domain.correlation_id` (Protean external format) and sets it on the stub message context. When no correlation ID is present, a fresh UUID is auto-generated. This ensures the cross-service correlation chain is preserved through subscriber processing.

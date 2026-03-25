@@ -6,7 +6,11 @@ node shapes, handler edges, process managers, projectors, and edge cases.
 
 import pytest
 
-from protean.ir.generators.events import generate_event_flow_diagram
+from protean.ir.generators.events import (
+    generate_cluster_event_flow,
+    generate_downstream_consumers_diagram,
+    generate_event_flow_diagram,
+)
 
 
 # ------------------------------------------------------------------
@@ -596,3 +600,343 @@ class TestFullIntegration:
         result = generate_event_flow_diagram(ordering_ir)
         assert "OrderNotifier" in result
         assert "evt_app_OrderPlaced --> eh_app_OrderNotifier" in result
+
+
+# ------------------------------------------------------------------
+# Per-cluster event flow
+# ------------------------------------------------------------------
+
+
+class TestClusterEventFlow:
+    def test_empty_ir(self):
+        result = generate_cluster_event_flow({}, "app.Order")
+        assert result == "flowchart TD"
+
+    def test_unknown_cluster(self):
+        clusters = {"app.Order": _cluster("app.Order")}
+        result = generate_cluster_event_flow(_ir(clusters=clusters), "app.Missing")
+        assert result == "flowchart TD"
+
+    def test_single_cluster_flow(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                },
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                command_handlers={
+                    "app.OrderCH": _command_handler(
+                        "app.OrderCH",
+                        {"App.PlaceOrder.v1": ["handle_place"]},
+                    ),
+                },
+            ),
+        }
+        result = generate_cluster_event_flow(_ir(clusters=clusters), "app.Order")
+        assert result.startswith("flowchart TD")
+        assert "subgraph app_Order" in result
+        assert "PlaceOrder" in result
+        assert "OrderPlaced" in result
+        assert "cmd_app_PlaceOrder --> hdlr_app_OrderCH" in result
+        assert "agg_app_Order --> evt_app_OrderPlaced" in result
+
+    def test_does_not_include_other_clusters(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                },
+            ),
+            "app.Payment": _cluster(
+                "app.Payment",
+                commands={
+                    "app.ConfirmPayment": _command(
+                        "app.ConfirmPayment", "App.ConfirmPayment.v1"
+                    ),
+                },
+            ),
+        }
+        result = generate_cluster_event_flow(_ir(clusters=clusters), "app.Order")
+        assert "Order" in result
+        assert "Payment" not in result
+
+    def test_does_not_include_downstream_consumers(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.FulfillmentPM",
+                    "name": "FulfillmentPM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": True,
+                            "end": False,
+                            "methods": ["on_order_placed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        result = generate_cluster_event_flow(
+            _ir(clusters=clusters, flows=flows), "app.Order"
+        )
+        # Cluster flow should NOT include event handlers or PMs
+        assert "OrderNotifier" not in result
+        assert "FulfillmentPM" not in result
+
+
+# ------------------------------------------------------------------
+# Downstream consumers diagram
+# ------------------------------------------------------------------
+
+
+class TestDownstreamConsumers:
+    def test_empty_ir(self):
+        result = generate_downstream_consumers_diagram({})
+        assert result == "flowchart LR"
+
+    def test_no_downstream(self):
+        clusters = {"app.Order": _cluster("app.Order")}
+        result = generate_downstream_consumers_diagram(_ir(clusters=clusters))
+        assert result == "flowchart LR"
+
+    def test_event_handlers_included(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        result = generate_downstream_consumers_diagram(_ir(clusters=clusters))
+        assert "OrderNotifier" in result
+        assert "evt_app_OrderPlaced --> eh_app_OrderNotifier" in result
+
+    def test_process_managers_included(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.FulfillmentPM",
+                    "name": "FulfillmentPM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": True,
+                            "end": False,
+                            "methods": ["on_order_placed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        result = generate_downstream_consumers_diagram(
+            _ir(clusters=clusters, flows=flows)
+        )
+        assert "FulfillmentPM" in result
+        assert "|start|" in result
+
+    def test_projectors_included(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        projections = {
+            "app.OrderDashboard": {
+                "projection": {
+                    "fqn": "app.OrderDashboard",
+                    "name": "OrderDashboard",
+                },
+                "projectors": {
+                    "app.DashboardProjector": {
+                        "element_type": "PROJECTOR",
+                        "fqn": "app.DashboardProjector",
+                        "name": "DashboardProjector",
+                        "projector_for": "app.OrderDashboard",
+                        "handlers": {
+                            "App.OrderPlaced.v1": ["on_order_placed"],
+                        },
+                    }
+                },
+                "queries": {},
+                "query_handlers": {},
+            }
+        }
+        result = generate_downstream_consumers_diagram(
+            _ir(clusters=clusters, projections=projections)
+        )
+        assert "DashboardProjector" in result
+        assert "evt_app_OrderPlaced --> proj_app_DashboardProjector" in result
+
+    def test_does_not_include_cluster_command_flow(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                },
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                command_handlers={
+                    "app.OrderCH": _command_handler(
+                        "app.OrderCH",
+                        {"App.PlaceOrder.v1": ["handle_place"]},
+                    ),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        result = generate_downstream_consumers_diagram(_ir(clusters=clusters))
+        # Should NOT include command flow
+        assert "PlaceOrder" not in result
+        assert "OrderCH" not in result
+        # Should include event handler in a subgraph
+        assert "OrderNotifier" in result
+        assert "Event Handlers" in result
+
+    def test_all_consumer_types_together(self):
+        """All three consumer types appear with subgraphs in one diagram."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.FulfillmentPM",
+                    "name": "FulfillmentPM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": True,
+                            "end": True,
+                            "methods": ["on_order_placed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        projections = {
+            "app.Dashboard": {
+                "projectors": {
+                    "app.DashProjector": {
+                        "element_type": "PROJECTOR",
+                        "fqn": "app.DashProjector",
+                        "name": "DashProjector",
+                        "projector_for": "app.Dashboard",
+                        "handlers": {
+                            "App.OrderPlaced.v1": ["on_placed"],
+                        },
+                    }
+                },
+            }
+        }
+        result = generate_downstream_consumers_diagram(
+            _ir(clusters=clusters, flows=flows, projections=projections)
+        )
+        # All three subgraphs present
+        assert "Event Handlers" in result
+        assert "Process Managers" in result
+        assert "Projectors" in result
+        # Event nodes pre-declared with short labels
+        assert "OrderPlaced" in result
+        # Lifecycle labels on PM edges
+        assert "|start, end|" in result
+        # Projector target label
+        assert "Dashboard" in result
+
+    def test_pm_plain_edge_in_downstream(self):
+        """PM without lifecycle markers has plain edges."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.SimplePM": {
+                    "element_type": "PROCESS_MANAGER",
+                    "fqn": "app.SimplePM",
+                    "name": "SimplePM",
+                    "handlers": {
+                        "App.OrderPlaced.v1": {
+                            "correlate": "order_id",
+                            "start": False,
+                            "end": False,
+                            "methods": ["on_placed"],
+                        },
+                    },
+                }
+            },
+            "subscribers": {},
+        }
+        result = generate_downstream_consumers_diagram(
+            _ir(clusters=clusters, flows=flows)
+        )
+        assert "SimplePM" in result
+        assert "-->|" not in result  # No lifecycle labels

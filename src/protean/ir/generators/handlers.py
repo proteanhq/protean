@@ -289,7 +289,95 @@ def _render_subscribers(ir: dict[str, Any]) -> tuple[list[str], list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Public entry point
+# Per-category public generators (used for split Markdown output)
+# ---------------------------------------------------------------------------
+
+
+def _assemble_flowchart(subgraph: list[str], edges: list[str]) -> str:
+    """Wrap subgraph + edges into a complete ``flowchart TD``."""
+    if not subgraph:
+        return "flowchart TD"
+    lines: list[str] = ["flowchart TD", *subgraph]
+    lines.extend(edges)
+    return "\n".join(lines)
+
+
+def generate_command_handler_diagram(ir: dict[str, Any]) -> str:
+    """Generate a Mermaid ``flowchart TD`` for command handlers only."""
+    cmd_type_to_fqn = build_cmd_type_to_fqn(ir)
+    subgraph, edges = _render_command_handlers(ir, cmd_type_to_fqn)
+    return _assemble_flowchart(subgraph, edges)
+
+
+def generate_cluster_command_handler_diagram(
+    ir: dict[str, Any], cluster_fqn: str
+) -> str:
+    """Generate a Mermaid ``flowchart LR`` for one cluster's command handlers."""
+    clusters = ir.get("clusters", {})
+    cluster = clusters.get(cluster_fqn)
+    if not cluster or not cluster.get("command_handlers"):
+        return "flowchart LR"
+
+    single_ir: dict[str, Any] = {
+        "clusters": {cluster_fqn: cluster},
+        "flows": ir.get("flows", {}),
+        "projections": ir.get("projections", {}),
+    }
+    cmd_type_to_fqn = build_cmd_type_to_fqn(ir)
+    subgraph, edges = _render_command_handlers(single_ir, cmd_type_to_fqn)
+    lines: list[str] = ["flowchart LR", *subgraph]
+    lines.extend(edges)
+    return "\n".join(lines)
+
+
+def generate_event_handler_diagram(ir: dict[str, Any]) -> str:
+    """Generate a Mermaid ``flowchart TD`` for event handlers only."""
+    evt_type_to_fqn = build_evt_type_to_fqn(ir)
+    subgraph, edges = _render_event_handlers(ir, evt_type_to_fqn)
+    return _assemble_flowchart(subgraph, edges)
+
+
+def generate_process_manager_diagram(ir: dict[str, Any]) -> str:
+    """Generate a Mermaid ``flowchart TD`` for process managers only."""
+    evt_type_to_fqn = build_evt_type_to_fqn(ir)
+    subgraph, edges = _render_process_managers(ir, evt_type_to_fqn)
+    return _assemble_flowchart(subgraph, edges)
+
+
+def generate_projector_diagram(ir: dict[str, Any]) -> str:
+    """Generate a Mermaid ``flowchart TD`` for projectors only."""
+    evt_type_to_fqn = build_evt_type_to_fqn(ir)
+    subgraph, edges = _render_projectors(ir, evt_type_to_fqn)
+    return _assemble_flowchart(subgraph, edges)
+
+
+def generate_single_projector_diagram(ir: dict[str, Any], projection_fqn: str) -> str:
+    """Generate a Mermaid ``flowchart LR`` for the projectors of one projection."""
+    projections = ir.get("projections", {})
+    proj_group = projections.get(projection_fqn)
+    if not proj_group or not proj_group.get("projectors"):
+        return "flowchart LR"
+
+    single_ir: dict[str, Any] = {
+        "clusters": ir.get("clusters", {}),
+        "flows": ir.get("flows", {}),
+        "projections": {projection_fqn: proj_group},
+    }
+    evt_type_to_fqn = build_evt_type_to_fqn(ir)
+    subgraph, edges = _render_projectors(single_ir, evt_type_to_fqn)
+    lines: list[str] = ["flowchart LR", *subgraph]
+    lines.extend(edges)
+    return "\n".join(lines)
+
+
+def generate_subscriber_diagram(ir: dict[str, Any]) -> str:
+    """Generate a Mermaid ``flowchart TD`` for subscribers only."""
+    subgraph, edges = _render_subscribers(ir)
+    return _assemble_flowchart(subgraph, edges)
+
+
+# ---------------------------------------------------------------------------
+# Combined public entry point (used for raw Mermaid output)
 # ---------------------------------------------------------------------------
 
 

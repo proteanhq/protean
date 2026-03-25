@@ -246,23 +246,87 @@ def _generate_clusters(
 
 
 def _generate_events(ir_data: dict[str, Any], output_format: str) -> str:
-    """Generate event flow diagram."""
-    from protean.ir.generators.events import generate_event_flow_diagram
+    """Generate event flow diagram(s).
 
-    raw = generate_event_flow_diagram(ir_data)
+    In Markdown mode, splits into one diagram per cluster (linear flow)
+    plus a separate downstream consumers diagram.  In Mermaid mode,
+    emits a single combined diagram for backward compatibility.
+    """
+    from protean.ir.generators.events import (
+        generate_cluster_event_flow,
+        generate_downstream_consumers_diagram,
+        generate_event_flow_diagram,
+    )
+
     if output_format == "mermaid":
-        return raw
-    return mermaid_fence(raw, title="Event Flows")
+        return generate_event_flow_diagram(ir_data)
+
+    clusters = ir_data.get("clusters", {})
+    parts: list[str] = []
+
+    for cfqn in sorted(clusters):
+        raw = generate_cluster_event_flow(ir_data, cfqn)
+        if raw != "flowchart TD":
+            name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
+            parts.append(mermaid_fence(raw, title=f"Event Flow: {name}"))
+
+    downstream = generate_downstream_consumers_diagram(ir_data)
+    if downstream != "flowchart LR":
+        parts.append(mermaid_fence(downstream, title="Downstream Consumers"))
+
+    return "\n\n".join(parts) or mermaid_fence("flowchart LR", title="Event Flows")
 
 
 def _generate_handlers(ir_data: dict[str, Any], output_format: str) -> str:
-    """Generate handler wiring diagram."""
-    from protean.ir.generators.handlers import generate_handler_wiring_diagram
+    """Generate handler wiring diagram(s).
 
-    raw = generate_handler_wiring_diagram(ir_data)
+    In Markdown mode, splits into one diagram per handler category.
+    In Mermaid mode, emits a single combined diagram for backward
+    compatibility.
+    """
+    from protean.ir.generators.handlers import (
+        generate_cluster_command_handler_diagram,
+        generate_event_handler_diagram,
+        generate_handler_wiring_diagram,
+        generate_process_manager_diagram,
+        generate_single_projector_diagram,
+        generate_subscriber_diagram,
+    )
+
     if output_format == "mermaid":
-        return raw
-    return mermaid_fence(raw, title="Handler Wiring")
+        return generate_handler_wiring_diagram(ir_data)
+
+    sections: list[str] = []
+
+    # Command handlers — one diagram per aggregate cluster
+    clusters = ir_data.get("clusters", {})
+    for cfqn in sorted(clusters):
+        raw = generate_cluster_command_handler_diagram(ir_data, cfqn)
+        if raw != "flowchart LR":
+            name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
+            sections.append(mermaid_fence(raw, title=f"Command Handlers: {name}"))
+
+    # Event handlers, process managers, subscribers — one diagram each
+    for title, gen in [
+        ("Event Handlers", generate_event_handler_diagram),
+        ("Process Managers", generate_process_manager_diagram),
+        ("Subscribers", generate_subscriber_diagram),
+    ]:
+        raw = gen(ir_data)
+        if raw != "flowchart TD":
+            sections.append(mermaid_fence(raw, title=title))
+
+    # Projectors — one diagram per projection
+    projections = ir_data.get("projections", {})
+    for pfqn in sorted(projections):
+        raw = generate_single_projector_diagram(ir_data, pfqn)
+        if raw != "flowchart LR":
+            name = pfqn.rsplit(".", 1)[-1] if "." in pfqn else pfqn
+            sections.append(mermaid_fence(raw, title=f"Projector: {name}"))
+
+    return "\n\n".join(sections) or mermaid_fence(
+        "flowchart TD", title="Handler Wiring"
+    )
 
 
 def _generate_catalog(ir_data: dict[str, Any]) -> str:

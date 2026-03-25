@@ -225,6 +225,238 @@ def _render_projectors(
     return lines
 
 
+def generate_cluster_event_flow(ir: dict[str, Any], cluster_fqn: str) -> str:
+    """Generate a Mermaid ``flowchart TD`` for a single cluster's event flow.
+
+    Shows only the linear path: commands -> handlers -> aggregate -> events.
+    Does not include downstream consumers (event handlers, PMs, projectors).
+
+    Args:
+        ir: The full IR dict.
+        cluster_fqn: FQN of the cluster to render.
+
+    Returns:
+        A string containing the Mermaid ``flowchart TD`` source.
+    """
+    clusters = ir.get("clusters", {})
+    cluster = clusters.get(cluster_fqn)
+    if not cluster:
+        return "flowchart TD"
+
+    cmd_type_to_fqn = build_cmd_type_to_fqn(ir)
+
+    lines: list[str] = ["flowchart TD"]
+    lines.extend(_render_cluster_subgraph(cluster_fqn, cluster))
+    lines.extend(_render_cluster_edges(cluster_fqn, cluster, cmd_type_to_fqn))
+
+    return "\n".join(lines)
+
+
+def _collect_referenced_event_fqns(
+    ir: dict[str, Any],
+    evt_type_to_fqn: dict[str, str],
+) -> set[str]:
+    """Collect all event FQNs referenced by downstream consumers."""
+    fqns: set[str] = set()
+
+    for cluster in ir.get("clusters", {}).values():
+        for eh in cluster.get("event_handlers", {}).values():
+            for evt_type in eh.get("handlers", {}):
+                fqn = evt_type_to_fqn.get(evt_type, "")
+                if fqn:
+                    fqns.add(fqn)
+
+    for pm in ir.get("flows", {}).get("process_managers", {}).values():
+        for evt_type in pm.get("handlers", {}):
+            fqn = evt_type_to_fqn.get(evt_type, "")
+            if fqn:
+                fqns.add(fqn)
+
+    for proj_group in ir.get("projections", {}).values():
+        for projector in proj_group.get("projectors", {}).values():
+            for evt_type in projector.get("handlers", {}):
+                fqn = evt_type_to_fqn.get(evt_type, "")
+                if fqn:
+                    fqns.add(fqn)
+
+    return fqns
+
+
+def _render_event_handler_subgraph(
+    ir: dict[str, Any],
+    evt_type_to_fqn: dict[str, str],
+) -> tuple[list[str], list[str]]:
+    """Render event handlers as a subgraph with external edges."""
+    nodes: list[str] = []
+    edges: list[str] = []
+
+    for cluster in ir.get("clusters", {}).values():
+        for eh_fqn, eh in sorted(cluster.get("event_handlers", {}).items()):
+            eh_id = _evt_handler_node_id(eh_fqn)
+            eh_short = short_name(eh_fqn)
+            nodes.append(f"        {eh_id}[{mermaid_escape(eh_short)}]")
+
+            for evt_type in sorted(eh.get("handlers", {}).keys()):
+                evt_fqn = evt_type_to_fqn.get(evt_type, "")
+                if evt_fqn:
+                    edges.append(f"    {_evt_node_id(evt_fqn)} --> {eh_id}")
+
+    if not nodes:
+        return [], []
+
+    subgraph: list[str] = [
+        '    subgraph event_handlers["Event Handlers"]',
+        *nodes,
+        "    end",
+    ]
+    return subgraph, edges
+
+
+def _render_process_manager_subgraph(
+    ir: dict[str, Any],
+    evt_type_to_fqn: dict[str, str],
+) -> tuple[list[str], list[str]]:
+    """Render process managers as a subgraph with external edges."""
+    nodes: list[str] = []
+    edges: list[str] = []
+    pms = ir.get("flows", {}).get("process_managers", {})
+
+    for pm_fqn, pm in sorted(pms.items()):
+        pm_id = _pm_node_id(pm_fqn)
+        pm_short = short_name(pm_fqn)
+
+        annotations: list[str] = []
+        for _evt_type, handler_info in sorted(pm.get("handlers", {}).items()):
+            if handler_info.get("start"):
+                annotations.append("start")
+                break
+        for _evt_type, handler_info in sorted(pm.get("handlers", {}).items()):
+            if handler_info.get("end"):
+                annotations.append("end")
+                break
+
+        label = pm_short
+        if annotations:
+            label = f"{pm_short} ({', '.join(annotations)})"
+
+        nodes.append(f"        {pm_id}[{mermaid_escape(label)}]")
+
+        for evt_type in sorted(pm.get("handlers", {}).keys()):
+            evt_fqn = evt_type_to_fqn.get(evt_type, "")
+            if evt_fqn:
+                handler_info = pm["handlers"][evt_type]
+                edge_label_parts: list[str] = []
+                if handler_info.get("start"):
+                    edge_label_parts.append("start")
+                if handler_info.get("end"):
+                    edge_label_parts.append("end")
+
+                if edge_label_parts:
+                    edge_label = ", ".join(edge_label_parts)
+                    edges.append(
+                        f"    {_evt_node_id(evt_fqn)}"
+                        f" -->|{mermaid_escape(edge_label)}| {pm_id}"
+                    )
+                else:
+                    edges.append(f"    {_evt_node_id(evt_fqn)} --> {pm_id}")
+
+    if not nodes:
+        return [], []
+
+    subgraph: list[str] = [
+        '    subgraph process_managers["Process Managers"]',
+        *nodes,
+        "    end",
+    ]
+    return subgraph, edges
+
+
+def _render_projector_subgraph(
+    ir: dict[str, Any],
+    evt_type_to_fqn: dict[str, str],
+) -> tuple[list[str], list[str]]:
+    """Render projectors as a subgraph with external edges."""
+    nodes: list[str] = []
+    edges: list[str] = []
+
+    for proj_group in ir.get("projections", {}).values():
+        for projector_fqn, projector in sorted(
+            proj_group.get("projectors", {}).items()
+        ):
+            proj_id = _proj_node_id(projector_fqn)
+            proj_short = short_name(projector_fqn)
+            projection_fqn = projector.get("projector_for", "")
+            projection_short = short_name(projection_fqn)
+
+            label = proj_short
+            if projection_short:
+                label = f"{proj_short} \u2192 {projection_short}"
+
+            nodes.append(f"        {proj_id}[{mermaid_escape(label)}]")
+
+            for evt_type in sorted(projector.get("handlers", {}).keys()):
+                evt_fqn = evt_type_to_fqn.get(evt_type, "")
+                if evt_fqn:
+                    edges.append(f"    {_evt_node_id(evt_fqn)} --> {proj_id}")
+
+    if not nodes:
+        return [], []
+
+    subgraph: list[str] = [
+        '    subgraph projectors["Projectors"]',
+        *nodes,
+        "    end",
+    ]
+    return subgraph, edges
+
+
+def generate_downstream_consumers_diagram(ir: dict[str, Any]) -> str:
+    """Generate a Mermaid ``flowchart LR`` for downstream event consumers.
+
+    Shows events -> event handlers, process managers, and projectors.
+    Each consumer type is wrapped in a subgraph, and event nodes are
+    pre-declared with short labels.
+
+    Args:
+        ir: The full IR dict.
+
+    Returns:
+        A string containing the Mermaid ``flowchart LR`` source.
+    """
+    evt_type_to_fqn = build_evt_type_to_fqn(ir)
+
+    # Collect all subgraphs and edges
+    all_subgraphs: list[str] = []
+    all_edges: list[str] = []
+
+    for renderer in (
+        lambda: _render_event_handler_subgraph(ir, evt_type_to_fqn),
+        lambda: _render_process_manager_subgraph(ir, evt_type_to_fqn),
+        lambda: _render_projector_subgraph(ir, evt_type_to_fqn),
+    ):
+        subgraph, edges = renderer()
+        all_subgraphs.extend(subgraph)
+        all_edges.extend(edges)
+
+    if not all_subgraphs:
+        return "flowchart LR"
+
+    lines: list[str] = ["flowchart LR"]
+
+    # Pre-declare event nodes with short labels
+    referenced = _collect_referenced_event_fqns(ir, evt_type_to_fqn)
+    for evt_fqn in sorted(referenced):
+        evt_id = _evt_node_id(evt_fqn)
+        evt_short = short_name(evt_fqn)
+        lines.append(f"    {evt_id}([{mermaid_escape(evt_short)}])")
+
+    # Subgraphs, then edges
+    lines.extend(all_subgraphs)
+    lines.extend(all_edges)
+
+    return "\n".join(lines)
+
+
 def generate_event_flow_diagram(ir: dict[str, Any]) -> str:
     """Generate a Mermaid ``flowchart LR`` showing event flows.
 

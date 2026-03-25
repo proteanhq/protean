@@ -174,7 +174,8 @@ class TestInvariantNotes:
             )
         )
         result = generate_cluster_diagram(ir)
-        assert "pre_check, post_check" in result
+        assert 'note for app_Order "pre_check"' in result
+        assert 'note for app_Order "post_check"' in result
 
 
 # ------------------------------------------------------------------
@@ -221,7 +222,7 @@ class TestEntities:
 
     def test_has_many_relationship(self, ir_with_entity):
         result = generate_cluster_diagram(ir_with_entity)
-        assert 'app_Order "1" o-- "*" app_OrderItem : OrderItem' in result
+        assert 'app_Order "1" o-- "*" app_OrderItem : items' in result
 
 
 # ------------------------------------------------------------------
@@ -264,7 +265,7 @@ class TestValueObjects:
 
     def test_composition_arrow(self, ir_with_vo):
         result = generate_cluster_diagram(ir_with_vo)
-        assert "app_Order *-- app_Address : Address" in result
+        assert "app_Order *-- app_Address : address" in result
 
     def test_value_object_list_composition(self):
         clusters = _minimal_aggregate(
@@ -285,7 +286,7 @@ class TestValueObjects:
         }
         ir = _ir_with_clusters(clusters)
         result = generate_cluster_diagram(ir)
-        assert "app_Order *-- app_Tag : Tag" in result
+        assert "app_Order *-- app_Tag : tags" in result
 
 
 # ------------------------------------------------------------------
