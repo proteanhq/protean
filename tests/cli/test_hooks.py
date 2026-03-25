@@ -272,13 +272,19 @@ class TestRegenerateIr:
 class TestGitAdd:
     """Test the _git_add helper."""
 
-    def test_stages_file(self, tmp_path):
-        """_git_add runs without error on a real git-tracked file."""
-        # This test runs in the protean repo, so we can stage a temp file
-        # Just verify it doesn't crash — the actual staging is best-effort
-        fake_path = tmp_path / "nonexistent.json"
-        # Should not raise, even if file doesn't exist
-        _git_add(fake_path)
+    def test_stages_file(self, monkeypatch):
+        """_git_add invokes 'git add <path>' with the correct arguments."""
+        captured_args: list = []
+
+        def fake_run(*args, **kwargs):
+            captured_args.append(args[0])
+
+        monkeypatch.setattr("protean.cli.hooks.subprocess.run", fake_run)
+        target = Path("/some/ir.json")
+        _git_add(target)
+
+        assert len(captured_args) == 1
+        assert captured_args[0] == ["git", "add", str(target)]
 
     def test_handles_missing_git(self, monkeypatch):
         """_git_add prints a warning when git is not found."""

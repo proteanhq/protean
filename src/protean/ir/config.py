@@ -16,7 +16,7 @@ Usage::
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +59,7 @@ class CompatConfig:
     exclude: tuple[str, ...] = ()
     min_versions_before_removal: int = 3
     staleness_enabled: bool = True
-    domains: dict[str, str] = ()  # type: ignore[assignment]  # coerced in __post_init__
+    domains: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.strictness not in _STRICTNESS_VALUES:
@@ -74,9 +74,6 @@ class CompatConfig:
             raise ValueError("min_versions_before_removal must be a positive integer")
         if not isinstance(self.staleness_enabled, bool):
             raise ValueError("staleness_enabled must be a boolean")
-        # Coerce domains default (empty tuple is the frozen-dataclass trick)
-        if isinstance(self.domains, tuple):
-            object.__setattr__(self, "domains", {})
         if not isinstance(self.domains, dict):
             raise ValueError("domains must be a mapping of name → module path")
 
