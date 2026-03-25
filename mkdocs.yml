@@ -348,6 +348,8 @@ nav:
       - reference/testing/index.md
       - reference/testing/pytest-plugin.md
       - reference/testing/conformance.md
+    - Compatibility:
+      - reference/compatibility/index.md
     - Migration:
       - reference/migration/index.md
       - reference/migration/v0-15.md
