@@ -33,7 +33,7 @@ snapshot_threshold = 50
 ```
 
 The default threshold is **10 events**. When the number of events
-since the last snapshot exceeds this value, a new snapshot is
+since the last snapshot meets or exceeds this value, a new snapshot is
 auto-created on the next load.
 
 ---

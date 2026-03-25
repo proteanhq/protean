@@ -194,8 +194,13 @@ Every `index.md` in a guides subsection must:
 
 Never include a `concepts/` or `reference/` page directly in the `guides/`
 nav tree in `mkdocs.yml`. Instead, link to it from within a guide page's
-text or a "See also" admonition. The nav tree for each section should only
-contain pages that live in that section's directory.
+text or a "See also" admonition.
+
+Within the guides nav, **thematic groupings** (e.g., "Observe Your System",
+"Scaling and Operations") may pull guide pages from multiple directories
+when the grouping reflects a user workflow rather than a file hierarchy.
+Prefer moving files to match the nav structure; when that's impractical,
+cross-directory nav entries are acceptable.
 
 ### Section size minimum
 

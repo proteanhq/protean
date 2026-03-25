@@ -320,17 +320,21 @@ frameworks, manually push the domain context in your request middleware:
 
 ```python
 # Flask example
+from flask import Flask, g
 from my_app.domain import domain
 
+app = Flask(__name__)
+
 @app.before_request
-def push_domain_context():
-    g.domain_ctx = domain.domain_context()
-    g.domain_ctx.__enter__()
+def push_domain_context() -> None:
+    ctx = domain.domain_context()
+    ctx.push()
+    g.domain_ctx = ctx
 
 @app.teardown_request
-def pop_domain_context(exc):
+def pop_domain_context(exc: Exception | None) -> None:
     if hasattr(g, "domain_ctx"):
-        g.domain_ctx.__exit__(None, None, None)
+        g.domain_ctx.pop(exc)
 ```
 
 See [Activate Domain](../compose-a-domain/activate-domain.md) for details

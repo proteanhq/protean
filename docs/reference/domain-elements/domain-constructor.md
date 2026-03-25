@@ -72,9 +72,12 @@ or `pyproject.toml` files in the domain folder or its parent directories.
 
 ```python
 domain = Domain(config={
-    "identity_strategy": "UUID",
+    "identity_strategy": "uuid",
     "databases": {
-        "default": {"provider": "postgres", "url": "postgresql://user:pass@localhost/db"}
+        "default": {
+            "provider": "postgresql",
+            "database_uri": "postgresql://user:pass@localhost/db",
+        }
     }
 })
 ```
@@ -87,14 +90,14 @@ configuration parameters.
 **Type:** `Callable | None` &nbsp; **Default:** `None`
 
 A custom function to generate identities for domain objects. Required when
-`identity_strategy` is set to `FUNCTION` in configuration.
+`identity_strategy` is set to `"function"` in configuration.
 
 ```python
 def generate_id():
     return "custom-id-" + str(random.randint(1000, 9999))
 
 domain = Domain(
-    config={"identity_strategy": "FUNCTION"},
+    config={"identity_strategy": "function"},
     identity_function=generate_id,
 )
 ```

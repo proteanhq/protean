@@ -17,7 +17,8 @@ into the base configuration, overriding only the keys they specify.
 ```toml
 # domain.toml
 
-# Base configuration (development defaults)
+# Base configuration (recommended development overrides)
+# Framework defaults are event_processing="async", command_processing="async"
 debug = true
 event_processing = "sync"
 command_processing = "sync"

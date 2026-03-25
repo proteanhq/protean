@@ -16,9 +16,9 @@ from protean import Domain
 domain = Domain()
 ```
 
-Protean auto-detects the root path from the caller's file location and loads
-configuration from `domain.toml` (or `.domain.toml` / `pyproject.toml`) in
-the same directory.
+Protean auto-detects the root path from the caller's file location and
+searches that directory and its parent directories for configuration in
+`.domain.toml`, `domain.toml`, or `pyproject.toml`.
 
 For named domains or explicit configuration:
 
