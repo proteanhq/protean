@@ -8,22 +8,12 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.fields import Auto
+from protean.utils import ensure_utc_aware
 from protean.utils.eventing import Metadata
 from protean.utils.query import Q
 
 
 PAGE_SIZE = 50  # Default page size for fetching messages
-
-
-def _ensure_utc_aware(dt: datetime) -> datetime:
-    """Ensure a datetime is timezone-aware (UTC).
-
-    Database adapters may return naive datetimes even when values were stored
-    as UTC-aware. This normalizes them for safe comparison.
-    """
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt
 
 
 class OutboxStatus(Enum):
@@ -162,7 +152,7 @@ class Outbox(BaseAggregate):
         # Check if enough time has passed for retry
         if self.next_retry_at:
             current_time = datetime.now(timezone.utc)
-            if current_time < _ensure_utc_aware(self.next_retry_at):
+            if current_time < ensure_utc_aware(self.next_retry_at):
                 return False, ProcessingResult.RETRY_NOT_DUE
 
         # Acquire lock and mark as processing
@@ -275,7 +265,7 @@ class Outbox(BaseAggregate):
         # Check if enough time has passed for retry
         if self.next_retry_at:
             current_time = datetime.now(timezone.utc)
-            if current_time < _ensure_utc_aware(self.next_retry_at):
+            if current_time < ensure_utc_aware(self.next_retry_at):
                 return False
 
         return True
@@ -285,7 +275,7 @@ class Outbox(BaseAggregate):
         """Check if message is currently locked for processing."""
         return bool(
             self.locked_until
-            and datetime.now(timezone.utc) < _ensure_utc_aware(self.locked_until)
+            and datetime.now(timezone.utc) < ensure_utc_aware(self.locked_until)
             and self.status == OutboxStatus.PROCESSING.value
         )
 

@@ -734,14 +734,17 @@ class TestNaiveDatetimeHandling:
 
         assert sample_outbox._is_locked() is False
 
-    def test_is_ready_not_ready_when_locked_with_naive_datetime(self, sample_outbox):
-        """Test is_ready_for_processing returns False when locked with naive datetime."""
+    def test_start_processing_locked_with_naive_locked_until(self, sample_outbox):
+        """Test start_processing returns ALREADY_LOCKED with naive locked_until."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
         sample_outbox.locked_until = datetime.now(timezone.utc).replace(
             tzinfo=None
         ) + timedelta(minutes=5)
 
-        assert sample_outbox.is_ready_for_processing() is False
+        success, result = sample_outbox.start_processing("worker-2")
+
+        assert success is False
+        assert result == ProcessingResult.ALREADY_LOCKED
 
 
 class TestEdgeCases:
