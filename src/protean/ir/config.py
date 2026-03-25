@@ -49,12 +49,17 @@ class CompatConfig:
         survive before it can be removed.
     staleness_enabled:
         Whether the staleness check is active.
+    domains:
+        Mapping of logical domain names to module paths, parsed from the
+        ``[domains]`` section of ``config.toml``.  When non-empty, hooks
+        iterate over all domains automatically.
     """
 
     strictness: str = "strict"
     exclude: tuple[str, ...] = ()
     min_versions_before_removal: int = 3
     staleness_enabled: bool = True
+    domains: dict[str, str] = ()  # type: ignore[assignment]  # coerced in __post_init__
 
     def __post_init__(self) -> None:
         if self.strictness not in _STRICTNESS_VALUES:
@@ -69,6 +74,11 @@ class CompatConfig:
             raise ValueError("min_versions_before_removal must be a positive integer")
         if not isinstance(self.staleness_enabled, bool):
             raise ValueError("staleness_enabled must be a boolean")
+        # Coerce domains default (empty tuple is the frozen-dataclass trick)
+        if isinstance(self.domains, tuple):
+            object.__setattr__(self, "domains", {})
+        if not isinstance(self.domains, dict):
+            raise ValueError("domains must be a mapping of name → module path")
 
     def is_excluded(self, fqn: str) -> bool:
         """Return ``True`` if *fqn* matches any entry in ``exclude``."""
@@ -150,5 +160,20 @@ def _parse_config(data: dict[str, Any]) -> CompatConfig:
         if not isinstance(val, bool):
             raise ValueError("staleness.enabled must be a boolean")
         kwargs["staleness_enabled"] = val
+
+    # Parse [domains] section — maps logical names to module paths
+    domains_raw = data.get("domains", {})
+    if not isinstance(domains_raw, dict):
+        raise ValueError(
+            "domains must be a TOML table, not " + type(domains_raw).__name__
+        )
+    if domains_raw:
+        if not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in domains_raw.items()
+        ):
+            raise ValueError(
+                'domains entries must be string key-value pairs (name = "module.path")'
+            )
+        kwargs["domains"] = dict(domains_raw)
 
     return CompatConfig(**kwargs)
