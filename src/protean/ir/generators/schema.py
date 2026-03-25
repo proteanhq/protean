@@ -183,9 +183,7 @@ def _collect_defs(
             defs[ref_name] = dict(sorted(nested_schema.items()))
 
             # Recurse into nested refs (shared visited set prevents cycles)
-            nested_defs = _collect_defs(
-                target_fields, all_elements, _visited
-            )
+            nested_defs = _collect_defs(target_fields, all_elements, _visited)
             defs.update(nested_defs)
         else:
             # No fields found — emit a minimal object schema

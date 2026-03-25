@@ -347,9 +347,7 @@ class TestStalenessWithConfig:
         from protean.ir.staleness import StalenessStatus, check_staleness
 
         config = CompatConfig(staleness_enabled=False)
-        result = check_staleness(
-            "publishing7.py", self._protean_dir, config=config
-        )
+        result = check_staleness("publishing7.py", self._protean_dir, config=config)
         assert result.status == StalenessStatus.FRESH
         assert result.domain_checksum is None
         assert result.stored_checksum is None
@@ -423,9 +421,7 @@ class TestDiffCLIWithConfig:
             }
             break
 
-        _write_config(
-            self._protean_dir, '[compatibility]\nstrictness = "warn"\n'
-        )
+        _write_config(self._protean_dir, '[compatibility]\nstrictness = "warn"\n')
         _write_ir(self._protean_dir, baseline_ir)
 
         result = runner.invoke(
@@ -534,9 +530,7 @@ class TestCompatHookWithConfig:
     def test_exits_0_when_strictness_off(self):
         from protean.cli.hooks import check_compat_hook
 
-        _write_config(
-            self._protean_dir, '[compatibility]\nstrictness = "off"\n'
-        )
+        _write_config(self._protean_dir, '[compatibility]\nstrictness = "off"\n')
 
         with patch(
             "sys.argv",
@@ -623,7 +617,9 @@ class TestParseConfigSectionTypeChecks:
             _parse_config({"staleness": True})
 
     def test_deprecation_not_a_table(self):
-        with pytest.raises(ValueError, match="compatibility.deprecation must be a TOML table"):
+        with pytest.raises(
+            ValueError, match="compatibility.deprecation must be a TOML table"
+        ):
             _parse_config({"compatibility": {"deprecation": "fast"}})
 
 
@@ -810,9 +806,7 @@ class TestCompatHookContractBreaking:
         )
         baseline_ir.setdefault("contracts", {})["events"] = baseline_events
 
-        with patch(
-            "protean.ir.git.load_ir_from_commit", return_value=baseline_ir
-        ):
+        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
             with patch(
                 "sys.argv",
                 [
@@ -846,13 +840,9 @@ class TestCompatHookContractBreaking:
         )
         baseline_ir.setdefault("contracts", {})["events"] = baseline_events
 
-        _write_config(
-            self._protean_dir, '[compatibility]\nstrictness = "warn"\n'
-        )
+        _write_config(self._protean_dir, '[compatibility]\nstrictness = "warn"\n')
 
-        with patch(
-            "protean.ir.git.load_ir_from_commit", return_value=baseline_ir
-        ):
+        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
             with patch(
                 "sys.argv",
                 [
@@ -904,13 +894,9 @@ class TestCompatHookWarnMode:
             }
             break
 
-        _write_config(
-            self._protean_dir, '[compatibility]\nstrictness = "warn"\n'
-        )
+        _write_config(self._protean_dir, '[compatibility]\nstrictness = "warn"\n')
 
-        with patch(
-            "protean.ir.git.load_ir_from_commit", return_value=baseline_ir
-        ):
+        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
             with patch(
                 "sys.argv",
                 [
@@ -974,9 +960,7 @@ class TestCompatHookExclude:
             f'[compatibility]\nexclude = ["{target_fqn}"]\n',
         )
 
-        with patch(
-            "protean.ir.git.load_ir_from_commit", return_value=baseline_ir
-        ):
+        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
             with patch(
                 "sys.argv",
                 [
@@ -1120,9 +1104,7 @@ class TestDiffCLIContractBreaking:
         )
         baseline_ir.setdefault("contracts", {})["events"] = baseline_events
 
-        _write_config(
-            self._protean_dir, '[compatibility]\nstrictness = "warn"\n'
-        )
+        _write_config(self._protean_dir, '[compatibility]\nstrictness = "warn"\n')
         _write_ir(self._protean_dir, baseline_ir)
 
         result = runner.invoke(

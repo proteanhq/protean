@@ -75,9 +75,7 @@ class UserRegistered(BaseEvent):
 class UserCommandHandler(BaseCommandHandler):
     @handle(RegisterUser)
     def register(self, command: RegisterUser):
-        user = User(
-            user_id=command.user_id, name=command.name, email=command.email
-        )
+        user = User(user_id=command.user_id, name=command.name, email=command.email)
         user.raise_(
             UserRegistered(
                 user_id=command.user_id,
@@ -109,9 +107,7 @@ def _init_telemetry_in_memory(domain):
     tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
 
     metric_reader = InMemoryMetricReader()
-    meter_provider = SDKMeterProvider(
-        resource=resource, metric_readers=[metric_reader]
-    )
+    meter_provider = SDKMeterProvider(resource=resource, metric_readers=[metric_reader])
 
     domain._otel_tracer_provider = tracer_provider
     domain._otel_meter_provider = meter_provider
@@ -246,23 +242,15 @@ class TestCommandProcessContextExtraction:
         test_domain.process(command, asynchronous=False)
 
         spans = span_exporter.get_finished_spans()
-        process_span = next(
-            s for s in spans if s.name == "protean.command.process"
-        )
+        process_span = next(s for s in spans if s.name == "protean.command.process")
 
         # The process span must share the external trace_id
-        assert (
-            f"{process_span.context.trace_id:032x}" == EXTERNAL_TRACE_ID
-        )
+        assert f"{process_span.context.trace_id:032x}" == EXTERNAL_TRACE_ID
         # Its parent must be the external span_id
         assert process_span.parent is not None
-        assert (
-            f"{process_span.parent.span_id:016x}" == EXTERNAL_SPAN_ID
-        )
+        assert f"{process_span.parent.span_id:016x}" == EXTERNAL_SPAN_ID
 
-    def test_process_span_without_traceparent_is_root(
-        self, test_domain, span_exporter
-    ):
+    def test_process_span_without_traceparent_is_root(self, test_domain, span_exporter):
         command = RegisterUser(
             user_id=str(uuid4()),
             name="Bob",
@@ -272,9 +260,7 @@ class TestCommandProcessContextExtraction:
         test_domain.process(command, asynchronous=False)
 
         spans = span_exporter.get_finished_spans()
-        process_span = next(
-            s for s in spans if s.name == "protean.command.process"
-        )
+        process_span = next(s for s in spans if s.name == "protean.command.process")
 
         # Without an incoming traceparent, the process span is a root span
         assert process_span.parent is None
@@ -288,9 +274,7 @@ class TestCommandProcessContextExtraction:
 class TestCommandEnrichContextInjection:
     """CommandProcessor.enrich() injects current span as traceparent."""
 
-    def test_enriched_command_carries_traceparent(
-        self, test_domain, span_exporter
-    ):
+    def test_enriched_command_carries_traceparent(self, test_domain, span_exporter):
         uid = str(uuid4())
         command = RegisterUser(
             user_id=uid,
@@ -325,9 +309,7 @@ class TestCommandEnrichContextInjection:
         # The traceparent's trace_id and parent_id should match the enrich
         # span that was active when the headers were created.
         spans = span_exporter.get_finished_spans()
-        enrich_span = next(
-            s for s in spans if s.name == "protean.command.enrich"
-        )
+        enrich_span = next(s for s in spans if s.name == "protean.command.enrich")
         assert tp.trace_id == f"{enrich_span.context.trace_id:032x}"
         assert tp.parent_id == f"{enrich_span.context.span_id:016x}"
         assert tp.sampled is True
@@ -450,9 +432,9 @@ class TestRoundTripTracePropagation:
 
         # All spans must share the same trace_id (the external one)
         for s in spans:
-            assert (
-                f"{s.context.trace_id:032x}" == EXTERNAL_TRACE_ID
-            ), f"Span '{s.name}' has wrong trace_id"
+            assert f"{s.context.trace_id:032x}" == EXTERNAL_TRACE_ID, (
+                f"Span '{s.name}' has wrong trace_id"
+            )
 
         # process is child of external
         process_span = span_map["protean.command.process"]
@@ -460,9 +442,7 @@ class TestRoundTripTracePropagation:
 
         # enrich is child of process
         enrich_span = span_map["protean.command.enrich"]
-        assert (
-            enrich_span.parent.span_id == process_span.context.span_id
-        )
+        assert enrich_span.parent.span_id == process_span.context.span_id
 
 
 # ---------------------------------------------------------------------------
@@ -528,11 +508,7 @@ class TestEngineHandleMessageContextExtraction:
     ):
         uid = str(uuid4())
         user = User(user_id=uid, name="Test", email="test@example.com")
-        user.raise_(
-            UserRegistered(
-                user_id=uid, name="Test", email="test@example.com"
-            )
-        )
+        user.raise_(UserRegistered(user_id=uid, name="Test", email="test@example.com"))
         msg = Message.from_domain_object(user._events[-1])
 
         await engine.handle_message(UserEventHandler, msg)

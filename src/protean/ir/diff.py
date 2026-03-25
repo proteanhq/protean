@@ -418,9 +418,7 @@ def _classify_removal(
 
     if current_version is not None:
         try:
-            if _parse_version_tuple(current_version) >= _parse_version_tuple(
-                removal
-            ):
+            if _parse_version_tuple(current_version) >= _parse_version_tuple(removal):
                 return "expected_removal"
         except Exception:
             pass
@@ -491,9 +489,7 @@ def _diff_contracts(
             }
             if deprecated:
                 entry["deprecated"] = deprecated
-                entry["message"] += (
-                    f" (deprecated since v{deprecated['since']}"
-                )
+                entry["message"] += f" (deprecated since v{deprecated['since']}"
                 if deprecated.get("removal"):
                     entry["message"] += (
                         f", scheduled for removal in v{deprecated['removal']}"
@@ -529,9 +525,7 @@ def _diff_contracts(
         removed_fields = set(left_fields.keys()) - set(right_fields.keys())
         for field_name in sorted(removed_fields):
             field_deprecated = left_fields[field_name].get("deprecated")
-            field_classification = _classify_removal(
-                field_deprecated, current_version
-            )
+            field_classification = _classify_removal(field_deprecated, current_version)
 
             if field_classification == "expected_removal":
                 expected_removals.append(
@@ -844,9 +838,7 @@ def _classify_projections(
     for proj_fqn, proj_delta in projections_diff.get("changed", {}).items():
         proj_element_delta = proj_delta.get("projection", {})
         if proj_element_delta:
-            _classify_element_delta(
-                proj_element_delta, proj_fqn, "PROJECTION", report
-            )
+            _classify_element_delta(proj_element_delta, proj_fqn, "PROJECTION", report)
 
 
 def _classify_element_delta(
@@ -855,9 +847,7 @@ def _classify_element_delta(
     element_type: str,
     report: CompatibilityReport,
 ) -> None:
-    _classify_field_changes(
-        element_delta.get("fields", {}), fqn, element_type, report
-    )
+    _classify_field_changes(element_delta.get("fields", {}), fqn, element_type, report)
     _classify_attribute_changes(element_delta.get("attributes", {}), fqn, report)
 
 
@@ -901,8 +891,7 @@ def _classify_field_changes(
                     element_fqn=fqn,
                     change_type="optional_field_added",
                     message=(
-                        f"Optional field '{field_name}' added to "
-                        f"{element_type} '{fqn}'"
+                        f"Optional field '{field_name}' added to {element_type} '{fqn}'"
                     ),
                 )
             )

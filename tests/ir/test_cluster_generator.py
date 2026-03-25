@@ -93,7 +93,7 @@ class TestSingleAggregate:
         ir = _ir_with_clusters(_minimal_aggregate())
         result = generate_cluster_diagram(ir)
         assert "classDiagram" in result
-        assert "class app_Order" in result
+        assert 'class app_Order["Order"]' in result
         assert "<<Aggregate>>" in result
 
     def test_aggregate_fields_rendered(self):
@@ -113,9 +113,9 @@ class TestSingleAggregate:
         }
         ir = _ir_with_clusters(_minimal_aggregate(fields=fields))
         result = generate_cluster_diagram(ir)
-        # field_summary adds constraint tags; mermaid_escape quotes parens
-        assert '+id "Auto (identifier)"' in result
-        assert '+name "String (required)"' in result
+        # Constraints use Mermaid generic notation ~tag~ (no parentheses)
+        assert "+id Auto~identifier~" in result
+        assert "+name String~required~" in result
 
     def test_event_sourced_stereotype(self):
         ir = _ir_with_clusters(
@@ -212,12 +212,12 @@ class TestEntities:
 
     def test_entity_class_rendered(self, ir_with_entity):
         result = generate_cluster_diagram(ir_with_entity)
-        assert "class app_OrderItem" in result
+        assert 'class app_OrderItem["OrderItem"]' in result
         assert "<<Entity>>" in result
 
     def test_entity_fields_rendered(self, ir_with_entity):
         result = generate_cluster_diagram(ir_with_entity)
-        assert '+quantity "Integer (required)"' in result
+        assert "+quantity Integer~required~" in result
 
     def test_has_many_relationship(self, ir_with_entity):
         result = generate_cluster_diagram(ir_with_entity)
@@ -254,13 +254,13 @@ class TestValueObjects:
 
     def test_vo_class_rendered(self, ir_with_vo):
         result = generate_cluster_diagram(ir_with_vo)
-        assert "class app_Address" in result
+        assert 'class app_Address["Address"]' in result
         assert "<<ValueObject>>" in result
 
     def test_vo_fields_rendered(self, ir_with_vo):
         result = generate_cluster_diagram(ir_with_vo)
-        assert '+street "String (required)"' in result
-        assert '+city "String (required)"' in result
+        assert "+street String~required~" in result
+        assert "+city String~required~" in result
 
     def test_composition_arrow(self, ir_with_vo):
         result = generate_cluster_diagram(ir_with_vo)
@@ -444,8 +444,7 @@ class TestFieldConstraints:
         }
         ir = _ir_with_clusters(_minimal_aggregate(fields=fields))
         result = generate_cluster_diagram(ir)
-        # field_summary should show "Auto (identifier)"
-        assert "identifier" in result
+        assert "+id Auto~identifier~" in result
 
     def test_required_field(self):
         fields = {
@@ -454,4 +453,35 @@ class TestFieldConstraints:
         }
         ir = _ir_with_clusters(_minimal_aggregate(fields=fields))
         result = generate_cluster_diagram(ir)
-        assert "required" in result
+        assert "+name String~required~" in result
+
+    def test_unconstrained_field(self):
+        fields = {
+            "id": {"kind": "auto", "type": "Auto", "identifier": True},
+            "notes": {"kind": "standard", "type": "String"},
+        }
+        ir = _ir_with_clusters(_minimal_aggregate(fields=fields))
+        result = generate_cluster_diagram(ir)
+        # No constraint tag — just the type
+        assert "+notes String" in result
+        assert "~" not in result.split("+notes")[1].split("\n")[0]
+
+    def test_unique_field(self):
+        fields = {
+            "id": {"kind": "auto", "type": "Auto", "identifier": True},
+            "email": {
+                "kind": "standard",
+                "type": "String",
+                "unique": True,
+            },
+        }
+        ir = _ir_with_clusters(_minimal_aggregate(fields=fields))
+        result = generate_cluster_diagram(ir)
+        assert "+email String~unique~" in result
+
+    def test_display_name_uses_short_name(self):
+        """The class label uses the short (unqualified) element name."""
+        clusters = _minimal_aggregate(fqn="catalogue.category.Category")
+        ir = _ir_with_clusters(clusters)
+        result = generate_cluster_diagram(ir)
+        assert 'catalogue_category_Category["Category"]' in result

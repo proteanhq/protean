@@ -62,10 +62,11 @@ class CompatConfig:
                 f"Invalid strictness value: {self.strictness!r}. "
                 f"Must be one of: {', '.join(sorted(_STRICTNESS_VALUES))}"
             )
-        if not isinstance(self.min_versions_before_removal, int) or self.min_versions_before_removal < 1:
-            raise ValueError(
-                "min_versions_before_removal must be a positive integer"
-            )
+        if (
+            not isinstance(self.min_versions_before_removal, int)
+            or self.min_versions_before_removal < 1
+        ):
+            raise ValueError("min_versions_before_removal must be a positive integer")
         if not isinstance(self.staleness_enabled, bool):
             raise ValueError("staleness_enabled must be a boolean")
 
@@ -106,8 +107,7 @@ def _parse_config(data: dict[str, Any]) -> CompatConfig:
     compat = data.get("compatibility", {})
     if not isinstance(compat, dict):
         raise ValueError(
-            "compatibility must be a TOML table, not "
-            + type(compat).__name__
+            "compatibility must be a TOML table, not " + type(compat).__name__
         )
 
     staleness = data.get("staleness", {})
@@ -133,9 +133,7 @@ def _parse_config(data: dict[str, Any]) -> CompatConfig:
         if not isinstance(exclude, list) or not all(
             isinstance(e, str) for e in exclude
         ):
-            raise ValueError(
-                "compatibility.exclude must be a list of strings"
-            )
+            raise ValueError("compatibility.exclude must be a list of strings")
         kwargs["exclude"] = tuple(exclude)
 
     if "min_versions_before_removal" in deprecation:

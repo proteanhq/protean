@@ -214,9 +214,7 @@ def diff(
     # Filter out excluded elements from the report
     if config.exclude:
         report.breaking_changes = [
-            c
-            for c in report.breaking_changes
-            if not config.is_excluded(c.element_fqn)
+            c for c in report.breaking_changes if not config.is_excluded(c.element_fqn)
         ]
         report.safe_changes = [
             c for c in report.safe_changes if not config.is_excluded(c.element_fqn)

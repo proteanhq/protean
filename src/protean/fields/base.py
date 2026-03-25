@@ -34,8 +34,7 @@ def normalize_field_deprecated(
     if isinstance(value, dict):
         if "since" not in value:
             raise ValueError(
-                "The `deprecated` parameter must include a 'since' key "
-                f"(got {value!r})"
+                f"The `deprecated` parameter must include a 'since' key (got {value!r})"
             )
         result: dict[str, str] = {"since": str(value["since"])}
         if "removal" in value:

@@ -369,5 +369,3 @@ class TestTimelineJSAscendingRefresh:
         """In ascending order, new events call fetchEvents(false)."""
         # The else branch for ascending order calls full refresh
         assert "fetchEvents(false)" in timeline_js
-
-

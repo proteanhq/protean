@@ -28,7 +28,7 @@ def _write_ir(directory: Path, ir_dict: dict) -> Path:
     """Write *ir_dict* as ir.json into *directory* and return the path."""
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "ir.json"
-    path.write_text(json.dumps(ir_dict, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(ir_dict, indent=2) + "\n", encoding="utf-8")
     return path
 
 
@@ -183,7 +183,16 @@ class TestCheckStalenessHookFresh:
         live_ir = _live_ir_for_test7()
         _write_ir(self._protean_dir, live_ir)
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
             assert exc_info.value.code == 0
@@ -211,7 +220,16 @@ class TestCheckStalenessHookStale:
     def test_exits_1_when_stale(self):
         _write_ir(self._protean_dir, {"checksum": "sha256:old"})
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
             assert exc_info.value.code == 1
@@ -219,7 +237,16 @@ class TestCheckStalenessHookStale:
     def test_prints_stale_message(self, capsys):
         _write_ir(self._protean_dir, {"checksum": "sha256:old" + "0" * 58})
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit):
                 check_staleness_hook()
 
@@ -229,7 +256,16 @@ class TestCheckStalenessHookStale:
     def test_prints_checksums_when_available(self, capsys):
         _write_ir(self._protean_dir, {"checksum": "sha256:old" + "0" * 58})
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit):
                 check_staleness_hook()
 
@@ -240,7 +276,16 @@ class TestCheckStalenessHookStale:
     def test_prints_update_hint(self, capsys):
         _write_ir(self._protean_dir, {"checksum": "sha256:old"})
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit):
                 check_staleness_hook()
 
@@ -251,7 +296,16 @@ class TestCheckStalenessHookStale:
         """Stale result where stored IR has no checksum field — covers branch partial."""
         _write_ir(self._protean_dir, {"ir_version": "0.1.0"})
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
             assert exc_info.value.code == 1
@@ -265,7 +319,16 @@ class TestCheckStalenessHookStale:
         """The update hint uses the configured --dir, not hardcoded .protean."""
         _write_ir(self._protean_dir, {"checksum": "sha256:old"})
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit):
                 check_staleness_hook()
 
@@ -293,13 +356,31 @@ class TestCheckStalenessHookNoIR:
         os.chdir(cwd)
 
     def test_exits_1_when_no_ir(self):
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
             assert exc_info.value.code == 1
 
     def test_prints_missing_ir_message(self, capsys):
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit):
                 check_staleness_hook()
 
@@ -328,7 +409,16 @@ class TestCheckStalenessHookErrors:
 
     def test_exits_1_on_invalid_domain_without_ir(self):
         """No ir.json + invalid domain — NO_IR path (not NoDomainException)."""
-        with patch("sys.argv", ["protean-check-staleness", "-d", "nonexistent_domain.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "nonexistent_domain.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
             assert exc_info.value.code == 1
@@ -337,7 +427,16 @@ class TestCheckStalenessHookErrors:
         """Valid ir.json + invalid domain — NoDomainException from check_staleness."""
         _write_ir(self._protean_dir, {"checksum": "sha256:abc"})
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "nonexistent_domain.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "nonexistent_domain.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
             assert exc_info.value.code == 1
@@ -345,14 +444,22 @@ class TestCheckStalenessHookErrors:
         captured = capsys.readouterr()
         assert "error" in captured.err.lower()
 
-
     def test_exits_1_on_generic_exception(self, capsys):
         """Trigger a generic exception in check_staleness (not NoDomainException)."""
         # Write ir.json as a directory to cause an OSError → ValueError
         self._protean_dir.mkdir(parents=True, exist_ok=True)
         (self._protean_dir / "ir.json").mkdir()
 
-        with patch("sys.argv", ["protean-check-staleness", "-d", "publishing7.py", "--dir", str(self._protean_dir)]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 check_staleness_hook()
             assert exc_info.value.code == 1
@@ -420,12 +527,16 @@ class TestCheckCompatHookNoBreaking:
                 for f in files:
                     subprocess.run(
                         ["git", "add", str(f)],
-                        capture_output=True, check=True, env=env,
+                        capture_output=True,
+                        check=True,
+                        env=env,
                         cwd=self._repo_root,
                     )
                 subprocess.run(
                     ["git", "commit", "-m", "test: hook compat"],
-                    capture_output=True, check=True, env=env,
+                    capture_output=True,
+                    check=True,
+                    env=env,
                     cwd=self._repo_root,
                 )
                 return self_ctx
@@ -433,17 +544,20 @@ class TestCheckCompatHookNoBreaking:
             def __exit__(self_ctx, *_):
                 subprocess.run(
                     ["git", "reset", "HEAD~1"],
-                    capture_output=True, check=True, env=env,
+                    capture_output=True,
+                    check=True,
+                    env=env,
                     cwd=self._repo_root,
                 )
                 for f in files:
                     if f.exists():
                         f.unlink()
-                subprocess.run(
-                    ["git", "checkout", "--", "."],
-                    capture_output=True, check=True, env=env,
-                    cwd=self._repo_root,
-                )
+                    subprocess.run(
+                        ["git", "checkout", "--", str(f)],
+                        capture_output=True,
+                        env=env,
+                        cwd=self._repo_root,
+                    )
 
         return _Ctx()
 
@@ -453,15 +567,23 @@ class TestCheckCompatHookNoBreaking:
         protean_dir = self._test7_dir / ".protean"
         protean_dir.mkdir(parents=True, exist_ok=True)
         ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(live_ir, indent=2), encoding="utf-8")
+        ir_file.write_text(json.dumps(live_ir, indent=2) + "\n", encoding="utf-8")
 
         env = _git_env()
         rel_dir = self._rel_path(".protean")
         with self._commit_and_cleanup([ir_file], env):
-            with patch("sys.argv", [
-                "protean-check-compat", "-d", "publishing7.py",
-                "--base", "HEAD", "--dir", rel_dir,
-            ]):
+            with patch(
+                "sys.argv",
+                [
+                    "protean-check-compat",
+                    "-d",
+                    "publishing7.py",
+                    "--base",
+                    "HEAD",
+                    "--dir",
+                    rel_dir,
+                ],
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     check_compat_hook()
                 assert exc_info.value.code == 0
@@ -497,12 +619,16 @@ class TestCheckCompatHookBreaking:
                 for f in files:
                     subprocess.run(
                         ["git", "add", str(f)],
-                        capture_output=True, check=True, env=env,
+                        capture_output=True,
+                        check=True,
+                        env=env,
                         cwd=self._repo_root,
                     )
                 subprocess.run(
                     ["git", "commit", "-m", "test: hook compat breaking"],
-                    capture_output=True, check=True, env=env,
+                    capture_output=True,
+                    check=True,
+                    env=env,
                     cwd=self._repo_root,
                 )
                 return self_ctx
@@ -510,17 +636,20 @@ class TestCheckCompatHookBreaking:
             def __exit__(self_ctx, *_):
                 subprocess.run(
                     ["git", "reset", "HEAD~1"],
-                    capture_output=True, check=True, env=env,
+                    capture_output=True,
+                    check=True,
+                    env=env,
                     cwd=self._repo_root,
                 )
                 for f in files:
                     if f.exists():
                         f.unlink()
-                subprocess.run(
-                    ["git", "checkout", "--", "."],
-                    capture_output=True, check=True, env=env,
-                    cwd=self._repo_root,
-                )
+                    subprocess.run(
+                        ["git", "checkout", "--", str(f)],
+                        capture_output=True,
+                        env=env,
+                        cwd=self._repo_root,
+                    )
 
         return _Ctx()
 
@@ -545,15 +674,23 @@ class TestCheckCompatHookBreaking:
         protean_dir = self._test7_dir / ".protean"
         protean_dir.mkdir(parents=True, exist_ok=True)
         ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(baseline_ir, indent=2), encoding="utf-8")
+        ir_file.write_text(json.dumps(baseline_ir, indent=2) + "\n", encoding="utf-8")
 
         env = _git_env()
         rel_dir = self._rel_path(".protean")
         with self._commit_and_cleanup([ir_file], env):
-            with patch("sys.argv", [
-                "protean-check-compat", "-d", "publishing7.py",
-                "--base", "HEAD", "--dir", rel_dir,
-            ]):
+            with patch(
+                "sys.argv",
+                [
+                    "protean-check-compat",
+                    "-d",
+                    "publishing7.py",
+                    "--base",
+                    "HEAD",
+                    "--dir",
+                    rel_dir,
+                ],
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     check_compat_hook()
                 assert exc_info.value.code == 1
@@ -582,20 +719,34 @@ class TestCheckCompatHookErrors:
 
     def test_exits_1_on_git_error(self):
         """GitError when loading baseline → exit 1."""
-        with patch("sys.argv", [
-            "protean-check-compat", "-d", "publishing7.py",
-            "--base", "nonexistent_commit_abc123",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-compat",
+                "-d",
+                "publishing7.py",
+                "--base",
+                "nonexistent_commit_abc123",
+            ],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 check_compat_hook()
             assert exc_info.value.code == 1
 
     def test_exits_1_on_invalid_domain(self):
         """Invalid domain → exit 1 from _load_live_ir."""
-        with patch("protean.ir.git.load_ir_from_commit", return_value={"checksum": "sha256:abc"}):
-            with patch("sys.argv", [
-                "protean-check-compat", "-d", "nonexistent_domain.py",
-            ]):
+        with patch(
+            "protean.ir.git.load_ir_from_commit",
+            return_value={"checksum": "sha256:abc"},
+        ):
+            with patch(
+                "sys.argv",
+                [
+                    "protean-check-compat",
+                    "-d",
+                    "nonexistent_domain.py",
+                ],
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     check_compat_hook()
                 assert exc_info.value.code == 1
@@ -616,9 +767,14 @@ class TestCheckCompatHookErrors:
             break
 
         with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
-            with patch("sys.argv", [
-                "protean-check-compat", "-d", "publishing7.py",
-            ]):
+            with patch(
+                "sys.argv",
+                [
+                    "protean-check-compat",
+                    "-d",
+                    "publishing7.py",
+                ],
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     check_compat_hook()
                 assert exc_info.value.code == 0

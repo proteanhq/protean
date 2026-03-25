@@ -298,9 +298,7 @@ class TestEventCorrelationPropagation:
 
         # Read fact events from the event store — they should carry the same correlation
         order_id = response.json()["order_id"]
-        events = test_domain.event_store.store.read(
-            f"test::order-fact-{order_id}"
-        )
+        events = test_domain.event_store.store.read(f"test::order-fact-{order_id}")
         assert len(events) > 0, "Expected at least one fact event"
         for event_msg in events:
             assert event_msg.metadata.domain.correlation_id == "trace-through-events"

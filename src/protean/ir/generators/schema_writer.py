@@ -64,9 +64,7 @@ def _element_version(schema: dict[str, Any]) -> int:
     return int(schema.get("x-protean-version", 1))
 
 
-def _cluster_for_fqn(
-    fqn: str, ir: dict[str, Any]
-) -> str | None:
+def _cluster_for_fqn(fqn: str, ir: dict[str, Any]) -> str | None:
     """Return the aggregate short name that owns *fqn*, or ``None``.
 
     Walks the IR clusters and checks whether *fqn* appears as the

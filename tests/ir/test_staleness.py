@@ -317,7 +317,10 @@ class TestCheckCLIText:
             app,
             ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
         )
-        assert "no materialized ir" in result.output.lower() or "not found" in result.output.lower()
+        assert (
+            "no materialized ir" in result.output.lower()
+            or "not found" in result.output.lower()
+        )
 
     def test_stale_output_shows_update_hint(self):
         _write_ir(self._protean_dir, {"checksum": "sha256:old"})
@@ -627,10 +630,6 @@ class TestPrintCheckTextBranches:
         _print_check_text(result)
 
     def test_no_ir_with_no_ir_file_uses_protean_dir(self, capsys):
-        from io import StringIO
-
-        from rich.console import Console
-
         from protean.cli.ir import _print_check_text
         from protean.ir.staleness import StalenessResult, StalenessStatus
 
@@ -640,8 +639,7 @@ class TestPrintCheckTextBranches:
             stored_checksum=None,
             ir_file=None,
         )
-        # Capture rich output via a StringIO console
-        buf = StringIO()
-        console = Console(file=buf, highlight=False)
-        # Call directly — just verify it doesn't raise and uses the passed dir
         _print_check_text(result, protean_dir="/my/.protean")
+
+        captured = capsys.readouterr()
+        assert "/my/.protean" in captured.out

@@ -196,6 +196,35 @@ def field_summary(field: dict[str, Any]) -> str:
     return label
 
 
+def mermaid_field_summary(field: dict[str, Any]) -> str:
+    """Build a Mermaid-safe field summary without parentheses.
+
+    In Mermaid ``classDiagram``, parentheses trigger method parsing.
+    This function uses the generic notation ``~tag~`` (rendered as
+    ``<tag>`` in the diagram) for constraint annotations instead.
+
+    Examples::
+
+        >>> mermaid_field_summary({"kind": "standard", "type": "String", "required": True})
+        'String~required~'
+        >>> mermaid_field_summary({"kind": "auto", "identifier": True})
+        'Auto~identifier~'
+        >>> mermaid_field_summary({"kind": "standard", "type": "Integer"})
+        'Integer'
+    """
+    label = field_type_label(field)
+    tags: list[str] = []
+    if field.get("identifier"):
+        tags.append("identifier")
+    if field.get("required") and not field.get("identifier"):
+        tags.append("required")
+    if field.get("unique") and not field.get("identifier"):
+        tags.append("unique")
+    if tags:
+        return f"{label}~{', '.join(tags)}~"
+    return label
+
+
 def sanitize_mermaid_id(text: str) -> str:
     """Turn an arbitrary string into a valid Mermaid node identifier.
 

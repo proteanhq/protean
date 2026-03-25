@@ -642,9 +642,7 @@ class Engine:
                             "protean.subscription_type", "process_manager"
                         )
                     elif issubclass(handler_cls, BaseEventHandler):
-                        span.set_attribute(
-                            "protean.subscription_type", "event_handler"
-                        )
+                        span.set_attribute("protean.subscription_type", "event_handler")
                     elif issubclass(handler_cls, BaseCommandHandler):
                         span.set_attribute(
                             "protean.subscription_type", "command_handler"
@@ -971,16 +969,12 @@ class Engine:
                     # 50 cycles × 100ms = 5s max, but exits early when done.
                     max_cycles = 50
                     for cycle in range(max_cycles):
-                        logger.debug(
-                            f"Test mode cycle {cycle + 1}/{max_cycles}"
-                        )
+                        logger.debug(f"Test mode cycle {cycle + 1}/{max_cycles}")
                         # Give tasks time to process messages
                         await asyncio.sleep(0.1)
 
                         # Check if all tasks have finished
-                        still_running = [
-                            t for t in all_tasks if not t.done()
-                        ]
+                        still_running = [t for t in all_tasks if not t.done()]
                         if not still_running:
                             logger.debug("All tasks completed")
                             break

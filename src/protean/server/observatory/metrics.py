@@ -68,7 +68,10 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     # The init flag check prevents MagicMock/test doubles from matching.
     target_domain: Domain | None = None
     for d in domains:
-        if getattr(d, _TELEMETRY_INIT_KEY, False) is True and get_meter_provider(d) is not None:
+        if (
+            getattr(d, _TELEMETRY_INIT_KEY, False) is True
+            and get_meter_provider(d) is not None
+        ):
             target_domain = d
             break
 
@@ -97,7 +100,9 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                             )
                         )
             except Exception as exc:
-                logger.debug("Gauge callback: outbox query failed for %s: %s", domain.name, exc)
+                logger.debug(
+                    "Gauge callback: outbox query failed for %s: %s", domain.name, exc
+                )
         return observations
 
     meter.create_observable_gauge(
@@ -114,7 +119,9 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                 if broker:
                     health = broker.health_stats()
                     details = health.get("details", {})
-                    is_up = 1 if health.get("connected") and details.get("healthy") else 0
+                    is_up = (
+                        1 if health.get("connected") and details.get("healthy") else 0
+                    )
                     return [create_observation(is_up)]
         except Exception as exc:
             logger.debug("Gauge callback: broker_up query failed: %s", exc)
@@ -197,7 +204,11 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                     if s.lag is not None:
                         observations.append(create_observation(s.lag, attrs))
             except Exception as exc:
-                logger.debug("Gauge callback: subscription_lag failed for %s: %s", domain.name, exc)
+                logger.debug(
+                    "Gauge callback: subscription_lag failed for %s: %s",
+                    domain.name,
+                    exc,
+                )
         return observations
 
     def _subscription_pending_callback(_options):
@@ -216,7 +227,11 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                     }
                     observations.append(create_observation(s.pending, attrs))
             except Exception as exc:
-                logger.debug("Gauge callback: subscription_pending failed for %s: %s", domain.name, exc)
+                logger.debug(
+                    "Gauge callback: subscription_pending failed for %s: %s",
+                    domain.name,
+                    exc,
+                )
         return observations
 
     def _subscription_dlq_callback(_options):
@@ -235,7 +250,11 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                     }
                     observations.append(create_observation(s.dlq_depth, attrs))
             except Exception as exc:
-                logger.debug("Gauge callback: subscription_dlq failed for %s: %s", domain.name, exc)
+                logger.debug(
+                    "Gauge callback: subscription_dlq failed for %s: %s",
+                    domain.name,
+                    exc,
+                )
         return observations
 
     def _subscription_status_callback(_options):
@@ -256,7 +275,11 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                         create_observation(1 if s.status == "ok" else 0, attrs)
                     )
             except Exception as exc:
-                logger.debug("Gauge callback: subscription_status failed for %s: %s", domain.name, exc)
+                logger.debug(
+                    "Gauge callback: subscription_status failed for %s: %s",
+                    domain.name,
+                    exc,
+                )
         return observations
 
     meter.create_observable_gauge(
@@ -322,9 +345,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
                 is_connected = health.get("connected", False)
 
                 lines.append("")
-                lines.append(
-                    "# HELP protean_broker_up Broker health (1=up, 0=down)"
-                )
+                lines.append("# HELP protean_broker_up Broker health (1=up, 0=down)")
                 lines.append("# TYPE protean_broker_up gauge")
                 lines.append(
                     f"protean_broker_up {1 if is_connected and details.get('healthy') else 0}"
@@ -378,13 +399,9 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 
                 streams_info = details.get("streams", {})
                 lines.append("")
-                lines.append(
-                    "# HELP protean_streams_count Number of active streams"
-                )
+                lines.append("# HELP protean_streams_count Number of active streams")
                 lines.append("# TYPE protean_streams_count gauge")
-                lines.append(
-                    f"protean_streams_count {streams_info.get('count', 0)}"
-                )
+                lines.append(f"protean_streams_count {streams_info.get('count', 0)}")
 
                 cg_info = details.get("consumer_groups", {})
                 lines.append("")
@@ -392,9 +409,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
                     "# HELP protean_consumer_groups_count Number of consumer groups"
                 )
                 lines.append("# TYPE protean_consumer_groups_count gauge")
-                lines.append(
-                    f"protean_consumer_groups_count {cg_info.get('count', 0)}"
-                )
+                lines.append(f"protean_consumer_groups_count {cg_info.get('count', 0)}")
 
     except Exception as e:
         logger.debug(f"Metrics: broker query failed: {e}")
@@ -412,9 +427,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
         lines.append("# HELP protean_subscription_pending Unacknowledged messages")
         lines.append("# TYPE protean_subscription_pending gauge")
         lines.append("")
-        lines.append(
-            "# HELP protean_subscription_dlq_depth Dead letter queue depth"
-        )
+        lines.append("# HELP protean_subscription_dlq_depth Dead letter queue depth")
         lines.append("# TYPE protean_subscription_dlq_depth gauge")
         lines.append("")
         lines.append(
@@ -433,9 +446,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
                         f'type="{s.subscription_type}"'
                     )
                     if s.lag is not None:
-                        lines.append(
-                            f"protean_subscription_lag{{{labels}}} {s.lag}"
-                        )
+                        lines.append(f"protean_subscription_lag{{{labels}}} {s.lag}")
                     lines.append(
                         f"protean_subscription_pending{{{labels}}} {s.pending}"
                     )
@@ -491,9 +502,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
                                 cname = c.get("name") or c.get(b"name")
                                 if isinstance(cname, bytes):
                                     cname = cname.decode("utf-8")
-                                cpending = (
-                                    c.get("pending") or c.get(b"pending") or 0
-                                )
+                                cpending = c.get("pending") or c.get(b"pending") or 0
                                 cidle = c.get("idle") or c.get(b"idle") or 0
                                 labels = (
                                     f'consumer="{cname}",'
