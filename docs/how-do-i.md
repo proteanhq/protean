@@ -159,11 +159,11 @@ need by what you're trying to accomplish.
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
 | Detect breaking changes in my domain model      | [Compatibility Checking](./guides/compatibility-checking.md) |
-| Configure compatibility check strictness        | [Compatibility Checking](./guides/compatibility-checking.md#configuration) |
-| Set up pre-commit hooks for IR checks           | [Compatibility Checking](./guides/compatibility-checking.md#pre-commit-hooks) |
+| Configure compatibility check strictness        | [Compatibility Checking](./guides/compatibility-checking.md#step-2-configure-strictness) |
+| Set up pre-commit hooks for IR checks           | [Compatibility Checking](./guides/compatibility-checking.md#step-3-add-pre-commit-hooks) |
 | Auto-fix stale IR during commit                 | [Compatibility Checking](./guides/compatibility-checking.md#protean-check-staleness) |
 | Check multiple domains with one hook entry      | [Compatibility Checking](./guides/compatibility-checking.md#multi-domain-support) |
-| Add IR compatibility checks to CI               | [Compatibility Checking](./guides/compatibility-checking.md#ci-integration) |
+| Add IR compatibility checks to CI               | [Compatibility Checking](./guides/compatibility-checking.md#step-4-add-ci-checks) |
 
 ## Use the CLI
 

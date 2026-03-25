@@ -381,6 +381,7 @@ nav:
       - concepts/building-blocks/aggregates.md
       - concepts/building-blocks/entities.md
       - concepts/building-blocks/value-objects.md
+      - concepts/building-blocks/choosing-element-types.md
       - concepts/building-blocks/domain-services.md
       - concepts/building-blocks/events.md
       - concepts/building-blocks/commands.md
