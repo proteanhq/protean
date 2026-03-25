@@ -43,7 +43,7 @@ def _live_ir_for_test7() -> dict:
     from protean.utils.domain_discovery import derive_domain
 
     domain = derive_domain("publishing7.py")
-    domain.init(traverse=False)
+    domain.init()
     return IRBuilder(domain).build()
 
 
@@ -196,6 +196,51 @@ class TestCheckStalenessFresh:
 
         assert result.ir_file is not None
         assert result.ir_file.name == "ir.json"
+
+
+@pytest.mark.no_test_domain
+class TestShowAndCheckProduceSameChecksum:
+    """``protean ir show`` and ``check_staleness()`` must use the same
+    domain initialization so their checksums agree.
+
+    Regression test for https://github.com/proteanhq/protean/issues/835
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_ir_show_output_is_fresh_according_to_check(self):
+        """Write IR via the same path as ``protean ir show``, then verify
+        ``check_staleness`` considers it fresh."""
+        from protean.cli._ir_utils import load_domain_ir
+
+        show_ir = load_domain_ir("publishing7.py")
+        _write_ir(self._protean_dir, show_ir)
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.status == StalenessStatus.FRESH
+        assert result.domain_checksum == show_ir["checksum"]
+
+    def test_checksums_match_between_show_and_staleness(self):
+        """Directly compare checksums from ``load_domain_ir`` (show path)
+        and ``check_staleness`` (check path)."""
+        from protean.cli._ir_utils import load_domain_ir
+
+        show_ir = load_domain_ir("publishing7.py")
+        _write_ir(self._protean_dir, show_ir)
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.domain_checksum == show_ir["checksum"]
+        assert result.stored_checksum == show_ir["checksum"]
 
 
 @pytest.mark.no_test_domain
