@@ -8,6 +8,7 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.fields import Auto
+from protean.utils import ensure_utc_aware
 from protean.utils.eventing import Metadata
 from protean.utils.query import Q
 
@@ -151,7 +152,7 @@ class Outbox(BaseAggregate):
         # Check if enough time has passed for retry
         if self.next_retry_at:
             current_time = datetime.now(timezone.utc)
-            if current_time < self.next_retry_at:
+            if current_time < ensure_utc_aware(self.next_retry_at):
                 return False, ProcessingResult.RETRY_NOT_DUE
 
         # Acquire lock and mark as processing
@@ -264,7 +265,7 @@ class Outbox(BaseAggregate):
         # Check if enough time has passed for retry
         if self.next_retry_at:
             current_time = datetime.now(timezone.utc)
-            if current_time < self.next_retry_at:
+            if current_time < ensure_utc_aware(self.next_retry_at):
                 return False
 
         return True
@@ -274,7 +275,7 @@ class Outbox(BaseAggregate):
         """Check if message is currently locked for processing."""
         return bool(
             self.locked_until
-            and datetime.now(timezone.utc) < self.locked_until
+            and datetime.now(timezone.utc) < ensure_utc_aware(self.locked_until)
             and self.status == OutboxStatus.PROCESSING.value
         )
 

@@ -50,6 +50,18 @@ class Cache(Enum):
     redis = "redis"
 
 
+def ensure_utc_aware(dt: datetime) -> datetime:
+    """Ensure a datetime is timezone-aware, assuming naive values are UTC.
+
+    Database adapters may return naive datetimes even when values were stored
+    as UTC-aware. This helper attaches UTC tzinfo to naive datetimes while
+    returning already-aware values unchanged.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 class TypeMatcher:
     """Allow assertion on object type.
 

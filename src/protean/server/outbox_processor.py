@@ -352,10 +352,10 @@ class OutboxProcessor(BaseSubscription):
                         if hasattr(message, "created_at") and message.created_at:
                             import datetime
 
+                            from protean.utils import ensure_utc_aware
+
                             now = datetime.datetime.now(datetime.timezone.utc)
-                            created = message.created_at
-                            if created.tzinfo is None:
-                                created = created.replace(tzinfo=datetime.timezone.utc)
+                            created = ensure_utc_aware(message.created_at)
                             latency_s = (now - created).total_seconds()
                             if latency_s >= 0:
                                 metrics.outbox_latency.record(latency_s)
