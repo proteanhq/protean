@@ -2,85 +2,48 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Domain-driven Design (DDD) is all about identifying and naming domain concepts
-and translating them as closely as possible - terminology, structure, and
-behavior - in code. Protean supports the tactical patterns outlined by DDD
-to mirror the domain model in code.
+This section covers how to model your business concepts as domain elements
+in Protean -- aggregates, entities, value objects, events, and the
+relationships between them.
 
-In this section, we will talk about the foundational structures that make up
-the domain model. In the next, we will explore how to define behavior and
-set up invariants (business rules) that bring the Domain model to life.
+For the conceptual foundations behind these patterns, see
+[Building Blocks](../../concepts/building-blocks/index.md).
 
-## Aggregates
+## What's in This Section
 
-One of the most important building block of a domain model is the Aggregate.
-Aggregates are fundamental, coarse-grained building blocks of a domain model.
-They are conceptual wholes - they enclose all behaviors and data of a distinct
-domain concept. Aggregates are often composed of one or more Aggregate
-Elements, that work together to codify the concept.
+### [Aggregates](./aggregates.md)
 
-Aggregates act as **Root Entities** - they manage the lifecycle
-of all [Entities](../../glossary.md#entity) and
-[Value Objects](../../glossary.md#value-object) enclosed within them.
-Aggregates are just [entities](#entities), in that sense, but are responsible
-for all other enclosed entities. Elements enclosed within an Aggregate are
-only accessible through the Aggregate itself - it acts as a consistency
-boundary and protects data sanctity within the cluster.
+Define your root entities -- the coarse-grained building blocks that
+encapsulate business logic, enforce invariants, and define transaction
+boundaries. Start here when modeling a new domain concept.
 
-Read more about [Aggregates](../../concepts/building-blocks/aggregates.md) in the Explanation section.
+### [Entities](./entities.md)
 
-## Entities
+Add child objects with unique identity inside an aggregate. Entities are
+always accessed through their parent aggregate and share its lifecycle.
 
-Entities are domain objects with unique identities that remain the same throughout their lifecycle, even if their attributes change. Unlike Value Objects, Entities are distinguished by their identity rather than their attributes.
+### [Value Objects](./value-objects.md)
 
-Key characteristics of Entities include:
+Model immutable descriptive concepts like Money, Email, or Address. Value
+objects are defined by their attributes, not identity, and are embedded
+within aggregates or entities.
 
-- **Identity**: Each Entity has a unique identifier that remains constant throughout its lifecycle
-- **Mutability**: Entities can change their state over time while maintaining their identity
-- **Part of an Aggregate**: Entities must be associated with an Aggregate and are accessed through it
-- **Lifecycle Management**: Their lifecycle is managed by the Aggregate they belong to
+### [Relationships](./relationships.md)
 
-See [Entities](./entities.md) for more information.
+Connect domain elements with `HasOne`, `HasMany`, and `Reference` fields.
+Express one-to-one, one-to-many, and cross-aggregate references.
 
-## Value Objects
+### [Events](./events.md)
 
-Value Objects represent descriptive aspects of the domain with no conceptual identity. They are defined entirely by their attributes and are immutable - once created, they cannot be changed.
+Define domain events -- immutable records of state changes that enable
+decoupled communication between different parts of your system. Events
+can be processed synchronously or asynchronously.
 
-Value Objects are characterized by:
+## Related
 
-- **Identity through Attributes**: Two Value Objects with the same attributes are considered equal
-- **Immutability**: They cannot be modified after creation; any change creates a new instance
-- **Purpose**: They encapsulate related attributes and associated validation rules
-- **Composition**: Value Objects can contain other Value Objects to represent complex attributes
-
-Learn more in the [Value Objects](./value-objects.md) guide and [Value Objects](../../concepts/building-blocks/value-objects.md).
-
-## Events <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
-
-Events are immutable facts that indicate a state change in the domain. They capture what has happened in the system and allow different parts of the application to react accordingly.
-
-Key characteristics of Events include:
-
-- **Immutable Records**: Events represent facts that have occurred and cannot be changed
-- **Association with Aggregates**: Events are always associated with the Aggregate that emits them
-- **Past-tense Naming**: Events are named using past-tense verbs (e.g., `OrderPlaced`)
-- **State Preservation**: Events help preserve domain state and history
-- **Communication Medium**: They enable decoupled communication between different parts of the system
-- **Structure**: Events contain metadata, timestamps, version information, and relevant data about the change
-
-Events can be processed either synchronously or asynchronously, depending on your application's needs. See the [Events](./events.md) guide and [Events](../../concepts/building-blocks/events.md) for more details.
-
-## Identity
-
-Identity is a fundamental property of aggregates and entities. Protean provides configurable identity generation strategies, types (UUID, integer, string), and the ability to supply custom identity functions.
-
-[Learn more about identity →](../../reference/domain-elements/identity.md)
-
-## Fields
-
-Domain elements are composed of fields that define their attributes. Protean
-provides a rich set of field types — strings, numbers, dates, containers, and
-association fields for relationships.
-
-For the complete field type reference and options, see the
-[Fields Reference](../../reference/fields/index.md).
+- [Identity](../../reference/domain-elements/identity.md) -- Configure
+  identity strategies, types, and custom generators.
+- [Fields Reference](../../reference/fields/index.md) -- All field types,
+  arguments, and definition styles.
+- [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md)
+  -- Guidance on when to use an aggregate vs. entity vs. value object.

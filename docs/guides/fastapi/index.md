@@ -311,6 +311,33 @@ need database setup, graceful shutdown, or multiple domains.
 
 ---
 
+## Other web frameworks
+
+Protean's FastAPI integration provides middleware and exception handlers
+as conveniences, but the core mechanism -- `domain.domain_context()` -- works
+with any Python web framework. For Flask, Django, or other WSGI/ASGI
+frameworks, manually push the domain context in your request middleware:
+
+```python
+# Flask example
+from my_app.domain import domain
+
+@app.before_request
+def push_domain_context():
+    g.domain_ctx = domain.domain_context()
+    g.domain_ctx.__enter__()
+
+@app.teardown_request
+def pop_domain_context(exc):
+    if hasattr(g, "domain_ctx"):
+        g.domain_ctx.__exit__(None, None, None)
+```
+
+See [Activate Domain](../compose-a-domain/activate-domain.md) for details
+on domain context management.
+
+---
+
 ## Next steps
 
 - [Endpoint Tests](./testing-endpoints.md) -- Test your FastAPI endpoints

@@ -2,9 +2,15 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Domain-Driven Design emphasizes the importance of building a rich domain model that accurately captures business rules and behaviors. Protean provides a comprehensive set of mechanisms to define and enforce these rules in your domain model.
+Protean provides several mechanisms to define validation rules, enforce
+business invariants, mutate aggregate state safely, and communicate state
+changes through domain events. This section covers each of these
+capabilities.
 
-## Core Concepts in Domain Behavior
+For the conceptual foundation, see
+[Building Blocks](../../concepts/building-blocks/index.md).
+
+## What's in This Section
 
 ### Validations
 
@@ -79,12 +85,16 @@ Domain services encapsulate business logic that doesn't naturally fit within any
 
 [Learn more about domain services →](domain-services.md)
 
-## Best Practices
+### Error Handling
 
-When implementing domain behavior in Protean:
+Raise, propagate, and handle domain exceptions -- from aggregate
+invariants through command handlers to HTTP responses.
 
-1. **Keep aggregates focused** - Aggregates should encapsulate only their own state and behavior
-2. **Make business rules explicit** - Use invariants to clearly express domain constraints
-3. **Use domain events for cross-aggregate communication** - Avoid direct dependencies between aggregates
-4. **Consider domain services for complex operations** - When logic spans multiple aggregates
-5. **Validate early and often** - Apply appropriate validation at all levels
+[Learn more about error handling →](error-handling.md)
+
+!!! tip "See also"
+    For design guidance and trade-offs, see the
+    [Patterns & Recipes](../../patterns/index.md) section -- particularly
+    [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md),
+    [Validation Layering](../../patterns/validation-layering.md), and
+    [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md).

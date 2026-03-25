@@ -35,28 +35,31 @@ docs/
 ├── glossary.md                 # Term definitions
 │
 ├── guides/                     # How-to guides (goal-oriented, action-focused)
-│   ├── getting-started/        # Installation, quickstart, 10-part tutorial
-│   ├── pathways/               # DDD, CQRS, Event Sourcing pathways
+│   ├── getting-started/        # Installation, quickstart, tutorials (CQRS + ES)
+│   ├── pathways/               # Architecture pathways + migration guide
 │   ├── compose-a-domain/       # Domain object, registration, initialization
 │   ├── domain-definition/      # Aggregates, entities, VOs, events
 │   ├── domain-behavior/        # Validations, invariants, mutation, events
 │   ├── change-state/           # App services, commands, handlers, persistence
 │   ├── consume-state/          # Event handlers, projections, subscribers
 │   ├── fastapi/                # FastAPI integration
-│   ├── server/                 # Running the server (running.md only)
-│   └── testing/                # Domain, application, integration tests
+│   ├── server/                 # Server startup, deployment, error handling
+│   ├── observability/          # Correlation IDs, tracing
+│   ├── testing/                # Domain, application, integration tests
+│   ├── compatibility-checking.md  # IR diffing, pre-commit hooks, CI
+│   └── multi-domain-applications.md  # Bounded contexts
 │
 ├── reference/                  # Factual lookup documentation
 │   ├── domain-elements/        # Decorators, object model, identity config
 │   ├── fields/                 # All field types, arguments, definition styles
-│   ├── configuration.md        # domain.toml parameters and options
+│   ├── configuration/          # domain.toml parameters and options
 │   ├── cli/                    # CLI commands
 │   ├── server/                 # Subscription types, config, observability
 │   ├── adapters/               # Database, broker, cache, event store config
 │   ├── tooling/                # Mypy plugin
 │   └── migration/              # Version migration guides
 │
-├── concepts/                # Understanding-oriented content
+├── concepts/                   # Understanding-oriented content
 │   ├── philosophy.md           # Design principles
 │   ├── foundations/            # Ubiquitous language, bounded contexts, etc.
 │   ├── architecture/           # DDD, CQRS, Event Sourcing patterns
@@ -134,6 +137,115 @@ For example, "Aggregates" appears in:
 - `patterns/index.md` organizes patterns into five categories:
   Aggregate Design, Event-Driven Patterns, Architecture & Quality,
   Identity & Communication, Testing & Infrastructure.
+
+## Diataxis Boundary Rules
+
+Each content type has strict boundaries. Before writing or reviewing a page,
+verify the content belongs in its quadrant. If content crosses a boundary,
+split it: keep the actionable part in the guide and move the rest to the
+correct location.
+
+### What does NOT belong in Guides
+
+| Violation | Belongs in | Example |
+|-----------|-----------|---------|
+| **Parameter/option tables** | `reference/` | Constructor args, CLI flags, config keys |
+| **Concept definitions** ("X is...") | `concepts/` | "An aggregate is a cluster of..." |
+| **Best practices / design wisdom** | `patterns/` | "Keep aggregates small", "Validate early" |
+| **Glossary-style bullet lists** of characteristics | `concepts/` | "Key characteristics: Identity, Mutability..." |
+| **Internal API details** (private attrs, internals) | `reference/` or `concepts/internals/` | `engine._subscriptions` |
+
+### What does NOT belong in Reference
+
+| Violation | Belongs in |
+|-----------|-----------|
+| Step-by-step workflows | `guides/` |
+| Opinionated design advice | `patterns/` |
+| "Why" explanations longer than one sentence | `concepts/` |
+
+### What does NOT belong in Explanation
+
+| Violation | Belongs in |
+|-----------|-----------|
+| Code recipes / "How to X" instructions | `guides/` |
+| Complete parameter listings | `reference/` |
+
+## Guide Index Page Conventions
+
+Every `index.md` in a guides subsection must:
+
+1. **Open with what the user will accomplish** -- not with what a DDD concept
+   means. Compare:
+   - BAD: "Domain-Driven Design emphasizes the importance of building a rich
+     domain model that accurately captures business rules..."
+   - GOOD: "Protean provides several mechanisms to define validation rules,
+     enforce business invariants, and mutate aggregate state safely."
+2. **Link to `concepts/` for background** -- one sentence with a link, not
+   inline teaching.
+3. **List the section's pages as task-oriented entries** -- each entry
+   describes what the reader will learn to *do*, not what a concept *is*.
+4. **End with a "See also" admonition** if cross-cutting patterns or concept
+   pages are relevant. Do not create a "Supporting Topics" or "Best Practices"
+   structural section.
+
+## Structural Rules
+
+### Cross-quadrant linking
+
+Never include a `concepts/` or `reference/` page directly in the `guides/`
+nav tree in `mkdocs.yml`. Instead, link to it from within a guide page's
+text or a "See also" admonition. The nav tree for each section should only
+contain pages that live in that section's directory.
+
+### Section size minimum
+
+A nav section must have at least **2 pages**. If a section would contain
+only one page, either:
+- Fold it into a parent section as a standalone nav entry, or
+- Combine it with a related section.
+
+Single-page sections create navigational dead ends and make the sidebar feel
+fragmented.
+
+### Name consistency
+
+The **directory name**, **nav title** in `mkdocs.yml`, and the **H1 heading**
+in the section's `index.md` must use the same conceptual name. Mismatches
+create confusion:
+
+- BAD: directory `compose-a-domain/`, nav "Set Up the Domain", H1 "Set Up
+  the Domain"
+- GOOD: directory `domain-setup/`, nav "Set Up the Domain", H1 "Set Up the
+  Domain"
+
+When renaming, update all three locations and any cross-references in other
+pages.
+
+### No internal references in public docs
+
+Never reference `CLAUDE.md`, `todo/` files, internal dev notes, or
+contributor-only resources from user-facing documentation. If a guide
+needs to reference a policy (e.g., deprecation patterns), link to the
+relevant ADR or create a user-facing docs page for it.
+
+## Content Coverage Checklist
+
+When adding a **new domain element or feature** to Protean, verify that
+corresponding documentation exists in all relevant quadrants:
+
+- [ ] **Guide** (`guides/`) -- How to use it, with code examples
+- [ ] **Reference** (`reference/`) -- Decorator options, config keys,
+  CLI flags
+- [ ] **Explanation** (`concepts/`) -- Why it exists, design rationale
+- [ ] **Pattern** (`patterns/`) -- Design guidance, if applicable
+
+When adding a **new guide page**, also verify:
+
+- [ ] The element matrix in `guides/index.md` is up to date (if the
+  page introduces a new element type)
+- [ ] The `how-do-i.md` table has entries for tasks the page covers
+- [ ] No dangling references exist (e.g., mentioning "ES Repositories"
+  in a table but having no guide for them)
 
 ## MkDocs Features Used
 

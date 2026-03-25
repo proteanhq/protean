@@ -40,7 +40,7 @@ The following strategies are supported for identity generation:
 - **uuid** - Identity is a uuid4 identifier. This is the default and preferred
 strategy.
 - **function** - A function is invoked to generate identity values, supplied
-as [`identity_function`](../../guides/compose-a-domain/index.md#identity_function) when constructing
+as [`identity_function`](./domain-constructor.md#identity_function) when constructing
 the domain object.
 
 ### Type

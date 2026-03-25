@@ -38,3 +38,27 @@ Each pathway page gives you:
 The pathway pages are not standalone tutorials — they orient you and then
 point you to the detailed guides for each concept. Think of them as a
 curated reading list tailored to your chosen architecture.
+
+## What Elements Do I Need?
+
+This matrix shows which Protean domain elements are used in each
+architectural approach:
+
+| Element              | DDD | CQRS | Event Sourcing |
+|----------------------|:---:|:----:|:--------------:|
+| Aggregates           |  ✓  |  ✓   |  ✓             |
+| Entities             |  ✓  |  ✓   |  ✓             |
+| Value Objects        |  ✓  |  ✓   |  ✓             |
+| Domain Services      |  ✓  |  ✓   |  ✓             |
+| Repositories         |  ✓  |  ✓   |  —             |
+| Application Services |  ✓  |  —   |  —             |
+| Commands             |  —  |  ✓   |  ✓             |
+| Command Handlers     |  —  |  ✓   |  ✓             |
+| Events               |  ✓  |  ✓   |  ✓             |
+| Event Handlers       |  ✓  |  ✓   |  ✓             |
+| Subscribers          |  ✓  |  ✓   |  ✓             |
+| Projections          |  —  |  ✓   |  ✓             |
+| Projectors           |  —  |  ✓   |  ✓             |
+| `@apply` decorator   |  —  |  —   |  ✓             |
+
+✓ = core to this path, — = not used

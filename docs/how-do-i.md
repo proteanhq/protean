@@ -43,6 +43,7 @@ need by what you're trying to accomplish.
 | Implement multi-tenancy in an event-driven system | [Multi-Tenancy](./patterns/multi-tenancy.md) |
 | Isolate data by tenant with row-level filtering | [Multi-Tenancy](./patterns/multi-tenancy.md) |
 | Coordinate logic across multiple aggregates     | [Domain Services](./guides/domain-behavior/domain-services.md) |
+| Handle domain exceptions in endpoints and handlers | [Error Handling](./guides/domain-behavior/error-handling.md) |
 | Model an aggregate's lifecycle as a state machine | [Aggregate State Machines](./patterns/aggregate-state-machines.md) |
 
 ## Handle Requests and Change State
@@ -63,6 +64,9 @@ need by what you're trying to accomplish.
 | Use Q objects for AND/OR/NOT queries             | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Perform bulk updates or deletes                  | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Manage transactions                             | [Unit of Work](./guides/change-state/unit-of-work.md) | All |
+| Override the database schema for an aggregate   | [Custom Database Models](./guides/change-state/database-models.md) | All |
+| Configure an event store for event sourcing     | [Event Store Setup](./guides/change-state/event-store-setup.md) | ES |
+| Optimize aggregate loading with snapshots       | [Snapshots](./guides/change-state/snapshots.md) | ES |
 | Handle version conflicts (optimistic concurrency) | [Optimistic Concurrency as a Design Tool](./patterns/optimistic-concurrency-as-design-tool.md) | All |
 | Prevent race conditions in concurrent event handlers | [Designing for Concurrent Event Processing](./patterns/designing-for-concurrent-event-processing.md) | All |
 | Configure or disable version conflict auto-retry | [Error Handling](./guides/server/error-handling.md#version-conflict-auto-retry) | All |
@@ -97,6 +101,7 @@ need by what you're trying to accomplish.
 |-------------------------------------------------|-------|
 | Register domain elements                        | [Register Elements](./guides/compose-a-domain/register-elements.md) |
 | Initialize and activate a domain                | [Initialize Domain](./guides/compose-a-domain/initialize-domain.md) |
+| Configure for production with environment overlays | [Configure for Production](./guides/compose-a-domain/production-configuration.md) |
 | Configure databases, brokers, and caches        | [Configuration](./reference/configuration/index.md) |
 | Understand identity and ID generation           | [Identity](./reference/domain-elements/identity.md) |
 | Understand stream categories                    | [Stream Categories](./concepts/async-processing/stream-categories.md) |

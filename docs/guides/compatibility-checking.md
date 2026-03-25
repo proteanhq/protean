@@ -287,7 +287,9 @@ breaking release.
 When deprecating a domain element or field:
 
 1. **Mark as deprecated** with a `DeprecationWarning` that includes the
-   removal version (see CLAUDE.md for the pattern).
+   removal version (see
+   [ADR-0004](../adr/0004-release-workflow-and-breaking-change-policy.md)
+   for the deprecation pattern).
 2. **Keep the deprecated API** for at least `min_versions_before_removal`
    minor versions (default: 3).
 3. **Add to `exclude`** in `config.toml` if the element should not trigger
