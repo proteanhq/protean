@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Pre-commit hook documentation now recommends `repo: local` with `language: system` instead of `repo: https://github.com/proteanhq/protean`, since hooks call `derive_domain()` which imports user code that is unavailable in pre-commit's isolated virtualenv
+
 ### Added
 
 - Auto-fix mode (`--fix`) for `protean-check-staleness` pre-commit hook: automatically regenerates stale IR and stages the updated file with `git add`, allowing the commit to proceed without manual intervention

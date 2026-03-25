@@ -80,14 +80,28 @@ Protean ships two [pre-commit](https://pre-commit.com/) hooks. Add them to
 your project's `.pre-commit-config.yaml`:
 
 ```yaml
-- repo: https://github.com/proteanhq/protean
-  rev: v0.15.0  # use the version you depend on
+- repo: local
   hooks:
     - id: protean-check-staleness
-      args: [--domain=myapp.domain]
+      name: Check IR staleness
+      entry: protean-check-staleness --domain=myapp.domain
+      language: system
+      pass_filenames: false
+      always_run: true
     - id: protean-check-compat
-      args: [--domain=myapp.domain]
+      name: Check IR compatibility
+      entry: protean-check-compat --domain=myapp.domain
+      language: system
+      pass_filenames: false
+      always_run: true
 ```
+
+!!! note "Why `repo: local`?"
+    Protean hooks call `derive_domain()` which imports your application's
+    domain modules. A remote `repo:` installs hooks in an isolated virtualenv
+    that does not have access to your source code, so the import will fail.
+    Using `repo: local` with `language: system` runs the hook inside your
+    project's own environment where your code is importable.
 
 ### `protean-check-staleness`
 
@@ -99,8 +113,14 @@ file with `git add`, and exits 0 -- allowing the commit to proceed.
 
 ```yaml
 # Auto-fix mode -- never blocks on stale IR
-- id: protean-check-staleness
-  args: [--domain=myapp.domain, --fix]
+- repo: local
+  hooks:
+    - id: protean-check-staleness
+      name: Check IR staleness
+      entry: protean-check-staleness --domain=myapp.domain --fix
+      language: system
+      pass_filenames: false
+      always_run: true
 ```
 
 ### `protean-check-compat`
@@ -115,12 +135,20 @@ argument. Both hooks iterate over all configured domains automatically:
 
 ```yaml
 # No --domain needed -- reads [domains] from .protean/config.toml
-- repo: https://github.com/proteanhq/protean
-  rev: v0.15.0
+- repo: local
   hooks:
     - id: protean-check-staleness
-      args: [--fix]
+      name: Check IR staleness
+      entry: protean-check-staleness --fix
+      language: system
+      pass_filenames: false
+      always_run: true
     - id: protean-check-compat
+      name: Check IR compatibility
+      entry: protean-check-compat
+      language: system
+      pass_filenames: false
+      always_run: true
 ```
 
 Each domain's IR is checked against its own subdirectory
