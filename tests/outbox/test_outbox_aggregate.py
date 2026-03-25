@@ -669,6 +669,81 @@ class TestPrivateHelperMethods:
         assert time_diff < 1  # Less than 1 second difference
 
 
+class TestNaiveDatetimeHandling:
+    """Test that naive (timezone-unaware) datetimes from database round-trips
+    are handled correctly without raising TypeError."""
+
+    def test_is_ready_with_naive_next_retry_at_in_past(self, sample_outbox):
+        """Test is_ready_for_processing with a naive past next_retry_at."""
+        sample_outbox.status = OutboxStatus.FAILED.value
+        # Simulate DB returning a naive datetime (no tzinfo)
+        sample_outbox.next_retry_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) - timedelta(minutes=1)
+
+        assert sample_outbox.is_ready_for_processing() is True
+
+    def test_is_ready_with_naive_next_retry_at_in_future(self, sample_outbox):
+        """Test is_ready_for_processing with a naive future next_retry_at."""
+        sample_outbox.status = OutboxStatus.FAILED.value
+        sample_outbox.next_retry_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) + timedelta(minutes=5)
+
+        assert sample_outbox.is_ready_for_processing() is False
+
+    def test_start_processing_with_naive_next_retry_at_in_past(self, sample_outbox):
+        """Test start_processing with a naive past next_retry_at."""
+        sample_outbox.status = OutboxStatus.FAILED.value
+        sample_outbox.next_retry_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) - timedelta(minutes=1)
+
+        success, result = sample_outbox.start_processing("worker-1")
+
+        assert success is True
+        assert result == ProcessingResult.SUCCESS
+
+    def test_start_processing_with_naive_next_retry_at_in_future(self, sample_outbox):
+        """Test start_processing with a naive future next_retry_at."""
+        sample_outbox.status = OutboxStatus.FAILED.value
+        sample_outbox.next_retry_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) + timedelta(minutes=5)
+
+        success, result = sample_outbox.start_processing("worker-1")
+
+        assert success is False
+        assert result == ProcessingResult.RETRY_NOT_DUE
+
+    def test_is_locked_with_naive_locked_until(self, sample_outbox):
+        """Test _is_locked with a naive future locked_until."""
+        sample_outbox.status = OutboxStatus.PROCESSING.value
+        sample_outbox.locked_until = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) + timedelta(minutes=5)
+
+        assert sample_outbox._is_locked() is True
+
+    def test_is_locked_with_naive_expired_locked_until(self, sample_outbox):
+        """Test _is_locked with a naive expired locked_until."""
+        sample_outbox.status = OutboxStatus.PROCESSING.value
+        sample_outbox.locked_until = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) - timedelta(minutes=1)
+
+        assert sample_outbox._is_locked() is False
+
+    def test_is_ready_not_ready_when_locked_with_naive_datetime(self, sample_outbox):
+        """Test is_ready_for_processing returns False when locked with naive datetime."""
+        sample_outbox.status = OutboxStatus.PROCESSING.value
+        sample_outbox.locked_until = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) + timedelta(minutes=5)
+
+        assert sample_outbox.is_ready_for_processing() is False
+
+
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
