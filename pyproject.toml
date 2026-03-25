@@ -129,6 +129,7 @@ dev = [
     "bump-my-version>=1.2.7",
 ]
 test = [
+    "chardet>=3.0.2,<6",
     "diff-cover>=9.2.4",
     "mock==5.2.0",
     "pytest-asyncio>=0.21.1",
@@ -172,7 +173,7 @@ filterwarnings = [
     "ignore::sqlalchemy.exc.SAWarning",
     "ignore:No configuration file found.*Using default configuration.*:UserWarning",
     "ignore:Working outside of domain context",
-    "ignore:.*was never awaited:RuntimeWarning"
+    "ignore:.*was never awaited:RuntimeWarning",
 ]
 python_files = [
     "test_*.py",

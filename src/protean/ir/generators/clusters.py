@@ -17,8 +17,8 @@ from __future__ import annotations
 from typing import Any
 
 from protean.ir.generators.base import (
-    field_summary,
     mermaid_escape,
+    mermaid_field_summary,
     sanitize_mermaid_id,
     short_name,
 )
@@ -32,16 +32,17 @@ def _render_class(
 ) -> list[str]:
     """Render a single element as a Mermaid class block with fields."""
     sid = sanitize_mermaid_id(name)
+    display = short_name(name)
     lines: list[str] = []
-    lines.append(f"    class {sid} {{")
+    lines.append(f'    class {sid}["{display}"] {{')
 
     if stereotype:
         lines.append(f"        <<{stereotype}>>")
 
     fields = element.get("fields", {})
     for fname, fspec in sorted(fields.items()):
-        summary = field_summary(fspec)
-        lines.append(f"        +{mermaid_escape(fname)} {mermaid_escape(summary)}")
+        summary = mermaid_field_summary(fspec)
+        lines.append(f"        +{mermaid_escape(fname)} {summary}")
 
     lines.append("    }")
     return lines

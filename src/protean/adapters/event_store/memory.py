@@ -126,8 +126,15 @@ class MemoryEventStore(BaseEventStore):
         super().__init__("Memory", domain, conn_info)
 
         self.domain = domain
-        self.domain.register(MemoryMessage, provider="memory")
-        self.domain.register(MemoryMessageRepository, part_of=MemoryMessage)
+        self.domain.register(MemoryMessage, internal=True, provider="memory")
+        self.domain.register(
+            MemoryMessageRepository, internal=True, part_of=MemoryMessage
+        )
+        # Explicitly register with providers so the internal repository is
+        # discoverable (registry.repositories filters out internal elements).
+        self.domain.providers._register_repository(
+            MemoryMessage, MemoryMessageRepository
+        )
 
     def _write(
         self,

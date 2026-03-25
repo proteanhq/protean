@@ -958,7 +958,7 @@ class TestDiffGitBaseline:
         protean_dir = self._test7_dir / ".protean"
         protean_dir.mkdir(exist_ok=True)
         ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(live_ir), encoding="utf-8")
+        ir_file.write_text(json.dumps(live_ir) + "\n", encoding="utf-8")
 
         # The --dir path for git show must be relative to repo root
         dir_rel = self._rel_path(".protean")
@@ -989,7 +989,7 @@ class TestDiffGitBaseline:
         protean_dir = self._test7_dir / ".protean"
         protean_dir.mkdir(exist_ok=True)
         ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(stale_ir), encoding="utf-8")
+        ir_file.write_text(json.dumps(stale_ir) + "\n", encoding="utf-8")
 
         dir_rel = self._rel_path(".protean")
         env = _git_env()
@@ -1032,7 +1032,7 @@ class TestDiffGitBaseline:
         custom_dir = self._test7_dir / "custom_ir"
         custom_dir.mkdir(exist_ok=True)
         ir_file = custom_dir / "ir.json"
-        ir_file.write_text(json.dumps(stale_ir), encoding="utf-8")
+        ir_file.write_text(json.dumps(stale_ir) + "\n", encoding="utf-8")
 
         dir_rel = self._rel_path("custom_ir")
         env = _git_env()

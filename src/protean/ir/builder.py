@@ -1121,8 +1121,11 @@ class IRBuilder:
         registry = self._domain._domain_registry
         clusters: dict[str, Any] = {}
 
-        # Build aggregate entries
+        # Build aggregate entries (skip internal framework aggregates like Outbox)
         for record in registry._elements.get("AGGREGATE", {}).values():
+            if record.internal:
+                continue
+
             agg_cls = record.cls
             agg_fqn = fqn(agg_cls)
 
@@ -1233,7 +1236,9 @@ class IRBuilder:
         elements: dict[str, list[str]] = {}
         for etype in element_types:
             records = registry._elements.get(etype, {})
-            elements[etype] = sorted(fqn(r.cls) for r in records.values())
+            elements[etype] = sorted(
+                fqn(r.cls) for r in records.values() if not r.internal
+            )
 
         return elements
 
@@ -1650,8 +1655,7 @@ class IRBuilder:
                     )
                 else:
                     f_msg = (
-                        f"Field `{name}.{field_name}` is deprecated since "
-                        f"v{f_since}"
+                        f"Field `{name}.{field_name}` is deprecated since v{f_since}"
                     )
                 self._diagnostics.append(
                     {
