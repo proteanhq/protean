@@ -156,6 +156,8 @@ need by what you're trying to accomplish.
 | Detect breaking changes in my domain model      | [Compatibility Checking](./guides/compatibility-checking.md) |
 | Configure compatibility check strictness        | [Compatibility Checking](./guides/compatibility-checking.md#configuration) |
 | Set up pre-commit hooks for IR checks           | [Compatibility Checking](./guides/compatibility-checking.md#pre-commit-hooks) |
+| Auto-fix stale IR during commit                 | [Compatibility Checking](./guides/compatibility-checking.md#protean-check-staleness) |
+| Check multiple domains with one hook entry      | [Compatibility Checking](./guides/compatibility-checking.md#multi-domain-support) |
 | Add IR compatibility checks to CI               | [Compatibility Checking](./guides/compatibility-checking.md#ci-integration) |
 
 ## Use the CLI
