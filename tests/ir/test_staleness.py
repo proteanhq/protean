@@ -630,10 +630,6 @@ class TestPrintCheckTextBranches:
         _print_check_text(result)
 
     def test_no_ir_with_no_ir_file_uses_protean_dir(self, capsys):
-        from io import StringIO
-
-        from rich.console import Console
-
         from protean.cli.ir import _print_check_text
         from protean.ir.staleness import StalenessResult, StalenessStatus
 
@@ -643,8 +639,7 @@ class TestPrintCheckTextBranches:
             stored_checksum=None,
             ir_file=None,
         )
-        # Capture rich output via a StringIO console
-        buf = StringIO()
-        Console(file=buf, highlight=False)
-        # Call directly — just verify it doesn't raise and uses the passed dir
         _print_check_text(result, protean_dir="/my/.protean")
+
+        captured = capsys.readouterr()
+        assert "/my/.protean" in captured.out
