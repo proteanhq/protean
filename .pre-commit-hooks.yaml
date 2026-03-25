@@ -1,3 +1,20 @@
+# NOTE: These hook definitions are for use with `repo: https://github.com/proteanhq/protean`.
+# However, downstream projects should use `repo: local` with `language: system` instead,
+# because these hooks call derive_domain() which imports user code — imports that will
+# fail in the isolated virtualenv that pre-commit creates for remote repos.
+#
+# Example .pre-commit-config.yaml for downstream projects:
+#
+#   repos:
+#     - repo: local
+#       hooks:
+#         - id: protean-check-staleness
+#           name: Check IR staleness
+#           entry: uv run protean-check-staleness --domain=myapp.domain --fix
+#           language: system
+#           pass_filenames: false
+#           always_run: true
+
 - id: protean-check-staleness
   name: Check IR staleness
   description: Block commit if .protean/ir.json is stale (checksum mismatch with live domain)

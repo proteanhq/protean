@@ -4,14 +4,28 @@ These thin wrappers around existing CLI commands are designed to be invoked
 by the `pre-commit` framework.  Each function is registered as a console
 script in ``pyproject.toml`` and referenced from ``.pre-commit-hooks.yaml``.
 
+Downstream projects should use ``repo: local`` with ``language: system``
+so that the hooks run inside the project's own environment where user code
+is importable.  A remote ``repo:`` installs hooks in an isolated virtualenv
+that cannot import user domain modules.
+
 Usage (downstream ``.pre-commit-config.yaml``)::
 
-    - repo: https://github.com/proteanhq/protean
-      hooks:
-        - id: protean-check-staleness
-          args: [--domain=myapp.domain]
-        - id: protean-check-compat
-          args: [--domain=myapp.domain]
+    repos:
+      - repo: local
+        hooks:
+          - id: protean-check-staleness
+            name: Check IR staleness
+            entry: uv run protean-check-staleness --domain=myapp.domain
+            language: system
+            pass_filenames: false
+            always_run: true
+          - id: protean-check-compat
+            name: Check IR compatibility
+            entry: uv run protean-check-compat --domain=myapp.domain
+            language: system
+            pass_filenames: false
+            always_run: true
 
 Multi-domain support (config-driven)::
 
@@ -21,10 +35,21 @@ Multi-domain support (config-driven)::
     catalogue = "catalogue.domain"
 
     # .pre-commit-config.yaml — no --domain needed
-    - repo: https://github.com/proteanhq/protean
-      hooks:
-        - id: protean-check-staleness
-          args: [--fix]
+    repos:
+      - repo: local
+        hooks:
+          - id: protean-check-staleness
+            name: Check IR staleness
+            entry: uv run protean-check-staleness --fix
+            language: system
+            pass_filenames: false
+            always_run: true
+          - id: protean-check-compat
+            name: Check IR compatibility
+            entry: uv run protean-check-compat
+            language: system
+            pass_filenames: false
+            always_run: true
 """
 
 from __future__ import annotations
