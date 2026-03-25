@@ -58,7 +58,7 @@ extra_javascript:
   - javascripts/mermaid-init.js
 
 exclude_docs: |
-  adr/
+  adr/TEMPLATE.md
 
 not_in_nav: |
   CLAUDE.md
@@ -353,6 +353,18 @@ nav:
     - Migration:
       - reference/migration/index.md
       - reference/migration/v0-15.md
+    - Architecture Decisions:
+      - adr/README.md
+      - adr/0000-guiding-principles.md
+      - adr/0001-monotonic-integer-event-versioning.md
+      - adr/0002-event-publication-visibility.md
+      - adr/0003-one-ir-document-per-bounded-context.md
+      - adr/0004-release-workflow-and-breaking-change-policy.md
+      - adr/0005-ir-first-schema-generation.md
+      - adr/0006-standard-json-schema-with-x-extensions.md
+      - adr/0007-domain-scoped-opentelemetry-providers.md
+      - adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md
+      - adr/0009-concurrent-event-processing-strategy.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

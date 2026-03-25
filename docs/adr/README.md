@@ -64,4 +64,4 @@ In other ADRs, reference by number: "as established in ADR-0003."
 
 ## Template
 
-See [TEMPLATE.md](TEMPLATE.md) for the ADR template.
+See `TEMPLATE.md` in the `adr/` directory for the ADR template.
