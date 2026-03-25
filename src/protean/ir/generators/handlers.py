@@ -354,7 +354,7 @@ def generate_projector_diagram(ir: dict[str, Any]) -> str:
 
 
 def generate_single_projector_diagram(ir: dict[str, Any], projection_fqn: str) -> str:
-    """Generate a Mermaid ``flowchart LR`` for one projector."""
+    """Generate a Mermaid ``flowchart LR`` for the projectors of one projection."""
     projections = ir.get("projections", {})
     proj_group = projections.get(projection_fqn)
     if not proj_group or not proj_group.get("projectors"):

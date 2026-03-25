@@ -226,7 +226,7 @@ def _render_projectors(
 
 
 def generate_cluster_event_flow(ir: dict[str, Any], cluster_fqn: str) -> str:
-    """Generate a Mermaid ``flowchart LR`` for a single cluster's event flow.
+    """Generate a Mermaid ``flowchart TD`` for a single cluster's event flow.
 
     Shows only the linear path: commands -> handlers -> aggregate -> events.
     Does not include downstream consumers (event handlers, PMs, projectors).
@@ -236,7 +236,7 @@ def generate_cluster_event_flow(ir: dict[str, Any], cluster_fqn: str) -> str:
         cluster_fqn: FQN of the cluster to render.
 
     Returns:
-        A string containing the Mermaid ``flowchart LR`` source.
+        A string containing the Mermaid ``flowchart TD`` source.
     """
     clusters = ir.get("clusters", {})
     cluster = clusters.get(cluster_fqn)

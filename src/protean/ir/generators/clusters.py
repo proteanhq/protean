@@ -69,7 +69,7 @@ def _render_invariant_notes(sid: str, invariants: dict[str, list[str]]) -> list[
     names = invariants.get("pre", []) + invariants.get("post", [])
     if not names:
         return []
-    return [f'    note for {sid} "{name}"' for name in names]
+    return [f'    note for {sid} "{name.replace(chr(34), "#quot;")}"' for name in names]
 
 
 def _render_cluster(
