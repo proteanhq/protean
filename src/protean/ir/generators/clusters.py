@@ -89,31 +89,28 @@ def _render_cluster(
     # Entities
     for entity_fqn, entity in sorted(cluster.get("entities", {}).items()):
         entity_sid = sanitize_mermaid_id(entity_fqn)
-        entity_short = short_name(entity_fqn)
         lines.extend(_render_class(entity_fqn, entity, stereotype="Entity"))
         lines.extend(_render_invariant_notes(entity_sid, entity.get("invariants", {})))
 
         # has_many from aggregate to entity
-        for _fname, fspec in sorted(agg.get("fields", {}).items()):
+        for fname, fspec in sorted(agg.get("fields", {}).items()):
             if fspec.get("kind") == "has_many" and fspec.get("target") == entity_fqn:
                 lines.append(
-                    f'    {agg_sid} "1" o-- "*" {entity_sid}'
-                    f" : {mermaid_escape(entity_short)}"
+                    f'    {agg_sid} "1" o-- "*" {entity_sid} : {mermaid_escape(fname)}'
                 )
 
     # Value Objects
     for vo_fqn, vo in sorted(cluster.get("value_objects", {}).items()):
         vo_sid = sanitize_mermaid_id(vo_fqn)
-        vo_short = short_name(vo_fqn)
         lines.extend(_render_class(vo_fqn, vo, stereotype="ValueObject"))
         lines.extend(_render_invariant_notes(vo_sid, vo.get("invariants", {})))
 
         # composition from aggregate to VO
-        for _fname, fspec in sorted(agg.get("fields", {}).items()):
+        for fname, fspec in sorted(agg.get("fields", {}).items()):
             if fspec.get("kind") in ("value_object", "value_object_list"):
                 if fspec.get("target") == vo_fqn:
                     lines.append(
-                        f"    {agg_sid} *-- {vo_sid} : {mermaid_escape(vo_short)}"
+                        f"    {agg_sid} *-- {vo_sid} : {mermaid_escape(fname)}"
                     )
 
     return lines
