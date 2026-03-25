@@ -964,20 +964,26 @@ class Engine:
                     # Run enough cycles to allow message propagation across
                     # all subscription types (events, commands, broker).
                     # Each cycle yields control so poll() tasks can process
-                    # their next batch.  Under heavy CI load, subscriptions
-                    # may need many cycles to all get scheduled and complete.
-                    # 50 cycles × 100ms = 5s max, but exits early when done.
+                    # their next batch.
+                    #
+                    # The start() tasks complete immediately (they just spawn
+                    # poll loops as child tasks), so we always run at least
+                    # `min_cycles` to give poll loops time to process messages
+                    # before checking the early-exit condition.
+                    # 50 cycles × 100ms = 5s max.
+                    min_cycles = 10
                     max_cycles = 50
                     for cycle in range(max_cycles):
                         logger.debug(f"Test mode cycle {cycle + 1}/{max_cycles}")
                         # Give tasks time to process messages
                         await asyncio.sleep(0.1)
 
-                        # Check if all tasks have finished
-                        still_running = [t for t in all_tasks if not t.done()]
-                        if not still_running:
-                            logger.debug("All tasks completed")
-                            break
+                        # Only check early exit after minimum cycles
+                        if cycle >= min_cycles:
+                            still_running = [t for t in all_tasks if not t.done()]
+                            if not still_running:
+                                logger.debug("All tasks completed")
+                                break
 
                     # Cancel remaining tasks
                     for task in all_tasks:

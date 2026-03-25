@@ -27,6 +27,24 @@ protean ir show --domain my_app.domain > .protean/ir.json
 Commit `.protean/ir.json` to version control. It serves as the baseline for
 detecting changes between releases.
 
+### Multi-domain projects
+
+Projects with multiple bounded contexts use a subdirectory per domain:
+
+```
+.protean/
+├── config.toml             # Shared configuration (includes [domains] table)
+├── identity/
+│   └── ir.json             # IR for the identity bounded context
+├── catalogue/
+│   └── ir.json             # IR for the catalogue bounded context
+└── ordering/
+    └── ir.json             # IR for the ordering bounded context
+```
+
+See the [`[domains]` configuration](#domains) and
+[multi-domain hooks](#multi-domain-support) sections below.
+
 ---
 
 ## Configuration
@@ -44,6 +62,11 @@ min_versions_before_removal = 3
 
 [staleness]
 enabled = true
+
+[domains]
+identity = "identity.domain"
+catalogue = "catalogue.domain"
+ordering = "ordering.domain"
 ```
 
 ### `[compatibility]`
@@ -64,6 +87,23 @@ enabled = true
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | boolean | `true` | Whether the staleness check (`protean ir check`) is active. Set to `false` to skip. |
+
+### `[domains]`
+
+Maps logical domain names to their module paths. When present, pre-commit
+hooks iterate over all configured domains automatically --- no `--domain`
+argument needed. Each domain's IR is stored under `.protean/<name>/ir.json`.
+
+```toml
+[domains]
+identity = "identity.domain"
+catalogue = "catalogue.domain"
+ordering = "ordering.domain"
+```
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `<name>` | string | Dotted module path to the domain (e.g. `"identity.domain"`). The key is the logical name used as the subdirectory. |
 
 ---
 
@@ -153,10 +193,23 @@ your project's `.pre-commit-config.yaml`:
 
 ### `protean-check-staleness`
 
-Blocks the commit if `.protean/ir.json` is out of date. Regenerate with:
+Blocks the commit if `.protean/ir.json` is out of date.
 
-```bash
-protean ir show --domain my_app.domain > .protean/ir.json
+| Flag | Description |
+|------|-------------|
+| `--domain`, `-d` | Domain module path (optional when `[domains]` is configured). |
+| `--dir` | Path to the `.protean/` directory (default: `.protean`). |
+| `--fix`, `-f` | Auto-regenerate stale IR and stage the updated file. |
+
+Without `--fix`, a stale check prints the mismatch and suggests a manual
+regeneration command. With `--fix`, the hook regenerates the IR, writes it
+to `ir.json`, stages the file with `git add`, and exits 0 --- allowing the
+commit to proceed.
+
+```yaml
+# Auto-fix mode --- never blocks on stale IR
+- id: protean-check-staleness
+  args: [--domain=myapp.domain, --fix]
 ```
 
 Respects `staleness.enabled` in `config.toml`.
@@ -164,8 +217,37 @@ Respects `staleness.enabled` in `config.toml`.
 ### `protean-check-compat`
 
 Blocks the commit if breaking IR changes are detected against the baseline
-in `HEAD`. Respects `compatibility.strictness` and `compatibility.exclude`
+in `HEAD`.
+
+| Flag | Description |
+|------|-------------|
+| `--domain`, `-d` | Domain module path (optional when `[domains]` is configured). |
+| `--base`, `-b` | Git ref for baseline IR (default: `HEAD`). |
+| `--dir` | Path to the `.protean/` directory (default: `.protean`). |
+
+Respects `compatibility.strictness` and `compatibility.exclude`
 in `config.toml`.
+
+### Multi-domain support
+
+When your project has multiple bounded contexts, configure the `[domains]`
+table in `.protean/config.toml` (see [Configuration](#domains) above) and
+omit the `--domain` argument. Both hooks will iterate over all configured
+domains automatically:
+
+```yaml
+# No --domain needed --- reads [domains] from .protean/config.toml
+- repo: https://github.com/proteanhq/protean
+  rev: v0.15.0
+  hooks:
+    - id: protean-check-staleness
+      args: [--fix]
+    - id: protean-check-compat
+```
+
+Each domain's IR is checked against its own subdirectory
+(`.protean/<name>/ir.json`). The hooks exit non-zero if *any* domain fails
+its check.
 
 ---
 
