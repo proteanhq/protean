@@ -26,6 +26,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Documentation now positions `to_dict()` as the only recommended serialization method for domain elements and warns against using Pydantic's `model_dump()` directly, which does not handle Reference fields, shadow fields, or datetime conversion correctly. Pydantic methods are hidden from generated API docs.
+
 - Status field self-transitions are now validated against the transition map instead of being silently allowed. Assigning a status to its current value is rejected unless the state lists itself as a target (e.g., `CANCELLED: [CANCELLED]`). This catches re-entry bugs at the framework level and makes idempotent operations explicit in the transition declaration. Terminal states also reject self-assignment.
 
 ### Fixed
