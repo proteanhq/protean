@@ -200,9 +200,9 @@ resolution, they benefit from Pydantic's core machinery:
 - **Validation** using Pydantic's Rust core — type coercion, constraint
   checking, nested model validation.
 - **Serialization** via `to_dict()`, which handles domain-specific concerns
-  (skipping Reference fields, including shadow fields, converting datetimes
-  to JSON-safe strings). This is the canonical serialization method for all
-  domain elements.
+  (skipping Reference fields, serializing nested ValueObject/Reference data
+  at the domain level, and converting datetimes to JSON-safe strings). This
+  is the canonical serialization method for all domain elements.
 - **JSON Schema generation** via `model_json_schema()`. Every constraint
   declared through FieldSpec maps to the appropriate JSON Schema keyword
   (`max_length` becomes `maxLength`, `choices` becomes `enum`, etc.).
