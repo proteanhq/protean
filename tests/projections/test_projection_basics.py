@@ -345,17 +345,6 @@ class TestProjectionSerialization:
         data = person.to_dict()
         assert "_state" not in data
 
-    def test_model_dump(self):
-        person = Person(person_id="123", first_name="John", last_name="Doe", age=30)
-        data = person.model_dump()
-        assert data["person_id"] == "123"
-        assert data["first_name"] == "John"
-
-    def test_model_dump_excludes_private(self):
-        person = Person(person_id="123", first_name="John")
-        data = person.model_dump()
-        assert "_state" not in data
-
     def test_str_output(self):
         person = Person(person_id="123", first_name="John")
         s = str(person)

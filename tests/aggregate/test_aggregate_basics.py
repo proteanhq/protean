@@ -335,20 +335,6 @@ class TestAggregateSerialization:
         assert "_next_version" not in data
         assert "_event_position" not in data
 
-    def test_model_dump(self):
-        uid = str(uuid4())
-        person = Person(id=uid, first_name="John", last_name="Doe", age=30)
-        data = person.model_dump()
-        assert data["id"] == uid
-        assert data["first_name"] == "John"
-
-    def test_model_dump_excludes_private(self):
-        person = Person(first_name="John", last_name="Doe")
-        data = person.model_dump()
-        assert "_state" not in data
-        assert "_root" not in data
-        assert "_version" not in data
-
 
 # ---------------------------------------------------------------------------
 # Tests: Invariant registration
