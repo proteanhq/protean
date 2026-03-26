@@ -100,6 +100,14 @@ plugins:
               - "!^__new__"
               - "!^model_config"
               - "!^model_fields"
+              - "!^model_dump"
+              - "!^model_dump_json"
+              - "!^model_validate"
+              - "!^model_json_schema"
+              - "!^model_computed_fields"
+              - "!^model_copy"
+              - "!^model_post_init"
+              - "!^model_rebuild"
 markdown_extensions:
   - admonition
   - attr_list

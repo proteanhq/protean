@@ -308,22 +308,6 @@ class TestEntitySerialization:
         assert "_events" not in data
         assert "_initialized" not in data
 
-    def test_model_dump(self):
-        uid = str(uuid4())
-        product = Product(id=uid, name="Widget", price=10.0, quantity=5)
-        data = product.model_dump()
-        assert data["id"] == uid
-        assert data["name"] == "Widget"
-        assert data["price"] == 10.0
-        assert data["quantity"] == 5
-
-    def test_model_dump_excludes_private(self):
-        product = Product(name="Widget", price=10.0)
-        data = product.model_dump()
-        assert "_state" not in data
-        assert "_root" not in data
-        assert "_events" not in data
-
 
 # ---------------------------------------------------------------------------
 # Tests: Invariant registration

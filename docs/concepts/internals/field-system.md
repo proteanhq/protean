@@ -195,22 +195,26 @@ user-facing syntax.
 ## What Pydantic integration delivers
 
 Because domain elements are standard Pydantic models after FieldSpec
-resolution, they get full Pydantic capabilities:
+resolution, they benefit from Pydantic's core machinery:
 
 - **Validation** using Pydantic's Rust core — type coercion, constraint
   checking, nested model validation.
-- **Serialization** via `to_dict()`, `model_dump()`, and
-  `model_dump_json()`. Selective serialization (`include`, `exclude`,
-  `exclude_none`) works out of the box.
+- **Serialization** via `to_dict()`, which handles domain-specific concerns
+  (skipping Reference fields, including shadow fields, converting datetimes
+  to JSON-safe strings). This is the canonical serialization method for all
+  domain elements.
 - **JSON Schema generation** via `model_json_schema()`. Every constraint
   declared through FieldSpec maps to the appropriate JSON Schema keyword
   (`max_length` becomes `maxLength`, `choices` becomes `enum`, etc.).
 - **Nested ValueObject validation.** Because ValueObject classes are Pydantic
   models, embedding them in an Aggregate or Entity produces proper nested
   validation and nested JSON Schema with `$ref` and `$defs`.
-- **Ecosystem compatibility.** Domain elements work with any tool that
-  consumes Pydantic models — FastAPI, schema registries, documentation
-  generators, and more.
+
+!!! warning "Do not use Pydantic's `model_dump()` on domain elements"
+    While `model_dump()` is inherited from Pydantic, it does not handle
+    domain-specific serialization correctly — it includes Reference fields,
+    omits shadow fields, and returns raw `datetime` objects. Always use
+    `to_dict()` instead.
 
 ---
 

@@ -103,7 +103,7 @@ Shadow fields are stored in the Python instance's `__dict__` — **not** as
 Pydantic model fields. This means:
 
 - `model_fields` does not include them.
-- `model_dump()` does not serialize them.
+- `model_dump()` does not serialize them (use `to_dict()` instead).
 - `model_json_schema()` does not list them.
 - `to_dict()` serializes the parent VO/Reference, not the shadow fields
   directly.
@@ -226,7 +226,7 @@ shadow values.
 | Method | Shadow fields in output? | What appears instead |
 |---|---|---|
 | `to_dict()` | No | VO serialized as nested dict: `{"billing_address": {"street": "...", ...}}` |
-| `model_dump()` | No | Only Pydantic model fields |
+| `model_dump()` | No | Only Pydantic model fields (avoid — use `to_dict()`) |
 | Direct access | Yes | `customer.billing_address_street` returns the value |
 | Database | Yes | Stored as individual columns |
 
