@@ -212,11 +212,10 @@ class BaseRepository(Element, OptionsMixin):
             own_current_uow = UnitOfWork()
             own_current_uow.start()
 
-        # If there are HasMany/HasOne fields in the aggregate, sync child objects added/removed,
-        if has_association_fields(item):
-            self._sync_children(item)
-
-        # Persist only if the item object is new, or it has changed since last persistence
+        # Persist the aggregate/projection FIRST so that it exists in the data
+        # store before any child entities that hold a foreign-key reference to
+        # it.  This is required for databases that enforce FK constraints
+        # immediately (MSSQL, MySQL/InnoDB, SQLite with PRAGMA foreign_keys).
         if (not item.state_.is_persisted) or (
             item.state_.is_persisted and item.state_.is_changed
         ):
@@ -239,6 +238,11 @@ class BaseRepository(Element, OptionsMixin):
             # that _version is incremented, and track it in the identity map so that
             # _gather_events picks up these events on commit.
             self._dao.save(item)
+
+        # Now sync child entities (HasMany/HasOne) — the parent row exists, so
+        # child inserts referencing it will satisfy FK constraints.
+        if has_association_fields(item):
+            self._sync_children(item)
 
         # If we started a UnitOfWork, commit it now
         if own_current_uow:
@@ -280,17 +284,6 @@ class BaseRepository(Element, OptionsMixin):
         cache_clears: list[tuple] = []
 
         for field_name, field in association_fields(entity).items():
-            ### RECURSIVE SYNC ###
-            # Start at the innermost child and work our way up
-            if has_association_fields(field.to_cls):
-                if isinstance(field, HasMany):
-                    for item in getattr(entity, field_name):
-                        self._sync_children(item)
-                elif isinstance(field, HasOne):
-                    if getattr(entity, field_name):
-                        self._sync_children(getattr(entity, field_name))
-            ### RECURSIVE SYNC ###
-
             if isinstance(field, HasMany):
                 cache = entity._temp_cache.get(field_name)
                 if cache is None:
@@ -351,6 +344,18 @@ class BaseRepository(Element, OptionsMixin):
 
                     # Defer cache clearing until all DAO operations succeed
                     cache_clears.append((entity, field_name))
+
+            ### RECURSIVE SYNC ###
+            # Recurse AFTER persisting children at this level so that the child
+            # row exists before any grandchild insert that holds an FK to it.
+            # This gives top-down insert ordering: parent → child → grandchild.
+            if has_association_fields(field.to_cls):
+                if isinstance(field, HasMany):
+                    for item in getattr(entity, field_name):
+                        self._sync_children(item)
+                elif isinstance(field, HasOne):
+                    if getattr(entity, field_name):
+                        self._sync_children(getattr(entity, field_name))
 
         # Clear all caches atomically after all DAO operations completed successfully
         for ent, fname in cache_clears:
