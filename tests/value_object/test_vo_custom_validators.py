@@ -1,4 +1,3 @@
-# FIXME Use the file at docs_src/guides/domain-definition/009.py
 import pytest
 
 from protean.core.aggregate import BaseAggregate

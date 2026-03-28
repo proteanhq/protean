@@ -13,7 +13,6 @@ class RedisCache(BaseCache):
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Cache with Connection/Adapter details"""
 
-        # FIXME Update cache value to REDIS
         # In case of `RedisCache`, the `cache` value will always be `redis`.
         conn_info["cache"] = "redis"
         super().__init__(name, domain, conn_info)

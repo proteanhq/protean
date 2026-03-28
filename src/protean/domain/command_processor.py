@@ -104,7 +104,7 @@ class CommandProcessor:
             traceparent = inject_traceparent_from_context()
 
             headers = MessageHeaders(
-                id=identifier,  # FIXME Double check command ID format and construction
+                id=identifier,
                 type=command.__class__.__type__,
                 stream=stream,
                 time=command._metadata.headers.time

@@ -419,9 +419,7 @@ class TestEquivalence:
         hashed_id = hash("12345")
 
         person = Person(person_id=12345, first_name="John", last_name="Doe")
-        assert hashed_id == hash(
-            person
-        )  # FIXME Should hash be based on ID alone, or other attrs too?
+        assert hashed_id == hash(person)
 
     def test_that_two_aggregates_that_are_equal_have_equal_hash(self):
         person1 = Person(person_id=12345, first_name="John", last_name="Doe")
