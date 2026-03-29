@@ -74,11 +74,6 @@ class Balance(BaseValueObject):
         if self.amount and self.amount < -1000000000000.0:
             raise ValidationError({"amount": ["cannot be less than 1 Trillion"]})
 
-    def replace(self, **kwargs):
-        return Balance(
-            currency=kwargs.pop("currency", None) or self.currency,
-            amount=kwargs.pop("amount", None) or self.amount,
-        )
 
 
 class Account(BaseAggregate):
