@@ -89,6 +89,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Callable
 from uuid import UUID
 
@@ -96,6 +97,7 @@ from protean.exceptions import ProteanExceptionWithMessage, ValidationError
 
 if TYPE_CHECKING:
     from protean.core.event import BaseEvent
+    from protean.port.event_store import CausationNode
 from protean.utils import fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -912,8 +914,8 @@ def assert_valid(operation: Callable[[], Any]) -> Any:
 
 
 def assert_chain(
-    chain: list,
-    expected: list[str | type],
+    chain: Sequence[CausationNode],
+    expected: Sequence[str | type],
 ) -> None:
     """Assert that a correlation chain matches an expected message sequence.
 

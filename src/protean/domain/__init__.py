@@ -73,6 +73,7 @@ from typing import (
 
 if TYPE_CHECKING:
     from protean.core.view import ReadView
+    from protean.port.event_store import CausationNode
     from protean.utils.projection_rebuilder import RebuildResult
 
 from inflection import parameterize, titleize, transliterate, underscore
@@ -1930,13 +1931,13 @@ class Domain:
             for node in chain:
                 print(f"{node.kind}: {node.message_type}")
         """
-        from protean.port.event_store import CausationNode
-
         root = self.event_store.store.build_causation_tree(correlation_id)
         if root is None:
             return []
 
         # Flatten tree via depth-first pre-order traversal
+        from protean.port.event_store import CausationNode
+
         result: list[CausationNode] = []
 
         def _walk(node: CausationNode) -> None:
