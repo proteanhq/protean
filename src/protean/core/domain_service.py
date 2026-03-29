@@ -2,7 +2,7 @@ import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import Any, List, TypeVar, Union
+from typing import Any, Callable, List, TypeVar, Union
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
@@ -72,7 +72,7 @@ class BaseDomainService(Element, OptionsMixin):
         self._aggregates = aggregates
 
 
-def _make_invariant_wrapper(original_method):
+def _make_invariant_wrapper(original_method: Callable) -> Callable:
     """Create an invariant-checking wrapper for a single domain service method.
 
     Extracted as a function so that ``original_method`` is captured by value
@@ -80,7 +80,7 @@ def _make_invariant_wrapper(original_method):
     """
 
     @wraps(original_method)
-    def wrapped_call(self, *args, **kwargs):
+    def wrapped_call(self: "BaseDomainService", *args: Any, **kwargs: Any) -> Any:
         errors = {}
 
         for invariant_method in self._invariants["pre"].values():

@@ -324,8 +324,10 @@ class Domain:
         #        None: UserGenericModel,       # database=None → fallback for any provider
         #    }
         # }
-        self._database_models: Dict[str, Dict[str | None, type]] = defaultdict(dict)
-        self._constructed_models: Dict[str, BaseDatabaseModel] = {}
+        self._database_models: dict[str, dict[str | None, type[BaseDatabaseModel]]] = (
+            defaultdict(dict)
+        )
+        self._constructed_models: dict[str, BaseDatabaseModel] = {}
 
         # Message enricher hooks — callables that add custom metadata to events/commands.
         # Event enrichers receive (event, aggregate) and return dict[str, Any].
