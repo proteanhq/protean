@@ -320,7 +320,6 @@ def run_around_tests(test_domain):
     yield
 
     if test_domain:
-        # FIXME Providers has to become a MutableMapping
         for provider_name in test_domain.providers:
             provider = test_domain.providers[provider_name]
             try:

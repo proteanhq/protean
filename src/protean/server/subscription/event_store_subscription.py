@@ -408,7 +408,7 @@ class EventStoreSubscription(BaseSubscription):
             self.stream_category,
             position=self.current_position + 1,
             no_of_messages=self.messages_per_tick,
-        )  # FIXME Implement filtering
+        )
 
         return self.filter_on_origin(messages)
 

@@ -279,7 +279,6 @@ class MemoryProvider(BaseProvider):
                 items.extend(list(input_db.values()))
 
             except json.JSONDecodeError:
-                # FIXME Log Exception
                 raise Exception("Query Malformed")
             except KeyError:
                 # We encountered a repository where the key was not found

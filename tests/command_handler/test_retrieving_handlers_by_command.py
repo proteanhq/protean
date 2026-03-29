@@ -13,7 +13,7 @@ class UnknownCommand(BaseCommand):
 
 
 class User(BaseAggregate):
-    user_id: Identifier(identifier=True)  # FIXME Auto-associate ID
+    user_id: Identifier(identifier=True)
     email: String()
     name: String()
 

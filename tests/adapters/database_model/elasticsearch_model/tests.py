@@ -113,9 +113,6 @@ class TestDefaultModel:
         database_model_cls = test_domain.repository_for(Receiver)._database_model
         assert database_model_cls.__name__ == "ReceiverModel"
 
-        # FIXME Verify default constructed fields
-        # assert database_model_cls.name._params is None
-
 
 @pytest.mark.elasticsearch
 class TestModelOptions:
@@ -326,7 +323,7 @@ class TestCustomModel:
             ProviderCustomModel, part_of=Provider, schema_name="providers"
         )
 
-        # FIXME Should schema name be equated to the overridden name in the model?
+        # Aggregate keeps its own schema name; model override wins at persistence time
         assert Provider.meta_.schema_name == "provider"
         assert ProviderCustomModel.meta_.schema_name == "providers"
 

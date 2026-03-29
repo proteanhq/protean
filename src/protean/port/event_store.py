@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict, deque
 from dataclasses import dataclass, field as dc_field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -33,9 +38,7 @@ class BaseEventStore(metaclass=ABCMeta):
     classes with the domain.
     """
 
-    def __init__(
-        self, name: str, domain: Any, conn_info: Dict[str, str]
-    ) -> None:  # FIXME Any should be Domain
+    def __init__(self, name: str, domain: "Domain", conn_info: Dict[str, str]) -> None:
         self.name = name
         self.domain = domain
         self.conn_info = conn_info
@@ -110,7 +113,6 @@ class BaseEventStore(metaclass=ABCMeta):
         return messages
 
     def read_last_message(self, stream) -> Optional[Message]:
-        # FIXME Rename to read_last_stream_message
         raw_message = self._read_last_message(stream)
         if raw_message:
             return Message.deserialize(raw_message)
@@ -229,11 +231,9 @@ class BaseEventStore(metaclass=ABCMeta):
 
             aggregate = part_of.from_events(events)
 
-        ####################################
-        # ADD SNAPSHOT IF BEYOND THRESHOLD #
-        ####################################
-        # FIXME Delay creating snapshot or push to a background process
-        # If there are more events than SNAPSHOT_THRESHOLD, create a new snapshot
+        # Create a new snapshot if the event count exceeds the threshold.
+        # This runs inline (synchronous write) for simplicity — the aggregate
+        # is already in memory and the write is to a separate snapshot stream.
         if (
             snapshot_message
             and len(event_stream) > 1

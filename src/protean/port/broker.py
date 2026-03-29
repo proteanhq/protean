@@ -102,11 +102,11 @@ class BrokerCapabilities(Flag):
 
 
 class BaseBroker(metaclass=ABCMeta):
-    """This class outlines the base broker functions, to be satisfied by all implementing brokers.
+    """Base class for all broker implementations.
 
-    It is also a marker interface for registering broker classes with the domain"""
-
-    # FIXME Replace with typing.Protocol
+    Provides shared behavior (UoW integration, connection recovery, capability
+    checks, subscriber registration) via the Template Method pattern. Subclasses
+    implement the abstract ``_underscore`` methods for broker-specific logic."""
 
     def __init__(
         self, name: str, domain: "Domain", conn_info: dict[str, str | bool]

@@ -139,7 +139,7 @@ class BrokerSubscription(BaseSubscription):
             self.stream_name,
             self.subscriber_name,  # Use subscriber_name as consumer group
             no_of_messages=self.messages_per_tick,
-        )  # FIXME Implement filtering
+        )
 
         return messages
 

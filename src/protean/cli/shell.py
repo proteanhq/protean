@@ -5,9 +5,6 @@ namespace of this shell according to its configuration.
 This is useful for executing small snippets of code
 without having to manually configure the application.
 
-FIXME: Populate context in a decorator like Flask does:
-    https://github.com/pallets/flask/blob/b90a4f1f4a370e92054b9cc9db0efcb864f87ebe/src/flask/cli.py#L368
-    https://github.com/pallets/flask/blob/b90a4f1f4a370e92054b9cc9db0efcb864f87ebe/src/flask/cli.py#L984
 """
 
 import logging

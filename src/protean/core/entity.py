@@ -1056,7 +1056,6 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
             # Set the name of the field on itself
             reference_field.__set_name__(element_cls, field_name)
 
-            # FIXME Centralize this logic to add fields dynamically to _FIELDS
             field_objects = getattr(element_cls, _FIELDS)
             field_objects[field_name] = reference_field
             setattr(element_cls, _FIELDS, field_objects)

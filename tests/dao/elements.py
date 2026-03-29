@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
@@ -14,8 +13,7 @@ class Person(BaseAggregate):
 
 
 class PersonRepository(BaseRepository):
-    def find_adults(self, age: int = 21) -> List[Person]:
-        pass  # FIXME Implement filter method
+    pass
 
 
 class User(BaseAggregate):

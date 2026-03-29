@@ -155,8 +155,6 @@ class Providers(collections.abc.MutableMapping):
         # We first cycle through repositories registered with the domain
         # and cache them within providers. We also construct a generic
         # repository dynamically that would work with the other providers.
-        # FIXME Should we construct generic repositories?
-        # FIXME Will this run multiple times?
         if aggregate_name not in self._repositories:
             # First, register all explicitly-defined repositories
             for _, repository in self.domain.registry.repositories.items():

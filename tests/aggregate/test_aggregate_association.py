@@ -34,7 +34,7 @@ class TestHasOne:
         updated_account = test_domain.repository_for(Account).get(account.email)
         updated_author = updated_account.author
 
-        updated_author.account  # To refresh and load the account  # FIXME Auto-load child entities
+        updated_author.account  # Triggers lazy load via Reference.__get__
         assert all(
             key in updated_author.__dict__ for key in ["account", "account_email"]
         )

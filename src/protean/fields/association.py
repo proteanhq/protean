@@ -53,15 +53,11 @@ class _ReferenceField(Field):
         self._reset_values(instance)
 
     def _cast_to_type(self, value):
-        """Verify the type of value assigned to the shadow field
+        """Pass through without validation.
 
-        Args:
-            value: The value to be assigned.
-
-        Returns:
-            The casted value.
+        The shadow field's value is set by Reference.__set__ which
+        already validates the referenced object's type and identity.
         """
-        # FIXME Verify that the value being assigned is compatible with the remote field
         return value
 
     def as_dict(self, value):
@@ -199,8 +195,6 @@ class Reference(FieldCacheMixin, Field):
         value = self._load(value)
 
         if value:
-            # Check if the reference object has been saved. Otherwise, throw ValueError
-            # FIXME not a comprehensive check. Should refer to state
             id_fld = id_field(value)
             assert id_fld is not None
             if getattr(value, id_fld.field_name) is None:
@@ -243,9 +237,11 @@ class Reference(FieldCacheMixin, Field):
         self._set_relation_value(instance, None)
 
     def _cast_to_type(self, value):
-        # FIXME Assign value only of the correct type
-        # if not isinstance(value, self.to_cls):
-        #     self.fail('invalid', value=value)
+        """Pass through without validation.
+
+        Type checking happens in __set__ after the reference is fully
+        resolved. During resolution, to_cls may still be a string.
+        """
         return value
 
     def as_dict(self, value):
@@ -270,8 +266,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         self._to_cls = to_cls
         self.via = kwargs.pop("via", None)
 
-        # FIXME Find an elegant way to avoid these declarations in associations
-        # Associations cannot be marked `required` or `unique`
+        # Associations are not data fields — they cannot be `required` or `unique`
         self.required = False
         self.unique = False
 
@@ -288,16 +283,15 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         self._to_cls = to_cls
 
     def _cast_to_type(self, value):
-        """Verify type of value assigned to the association field"""
-        # FIXME Verify that the value being assigned is compatible with the associated Entity
+        """Pass through without validation.
+
+        Type checking happens in HasOne.__set__ and HasMany.add()
+        with explicit isinstance checks against to_cls.
+        """
         return value
 
     def _linked_attribute(self, owner):
-        """Return linkage attribute to own entity's `id_field`
-
-        FIXME Explore converting this method into an attribute, and treating it
-        uniformly at `association` level.
-        """
+        """Return linkage attribute to own entity's `id_field`."""
         if self.via:
             return self.via
 

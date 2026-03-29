@@ -28,8 +28,13 @@ class _ShadowField(Field):
         self._reset_values(instance)
 
     def _cast_to_type(self, value):
-        """Verify type of value assigned to the shadow field"""
-        # FIXME Verify that the value being assigned is compatible with the remote field
+        """Pass through without validation.
+
+        Shadow fields are populated by ValueObject._set_embedded_values()
+        which writes directly to instance.__dict__, bypassing __set__/_load.
+        The value object's own fields handle validation, so shadow fields
+        don't need independent type checking.
+        """
         return value
 
     def as_dict(self, value):
@@ -113,9 +118,6 @@ class ValueObject(Field):
                 self,
                 field_name,
                 field_obj,
-                # FIXME Pass all other kwargs here
-                #   Because we want the shadow field to mimic the behavior of the actual field
-                #   Which means that ShadowField somehow has to become an Integer, Float, String, etc.
                 referenced_as=field_obj.referenced_as,
             )
 

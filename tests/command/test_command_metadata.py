@@ -115,41 +115,38 @@ def test_command_metadata(test_domain):
     assert generated_correlation_id is not None
     assert len(generated_correlation_id) == 32  # UUID4 hex, no dashes
 
-    assert (
-        command_dict
-        == {
-            "_metadata": {
-                "domain": {
-                    "fqn": fqn(Login),
-                    "kind": "COMMAND",
-                    "origin_stream": None,
-                    "stream_category": None,
-                    "version": 1,
-                    "sequence_id": None,
-                    "asynchronous": True,
-                    "expected_version": None,
-                    "priority": 0,
-                    "correlation_id": generated_correlation_id,
-                    "causation_id": None,
-                },
-                "envelope": {
-                    "specversion": "1.0",
-                    "checksum": expected_checksum,
-                },
-                "headers": {
-                    "id": f"{identifier}",  # FIXME Double-check command identifier format and construction
-                    "type": "Test.Login.v1",
-                    "stream": f"test::user:command-{identifier}",
-                    "time": str(command._metadata.headers.time),
-                    "traceparent": None,
-                    "idempotency_key": None,
-                },
-                "event_store": None,
-                "extensions": {},
+    assert command_dict == {
+        "_metadata": {
+            "domain": {
+                "fqn": fqn(Login),
+                "kind": "COMMAND",
+                "origin_stream": None,
+                "stream_category": None,
+                "version": 1,
+                "sequence_id": None,
+                "asynchronous": True,
+                "expected_version": None,
+                "priority": 0,
+                "correlation_id": generated_correlation_id,
+                "causation_id": None,
             },
-            "user_id": command.user_id,
-        }
-    )
+            "envelope": {
+                "specversion": "1.0",
+                "checksum": expected_checksum,
+            },
+            "headers": {
+                "id": f"{identifier}",
+                "type": "Test.Login.v1",
+                "stream": f"test::user:command-{identifier}",
+                "time": str(command._metadata.headers.time),
+                "traceparent": None,
+                "idempotency_key": None,
+            },
+            "event_store": None,
+            "extensions": {},
+        },
+        "user_id": command.user_id,
+    }
 
 
 class TestCommandEnvelope:

@@ -38,10 +38,6 @@ class TestChildObjectPersistence:
             repo = test_domain.repository_for(Post)
             repo.add(persisted_post)
 
-            # FIXME Refactor `outside_uow` to be a global thread variable
-            # post_dao = test_domain.repository_for(Post)._dao
-            # assert len(post_dao.outside_uow().get(persisted_post.id).comments) == 0
-
         post = repo.get(persisted_post.id)
         assert len(post.comments) == 1
         assert post.comments[0].content == "So La Ti Do"
@@ -66,9 +62,6 @@ class TestChildObjectPersistence:
             repo = test_domain.repository_for(Post)
             repo.add(persisted_post)
 
-            # FIXME Refactor `outside_uow` to be a global thread variable
-            # assert comment.id in uow.changes_to_be_committed['default']['UPDATED']
-
         post = repo.get(persisted_post.id)
         assert post.comments[0].content == "Pa Da Ni Sa"
 
@@ -87,9 +80,6 @@ class TestChildObjectPersistence:
 
             repo = test_domain.repository_for(Post)
             repo.add(persisted_post)
-
-            # FIXME Refactor `outside_uow` to be a global thread variable
-            # assert comment.id in uow.changes_to_be_committed['default']['REMOVED']
 
         post = repo.get(persisted_post.id)
         assert len(post.comments) == 0

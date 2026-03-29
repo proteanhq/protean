@@ -268,7 +268,6 @@ class QuerySet:
                 self._owner_dao.update(item, *data, **kwargs)
                 updated_item_count += 1
         except Exception:
-            # FIXME Log Exception
             raise
 
         return updated_item_count
@@ -320,7 +319,6 @@ class QuerySet:
             # Cache results
             self._result_cache = results
         except Exception:
-            # FIXME Log Exception
             raise
 
         return results
@@ -343,7 +341,6 @@ class QuerySet:
                 self._owner_dao.delete(item)
                 deleted_item_count += 1
         except Exception:
-            # FIXME Log Exception
             raise
 
         return deleted_item_count

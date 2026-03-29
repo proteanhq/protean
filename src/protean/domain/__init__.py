@@ -298,10 +298,6 @@ class Domain:
         # Get the module name from the globals of the frame where the object was instantiated
         self.name = name if name else caller_frame.frame.f_globals["__name__"]
 
-        # FIXME Additional domain attributes: (Think if this is needed)
-        #   - Type of Domain: Core, Supporting, Third-party(?)
-        #   - Type of Implementation: CRUD, CQRS, ES
-
         # Registry for all domain Objects
         self._domain_registry = _DomainRegistry()
 
@@ -320,8 +316,18 @@ class Domain:
         self.email_providers = EmailProviders(self)
 
         # Cache for holding Model to Entity/Aggregate associations
-        self._database_models: Dict[str, BaseDatabaseModel] = {}
-        self._constructed_models: Dict[str, BaseDatabaseModel] = {}
+        # Structure mirrors Providers._repositories:
+        # {
+        #    'app.User': {
+        #        'postgresql': UserPostgresModel,
+        #        'sqlite': UserSQLiteModel,
+        #        None: UserGenericModel,       # database=None → fallback for any provider
+        #    }
+        # }
+        self._database_models: dict[str, dict[str | None, type[BaseDatabaseModel]]] = (
+            defaultdict(dict)
+        )
+        self._constructed_models: dict[str, BaseDatabaseModel] = {}
 
         # Message enricher hooks — callables that add custom metadata to events/commands.
         # Event enrichers receive (event, aggregate) and return dict[str, Any].
@@ -345,7 +351,6 @@ class Domain:
         self.teardown_domain_context_functions: List[Callable] = []
 
         # Placeholder array for resolving classes referenced by domain elements
-        # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
         # Lazy-initialized idempotency store
@@ -913,7 +918,14 @@ class Domain:
 
         if element_type == DomainObjects.DATABASE_MODEL:
             # Remember model association with aggregate/entity class, for easy fetching
-            self._database_models[fqn(new_cls.meta_.part_of)] = new_cls
+            entity_key = fqn(new_cls.meta_.part_of)
+            db_key = new_cls.meta_.database  # e.g., "postgresql", "sqlite", or None
+            if db_key in self._database_models[entity_key]:
+                raise IncorrectUsageError(
+                    f"A database model for `{new_cls.meta_.part_of.__name__}` "
+                    f"targeting database `{db_key}` is already registered"
+                )
+            self._database_models[entity_key][db_key] = new_cls
 
         # Register element with domain
         self._domain_registry.register_element(new_cls, internal, auto_generated)
@@ -1070,7 +1082,6 @@ class Domain:
                 ).cls
             except ConfigurationError:
                 # Element has not been registered
-                # FIXME print a helpful debug message
                 raise
 
     def _get_element_by_name(self, element_types, element_name):
@@ -1698,7 +1709,6 @@ class Domain:
     # Repository Functionality #
     ############################
 
-    # FIXME Optimize calls to this method with cache, but also with support for Multitenancy
     def repository_for(self, element_cls) -> BaseRepository:
         if isinstance(element_cls, str):
             raise IncorrectUsageError(

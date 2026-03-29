@@ -155,9 +155,7 @@ class TestEquivalence:
         hashed_id = hash(1)
 
         role = Role(id=1, name="ADMIN")
-        assert hashed_id == hash(
-            role
-        )  # FIXME Should hash be based on ID alone, or other attrs too?
+        assert hashed_id == hash(role)
 
     def test_that_two_aggregates_that_are_equal_have_equal_hash(self):
         role1 = Role(id=12345, name="ADMIN1")

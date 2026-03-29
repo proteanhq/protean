@@ -65,28 +65,20 @@ class BaseRepository(Element, OptionsMixin):
     @lru_cache()
     def _database_model(self):
         """Retrieve Database Model class connected to Entity"""
-        # If a model was associated with the aggregate record, give it a higher priority
-        #   and do not bake a new model class from aggregate/entity attributes
-        custom_database_database_model_cls = None
-        if fully_qualified_name(self.meta_.part_of) in self._domain._database_models:
-            custom_database_database_model_cls = self._domain._database_models[
-                fully_qualified_name(self.meta_.part_of)
-            ]
+        # Look up custom models registered for this entity, keyed by database type.
+        # Prefer a model targeting this provider's database type; fall back to a
+        # generic model (database=None) if no type-specific one exists.
+        entity_models = self._domain._database_models.get(
+            fully_qualified_name(self.meta_.part_of), {}
+        )
+        database_type = self._provider.__class__.__database__
+        custom_model_cls = entity_models.get(database_type) or entity_models.get(None)
 
-        # FIXME This is the provide support for activating database specific models
-        #   This needs to be enhanced to allow Protean to hold multiple database models per Aggregate/Entity
-        #   per database.
-        #
-        #   If no database is specified, model can be used for all databases
-        if custom_database_database_model_cls and (
-            custom_database_database_model_cls.meta_.database is None
-            or custom_database_database_model_cls.meta_.database
-            == self._provider.__class__.__database__
-        ):
+        if custom_model_cls:
             # Get the decorated model class.
             #   This is a no-op if the provider decides that the model is fully-baked
             database_model_cls = self._provider.decorate_database_model_class(
-                self.meta_.part_of, custom_database_database_model_cls
+                self.meta_.part_of, custom_model_cls
             )
         else:
             # No model was associated with the aggregate/entity explicitly.

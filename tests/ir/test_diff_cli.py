@@ -2,9 +2,9 @@
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -839,53 +839,18 @@ class TestDiffAutoBaseline:
 # Git baseline: --domain --base <commit>
 # ------------------------------------------------------------------
 
-# Helpers for git-based tests
-_GIT_ENV_KEYS = {
-    "GIT_AUTHOR_NAME": "test",
-    "GIT_AUTHOR_EMAIL": "test@test.com",
-    "GIT_COMMITTER_NAME": "test",
-    "GIT_COMMITTER_EMAIL": "test@test.com",
-}
-
-
-def _git_env() -> dict[str, str]:
-    env = dict(os.environ)
-    env.update(_GIT_ENV_KEYS)
-    return env
-
-
-def _has_git_repo() -> bool:
-    """Return True if we're inside a git repository with git available."""
-    try:
-        subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            check=True,
-        )
-        return True
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return False
-
 
 @pytest.mark.no_test_domain
-@pytest.mark.skipif(not _has_git_repo(), reason="requires git and a .git directory")
 class TestDiffGitBaseline:
     """Git baseline mode: `protean ir diff --domain my_app --base HEAD`."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, tmp_path):
+    def _setup(self):
         from tests.shared import change_working_directory_to
 
         self._original_path = sys.path[:]
         self._cwd = Path.cwd()
         change_working_directory_to("test7")
-        self._test7_dir = Path.cwd()
-        # Compute the relative path from repo root to test7/.protean
-        self._repo_root = Path(
-            subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"], text=True
-            ).strip()
-        )
         yield
         sys.path[:] = self._original_path
         os.chdir(self._cwd)
@@ -897,146 +862,52 @@ class TestDiffGitBaseline:
         domain.init(traverse=False)
         return IRBuilder(domain).build()
 
-    def _rel_path(self, *parts: str) -> str:
-        """Return the path relative to the git repo root."""
-        abs_path = self._test7_dir.joinpath(*parts)
-        return str(abs_path.relative_to(self._repo_root))
-
-    def _commit_and_cleanup(self, files: list[Path], env: dict[str, str]):
-        """Context-manager-like helper: commit files, yield, then clean up."""
-
-        class _Ctx:
-            def __enter__(self_ctx):
-                for f in files:
-                    subprocess.run(
-                        ["git", "add", str(f)],
-                        capture_output=True,
-                        check=True,
-                        env=env,
-                        cwd=self._repo_root,
-                    )
-                subprocess.run(
-                    ["git", "commit", "-m", "test: ir diff git baseline"],
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    cwd=self._repo_root,
-                )
-                return self_ctx
-
-            def __exit__(self_ctx, *_):
-                subprocess.run(
-                    ["git", "reset", "HEAD~1"],
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    cwd=self._repo_root,
-                )
-                # Remove test files from disk and unstage them.
-                # After `git reset HEAD~1` the files are untracked, so
-                # `git checkout` would fail — just delete and clean index.
-                for f in files:
-                    if f.exists():
-                        f.unlink()
-                    # Ensure file is not left staged
-                    subprocess.run(
-                        ["git", "rm", "--cached", "--ignore-unmatch", str(f)],
-                        capture_output=True,
-                        check=True,
-                        env=env,
-                        cwd=self._repo_root,
-                    )
-                    parent = f.parent
-                    if parent.exists() and not list(parent.iterdir()):
-                        parent.rmdir()
-
-        return _Ctx()
-
     def test_base_head_no_changes(self):
-        """When the committed IR matches the live domain → exit 0."""
+        """When the baseline IR matches the live domain → exit 0."""
         live_ir = self._live_ir()
-        protean_dir = self._test7_dir / ".protean"
-        protean_dir.mkdir(exist_ok=True)
-        ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(live_ir) + "\n", encoding="utf-8")
 
-        # The --dir path for git show must be relative to repo root
-        dir_rel = self._rel_path(".protean")
-        env = _git_env()
-        with self._commit_and_cleanup([ir_file], env):
+        with patch("protean.ir.git.load_ir_from_commit", return_value=live_ir):
             result = runner.invoke(
                 app,
-                [
-                    "ir",
-                    "diff",
-                    "-d",
-                    "publishing7.py",
-                    "--base",
-                    "HEAD",
-                    "--dir",
-                    dir_rel,
-                    "-f",
-                    "json",
-                ],
+                ["ir", "diff", "-d", "publishing7.py", "--base", "HEAD", "-f", "json"],
             )
             parsed = json.loads(result.output)
             assert parsed["summary"]["has_changes"] is False
             assert result.exit_code == 0
 
     def test_base_detects_changes(self):
-        """When the committed IR differs from live domain → changes detected."""
+        """When the baseline IR differs from live domain → changes detected."""
         stale_ir = _minimal_ir()  # Minimal IR with no clusters
-        protean_dir = self._test7_dir / ".protean"
-        protean_dir.mkdir(exist_ok=True)
-        ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(stale_ir) + "\n", encoding="utf-8")
 
-        dir_rel = self._rel_path(".protean")
-        env = _git_env()
-        with self._commit_and_cleanup([ir_file], env):
+        with patch("protean.ir.git.load_ir_from_commit", return_value=stale_ir):
             result = runner.invoke(
                 app,
-                [
-                    "ir",
-                    "diff",
-                    "-d",
-                    "publishing7.py",
-                    "--base",
-                    "HEAD",
-                    "--dir",
-                    dir_rel,
-                    "-f",
-                    "json",
-                ],
+                ["ir", "diff", "-d", "publishing7.py", "--base", "HEAD", "-f", "json"],
             )
             parsed = json.loads(result.output)
             assert parsed["summary"]["has_changes"] is True
 
     def test_base_aborts_on_missing_commit(self):
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "diff",
-                "-d",
-                "publishing7.py",
-                "--base",
-                "nonexistent_ref_xyz",
-            ],
-        )
-        assert result.exit_code != 0
+        """GitError when loading baseline → non-zero exit."""
+        from protean.ir.git import GitError
+
+        with patch(
+            "protean.ir.git.load_ir_from_commit",
+            side_effect=GitError("commit not found"),
+        ):
+            result = runner.invoke(
+                app,
+                ["ir", "diff", "-d", "publishing7.py", "--base", "nonexistent_ref_xyz"],
+            )
+            assert result.exit_code != 0
 
     def test_base_custom_dir(self):
-        """--dir changes the path used for git show."""
+        """--dir changes the path passed to load_ir_from_commit."""
         stale_ir = _minimal_ir()
-        custom_dir = self._test7_dir / "custom_ir"
-        custom_dir.mkdir(exist_ok=True)
-        ir_file = custom_dir / "ir.json"
-        ir_file.write_text(json.dumps(stale_ir) + "\n", encoding="utf-8")
 
-        dir_rel = self._rel_path("custom_ir")
-        env = _git_env()
-        with self._commit_and_cleanup([ir_file], env):
+        with patch(
+            "protean.ir.git.load_ir_from_commit", return_value=stale_ir
+        ) as mock_load:
             result = runner.invoke(
                 app,
                 [
@@ -1047,13 +918,17 @@ class TestDiffGitBaseline:
                     "--base",
                     "HEAD",
                     "--dir",
-                    dir_rel,
+                    "custom_ir",
                     "-f",
                     "json",
                 ],
             )
             parsed = json.loads(result.output)
             assert "summary" in parsed
+            # Verify that --dir was passed through to the git loader
+            mock_load.assert_called_once()
+            call_args = mock_load.call_args
+            assert "custom_ir" in call_args[0][1]  # path argument
 
 
 # ------------------------------------------------------------------

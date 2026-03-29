@@ -137,7 +137,6 @@ class TestRepositoryRegistration:
             name: String()
 
         assert isinstance(test_domain.repository_for(User), UserElasticRepository)
-        # FIXME Reset test_domain?
 
     def test_incorrect_usage_error_on_repositories_associated_with_invalid_databases(
         self, test_domain
