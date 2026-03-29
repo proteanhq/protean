@@ -1,6 +1,7 @@
 """Module for defining embedded fields"""
 
 from functools import lru_cache
+from typing import Any
 
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Field
@@ -208,3 +209,21 @@ class ValueObject(Field):
         """Reset all associated values and clean up dictionary items"""
         self._set_own_value(instance, None)
         self._set_embedded_values(instance, None)
+
+
+class ValueObjectFromEntity(ValueObject):
+    """Field descriptor that auto-generates a Value Object from an Entity class.
+
+    Thin convenience wrapper over ``value_object_from_entity()`` -- instead of
+    creating the VO class yourself, this descriptor derives it from the entity
+    at class-body evaluation time::
+
+        class PlaceOrder(BaseCommand):
+            items: List(content_type=ValueObjectFromEntity(OrderItem))
+    """
+
+    def __init__(self, entity_cls: type, **kwargs: Any) -> None:
+        from protean.core.value_object import value_object_from_entity
+
+        vo_cls = value_object_from_entity(entity_cls)
+        super().__init__(value_object_cls=vo_cls, **kwargs)

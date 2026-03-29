@@ -451,11 +451,16 @@ def _pydantic_element_to_fact_event(element_cls):
     from pydantic import Field as PydanticField
     from pydantic_core import PydanticUndefined
 
+    from protean.core.value_object import value_object_from_entity
+
+    if element_cls.element_type == DomainObjects.ENTITY:
+        # Entity → Value Object: delegate to the shared utility
+        vo_cls = value_object_from_entity(element_cls)
+        return ValueObject(value_object_cls=vo_cls)
+
+    # Aggregate → Fact Event
     annotations: dict[str, Any] = {}
     namespace: dict[str, Any] = {}
-    # Track association descriptors (ValueObject / List) so we can inject them
-    # into ``__container_fields__`` after the class is created.  This keeps
-    # the introspection API compatible with the legacy path.
     association_descriptors: dict[str, ValueObject | ValueObjectList] = {}
     model_field_info = getattr(element_cls, "model_fields", {})
 
@@ -513,37 +518,7 @@ def _pydantic_element_to_fact_event(element_cls):
                         default_factory=finfo.default_factory
                     )
                 # else: required field — no default needed
-            else:
-                annotations[key] = Any
-                namespace[key] = None
 
-    if element_cls.element_type == DomainObjects.ENTITY:
-        # Entity → Value Object conversion.
-        # Strip identifier/unique: make those fields optional with None default.
-        container_fields = fields(element_cls)
-        for key in list(annotations.keys()):
-            field_obj = container_fields.get(key)
-            if isinstance(field_obj, ResolvedField) and (
-                field_obj.identifier or field_obj.unique
-            ):
-                annotations[key] = annotations[key] | None
-                namespace[key] = None
-
-        ns = {"__annotations__": annotations, **namespace}
-        value_object_cls = type(
-            f"{element_cls.__name__}ValueObject",
-            (BaseValueObject,),
-            ns,
-        )
-
-        # Inject association descriptors into __container_fields__
-        cf = getattr(value_object_cls, _FIELDS, {})
-        cf.update(association_descriptors)
-        setattr(value_object_cls, _FIELDS, cf)
-
-        return ValueObject(value_object_cls=value_object_cls)
-
-    # Aggregate → Fact Event
     ns = {"__annotations__": annotations, **namespace}
     event_cls = type(
         f"{element_cls.__name__}FactEvent",

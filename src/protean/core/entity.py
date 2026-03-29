@@ -5,7 +5,7 @@ import logging
 import threading
 from collections import defaultdict
 from functools import partial
-from typing import Any, ClassVar, TypeVar, dataclass_transform
+from typing import Any, ClassVar, Self, TypeVar, dataclass_transform
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
@@ -933,6 +933,34 @@ class BaseEntity(BaseModel, OptionsMixin):
             else:
                 result[fname] = field_obj.as_dict(value)
         return result
+
+    @classmethod
+    def from_value_object(cls, vo: "BaseValueObject") -> Self:
+        """Construct an entity instance from a value object.
+
+        This is the inverse of ``value_object_from_entity()`` -- it converts
+        a VO payload (typically carried in a command or event) back into an
+        entity instance::
+
+            items = [OrderItem.from_value_object(item) for item in command.items]
+
+        ``None`` values on identifier/unique fields are stripped so that
+        auto-generated identity fields receive their default rather than
+        failing validation.  Explicit ``None`` on other fields is preserved.
+        """
+        data = vo.to_dict()
+
+        # Strip None only for identifier/unique fields so auto-generated
+        # identity defaults kick in, while preserving intentional Nones.
+        id_or_unique = set()
+        for fname, field_obj in getattr(cls, _FIELDS, {}).items():
+            if isinstance(field_obj, ResolvedField) and (
+                field_obj.identifier or field_obj.unique
+            ):
+                id_or_unique.add(fname)
+
+        return cls(**{k: v for k, v in data.items()
+                      if not (v is None and k in id_or_unique)})
 
     @property
     def state_(self) -> _EntityState:

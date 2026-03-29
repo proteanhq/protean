@@ -2,10 +2,12 @@
 
 import logging
 from collections import defaultdict
-from typing import Any, ClassVar, Self, TypeVar
+from typing import Any, ClassVar, Optional, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict
+from pydantic import Field as PydanticField
 from pydantic import ValidationError as PydanticValidationError
+from pydantic_core import PydanticUndefined
 
 from protean.exceptions import (
     IncorrectUsageError,
@@ -18,7 +20,7 @@ from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import OptionsMixin
-from protean.utils.reflection import _FIELDS
+from protean.utils.reflection import _FIELDS, fields as get_fields
 
 logger = logging.getLogger(__name__)
 
@@ -338,3 +340,104 @@ def value_object_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
                 element_cls._invariants[method._invariant][method_name] = method
 
     return element_cls
+
+
+# ---------------------------------------------------------------------------
+# Entity → Value Object projection
+# ---------------------------------------------------------------------------
+def value_object_from_entity(
+    entity_cls: type,
+    name: str | None = None,
+    exclude: set[str] | None = None,
+) -> type[BaseValueObject]:
+    """Create a ``BaseValueObject`` subclass whose fields mirror *entity_cls*.
+
+    This eliminates the boilerplate of manually duplicating an entity's fields
+    into a value object for use in commands and events.
+
+    Args:
+        entity_cls: The entity (or aggregate) class to project.
+        name: Override the generated class name (default: ``{EntityName}ValueObject``).
+        exclude: Field names to omit from the generated value object.
+
+    Returns:
+        A new ``BaseValueObject`` subclass.
+    """
+    from protean.fields.basic import ValueObjectList
+
+    exclude = exclude or set()
+    vo_name = name or f"{entity_cls.__name__}ValueObject"
+
+    annotations: dict[str, Any] = {}
+    namespace: dict[str, Any] = {}
+    # ValueObjectList is lazily imported above; use Any in the annotation
+    # to avoid referencing it at module-import time.
+    association_descriptors: dict[str, Any] = {}
+    model_field_info = getattr(entity_cls, "model_fields", {})
+
+    for key, value in get_fields(entity_cls).items():
+        if key in exclude:
+            continue
+        if isinstance(value, Reference):
+            continue
+        if key.startswith("_"):
+            continue
+
+        if isinstance(value, HasOne):
+            # Recursively convert associated entity to VO
+            child_vo_cls = value_object_from_entity(value.to_cls)
+            vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
+            annotations[key] = Optional[child_vo_cls]
+            namespace[key] = None
+            association_descriptors[key] = vo_descriptor
+
+        elif isinstance(value, HasMany):
+            # Recursively convert to list of VOs
+            child_vo_cls = value_object_from_entity(value.to_cls)
+            vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
+            list_descriptor = ValueObjectList(content_type=vo_descriptor)
+            annotations[key] = list[child_vo_cls]
+            namespace[key] = PydanticField(default_factory=list)
+            association_descriptors[key] = list_descriptor
+
+        elif isinstance(value, ValueObjectField):
+            vo_cls = value.value_object_cls
+            # Preserve the required flag from the original descriptor
+            if getattr(value, "required", False):
+                annotations[key] = vo_cls
+            else:
+                annotations[key] = Optional[vo_cls]
+                namespace[key] = None
+            association_descriptors[key] = value
+
+        elif isinstance(value, ResolvedField):
+            finfo = model_field_info.get(key)
+            if finfo:
+                annotations[key] = finfo.annotation
+                if finfo.default is not PydanticUndefined:
+                    namespace[key] = finfo.default
+                elif finfo.default_factory is not None:
+                    namespace[key] = PydanticField(
+                        default_factory=finfo.default_factory
+                    )
+
+    # Make identifier/unique fields optional (they are identity concerns,
+    # not value concerns).
+    container_fields = get_fields(entity_cls)
+    for key in list(annotations.keys()):
+        field_obj = container_fields.get(key)
+        if isinstance(field_obj, ResolvedField) and (
+            field_obj.identifier or field_obj.unique
+        ):
+            annotations[key] = annotations[key] | None
+            namespace[key] = None
+
+    ns = {"__annotations__": annotations, **namespace}
+    value_object_cls = type(vo_name, (BaseValueObject,), ns)
+
+    # Inject association descriptors into __container_fields__
+    cf = getattr(value_object_cls, _FIELDS, {})
+    cf.update(association_descriptors)
+    setattr(value_object_cls, _FIELDS, cf)
+
+    return value_object_cls

@@ -3,7 +3,7 @@ from .association import HasMany, HasOne, Reference
 from .base import Field, FieldBase
 from .basic import Method, Nested, ValueObjectList
 from .containers import Dict, List
-from .embedded import ValueObject
+from .embedded import ValueObject, ValueObjectFromEntity
 from .simple import (
     Auto,
     Boolean,
@@ -48,6 +48,7 @@ __all__ = [
     "HasOne",
     "Reference",
     "ValueObject",
+    "ValueObjectFromEntity",
     "ValueObjectList",
     # Validators
     "validators",
