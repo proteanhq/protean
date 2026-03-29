@@ -30,7 +30,6 @@ from protean.fields import (
     List,
     String,
     ValueObject,
-    ValueObjectFromEntity,
 )
 from protean.server import Engine
 from protean.utils import Processing
@@ -140,7 +139,7 @@ class CustomerOrderEventHandler(BaseEventHandler):
 class Shipment(BaseAggregate):
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    items: List(content_type=ValueObjectFromEntity(OrderItem))
+    items: List(content_type=ValueObject(OrderItemVO))
     status: String(
         choices=["PENDING", "SHIPPED", "DELIVERED", "CANCELLED"], default="PENDING"
     )

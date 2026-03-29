@@ -99,16 +99,22 @@ class TestValueObjectFromEntity:
         assert vo2.invoice_number == "INV-001"
 
     def test_reference_fields_excluded(self, test_domain):
-        """Reference fields are excluded from the generated VO."""
+        """Reference fields on a registered entity are excluded from the VO."""
         test_domain.register(Cart)
         test_domain.register(LineItem, part_of=Cart)
         test_domain.register(ShippingDetail, part_of=Cart)
         test_domain.init(traverse=False)
 
+        # After registration, LineItem gains a Reference back to Cart.
+        # The generated VO must exclude that reference field.
         VO = value_object_from_entity(LineItem)
-        # LineItem has no Reference fields, so all data fields should be present
-        vo = VO(product_id="P1", price=5.0, quantity=1)
-        assert vo.product_id == "P1"
+        vo_field_names = set(VO.model_fields.keys())
+
+        # Reference fields like cart_id (auto-injected by part_of) should not appear
+        assert "cart_id" not in vo_field_names
+        # Data fields should still be present
+        assert "product_id" in vo_field_names
+        assert "price" in vo_field_names
 
     def test_vo_is_immutable(self):
         """Generated VO is immutable like any BaseValueObject."""

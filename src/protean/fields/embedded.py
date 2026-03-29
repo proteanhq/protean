@@ -1,6 +1,7 @@
 """Module for defining embedded fields"""
 
 from functools import lru_cache
+from typing import Any
 
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Field
@@ -221,7 +222,7 @@ class ValueObjectFromEntity(ValueObject):
             items: List(content_type=ValueObjectFromEntity(OrderItem))
     """
 
-    def __init__(self, entity_cls, **kwargs):
+    def __init__(self, entity_cls: type, **kwargs: Any) -> None:
         from protean.core.value_object import value_object_from_entity
 
         vo_cls = value_object_from_entity(entity_cls)

@@ -370,7 +370,9 @@ def value_object_from_entity(
 
     annotations: dict[str, Any] = {}
     namespace: dict[str, Any] = {}
-    association_descriptors: dict[str, ValueObjectField | ValueObjectList] = {}
+    # ValueObjectList is lazily imported above; use Any in the annotation
+    # to avoid referencing it at module-import time.
+    association_descriptors: dict[str, Any] = {}
     model_field_info = getattr(entity_cls, "model_fields", {})
 
     for key, value in get_fields(entity_cls).items():
@@ -400,8 +402,12 @@ def value_object_from_entity(
 
         elif isinstance(value, ValueObjectField):
             vo_cls = value.value_object_cls
-            annotations[key] = Optional[vo_cls]
-            namespace[key] = None
+            # Preserve the required flag from the original descriptor
+            if getattr(value, "required", False):
+                annotations[key] = vo_cls
+            else:
+                annotations[key] = Optional[vo_cls]
+                namespace[key] = None
             association_descriptors[key] = value
 
         elif isinstance(value, ResolvedField):
