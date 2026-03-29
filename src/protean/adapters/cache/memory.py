@@ -142,16 +142,17 @@ class MemoryCache(BaseCache):
         return projection_cls(value) if value else None
 
     def get_all(self, key_pattern, last_position=0, size=25):
-        # FIXME Handle Pagination with Last Position
-        # FIXME Handle Pagination with Size
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
-        key_list = self._db.keys()
+        key_list = list(self._db.keys())
         regex = re.compile(key_pattern)
         results = list(filter(regex.match, key_list))
 
-        return [projection_cls(self._db.get(key)) for key in results]
+        # Apply pagination
+        page = results[last_position : last_position + size]
+
+        return [projection_cls(self._db.get(key)) for key in page]
 
     def count(self, key_pattern):
         key_list = self._db.keys()

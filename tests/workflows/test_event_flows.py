@@ -51,7 +51,6 @@ class OrderItem(BaseEntity):
     quantity: Integer(required=True)
 
 
-# FIXME Auto-generate ValueObject from Entity?
 class OrderItemValueObject(BaseValueObject):
     product_id: Identifier(required=True)
     price: Float(required=True)
@@ -77,7 +76,6 @@ class OrderPlaced(BaseEvent):
 class OrdersCommandHandler(BaseCommandHandler):
     @handle(PlaceOrder)
     def place_order(self, command: PlaceOrder):
-        # FIXME Cumbersome conversion to and from OrderItemValueObject
         items = [OrderItem(**item.to_dict()) for item in command.items]
         order = Order(
             id=command.order_id,

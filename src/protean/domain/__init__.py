@@ -1707,7 +1707,6 @@ class Domain:
     # Repository Functionality #
     ############################
 
-    # FIXME Optimize calls to this method with cache, but also with support for Multitenancy
     def repository_for(self, element_cls) -> BaseRepository:
         if isinstance(element_cls, str):
             raise IncorrectUsageError(

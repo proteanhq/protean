@@ -72,6 +72,48 @@ class BaseDomainService(Element, OptionsMixin):
         self._aggregates = aggregates
 
 
+def _make_invariant_wrapper(original_method):
+    """Create an invariant-checking wrapper for a single domain service method.
+
+    Extracted as a function so that ``original_method`` is captured by value
+    (as a parameter), avoiding the classic closure-in-loop bug.
+    """
+
+    @wraps(original_method)
+    def wrapped_call(self, *args, **kwargs):
+        errors = {}
+
+        for invariant_method in self._invariants["pre"].values():
+            try:
+                invariant_method(self)
+            except ValidationError as err:
+                for field_name in err.messages:
+                    if field_name not in errors:
+                        errors[field_name] = []
+                    errors[field_name].extend(err.messages[field_name])
+
+        if errors:
+            raise ValidationError(errors)
+
+        result = original_method(self, *args, **kwargs)
+
+        for invariant_method in self._invariants["post"].values():
+            try:
+                invariant_method(self)
+            except ValidationError as err:
+                for field_name in err.messages:
+                    if field_name not in errors:
+                        errors[field_name] = []
+                    errors[field_name].extend(err.messages[field_name])
+
+        if errors:
+            raise ValidationError(errors)
+
+        return result
+
+    return wrapped_call
+
+
 def wrap_methods_with_invariant_calls(cls):
     """
     Case: When Domain Service is defined as a regular instantiable class.
@@ -85,49 +127,10 @@ def wrap_methods_with_invariant_calls(cls):
             not (method_name.startswith("__") and method_name.endswith("__"))
             and not method_name.startswith("_")
         ) or method_name == "__call__":
-            # Protect against re-wrapping
-            #   by checking whether __call__ has `__wrapped__` attribute
-            #   which it would if it has been wrapped already
-            #
-            # FIXME Is there a better way to prevent re-wrapping the same class?
+            # `@wraps` sets `__wrapped__` on the wrapper, so its presence
+            # means this method was already wrapped in a prior factory call.
             if not hasattr(method, "__wrapped__"):
-                original_method = method
-
-                @wraps(original_method)
-                def wrapped_call(self, *args, **kwargs):
-                    # Run the invariant methods marked `pre` before the original __call__ method
-                    errors = {}
-                    for invariant_method in self._invariants["pre"].values():
-                        try:
-                            invariant_method(self)
-                        except ValidationError as err:
-                            for field_name in err.messages:
-                                if field_name not in errors:
-                                    errors[field_name] = []
-                                errors[field_name].extend(err.messages[field_name])
-
-                    if errors:
-                        raise ValidationError(errors)
-
-                    # Execute the original __call__ method
-                    result = original_method(self, *args, **kwargs)
-
-                    # Run the invariant methods marked `post` after the original __call__ method
-                    for invariant_method in self._invariants["post"].values():
-                        try:
-                            invariant_method(self)
-                        except ValidationError as err:
-                            for field_name in err.messages:
-                                if field_name not in errors:
-                                    errors[field_name] = []
-                                errors[field_name].extend(err.messages[field_name])
-
-                    if errors:
-                        raise ValidationError(errors)
-
-                    return result
-
-                setattr(cls, method_name, wrapped_call)
+                setattr(cls, method_name, _make_invariant_wrapper(method))
 
     return cls
 

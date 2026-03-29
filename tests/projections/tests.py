@@ -198,8 +198,7 @@ class TestProjectionMeta:
         assert hasattr(Person, "meta_")
         assert type(Person.meta_) is Options
 
-        # Persistence attributes
-        # FIXME Should these be present as part of Projections, or a separate Model?
+        # Persistence attributes (projections own these directly, no separate Model)
         assert hasattr(Person.meta_, "abstract")
         assert hasattr(Person.meta_, "schema_name")
         assert hasattr(Person.meta_, "provider")

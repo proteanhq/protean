@@ -71,26 +71,23 @@ def has_fields(class_or_instance: Type["Element"] | "Element") -> bool:
 def attributes(class_or_instance: Type["Element"] | "Element") -> dict[str, "Field"]:
     """Return a dictionary of attributes of this element.
 
-    Accepts a element or an instance of one.
+    Accepts an element or an instance of one.
     """
+    from protean.fields.association import Association, Reference
+    from protean.fields.embedded import ValueObject
+
     attributes_dict = {}
 
     for _, field_obj in fields(class_or_instance).items():
-        # FIXME Make these checks elegant
-        # Because of circular import issues, `Reference` class cannot be imported
-        #   in this file. So we are resorting to check for method presence in
-        #   field objects. Not the most elegant way, but will have to suffice
-        #   until class heirarchies are restructured.
-        if hasattr(field_obj, "get_shadow_fields"):
-            shadow_fields = field_obj.get_shadow_fields()
-            for _, shadow_field in shadow_fields:
+        if isinstance(field_obj, ValueObject):
+            for _, shadow_field in field_obj.get_shadow_fields():
                 attributes_dict[shadow_field.attribute_name] = shadow_field
-        elif hasattr(field_obj, "relation"):
+        elif isinstance(field_obj, Reference):
             attributes_dict[field_obj.get_attribute_name()] = field_obj.relation
-        elif not hasattr(field_obj, "to_cls"):
+        elif isinstance(field_obj, Association):
+            pass  # HasOne/HasMany are not direct attributes
+        else:
             attributes_dict[field_obj.get_attribute_name()] = field_obj
-        else:  # This field is an association. Ignore recording it as an attribute
-            pass
 
     return attributes_dict
 

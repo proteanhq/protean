@@ -58,7 +58,6 @@ class RedisCache(BaseCache):
         return projection_cls(json.loads(value)) if value else None
 
     def get_all(self, key_pattern, last_position=0, size=25):
-        # FIXME Validate size
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 

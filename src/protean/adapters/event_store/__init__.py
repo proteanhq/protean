@@ -174,8 +174,9 @@ class EventStore:
         if len(handler_classes) == 0:
             return None
 
-        # Ensure that a command has a unique handler across all handlers
-        # FIXME Perform this check on domain spin-up?
+        # Ensure that a command has a unique handler across all handlers.
+        # HandlerConfigurator validates this at domain.init() time; this is
+        # a runtime safety net.
         handler_methods = set()
         for handler_cls in handler_classes:
             try:

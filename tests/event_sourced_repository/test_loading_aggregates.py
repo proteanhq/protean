@@ -116,7 +116,6 @@ def test_fetching_non_existing_aggregates(test_domain):
         current_domain.repository_for(User).get("foobar")
 
     assert exc is not None
-    # FIXME errors should be a list
     assert exc.value.args[0] == "`User` object with identifier foobar does not exist."
 
 

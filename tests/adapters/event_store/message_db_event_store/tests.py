@@ -35,10 +35,6 @@ class TestMessageDBEventStore:
 
         assert 'FATAL:  database "dummy" does not exist' in str(exc.value)
 
-        # Reset config value. # FIXME Config should be an argument to the domain
-        domain.config["event_store"]["provider"] = "memory"
-        domain.config["event_store"].pop("database_uri")
-
     def test_write_to_event_store(self, test_domain):
         position = test_domain.event_store.store._write(
             "testStream-123", "Event1", {"foo": "bar"}

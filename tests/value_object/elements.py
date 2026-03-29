@@ -75,10 +75,10 @@ class Balance(BaseValueObject):
             raise ValidationError({"amount": ["cannot be less than 1 Trillion"]})
 
     def replace(self, **kwargs):
-        # FIXME Find a way to do this generically and move method to `BaseValueObject`
-        currency = kwargs.pop("currency", None)
-        amount = kwargs.pop("amount", None)
-        return Balance(currency=currency or self.currency, amount=amount or self.amount)
+        return Balance(
+            currency=kwargs.pop("currency", None) or self.currency,
+            amount=kwargs.pop("amount", None) or self.amount,
+        )
 
 
 class Account(BaseAggregate):

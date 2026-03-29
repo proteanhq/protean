@@ -231,11 +231,9 @@ class BaseEventStore(metaclass=ABCMeta):
 
             aggregate = part_of.from_events(events)
 
-        ####################################
-        # ADD SNAPSHOT IF BEYOND THRESHOLD #
-        ####################################
-        # FIXME Delay creating snapshot or push to a background process
-        # If there are more events than SNAPSHOT_THRESHOLD, create a new snapshot
+        # Create a new snapshot if the event count exceeds the threshold.
+        # This runs inline (synchronous write) for simplicity — the aggregate
+        # is already in memory and the write is to a separate snapshot stream.
         if (
             snapshot_message
             and len(event_stream) > 1
