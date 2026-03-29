@@ -987,112 +987,28 @@ class TestCheckStalenessSingle:
 
 
 # ---------------------------------------------------------------------------
-# TestCheckCompatHook — git-based tests
+# TestCheckCompatHook — baseline-loading tests (mock git interaction)
 # ---------------------------------------------------------------------------
 
 
-_GIT_ENV_KEYS = {
-    "GIT_AUTHOR_NAME": "test",
-    "GIT_AUTHOR_EMAIL": "test@test.com",
-    "GIT_COMMITTER_NAME": "test",
-    "GIT_COMMITTER_EMAIL": "test@test.com",
-}
-
-
-def _git_env() -> dict[str, str]:
-    env = dict(os.environ)
-    env.update(_GIT_ENV_KEYS)
-    return env
-
-
-def _has_git_repo() -> bool:
-    """Return True if we're inside a git repository with git available."""
-    try:
-        subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            check=True,
-        )
-        return True
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return False
-
-
 @pytest.mark.no_test_domain
-@pytest.mark.skipif(not _has_git_repo(), reason="requires git and a .git directory")
 class TestCheckCompatHookNoBreaking:
     """check_compat_hook() exits 0 when no breaking changes found."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, tmp_path):
+    def _setup(self):
         self._original_path = sys.path[:]
         self._cwd = Path.cwd()
         change_working_directory_to("test7")
-        self._test7_dir = Path.cwd()
-        self._repo_root = Path(
-            subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"], text=True
-            ).strip()
-        )
         yield
         sys.path[:] = self._original_path
         os.chdir(self._cwd)
 
-    def _rel_path(self, *parts: str) -> str:
-        abs_path = self._test7_dir.joinpath(*parts)
-        return str(abs_path.relative_to(self._repo_root))
-
-    def _commit_and_cleanup(self, files: list[Path], env: dict[str, str]):
-        class _Ctx:
-            def __enter__(self_ctx):
-                for f in files:
-                    subprocess.run(
-                        ["git", "add", str(f)],
-                        capture_output=True,
-                        check=True,
-                        env=env,
-                        cwd=self._repo_root,
-                    )
-                subprocess.run(
-                    ["git", "commit", "-m", "test: hook compat"],
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    cwd=self._repo_root,
-                )
-                return self_ctx
-
-            def __exit__(self_ctx, *_):
-                subprocess.run(
-                    ["git", "reset", "HEAD~1"],
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    cwd=self._repo_root,
-                )
-                for f in files:
-                    if f.exists():
-                        f.unlink()
-                    subprocess.run(
-                        ["git", "checkout", "--", str(f)],
-                        capture_output=True,
-                        env=env,
-                        cwd=self._repo_root,
-                    )
-
-        return _Ctx()
-
     def test_exits_0_when_no_changes(self):
         """Identical IR → no changes → exit 0."""
         live_ir = _live_ir_for_test7()
-        protean_dir = self._test7_dir / ".protean"
-        protean_dir.mkdir(parents=True, exist_ok=True)
-        ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(live_ir, indent=2) + "\n", encoding="utf-8")
 
-        env = _git_env()
-        rel_dir = self._rel_path(".protean")
-        with self._commit_and_cleanup([ir_file], env):
+        with patch("protean.ir.git.load_ir_from_commit", return_value=live_ir):
             with patch(
                 "sys.argv",
                 [
@@ -1101,8 +1017,6 @@ class TestCheckCompatHookNoBreaking:
                     "publishing7.py",
                     "--base",
                     "HEAD",
-                    "--dir",
-                    rel_dir,
                 ],
             ):
                 with pytest.raises(SystemExit) as exc_info:
@@ -1111,68 +1025,17 @@ class TestCheckCompatHookNoBreaking:
 
 
 @pytest.mark.no_test_domain
-@pytest.mark.skipif(not _has_git_repo(), reason="requires git and a .git directory")
 class TestCheckCompatHookBreaking:
     """check_compat_hook() exits 1 when breaking changes are found."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, tmp_path):
+    def _setup(self):
         self._original_path = sys.path[:]
         self._cwd = Path.cwd()
         change_working_directory_to("test7")
-        self._test7_dir = Path.cwd()
-        self._repo_root = Path(
-            subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"], text=True
-            ).strip()
-        )
         yield
         sys.path[:] = self._original_path
         os.chdir(self._cwd)
-
-    def _rel_path(self, *parts: str) -> str:
-        abs_path = self._test7_dir.joinpath(*parts)
-        return str(abs_path.relative_to(self._repo_root))
-
-    def _commit_and_cleanup(self, files: list[Path], env: dict[str, str]):
-        class _Ctx:
-            def __enter__(self_ctx):
-                for f in files:
-                    subprocess.run(
-                        ["git", "add", str(f)],
-                        capture_output=True,
-                        check=True,
-                        env=env,
-                        cwd=self._repo_root,
-                    )
-                subprocess.run(
-                    ["git", "commit", "-m", "test: hook compat breaking"],
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    cwd=self._repo_root,
-                )
-                return self_ctx
-
-            def __exit__(self_ctx, *_):
-                subprocess.run(
-                    ["git", "reset", "HEAD~1"],
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    cwd=self._repo_root,
-                )
-                for f in files:
-                    if f.exists():
-                        f.unlink()
-                    subprocess.run(
-                        ["git", "checkout", "--", str(f)],
-                        capture_output=True,
-                        env=env,
-                        cwd=self._repo_root,
-                    )
-
-        return _Ctx()
 
     def test_exits_1_when_breaking_changes(self, capsys):
         """Baseline has a field that's missing from live domain → breaking → exit 1."""
@@ -1192,14 +1055,7 @@ class TestCheckCompatHookBreaking:
             }
             break  # only modify the first cluster
 
-        protean_dir = self._test7_dir / ".protean"
-        protean_dir.mkdir(parents=True, exist_ok=True)
-        ir_file = protean_dir / "ir.json"
-        ir_file.write_text(json.dumps(baseline_ir, indent=2) + "\n", encoding="utf-8")
-
-        env = _git_env()
-        rel_dir = self._rel_path(".protean")
-        with self._commit_and_cleanup([ir_file], env):
+        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
             with patch(
                 "sys.argv",
                 [
@@ -1208,8 +1064,6 @@ class TestCheckCompatHookBreaking:
                     "publishing7.py",
                     "--base",
                     "HEAD",
-                    "--dir",
-                    rel_dir,
                 ],
             ):
                 with pytest.raises(SystemExit) as exc_info:
@@ -1358,94 +1212,23 @@ class TestCheckCompatHookErrors:
 
 
 @pytest.mark.no_test_domain
-@pytest.mark.skipif(not _has_git_repo(), reason="requires git and a .git directory")
 class TestCheckCompatHookMultiDomain:
     """check_compat_hook() with [domains] config."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, tmp_path):
+    def _setup(self):
         self._original_path = sys.path[:]
         self._cwd = Path.cwd()
         change_working_directory_to("test7")
-        self._test7_dir = Path.cwd()
-        self._repo_root = Path(
-            subprocess.check_output(
-                ["git", "rev-parse", "--show-toplevel"], text=True
-            ).strip()
-        )
         yield
         sys.path[:] = self._original_path
         os.chdir(self._cwd)
-
-    def _rel_path(self, *parts: str) -> str:
-        abs_path = self._test7_dir.joinpath(*parts)
-        return str(abs_path.relative_to(self._repo_root))
-
-    def _commit_and_cleanup(self, files: list[Path], env: dict[str, str]):
-        class _Ctx:
-            def __enter__(self_ctx):
-                for f in files:
-                    subprocess.run(
-                        ["git", "add", str(f)],
-                        capture_output=True,
-                        check=True,
-                        env=env,
-                        cwd=self._repo_root,
-                    )
-                subprocess.run(
-                    ["git", "commit", "-m", "test: hook compat multi-domain"],
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    cwd=self._repo_root,
-                )
-                return self_ctx
-
-            def __exit__(self_ctx, *_):
-                subprocess.run(
-                    ["git", "reset", "HEAD~1"],
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    cwd=self._repo_root,
-                )
-                for f in files:
-                    if f.exists():
-                        f.unlink()
-                    subprocess.run(
-                        ["git", "checkout", "--", str(f)],
-                        capture_output=True,
-                        env=env,
-                        cwd=self._repo_root,
-                    )
-
-        return _Ctx()
 
     def test_multi_domain_checks_all(self):
         """Multi-domain compat: checks each domain in [domains]."""
         live_ir = _live_ir_for_test7()
 
-        protean_dir = self._test7_dir / ".protean"
-
-        # Write config.toml
-        _write_config(protean_dir, '[domains]\npublishing = "publishing7.py"\n')
-
-        # Write fresh IR for the domain subdirectory
-        pub_dir = protean_dir / "publishing"
-        pub_dir.mkdir(parents=True, exist_ok=True)
-        ir_file = pub_dir / "ir.json"
-        ir_file.write_text(json.dumps(live_ir, indent=2) + "\n", encoding="utf-8")
-
-        env = _git_env()
-        config_file = protean_dir / "config.toml"
-        with self._commit_and_cleanup([ir_file, config_file], env):
-            # For compat multi-domain, --dir is the base .protean dir.
-            # git loads baseline from <dir>/<name>/ir.json using repo-relative paths.
-            # We need the base dir relative to repo root for git, but config.toml
-            # needs to be loadable from disk (CWD is test7 dir, so use absolute).
-            # Mock load_config to return the config with domains, and use
-            # repo-relative dir for git baseline loading.
-            rel_dir = self._rel_path(".protean")
+        with patch("protean.ir.git.load_ir_from_commit", return_value=live_ir):
             with patch(
                 "protean.ir.config.load_config",
                 return_value=CompatConfig(
@@ -1458,8 +1241,6 @@ class TestCheckCompatHookMultiDomain:
                         "protean-check-compat",
                         "--base",
                         "HEAD",
-                        "--dir",
-                        rel_dir,
                     ],
                 ):
                     with pytest.raises(SystemExit) as exc_info:
