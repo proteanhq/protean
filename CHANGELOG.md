@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- `domain.correlation_trace(correlation_id)` method that returns a flat, causally-ordered list of `CausationNode` objects for a correlation chain. Thin wrapper over `build_causation_tree()` surfaced at the domain level for downstream test assertions.
+- `assert_chain()` test helper in `protean.testing` for validating message type sequences in correlation chains. Accepts both string type names and domain element classes.
 - Auto-fix mode (`--fix`) for `protean-check-staleness` pre-commit hook: automatically regenerates stale IR and stages the updated file with `git add`, allowing the commit to proceed without manual intervention
 - Multi-domain support for both pre-commit hooks (`protean-check-staleness`, `protean-check-compat`): new `[domains]` section in `.protean/config.toml` maps logical domain names to module paths, enabling a single hook entry to check all bounded contexts in a project. Each domain's IR is stored under `.protean/<name>/ir.json`. The `--domain` argument is now optional when `[domains]` is configured
 - Structured logging integration for automatic correlation context injection: new `protean.integrations.logging` module with `ProteanCorrelationFilter` (stdlib `logging.Filter`) and `protean_correlation_processor` (structlog processor) that read `g.message_in_context` and inject `correlation_id` and `causation_id` into every log record. New `domain.configure_logging()` convenience method wires up both the filter and processor in one call. Safe no-op when no domain context is active.

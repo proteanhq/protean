@@ -89,6 +89,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Callable
 from uuid import UUID
 
@@ -96,6 +97,7 @@ from protean.exceptions import ProteanExceptionWithMessage, ValidationError
 
 if TYPE_CHECKING:
     from protean.core.event import BaseEvent
+    from protean.port.event_store import CausationNode
 from protean.utils import fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -904,6 +906,60 @@ def assert_valid(operation: Callable[[], Any]) -> Any:
         raise AssertionError(
             f"Expected no ValidationError but got: {flat_messages}"
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Correlation chain assertions
+# ---------------------------------------------------------------------------
+
+
+def assert_chain(
+    chain: Sequence[CausationNode],
+    expected: Sequence[str | type],
+) -> None:
+    """Assert that a correlation chain matches an expected message sequence.
+
+    Compares the ``message_type`` of each
+    :class:`~protean.port.event_store.CausationNode` against the expected
+    names, in order.
+
+    Args:
+        chain: Ordered list of ``CausationNode`` objects, typically from
+            ``domain.correlation_trace(correlation_id)``.
+        expected: Sequence of expected message types.  Each element can be
+            a string (matched against ``CausationNode.message_type``) or
+            a domain element class whose ``__type__`` attribute is used.
+
+    Raises:
+        AssertionError: If the chain length or any message type does not
+            match.
+
+    Example::
+
+        from protean.testing import assert_chain
+
+        chain = domain.correlation_trace(correlation_id)
+        assert_chain(chain, [
+            "Test.PlaceOrder.v1",
+            "Test.OrderPlaced.v1",
+            "Test.ConfirmOrder.v1",
+            "Test.OrderConfirmed.v1",
+        ])
+
+        # Or using classes directly:
+        assert_chain(chain, [PlaceOrder, OrderPlaced, ConfirmOrder, OrderConfirmed])
+    """
+    actual_types = [node.message_type for node in chain]
+    expected_types = [
+        e.__type__ if hasattr(e, "__type__") else e for e in expected
+    ]
+
+    if actual_types != expected_types:
+        raise AssertionError(
+            f"Chain mismatch.\n"
+            f"  Expected: {expected_types}\n"
+            f"  Actual:   {actual_types}"
+        )
 
 
 # ---------------------------------------------------------------------------

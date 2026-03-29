@@ -73,6 +73,7 @@ from typing import (
 
 if TYPE_CHECKING:
     from protean.core.view import ReadView
+    from protean.port.event_store import CausationNode
     from protean.utils.projection_rebuilder import RebuildResult
 
 from inflection import parameterize, titleize, transliterate, underscore
@@ -1902,6 +1903,50 @@ class Domain:
                 results[record.cls.__name__] = count
 
         return results
+
+    ##############################
+    # Correlation Trace          #
+    ##############################
+
+    def correlation_trace(self, correlation_id: str) -> list["CausationNode"]:
+        """Return an ordered list of messages in a correlation chain.
+
+        Builds a causation tree from the event store and flattens it into
+        a depth-first pre-order list, preserving the causal sequence:
+        each parent appears before its effects.
+
+        Must be called after ``domain.init()`` and within
+        ``domain.domain_context()``.
+
+        Args:
+            correlation_id: The correlation ID to trace.
+
+        Returns:
+            Ordered list of :class:`~protean.port.event_store.CausationNode`
+            objects.  Empty list if no messages are found.
+
+        Example::
+
+            chain = domain.correlation_trace(correlation_id)
+            for node in chain:
+                print(f"{node.kind}: {node.message_type}")
+        """
+        root = self.event_store.store.build_causation_tree(correlation_id)
+        if root is None:
+            return []
+
+        # Flatten tree via depth-first pre-order traversal
+        from protean.port.event_store import CausationNode
+
+        result: list[CausationNode] = []
+
+        def _walk(node: CausationNode) -> None:
+            result.append(node)
+            for child in node.children:
+                _walk(child)
+
+        _walk(root)
+        return result
 
     ####################################
     # Projection Rebuild Functionality #
