@@ -518,9 +518,6 @@ def _pydantic_element_to_fact_event(element_cls):
                         default_factory=finfo.default_factory
                     )
                 # else: required field — no default needed
-            else:
-                annotations[key] = Any
-                namespace[key] = None
 
     ns = {"__annotations__": annotations, **namespace}
     event_cls = type(

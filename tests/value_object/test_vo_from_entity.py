@@ -1,6 +1,8 @@
 """Tests for value_object_from_entity(), ValueObjectFromEntity field, and
 BaseEntity.from_value_object() round-trip."""
 
+from datetime import datetime, timezone
+
 import pytest
 
 from protean import value_object_from_entity
@@ -9,6 +11,7 @@ from protean.core.command import BaseCommand
 from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
 from protean.fields import (
+    DateTime,
     Float,
     HasMany,
     HasOne,
@@ -37,6 +40,11 @@ class Address(BaseValueObject):
 
 class ShippingDetail(BaseEntity):
     tracking_number: String(required=True)
+    address: ValueObject(Address, required=True)
+
+
+class Delivery(BaseEntity):
+    destination: String(required=True)
     address: ValueObject(Address)
 
 
@@ -44,6 +52,11 @@ class Invoice(BaseEntity):
     invoice_number: String(identifier=True)
     amount: Float(required=True)
     note: String()
+
+
+class TimestampedEntity(BaseEntity):
+    label: String(required=True)
+    created_at: DateTime(default=lambda: datetime.now(timezone.utc))
 
 
 class Cart(BaseAggregate):
@@ -139,6 +152,45 @@ class TestValueObjectFromEntity:
         VO = value_object_from_entity(Invoice)
         vo = VO(amount=50.0)
         assert vo.note is None
+
+    def test_required_vo_field_preserved(self, test_domain):
+        """A required ValueObject field on the entity stays required in the VO."""
+        test_domain.register(Cart)
+        test_domain.register(LineItem, part_of=Cart)
+        test_domain.register(ShippingDetail, part_of=Cart)
+        test_domain.init(traverse=False)
+
+        VO = value_object_from_entity(ShippingDetail)
+
+        # address is required=True on ShippingDetail, so VO must require it too
+        field_info = VO.model_fields["address"]
+        assert field_info.is_required()
+
+        # Valid: address provided
+        vo = VO(tracking_number="T1", address={"street": "1st Ave", "city": "NYC"})
+        assert vo.address.street == "1st Ave"
+
+    def test_optional_vo_field_preserved(self, test_domain):
+        """An optional ValueObject field on the entity stays optional in the VO."""
+        test_domain.register(Cart)
+        test_domain.register(LineItem, part_of=Cart)
+        test_domain.register(ShippingDetail, part_of=Cart)
+        test_domain.init(traverse=False)
+
+        VO = value_object_from_entity(Delivery)
+
+        # address is optional (no required=True) on Delivery
+        vo = VO(destination="Warehouse")
+        assert vo.address is None
+
+    def test_field_with_callable_default(self):
+        """Fields with callable defaults (default_factory) are preserved."""
+        VO = value_object_from_entity(TimestampedEntity)
+
+        # created_at should have a default_factory, so omitting it is valid
+        vo = VO(label="test")
+        assert vo.label == "test"
+        assert vo.created_at is not None  # auto-filled by factory
 
     def test_recursive_has_one(self, test_domain):
         """HasOne associations are converted to nested VOs."""
@@ -317,3 +369,23 @@ class TestFactEventRefactoring:
             assert hasattr(Product, "_fact_event_cls")
             fact_cls = Product._fact_event_cls
             assert "tags" in fact_cls.model_fields
+
+    def test_fact_event_with_callable_default(self, test_domain):
+        """Fact events preserve fields with callable defaults (default_factory)."""
+
+        class Order(BaseAggregate):
+            customer_id: Identifier(required=True)
+            total: Float(required=True)
+            ordered_at: DateTime(default=lambda: datetime.now(timezone.utc))
+
+        test_domain.register(Order, fact_events=True)
+        test_domain.init(traverse=False)
+
+        # Verify fact event class was generated and has the ordered_at field
+        assert hasattr(Order, "_fact_event_cls")
+        fact_cls = Order._fact_event_cls
+        assert "ordered_at" in fact_cls.model_fields
+
+        # The field should have a default_factory (not be required)
+        finfo = fact_cls.model_fields["ordered_at"]
+        assert finfo.default_factory is not None

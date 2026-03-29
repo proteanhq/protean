@@ -420,9 +420,6 @@ def value_object_from_entity(
                     namespace[key] = PydanticField(
                         default_factory=finfo.default_factory
                     )
-            else:
-                annotations[key] = Any
-                namespace[key] = None
 
     # Make identifier/unique fields optional (they are identity concerns,
     # not value concerns).
