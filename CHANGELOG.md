@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Generic `replace(**kwargs)` method on `BaseValueObject` for creating copies with selected fields changed, similar to `dataclasses.replace()`. Rejects unknown field names and re-validates invariants on the new instance.
 - `domain.correlation_trace(correlation_id)` method that returns a flat, causally-ordered list of `CausationNode` objects for a correlation chain. Thin wrapper over `build_causation_tree()` surfaced at the domain level for downstream test assertions.
 - `assert_chain()` test helper in `protean.testing` for validating message type sequences in correlation chains. Accepts both string type names and domain element classes.
 - Auto-fix mode (`--fix`) for `protean-check-staleness` pre-commit hook: automatically regenerates stale IR and stages the updated file with `git add`, allowing the commit to proceed without manual intervention

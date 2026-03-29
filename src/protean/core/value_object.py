@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -255,6 +255,34 @@ class BaseValueObject(BaseModel, OptionsMixin):
         entity invariant runner (entity.py _run_invariants).
         """
         return self._run_invariants("post")
+
+    def replace(self, **kwargs: Any) -> Self:
+        """Return a new value object with specified fields replaced.
+
+        Similar to ``dataclasses.replace()`` — copies all current field values,
+        overlays the provided *kwargs*, and constructs a new instance of the
+        same class.  Invariants are re-validated on the new instance.
+
+        Passing ``field=None`` explicitly sets the field to ``None`` (it does
+        not keep the old value).  Only omitted fields retain their original
+        values.
+
+        Raises ``IncorrectUsageError`` if any key in *kwargs* is not a
+        declared field.
+        """
+        fields = getattr(self, _FIELDS, {})
+        unknown = set(kwargs) - set(fields)
+        if unknown:
+            raise IncorrectUsageError(
+                f"Unknown field(s) for {type(self).__name__}: "
+                + ", ".join(sorted(unknown))
+            )
+
+        new_data: dict[str, Any] = {}
+        for fname in fields:
+            new_data[fname] = kwargs.get(fname, getattr(self, fname))
+
+        return type(self)(**new_data)
 
     def to_dict(self) -> dict[str, Any]:
         """Return data as a dictionary."""
