@@ -934,6 +934,22 @@ class BaseEntity(BaseModel, OptionsMixin):
                 result[fname] = field_obj.as_dict(value)
         return result
 
+    @classmethod
+    def from_value_object(cls, vo: Any) -> "BaseEntity":
+        """Construct an entity instance from a value object.
+
+        This is the inverse of ``value_object_from_entity()`` -- it converts
+        a VO payload (typically carried in a command or event) back into an
+        entity instance::
+
+            items = [OrderItem.from_value_object(item) for item in command.items]
+
+        ``None`` values are stripped so that auto-generated identifier fields
+        receive their default rather than failing validation.
+        """
+        data = {k: v for k, v in vo.to_dict().items() if v is not None}
+        return cls(**data)
+
     @property
     def state_(self) -> _EntityState:
         """Access entity lifecycle state."""

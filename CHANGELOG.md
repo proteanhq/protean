@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `value_object_from_entity()` utility function that auto-generates a `BaseValueObject` subclass mirroring an entity's fields, eliminating manual field duplication for command/event payloads. Supports custom naming, field exclusion, and recursive conversion of `HasOne`/`HasMany` associations. Exported from `protean` top-level package.
+- `ValueObjectFromEntity` field descriptor in `protean.fields` for inline use in commands and events, e.g. `List(content_type=ValueObjectFromEntity(OrderItem))`.
+- `BaseEntity.from_value_object()` classmethod for converting value object payloads back into entity instances, completing the round-trip.
+
 ### Fixed
 
 - Fix persistence ordering in `BaseRepository`: aggregate root is now saved before child entities, and children before grandchildren (top-down). Previously the bottom-up ordering violated foreign-key constraints on databases that enforce them immediately (MSSQL, MySQL/InnoDB, SQLite with `PRAGMA foreign_keys`).

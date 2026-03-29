@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from protean import value_object_from_entity
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -17,7 +18,6 @@ from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.projection import BaseProjection
-from protean.core.value_object import BaseValueObject
 from protean.domain import Domain
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import (
@@ -30,6 +30,7 @@ from protean.fields import (
     List,
     String,
     ValueObject,
+    ValueObjectFromEntity,
 )
 from protean.server import Engine
 from protean.utils import Processing
@@ -51,16 +52,13 @@ class OrderItem(BaseEntity):
     quantity: Integer(required=True)
 
 
-class OrderItemValueObject(BaseValueObject):
-    product_id: Identifier(required=True)
-    price: Float(required=True)
-    quantity: Integer(required=True)
+OrderItemVO = value_object_from_entity(OrderItem)
 
 
 class PlaceOrder(BaseCommand):
     order_id: Identifier(identifier=True)
     customer_id: Identifier(required=True)
-    items: List(content_type=ValueObject(OrderItemValueObject))
+    items: List(content_type=ValueObject(OrderItemVO))
     total: Float(required=True)
     ordered_at: DateTime(required=True)
 
@@ -68,7 +66,7 @@ class PlaceOrder(BaseCommand):
 class OrderPlaced(BaseEvent):
     order_id: Identifier(identifier=True)
     customer_id: Identifier(required=True)
-    items: List(content_type=ValueObject(OrderItemValueObject))
+    items: List(content_type=ValueObject(OrderItemVO))
     total: Float(required=True)
     ordered_at: DateTime(required=True)
 
@@ -76,7 +74,7 @@ class OrderPlaced(BaseEvent):
 class OrdersCommandHandler(BaseCommandHandler):
     @handle(PlaceOrder)
     def place_order(self, command: PlaceOrder):
-        items = [OrderItem(**item.to_dict()) for item in command.items]
+        items = [OrderItem.from_value_object(item) for item in command.items]
         order = Order(
             id=command.order_id,
             customer_id=command.customer_id,
@@ -120,7 +118,7 @@ class Customer(BaseAggregate):
 
 class OrderHistory(BaseEntity):
     order_id: Identifier(identifier=True)
-    items: List(content_type=ValueObject(OrderItemValueObject))
+    items: List(content_type=ValueObject(OrderItemVO))
     total: Float(required=True)
     ordered_at: DateTime(required=True)
 
@@ -142,7 +140,7 @@ class CustomerOrderEventHandler(BaseEventHandler):
 class Shipment(BaseAggregate):
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    items: List(content_type=ValueObject(OrderItemValueObject))
+    items: List(content_type=ValueObjectFromEntity(OrderItem))
     status: String(
         choices=["PENDING", "SHIPPED", "DELIVERED", "CANCELLED"], default="PENDING"
     )
@@ -228,7 +226,7 @@ def test_workflow_among_protean_domains(test_domain, shipment_domain):
         command = PlaceOrder(
             order_id="1",
             customer_id="1",
-            items=[OrderItemValueObject(product_id="1", price=100.0, quantity=1)],
+            items=[OrderItemVO(product_id="1", price=100.0, quantity=1)],
             total=100.0,
             ordered_at=datetime.now(timezone.utc),
         )
