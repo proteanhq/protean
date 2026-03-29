@@ -117,7 +117,9 @@ def _make_app(domain) -> FastAPI:
 
 
 @pytest.fixture(autouse=True)
-def register_elements(test_domain):
+def register_elements(test_domain, request):
+    if "no_test_domain" in request.keywords:
+        return
     test_domain.register(Widget)
     test_domain.register(CreateWidget, part_of=Widget)
     test_domain.register(WidgetCommandHandler, part_of=Widget)
@@ -251,6 +253,28 @@ class TestNoCorrelationWithoutDomainContext:
         assert response.status_code == 404
         body = response.json()
         assert body["error"] == "Health resource not found"
+        assert "correlation_id" not in body
+
+
+@pytest.mark.no_test_domain
+class TestNoCorrelationWithoutAnyDomainContext:
+    """Error responses when no domain context exists at all."""
+
+    def test_no_correlation_id_without_domain_context(self):
+        """When no domain context is active (has_domain_context() is False),
+        error responses omit ``correlation_id``."""
+        app = FastAPI()
+        register_exception_handlers(app)
+
+        @app.get("/fail")
+        def fail():
+            raise ObjectNotFoundError("not found")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/fail")
+        assert response.status_code == 404
+        body = response.json()
+        assert body["error"] == "not found"
         assert "correlation_id" not in body
 
 
