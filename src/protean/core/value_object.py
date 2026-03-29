@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -256,7 +256,7 @@ class BaseValueObject(BaseModel, OptionsMixin):
         """
         return self._run_invariants("post")
 
-    def replace(self, **kwargs: Any) -> "BaseValueObject":
+    def replace(self, **kwargs: Any) -> Self:
         """Return a new value object with specified fields replaced.
 
         Similar to ``dataclasses.replace()`` — copies all current field values,

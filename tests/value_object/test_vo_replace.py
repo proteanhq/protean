@@ -4,7 +4,7 @@ import pytest
 
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, ValidationError
-from protean.fields import Float, String, ValueObject
+from protean.fields import String, ValueObject
 
 from .elements import Balance, Currency
 
