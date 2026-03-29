@@ -74,6 +74,26 @@ async def place_order(request: PlaceOrderRequest):
 The middleware also injects `X-Correlation-ID` into the response, reflecting
 the ID that was actually used (from header, explicit param, or auto-generated).
 
+### Error responses include correlation ID
+
+When `register_exception_handlers` is used alongside `DomainContextMiddleware`,
+error responses automatically include `correlation_id` in the JSON body.
+API consumers can correlate errors with the originating request without
+inspecting response headers:
+
+```json
+{
+  "error": "Order not found",
+  "correlation_id": "ext-123"
+}
+```
+
+This works for all Protean exception types (`ValidationError`,
+`ObjectNotFoundError`, `InvalidStateError`, `InvalidOperationError`,
+`InvalidDataError`, and plain `ValueError`). The body `correlation_id`
+matches the `X-Correlation-ID` response header. Routes outside a domain
+context do not include the field.
+
 ### Priority of correlation ID sources
 
 When multiple sources provide a correlation ID, Protean resolves them in
@@ -404,6 +424,7 @@ Both integrations check for an active domain context and a
 | **`causation_id` format** | Protean message ID (e.g., `myapp::order:command-abc123-0`) |
 | **Auto-generation** | Always. Every chain has a `correlation_id` even if none is supplied |
 | **HTTP header** | `X-Correlation-ID` (fallback: `X-Request-ID`), extracted by `DomainContextMiddleware` |
+| **Error responses** | `correlation_id` included in JSON body via `register_exception_handlers` |
 | **Cross-service** | Automatic bridging through subscribers; generates fresh UUID when source has none |
 | **OTEL spans** | `protean.correlation_id` and `protean.causation_id` on all major spans |
 | **Observatory** | Every `MessageTrace` event carries both IDs; Timeline supports correlation deep-links |
