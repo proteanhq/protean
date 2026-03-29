@@ -6,11 +6,12 @@ consumers can correlate errors with the originating request without inspecting
 response headers.
 """
 
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from protean.domain.context import has_domain_context
 from protean.exceptions import (
     InvalidDataError,
     InvalidOperationError,
@@ -28,16 +29,15 @@ def _get_correlation_id() -> Optional[str]:
     and falls back to ``g.request_correlation_id`` (set by the middleware).
     Returns ``None`` when no domain context is active.
     """
-    try:
-        return getattr(g, "used_correlation_id", None) or getattr(
-            g, "request_correlation_id", None
-        )
-    except Exception:
-        # No domain context — g proxy raises when the stack is empty.
+    if not has_domain_context():
         return None
 
+    return getattr(g, "used_correlation_id", None) or getattr(
+        g, "request_correlation_id", None
+    )
 
-def _error_body(error: Any, correlation_id: Optional[str]) -> dict:
+
+def _error_body(error: Any, correlation_id: Optional[str]) -> dict[str, Any]:
     """Build the error response body, including ``correlation_id`` when present."""
     body: dict[str, Any] = {"error": error}
     if correlation_id is not None:
@@ -56,7 +56,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ValidationError)
     @app.exception_handler(InvalidDataError)
-    async def validation_error_handler(request: Request, exc):
+    async def validation_error_handler(
+        request: Request, exc: Union[ValidationError, InvalidDataError]
+    ):
         return JSONResponse(
             status_code=400,
             content=_error_body(exc.messages, _get_correlation_id()),
