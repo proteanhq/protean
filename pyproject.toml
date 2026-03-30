@@ -129,7 +129,7 @@ dev = [
     "bump-my-version>=1.2.7",
 ]
 test = [
-    "chardet>=3.0.2,<6",
+    "chardet>=3.0.2,<8",
     "diff-cover>=9.2.4",
     "mock==5.2.0",
     "pytest-asyncio>=0.21.1",
