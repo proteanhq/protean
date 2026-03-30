@@ -59,6 +59,17 @@ including its descriptive attributes, is stored.
 Value objects can be composed to form complex types, but they do not have
 independent identity and are always part of entities or aggregates.
 
+### Value Objects support functional updates. { data-toc-label="Functional Updates" }
+Since value objects are immutable, they provide a `replace()` method to create
+a new instance with selected fields changed — the functional equivalent of
+mutation. Invariants are re-validated on the new instance.
+
+### Value Objects can project entity structure. { data-toc-label="Entity Projections" }
+Value objects can be auto-generated from entity classes using
+`value_object_from_entity()`, eliminating field duplication when carrying
+entity data in commands and events. The inverse operation,
+`Entity.from_value_object()`, converts the VO back into an entity instance.
+
 ### Value Objects do not reference entities. { data-toc-label="No References" }
 Value objects should not hold references to entities. They are self-contained
 and defined solely by their attributes.

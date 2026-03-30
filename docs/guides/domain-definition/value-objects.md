@@ -375,6 +375,58 @@ In [2]: bal1.currency = "CAD"
 IncorrectUsageError: "Value Objects are immutable and cannot be modified once created"
 ```
 
+## Replacing Fields
+
+Since value objects are immutable, you cannot modify them after creation.
+Instead, use `replace()` to create a new instance with selected fields
+changed — similar to `dataclasses.replace()`:
+
+```python
+balance = Balance(currency="USD", amount=100.0)
+updated = balance.replace(amount=200.0)
+
+assert updated.amount == 200.0
+assert updated.currency == "USD"  # unchanged fields are preserved
+assert balance.amount == 100.0    # original is not modified
+```
+
+`replace()` copies all current field values, overlays the provided keyword
+arguments, and constructs a new instance of the same class. Invariants are
+re-validated on the new instance, so invalid replacements are rejected:
+
+```python
+balance = Balance(currency="USD", amount=100.0)
+
+# Invariant rejects negative balances for USD
+balance.replace(amount=-100000000000000.0)
+# ValidationError: {'balance': ['Balance cannot be negative for USD']}
+```
+
+Passing `field=None` explicitly sets the field to `None` — it does not
+keep the old value. Only omitted fields retain their original values:
+
+```python
+@domain.value_object
+class Profile:
+    name: String(max_length=50, required=True)
+    nickname: String(max_length=50)
+
+profile = Profile(name="Alice", nickname="Ali")
+updated = profile.replace(nickname=None)
+
+assert updated.nickname is None  # explicitly set to None
+```
+
+Unknown field names raise `IncorrectUsageError`:
+
+```python
+balance.replace(nonexistent=42)
+# IncorrectUsageError: "Unknown field(s) for Balance: nonexistent"
+```
+
+`replace()` also works with nested value objects — pass a new value object
+instance for the nested field, or omit it to preserve the original.
+
 ## Hashability
 
 Because value objects are immutable and define equality by their attributes,
@@ -390,13 +442,101 @@ prices = {
 unique_emails = {Email(address="a@b.com"), Email(address="c@d.com")}
 ```
 
+## Projecting Entities into Value Objects
+
+When building commands and events, you often need a value object that
+mirrors an entity's fields — for example, to carry `OrderItem` data in a
+`PlaceOrder` command. Manually duplicating the fields is tedious and
+error-prone. Protean provides `value_object_from_entity()` to auto-generate
+the VO class:
+
+```python
+from protean import value_object_from_entity
+from protean.fields import List, ValueObject
+
+@domain.entity(part_of=Order)
+class OrderItem:
+    product_name: String(max_length=100)
+    quantity: Integer()
+    unit_price: Float()
+
+# Auto-generate a VO mirroring OrderItem's fields
+OrderItemVO = value_object_from_entity(OrderItem)
+```
+
+The generated `OrderItemVO` has the same fields as `OrderItem`, with these
+adjustments:
+
+- **Identity fields become optional** — identifier and unique fields are
+  made optional with `None` defaults, since identity is not a value concern.
+- **`Reference` fields are excluded** — foreign key references are
+  infrastructure concerns, not domain values.
+- **`HasOne`/`HasMany` associations are recursively converted** — child
+  entities become nested value objects or lists of value objects.
+- **Private fields (prefixed with `_`) are skipped.**
+
+You can customize the generated class name and exclude specific fields:
+
+```python
+OrderItemVO = value_object_from_entity(
+    OrderItem,
+    name="OrderItemPayload",
+    exclude={"internal_notes"},
+)
+```
+
+### Inline field descriptor
+
+For inline use in commands and events, use the `ValueObjectFromEntity`
+field descriptor instead of calling the function separately:
+
+```python
+from protean.fields import ValueObjectFromEntity
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    customer_id: Identifier(required=True)
+    items: List(content_type=ValueObjectFromEntity(OrderItem))
+```
+
+This derives the VO class from the entity at class-body evaluation time —
+no separate variable needed.
+
+### Round-trip: VO back to Entity
+
+To convert a value object back into an entity instance (e.g., in a command
+handler), use the `from_value_object()` classmethod on the entity:
+
+```python
+@domain.command_handler(part_of=Order)
+class PlaceOrderHandler:
+    @handle(PlaceOrder)
+    def handle_place_order(self, command: PlaceOrder):
+        items = [OrderItem.from_value_object(item) for item in command.items]
+        order = Order(customer_id=command.customer_id, items=items)
+        # ...
+```
+
+`from_value_object()` calls `vo.to_dict()`, strips `None` values for
+identifier/unique fields (so auto-generated defaults kick in), and
+constructs the entity. This is the inverse of `value_object_from_entity()`.
+
+### Fact event refactoring
+
+Protean's fact event generation internally uses `value_object_from_entity()`
+to convert entity associations in aggregates. If your aggregate has
+`fact_events=True` and contains `HasOne`/`HasMany` entity associations,
+the generated fact event automatically includes value object projections
+of those entities.
+
 ## Common Errors
 
 | Exception | When it occurs |
 |---|---|
 | `ValidationError` | Field validation fails during construction (e.g. missing `required` field, invalid format). Contains a `messages` dict. |
 | `ValidationError` | An `@invariant.post` check raises a validation error (e.g. "balance cannot be negative for USD"). |
-| `IncorrectUsageError` | Trying to modify a value object attribute after creation (value objects are immutable). |
+| `IncorrectUsageError` | Trying to modify a value object attribute after creation (value objects are immutable). Use `replace()` instead. |
+| `IncorrectUsageError` | Passing an unknown field name to `replace()`. |
 | `IncorrectUsageError` | Defining a field with `unique=True` or `identifier=True` — value objects have no concept of identity. |
 
 ---
@@ -410,3 +550,4 @@ unique_emails = {Email(address="a@b.com"), Email(address="c@d.com")}
 
     - [Replace Primitives with Value Objects](../../patterns/replace-primitives-with-value-objects.md) — When and why to wrap raw types in domain-specific value objects.
     - [Validation Layering](../../patterns/validation-layering.md) — Where value object validation fits in the overall validation strategy.
+    - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md) — How fact events use entity-to-VO projection for cross-context state transfer.

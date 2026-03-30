@@ -32,6 +32,34 @@ Out[2]:
  'id': '513b8a78-e00f-45ce-bb6f-11ef0cccbec6'}
 ```
 
+## `ValueObjectFromEntity`
+
+A convenience variant of `ValueObject` that auto-generates its value object
+class from an entity. Instead of manually defining a VO that mirrors an
+entity's fields, this descriptor derives it at class-body evaluation time.
+
+**Arguments**
+
+- **`entity_cls`**: The entity (or aggregate) class to project into a value
+  object. Identity/unique fields become optional, `Reference` fields are
+  excluded, and `HasOne`/`HasMany` associations are recursively converted.
+
+```python
+from protean.fields import List, ValueObjectFromEntity
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    customer_id: Identifier(required=True)
+    items: List(content_type=ValueObjectFromEntity(OrderItem))
+```
+
+This is equivalent to calling `value_object_from_entity(OrderItem)` and
+passing the result to a `ValueObject` field. Use whichever form is clearer
+for your use case.
+
+See [Projecting Entities into Value Objects](../../guides/domain-definition/value-objects.md#projecting-entities-into-value-objects)
+for the full guide including round-trip conversion back to entities.
+
 ## `List`
 
 A field that represents a list of values.

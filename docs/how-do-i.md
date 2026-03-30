@@ -18,6 +18,9 @@ need by what you're trying to accomplish.
 | Define a root entity with business logic        | [Aggregates](./guides/domain-definition/aggregates.md) |
 | Add a child object with identity to an aggregate | [Entities](./guides/domain-definition/entities.md) |
 | Create an immutable descriptive value (Money, Email, Address) | [Value Objects](./guides/domain-definition/value-objects.md) |
+| Create a copy of a value object with some fields changed | [Replacing Fields](./guides/domain-definition/value-objects.md#replacing-fields) |
+| Auto-generate a value object from an entity's fields | [Projecting Entities into Value Objects](./guides/domain-definition/value-objects.md#projecting-entities-into-value-objects) |
+| Convert a value object back into an entity instance | [Constructing from Value Objects](./guides/domain-definition/entities.md#constructing-from-value-objects) |
 | Choose between an entity and a value object     | [Choosing Element Types](./concepts/building-blocks/choosing-element-types.md) |
 | Connect entities with relationships             | [Relationships](./guides/domain-definition/relationships.md) |
 | Add typed attributes to domain objects          | [Fields](./reference/fields/index.md) |

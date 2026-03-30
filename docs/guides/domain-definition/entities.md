@@ -194,6 +194,27 @@ repo = domain.repository_for(Order)
 repo.add(order)  # Persists the order AND all its OrderItems
 ```
 
+## Constructing from Value Objects
+
+When commands and events carry entity data as value objects (see
+[Projecting Entities into Value Objects](./value-objects.md#projecting-entities-into-value-objects)),
+use the `from_value_object()` classmethod to convert them back:
+
+```python
+@domain.command_handler(part_of=Order)
+class PlaceOrderHandler:
+    @handle(PlaceOrder)
+    def handle_place_order(self, command: PlaceOrder):
+        items = [OrderItem.from_value_object(item) for item in command.items]
+        order = Order(customer_id=command.customer_id, items=items)
+        # ...
+```
+
+`from_value_object()` calls `vo.to_dict()` and constructs an entity
+instance. Identity fields with `None` values are stripped so that
+auto-generated defaults kick in — this means each converted entity
+gets a fresh identity rather than failing validation.
+
 ## Associations
 
 Entities can enclose other entities within them using `HasOne` and `HasMany` relationships, similar to aggregates. Additionally, entities automatically receive `Reference` fields that establish inverse relationships to their parent aggregate.
