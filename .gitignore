@@ -151,7 +151,7 @@ docs-old/*
 tmp/*
 
 *.code-workspace
-.claude/
+.claude/plans
 
 # Poetry (legacy - removed in favor of uv)
 poetry.lock
