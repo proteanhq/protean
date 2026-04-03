@@ -11,7 +11,8 @@
       "Bash(gh project:*)",
       "Bash(gh search:*)",
       "Bash(gh api:*)",
-      "WebSearch"
+      "WebSearch",
+      "Edit(/.claude/skills/test/**)"
     ]
   },
   "hooks": {
