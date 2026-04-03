@@ -14,8 +14,8 @@ if echo "$COMMAND" | grep -qE '\-\-no-verify'; then
     exit 2
 fi
 
-# Block force push
-if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force|git\s+push\s+-f\b'; then
+# Block force push (but allow --force-with-lease)
+if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force([[:space:]]|$)|git\s+push\s+-f\b'; then
     echo "BLOCKED: Force push is not allowed. Use --force-with-lease if absolutely necessary." >&2
     exit 2
 fi

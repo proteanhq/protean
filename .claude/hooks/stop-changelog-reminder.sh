@@ -22,7 +22,7 @@ if [ -z "$CHANGELOG_CHANGED" ]; then
 fi
 
 if [ -z "$CHANGELOG_CHANGED" ]; then
-    echo '{"result": "CHANGELOG reminder: src/ files have been modified but CHANGELOG.md has not. Remember to add an entry under [Unreleased] before creating a PR."}'
+    echo '{"result": "CHANGELOG reminder: src/ files have been modified but CHANGELOG.md has not. Remember to add an entry under [Unreleased] before creating a PR."}' >&2
 fi
 
 exit 0
