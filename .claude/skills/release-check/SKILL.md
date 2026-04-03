@@ -31,13 +31,13 @@ Report any mismatches. Note: the template and docs files may use a base version 
 
 ## Check 3: Epic sub-issues
 
-Read the roadmap to find the active epic(s):
+Find the active epic(s) from GitHub:
 
 ```bash
-cat todo/0-ROADMAP.md
+gh issue list -R proteanhq/protean --label "epic" --state open --limit 10
 ```
 
-Query GitHub for sub-issue status:
+Query the relevant epic for sub-issue status:
 
 ```bash
 gh issue view <epic-number> -R proteanhq/protean --json title,subIssues
@@ -72,10 +72,10 @@ Flag any failing or in-progress checks. A release should not be tagged with red 
 Show what `bump-my-version` would do without applying it:
 
 ```bash
-uv run bump-my-version bump --dry-run --verbose ${1:-minor} 2>&1 | head -30
+uv run bump-my-version bump --dry-run --verbose minor 2>&1 | head -30
 ```
 
-Use `$ARGUMENTS` if provided (e.g., `minor`, `patch`, `rc`), otherwise default to `minor` for new releases and `rc` for RC bumps. The dry-run shows which files change and what the new version string would be.
+If `$ARGUMENTS` specifies a bump type (e.g., `minor`, `patch`, `rc`), use that instead of `minor`. The dry-run shows which files change and what the new version string would be.
 
 ## Report
 

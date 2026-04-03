@@ -12,13 +12,17 @@ Take an epic from the Protean roadmap and turn it into a concrete, actionable se
 
 Start by building a deep understanding of what the epic requires.
 
-### Read the roadmap
+### Find the epic
+
+Find the epic matching `$ARGUMENTS` — it might be referenced by issue number (e.g., "#751"), name (e.g., "IR Materialization"), or sequence number (e.g., "1.10").
+
+Query the GitHub Project to find it:
 
 ```bash
-cat todo/0-ROADMAP.md
+gh issue list -R proteanhq/protean --label "epic" --state all --limit 30
 ```
 
-Find the epic matching `$ARGUMENTS`. It might be referenced by sequence number (e.g., "1.10"), name (e.g., "IR Materialization"), or issue number (e.g., "#751").
+If `todo/0-ROADMAP.md` exists locally, read it for additional context — but don't depend on it, as it's gitignored and may not be present on all machines.
 
 ### Review the epic on GitHub
 
@@ -151,14 +155,12 @@ This returns a "already taken" error if the relationship exists — treat as a n
 
 ## Phase 3: Update the roadmap
 
-Edit `todo/0-ROADMAP.md`:
+Update the GitHub Project board:
 
-1. If a previous epic is now complete, mark it **Done**
-2. Mark the new epic **Active** or **In Progress**
-3. Update the "Active Work" section with:
-   - Current focus and epic name
-   - Plan file path (from Phase 4)
-   - Sub-issue count and links
+1. Set the epic's Status to **Active** or **In Progress**
+2. If a previous epic is now complete, set its Status to **Done**
+
+If `todo/0-ROADMAP.md` exists locally, update it too — but the GitHub Project is the source of truth.
 
 ## Phase 4: Write a plan file
 

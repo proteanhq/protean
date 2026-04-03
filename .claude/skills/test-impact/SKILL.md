@@ -12,11 +12,11 @@ Map changed source files to the tests that exercise them, then run only those te
 Gather changes from two sources — the branch (committed work) and the working tree (uncommitted edits):
 
 ```bash
-git diff --name-only main...HEAD -- 'src/'
-git diff --name-only -- 'src/'
+git diff --name-only main...HEAD -- 'src/' 'tests/'
+git diff --name-only -- 'src/' 'tests/'
 ```
 
-Combine and deduplicate. If only test files changed (no `src/` changes), run those test files directly and skip the mapping step.
+Combine and deduplicate. Separate into `src/` changes and `tests/` changes. If only test files changed (no `src/` changes), run those test files directly and skip the mapping step.
 
 ## Map source files to test paths
 
@@ -29,10 +29,10 @@ The project follows a consistent convention for where tests live:
 | `src/protean/domain/` | `tests/domain/` | |
 | `src/protean/server/` | `tests/server/` | |
 | `src/protean/adapters/` | `tests/adapters/` | See adapter warning below |
-| `src/protean/port/` | `tests/adapters/` | Ports tested through their adapters |
+| `src/protean/port/` | `tests/port/` | |
 | `src/protean/integrations/pytest/` | `tests/integrations/pytest/` | |
 | `src/protean/utils/` | `tests/utils/` | |
-| `src/protean/fields/` | `tests/fields/` | |
+| `src/protean/fields/` | `tests/field/` | Note: singular `field`, not `fields` |
 | `src/protean/ir/` | `tests/ir/` | |
 | `src/protean/ext/` | `tests/ext/` | |
 

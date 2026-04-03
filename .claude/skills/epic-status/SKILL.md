@@ -15,13 +15,13 @@ If `$ARGUMENTS` is provided, use it to identify the epic — it could be:
 - A sequence number from the roadmap (e.g., `1.10`)
 - A name fragment (e.g., `IR Materialization`)
 
-If no argument is given, read the roadmap to find what's currently active:
+If no argument is given, query GitHub for active epics:
 
 ```bash
-cat todo/0-ROADMAP.md
+gh issue list -R proteanhq/protean --label "epic" --state open --limit 10
 ```
 
-Look for epics marked as "Active" or "In Progress" in the Active Work section.
+This shows all open epics. If `todo/0-ROADMAP.md` exists locally, it may have additional context on which epics are actively being worked — but GitHub is the source of truth.
 
 ## Gather data
 
@@ -53,7 +53,7 @@ gh api graphql -f query='{ repository(owner: "proteanhq", name: "protean") {
 
 ## Check the plan file
 
-Look for a matching plan file in `.claude/plans/`. The memory file at `~/.claude/projects/-Users-subhashb-wspace-proteanhq-protean/memory/MEMORY.md` often records the plan file path for active epics. If a plan exists, scan it for any discrepancies with the current GitHub state — sub-issues that were added or removed, scope changes, etc.
+Look for a matching plan file in `.claude/plans/`. Your local Claude project memory (under `~/.claude/projects/<project>/memory/MEMORY.md`) may record the plan file path for active epics. If a plan exists, scan it for any discrepancies with the current GitHub state — sub-issues that were added or removed, scope changes, etc.
 
 ## Report format
 
