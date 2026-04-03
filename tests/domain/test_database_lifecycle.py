@@ -1,5 +1,7 @@
 """Tests for Domain database lifecycle methods and outbox configuration."""
 
+from unittest.mock import PropertyMock, patch
+
 import pytest
 
 from protean.domain import Domain
@@ -106,6 +108,64 @@ class TestSetupDatabase:
             # that the method delegated to provider
             for _, provider in domain.providers.items():
                 assert provider is not None
+
+    @pytest.mark.no_test_domain
+    def test_setup_database_initializes_outbox_dao_before_creating_artifacts(self):
+        """setup_database forces outbox DAO initialization before calling
+        _create_database_artifacts so that the outbox table definition is
+        registered in the provider's metadata (e.g. SQLAlchemy)."""
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            # Track the order of operations: DAO access should precede
+            # _create_database_artifacts
+            call_order = []
+
+            outbox_repo = domain._outbox_repos["default"]
+
+            original_dao = type(outbox_repo)._dao
+            with patch.object(
+                type(outbox_repo),
+                "_dao",
+                new_callable=PropertyMock,
+                side_effect=lambda: (
+                    call_order.append("dao_access"),
+                    original_dao.fget(outbox_repo),
+                )[1],
+            ):
+                provider = domain.providers["default"]
+                original_create = provider._create_database_artifacts
+
+                def tracked_create():
+                    call_order.append("create_artifacts")
+                    return original_create()
+
+                with patch.object(
+                    provider, "_create_database_artifacts", side_effect=tracked_create
+                ):
+                    domain.setup_database()
+
+            assert "dao_access" in call_order
+            assert "create_artifacts" in call_order
+            assert call_order.index("dao_access") < call_order.index("create_artifacts")
+
+    @pytest.mark.no_test_domain
+    def test_setup_database_includes_outbox_tables(self):
+        """setup_database should work correctly when outbox is enabled,
+        ensuring outbox tables are included in the database setup."""
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            domain.setup_database()
+
+            # Verify outbox repos exist and their DAOs are accessible
+            assert "default" in domain._outbox_repos
+            outbox_repo = domain._outbox_repos["default"]
+            assert outbox_repo._dao is not None
 
 
 class TestSetupOutbox:

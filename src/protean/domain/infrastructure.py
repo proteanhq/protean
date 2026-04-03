@@ -98,7 +98,14 @@ class InfrastructureManager:
         Delegates to each managed provider's ``_create_database_artifacts()``
         which is idempotent — existing tables are left untouched.
         Providers with ``managed = false`` are skipped.
+
+        Forces outbox DAO initialization first so the outbox table definition
+        is registered in SQLAlchemy metadata before ``create_all()`` runs.
         """
+        # Force DAO creation for outbox repos so their tables are included
+        for _provider_name, outbox_repo in self.outbox_repos.items():
+            outbox_repo._dao  # noqa: B018
+
         for _, provider in self._domain.providers.items():
             if not provider.managed:
                 continue
