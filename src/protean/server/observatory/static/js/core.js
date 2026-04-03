@@ -216,8 +216,15 @@ const Observatory = (() => {
     timeAgo(ts) {
       if (!ts) return '—';
       const now = Date.now();
-      const then = typeof ts === 'string' ? new Date(ts).getTime() : ts;
-      const diff = now - then;
+      // MessageDB stores UTC timestamps without a timezone suffix.
+      // Append 'Z' so the browser correctly interprets them as UTC.
+      var parsed = ts;
+      if (typeof ts === 'string' && !/[Zz]$/.test(ts) && !/[+-]\d{2}:\d{2}$/.test(ts)) {
+        parsed = ts.replace(' ', 'T') + 'Z';
+      }
+      const then = typeof parsed === 'string' ? new Date(parsed).getTime() : parsed;
+      if (isNaN(then)) return '—';
+      const diff = Math.max(0, now - then);
       if (diff < 60000) return Math.floor(diff / 1000) + 's ago';
       if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
       if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';

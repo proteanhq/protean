@@ -5,7 +5,7 @@ import logging
 import threading
 from collections import defaultdict
 from functools import partial
-from typing import Any, ClassVar, Self, TypeVar, dataclass_transform
+from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, dataclass_transform
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
@@ -44,6 +44,9 @@ from protean.utils.reflection import (
     reference_fields,
     value_object_fields,
 )
+
+if TYPE_CHECKING:
+    from protean.core.value_object import BaseValueObject
 
 logger = logging.getLogger(__name__)
 
@@ -959,8 +962,9 @@ class BaseEntity(BaseModel, OptionsMixin):
             ):
                 id_or_unique.add(fname)
 
-        return cls(**{k: v for k, v in data.items()
-                      if not (v is None and k in id_or_unique)})
+        return cls(
+            **{k: v for k, v in data.items() if not (v is None and k in id_or_unique)}
+        )
 
     @property
     def state_(self) -> _EntityState:

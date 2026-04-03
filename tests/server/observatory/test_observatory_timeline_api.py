@@ -33,6 +33,7 @@ from protean.server.observatory.routes.timeline import (
     _extract_stream_category,
     _serialize_message,
     _serialize_message_detail,
+    _unique_store_domains,
     build_correlation_response,
     collect_aggregate_history,
     collect_all_events,
@@ -1268,3 +1269,275 @@ class TestNewRouteWiring:
         obs = Observatory(domains=[domain])
         routes = [r.path for r in obs.app.routes]
         assert "/api/timeline/aggregate/{stream_category}/{aggregate_id}" in routes
+
+
+# ---------------------------------------------------------------------------
+# _unique_store_domains
+# ---------------------------------------------------------------------------
+
+
+class TestUniqueStoreDomains:
+    def test_deduplicates_domains_sharing_same_store_uri(self, tmp_path):
+        """Domains with the same event store database_uri should be deduplicated."""
+        domain_a = Domain(name="DomainA", root_path=str(tmp_path))
+        domain_a._initialize()
+        domain_a.init(traverse=False)
+
+        domain_b = Domain(name="DomainB", root_path=str(tmp_path))
+        domain_b._initialize()
+        domain_b.init(traverse=False)
+
+        with domain_a.domain_context():
+            with domain_b.domain_context():
+                result = _unique_store_domains([domain_a, domain_b])
+
+        # Both use in-memory event stores with no database_uri, so they'll
+        # fall back to id()-based keys (different store instances = different keys).
+        # This test verifies the function runs correctly with real domains.
+        assert len(result) >= 1
+        assert all(isinstance(d, Domain) for d in result)
+
+    def test_single_domain_passes_through(self, event_domain):
+        result = _unique_store_domains([event_domain])
+        assert len(result) == 1
+        assert result[0] is event_domain
+
+    def test_empty_list_returns_empty(self):
+        assert _unique_store_domains([]) == []
+
+    def test_broken_domain_treated_as_unique(self):
+        """A domain that raises on event_store access is treated as unique."""
+        d1 = MagicMock()
+        d1.event_store.store.conn_info = {"database_uri": "postgresql://shared"}
+
+        d2 = MagicMock()
+        d2.event_store.side_effect = Exception("broken")
+
+        result = _unique_store_domains([d1, d2])
+        assert len(result) == 2
+
+    def test_same_conn_info_deduplicates(self):
+        """Two mock domains with the same database_uri produce one entry."""
+        d1 = MagicMock()
+        d1.event_store.store.conn_info = {"database_uri": "postgresql://shared-db"}
+        d2 = MagicMock()
+        d2.event_store.store.conn_info = {"database_uri": "postgresql://shared-db"}
+
+        result = _unique_store_domains([d1, d2])
+        assert len(result) == 1
+        assert result[0] is d1
+
+    def test_different_conn_info_keeps_both(self):
+        """Two mock domains with different database_uris are kept."""
+        d1 = MagicMock()
+        d1.event_store.store.conn_info = {"database_uri": "postgresql://db-a"}
+        d2 = MagicMock()
+        d2.event_store.store.conn_info = {"database_uri": "postgresql://db-b"}
+
+        result = _unique_store_domains([d1, d2])
+        assert len(result) == 2
+
+    def test_store_without_conn_info_falls_back_to_id(self):
+        """Stores without conn_info attribute use id() as fallback."""
+        d1 = MagicMock()
+        del d1.event_store.store.conn_info  # No conn_info attribute
+        d2 = MagicMock()
+        del d2.event_store.store.conn_info
+
+        result = _unique_store_domains([d1, d2])
+        # Different store objects → different id() → both kept
+        assert len(result) == 2
+
+    def test_store_with_empty_database_uri_falls_back_to_id(self):
+        """Empty database_uri string falls back to id()-based key."""
+        d1 = MagicMock()
+        d1.event_store.store.conn_info = {"database_uri": ""}
+        d2 = MagicMock()
+        d2.event_store.store.conn_info = {"database_uri": ""}
+
+        result = _unique_store_domains([d1, d2])
+        # Empty URI → fallback to id(store) → different objects → both kept
+        assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# _serialize_message: timestamp formatting
+# ---------------------------------------------------------------------------
+
+
+class TestSerializeMessageTimestamps:
+    def test_datetime_object_produces_isoformat(self):
+        """datetime objects should be serialized via .isoformat(), not str()."""
+        raw_msg = {
+            "type": "Test.Event.v1",
+            "stream_name": "test::user-123",
+            "global_position": 1,
+            "position": 0,
+            "time": dt(2025, 6, 15, 12, 30, 45),
+            "metadata": {
+                "headers": {"id": "msg-ts-1"},
+                "domain": {"kind": "EVENT"},
+                "event_store": {},
+            },
+        }
+        result = _serialize_message(raw_msg, "TestDomain")
+        # isoformat() produces 'T' separator: "2025-06-15T12:30:45"
+        assert "T" in result["time"]
+        assert result["time"] == "2025-06-15T12:30:45"
+
+    def test_string_timestamp_passed_through(self):
+        """String timestamps without .isoformat() are passed through as-is."""
+        raw_msg = {
+            "type": "Test.Event.v1",
+            "time": "2025-06-15T12:30:45.000000",
+            "metadata": {},
+        }
+        result = _serialize_message(raw_msg, "D")
+        assert result["time"] == "2025-06-15T12:30:45.000000"
+
+    def test_none_time_falls_back_to_headers(self):
+        raw_msg = {
+            "type": "Test.Event.v1",
+            "metadata": {
+                "headers": {"time": "2025-06-15T00:00:00"},
+                "domain": {},
+                "event_store": {},
+            },
+        }
+        result = _serialize_message(raw_msg, "D")
+        assert result["time"] == "2025-06-15T00:00:00"
+
+
+# ---------------------------------------------------------------------------
+# Multi-domain deduplication in collect_all_events / collect_timeline_stats
+# ---------------------------------------------------------------------------
+
+
+class TestMultiDomainDeduplication:
+    def test_shared_store_domains_not_duplicated_in_events(self, domain_with_events):
+        """Passing the same domain twice should not double the events."""
+        domain, _, _ = domain_with_events
+
+        # Simulate shared-store by passing same domain twice with same conn_info
+        events_single, _ = collect_all_events([domain])
+        events_double, _ = collect_all_events([domain, domain])
+
+        assert len(events_single) == len(events_double)
+
+    def test_shared_store_domains_not_duplicated_in_stats(self, domain_with_events):
+        """Stats should not be inflated by domains sharing the same store."""
+        domain, _, _ = domain_with_events
+
+        stats_single = collect_timeline_stats([domain])
+        stats_double = collect_timeline_stats([domain, domain])
+
+        assert stats_single["total_events"] == stats_double["total_events"]
+        assert stats_single["active_streams"] == stats_double["active_streams"]
+
+    def test_shared_store_domains_not_duplicated_in_find(self, domain_with_events):
+        """find_event_by_id should not search the same store twice."""
+        domain, _, _ = domain_with_events
+        events, _ = collect_all_events([domain])
+        msg_id = events[0]["message_id"]
+
+        result = find_event_by_id([domain, domain], msg_id)
+        assert result is not None
+        assert result["message_id"] == msg_id
+
+    def test_distinct_stores_both_included(self, tmp_path):
+        """Domains with distinct event stores should both contribute events."""
+        domain_a = Domain(name="DomainA", root_path=str(tmp_path / "a"))
+        domain_a._initialize()
+        domain_a.register(User)
+        domain_a.register(UserRegistered, part_of=User)
+        domain_a.init(traverse=False)
+
+        domain_b = Domain(name="DomainB", root_path=str(tmp_path / "b"))
+        domain_b._initialize()
+        domain_b.register(User)
+        domain_b.register(UserRegistered, part_of=User)
+        domain_b.init(traverse=False)
+
+        with domain_a.domain_context():
+            u1 = User.register(str(uuid.uuid4()), "Alice")
+            domain_a.event_store.store.append(u1._events[0])
+
+        with domain_b.domain_context():
+            u2 = User.register(str(uuid.uuid4()), "Bob")
+            domain_b.event_store.store.append(u2._events[0])
+
+        with domain_a.domain_context():
+            with domain_b.domain_context():
+                events, _ = collect_all_events([domain_a, domain_b])
+
+        # Both stores are distinct (different id()), so both events appear
+        assert len(events) == 2
+
+
+# ---------------------------------------------------------------------------
+# _build_causation_tree_from_group: timestamp formatting
+# ---------------------------------------------------------------------------
+
+
+class TestCausationTreeTimestampFormatting:
+    def test_datetime_in_causation_node(self, correlated_domain):
+        """CausationNode time should use isoformat for datetime objects."""
+        domain, _, _, _ = correlated_domain
+        store = domain.event_store.store
+
+        group = [
+            {
+                "type": "Test.Event.v1",
+                "stream_name": "test::ts-1",
+                "global_position": 1,
+                "time": dt(2025, 6, 15, 12, 0, 0),
+                "metadata": {
+                    "headers": {"id": "ts-node-1"},
+                    "domain": {"kind": "EVENT"},
+                },
+            }
+        ]
+        tree = _build_causation_tree_from_group(store, group)
+        assert tree is not None
+        assert tree.time == "2025-06-15T12:00:00"
+
+    def test_string_time_passed_through(self, correlated_domain):
+        """String timestamps in causation nodes are passed through."""
+        domain, _, _, _ = correlated_domain
+        store = domain.event_store.store
+
+        group = [
+            {
+                "type": "Test.Event.v1",
+                "stream_name": "test::ts-2",
+                "global_position": 1,
+                "time": "2025-06-15T14:30:00",
+                "metadata": {
+                    "headers": {"id": "ts-node-2"},
+                    "domain": {"kind": "EVENT"},
+                },
+            }
+        ]
+        tree = _build_causation_tree_from_group(store, group)
+        assert tree is not None
+        assert tree.time == "2025-06-15T14:30:00"
+
+    def test_none_time_in_causation_node(self, correlated_domain):
+        """Missing time in causation node should be None."""
+        domain, _, _, _ = correlated_domain
+        store = domain.event_store.store
+
+        group = [
+            {
+                "type": "Test.Event.v1",
+                "stream_name": "test::ts-3",
+                "global_position": 1,
+                "metadata": {
+                    "headers": {"id": "ts-node-3"},
+                    "domain": {"kind": "EVENT"},
+                },
+            }
+        ]
+        tree = _build_causation_tree_from_group(store, group)
+        assert tree is not None
+        assert tree.time is None

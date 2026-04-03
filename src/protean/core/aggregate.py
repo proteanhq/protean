@@ -12,7 +12,6 @@ from pydantic import PrivateAttr
 from protean.core.entity import BaseEntity
 from protean.fields.tempdata import AssociationCache
 from protean.core.event import BaseEvent
-from protean.core.value_object import BaseValueObject
 from protean.fields.resolved import ResolvedField
 from protean.exceptions import (
     ConfigurationError,

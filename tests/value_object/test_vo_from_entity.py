@@ -225,7 +225,9 @@ class TestValueObjectFromEntity:
 
         VO = value_object_from_entity(ShippingDetail)
 
-        vo = VO(tracking_number="TRACK123", address={"street": "123 Main", "city": "NYC"})
+        vo = VO(
+            tracking_number="TRACK123", address={"street": "123 Main", "city": "NYC"}
+        )
         assert vo.tracking_number == "TRACK123"
         assert vo.address.street == "123 Main"
 

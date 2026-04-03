@@ -39,6 +39,37 @@ _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 200
 
 
+def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
+    """Return a deduplicated list of domains, one per unique event store instance.
+
+    When multiple domains share the same event store (common in multi-bounded-context
+    apps using a single database), reading ``$all`` from each would return duplicate
+    messages.  This helper keeps only the first domain for each distinct store,
+    comparing by connection URI rather than object identity (each domain creates
+    its own store instance even when they share the same database).
+    """
+    seen_stores: set[str] = set()
+    unique: list[Domain] = []
+    for domain in domains:
+        try:
+            store = domain.event_store.store
+            # Use the database URI as the identity key — object identity
+            # doesn't work because each domain creates its own store instance.
+            store_key = (
+                store.conn_info.get("database_uri", "")
+                if hasattr(store, "conn_info")
+                else ""
+            )
+            if not store_key:
+                store_key = str(id(store))  # Fallback for stores without conn_info
+        except Exception:
+            store_key = str(id(domain))  # Fallback — treat as unique
+        if store_key not in seen_stores:
+            seen_stores.add(store_key)
+            unique.append(domain)
+    return unique
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -68,7 +99,11 @@ def _serialize_message(raw_msg: dict[str, Any], domain_name: str) -> dict[str, A
             "global_position", event_store_meta.get("global_position")
         ),
         "position": raw_msg.get("position", event_store_meta.get("position")),
-        "time": str(raw_msg["time"]) if raw_msg.get("time") else headers.get("time"),
+        "time": raw_msg["time"].isoformat()
+        if raw_msg.get("time") and hasattr(raw_msg["time"], "isoformat")
+        else str(raw_msg["time"])
+        if raw_msg.get("time")
+        else headers.get("time"),
         "correlation_id": domain_meta.get("correlation_id"),
         "causation_id": domain_meta.get("causation_id"),
         "domain": domain_name,
@@ -163,7 +198,7 @@ def collect_all_events(
     """
     all_events: list[tuple[dict[str, Any], str]] = []
 
-    for domain in domains:
+    for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
                 store = domain.event_store.store
@@ -233,7 +268,7 @@ def find_event_by_id(domains: list[Domain], message_id: str) -> dict[str, Any] |
 
     Returns the full event detail dict, or None if not found.
     """
-    for domain in domains:
+    for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
                 store = domain.event_store.store
@@ -261,7 +296,7 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
     last_event_datetime: datetime | None = None
     first_event_datetime: datetime | None = None
 
-    for domain in domains:
+    for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
                 store = domain.event_store.store
@@ -292,7 +327,11 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
 
                         if last_event_datetime is None or msg_dt > last_event_datetime:
                             last_event_datetime = msg_dt
-                            last_event_time = str(raw_time)
+                            last_event_time = (
+                                raw_time.isoformat()
+                                if hasattr(raw_time, "isoformat")
+                                else str(raw_time)
+                            )
 
                         if (
                             first_event_datetime is None
@@ -374,7 +413,11 @@ def _build_causation_tree_from_group(
             message_type=raw_msg.get("type", headers.get("type", "?")),
             kind=domain_meta.get("kind", "?"),
             stream=raw_msg.get("stream_name", headers.get("stream", "?")),
-            time=str(raw_msg.get("time", "")) if raw_msg.get("time") else None,
+            time=raw_msg["time"].isoformat()
+            if raw_msg.get("time") and hasattr(raw_msg["time"], "isoformat")
+            else str(raw_msg.get("time", ""))
+            if raw_msg.get("time")
+            else None,
             global_position=raw_msg.get("global_position"),
         )
 
@@ -409,7 +452,7 @@ def build_correlation_response(
         Dict with correlation_id, events, tree, and event_count; or None if
         no events found.
     """
-    for domain in domains:
+    for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
                 store = domain.event_store.store
@@ -457,7 +500,7 @@ def collect_aggregate_history(
     """
     stream_name = f"{stream_category}-{aggregate_id}"
 
-    for domain in domains:
+    for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
                 store = domain.event_store.store

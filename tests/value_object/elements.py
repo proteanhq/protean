@@ -75,7 +75,6 @@ class Balance(BaseValueObject):
             raise ValidationError({"amount": ["cannot be less than 1 Trillion"]})
 
 
-
 class Account(BaseAggregate):
     balance = ValueObject(Balance, required=True)
     kind: String(max_length=15, required=True)

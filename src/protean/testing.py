@@ -950,15 +950,11 @@ def assert_chain(
         assert_chain(chain, [PlaceOrder, OrderPlaced, ConfirmOrder, OrderConfirmed])
     """
     actual_types = [node.message_type for node in chain]
-    expected_types = [
-        e.__type__ if hasattr(e, "__type__") else e for e in expected
-    ]
+    expected_types = [e.__type__ if hasattr(e, "__type__") else e for e in expected]
 
     if actual_types != expected_types:
         raise AssertionError(
-            f"Chain mismatch.\n"
-            f"  Expected: {expected_types}\n"
-            f"  Actual:   {actual_types}"
+            f"Chain mismatch.\n  Expected: {expected_types}\n  Actual:   {actual_types}"
         )
 
 

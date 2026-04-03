@@ -373,11 +373,15 @@ def _extract_time(message: Any) -> str | None:
     # Try message.time first (set by event store)
     t = getattr(message, "time", None)
     if t is not None:
-        return str(t)
+        return t.isoformat() if hasattr(t, "isoformat") else str(t)
     # Fall back to metadata
     metadata = getattr(message, "metadata", None)
     if metadata and hasattr(metadata, "timestamp"):
-        return str(metadata.timestamp)
+        return (
+            metadata.timestamp.isoformat()
+            if hasattr(metadata.timestamp, "isoformat")
+            else str(metadata.timestamp)
+        )
     return None
 
 

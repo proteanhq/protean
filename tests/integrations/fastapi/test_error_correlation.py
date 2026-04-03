@@ -29,7 +29,10 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.fields import Identifier, String
-from protean.integrations.fastapi import DomainContextMiddleware, register_exception_handlers
+from protean.integrations.fastapi import (
+    DomainContextMiddleware,
+    register_exception_handlers,
+)
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 

@@ -962,6 +962,28 @@ class TestExtractTimeProcesses:
         msg.metadata = MagicMock(spec=[])  # no timestamp attribute
         assert _extract_time(msg) is None
 
+    def test_datetime_object_uses_isoformat(self):
+        """datetime objects should be serialized via .isoformat(), not str()."""
+        from datetime import datetime as dt
+
+        msg = MagicMock()
+        msg.time = dt(2025, 6, 15, 12, 30, 45)
+        result = _extract_time(msg)
+        assert result == "2025-06-15T12:30:45"
+        assert "T" in result  # isoformat uses 'T' separator
+
+    def test_metadata_timestamp_datetime_uses_isoformat(self):
+        """Metadata timestamp as datetime should use .isoformat()."""
+        from datetime import datetime as dt
+
+        msg = MagicMock()
+        msg.time = None
+        msg.metadata = MagicMock()
+        msg.metadata.timestamp = dt(2025, 1, 1, 0, 0, 0)
+        result = _extract_time(msg)
+        assert result == "2025-01-01T00:00:00"
+        assert "T" in result
+
 
 # ---------------------------------------------------------------------------
 # _build_summary — unknown subscription status (line 402)
