@@ -196,19 +196,40 @@ var CausationGraph = (function () {
       .attr('transform', function () {
         return 'translate(' + source.y0 + ',' + source.x0 + ')';
       })
+      .attr('tabindex', 0)
+      .attr('role', 'button')
+      .attr('aria-label', function (d) {
+        var kind = d.data.kind === 'COMMAND' ? 'Command' : 'Event';
+        return kind + ': ' + _shortTypeName(d.data.message_type);
+      })
       .on('click', function (event, d) {
         event.stopPropagation();
         if (event.shiftKey || event.metaKey) {
-          // Shift/Meta+click: collapse/expand
           _toggleCollapse(d);
         } else {
           _onNodeClick(d.data.message_id);
+        }
+      })
+      .on('keydown', function (event, d) {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          if (event.shiftKey) {
+            _toggleCollapse(d);
+          } else {
+            _onNodeClick(d.data.message_id);
+          }
         }
       })
       .on('mouseenter', function (event, d) {
         _highlightPath(d, true);
       })
       .on('mouseleave', function (event, d) {
+        _highlightPath(d, false);
+      })
+      .on('focus', function (event, d) {
+        _highlightPath(d, true);
+      })
+      .on('blur', function (event, d) {
         _highlightPath(d, false);
       });
 

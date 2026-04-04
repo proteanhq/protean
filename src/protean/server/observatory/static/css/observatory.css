@@ -170,6 +170,51 @@
   margin-left: 0.25rem;
 }
 
+/* Handler attribution badge */
+.vtl-handler {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  color: oklch(var(--wa));
+  font-weight: 500;
+}
+
+/* Processing duration badge */
+.vtl-duration {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  color: oklch(var(--su));
+  font-weight: 500;
+}
+
+/* Inter-step latency label on connecting line */
+.vtl-latency {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  color: oklch(var(--bc) / 0.4);
+  margin-left: 1.5rem;
+  margin-bottom: 0.125rem;
+}
+
+/* Cross-aggregate visual marker */
+.vtl-cross-aggregate {
+  border-left: 3px solid oklch(var(--in));
+}
+
+.vtl-cross-aggregate-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  color: oklch(var(--in));
+  font-weight: 600;
+}
+
 /* ===== D3 Causation Graph ===== */
 
 .causation-graph-container {
