@@ -34,6 +34,10 @@
   let _lastKnownPosition = 0;  // Highest global_position we know about
   let _sseDebounceTimer = null; // Debounce timer for SSE trace handling
 
+  // Causation view mode: 'tree' | 'graph'
+  let _causationViewMode = 'tree';
+  let _currentCorrelationData = null; // Cached correlation API response
+
   // DOM refs
   let $tbody, $empty, $loadMore, $loadingMore, $toast;
 
@@ -345,13 +349,22 @@
 
       if ($eventCount) $eventCount.textContent = data.event_count || 0;
 
+      // Store data for view switching
+      _currentCorrelationData = data;
+
       // Render causation tree
       if (data.tree && $tree) {
         var treeDepth = _computeTreeDepth(data.tree);
         if ($depth) $depth.textContent = treeDepth;
         if ($rootType) $rootType.textContent = _shortTypeName(data.tree.message_type || '');
-        $tree.innerHTML = '';
-        $tree.appendChild(_renderCausationTree(data.tree, 0));
+
+        // Auto-select graph view for complex chains
+        var eventCount = data.event_count || 0;
+        if (treeDepth > 2 || eventCount > 5) {
+          _switchCausationView('graph', data);
+        } else {
+          _switchCausationView('tree', data);
+        }
       } else {
         if ($tree) $tree.innerHTML = '<div class="text-center py-4 text-base-content/40">No causation tree available</div>';
         if ($depth) $depth.textContent = '0';
@@ -379,6 +392,54 @@
       if (d > maxChild) maxChild = d;
     }
     return 1 + maxChild;
+  }
+
+  function _switchCausationView(mode, data) {
+    _causationViewMode = mode;
+    data = data || _currentCorrelationData;
+
+    var $tree = document.getElementById('correlation-tree');
+    var $graphContainer = document.getElementById('causation-graph-container');
+    var $btnTree = document.getElementById('btn-tree-view');
+    var $btnGraph = document.getElementById('btn-graph-view');
+    var $helpText = document.getElementById('graph-help-text');
+
+    if ($btnTree) {
+      $btnTree.className = 'join-item btn btn-xs ' + (mode === 'tree' ? 'btn-primary' : 'btn-ghost');
+    }
+    if ($btnGraph) {
+      $btnGraph.className = 'join-item btn btn-xs ' + (mode === 'graph' ? 'btn-primary' : 'btn-ghost');
+    }
+
+    if (mode === 'graph' && data && data.tree) {
+      if ($tree) $tree.classList.add('hidden');
+      if ($graphContainer) {
+        $graphContainer.classList.remove('hidden');
+        $graphContainer.innerHTML = '';
+      }
+      if ($helpText) $helpText.classList.remove('hidden');
+
+      // Deep-clone tree data so D3 mutations don't affect the original
+      var treeClone = JSON.parse(JSON.stringify(data.tree));
+      CausationGraph.render('#causation-graph-container', treeClone, function (messageId) {
+        _showEventDetail(messageId);
+      });
+    } else {
+      // Tree view
+      if ($graphContainer) $graphContainer.classList.add('hidden');
+      if ($helpText) $helpText.classList.add('hidden');
+      if ($tree) {
+        $tree.classList.remove('hidden');
+        $tree.innerHTML = '';
+        if (data && data.tree) {
+          $tree.appendChild(_renderCausationTree(data.tree, 0));
+        }
+      }
+      // Destroy D3 graph to free resources
+      if (typeof CausationGraph !== 'undefined') {
+        CausationGraph.destroy();
+      }
+    }
   }
 
   function _renderCausationTree(node, depth) {
@@ -1016,6 +1077,20 @@
     var $backAgg = document.getElementById('btn-back-from-aggregate');
     if ($backAgg) {
       $backAgg.addEventListener('click', _backToList);
+    }
+
+    // Causation view toggle (Tree / Graph)
+    var $btnTreeView = document.getElementById('btn-tree-view');
+    var $btnGraphView = document.getElementById('btn-graph-view');
+    if ($btnTreeView) {
+      $btnTreeView.addEventListener('click', function () {
+        _switchCausationView('tree');
+      });
+    }
+    if ($btnGraphView) {
+      $btnGraphView.addEventListener('click', function () {
+        _switchCausationView('graph');
+      });
     }
 
     // Tab switching
