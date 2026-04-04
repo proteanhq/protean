@@ -21,8 +21,13 @@
   let _aggregateId = '';
   let _kind = '';
 
-  // Current view: 'list' | 'correlation' | 'aggregate'
+  // Current view: 'list' | 'traces' | 'correlation' | 'aggregate'
   let _currentView = 'list';
+
+  // Traces view state
+  let _traces = [];
+  let _traceSearchTimer = null;
+  let _traceSearchSeq = 0;  // Sequence token to discard stale search responses
 
   // SSE real-time state
   let _pendingNewEvents = 0;   // Count of events arrived while scrolled down
@@ -39,12 +44,20 @@
   function _showView(view) {
     _currentView = view;
     var $list = document.getElementById('timeline-list-view');
+    var $tracesView = document.getElementById('traces-view');
     var $corr = document.getElementById('correlation-view');
     var $agg = document.getElementById('aggregate-view');
 
     if ($list) $list.classList.toggle('hidden', view !== 'list');
+    if ($tracesView) $tracesView.classList.toggle('hidden', view !== 'traces');
     if ($corr) $corr.classList.toggle('hidden', view !== 'correlation');
     if ($agg) $agg.classList.toggle('hidden', view !== 'aggregate');
+
+    // Update tab bar active state
+    var $tabEvents = document.getElementById('tab-events');
+    var $tabTraces = document.getElementById('tab-traces');
+    if ($tabEvents) $tabEvents.classList.toggle('tab-active', view === 'list');
+    if ($tabTraces) $tabTraces.classList.toggle('tab-active', view === 'traces');
   }
 
   function _enterListView() {
@@ -55,8 +68,15 @@
     window.scrollTo(0, 0);
   }
 
+  // Track which tab the user came from before entering a sub-view
+  let _previousTab = 'list';
+
   function _backToList() {
-    _enterListView();
+    if (_previousTab === 'traces') {
+      _enterTracesView();
+    } else {
+      _enterListView();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -143,10 +163,162 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Traces View
+  // ---------------------------------------------------------------------------
+
+  async function fetchRecentTraces() {
+    try {
+      var data = await Observatory.fetchJSON('/api/timeline/traces/recent?limit=50');
+      _traces = data.traces || [];
+    } catch (e) {
+      console.warn('Failed to fetch recent traces:', e.message);
+      _traces = [];
+    }
+    _renderTracesTable();
+  }
+
+  async function searchTraces() {
+    var aggId = (document.getElementById('trace-search-aggregate-id') || {}).value || '';
+    var evtType = (document.getElementById('trace-search-event-type') || {}).value || '';
+    var cmdType = (document.getElementById('trace-search-command-type') || {}).value || '';
+    var streamCat = (document.getElementById('trace-search-stream-category') || {}).value || '';
+
+    aggId = aggId.trim();
+    evtType = evtType.trim();
+    cmdType = cmdType.trim();
+    streamCat = streamCat.trim();
+
+    // If all fields are empty, fetch recent traces instead
+    if (!aggId && !evtType && !cmdType && !streamCat) {
+      fetchRecentTraces();
+      _updateTracesURL();
+      return;
+    }
+
+    var params = new URLSearchParams();
+    if (aggId) params.set('aggregate_id', aggId);
+    if (evtType) params.set('event_type', evtType);
+    if (cmdType) params.set('command_type', cmdType);
+    if (streamCat) params.set('stream_category', streamCat);
+    params.set('limit', '50');
+
+    // Sequence token: discard responses from stale requests
+    var seq = ++_traceSearchSeq;
+
+    try {
+      var data = await Observatory.fetchJSON('/api/timeline/traces/search?' + params.toString());
+      if (seq !== _traceSearchSeq) return; // Stale response, discard
+      _traces = data.traces || [];
+    } catch (e) {
+      if (seq !== _traceSearchSeq) return;
+      console.warn('Failed to search traces:', e.message);
+      _traces = [];
+    }
+    _renderTracesTable();
+    _updateTracesURL();
+  }
+
+  function _renderTracesTable() {
+    var $tracesTbody = document.getElementById('traces-tbody');
+    var $tracesEmpty = document.getElementById('traces-empty');
+    if (!$tracesTbody) return;
+
+    if (_traces.length === 0) {
+      $tracesTbody.innerHTML = '';
+      if ($tracesEmpty) $tracesEmpty.classList.remove('hidden');
+      return;
+    }
+
+    if ($tracesEmpty) $tracesEmpty.classList.add('hidden');
+
+    $tracesTbody.innerHTML = _traces.map(function (trace) {
+      var rootType = Observatory.escapeHtml(_shortTypeName(trace.root_type || ''));
+      var rootTypeFull = Observatory.escapeHtml(trace.root_type || '--');
+      var eventCount = trace.event_count != null ? trace.event_count : '--';
+      var streams = (trace.streams || []).map(function (s) {
+        return Observatory.escapeHtml(_extractStreamCategory(s));
+      });
+      var uniqueStreams = [];
+      var seen = {};
+      for (var i = 0; i < streams.length; i++) {
+        if (!seen[streams[i]]) {
+          seen[streams[i]] = true;
+          uniqueStreams.push(streams[i]);
+        }
+      }
+      var streamsHtml = uniqueStreams.join(', ') || '--';
+      var startedAt = trace.started_at ? Observatory.fmt.timeAgo(trace.started_at) : '--';
+      var startedAtFull = trace.started_at ? Observatory.fmt.datetime(trace.started_at) : '';
+      var corrId = Observatory.escapeHtml(trace.correlation_id || '');
+
+      return '<tr class="hover cursor-pointer trace-row" data-correlation-id="' + corrId + '" tabindex="0" role="button" title="View correlation chain">' +
+        '<td class="text-sm" title="' + rootTypeFull + '">' + rootType + '</td>' +
+        '<td class="text-right font-mono-metric">' + eventCount + '</td>' +
+        '<td class="text-sm font-mono">' + streamsHtml + '</td>' +
+        '<td class="text-xs" title="' + Observatory.escapeHtml(startedAtFull) + '">' + startedAt + '</td>' +
+      '</tr>';
+    }).join('');
+
+    // Bind row click → navigate to correlation view
+    $tracesTbody.querySelectorAll('.trace-row').forEach(function (row) {
+      var _onActivate = function () {
+        var cid = row.getAttribute('data-correlation-id');
+        if (cid) _showCorrelationView(cid);
+      };
+      row.addEventListener('click', _onActivate);
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          _onActivate();
+        }
+      });
+    });
+  }
+
+  function _hasTraceSearchCriteria() {
+    var aggId = (document.getElementById('trace-search-aggregate-id') || {}).value || '';
+    var evtType = (document.getElementById('trace-search-event-type') || {}).value || '';
+    var cmdType = (document.getElementById('trace-search-command-type') || {}).value || '';
+    var streamCat = (document.getElementById('trace-search-stream-category') || {}).value || '';
+    return !!(aggId.trim() || evtType.trim() || cmdType.trim() || streamCat.trim());
+  }
+
+  function _enterTracesView() {
+    _showView('traces');
+    _updateTracesURL();
+    if (_hasTraceSearchCriteria()) {
+      searchTraces();
+    } else {
+      fetchRecentTraces();
+    }
+    window.scrollTo(0, 0);
+  }
+
+  function _updateTracesURL() {
+    var params = new URLSearchParams();
+    params.set('view', 'traces');
+    var aggId = (document.getElementById('trace-search-aggregate-id') || {}).value || '';
+    var evtType = (document.getElementById('trace-search-event-type') || {}).value || '';
+    var cmdType = (document.getElementById('trace-search-command-type') || {}).value || '';
+    var streamCat = (document.getElementById('trace-search-stream-category') || {}).value || '';
+    if (aggId.trim()) params.set('aggregate_id', aggId.trim());
+    if (evtType.trim()) params.set('event_type', evtType.trim());
+    if (cmdType.trim()) params.set('command_type', cmdType.trim());
+    if (streamCat.trim()) params.set('stream_category', streamCat.trim());
+    var qs = params.toString();
+    var url = window.location.pathname + (qs ? '?' + qs : '');
+    history.replaceState(null, '', url);
+  }
+
+  // ---------------------------------------------------------------------------
   // Correlation Chain
   // ---------------------------------------------------------------------------
 
   async function _showCorrelationView(correlationId) {
+    // Remember which tab the user was on before entering correlation view
+    if (_currentView === 'list' || _currentView === 'traces') {
+      _previousTab = _currentView;
+    }
     _showView('correlation');
 
     var $idDisplay = document.getElementById('correlation-id-display');
@@ -321,6 +493,9 @@
   // ---------------------------------------------------------------------------
 
   async function _showAggregateView(streamCategory, aggregateId) {
+    if (_currentView === 'list' || _currentView === 'traces') {
+      _previousTab = _currentView;
+    }
     _showView('aggregate');
 
     var $streamDisplay = document.getElementById('aggregate-stream-display');
@@ -720,6 +895,28 @@
       return true;
     }
 
+    // Traces view
+    if (params.get('view') === 'traces') {
+      // Populate search fields from URL
+      var $aggId = document.getElementById('trace-search-aggregate-id');
+      var $evtType = document.getElementById('trace-search-event-type');
+      var $cmdType = document.getElementById('trace-search-command-type');
+      var $streamCat = document.getElementById('trace-search-stream-category');
+      if ($aggId && params.has('aggregate_id')) $aggId.value = params.get('aggregate_id');
+      if ($evtType && params.has('event_type')) $evtType.value = params.get('event_type');
+      if ($cmdType && params.has('command_type')) $cmdType.value = params.get('command_type');
+      if ($streamCat && params.has('stream_category')) $streamCat.value = params.get('stream_category');
+
+      _showView('traces');
+      // If any search params, trigger search; otherwise fetch recent
+      if (params.has('aggregate_id') || params.has('event_type') || params.has('command_type') || params.has('stream_category')) {
+        searchTraces();
+      } else {
+        fetchRecentTraces();
+      }
+      return true;
+    }
+
     // Normal list view filters
     if (params.has('stream_category')) _streamCategory = params.get('stream_category');
     if (params.has('event_type')) _eventType = params.get('event_type');
@@ -890,6 +1087,52 @@
       $backAgg.addEventListener('click', _backToList);
     }
 
+    // Tab switching
+    var $tabEvents = document.getElementById('tab-events');
+    var $tabTraces = document.getElementById('tab-traces');
+    if ($tabEvents) {
+      $tabEvents.addEventListener('click', function () {
+        _enterListView();
+      });
+    }
+    if ($tabTraces) {
+      $tabTraces.addEventListener('click', function () {
+        _enterTracesView();
+      });
+    }
+
+    // Trace search inputs (debounced)
+    var traceSearchIds = [
+      'trace-search-aggregate-id',
+      'trace-search-event-type',
+      'trace-search-command-type',
+      'trace-search-stream-category'
+    ];
+    traceSearchIds.forEach(function (id) {
+      var $input = document.getElementById(id);
+      if ($input) {
+        $input.addEventListener('input', function () {
+          clearTimeout(_traceSearchTimer);
+          _traceSearchTimer = setTimeout(function () {
+            searchTraces();
+          }, 300);
+        });
+      }
+    });
+
+    // Clear trace search
+    var $clearTrace = document.getElementById('btn-clear-trace-search');
+    if ($clearTrace) {
+      $clearTrace.addEventListener('click', function () {
+        traceSearchIds.forEach(function (id) {
+          var $input = document.getElementById(id);
+          if ($input) $input.value = '';
+        });
+        fetchRecentTraces();
+        _updateTracesURL();
+      });
+    }
+
     // Browser back/forward navigation
     window.addEventListener('popstate', function () {
       var params = new URLSearchParams(window.location.search);
@@ -897,6 +1140,22 @@
         _showCorrelationView(params.get('correlation'));
       } else if (params.has('stream') && params.has('aggregate')) {
         _showAggregateView(params.get('stream'), params.get('aggregate'));
+      } else if (params.get('view') === 'traces') {
+        // Re-apply search params from URL into inputs
+        var $aggId = document.getElementById('trace-search-aggregate-id');
+        var $evtType = document.getElementById('trace-search-event-type');
+        var $cmdType = document.getElementById('trace-search-command-type');
+        var $streamCat = document.getElementById('trace-search-stream-category');
+        if ($aggId) $aggId.value = params.get('aggregate_id') || '';
+        if ($evtType) $evtType.value = params.get('event_type') || '';
+        if ($cmdType) $cmdType.value = params.get('command_type') || '';
+        if ($streamCat) $streamCat.value = params.get('stream_category') || '';
+        _showView('traces');
+        if (_hasTraceSearchCriteria()) {
+          searchTraces();
+        } else {
+          fetchRecentTraces();
+        }
       } else {
         _enterListView();
       }
