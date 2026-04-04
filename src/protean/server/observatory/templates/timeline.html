@@ -3,10 +3,18 @@
 {% block title %}Timeline{% endblock %}
 
 {% block content %}
-<!-- ===== Main Timeline View ===== -->
+<!-- ===== Tab Bar ===== -->
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Timeline</h1>
+  <div role="tablist" class="tabs tabs-boxed">
+    <button role="tab" class="tab tab-active" id="tab-events" data-view="events">Events</button>
+    <button role="tab" class="tab" id="tab-traces" data-view="traces">Traces</button>
+  </div>
+</div>
+
+<!-- ===== Events View ===== -->
 <div id="timeline-list-view">
-  <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold">Timeline</h1>
+  <div class="flex items-center justify-between mb-4">
     <div class="text-sm text-base-content/50">Browse domain events and commands chronologically</div>
   </div>
 
@@ -120,6 +128,59 @@
       </div>
       <div id="loading-more" class="text-center py-4 hidden">
         <span class="loading loading-spinner loading-sm"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Traces View ===== -->
+<div id="traces-view" class="hidden">
+  <div class="flex items-center justify-between mb-4">
+    <div class="text-sm text-base-content/50">Search and browse correlation chains</div>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+      <div class="flex flex-wrap items-center gap-3">
+        <input type="text" id="trace-search-aggregate-id" placeholder="Aggregate ID..."
+               class="input input-sm input-bordered w-48" />
+        <input type="text" id="trace-search-event-type" placeholder="Event type..."
+               class="input input-sm input-bordered w-48" />
+        <input type="text" id="trace-search-command-type" placeholder="Command type..."
+               class="input input-sm input-bordered w-48" />
+        <input type="text" id="trace-search-stream-category" placeholder="Stream category..."
+               class="input input-sm input-bordered w-48" />
+        <button class="btn btn-xs btn-ghost" id="btn-clear-trace-search" title="Clear search">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+          Clear
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Traces Table -->
+  <div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body p-4">
+      <div class="overflow-x-auto">
+        <table class="table table-sm table-zebra">
+          <thead>
+            <tr class="text-xs uppercase text-base-content/60">
+              <th>Root Type</th>
+              <th class="text-right">Event Count</th>
+              <th>Streams</th>
+              <th>Started At</th>
+            </tr>
+          </thead>
+          <tbody id="traces-tbody">
+            <tr><td colspan="4" class="text-center text-base-content/50 py-8">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="traces-empty" class="text-center py-8 text-base-content/40 hidden">
+        No traces found
       </div>
     </div>
   </div>
