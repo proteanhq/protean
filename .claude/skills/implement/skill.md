@@ -109,33 +109,53 @@ Before you commit, review your own work as if you were a hostile reviewer. These
 
 ## Phase 3: Test
 
-### Fast iteration first
+All testing must pass **before** committing. Follow these steps in order.
+
+### Step 1: Fast iteration on your tests
 
 ```bash
 uv run pytest <your-test-file> -v --tb=short
 ```
 
-### Coverage on new code
+Iterate until your new tests pass. Fix bugs in both production code and tests.
 
-```bash
-uv run pytest <your-test-file> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v
-```
+### Step 2: Core tests (no adapters)
 
-Use `--cov=protean` (module name, not path) and `--cov-config=/dev/null` to bypass any .coveragerc that might exclude test files. Aim for 100% on lines you wrote. If a line isn't covered, write a test for it.
-
-### Full suite for regressions
+Run the full core test suite with in-memory adapters — no external services needed:
 
 ```bash
 uv run protean test
 ```
 
-If your changes touch adapters, also run the relevant adapter config:
+**Gate: every core test must pass.** If any test fails, investigate and fix before proceeding. Do not skip or ignore failures — they indicate either a regression in your code or a pre-existing issue that must be understood.
+
+### Step 3: Full suite with adapters
+
+Start all external services (Redis, PostgreSQL, Elasticsearch, MessageDB):
 
 ```bash
-uv run protean test -c DATABASE   # database/model code
-uv run protean test -c BROKER     # broker/subscriber code
-uv run protean test -c EVENTSTORE # event store code
+make up
 ```
+
+Wait for services to be ready, then run the full test suite with all adapter configurations:
+
+```bash
+uv run protean test -c FULL
+```
+
+**Gate: all tests must pass.** Adapter test failures may indicate that your changes broke compatibility with real infrastructure. Fix before proceeding.
+
+### Step 4: Coverage of new code
+
+Measure coverage specifically on the files you changed:
+
+```bash
+uv run pytest <your-test-files> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v
+```
+
+Use `--cov=protean` (module name, not path) and `--cov-config=/dev/null` to bypass any .coveragerc that might exclude test files.
+
+**Gate: aim for 100% coverage on lines you wrote.** If a line in your new or modified code isn't covered, write a test for it. Every branch, every error path, every edge case. Uncovered lines are untested behavior.
 
 ### Testing conventions
 
@@ -144,6 +164,8 @@ uv run protean test -c EVENTSTORE # event store code
 - **Test placement follows source layout.** `src/protean/core/aggregate.py` → `tests/aggregate/`.
 
 ## Phase 4: Commit and PR
+
+**Prerequisite: Phase 3 must be fully complete** — core tests pass, full adapter suite passes, and coverage meets the 100% target on new code. Do not commit untested or partially tested code.
 
 ### Commit
 
@@ -189,7 +211,8 @@ gh pr create -R proteanhq/protean --title "PR title" --body "$(cat <<'EOF'
 
 ## Test plan
 - [ ] Core tests pass (`protean test`)
-- [ ] New tests added with coverage
+- [ ] Full adapter suite passes (`protean test -c FULL`)
+- [ ] 100% coverage on new/modified code
 
 Closes #<ISSUE_NUMBER>
 
@@ -276,7 +299,9 @@ Changes:
 
 Tests:
 - X tests added, all passing
-- Full suite: Y passed, 0 failed
+- Core suite (`protean test`): Y passed, 0 failed
+- Full suite (`protean test -c FULL`): Z passed, 0 failed
+- Coverage on new code: N%
 
 Review:
 - N comments addressed, all threads resolved
