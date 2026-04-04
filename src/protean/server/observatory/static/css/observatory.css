@@ -340,6 +340,97 @@
   font-weight: 600;
 }
 
+/* Lane accent bar (left edge of node card) */
+.cg-lane-accent {
+  pointer-events: none;
+}
+
+/* Fan-out indicator */
+.cg-fanout {
+  font-size: 10px;
+  fill: oklch(var(--bc) / 0.4);
+  font-weight: 600;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+/* Swimlane backgrounds and labels */
+.cg-swimlane {
+  pointer-events: none;
+}
+
+.cg-swimlane-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Timeline axis */
+.cg-timeline-axis {
+  pointer-events: none;
+}
+
+.cg-axis-line {
+  stroke: oklch(var(--bc) / 0.12);
+  stroke-width: 1;
+}
+
+.cg-axis-tick {
+  stroke: oklch(var(--bc) / 0.2);
+  stroke-width: 1;
+}
+
+.cg-axis-label {
+  font-size: 9px;
+  fill: oklch(var(--bc) / 0.4);
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Legend */
+.cg-legend {
+  pointer-events: none;
+}
+
+.cg-legend-bg {
+  fill: oklch(var(--b1) / 0.9);
+  stroke: oklch(var(--bc) / 0.1);
+  stroke-width: 1;
+}
+
+.cg-legend-text {
+  font-size: 10px;
+  fill: oklch(var(--bc) / 0.6);
+}
+
+/* Mini-map */
+.cg-minimap {
+  pointer-events: none;
+}
+
+.cg-minimap-bg {
+  fill: oklch(var(--b1) / 0.85);
+  stroke: oklch(var(--bc) / 0.15);
+  stroke-width: 1;
+}
+
+.cg-minimap-node {
+  fill: oklch(var(--bc) / 0.25);
+}
+
+.cg-minimap-link {
+  stroke: oklch(var(--bc) / 0.12);
+  stroke-width: 0.5;
+}
+
+.cg-minimap-viewport {
+  fill: oklch(var(--p) / 0.08);
+  stroke: oklch(var(--p) / 0.4);
+  stroke-width: 1;
+}
+
 /* ===== Aggregate History — Vertical Timeline ===== */
 
 .aggregate-timeline {
