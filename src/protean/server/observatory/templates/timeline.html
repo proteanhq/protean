@@ -196,7 +196,13 @@
       Back
     </button>
     <div>
-      <h1 class="text-2xl font-bold">Correlation Chain</h1>
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold">Correlation Chain</h1>
+        <span id="correlation-live-badge" class="badge badge-sm badge-success gap-1 hidden animate-pulse" aria-live="polite">
+          <span class="status status-xs status-success animate-ping"></span>
+          Live
+        </span>
+      </div>
       <div class="text-sm text-base-content/50 font-mono" id="correlation-id-display"></div>
     </div>
   </div>
