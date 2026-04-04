@@ -6,107 +6,99 @@ argument-hint: "#issue-number [--branch name] [--epic #N]"
 
 # Implement a GitHub Issue
 
-Run all 5 phases to completion. The user expects a PR as the output — not a summary, not a plan, not a question. Commit, push, and create the PR without asking. The only reasons to pause: an unresolvable failure, or a genuine ambiguity between two incompatible implementations.
+Execute 5 phases autonomously. The final output is a PR with all CI feedback addressed. Commit, push, and create the PR without asking for permission.
 
-## Parse arguments
-
-Extract from `$ARGUMENTS`:
-- **Issue number** (required) — `#N` or bare number. Multiple `#N` references: smaller = issue, larger = epic.
-- **Branch name** — `--branch <name>`, or derive as `work/<issue-number>-<slug>` from the issue title
-- **Epic number** — `--epic #N`, or detect from sub-issue relationships, or "Epic #N" in input
+Parse `$ARGUMENTS` for: issue number (`#N` or bare number), branch name (`--branch <name>` or derive `work/<N>-<slug>`), epic (`--epic #N` or detect from sub-issues).
 
 ## Phase 1: Research
+
+Fetch the issue and understand what's needed:
 
 ```bash
 gh issue view <NUMBER> -R proteanhq/protean --json title,body,labels,state,milestone
 ```
 
-If the issue is closed, stop and report. Otherwise, read the epic too if one exists.
+If closed, stop and report. If part of an epic, read the epic too. Study recent merged PRs from the same epic — read diffs of related ones to understand established patterns. Deep-dive the source files you'll modify. Read `reference.md` in this skill directory for project conventions.
 
-Study recent merged PRs from the same epic (`gh pr list -R proteanhq/protean --state merged --limit 10`) and read diffs of related ones. Then deep-dive the source files you'll modify — understand patterns, existing utilities, test structure. Read `reference.md` in this skill directory for project-specific conventions.
+## Phase 2: Implement, simplify, and review
 
-## Phase 2: Implement
+**2a. Branch** — create before writing any code:
+```bash
+git checkout -b <branch-name> main
+# In worktrees where main is checked out elsewhere:
+git switch -c <branch-name>
+```
 
-Log one line: "Research complete. Implementing: [1-sentence summary]." — then write code.
+**2b. Code** — write minimal, focused changes with type hints. Reuse existing patterns. Handle edge cases. Add the CHANGELOG entry now under `[Unreleased]` (user's perspective — don't defer to commit time).
 
-Create the branch (`git checkout -b <branch-name> main` or `git switch -c <branch-name>` in worktrees). Write minimal, focused changes with type hints. Reuse existing patterns. Handle edge cases.
+**2c. Self-check** — review your diff: docstrings match all code paths, test assertions use non-empty collections, no leftover debug code.
 
-Do a quick self-check of your diff: docstrings match all code paths, test loops assert non-empty collections first, no leftover debug code. Then immediately run simplify and review (Phases 3-4) before testing:
-
+**2d. Simplify** — run `/simplify` to catch duplicated logic, overcomplexity, and pattern mismatches:
 ```
 Skill(skill="simplify")
 ```
 
-Then launch the pr-reviewer agent:
-
+**2e. Review** — launch the pr-reviewer agent and fix all blockers it finds:
 ```
 Agent(subagent_type="pr-reviewer", prompt="Review the uncommitted changes on this branch. Run `git diff` to see them. Report blockers, suggestions, and good patterns.")
 ```
 
-Fix all blockers from the review. Take suggestions that improve clarity or correctness.
-
 ## Phase 3: Test
 
-Run these in order. Each must pass before the next.
+Sync the dev environment first (worktrees may have the PyPI package, not local source):
+```bash
+uv sync --all-extras --all-groups
+```
 
-**Step 1 — Your tests:** `uv run pytest <your-test-file> -v --tb=short`. Iterate until green.
+Run in order — each must pass before the next:
 
-**Step 2 — Core suite:** `uv run protean test`. Fix any failures.
-
-**Step 3 — Quality checks:** `uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/ && uv run mypy src/protean`. Auto-fix ruff issues. Only fix mypy errors you introduced.
-
-**Step 4 — Full suite:** `make test-full` (starts Docker + runs all adapters). If Docker is unavailable, note it and proceed — CI runs the full matrix.
-
-**Step 5 — Patch coverage:** If `coverage.xml` exists from Step 4, run `uv run diff-cover coverage.xml --compare-branch=main --show-uncovered`. For any uncovered lines you wrote, add tests and re-check. Target 100%. If no `coverage.xml`, use `uv run pytest <tests> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v`.
+1. **Your tests:** `uv run pytest <your-test-file> -v --tb=short` — iterate until green
+2. **Core suite:** `uv run protean test` — fix any failures
+3. **Quality checks:** `uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/ && uv run mypy src/protean` — auto-fix ruff issues, only fix mypy errors you introduced
+4. **Full suite:** `make test-full` (starts Docker + all adapters) — if Docker unavailable, note it and proceed
+5. **Patch coverage:** run `uv run diff-cover coverage.xml --compare-branch=main --show-uncovered` if coverage.xml exists, otherwise `uv run pytest <tests> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v` — add tests for any uncovered lines you wrote, target 100%
 
 ## Phase 4: Commit and PR
 
-**Rebase first:** `git fetch origin main && git rebase origin/main`. Re-run your tests if conflicts arose.
+Rebase first: `git fetch origin main && git rebase origin/main`. Re-run tests if conflicts arose. Verify the CHANGELOG entry is still accurate. Check for breaking changes (see CLAUDE.md for deprecation tiers).
 
-**Changelog:** Add an entry under `[Unreleased]` in CHANGELOG.md. Write from the user's perspective.
+Commit with `git add <specific-files>` — message starts with a verb, no AI attribution, no Co-Authored-By. Push and create PR:
+```bash
+git push -u origin HEAD
+gh pr create -R proteanhq/protean --title "<title>" --body "$(cat <<'EOF'
+## Summary
+- Key changes
 
-**Breaking changes:** If you renamed, removed, or changed behavior of anything in `protean.*`, apply the appropriate deprecation tier (see CLAUDE.md).
+## Test plan
+- [ ] Core tests pass
+- [ ] Full adapter suite passes
+- [ ] 100% patch coverage
 
-**Commit:** `git add <specific-files>` then commit. Message starts with a verb, no AI attribution, no Co-Authored-By.
+Closes #<ISSUE>
+EOF
+)"
+```
 
-**PR:** Push and create with `gh pr create -R proteanhq/protean`. Title under 70 chars. Body includes Summary, Test plan, and `Closes #<ISSUE>`.
-
-**Mergeability:** `gh pr view <PR> -R proteanhq/protean --json mergeable,mergeStateStatus,statusCheckRollup`. Rebase + force-push if conflicts exist.
+Check mergeability: `gh pr view <PR> -R proteanhq/protean --json mergeable,mergeStateStatus,statusCheckRollup`. Rebase + force-push if conflicts.
 
 ## Phase 5: Handle CI feedback
 
-Poll for Copilot comments and CI status every 60s, up to 10 minutes:
+Poll for Copilot comments and Codecov every 60s, up to 10 minutes. See `reference.md` for the exact `gh api` commands.
 
-```bash
-gh api repos/proteanhq/protean/pulls/<PR>/comments --jq 'length'
-gh pr checks <PR> -R proteanhq/protean
-```
+**Codecov** is authoritative for coverage. If patch coverage < 100%, add tests, push, wait for re-run. Repeat until 100%.
 
-**Codecov:** Fetch the Codecov bot comment (`gh api repos/proteanhq/protean/issues/<PR>/comments --jq '.[] | select(.user.login == "codecov[bot]" or .user.login == "codecov-commenter") | .body'`). Codecov is authoritative — if patch coverage < 100%, add tests, push, and wait for re-run. Repeat until 100%.
-
-**Copilot comments:** Fetch with `gh api repos/proteanhq/protean/pulls/<PR>/comments --jq '.[] | {id, path, body, line, in_reply_to_id}'`. Fix valid issues, reply to each (`gh api repos/proteanhq/protean/pulls/<PR>/comments/<ID>/replies -f body='Fixed — ...'`), push as one commit.
-
-**Re-check mergeability** after pushing fixes.
+**Copilot comments** — fix valid issues, reply to each, push as one commit. Re-check mergeability after pushing.
 
 ## Report
 
+When complete, output this summary:
 ```
 Issue: #N — Title
 Branch: work/branch-name
 PR: #M — PR Title (URL)
-
-Changes:
-- (1-3 bullets)
-
-Tests:
-- X tests added, all passing
-- Core suite: Y passed, 0 failed
-- Full suite: Z passed, 0 failed
-- Patch coverage: N% (Codecov)
-
-Review:
-- N comments addressed
-- PR is mergeable, CI passing
+Changes: (1-3 bullets)
+Tests: X added, core Y/0, full Z/0, patch coverage N%
+Review: N comments addressed, PR mergeable, CI passing
 ```
 
 Never merge the PR.

@@ -1,17 +1,16 @@
 # Implement Skill — Reference
 
-Project-specific conventions and patterns for the /implement skill. Read this during Phase 1 research. Don't re-read during later phases — internalize it and keep moving.
+Read during Phase 1. Internalize and keep moving.
 
 ## Test infrastructure
 
 | Command | What it does |
 |---------|-------------|
-| `uv run protean test` | Core tests, in-memory adapters, no Docker needed |
+| `uv run protean test` | Core tests, in-memory adapters, no Docker |
 | `uv run protean test -c FULL` | Full matrix with coverage (all adapters, parallel) |
-| `uv run protean test -c COVERAGE` | Same as FULL + diff-cover HTML report |
 | `make up` | Start Docker: Redis, ES, PostgreSQL, MessageDB, MSSQL |
 | `make test-full` | `make up` + `protean test -c FULL` |
-| `uv run diff-cover coverage.xml --compare-branch=main --show-uncovered` | Patch coverage from coverage.xml |
+| `uv run diff-cover coverage.xml --compare-branch=main --show-uncovered` | Patch coverage |
 | `uv run pytest <files> --cov=protean --cov-report=term-missing --cov-config=/dev/null` | Targeted coverage |
 
 Always prefix with `uv run`.
@@ -33,7 +32,7 @@ Always prefix with `uv run`.
 
 ## Common review findings
 
-These patterns get flagged by both the pr-reviewer agent and GitHub Copilot. Catch them during the Phase 2 self-check:
+Catch these during the Phase 2 self-check — both the pr-reviewer agent and GitHub Copilot flag them:
 
 - Docstrings that promise behavior not delivered for all code paths
 - Test loops over empty collections (assertions pass vacuously)
@@ -42,6 +41,40 @@ These patterns get flagged by both the pr-reviewer agent and GitHub Copilot. Cat
 - New public APIs without `__init__.py` exports
 - Inconsistent naming with adjacent code in the same module
 - Missing edge cases in middleware: no domain context, no command processed, missing headers
+
+## Phase 5: CI feedback commands
+
+**Poll for comments and CI status:**
+```bash
+# Comment count (Copilot typically arrives in 2-5 minutes)
+gh api repos/proteanhq/protean/pulls/<PR>/comments --jq 'length'
+
+# CI check status
+gh pr checks <PR> -R proteanhq/protean
+```
+
+**Fetch Codecov report:**
+```bash
+gh api repos/proteanhq/protean/issues/<PR>/comments \
+  --jq '.[] | select(.user.login == "codecov[bot]" or .user.login == "codecov-commenter") | .body'
+```
+
+**Fetch Copilot review comments:**
+```bash
+gh api repos/proteanhq/protean/pulls/<PR>/comments \
+  --jq '.[] | {id, path, body, line, in_reply_to_id}'
+```
+
+**Reply to a review comment:**
+```bash
+gh api repos/proteanhq/protean/pulls/<PR>/comments/<COMMENT_ID>/replies \
+  -f body='Fixed — one sentence explaining the change.'
+```
+
+**Check mergeability:**
+```bash
+gh pr view <PR> -R proteanhq/protean --json mergeable,mergeStateStatus,statusCheckRollup
+```
 
 ## Commit message rules
 
