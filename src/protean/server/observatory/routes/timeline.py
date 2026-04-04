@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time as _time
 from collections import defaultdict
 from dataclasses import asdict
 from datetime import datetime
@@ -509,8 +510,12 @@ def _load_traces_for_correlation(
     else:
         return traces
 
+    # Read the last 24 hours of traces to bound memory usage
+    now_ms = int(_time.time() * 1000)
+    min_id = str(now_ms - 86_400_000)  # 24-hour window
+
     try:
-        raw_entries = redis_conn.xrange(TRACE_STREAM)
+        raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
     except Exception:
         logger.debug("Failed to read trace stream for enrichment", exc_info=True)
         return traces
@@ -528,27 +533,43 @@ def _load_traces_for_correlation(
                 continue
 
             event_type = trace.get("event", "")
-            if not event_type.startswith("handler."):
+            if event_type not in ("handler.completed", "handler.failed"):
                 continue
 
             mid = trace.get("message_id")
             if mid:
+                raw_duration = trace.get("duration_ms")
+                duration_ms: float | None = None
+                if raw_duration is not None:
+                    try:
+                        duration_ms = float(raw_duration)
+                    except (ValueError, TypeError):
+                        duration_ms = None
                 traces[mid] = {
                     "handler": trace.get("handler"),
-                    "duration_ms": trace.get("duration_ms"),
+                    "duration_ms": duration_ms,
                 }
-        except Exception:
+        except (
+            AttributeError,
+            json.JSONDecodeError,
+            TypeError,
+            UnicodeDecodeError,
+        ):
+            logger.debug(
+                "Skipping malformed trace entry during correlation enrichment",
+                exc_info=True,
+            )
             continue
 
     return traces
 
 
 def _sum_tree_duration(node: CausationNode) -> float:
-    """Sum duration_ms across all nodes in a causation tree."""
+    """Sum raw duration_ms values across all nodes in a causation tree."""
     total = node.duration_ms or 0.0
     for child in node.children:
         total += _sum_tree_duration(child)
-    return round(total, 2)
+    return total
 
 
 def build_correlation_response(
@@ -594,7 +615,7 @@ def build_correlation_response(
                 total_duration_ms: float | None = None
                 if tree_root:
                     total = _sum_tree_duration(tree_root)
-                    total_duration_ms = total if total > 0 else None
+                    total_duration_ms = round(total, 2) if total > 0 else None
 
                 return {
                     "correlation_id": correlation_id,
