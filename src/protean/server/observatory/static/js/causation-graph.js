@@ -990,11 +990,151 @@ var CausationGraph = (function () {
   }
 
   // ---------------------------------------------------------------------------
+  // Live Update
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Update the graph with new tree data, animating new nodes.
+   *
+   * Diffs the old tree against newTreeData by message_id to identify nodes
+   * that were not present before. New nodes fade in with a highlight pulse.
+   * The layout is recomputed and all overlays (swimlanes, axis, minimap)
+   * are refreshed.
+   *
+   * @param {object} newTreeData  Fresh CausationNode tree from the API
+   * @returns {string[]}  Array of message_ids for newly added nodes
+   */
+  function update(newTreeData) {
+    if (!_svg || !_g || !_root || !newTreeData) return [];
+
+    // Collect existing message_ids before update
+    var oldIds = {};
+    _root.descendants().forEach(function (d) {
+      oldIds[d.data.message_id] = true;
+    });
+
+    // Also collect ids from collapsed branches (._children in raw data)
+    _collectAllIds(_root.data, oldIds);
+
+    // Preserve collapse state: transfer _children/children from old data
+    _transferCollapseState(_root.data, newTreeData);
+
+    // Rebuild hierarchy from new data
+    _root = d3.hierarchy(newTreeData, function (node) {
+      return node.children;
+    });
+    _root.x0 = 0;
+    _root.y0 = 0;
+
+    // Rebuild lane map (new streams may have appeared)
+    _laneMap = _buildLaneMap(newTreeData);
+
+    // Re-run layout
+    _update(_root);
+
+    // Identify new nodes and apply highlight animation
+    var newIds = [];
+    _root.descendants().forEach(function (d) {
+      if (!oldIds[d.data.message_id]) {
+        newIds.push(d.data.message_id);
+      }
+    });
+
+    if (newIds.length > 0) {
+      var newIdSet = {};
+      for (var i = 0; i < newIds.length; i++) {
+        newIdSet[newIds[i]] = true;
+      }
+
+      _g.selectAll('.cg-node').each(function (d) {
+        if (newIdSet[d.data.message_id]) {
+          d3.select(this).classed('cg-node-new', true);
+        }
+      });
+
+      _g.selectAll('.cg-link').each(function (l) {
+        if (newIdSet[l.target.data.message_id]) {
+          d3.select(this).classed('cg-link-new', true);
+        }
+      });
+
+      // Remove highlight class after animation completes
+      setTimeout(function () {
+        if (_g) {
+          _g.selectAll('.cg-node-new').classed('cg-node-new', false);
+          _g.selectAll('.cg-link-new').classed('cg-link-new', false);
+        }
+      }, 2000);
+    }
+
+    // Refresh overlays
+    _renderTimelineAxis();
+    _renderLegend();
+    _renderMinimap();
+
+    return newIds;
+  }
+
+  /**
+   * Collect all message_ids from raw tree data (including collapsed _children).
+   */
+  function _collectAllIds(nodeData, ids) {
+    if (!nodeData) return;
+    if (nodeData.message_id) ids[nodeData.message_id] = true;
+    var children = nodeData._children || nodeData.children;
+    if (children) {
+      for (var i = 0; i < children.length; i++) {
+        _collectAllIds(children[i], ids);
+      }
+    }
+  }
+
+  /**
+   * Transfer collapse state from oldData to newData by matching message_id.
+   * If a node was collapsed in oldData (children === null, _children present),
+   * apply the same collapse in newData.
+   */
+  function _transferCollapseState(oldData, newData) {
+    if (!oldData || !newData) return;
+    if (oldData.message_id !== newData.message_id) return;
+
+    // Preserve _children reference for progressive disclosure
+    if (newData.children) {
+      newData._children = newData.children;
+    }
+
+    // If old node was collapsed, collapse the new one too
+    if (oldData._children && !oldData.children) {
+      newData.children = null;
+    }
+
+    // Recurse into matching children
+    var oldChildren = oldData._children || oldData.children;
+    var newChildren = newData._children || newData.children;
+    if (oldChildren && newChildren) {
+      // Build lookup by message_id for efficient matching
+      var oldByMid = {};
+      for (var i = 0; i < oldChildren.length; i++) {
+        if (oldChildren[i].message_id) {
+          oldByMid[oldChildren[i].message_id] = oldChildren[i];
+        }
+      }
+      for (var j = 0; j < newChildren.length; j++) {
+        var match = oldByMid[newChildren[j].message_id];
+        if (match) {
+          _transferCollapseState(match, newChildren[j]);
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Exports
   // ---------------------------------------------------------------------------
 
   return {
     render: render,
+    update: update,
     destroy: destroy
   };
 })();

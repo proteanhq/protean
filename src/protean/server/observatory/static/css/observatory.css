@@ -272,6 +272,39 @@
   opacity: 0.2;
 }
 
+/* Live-update highlight for new nodes */
+.cg-node.cg-node-new .cg-card {
+  stroke: oklch(var(--su) / 0.8);
+  stroke-width: 2;
+  animation: cg-node-pulse 2s ease-out;
+}
+
+.cg-node.cg-node-new {
+  animation: cg-node-fade-in 0.5s ease-out;
+}
+
+.cg-link.cg-link-new {
+  animation: cg-link-fade-in 0.5s ease-out;
+}
+
+@keyframes cg-node-pulse {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  30%, 50%, 70% { filter: drop-shadow(0 0 6px oklch(var(--su) / 0.4)); }
+  40%, 60% { filter: drop-shadow(0 0 2px oklch(var(--su) / 0.1)); }
+  100% { filter: none; }
+}
+
+@keyframes cg-node-fade-in {
+  0% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cg-link-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
 .cg-card {
   fill: oklch(var(--b1));
   stroke: oklch(var(--bc) / 0.12);

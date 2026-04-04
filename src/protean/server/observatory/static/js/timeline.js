@@ -34,6 +34,12 @@
   let _lastKnownPosition = 0;  // Highest global_position we know about
   let _sseDebounceTimer = null; // Debounce timer for SSE trace handling
 
+  // Correlation view SSE state
+  let _currentCorrelationId = null;         // Active correlation_id being viewed
+  let _correlationSseDebounceTimer = null;  // Debounce timer for correlation SSE
+  let _lastCorrelationEventTime = 0;        // Timestamp of last SSE event for Live badge
+  let _liveBadgeTimer = null;               // Interval timer for Live badge staleness check
+
   // Cached correlation API response for tree/graph view switching
   let _currentCorrelationData = null;
 
@@ -76,6 +82,8 @@
 
   function _backToList() {
     _currentCorrelationData = null;
+    _currentCorrelationId = null;
+    _hideLiveBadge();
     if (typeof CausationGraph !== 'undefined') CausationGraph.destroy();
     if (_previousTab === 'traces') {
       _enterTracesView();
@@ -326,6 +334,10 @@
     }
     _showView('correlation');
 
+    // Track active correlation for SSE filtering
+    _currentCorrelationId = correlationId;
+    _hideLiveBadge();
+
     var $idDisplay = document.getElementById('correlation-id-display');
     var $eventCount = document.getElementById('correlation-event-count');
     var $rootType = document.getElementById('correlation-root-type');
@@ -352,46 +364,17 @@
     try {
       var data = await Observatory.fetchJSON('/api/timeline/correlation/' + encodeURIComponent(correlationId));
 
-      if ($eventCount) $eventCount.textContent = data.event_count || 0;
+      _updateCorrelationDisplay(data);
 
-      // Store data for view switching
-      _currentCorrelationData = data;
-
-      // Total duration
-      if ($totalDuration) {
-        $totalDuration.textContent = data.total_duration_ms != null
-          ? Observatory.fmt.duration(data.total_duration_ms)
-          : '--';
-      }
-
-      // Streams touched — count unique stream categories in the tree
-      if ($streamsTouched && data.tree) {
-        var streams = _collectTreeStreams(data.tree);
-        $streamsTouched.textContent = streams.length;
-      }
-
-      // Render causation tree
-      if (data.tree && $tree) {
+      // Auto-select graph view for complex chains on initial load
+      if (data.tree) {
         var treeDepth = _computeTreeDepth(data.tree);
-        if ($depth) $depth.textContent = treeDepth;
-        if ($rootType) $rootType.textContent = _shortTypeName(data.tree.message_type || '');
-
-        // Auto-select graph view for complex chains
         var eventCount = data.event_count || 0;
         if (treeDepth > 2 || eventCount > 5) {
           _switchCausationView('graph', data);
         } else {
           _switchCausationView('tree', data);
         }
-      } else {
-        if ($tree) $tree.innerHTML = '<div class="text-center py-4 text-base-content/40">No causation tree available</div>';
-        if ($depth) $depth.textContent = '0';
-        if ($rootType) $rootType.textContent = '--';
-      }
-
-      // Render flat event list
-      if ($corrTbody && data.events) {
-        _renderEventRows($corrTbody, data.events);
       }
     } catch (e) {
       console.warn('Failed to fetch correlation chain:', e.message);
@@ -400,6 +383,46 @@
     }
 
     window.scrollTo(0, 0);
+  }
+
+  /**
+   * Update all correlation view DOM elements with fresh data.
+   * Shared by initial load (_showCorrelationView) and live updates
+   * (_fetchLatestCorrelation) to avoid duplicate stat-update logic.
+   */
+  function _updateCorrelationDisplay(data) {
+    var $eventCount = document.getElementById('correlation-event-count');
+    var $rootType = document.getElementById('correlation-root-type');
+    var $depth = document.getElementById('correlation-depth');
+    var $totalDuration = document.getElementById('correlation-total-duration');
+    var $streamsTouched = document.getElementById('correlation-streams-touched');
+    var $corrTbody = document.getElementById('correlation-events-tbody');
+
+    if ($eventCount) $eventCount.textContent = data.event_count || 0;
+
+    if ($totalDuration) {
+      $totalDuration.textContent = data.total_duration_ms != null
+        ? Observatory.fmt.duration(data.total_duration_ms)
+        : '--';
+    }
+
+    if (data.tree) {
+      if ($depth) $depth.textContent = _computeTreeDepth(data.tree);
+      if ($rootType) $rootType.textContent = _shortTypeName(data.tree.message_type || '');
+      if ($streamsTouched) {
+        var streams = _collectTreeStreams(data.tree);
+        $streamsTouched.textContent = streams.length;
+      }
+    } else {
+      if ($depth) $depth.textContent = '0';
+      if ($rootType) $rootType.textContent = '--';
+    }
+
+    if ($corrTbody && data.events) {
+      _renderEventRows($corrTbody, data.events);
+    }
+
+    _currentCorrelationData = data;
   }
 
   function _computeTreeDepth(node) {
@@ -1340,6 +1363,100 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // SSE Real-Time Updates — Correlation View
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Handle an incoming SSE trace event for the correlation view.
+   * When viewing a correlation chain, new events with the same correlation_id
+   * should trigger a re-fetch and animate new nodes into the D3 graph.
+   *
+   * Debounced to 300ms to coalesce bursts of traces.
+   */
+  function _onCorrelationTraceEvent(trace) {
+    if (!_LIVE_TRACE_EVENTS[trace.event]) return;
+    if (_currentView !== 'correlation') return;
+    if (!_currentCorrelationId) return;
+    if (trace.correlation_id !== _currentCorrelationId) return;
+
+    // Debounce: coalesce rapid traces into one fetch
+    clearTimeout(_correlationSseDebounceTimer);
+    _correlationSseDebounceTimer = setTimeout(function () {
+      _fetchLatestCorrelation();
+    }, 300);
+  }
+
+  /**
+   * Re-fetch the correlation chain and update the graph with new nodes.
+   * Diffs old tree against new tree and animates additions.
+   */
+  async function _fetchLatestCorrelation() {
+    if (!_currentCorrelationId) return;
+
+    try {
+      var data = await Observatory.fetchJSON(
+        '/api/timeline/correlation/' + encodeURIComponent(_currentCorrelationId)
+      );
+
+      // Update Live badge timestamp
+      _lastCorrelationEventTime = Date.now();
+      _showLiveBadge();
+
+      // Update stats, event table, and cached data
+      _updateCorrelationDisplay(data);
+
+      // Update active visualization (graph or tree)
+      var $graphContainer = document.getElementById('causation-graph-container');
+      if (data.tree && $graphContainer && !$graphContainer.classList.contains('hidden') &&
+          typeof CausationGraph !== 'undefined' && typeof d3 !== 'undefined') {
+        var treeClone = JSON.parse(JSON.stringify(data.tree));
+        CausationGraph.update(treeClone);
+      } else if (data.tree) {
+        var $tree = document.getElementById('correlation-tree');
+        if ($tree && !$tree.classList.contains('hidden')) {
+          $tree.innerHTML = '';
+          $tree.appendChild(_renderCausationTree(data.tree, 0, null));
+        }
+      }
+
+    } catch (e) {
+      console.warn('SSE correlation re-fetch failed:', e.message);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Live Badge
+  // ---------------------------------------------------------------------------
+
+  var _LIVE_BADGE_TIMEOUT_MS = 30000; // 30 seconds
+
+  /**
+   * Show the Live badge and start a staleness check timer.
+   */
+  function _showLiveBadge() {
+    var $badge = document.getElementById('correlation-live-badge');
+    if ($badge) $badge.classList.remove('hidden');
+
+    // Clear previous timer and start a new one
+    clearInterval(_liveBadgeTimer);
+    _liveBadgeTimer = setInterval(function () {
+      if (Date.now() - _lastCorrelationEventTime > _LIVE_BADGE_TIMEOUT_MS) {
+        _hideLiveBadge();
+      }
+    }, 5000);
+  }
+
+  /**
+   * Hide the Live badge and stop the staleness timer.
+   */
+  function _hideLiveBadge() {
+    var $badge = document.getElementById('correlation-live-badge');
+    if ($badge) $badge.classList.add('hidden');
+    clearInterval(_liveBadgeTimer);
+    _liveBadgeTimer = null;
+  }
+
   /**
    * Check whether the user has scrolled away from the top.
    */
@@ -1417,6 +1534,9 @@
 
     // SSE: listen for trace events that indicate new events in the store
     Observatory.sse.onTrace(_onTraceEvent);
+
+    // SSE: listen for trace events in correlation view for live graph updates
+    Observatory.sse.onTrace(_onCorrelationTraceEvent);
   }
 
   // Wait for Observatory core
