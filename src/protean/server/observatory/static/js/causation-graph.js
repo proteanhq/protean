@@ -58,6 +58,7 @@ var CausationGraph = (function () {
   var _minimapBounds = null;  // Cached graph bounds for minimap viewport updates
   var _minimapScale = 1;
   var _minimapRafId = null;   // rAF guard for zoom-driven minimap updates
+  var _highlightTimerId = null; // Timer for removing new-node highlight classes
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -173,6 +174,10 @@ var CausationGraph = (function () {
     if (_minimapRafId) {
       cancelAnimationFrame(_minimapRafId);
       _minimapRafId = null;
+    }
+    if (_highlightTimerId) {
+      clearTimeout(_highlightTimerId);
+      _highlightTimerId = null;
     }
   }
 
@@ -1058,8 +1063,11 @@ var CausationGraph = (function () {
         }
       });
 
-      // Remove highlight class after animation completes
-      setTimeout(function () {
+      // Remove highlight class after animation completes.
+      // Clear any previous timer so rapid updates don't cut off animations.
+      clearTimeout(_highlightTimerId);
+      _highlightTimerId = setTimeout(function () {
+        _highlightTimerId = null;
         if (_g) {
           _g.selectAll('.cg-node-new').classed('cg-node-new', false);
           _g.selectAll('.cg-link-new').classed('cg-link-new', false);

@@ -198,6 +198,11 @@ class TestFetchLatestCorrelation:
         """Falls back to tree view update when graph is hidden."""
         assert "_renderCausationTree(data.tree" in timeline_js
 
+    def test_uses_sequence_token_for_staleness(self, timeline_js):
+        """Discards stale responses from overlapping fetches."""
+        assert "_correlationFetchSeq" in timeline_js
+        assert "seq !== _correlationFetchSeq" in timeline_js
+
     def test_logs_warning_on_error(self, timeline_js):
         assert "console.warn('SSE correlation re-fetch failed:'" in timeline_js
 
@@ -271,6 +276,15 @@ class TestCorrelationIdTracking:
     def test_clears_correlation_id_on_back(self, timeline_js):
         """Clears _currentCorrelationId when leaving correlation view."""
         assert "_currentCorrelationId = null" in timeline_js
+
+    def test_view_teardown_on_navigation(self, timeline_js):
+        """Leaving correlation view via any path cleans up timers and graph."""
+        # _showView should clean up when navigating away from correlation
+        idx = timeline_js.index("function _showView(view)")
+        snippet = timeline_js[idx : idx + 500]
+        assert "_hideLiveBadge()" in snippet
+        assert "_correlationSseDebounceTimer" in snippet
+        assert "CausationGraph.destroy()" in snippet
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +378,9 @@ class TestCausationGraphUpdate:
     def test_refreshes_overlays(self, graph_js):
         """Timeline axis, legend, and minimap are refreshed."""
         idx = graph_js.index("function update(newTreeData)")
-        snippet = graph_js[idx : idx + 2000]
+        # Find the next function definition to bound the search
+        end = graph_js.index("\n  function ", idx + 1)
+        snippet = graph_js[idx:end]
         assert "_renderTimelineAxis()" in snippet
         assert "_renderLegend()" in snippet
         assert "_renderMinimap()" in snippet
@@ -380,6 +396,16 @@ class TestCausationGraphUpdate:
     def test_collects_all_ids_including_collapsed(self, graph_js):
         """Includes collapsed (_children) nodes in old ID set."""
         assert "_collectAllIds" in graph_js
+
+    def test_clears_previous_highlight_timer(self, graph_js):
+        """Clears previous highlight timer before scheduling a new one."""
+        assert "clearTimeout(_highlightTimerId)" in graph_js
+
+    def test_destroy_clears_highlight_timer(self, graph_js):
+        """destroy() clears the highlight timer to prevent leaks."""
+        idx = graph_js.index("function destroy()")
+        snippet = graph_js[idx : idx + 500]
+        assert "_highlightTimerId" in snippet
 
 
 # ---------------------------------------------------------------------------

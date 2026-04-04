@@ -37,6 +37,7 @@
   // Correlation view SSE state
   let _currentCorrelationId = null;         // Active correlation_id being viewed
   let _correlationSseDebounceTimer = null;  // Debounce timer for correlation SSE
+  let _correlationFetchSeq = 0;             // Sequence token to discard stale correlation responses
   let _lastCorrelationEventTime = 0;        // Timestamp of last SSE event for Live badge
   let _liveBadgeTimer = null;               // Interval timer for Live badge staleness check
 
@@ -51,6 +52,14 @@
   // ---------------------------------------------------------------------------
 
   function _showView(view) {
+    // Tear down correlation view resources when navigating away
+    if (_currentView === 'correlation' && view !== 'correlation') {
+      _currentCorrelationId = null;
+      _hideLiveBadge();
+      clearTimeout(_correlationSseDebounceTimer);
+      if (typeof CausationGraph !== 'undefined') CausationGraph.destroy();
+    }
+
     _currentView = view;
     var $list = document.getElementById('timeline-list-view');
     var $tracesView = document.getElementById('traces-view');
@@ -82,9 +91,7 @@
 
   function _backToList() {
     _currentCorrelationData = null;
-    _currentCorrelationId = null;
-    _hideLiveBadge();
-    if (typeof CausationGraph !== 'undefined') CausationGraph.destroy();
+    // Correlation view teardown (badge, timers, graph) handled by _showView
     if (_previousTab === 'traces') {
       _enterTracesView();
     } else {
@@ -416,10 +423,15 @@
     } else {
       if ($depth) $depth.textContent = '0';
       if ($rootType) $rootType.textContent = '--';
+      if ($streamsTouched) $streamsTouched.textContent = '0';
     }
 
-    if ($corrTbody && data.events) {
-      _renderEventRows($corrTbody, data.events);
+    if ($corrTbody) {
+      if (data.events) {
+        _renderEventRows($corrTbody, data.events);
+      } else {
+        $corrTbody.innerHTML = '';
+      }
     }
 
     _currentCorrelationData = data;
@@ -1394,10 +1406,15 @@
   async function _fetchLatestCorrelation() {
     if (!_currentCorrelationId) return;
 
+    // Sequence token: discard responses from stale/overlapping requests
+    var seq = ++_correlationFetchSeq;
+
     try {
       var data = await Observatory.fetchJSON(
         '/api/timeline/correlation/' + encodeURIComponent(_currentCorrelationId)
       );
+
+      if (seq !== _correlationFetchSeq) return; // Stale response, discard
 
       // Update Live badge timestamp
       _lastCorrelationEventTime = Date.now();
