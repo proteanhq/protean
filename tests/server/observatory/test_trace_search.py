@@ -424,6 +424,167 @@ class TestSearchTraces:
         results = search_traces([empty_domain], event_type="Test.UserRegistered.v1")
         assert results == []
 
+    def test_search_raises_valueerror_without_params(self, trace_domain):
+        domain, _, _ = trace_domain
+        with pytest.raises(ValueError, match="At least one search parameter"):
+            search_traces([domain])
+
+
+# ---------------------------------------------------------------------------
+# Tests: _extract_correlation_id edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestExtractCorrelationId:
+    def test_returns_none_for_missing_metadata(self):
+        from protean.server.observatory.routes.timeline import _extract_correlation_id
+
+        assert _extract_correlation_id({}) is None
+
+    def test_returns_none_for_non_dict_metadata(self):
+        from protean.server.observatory.routes.timeline import _extract_correlation_id
+
+        assert _extract_correlation_id({"metadata": "not-a-dict"}) is None
+
+    def test_returns_none_for_missing_domain(self):
+        from protean.server.observatory.routes.timeline import _extract_correlation_id
+
+        assert _extract_correlation_id({"metadata": {"headers": {}}}) is None
+
+    def test_returns_none_for_non_dict_domain(self):
+        from protean.server.observatory.routes.timeline import _extract_correlation_id
+
+        assert _extract_correlation_id({"metadata": {"domain": "not-a-dict"}}) is None
+
+    def test_extracts_correlation_id(self):
+        from protean.server.observatory.routes.timeline import _extract_correlation_id
+
+        msg = {"metadata": {"domain": {"correlation_id": "corr-123"}}}
+        assert _extract_correlation_id(msg) == "corr-123"
+
+
+# ---------------------------------------------------------------------------
+# Tests: _group_by_correlation edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestGroupByCorrelationEdgeCases:
+    def test_excludes_snapshot_messages(self, trace_domain):
+        domain, _, _ = trace_domain
+
+        # Write a snapshot message
+        domain.event_store.store._write(
+            "tracetests:snapshot-user-1",
+            "SNAPSHOT",
+            {"data": "snapshot"},
+            metadata={
+                "headers": {"id": "msg-snap"},
+                "domain": {"kind": "EVENT", "correlation_id": "corr-snap"},
+            },
+        )
+
+        groups = _group_by_correlation([domain])
+        # Snapshot excluded — corr-snap should not appear
+        assert "corr-snap" not in groups
+
+    def test_handles_broken_domain_gracefully(self, trace_domain):
+        from unittest.mock import MagicMock
+
+        domain, _, _ = trace_domain
+
+        broken = MagicMock()
+        broken.domain_context.side_effect = Exception("broken")
+        broken.event_store.store.conn_info = {"database_uri": "broken://unique"}
+
+        # Should still return groups from the working domain
+        groups = _group_by_correlation([domain, broken])
+        assert len(groups) == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests: _build_trace_summary edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTraceSummaryEdgeCases:
+    def test_handles_non_dict_metadata(self):
+        group = [
+            (
+                {
+                    "type": "Test.Cmd.v1",
+                    "stream_name": "test::x-1",
+                    "global_position": 1,
+                    "metadata": "not-a-dict",
+                },
+                "test",
+            )
+        ]
+        summary = _build_trace_summary("corr-1", group)
+        assert summary["root_type"] == "Test.Cmd.v1"
+
+    def test_handles_non_dict_headers(self):
+        group = [
+            (
+                {
+                    "type": "Test.Cmd.v1",
+                    "stream_name": "test::x-1",
+                    "global_position": 1,
+                    "metadata": {"headers": "not-a-dict"},
+                },
+                "test",
+            )
+        ]
+        summary = _build_trace_summary("corr-1", group)
+        assert summary["root_type"] == "Test.Cmd.v1"
+
+    def test_falls_back_to_headers_type(self):
+        group = [
+            (
+                {
+                    "stream_name": "test::x-1",
+                    "global_position": 1,
+                    "metadata": {"headers": {"type": "Hdr.Type.v1"}},
+                },
+                "test",
+            )
+        ]
+        summary = _build_trace_summary("corr-1", group)
+        assert summary["root_type"] == "Hdr.Type.v1"
+
+    def test_datetime_time_produces_isoformat(self):
+        from datetime import datetime, timezone
+
+        dt = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        group = [
+            (
+                {
+                    "type": "Test.Cmd.v1",
+                    "stream_name": "test::x-1",
+                    "global_position": 1,
+                    "time": dt,
+                    "metadata": {},
+                },
+                "test",
+            )
+        ]
+        summary = _build_trace_summary("corr-1", group)
+        assert summary["started_at"] == "2026-04-01T12:00:00+00:00"
+
+    def test_falls_back_to_headers_time(self):
+        group = [
+            (
+                {
+                    "type": "Test.Cmd.v1",
+                    "stream_name": "test::x-1",
+                    "global_position": 1,
+                    "metadata": {"headers": {"time": "2026-04-01T10:00:00+00:00"}},
+                },
+                "test",
+            )
+        ]
+        summary = _build_trace_summary("corr-1", group)
+        assert summary["started_at"] == "2026-04-01T10:00:00+00:00"
+
 
 # ---------------------------------------------------------------------------
 # Tests: API endpoints
