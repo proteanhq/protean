@@ -8,6 +8,8 @@ argument-hint: "#issue-number [--branch name] [--epic #N]"
 
 Take a GitHub Issue through the full lifecycle: understand it, implement it, test it, ship a PR, and handle review feedback. The goal is a PR that's ready for human review — well-tested, well-described, and following every project convention.
 
+**This is an autonomous workflow.** Execute all phases (1 → 2 → 2.5 → 3 → 3.5 → 4 → 5) in sequence without stopping for user input between phases. The only reasons to pause are: a gate failure you cannot resolve, or an ambiguity that requires user clarification. After completing each phase, proceed immediately to the next one.
+
 ## Parse arguments
 
 Extract from `$ARGUMENTS`:
@@ -123,6 +125,8 @@ This pass catches and fixes:
 
 `/simplify` edits code directly, so it must run before tests — tests should validate the simplified code, not the pre-simplified version.
 
+**Do not stop here.** Proceed immediately to Phase 3 after `/simplify` completes.
+
 ## Phase 3: Test
 
 All testing must pass **before** committing. Follow these steps in order.
@@ -210,6 +214,8 @@ These are the patterns that slip past the person who wrote the code but are obvi
 - New public APIs without `__init__.py` exports
 - Inconsistent naming with adjacent code in the same module
 - Edge cases in middleware/integrations: no domain context, no command processed, missing headers
+
+**Do not stop here.** Once all blockers are resolved, proceed immediately to Phase 4.
 
 ## Phase 4: Commit and PR
 
