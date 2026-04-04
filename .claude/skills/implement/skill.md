@@ -172,15 +172,30 @@ This starts Docker services and runs the full test suite with all adapter config
 
 ### Step 4: Coverage of new code
 
-Measure coverage specifically on the source files you changed:
+After `protean test -c FULL` passes, it generates `coverage.xml`. Use `diff-cover` to measure patch coverage — the coverage of lines changed on this branch compared to `main`:
+
+```bash
+uv run diff-cover coverage.xml --compare-branch=main --show-uncovered
+```
+
+This reports exactly which new/modified lines are uncovered, grouped by file. The output includes line numbers you can target directly.
+
+**Gate: 100% patch coverage.** If any new or modified lines are uncovered:
+
+1. Read the uncovered line numbers from the diff-cover output
+2. Write tests that exercise those specific code paths
+3. Re-run `uv run pytest <your-test-files> -v` to confirm the new tests pass
+4. Re-run `uv run diff-cover coverage.xml --compare-branch=main` to verify coverage improved
+
+Repeat until patch coverage reaches 100%. If a line is genuinely untestable (e.g., a defensive branch that can't be triggered), note it in the PR description — but this should be rare.
+
+For a quick check of coverage on specific source files during iteration:
 
 ```bash
 uv run pytest <your-test-files> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v
 ```
 
-Use `--cov=protean` (module name, not path) and `--cov-config=/dev/null` to bypass any .coveragerc that might exclude test files. The `term-missing` report shows exact uncovered line numbers — use these to write targeted tests.
-
-**Gate: aim for 100% coverage on lines you wrote.** If a line in your new or modified code isn't covered, write a test for it. Every branch, every error path, every edge case. Uncovered lines are untested behavior.
+Use `--cov=protean` (module name, not path) and `--cov-config=/dev/null` to bypass any .coveragerc that might exclude test files.
 
 ### Testing conventions
 
@@ -281,15 +296,59 @@ EOF
 
 Title: under 70 characters, starts with a verb.
 
-## Phase 5: Handle review feedback
+### Check mergeability
 
-After creating the PR, poll for Copilot review comments (they typically arrive within 2-5 minutes):
+After the PR is created, verify it's mergeable:
 
 ```bash
-gh api repos/proteanhq/protean/pulls/<PR_NUMBER>/comments --jq 'length'
+gh pr view <PR_NUMBER> -R proteanhq/protean --json mergeable,mergeStateStatus,statusCheckRollup
 ```
 
-Check every 60 seconds, up to 10 minutes. Once comments arrive:
+If the branch has conflicts with `main`, rebase and force-push:
+
+```bash
+git fetch origin main
+git rebase origin/main
+git push --force-with-lease
+```
+
+If CI checks are failing, investigate and fix before moving to Phase 5.
+
+## Phase 5: Handle review feedback and coverage
+
+After creating the PR, wait for CI checks (Copilot review, Codecov coverage report) to arrive. Poll until both are available:
+
+```bash
+# Check for review comments (Copilot typically arrives in 2-5 minutes)
+gh api repos/proteanhq/protean/pulls/<PR_NUMBER>/comments --jq 'length'
+
+# Check CI status including Codecov
+gh pr checks <PR_NUMBER> -R proteanhq/protean
+```
+
+Check every 60 seconds, up to 10 minutes.
+
+### Check Codecov patch coverage
+
+**Codecov is the authoritative source for coverage**, not local measurements. Codecov runs in CI with the full matrix of adapters and may report different numbers than local `diff-cover`. Once CI completes, Codecov posts a comment on the PR with patch coverage. Fetch it:
+
+```bash
+gh api repos/proteanhq/protean/issues/<PR_NUMBER>/comments --jq '.[] | select(.user.login == "codecov[bot]" or .user.login == "codecov-commenter") | .body'
+```
+
+If patch coverage is below 100%:
+
+1. Read the Codecov comment to identify uncovered files and lines
+2. Write tests targeting those specific uncovered paths
+3. Run `uv run pytest <new-test-files> -v` to confirm they pass
+4. Commit and push: `git add <files> && git commit -m "Add tests to improve patch coverage" && git push`
+5. Wait for Codecov to re-run and verify patch coverage improved
+
+Repeat until Codecov reports 100% patch coverage. If a line is genuinely untestable, note it in the PR description.
+
+### Fetch review comments
+
+Once Copilot comments arrive:
 
 ```bash
 gh api repos/proteanhq/protean/pulls/<PR_NUMBER>/comments --jq '.[] | {id, path, body, line, in_reply_to_id}'
@@ -344,6 +403,22 @@ gh api graphql -f query='{ repository(owner: "proteanhq", name: "protean") {
 gh api graphql -f query='mutation { resolveReviewThread(input: { threadId: "<THREAD_ID>" }) { thread { isResolved } } }'
 ```
 
+### Re-check mergeability
+
+After pushing review fixes, verify the PR is still mergeable:
+
+```bash
+gh pr view <PR_NUMBER> -R proteanhq/protean --json mergeable,mergeStateStatus,statusCheckRollup
+```
+
+If conflicts appeared (e.g., `main` advanced while addressing feedback), rebase and force-push:
+
+```bash
+git fetch origin main
+git rebase origin/main
+git push --force-with-lease
+```
+
 ## Report
 
 When complete, summarize:
@@ -360,10 +435,11 @@ Tests:
 - X tests added, all passing
 - Core suite (`protean test`): Y passed, 0 failed
 - Full suite (`protean test -c FULL`): Z passed, 0 failed
-- Coverage on new code: N%
+- Patch coverage: N% (diff-cover)
 
 Review:
 - N comments addressed, all threads resolved
+- PR is mergeable, CI checks passing
 ```
 
 Never merge the PR — leave that to the user.
