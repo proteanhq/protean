@@ -88,9 +88,9 @@ Follow these principles — they come from hard-won experience on this project:
 - **Handle edge cases** — especially in middleware, integrations, and event processing. Cover the "no header", "no domain context", "no command processed" paths, not just the happy path
 - **Intentional exports** — when adding to `__init__.py`, make sure the public API surface change is deliberate
 
-### Self-review before committing
+### Quick self-check
 
-Before you commit, review your own work as if you were a hostile reviewer. These are the actual bugs that slip through most often:
+Before moving to testing, do a fast author's pass on your own diff. These are the bugs that slip through most often:
 
 1. **Docstrings must match behavior.** If a docstring says "always includes X", verify the code actually does that for ALL code paths. Middleware that claims to set a response header must set it even when no command was processed, no domain context exists, etc.
 
@@ -106,6 +106,22 @@ Before you commit, review your own work as if you were a hostile reviewer. These
 4. **Fact events require opt-in.** If testing event propagation, the aggregate must have `fact_events=True` — otherwise no events are produced and your test silently asserts nothing.
 
 5. **No leftover debug code.** No stray `print()`, `breakpoint()`, or commented-out blocks.
+
+## Phase 2.5: Simplify
+
+Before testing, run the `/simplify` skill to review your changed code for reuse opportunities, quality, and efficiency:
+
+```
+Skill(skill="simplify")
+```
+
+This pass catches and fixes:
+- Duplicated logic that could reuse existing utilities
+- Overly complex code that can be simplified
+- Inefficient patterns (unnecessary loops, redundant operations)
+- Code that doesn't follow adjacent patterns in the same module
+
+`/simplify` edits code directly, so it must run before tests — tests should validate the simplified code, not the pre-simplified version.
 
 ## Phase 3: Test
 
@@ -163,9 +179,41 @@ Use `--cov=protean` (module name, not path) and `--cov-config=/dev/null` to bypa
 - **Tests ship with code.** Same commit, same PR. Never a separate "add tests" step.
 - **Test placement follows source layout.** `src/protean/core/aggregate.py` → `tests/aggregate/`.
 
+## Phase 3.5: Self-Review
+
+After all tests pass and before committing, run a formal review of your changes. This catches the issues that GitHub Copilot would flag — saving a round trip.
+
+### Spawn the pr-reviewer agent
+
+Launch the `pr-reviewer` agent against your uncommitted diff:
+
+```
+Agent(subagent_type="pr-reviewer", prompt="Review the uncommitted changes on this branch against main. Run `git diff` to see the changes. Report blockers, suggestions, and things done well.")
+```
+
+### Act on the findings
+
+- **Blockers** — fix every one. Missing changelog entry, unmitigated breaking change, missing type hints, untested code path — these must be resolved before committing.
+- **Suggestions** — use judgment. If a suggestion improves clarity or correctness, take it. If it's purely stylistic and debatable, skip it.
+- **Good** — note these patterns for consistency in future work.
+
+After fixing blockers, re-run affected tests (`uv run pytest <changed-test-files> -v`) to confirm fixes didn't break anything.
+
+### What the reviewer catches that you'll miss as the author
+
+These are the patterns that slip past the person who wrote the code but are obvious to a reviewer:
+
+- Tests that loop over collections without asserting the collection is non-empty
+- Docstrings that promise behavior the code doesn't deliver for all paths
+- Missing auto-generation of IDs when "always present" semantics are documented
+- Assertions that test implementation details rather than behavior
+- New public APIs without `__init__.py` exports
+- Inconsistent naming with adjacent code in the same module
+- Edge cases in middleware/integrations: no domain context, no command processed, missing headers
+
 ## Phase 4: Commit and PR
 
-**Prerequisite: Phase 3 must be fully complete** — core tests pass, full adapter suite passes, and coverage meets the 100% target on new code. Do not commit untested or partially tested code.
+**Prerequisites:** Phase 2.5 (simplify), Phase 3 (all tests pass, coverage target met), and Phase 3.5 (all review blockers resolved) must all be complete. Do not commit untested or unreviewed code.
 
 ### Commit
 
