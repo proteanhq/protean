@@ -8,7 +8,7 @@ argument-hint: "#issue-number [--branch name] [--epic #N]"
 
 Take a GitHub Issue through the full lifecycle: understand it, implement it, test it, ship a PR, and handle review feedback. The goal is a PR that's ready for human review — well-tested, well-described, and following every project convention.
 
-**This is an autonomous workflow.** Execute all phases (1 → 2 → 2.5 → 3 → 3.5 → 4 → 5) in sequence without stopping for user input between phases. The only reasons to pause are: a gate failure you cannot resolve, or an ambiguity that requires user clarification. After completing each phase, proceed immediately to the next one.
+**This is an autonomous workflow.** Execute all phases (1 → 2 → 2.5 → 3 → 3.5 → 4 → 5) in sequence without stopping for user input between phases. This includes committing, pushing, and creating the PR — the user invoked this skill expecting a PR as the output. The only reasons to pause are: a gate failure you cannot resolve, or an ambiguity that requires user clarification. After completing each phase, proceed immediately to the next one.
 
 ## Parse arguments
 
@@ -131,6 +131,19 @@ This pass catches and fixes:
 
 All testing must pass **before** committing. Follow these steps in order.
 
+### How the test infrastructure works
+
+Before running tests, understand the commands (see `src/protean/cli/test.py` and `Makefile`):
+
+- **`protean test`** (CORE) — runs `pytest --cache-clear --ignore=tests/support/` with in-memory adapters. No external services needed. No coverage collected.
+- **`protean test -c FULL`** — runs the full matrix first (all flags: `--slow --redis --sqlite --postgresql --message_db --elasticsearch --mssql`), then runs per-adapter suites (each database, broker, and event store) in parallel. All runs use `coverage run --parallel-mode`, and coverage is combined at the end.
+- **`protean test -c COVERAGE`** — same as FULL but also generates a diff-cover HTML report comparing against `main`.
+- **`make up`** — starts Docker services: Redis, Elasticsearch, PostgreSQL, MessageDB, MSSQL.
+- **`make test-full`** — runs `make up` then `protean test -c FULL` (convenient shortcut).
+- **`uv run pytest <files> --cov=protean --cov-report=term-missing`** — for targeted coverage on specific test files. Use `--cov-config=/dev/null` to bypass `.coveragerc` exclusions.
+
+**Important:** Always use `uv run` when running `protean test` or `pytest` to ensure the correct virtual environment.
+
 ### Step 1: Fast iteration on your tests
 
 ```bash
@@ -141,8 +154,6 @@ Iterate until your new tests pass. Fix bugs in both production code and tests.
 
 ### Step 2: Core tests (no adapters)
 
-Run the full core test suite with in-memory adapters — no external services needed:
-
 ```bash
 uv run protean test
 ```
@@ -151,29 +162,23 @@ uv run protean test
 
 ### Step 3: Full suite with adapters
 
-Start all external services (Redis, PostgreSQL, Elasticsearch, MessageDB):
-
 ```bash
-make up
+make test-full
 ```
 
-Wait for services to be ready, then run the full test suite with all adapter configurations:
-
-```bash
-uv run protean test -c FULL
-```
+This starts Docker services and runs the full test suite with all adapter configurations. Alternatively, run `make up` and `uv run protean test -c FULL` separately if services are already running.
 
 **Gate: all tests must pass.** Adapter test failures may indicate that your changes broke compatibility with real infrastructure. Fix before proceeding.
 
 ### Step 4: Coverage of new code
 
-Measure coverage specifically on the files you changed:
+Measure coverage specifically on the source files you changed:
 
 ```bash
 uv run pytest <your-test-files> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v
 ```
 
-Use `--cov=protean` (module name, not path) and `--cov-config=/dev/null` to bypass any .coveragerc that might exclude test files.
+Use `--cov=protean` (module name, not path) and `--cov-config=/dev/null` to bypass any .coveragerc that might exclude test files. The `term-missing` report shows exact uncovered line numbers — use these to write targeted tests.
 
 **Gate: aim for 100% coverage on lines you wrote.** If a line in your new or modified code isn't covered, write a test for it. Every branch, every error path, every edge case. Uncovered lines are untested behavior.
 
