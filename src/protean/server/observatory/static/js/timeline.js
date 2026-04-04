@@ -27,6 +27,7 @@
   // Traces view state
   let _traces = [];
   let _traceSearchTimer = null;
+  let _traceSearchSeq = 0;  // Sequence token to discard stale search responses
 
   // SSE real-time state
   let _pendingNewEvents = 0;   // Count of events arrived while scrolled down
@@ -201,10 +202,15 @@
     if (streamCat) params.set('stream_category', streamCat);
     params.set('limit', '50');
 
+    // Sequence token: discard responses from stale requests
+    var seq = ++_traceSearchSeq;
+
     try {
       var data = await Observatory.fetchJSON('/api/timeline/traces/search?' + params.toString());
+      if (seq !== _traceSearchSeq) return; // Stale response, discard
       _traces = data.traces || [];
     } catch (e) {
+      if (seq !== _traceSearchSeq) return;
       console.warn('Failed to search traces:', e.message);
       _traces = [];
     }
@@ -269,10 +275,22 @@
     });
   }
 
+  function _hasTraceSearchCriteria() {
+    var aggId = (document.getElementById('trace-search-aggregate-id') || {}).value || '';
+    var evtType = (document.getElementById('trace-search-event-type') || {}).value || '';
+    var cmdType = (document.getElementById('trace-search-command-type') || {}).value || '';
+    var streamCat = (document.getElementById('trace-search-stream-category') || {}).value || '';
+    return !!(aggId.trim() || evtType.trim() || cmdType.trim() || streamCat.trim());
+  }
+
   function _enterTracesView() {
     _showView('traces');
     _updateTracesURL();
-    fetchRecentTraces();
+    if (_hasTraceSearchCriteria()) {
+      searchTraces();
+    } else {
+      fetchRecentTraces();
+    }
     window.scrollTo(0, 0);
   }
 
@@ -1054,8 +1072,21 @@
       } else if (params.has('stream') && params.has('aggregate')) {
         _showAggregateView(params.get('stream'), params.get('aggregate'));
       } else if (params.get('view') === 'traces') {
+        // Re-apply search params from URL into inputs
+        var $aggId = document.getElementById('trace-search-aggregate-id');
+        var $evtType = document.getElementById('trace-search-event-type');
+        var $cmdType = document.getElementById('trace-search-command-type');
+        var $streamCat = document.getElementById('trace-search-stream-category');
+        if ($aggId) $aggId.value = params.get('aggregate_id') || '';
+        if ($evtType) $evtType.value = params.get('event_type') || '';
+        if ($cmdType) $cmdType.value = params.get('command_type') || '';
+        if ($streamCat) $streamCat.value = params.get('stream_category') || '';
         _showView('traces');
-        fetchRecentTraces();
+        if (_hasTraceSearchCriteria()) {
+          searchTraces();
+        } else {
+          fetchRecentTraces();
+        }
       } else {
         _enterListView();
       }
