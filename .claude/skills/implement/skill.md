@@ -1,6 +1,6 @@
 ---
 name: implement
-description: End-to-end implementation of a GitHub Issue — research the issue and epic context, deep-dive the codebase, implement changes, self-review, test with coverage, commit, create a PR, and handle review feedback. Use this skill when the user says "implement #N", "work on #N", "start #N", "pick up this issue", "build this feature", or provides an issue number with optional branch/epic context. Also trigger when the user pastes a task block with issue details, says "take this from start to finish", or gives a bare issue number expecting autonomous implementation. This is the workhorse skill for turning an issue into a merged-ready PR.
+description: End-to-end implementation of a GitHub Issue — research the issue and epic context, deep-dive the codebase, implement changes, self-review, test with coverage, commit, create a PR, and handle review feedback. Use this skill when the user says "implement #N", "work on #N", "start #N", "pick up this issue", "build this feature", or provides an issue number with optional branch/epic context. Also trigger when the user pastes a task block with issue details, says "take this from start to finish", gives a bare issue number expecting autonomous implementation, or provides an issue title containing "#N" (e.g., "6.3.5: Feature Name #860 Epic #851"). This is the workhorse skill for turning an issue into a merged-ready PR.
 argument-hint: "#issue-number [--branch name] [--epic #N]"
 ---
 
@@ -8,14 +8,24 @@ argument-hint: "#issue-number [--branch name] [--epic #N]"
 
 Take a GitHub Issue through the full lifecycle: understand it, implement it, test it, ship a PR, and handle review feedback. The goal is a PR that's ready for human review — well-tested, well-described, and following every project convention.
 
-**This is an autonomous workflow.** Execute all phases (1 → 2 → 2.5 → 3 → 3.5 → 4 → 5) in sequence without stopping for user input between phases. This includes committing, pushing, and creating the PR — the user invoked this skill expecting a PR as the output. The only reasons to pause are: a gate failure you cannot resolve, or an ambiguity that requires user clarification. After completing each phase, proceed immediately to the next one.
+## CRITICAL: Autonomous Execution
+
+**This is a fully autonomous workflow. Do NOT stop between phases.** Execute all phases (1 → 2 → 2.5 → 3 → 3.5 → 4 → 5) in a single unbroken run. The user invoked this skill expecting a PR with all review feedback addressed as the final output — not intermediate summaries, not progress reports, not "what should I do next?" questions.
+
+**Rules:**
+- Do NOT summarize progress and wait for the user between phases
+- Do NOT ask for confirmation before proceeding to the next phase
+- Do NOT present a plan and ask if it looks good — execute it
+- The ONLY reasons to pause: (1) a gate failure you cannot resolve after trying, or (2) a genuine ambiguity where two valid interpretations lead to incompatible implementations
+
+After completing each phase, proceed **immediately** to the next one.
 
 ## Parse arguments
 
 Extract from `$ARGUMENTS`:
-- **Issue number** (required) — `#N` or bare number
+- **Issue number** (required) — `#N` or bare number. If the input contains multiple `#N` references, the smaller number is typically the issue and the larger is the epic.
 - **Branch name** — `--branch <name>`, or derive as `work/<issue-number>-<slug>` from the issue title
-- **Epic number** — `--epic #N` for parent context, or detect from the issue's sub-issue relationships
+- **Epic number** — `--epic #N` for parent context, or detect from the issue's sub-issue relationships. Also look for "Epic #N" in the input.
 
 ## Phase 1: Research
 
@@ -64,9 +74,11 @@ Read the actual source files you'll modify. Understand:
 
 Don't skip this. A shallow read leads to code that works but doesn't fit.
 
+**Do NOT stop here. Proceed immediately to Phase 2.**
+
 ## Phase 2: Implement
 
-Before starting Phase 2, confirm: "Research complete. The issue requires [1-sentence summary]. Proceeding with implementation."
+Confirm in one line: "Research complete. The issue requires [1-sentence summary]. Implementing." — then keep going.
 
 ### Create the branch
 
@@ -92,7 +104,7 @@ Follow these principles — they come from hard-won experience on this project:
 
 ### Quick self-check
 
-Before moving to testing, do a fast author's pass on your own diff. These are the bugs that slip through most often:
+Before moving to simplify, do a fast author's pass on your own diff. These are the bugs that slip through most often:
 
 1. **Docstrings must match behavior.** If a docstring says "always includes X", verify the code actually does that for ALL code paths. Middleware that claims to set a response header must set it even when no command was processed, no domain context exists, etc.
 
@@ -108,6 +120,8 @@ Before moving to testing, do a fast author's pass on your own diff. These are th
 4. **Fact events require opt-in.** If testing event propagation, the aggregate must have `fact_events=True` — otherwise no events are produced and your test silently asserts nothing.
 
 5. **No leftover debug code.** No stray `print()`, `breakpoint()`, or commented-out blocks.
+
+**Do NOT stop here. Proceed immediately to Phase 2.5.**
 
 ## Phase 2.5: Simplify
 
@@ -125,13 +139,17 @@ This pass catches and fixes:
 
 `/simplify` edits code directly, so it must run before tests — tests should validate the simplified code, not the pre-simplified version.
 
-**Do not stop here.** Proceed immediately to Phase 3 after `/simplify` completes.
+**Do NOT stop here. Proceed immediately to Phase 3.**
 
-## Phase 3: Test
+## Phase 3: Test and Self-Review (parallel)
+
+Launch Phase 3 testing and Phase 3.5 self-review **in parallel** — they are independent. Testing validates behavior; self-review validates code quality. Neither depends on the other's output.
+
+### Phase 3 Steps: Testing
 
 All testing must pass **before** committing. Follow these steps in order.
 
-### How the test infrastructure works
+#### How the test infrastructure works
 
 Before running tests, understand the commands (see `src/protean/cli/test.py` and `Makefile`):
 
@@ -144,7 +162,7 @@ Before running tests, understand the commands (see `src/protean/cli/test.py` and
 
 **Important:** Always use `uv run` when running `protean test` or `pytest` to ensure the correct virtual environment.
 
-### Step 1: Fast iteration on your tests
+#### Step 1: Fast iteration on your tests
 
 ```bash
 uv run pytest <your-test-file> -v --tb=short
@@ -152,7 +170,7 @@ uv run pytest <your-test-file> -v --tb=short
 
 Iterate until your new tests pass. Fix bugs in both production code and tests.
 
-### Step 2: Core tests (no adapters)
+#### Step 2: Core tests (no adapters)
 
 ```bash
 uv run protean test
@@ -160,17 +178,27 @@ uv run protean test
 
 **Gate: every core test must pass.** If any test fails, investigate and fix before proceeding. Do not skip or ignore failures — they indicate either a regression in your code or a pre-existing issue that must be understood.
 
-### Step 3: Full suite with adapters
+#### Step 3: Code quality checks
+
+Run all quality checks in parallel:
+
+```bash
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run mypy src/protean
+```
+
+If ruff reports fixable issues, auto-fix them: `uv run ruff check --fix src/ tests/ && uv run ruff format src/ tests/`. For mypy, only fix errors introduced by your changes — pre-existing errors are not your responsibility.
+
+#### Step 4: Full suite with adapters (if Docker is available)
 
 ```bash
 make test-full
 ```
 
-This starts Docker services and runs the full test suite with all adapter configurations. Alternatively, run `make up` and `uv run protean test -c FULL` separately if services are already running.
+This starts Docker services and runs the full test suite with all adapter configurations. If Docker is not available or services fail to start, note this limitation and proceed — CI will run the full matrix. Do not block on Docker availability.
 
-**Gate: all tests must pass.** Adapter test failures may indicate that your changes broke compatibility with real infrastructure. Fix before proceeding.
-
-### Step 4: Coverage of new code
+#### Step 5: Coverage of new code
 
 After `protean test -c FULL` passes, it generates `coverage.xml`. Use `diff-cover` to measure patch coverage — the coverage of lines changed on this branch compared to `main`:
 
@@ -187,39 +215,30 @@ This reports exactly which new/modified lines are uncovered, grouped by file. Th
 3. Re-run `uv run pytest <your-test-files> -v` to confirm the new tests pass
 4. Re-run `uv run diff-cover coverage.xml --compare-branch=main` to verify coverage improved
 
-Repeat until patch coverage reaches 100%. If a line is genuinely untestable (e.g., a defensive branch that can't be triggered), note it in the PR description — but this should be rare.
-
-For a quick check of coverage on specific source files during iteration:
+Repeat until patch coverage reaches 100%. If a line is genuinely untestable (e.g., a defensive branch that can't be triggered), note it in the PR description — but this should be rare. If `coverage.xml` is unavailable (Docker not running), use targeted coverage instead:
 
 ```bash
 uv run pytest <your-test-files> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v
 ```
 
-Use `--cov=protean` (module name, not path) and `--cov-config=/dev/null` to bypass any .coveragerc that might exclude test files.
-
-### Testing conventions
+#### Testing conventions
 
 - **No mocks.** Register real domain elements: `test_domain.register(MyAggregate)` then `test_domain.init(traverse=False)`.
 - **Tests ship with code.** Same commit, same PR. Never a separate "add tests" step.
 - **Test placement follows source layout.** `src/protean/core/aggregate.py` → `tests/aggregate/`.
 
-## Phase 3.5: Self-Review
+### Phase 3.5 Steps: Self-Review (run in parallel with Phase 3)
 
-After all tests pass and before committing, run a formal review of your changes. This catches the issues that GitHub Copilot would flag — saving a round trip.
-
-### Spawn the pr-reviewer agent
-
-Launch the `pr-reviewer` agent against your uncommitted diff:
+Launch the `pr-reviewer` agent in the background while tests run:
 
 ```
-Agent(subagent_type="pr-reviewer", prompt="Review the uncommitted changes on this branch against main. Run `git diff` to see the changes. Report blockers, suggestions, and things done well.")
+Agent(subagent_type="pr-reviewer", prompt="Review the uncommitted changes on this branch against main. Run `git diff` to see the changes. Report blockers, suggestions, and things done well.", run_in_background=true)
 ```
 
-### Act on the findings
+When the reviewer completes, act on findings:
 
 - **Blockers** — fix every one. Missing changelog entry, unmitigated breaking change, missing type hints, untested code path — these must be resolved before committing.
 - **Suggestions** — use judgment. If a suggestion improves clarity or correctness, take it. If it's purely stylistic and debatable, skip it.
-- **Good** — note these patterns for consistency in future work.
 
 After fixing blockers, re-run affected tests (`uv run pytest <changed-test-files> -v`) to confirm fixes didn't break anything.
 
@@ -235,11 +254,45 @@ These are the patterns that slip past the person who wrote the code but are obvi
 - Inconsistent naming with adjacent code in the same module
 - Edge cases in middleware/integrations: no domain context, no command processed, missing headers
 
-**Do not stop here.** Once all blockers are resolved, proceed immediately to Phase 4.
+### Pre-commit checklist
+
+Before proceeding to Phase 4, verify **all** of these are true:
+
+- [ ] `/simplify` has been run (Phase 2.5)
+- [ ] New tests pass (`uv run pytest <test-file> -v`)
+- [ ] Core suite passes (`uv run protean test`)
+- [ ] Quality checks pass (ruff lint, ruff format, mypy — no new errors)
+- [ ] Self-review blockers resolved (Phase 3.5)
+- [ ] No conflict markers in any file
+
+If any item is incomplete, complete it now. **Do NOT stop here. Proceed immediately to Phase 4.**
 
 ## Phase 4: Commit and PR
 
-**Prerequisites:** Phase 2.5 (simplify), Phase 3 (all tests pass, coverage target met), and Phase 3.5 (all review blockers resolved) must all be complete. Do not commit untested or unreviewed code.
+### Rebase against main before committing
+
+Main may have advanced while you were implementing. Rebase to avoid merge conflicts in the PR:
+
+```bash
+git fetch origin main
+git rebase origin/main
+```
+
+If the rebase introduces conflicts, resolve them and re-run `uv run pytest <your-test-file> -v` to verify the resolution is correct.
+
+### Add changelog entry
+
+Read `CHANGELOG.md` and add an entry under `[Unreleased]` in the appropriate subsection (Added, Changed, Fixed, etc.). Write from the user's perspective — what changed for them, not what files were edited.
+
+### Check for breaking changes
+
+If your diff renames, removes, or changes behavior of anything in `protean.*` that user code could depend on:
+
+- **Tier 1 (surface — renamed/moved)**: Add a deprecation wrapper that delegates to the new implementation
+- **Tier 2 (behavioral — same API, different behavior)**: Flag to user — needs a config flag
+- **Tier 3 (structural — persistence format, event schema)**: Flag to user — needs migration docs
+
+Don't proceed silently with unmitigated breaks.
 
 ### Commit
 
@@ -259,20 +312,6 @@ Commit message rules:
 - No Claude attribution, no session links, no AI mention
 - No "Co-Authored-By" lines
 - Don't override git user config — it's already set correctly
-
-### Changelog entry
-
-Read `CHANGELOG.md` and add an entry under `[Unreleased]` in the appropriate subsection (Added, Changed, Fixed, etc.). Write from the user's perspective — what changed for them, not what files were edited.
-
-### Check for breaking changes
-
-If your diff renames, removes, or changes behavior of anything in `protean.*` that user code could depend on:
-
-- **Tier 1 (surface — renamed/moved)**: Add a deprecation wrapper that delegates to the new implementation
-- **Tier 2 (behavioral — same API, different behavior)**: Flag to user — needs a config flag
-- **Tier 3 (structural — persistence format, event schema)**: Flag to user — needs migration docs
-
-Don't proceed silently with unmitigated breaks.
 
 ### Push and create the PR
 
@@ -314,6 +353,8 @@ git push --force-with-lease
 
 If CI checks are failing, investigate and fix before moving to Phase 5.
 
+**Do NOT stop here. Proceed immediately to Phase 5.**
+
 ## Phase 5: Handle review feedback and coverage
 
 After creating the PR, wait for CI checks (Copilot review, Codecov coverage report) to arrive. Poll until both are available:
@@ -326,7 +367,7 @@ gh api repos/proteanhq/protean/pulls/<PR_NUMBER>/comments --jq 'length'
 gh pr checks <PR_NUMBER> -R proteanhq/protean
 ```
 
-Check every 60 seconds, up to 10 minutes.
+Check every 60 seconds, up to 10 minutes. While waiting, you may proceed with other independent work if available.
 
 ### Check Codecov patch coverage
 
@@ -346,15 +387,13 @@ If patch coverage is below 100%:
 
 Repeat until Codecov reports 100% patch coverage. If a line is genuinely untestable, note it in the PR description.
 
-### Fetch review comments
+### Fetch and address review comments
 
 Once Copilot comments arrive:
 
 ```bash
 gh api repos/proteanhq/protean/pulls/<PR_NUMBER>/comments --jq '.[] | {id, path, body, line, in_reply_to_id}'
 ```
-
-### Triage each comment
 
 For each top-level comment (`in_reply_to_id` is null):
 
@@ -364,7 +403,7 @@ For each top-level comment (`in_reply_to_id` is null):
 
 ### Common Copilot catches to preempt
 
-These are the patterns Copilot flags most often on this project — catching them in self-review (Phase 2) saves a round trip:
+These are the patterns Copilot flags most often on this project — catching them in self-review (Phase 3.5) saves a round trip:
 
 - Tests that loop over collections without asserting the collection is non-empty
 - Docstrings that promise behavior the code doesn't deliver for all paths
@@ -381,26 +420,11 @@ git commit -m "Address review feedback on PR #<NUMBER>"
 git push
 ```
 
-Reply to each comment:
+Reply to each comment using the correct API path for PR review comment replies:
 
 ```bash
-gh api repos/proteanhq/protean/pulls/<PR_NUMBER>/comments \
-  -f body="Fixed — one sentence explaining the change." \
-  -F in_reply_to=<COMMENT_ID>
-```
-
-Resolve all threads:
-
-```bash
-gh api graphql -f query='{ repository(owner: "proteanhq", name: "protean") {
-  pullRequest(number: <PR_NUMBER>) {
-    reviewThreads(first: 50) {
-      nodes { id isResolved comments(first: 1) { nodes { databaseId } } }
-    }
-  }
-} }'
-
-gh api graphql -f query='mutation { resolveReviewThread(input: { threadId: "<THREAD_ID>" }) { thread { isResolved } } }'
+gh api repos/proteanhq/protean/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
+  -f body='Fixed — one sentence explaining the change.'
 ```
 
 ### Re-check mergeability
