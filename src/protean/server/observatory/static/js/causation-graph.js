@@ -118,14 +118,25 @@ var CausationGraph = (function () {
     _root.x0 = 0;
     _root.y0 = 0;
 
-    // Progressive disclosure: auto-collapse deep branches for large chains
+    // Progressive disclosure: auto-collapse deep branches for large chains.
+    // Mutate the raw data first, then rebuild the hierarchy so D3 nodes
+    // reflect the collapsed state.
     var totalNodes = _root.descendants().length;
+    var needsRebuild = false;
     _root.descendants().forEach(function (d) {
       d.data._children = d.data.children;
       if (totalNodes >= PROGRESSIVE_THRESHOLD && d.depth >= 3 && d.data.children && d.data.children.length > 0) {
         d.data.children = null;
+        needsRebuild = true;
       }
     });
+    if (needsRebuild) {
+      _root = d3.hierarchy(treeData, function (node) {
+        return node.children;
+      });
+      _root.x0 = 0;
+      _root.y0 = 0;
+    }
 
     // Tree layout (horizontal: swap x/y)
     _treeFn = d3.tree().nodeSize([NODE_HEIGHT + NODE_MARGIN_Y, NODE_WIDTH + NODE_MARGIN_X]);
@@ -541,7 +552,7 @@ var CausationGraph = (function () {
       .data(laneData, function (d) { return 'lbl-' + d.key; });
 
     labelSel.enter()
-      .insert('text', ':first-child')
+      .append('text')
       .attr('class', 'cg-swimlane-label')
       .attr('text-anchor', 'start')
       .merge(labelSel)
