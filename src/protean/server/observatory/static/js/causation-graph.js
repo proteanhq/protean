@@ -3,7 +3,9 @@
  *
  * Renders a horizontal left-to-right tree layout of causation chains
  * using D3.js. Supports zoom/pan, collapse/expand subtrees, hover
- * highlighting of causal paths, and click-to-detail.
+ * highlighting of causal paths, click-to-detail, swimlane grouping
+ * by stream category, timeline axis, legend, progressive disclosure,
+ * and a mini-map overview.
  *
  * Usage:
  *   CausationGraph.render(containerSelector, treeData, onNodeClick);
@@ -21,6 +23,23 @@ var CausationGraph = (function () {
   var NODE_MARGIN_X = 60;
   var NODE_MARGIN_Y = 16;
   var TRANSITION_DURATION = 300;
+  var SWIMLANE_PADDING = 24;
+  var PROGRESSIVE_THRESHOLD = 50;
+  var MINIMAP_WIDTH = 160;
+  var MINIMAP_HEIGHT = 100;
+  var MINIMAP_MARGIN = 12;
+
+  // Stream category color palette (deterministic assignment)
+  var LANE_COLORS = [
+    'oklch(0.75 0.12 250)',  // blue
+    'oklch(0.75 0.12 150)',  // green
+    'oklch(0.75 0.12 30)',   // orange
+    'oklch(0.75 0.12 320)',  // purple
+    'oklch(0.75 0.12 80)',   // yellow-green
+    'oklch(0.75 0.12 200)',  // teal
+    'oklch(0.75 0.12 350)',  // pink
+    'oklch(0.75 0.12 110)',  // lime
+  ];
 
   // ---------------------------------------------------------------------------
   // State
@@ -32,6 +51,13 @@ var CausationGraph = (function () {
   var _root = null;      // D3 hierarchy root
   var _treeFn = null;    // d3.tree() layout
   var _onNodeClick = null;
+  var _laneMap = {};     // stream category -> { index, color, label }
+  var _svgWidth = 800;
+  var _svgHeight = 500;
+  var _minimapG = null;  // Mini-map group (fixed position)
+  var _minimapBounds = null;  // Cached graph bounds for minimap viewport updates
+  var _minimapScale = 1;
+  var _minimapRafId = null;   // rAF guard for zoom-driven minimap updates
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -52,21 +78,30 @@ var CausationGraph = (function () {
     if (!container || !treeData) return;
 
     var rect = container.getBoundingClientRect();
-    var width = rect.width || 800;
-    var height = Math.max(400, rect.height || 500);
+    _svgWidth = rect.width || 800;
+    _svgHeight = Math.max(400, rect.height || 500);
+
+    // Build lane map from stream categories in the data
+    _laneMap = _buildLaneMap(treeData);
 
     // Create SVG
     _svg = d3.select(containerSelector)
       .append('svg')
       .attr('class', 'causation-graph-svg')
       .attr('width', '100%')
-      .attr('height', height);
+      .attr('height', _svgHeight);
 
     // Zoom behavior
     _zoom = d3.zoom()
       .scaleExtent([0.2, 3])
       .on('zoom', function (event) {
         _g.attr('transform', event.transform);
+        if (!_minimapRafId) {
+          _minimapRafId = requestAnimationFrame(function () {
+            _minimapRafId = null;
+            _updateMinimap();
+          });
+        }
       });
 
     _svg.call(_zoom);
@@ -74,7 +109,7 @@ var CausationGraph = (function () {
     // Main group for zoomable content
     _g = _svg.append('g')
       .attr('class', 'cg-canvas')
-      .attr('transform', 'translate(40, ' + (height / 2) + ')');
+      .attr('transform', 'translate(40, ' + (_svgHeight / 2) + ')');
 
     // Build hierarchy
     _root = d3.hierarchy(treeData, function (d) {
@@ -83,18 +118,39 @@ var CausationGraph = (function () {
     _root.x0 = 0;
     _root.y0 = 0;
 
-    // Preserve original children for collapse/expand
+    // Progressive disclosure: auto-collapse deep branches for large chains.
+    // Mutate the raw data first, then rebuild the hierarchy so D3 nodes
+    // reflect the collapsed state.
+    var totalNodes = _root.descendants().length;
+    var needsRebuild = false;
     _root.descendants().forEach(function (d) {
       d.data._children = d.data.children;
+      if (totalNodes >= PROGRESSIVE_THRESHOLD && d.depth >= 3 && d.data.children && d.data.children.length > 0) {
+        d.data.children = null;
+        needsRebuild = true;
+      }
     });
+    if (needsRebuild) {
+      _root = d3.hierarchy(treeData, function (node) {
+        return node.children;
+      });
+      _root.x0 = 0;
+      _root.y0 = 0;
+    }
 
     // Tree layout (horizontal: swap x/y)
     _treeFn = d3.tree().nodeSize([NODE_HEIGHT + NODE_MARGIN_Y, NODE_WIDTH + NODE_MARGIN_X]);
 
     _update(_root);
 
+    // Render overlays: timeline axis, legend, mini-map
+    // (swimlanes are rendered inside _update)
+    _renderTimelineAxis();
+    _renderLegend();
+    _renderMinimap();
+
     // Auto-fit after initial render
-    _fitToView(width, height);
+    _fitToView(_svgWidth, _svgHeight);
   }
 
   /**
@@ -110,6 +166,45 @@ var CausationGraph = (function () {
     _root = null;
     _treeFn = null;
     _onNodeClick = null;
+    _laneMap = {};
+    _minimapG = null;
+    _minimapBounds = null;
+    _minimapScale = 1;
+    if (_minimapRafId) {
+      cancelAnimationFrame(_minimapRafId);
+      _minimapRafId = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lane Map
+  // ---------------------------------------------------------------------------
+
+  function _buildLaneMap(treeData) {
+    var categories = {};
+    _collectCategories(treeData, categories);
+    var sorted = Object.keys(categories).sort();
+    var map = {};
+    for (var i = 0; i < sorted.length; i++) {
+      map[sorted[i]] = {
+        index: i,
+        color: LANE_COLORS[i % LANE_COLORS.length],
+        label: sorted[i]
+      };
+    }
+    return map;
+  }
+
+  function _collectCategories(node, cats) {
+    if (!node) return;
+    var cat = _extractStreamCategory(node.stream);
+    if (cat) cats[cat] = true;
+    var children = node._children || node.children;
+    if (children) {
+      for (var i = 0; i < children.length; i++) {
+        _collectCategories(children[i], cats);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -123,14 +218,12 @@ var CausationGraph = (function () {
     var nodes = treeData.descendants();
     var links = treeData.links();
 
-    // Horizontal layout: d3.tree uses x for vertical, y for horizontal
-    // We swap: node.y = depth * spacing (horizontal), node.x = separation (vertical)
+    _renderSwimlanes(nodes);
 
     // --- Links ---
     var linkSel = _g.selectAll('.cg-link')
       .data(links, function (d) { return d.target.data.message_id; });
 
-    // Enter
     var linkEnter = linkSel.enter()
       .insert('path', 'g')
       .attr('class', function (d) {
@@ -145,7 +238,6 @@ var CausationGraph = (function () {
         return _diagonal(o, o);
       });
 
-    // Update + Enter
     var linkUpdate = linkEnter.merge(linkSel);
     linkUpdate.transition()
       .duration(TRANSITION_DURATION)
@@ -153,7 +245,6 @@ var CausationGraph = (function () {
         return _diagonal(d.source, d.target);
       });
 
-    // Exit
     linkSel.exit()
       .transition()
       .duration(TRANSITION_DURATION)
@@ -162,6 +253,27 @@ var CausationGraph = (function () {
         return _diagonal(o, o);
       })
       .remove();
+
+    // --- Fan-out indicators ---
+    var fanOutNodes = nodes.filter(function (d) {
+      return d.children && d.children.length > 1;
+    });
+    var fanSel = _g.selectAll('.cg-fanout')
+      .data(fanOutNodes, function (d) { return 'fan-' + d.data.message_id; });
+
+    fanSel.enter()
+      .append('text')
+      .attr('class', 'cg-fanout')
+      .attr('text-anchor', 'start')
+      .attr('dy', 4)
+      .merge(fanSel)
+      .transition()
+      .duration(TRANSITION_DURATION)
+      .attr('x', function (d) { return d.y + NODE_WIDTH + 6; })
+      .attr('y', function (d) { return d.x; })
+      .text(function (d) { return d.children.length + '\u00d7'; });
+
+    fanSel.exit().remove();
 
     // --- Latency labels on links ---
     var labelSel = _g.selectAll('.cg-latency')
@@ -189,7 +301,6 @@ var CausationGraph = (function () {
     var nodeSel = _g.selectAll('.cg-node')
       .data(nodes, function (d) { return d.data.message_id; });
 
-    // Enter
     var nodeEnter = nodeSel.enter()
       .append('g')
       .attr('class', 'cg-node')
@@ -231,6 +342,21 @@ var CausationGraph = (function () {
       })
       .on('blur', function (event, d) {
         _highlightPath(d, false);
+      });
+
+    // Swimlane accent bar (left edge of card, colored by stream category)
+    nodeEnter.append('rect')
+      .attr('class', 'cg-lane-accent')
+      .attr('rx', 8)
+      .attr('ry', 8)
+      .attr('x', 0)
+      .attr('y', -NODE_HEIGHT / 2)
+      .attr('width', 4)
+      .attr('height', NODE_HEIGHT)
+      .attr('fill', function (d) {
+        var cat = _extractStreamCategory(d.data.stream);
+        var lane = _laneMap[cat];
+        return lane ? lane.color : 'oklch(var(--bc) / 0.1)';
       });
 
     // Node card background
@@ -347,6 +473,364 @@ var CausationGraph = (function () {
   }
 
   // ---------------------------------------------------------------------------
+  // Swimlane Backgrounds
+  // ---------------------------------------------------------------------------
+
+  function _renderSwimlanes(nodes) {
+    if (!_g || !_root) return;
+    if (!nodes) nodes = _root.descendants();
+    if (nodes.length === 0) return;
+
+    // Group nodes by stream category
+    var laneNodes = {};
+    nodes.forEach(function (d) {
+      var cat = _extractStreamCategory(d.data.stream);
+      if (!cat) return;
+      if (!laneNodes[cat]) laneNodes[cat] = [];
+      laneNodes[cat].push(d);
+    });
+
+    var laneData = [];
+    var cats = Object.keys(laneNodes).sort();
+    for (var i = 0; i < cats.length; i++) {
+      var cat = cats[i];
+      var catNodes = laneNodes[cat];
+      var xMin = Infinity, xMax = -Infinity;
+      var yMin = Infinity, yMax = -Infinity;
+      for (var j = 0; j < catNodes.length; j++) {
+        var n = catNodes[j];
+        if (n.x - NODE_HEIGHT / 2 < xMin) xMin = n.x - NODE_HEIGHT / 2;
+        if (n.x + NODE_HEIGHT / 2 > xMax) xMax = n.x + NODE_HEIGHT / 2;
+        if (n.y < yMin) yMin = n.y;
+        if (n.y + NODE_WIDTH > yMax) yMax = n.y + NODE_WIDTH;
+      }
+      var lane = _laneMap[cat];
+      laneData.push({
+        key: cat,
+        label: lane ? lane.label : cat,
+        color: lane ? lane.color : 'oklch(var(--bc) / 0.05)',
+        x: yMin - SWIMLANE_PADDING,
+        y: xMin - SWIMLANE_PADDING,
+        width: (yMax - yMin) + SWIMLANE_PADDING * 2,
+        height: (xMax - xMin) + SWIMLANE_PADDING * 2
+      });
+    }
+
+    // Only render swimlanes if there are 2+ categories
+    if (laneData.length < 2) {
+      _g.selectAll('.cg-swimlane').remove();
+      _g.selectAll('.cg-swimlane-label').remove();
+      return;
+    }
+
+    // Background rects
+    var laneSel = _g.selectAll('.cg-swimlane')
+      .data(laneData, function (d) { return d.key; });
+
+    laneSel.enter()
+      .insert('rect', ':first-child')
+      .attr('class', 'cg-swimlane')
+      .attr('rx', 8)
+      .attr('ry', 8)
+      .merge(laneSel)
+      .transition()
+      .duration(TRANSITION_DURATION)
+      .attr('x', function (d) { return d.x; })
+      .attr('y', function (d) { return d.y; })
+      .attr('width', function (d) { return d.width; })
+      .attr('height', function (d) { return d.height; })
+      .attr('fill', function (d) { return d.color; })
+      .attr('fill-opacity', 0.06)
+      .attr('stroke', function (d) { return d.color; })
+      .attr('stroke-opacity', 0.15)
+      .attr('stroke-width', 1);
+
+    laneSel.exit().remove();
+
+    // Labels
+    var labelSel = _g.selectAll('.cg-swimlane-label')
+      .data(laneData, function (d) { return 'lbl-' + d.key; });
+
+    labelSel.enter()
+      .append('text')
+      .attr('class', 'cg-swimlane-label')
+      .attr('text-anchor', 'start')
+      .merge(labelSel)
+      .transition()
+      .duration(TRANSITION_DURATION)
+      .attr('x', function (d) { return d.x + 8; })
+      .attr('y', function (d) { return d.y + 14; })
+      .text(function (d) { return d.label; })
+      .attr('fill', function (d) { return d.color; });
+
+    labelSel.exit().remove();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Timeline Axis
+  // ---------------------------------------------------------------------------
+
+  function _renderTimelineAxis() {
+    if (!_g || !_root) return;
+
+    // Remove any existing axis
+    _g.selectAll('.cg-timeline-axis').remove();
+
+    var nodes = _root.descendants();
+    if (nodes.length === 0) return;
+
+    // Parse root time and compute elapsed ms for each depth level
+    var rootTime = _parseTime(_root.data.time);
+    if (!rootTime) return;
+
+    // Gather unique depth positions (y in horizontal layout) and their min time
+    var depthMap = {};
+    nodes.forEach(function (d) {
+      var t = _parseTime(d.data.time);
+      if (!t) return;
+      var elapsed = t - rootTime;
+      var key = Math.round(d.y);
+      if (depthMap[key] === undefined || elapsed < depthMap[key]) {
+        depthMap[key] = elapsed;
+      }
+    });
+
+    var depthEntries = Object.keys(depthMap).map(function (k) {
+      return { y: parseInt(k), elapsed: depthMap[k] };
+    }).sort(function (a, b) { return a.y - b.y; });
+
+    if (depthEntries.length < 2) return;
+
+    // Find vertical extent for axis line
+    var xMin = Infinity;
+    nodes.forEach(function (d) {
+      if (d.x - NODE_HEIGHT / 2 < xMin) xMin = d.x - NODE_HEIGHT / 2;
+    });
+    var axisY = xMin - 40;
+
+    var axisG = _g.append('g').attr('class', 'cg-timeline-axis');
+
+    // Axis line
+    axisG.append('line')
+      .attr('class', 'cg-axis-line')
+      .attr('x1', depthEntries[0].y)
+      .attr('x2', depthEntries[depthEntries.length - 1].y + NODE_WIDTH)
+      .attr('y1', axisY)
+      .attr('y2', axisY);
+
+    // Tick marks and labels
+    for (var i = 0; i < depthEntries.length; i++) {
+      var entry = depthEntries[i];
+      var tickX = entry.y + NODE_WIDTH / 2;
+
+      axisG.append('line')
+        .attr('class', 'cg-axis-tick')
+        .attr('x1', tickX)
+        .attr('x2', tickX)
+        .attr('y1', axisY - 4)
+        .attr('y2', axisY + 4);
+
+      axisG.append('text')
+        .attr('class', 'cg-axis-label')
+        .attr('x', tickX)
+        .attr('y', axisY - 8)
+        .attr('text-anchor', 'middle')
+        .text(entry.elapsed === 0 ? 'T\u2080' : '+' + _formatDuration(entry.elapsed));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Legend
+  // ---------------------------------------------------------------------------
+
+  function _renderLegend() {
+    if (!_svg) return;
+
+    // Remove existing legend
+    _svg.selectAll('.cg-legend').remove();
+
+    var legendG = _svg.append('g')
+      .attr('class', 'cg-legend')
+      .attr('transform', 'translate(12, 12)');
+
+    // Background
+    legendG.append('rect')
+      .attr('class', 'cg-legend-bg')
+      .attr('rx', 6)
+      .attr('ry', 6)
+      .attr('x', 0)
+      .attr('y', 0)
+      .attr('width', 200)
+      .attr('height', 88);
+
+    var y = 16;
+    var x = 12;
+
+    // Command badge
+    legendG.append('rect')
+      .attr('class', 'cg-badge--cmd')
+      .attr('rx', 3).attr('ry', 3)
+      .attr('x', x).attr('y', y - 8)
+      .attr('width', 24).attr('height', 12);
+    legendG.append('text')
+      .attr('class', 'cg-legend-text')
+      .attr('x', x + 30).attr('y', y)
+      .text('Command');
+
+    // Event badge
+    legendG.append('rect')
+      .attr('class', 'cg-badge--evt')
+      .attr('rx', 3).attr('ry', 3)
+      .attr('x', x + 100).attr('y', y - 8)
+      .attr('width', 24).attr('height', 12);
+    legendG.append('text')
+      .attr('class', 'cg-legend-text')
+      .attr('x', x + 130).attr('y', y)
+      .text('Event');
+
+    y += 22;
+
+    // Same-aggregate link
+    legendG.append('line')
+      .attr('class', 'cg-link')
+      .attr('x1', x).attr('x2', x + 24)
+      .attr('y1', y - 4).attr('y2', y - 4)
+      .style('stroke', 'oklch(var(--bc) / 0.3)')
+      .style('stroke-width', 1.5);
+    legendG.append('text')
+      .attr('class', 'cg-legend-text')
+      .attr('x', x + 30).attr('y', y)
+      .text('Same aggregate');
+
+    y += 22;
+
+    // Cross-aggregate link
+    legendG.append('line')
+      .attr('class', 'cg-link cg-link--cross')
+      .attr('x1', x).attr('x2', x + 24)
+      .attr('y1', y - 4).attr('y2', y - 4)
+      .style('stroke-dasharray', '6 3')
+      .style('stroke', 'oklch(var(--wa) / 0.5)')
+      .style('stroke-width', 1.5);
+    legendG.append('text')
+      .attr('class', 'cg-legend-text')
+      .attr('x', x + 30).attr('y', y)
+      .text('Cross-aggregate');
+
+    y += 22;
+
+    // Duration badge
+    legendG.append('text')
+      .attr('class', 'cg-duration')
+      .attr('x', x).attr('y', y)
+      .text('12ms');
+    legendG.append('text')
+      .attr('class', 'cg-legend-text')
+      .attr('x', x + 30).attr('y', y)
+      .text('Handler duration');
+
+    // Adjust background height to fit content
+    legendG.select('.cg-legend-bg')
+      .attr('height', y + 10);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mini-Map
+  // ---------------------------------------------------------------------------
+
+  function _renderMinimap() {
+    if (!_svg || !_root) return;
+
+    var nodes = _root.descendants();
+    if (nodes.length < 8) return;  // Only show for non-trivial graphs
+
+    // Remove existing minimap
+    _svg.selectAll('.cg-minimap').remove();
+
+    var mmX = _svgWidth - MINIMAP_WIDTH - MINIMAP_MARGIN;
+    var mmY = _svgHeight - MINIMAP_HEIGHT - MINIMAP_MARGIN;
+
+    _minimapG = _svg.append('g')
+      .attr('class', 'cg-minimap')
+      .attr('transform', 'translate(' + mmX + ',' + mmY + ')');
+
+    // Background
+    _minimapG.append('rect')
+      .attr('class', 'cg-minimap-bg')
+      .attr('rx', 4)
+      .attr('ry', 4)
+      .attr('width', MINIMAP_WIDTH)
+      .attr('height', MINIMAP_HEIGHT);
+
+    // Cache graph bounds and scale for fast viewport updates during zoom
+    _minimapBounds = _getGraphBounds(nodes);
+    var gw = _minimapBounds.yMax - _minimapBounds.yMin + 40;
+    var gh = _minimapBounds.xMax - _minimapBounds.xMin + 40;
+    _minimapScale = Math.min(
+      (MINIMAP_WIDTH - 8) / gw,
+      (MINIMAP_HEIGHT - 8) / gh
+    );
+
+    var mmContentG = _minimapG.append('g')
+      .attr('transform', 'translate(4, 4) scale(' + _minimapScale + ') translate(' + (-_minimapBounds.yMin + 20) + ',' + (-_minimapBounds.xMin + 20) + ')');
+
+    var links = _root.links();
+    links.forEach(function (l) {
+      mmContentG.append('line')
+        .attr('class', 'cg-minimap-link')
+        .attr('x1', l.source.y + NODE_WIDTH / 2)
+        .attr('y1', l.source.x)
+        .attr('x2', l.target.y + NODE_WIDTH / 2)
+        .attr('y2', l.target.x);
+    });
+
+    nodes.forEach(function (d) {
+      mmContentG.append('rect')
+        .attr('class', 'cg-minimap-node')
+        .attr('x', d.y)
+        .attr('y', d.x - 3)
+        .attr('width', NODE_WIDTH)
+        .attr('height', 6)
+        .attr('rx', 2);
+    });
+
+    _minimapG.append('rect')
+      .attr('class', 'cg-minimap-viewport')
+      .attr('rx', 2)
+      .attr('ry', 2);
+
+    _updateMinimap();
+  }
+
+  function _updateMinimap() {
+    if (!_minimapG || !_svg || !_minimapBounds) return;
+
+    var viewport = _minimapG.select('.cg-minimap-viewport');
+    if (viewport.empty()) return;
+
+    var transform = d3.zoomTransform(_svg.node());
+
+    // Map SVG viewport back to graph coordinates
+    var invScale = 1 / transform.k;
+    var vx = (-transform.x) * invScale;
+    var vy = (-transform.y) * invScale;
+    var vw = _svgWidth * invScale;
+    var vh = _svgHeight * invScale;
+
+    // Convert to minimap coordinates
+    var ox = 4 + (vx - _minimapBounds.yMin + 20) * _minimapScale;
+    var oy = 4 + (vy - _minimapBounds.xMin + 20) * _minimapScale;
+    var ow = vw * _minimapScale;
+    var oh = vh * _minimapScale;
+
+    viewport
+      .attr('x', Math.max(0, ox))
+      .attr('y', Math.max(0, oy))
+      .attr('width', Math.min(MINIMAP_WIDTH, ow))
+      .attr('height', Math.min(MINIMAP_HEIGHT, oh));
+  }
+
+  // ---------------------------------------------------------------------------
   // Collapse / Expand
   // ---------------------------------------------------------------------------
 
@@ -366,6 +850,8 @@ var CausationGraph = (function () {
     _root.y0 = d.y;
 
     _update(_root);
+    _renderTimelineAxis();
+    _renderMinimap();
   }
 
   function _countDescendants(nodeData) {
@@ -383,13 +869,11 @@ var CausationGraph = (function () {
 
   function _highlightPath(d, highlight) {
     var activeIds = {};
-    // Collect ancestors
     var curr = d;
     while (curr) {
       activeIds[curr.data.message_id] = true;
       curr = curr.parent;
     }
-    // Collect descendants
     _collectDescendantIds(d, activeIds);
 
     _g.selectAll('.cg-node').each(function (n) {
@@ -425,28 +909,18 @@ var CausationGraph = (function () {
     var nodes = _root.descendants();
     if (nodes.length === 0) return;
 
-    var xMin = Infinity, xMax = -Infinity;
-    var yMin = Infinity, yMax = -Infinity;
-    nodes.forEach(function (d) {
-      var nx = d.x - NODE_HEIGHT / 2;
-      var ny = d.y;
-      if (nx < xMin) xMin = nx;
-      if (d.x + NODE_HEIGHT / 2 > xMax) xMax = d.x + NODE_HEIGHT / 2;
-      if (ny < yMin) yMin = ny;
-      if (ny + NODE_WIDTH > yMax) yMax = ny + NODE_WIDTH;
-    });
-
-    var graphWidth = yMax - yMin + 80;
-    var graphHeight = xMax - xMin + 80;
+    var bounds = _getGraphBounds(nodes);
+    var graphWidth = bounds.yMax - bounds.yMin + 80;
+    var graphHeight = bounds.xMax - bounds.xMin + 80;
 
     var scale = Math.min(
       width / graphWidth,
       height / graphHeight,
-      1.0  // Don't zoom in beyond 100%
+      1.0
     );
 
-    var tx = (width / 2) - (scale * (yMin + graphWidth / 2));
-    var ty = (height / 2) - (scale * (xMin + graphHeight / 2));
+    var tx = (width / 2) - (scale * (bounds.yMin + graphWidth / 2));
+    var ty = (height / 2) - (scale * (bounds.xMin + graphHeight / 2));
 
     var transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
 
@@ -455,12 +929,23 @@ var CausationGraph = (function () {
       .call(_zoom.transform, transform);
   }
 
+  function _getGraphBounds(nodes) {
+    var xMin = Infinity, xMax = -Infinity;
+    var yMin = Infinity, yMax = -Infinity;
+    nodes.forEach(function (d) {
+      if (d.x - NODE_HEIGHT / 2 < xMin) xMin = d.x - NODE_HEIGHT / 2;
+      if (d.x + NODE_HEIGHT / 2 > xMax) xMax = d.x + NODE_HEIGHT / 2;
+      if (d.y < yMin) yMin = d.y;
+      if (d.y + NODE_WIDTH > yMax) yMax = d.y + NODE_WIDTH;
+    });
+    return { xMin: xMin, xMax: xMax, yMin: yMin, yMax: yMax };
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
   function _diagonal(s, d) {
-    // Cubic bezier from source to target (horizontal layout)
     var midY = (s.y + d.y) / 2;
     return 'M' + s.y + ',' + s.x +
       'C' + midY + ',' + s.x +
@@ -496,6 +981,12 @@ var CausationGraph = (function () {
   function _formatDuration(ms) {
     if (ms == null) return '';
     return Observatory.fmt.duration(ms);
+  }
+
+  function _parseTime(timeStr) {
+    if (!timeStr) return null;
+    var d = new Date(timeStr);
+    return isNaN(d.getTime()) ? null : d.getTime();
   }
 
   // ---------------------------------------------------------------------------
