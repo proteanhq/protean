@@ -153,6 +153,7 @@ tmp/*
 *.code-workspace
 .claude/plans
 .claude/scratch
+.claude/worktrees/
 
 # Poetry (legacy - removed in favor of uv)
 poetry.lock
