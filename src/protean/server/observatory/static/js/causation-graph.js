@@ -32,7 +32,6 @@ var CausationGraph = (function () {
   var _root = null;      // D3 hierarchy root
   var _treeFn = null;    // d3.tree() layout
   var _onNodeClick = null;
-  var _idCounter = 0;
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -48,7 +47,6 @@ var CausationGraph = (function () {
   function render(containerSelector, treeData, onNodeClick) {
     destroy();
     _onNodeClick = onNodeClick || function () {};
-    _idCounter = 0;
 
     var container = document.querySelector(containerSelector);
     if (!container || !treeData) return;
@@ -112,7 +110,6 @@ var CausationGraph = (function () {
     _root = null;
     _treeFn = null;
     _onNodeClick = null;
-    _idCounter = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -131,7 +128,7 @@ var CausationGraph = (function () {
 
     // --- Links ---
     var linkSel = _g.selectAll('.cg-link')
-      .data(links, function (d) { return _nodeId(d.target); });
+      .data(links, function (d) { return d.target.data.message_id; });
 
     // Enter
     var linkEnter = linkSel.enter()
@@ -169,7 +166,7 @@ var CausationGraph = (function () {
     // --- Latency labels on links ---
     var labelSel = _g.selectAll('.cg-latency')
       .data(links.filter(function (d) { return d.target.data.delta_ms != null; }),
-        function (d) { return 'lat-' + _nodeId(d.target); });
+        function (d) { return 'lat-' + d.target.data.message_id; });
 
     var labelEnter = labelSel.enter()
       .append('text')
@@ -190,7 +187,7 @@ var CausationGraph = (function () {
 
     // --- Nodes ---
     var nodeSel = _g.selectAll('.cg-node')
-      .data(nodes, function (d) { return _nodeId(d); });
+      .data(nodes, function (d) { return d.data.message_id; });
 
     // Enter
     var nodeEnter = nodeSel.enter()
@@ -364,43 +361,35 @@ var CausationGraph = (function () {
   // ---------------------------------------------------------------------------
 
   function _highlightPath(d, highlight) {
-    // Collect ancestor IDs
-    var ancestorIds = {};
+    var activeIds = {};
+    // Collect ancestors
     var curr = d;
     while (curr) {
-      ancestorIds[_nodeId(curr)] = true;
+      activeIds[curr.data.message_id] = true;
       curr = curr.parent;
     }
+    // Collect descendants
+    _collectDescendantIds(d, activeIds);
 
-    // Collect descendant IDs
-    var descendantIds = {};
-    _collectDescendantIds(d, descendantIds);
-
-    var activeIds = {};
-    for (var k in ancestorIds) activeIds[k] = true;
-    for (var j in descendantIds) activeIds[j] = true;
-
-    // Dim/undim nodes
-    _g.selectAll('.cg-node').classed('cg-dimmed', function (n) {
-      return highlight && !activeIds[_nodeId(n)];
-    });
-    _g.selectAll('.cg-node').classed('cg-highlighted', function (n) {
-      return highlight && activeIds[_nodeId(n)];
+    _g.selectAll('.cg-node').each(function (n) {
+      var active = activeIds[n.data.message_id];
+      var sel = d3.select(this);
+      sel.classed('cg-dimmed', highlight && !active);
+      sel.classed('cg-highlighted', highlight && !!active);
     });
 
-    // Dim/undim links
-    _g.selectAll('.cg-link').classed('cg-dimmed', function (l) {
-      return highlight && !(activeIds[_nodeId(l.source)] && activeIds[_nodeId(l.target)]);
-    });
-    _g.selectAll('.cg-link').classed('cg-highlighted', function (l) {
-      return highlight && activeIds[_nodeId(l.source)] && activeIds[_nodeId(l.target)];
+    _g.selectAll('.cg-link').each(function (l) {
+      var active = activeIds[l.source.data.message_id] && activeIds[l.target.data.message_id];
+      var sel = d3.select(this);
+      sel.classed('cg-dimmed', highlight && !active);
+      sel.classed('cg-highlighted', highlight && !!active);
     });
   }
 
   function _collectDescendantIds(d, ids) {
     if (!d.children) return;
     for (var i = 0; i < d.children.length; i++) {
-      ids[_nodeId(d.children[i])] = true;
+      ids[d.children[i].data.message_id] = true;
       _collectDescendantIds(d.children[i], ids);
     }
   }
@@ -449,13 +438,6 @@ var CausationGraph = (function () {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  function _nodeId(d) {
-    if (!d._cgId) {
-      d._cgId = ++_idCounter;
-    }
-    return d._cgId;
-  }
-
   function _diagonal(s, d) {
     // Cubic bezier from source to target (horizontal layout)
     var midY = (s.y + d.y) / 2;
@@ -492,9 +474,7 @@ var CausationGraph = (function () {
 
   function _formatDuration(ms) {
     if (ms == null) return '';
-    if (ms < 1) return '<1ms';
-    if (ms < 1000) return Math.round(ms) + 'ms';
-    return (ms / 1000).toFixed(1) + 's';
+    return Observatory.fmt.duration(ms);
   }
 
   // ---------------------------------------------------------------------------

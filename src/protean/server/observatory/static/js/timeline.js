@@ -34,9 +34,8 @@
   let _lastKnownPosition = 0;  // Highest global_position we know about
   let _sseDebounceTimer = null; // Debounce timer for SSE trace handling
 
-  // Causation view mode: 'tree' | 'graph'
-  let _causationViewMode = 'tree';
-  let _currentCorrelationData = null; // Cached correlation API response
+  // Cached correlation API response for tree/graph view switching
+  let _currentCorrelationData = null;
 
   // DOM refs
   let $tbody, $empty, $loadMore, $loadingMore, $toast;
@@ -76,6 +75,8 @@
   let _previousTab = 'list';
 
   function _backToList() {
+    _currentCorrelationData = null;
+    if (typeof CausationGraph !== 'undefined') CausationGraph.destroy();
     if (_previousTab === 'traces') {
       _enterTracesView();
     } else {
@@ -395,7 +396,6 @@
   }
 
   function _switchCausationView(mode, data) {
-    _causationViewMode = mode;
     data = data || _currentCorrelationData;
 
     var $tree = document.getElementById('correlation-tree');
