@@ -27,6 +27,9 @@ class CausationNode:
     stream: str
     time: str | None
     global_position: int | None
+    handler: str | None = None
+    duration_ms: float | None = None
+    delta_ms: float | None = None
     children: list["CausationNode"] = dc_field(default_factory=list)
 
 

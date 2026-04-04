@@ -184,8 +184,16 @@ def _build_rich_tree(node: "CausationNode") -> RichTree:
     """Build a Rich Tree from a CausationNode for CLI display."""
     kind_badge = "[bold cyan]CMD[/]" if node.kind == "COMMAND" else "[bold green]EVT[/]"
     time_str = f" @ {_format_time(node.time)}" if node.time else ""
+
+    # Handler attribution and timing
+    handler_str = f" [yellow]→ {node.handler}[/]" if node.handler else ""
+    duration_str = (
+        f" [magenta]{node.duration_ms:.1f}ms[/]" if node.duration_ms is not None else ""
+    )
+    delta_str = f" [dim]+{node.delta_ms:.1f}ms[/]" if node.delta_ms is not None else ""
+
     label = (
-        f"{kind_badge} {node.message_type} "
+        f"{kind_badge} {node.message_type}{handler_str}{duration_str}{delta_str} "
         f"[dim]({_truncate_id(node.message_id, 40)}){time_str}[/]"
     )
 

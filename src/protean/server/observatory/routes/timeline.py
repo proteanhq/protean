@@ -18,6 +18,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 from dataclasses import asdict
@@ -28,6 +29,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from protean.port.event_store import CausationNode
+from protean.server.tracing import TRACE_STREAM
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -365,15 +367,26 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
 
 
 def _build_causation_tree_from_group(
-    store: Any, group: list[dict[str, Any]]
+    store: Any,
+    group: list[dict[str, Any]],
+    traces_by_message_id: dict[str, dict[str, Any]] | None = None,
 ) -> CausationNode | None:
     """Build a causation tree from a pre-loaded correlation group.
 
     Replicates the logic of ``BaseEventStore.build_causation_tree`` but
     operates on an already-loaded group to avoid a redundant ``$all`` scan.
+
+    Args:
+        store: The event store instance (used for metadata extraction helpers).
+        group: Pre-loaded list of raw message dicts from the event store.
+        traces_by_message_id: Optional mapping of message_id to trace data
+            (with ``handler``, ``duration_ms`` keys).  When provided, nodes
+            are enriched with handler attribution and timing.
     """
     if not group:
         return None
+
+    traces = traces_by_message_id or {}
 
     by_id: dict[str, dict[str, Any]] = {}
     children_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -394,7 +407,23 @@ def _build_causation_tree_from_group(
 
     visited: set[str] = set()
 
-    def _build_node(raw_msg: dict[str, Any]) -> CausationNode:
+    def _parse_time_ms(time_val: Any) -> float | None:
+        """Convert a time value to epoch milliseconds for delta computation."""
+        if time_val is None:
+            return None
+        if isinstance(time_val, datetime):
+            return time_val.timestamp() * 1000
+        if isinstance(time_val, str) and time_val:
+            try:
+                dt = datetime.fromisoformat(time_val)
+                return dt.timestamp() * 1000
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    def _build_node(
+        raw_msg: dict[str, Any], parent_time_ms: float | None = None
+    ) -> CausationNode:
         hid = store._extract_message_id(raw_msg) or "?"
         visited.add(hid)
 
@@ -408,23 +437,42 @@ def _build_causation_tree_from_group(
         if not isinstance(domain_meta, dict):
             domain_meta = {}
 
+        time_val = raw_msg.get("time")
+        time_str: str | None
+        if time_val and hasattr(time_val, "isoformat"):
+            time_str = time_val.isoformat()
+        elif time_val:
+            time_str = str(time_val)
+        else:
+            time_str = None
+
+        # Compute delta_ms from parent timestamp
+        node_time_ms = (
+            _parse_time_ms(time_val) if time_val else _parse_time_ms(time_str)
+        )
+        delta_ms: float | None = None
+        if parent_time_ms is not None and node_time_ms is not None:
+            delta_ms = round(node_time_ms - parent_time_ms, 2)
+
+        # Enrich from trace data
+        trace = traces.get(hid, {})
+
         node = CausationNode(
             message_id=hid,
             message_type=raw_msg.get("type", headers.get("type", "?")),
             kind=domain_meta.get("kind", "?"),
             stream=raw_msg.get("stream_name", headers.get("stream", "?")),
-            time=raw_msg["time"].isoformat()
-            if raw_msg.get("time") and hasattr(raw_msg["time"], "isoformat")
-            else str(raw_msg.get("time", ""))
-            if raw_msg.get("time")
-            else None,
+            time=time_str,
             global_position=raw_msg.get("global_position"),
+            handler=trace.get("handler"),
+            duration_ms=trace.get("duration_ms"),
+            delta_ms=delta_ms,
         )
 
         for child_msg in children_map.get(hid, []):
             child_id = store._extract_message_id(child_msg)
             if child_id and child_id not in visited:
-                node.children.append(_build_node(child_msg))
+                node.children.append(_build_node(child_msg, node_time_ms))
 
         return node
 
@@ -438,6 +486,71 @@ def _build_causation_tree_from_group(
     return _build_node(roots[0])
 
 
+def _load_traces_for_correlation(
+    domains: list[Domain], correlation_id: str
+) -> dict[str, dict[str, Any]]:
+    """Load trace entries from the Redis trace stream for a correlation ID.
+
+    Returns a dict keyed by ``message_id`` with values containing
+    ``handler`` and ``duration_ms`` from the most recent matching
+    ``handler.completed`` or ``handler.failed`` trace entry.
+    """
+    traces: dict[str, dict[str, Any]] = {}
+
+    for d in domains:
+        try:
+            with d.domain_context():
+                broker = d.brokers.get("default")
+                if broker and hasattr(broker, "redis_instance"):
+                    redis_conn = broker.redis_instance
+                    break
+        except Exception:
+            continue
+    else:
+        return traces
+
+    try:
+        raw_entries = redis_conn.xrange(TRACE_STREAM)
+    except Exception:
+        logger.debug("Failed to read trace stream for enrichment", exc_info=True)
+        return traces
+
+    for _stream_id, fields in raw_entries:
+        try:
+            data_raw = fields.get(b"data") or fields.get("data")
+            if not data_raw:
+                continue
+            if isinstance(data_raw, bytes):
+                data_raw = data_raw.decode("utf-8")
+            trace = json.loads(data_raw)
+
+            if trace.get("correlation_id") != correlation_id:
+                continue
+
+            event_type = trace.get("event", "")
+            if not event_type.startswith("handler."):
+                continue
+
+            mid = trace.get("message_id")
+            if mid:
+                traces[mid] = {
+                    "handler": trace.get("handler"),
+                    "duration_ms": trace.get("duration_ms"),
+                }
+        except Exception:
+            continue
+
+    return traces
+
+
+def _sum_tree_duration(node: CausationNode) -> float:
+    """Sum duration_ms across all nodes in a causation tree."""
+    total = node.duration_ms or 0.0
+    for child in node.children:
+        total += _sum_tree_duration(child)
+    return round(total, 2)
+
+
 def build_correlation_response(
     domains: list[Domain], correlation_id: str
 ) -> dict[str, Any] | None:
@@ -448,9 +561,14 @@ def build_correlation_response(
     group is loaded once and reused for both the flat event list and the
     causation tree to avoid redundant ``$all`` scans.
 
+    When Redis trace data is available, nodes are enriched with handler
+    attribution, processing duration, and inter-message latency.  The
+    response includes ``total_duration_ms`` — the sum of all handler
+    durations in the tree.
+
     Returns:
-        Dict with correlation_id, events, tree, and event_count; or None if
-        no events found.
+        Dict with correlation_id, events, tree, total_duration_ms, and
+        event_count; or None if no events found.
     """
     for domain in _unique_store_domains(domains):
         try:
@@ -464,14 +582,25 @@ def build_correlation_response(
                 events = [_serialize_message(msg, domain.name) for msg in group]
                 events.sort(key=lambda e: e.get("global_position") or 0)
 
+                # Load trace data for enrichment (graceful fallback)
+                traces = _load_traces_for_correlation(domains, correlation_id)
+
                 # Build the causation tree from the already-loaded group
-                tree_root = _build_causation_tree_from_group(store, group)
+                tree_root = _build_causation_tree_from_group(
+                    store, group, traces_by_message_id=traces
+                )
                 tree = asdict(tree_root) if tree_root else None
+
+                total_duration_ms: float | None = None
+                if tree_root:
+                    total = _sum_tree_duration(tree_root)
+                    total_duration_ms = total if total > 0 else None
 
                 return {
                     "correlation_id": correlation_id,
                     "events": events,
                     "tree": tree,
+                    "total_duration_ms": total_duration_ms,
                     "event_count": len(events),
                 }
         except Exception:
