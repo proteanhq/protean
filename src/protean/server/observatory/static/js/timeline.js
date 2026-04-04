@@ -420,7 +420,7 @@
 
     var nodeStreamCat = _extractStreamCategory(node.stream || '');
     var parentStreamCat = parentStream ? _extractStreamCategory(parentStream) : null;
-    var isCrossAggregate = parentStreamCat != null && nodeStreamCat !== '--' && nodeStreamCat !== parentStreamCat;
+    var isCrossAggregate = parentStreamCat != null && parentStreamCat !== '--' && nodeStreamCat !== '--' && nodeStreamCat !== parentStreamCat;
 
     var card = document.createElement('div');
     card.className = 'vtl-card cursor-pointer' + (isCrossAggregate ? ' vtl-cross-aggregate' : '');
@@ -834,12 +834,12 @@
   // ---------------------------------------------------------------------------
 
   function _collectTreeStreams(node) {
-    var seen = {};
+    var seen = new Set();
     var result = [];
     function _walk(n) {
       var cat = _extractStreamCategory(n.stream || '');
-      if (cat && cat !== '--' && !seen[cat]) {
-        seen[cat] = true;
+      if (cat && cat !== '--' && !seen.has(cat)) {
+        seen.add(cat);
         result.push(cat);
       }
       if (n.children) {
