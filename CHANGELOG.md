@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Observatory correlation view enhanced with handler attribution badges, processing duration badges, inter-step latency labels, and cross-aggregate boundary markers in the causation tree. New "End-to-End Duration" and "Streams Touched" summary stat cards added to the correlation view. Reuses `Observatory.fmt.duration()` for consistent formatting.
 - Observatory "Traces" tab on the Timeline page with search inputs (aggregate ID, event type, command type, stream category), a recent traces list table, and deep-link support (`?view=traces&aggregate_id=...`). Each trace row navigates to the correlation chain view.
 - Observatory trace search and recent traces API endpoints: `GET /timeline/traces/recent` returns the most recent correlation chains with summary statistics (correlation_id, root_type, event_count, started_at, streams), and `GET /timeline/traces/search` allows querying chains by aggregate_id, event_type, command_type, or stream_category. Both return `{traces: [...], count: int}`.
 - Enrich `CausationNode` with `handler`, `duration_ms`, and `delta_ms` fields for waterfall/swimlane rendering in the Observatory. The correlation chain response now includes `total_duration_ms`. Handler and timing data are populated from Redis trace stream entries when available; all new fields gracefully fall back to `None` when trace data is unavailable. The CLI `protean events trace` command now displays handler names, processing durations, and inter-message latencies.

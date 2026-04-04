@@ -325,6 +325,8 @@
     var $eventCount = document.getElementById('correlation-event-count');
     var $rootType = document.getElementById('correlation-root-type');
     var $depth = document.getElementById('correlation-depth');
+    var $totalDuration = document.getElementById('correlation-total-duration');
+    var $streamsTouched = document.getElementById('correlation-streams-touched');
     var $tree = document.getElementById('correlation-tree');
     var $corrTbody = document.getElementById('correlation-events-tbody');
 
@@ -332,6 +334,8 @@
     if ($eventCount) $eventCount.textContent = '--';
     if ($rootType) $rootType.textContent = 'Loading...';
     if ($depth) $depth.textContent = '--';
+    if ($totalDuration) $totalDuration.textContent = '--';
+    if ($streamsTouched) $streamsTouched.textContent = '--';
     if ($tree) $tree.innerHTML = '<div class="text-center py-8"><span class="loading loading-spinner loading-sm"></span></div>';
     if ($corrTbody) $corrTbody.innerHTML = '<tr><td colspan="5" class="text-center text-base-content/50 py-4">Loading...</td></tr>';
 
@@ -345,13 +349,26 @@
 
       if ($eventCount) $eventCount.textContent = data.event_count || 0;
 
+      // Total duration
+      if ($totalDuration) {
+        $totalDuration.textContent = data.total_duration_ms != null
+          ? Observatory.fmt.duration(data.total_duration_ms)
+          : '--';
+      }
+
+      // Streams touched — count unique stream categories in the tree
+      if ($streamsTouched && data.tree) {
+        var streams = _collectTreeStreams(data.tree);
+        $streamsTouched.textContent = streams.length;
+      }
+
       // Render causation tree
       if (data.tree && $tree) {
         var treeDepth = _computeTreeDepth(data.tree);
         if ($depth) $depth.textContent = treeDepth;
         if ($rootType) $rootType.textContent = _shortTypeName(data.tree.message_type || '');
         $tree.innerHTML = '';
-        $tree.appendChild(_renderCausationTree(data.tree, 0));
+        $tree.appendChild(_renderCausationTree(data.tree, 0, null));
       } else {
         if ($tree) $tree.innerHTML = '<div class="text-center py-4 text-base-content/40">No causation tree available</div>';
         if ($depth) $depth.textContent = '0';
@@ -381,9 +398,16 @@
     return 1 + maxChild;
   }
 
-  function _renderCausationTree(node, depth) {
+  function _renderCausationTree(node, depth, parentStream) {
     var container = document.createElement('div');
     container.className = 'vtl-node' + (depth === 0 ? ' vtl-root' : '');
+
+    if (depth > 0 && node.delta_ms != null) {
+      var latencyEl = document.createElement('div');
+      latencyEl.className = 'vtl-latency';
+      latencyEl.textContent = '+' + Observatory.fmt.duration(node.delta_ms);
+      container.appendChild(latencyEl);
+    }
 
     var kindClass = node.kind === 'COMMAND' ? 'badge-secondary' : 'badge-primary';
     var kindLabel = node.kind === 'COMMAND' ? 'CMD' : 'EVT';
@@ -394,20 +418,46 @@
     var timeAgo = node.time ? Observatory.fmt.timeAgo(node.time) : '';
     var pos = node.global_position != null ? node.global_position : '--';
 
+    var nodeStreamCat = _extractStreamCategory(node.stream || '');
+    var parentStreamCat = parentStream ? _extractStreamCategory(parentStream) : null;
+    var isCrossAggregate = parentStreamCat != null && parentStreamCat !== '--' && nodeStreamCat !== '--' && nodeStreamCat !== parentStreamCat;
+
     var card = document.createElement('div');
-    card.className = 'vtl-card cursor-pointer';
+    card.className = 'vtl-card cursor-pointer' + (isCrossAggregate ? ' vtl-cross-aggregate' : '');
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
     card.setAttribute('data-message-id', node.message_id || '');
     card.setAttribute('title', 'View event detail for ' + (node.message_type || 'event'));
+
+    var handlerHtml = '';
+    if (node.handler) {
+      handlerHtml = '<span class="vtl-handler" title="Handled by: ' + Observatory.escapeHtml(node.handler) + '">' +
+        '\u2192 ' + Observatory.escapeHtml(node.handler) + '</span>';
+    }
+
+    var durationHtml = '';
+    if (node.duration_ms != null) {
+      durationHtml = '<span class="vtl-duration">' + Observatory.fmt.duration(node.duration_ms) + '</span>';
+    }
+
+    var crossAggHtml = '';
+    if (isCrossAggregate) {
+      crossAggHtml = '<span class="vtl-cross-aggregate-icon" title="Cross-aggregate: ' +
+        Observatory.escapeHtml(parentStreamCat) + ' \u2192 ' + Observatory.escapeHtml(nodeStreamCat) +
+        '">\u21C4</span>';
+    }
+
     card.innerHTML =
       '<div class="flex items-center gap-2 mb-1">' +
         '<span class="badge badge-xs ' + kindClass + '">' + kindLabel + '</span>' +
         '<span class="font-semibold text-sm" title="' + fullType + '">' + shortType + '</span>' +
+        crossAggHtml +
+        durationHtml +
         '<span class="text-xs text-base-content/40 ml-auto font-mono-metric">#' + pos + '</span>' +
       '</div>' +
       '<div class="flex items-center gap-3 text-xs text-base-content/60">' +
         '<span class="font-mono">' + stream + '</span>' +
+        handlerHtml +
         '<span>' + time + '</span>' +
         (timeAgo ? '<span class="text-base-content/40">' + timeAgo + '</span>' : '') +
       '</div>';
@@ -425,12 +475,12 @@
 
     container.appendChild(card);
 
-    // Render children
+    // Render children — pass this node's stream for cross-aggregate detection
     if (node.children && node.children.length > 0) {
       var childrenWrap = document.createElement('div');
       childrenWrap.className = 'vtl-children';
       for (var i = 0; i < node.children.length; i++) {
-        childrenWrap.appendChild(_renderCausationTree(node.children[i], depth + 1));
+        childrenWrap.appendChild(_renderCausationTree(node.children[i], depth + 1, node.stream));
       }
       container.appendChild(childrenWrap);
     }
@@ -782,6 +832,25 @@
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  function _collectTreeStreams(node) {
+    var seen = new Set();
+    var result = [];
+    function _walk(n) {
+      var cat = _extractStreamCategory(n.stream || '');
+      if (cat && cat !== '--' && !seen.has(cat)) {
+        seen.add(cat);
+        result.push(cat);
+      }
+      if (n.children) {
+        for (var i = 0; i < n.children.length; i++) {
+          _walk(n.children[i]);
+        }
+      }
+    }
+    _walk(node);
+    return result;
+  }
 
   function _extractStreamCategory(stream) {
     if (!stream) return '--';
