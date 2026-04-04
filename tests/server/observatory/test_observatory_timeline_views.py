@@ -524,3 +524,125 @@ class TestTimelineJSAccessibility:
     def test_includes_timeline_js(self, client):
         html = client.get("/timeline").text
         assert "/static/js/timeline.js" in html
+
+
+# ---------------------------------------------------------------------------
+# Enhanced correlation view — HTML stat cards (#859)
+# ---------------------------------------------------------------------------
+
+
+class TestEnhancedCorrelationViewHTML:
+    """Verify new summary stat cards for timing and streams."""
+
+    def test_has_total_duration_stat(self, client):
+        html = client.get("/timeline").text
+        assert 'id="correlation-total-duration"' in html
+        assert "End-to-End Duration" in html
+
+    def test_has_streams_touched_stat(self, client):
+        html = client.get("/timeline").text
+        assert 'id="correlation-streams-touched"' in html
+        assert "Streams Touched" in html
+
+    def test_summary_grid_has_five_columns(self, client):
+        """The correlation summary grid should have 5 stat cards."""
+        html = client.get("/timeline").text
+        assert "md:grid-cols-5" in html
+
+
+# ---------------------------------------------------------------------------
+# Enhanced correlation view — CSS classes (#859)
+# ---------------------------------------------------------------------------
+
+
+class TestEnhancedCorrelationCSS:
+    """Verify new CSS classes for handler, duration, latency, cross-aggregate."""
+
+    def test_has_vtl_handler_class(self, client):
+        css = client.get("/static/css/observatory.css").text
+        assert ".vtl-handler" in css
+
+    def test_has_vtl_duration_class(self, client):
+        css = client.get("/static/css/observatory.css").text
+        assert ".vtl-duration" in css
+
+    def test_has_vtl_latency_class(self, client):
+        css = client.get("/static/css/observatory.css").text
+        assert ".vtl-latency" in css
+
+    def test_has_vtl_cross_aggregate_class(self, client):
+        css = client.get("/static/css/observatory.css").text
+        assert ".vtl-cross-aggregate" in css
+
+    def test_has_vtl_cross_aggregate_icon_class(self, client):
+        css = client.get("/static/css/observatory.css").text
+        assert ".vtl-cross-aggregate-icon" in css
+
+
+# ---------------------------------------------------------------------------
+# Enhanced correlation view — JavaScript rendering (#859)
+# ---------------------------------------------------------------------------
+
+
+class TestEnhancedCorrelationJS:
+    """Verify JS renders handler badges, duration, latency, cross-aggregate."""
+
+    def test_render_causation_tree_accepts_parent_stream(self, client):
+        """_renderCausationTree takes parentStream for cross-aggregate detection."""
+        js = client.get("/static/js/timeline.js").text
+        assert "_renderCausationTree(node, depth, parentStream)" in js
+
+    def test_renders_handler_badge(self, client):
+        """Handler name is rendered with vtl-handler class."""
+        js = client.get("/static/js/timeline.js").text
+        assert "vtl-handler" in js
+        assert "node.handler" in js
+
+    def test_renders_duration_badge(self, client):
+        """Duration is rendered with vtl-duration class."""
+        js = client.get("/static/js/timeline.js").text
+        assert "vtl-duration" in js
+        assert "node.duration_ms" in js
+
+    def test_renders_latency_label(self, client):
+        """Inter-step latency is rendered with vtl-latency class."""
+        js = client.get("/static/js/timeline.js").text
+        assert "vtl-latency" in js
+        assert "node.delta_ms" in js
+
+    def test_renders_cross_aggregate_marker(self, client):
+        """Cross-aggregate boundary is detected and marked."""
+        js = client.get("/static/js/timeline.js").text
+        assert "vtl-cross-aggregate" in js
+        assert "isCrossAggregate" in js
+
+    def test_uses_observatory_duration_formatter(self, client):
+        """Duration formatting uses Observatory.fmt.duration from core.js."""
+        js = client.get("/static/js/timeline.js").text
+        assert "Observatory.fmt.duration(" in js
+
+    def test_has_collect_tree_streams_helper(self, client):
+        """_collectTreeStreams helper exists for counting unique streams."""
+        js = client.get("/static/js/timeline.js").text
+        assert "_collectTreeStreams" in js
+
+    def test_populates_total_duration_stat(self, client):
+        """_showCorrelationView populates the total duration stat card."""
+        js = client.get("/static/js/timeline.js").text
+        assert "correlation-total-duration" in js
+        assert "data.total_duration_ms" in js
+
+    def test_populates_streams_touched_stat(self, client):
+        """_showCorrelationView populates the streams touched stat card."""
+        js = client.get("/static/js/timeline.js").text
+        assert "correlation-streams-touched" in js
+
+    def test_passes_parent_stream_to_children(self, client):
+        """Child nodes receive parent's stream for cross-aggregate detection."""
+        js = client.get("/static/js/timeline.js").text
+        assert "_renderCausationTree(node.children[i], depth + 1, node.stream)" in js
+
+    def test_latency_label_only_for_non_root(self, client):
+        """Latency label is only rendered for non-root nodes (depth > 0)."""
+        js = client.get("/static/js/timeline.js").text
+        assert "depth > 0 && node.delta_ms" in js
