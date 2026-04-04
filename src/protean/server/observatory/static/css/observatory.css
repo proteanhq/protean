@@ -215,6 +215,131 @@
   font-weight: 600;
 }
 
+/* ===== D3 Causation Graph ===== */
+
+.causation-graph-container {
+  min-height: 400px;
+  border: 1px solid oklch(var(--bc) / 0.1);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: oklch(var(--b1));
+}
+
+.causation-graph-svg {
+  display: block;
+  cursor: grab;
+}
+
+.causation-graph-svg:active {
+  cursor: grabbing;
+}
+
+/* Links */
+.cg-link {
+  fill: none;
+  stroke: oklch(var(--bc) / 0.2);
+  stroke-width: 1.5;
+}
+
+.cg-link--cross {
+  stroke-dasharray: 6 3;
+  stroke: oklch(var(--wa) / 0.4);
+}
+
+.cg-link.cg-highlighted {
+  stroke: oklch(var(--p) / 0.6);
+  stroke-width: 2;
+}
+
+.cg-link.cg-dimmed {
+  opacity: 0.2;
+}
+
+/* Latency labels on links */
+.cg-latency {
+  font-size: 9px;
+  fill: oklch(var(--bc) / 0.4);
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Nodes */
+.cg-node {
+  cursor: pointer;
+}
+
+.cg-node.cg-dimmed {
+  opacity: 0.2;
+}
+
+.cg-card {
+  fill: oklch(var(--b1));
+  stroke: oklch(var(--bc) / 0.12);
+  stroke-width: 1;
+  transition: stroke 0.15s;
+}
+
+.cg-node:hover .cg-card,
+.cg-node.cg-highlighted .cg-card {
+  stroke: oklch(var(--p) / 0.5);
+  filter: drop-shadow(0 1px 3px oklch(var(--p) / 0.1));
+}
+
+/* Kind badge */
+.cg-badge--evt {
+  fill: oklch(var(--p));
+}
+
+.cg-badge--cmd {
+  fill: oklch(var(--s));
+}
+
+.cg-badge-text {
+  font-size: 8px;
+  fill: oklch(var(--pc));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Text elements */
+.cg-type {
+  font-size: 12px;
+  font-weight: 600;
+  fill: oklch(var(--bc));
+}
+
+.cg-handler {
+  font-size: 10px;
+  fill: oklch(var(--bc) / 0.6);
+}
+
+.cg-duration {
+  font-size: 10px;
+  fill: oklch(var(--su));
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.cg-stream {
+  font-size: 9px;
+  fill: oklch(var(--bc) / 0.4);
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.cg-position {
+  font-size: 9px;
+  fill: oklch(var(--bc) / 0.35);
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.cg-collapse-indicator {
+  font-size: 10px;
+  fill: oklch(var(--p) / 0.7);
+  font-weight: 600;
+}
+
 /* ===== Aggregate History — Vertical Timeline ===== */
 
 .aggregate-timeline {

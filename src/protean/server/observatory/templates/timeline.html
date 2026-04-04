@@ -225,11 +225,25 @@
     </div>
   </div>
 
-  <!-- Causation tree (vertical timeline) -->
+  <!-- Causation visualization (tree or graph) -->
   <div class="card bg-base-100 shadow-sm mb-6">
     <div class="card-body p-4">
-      <h3 class="font-semibold text-sm mb-4">Causation Tree</h3>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-sm">Causation Tree</h3>
+        <div class="join" id="causation-view-toggle">
+          <button class="join-item btn btn-xs btn-primary" id="btn-tree-view" title="Vertical tree layout">
+            Tree View
+          </button>
+          <button class="join-item btn btn-xs btn-ghost" id="btn-graph-view" title="Interactive D3 graph layout">
+            Graph View
+          </button>
+        </div>
+      </div>
       <div id="correlation-tree" class="correlation-tree"></div>
+      <div id="causation-graph-container" class="causation-graph-container hidden"></div>
+      <div class="text-xs text-base-content/40 mt-2 hidden" id="graph-help-text">
+        Shift+click to collapse/expand subtrees. Scroll to zoom. Drag to pan.
+      </div>
     </div>
   </div>
 
@@ -325,5 +339,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/causation-graph.js" defer></script>
 <script src="/static/js/timeline.js" defer></script>
 {% endblock %}
