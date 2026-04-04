@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Observatory trace search and recent traces API endpoints: `GET /timeline/traces/recent` returns the most recent correlation chains with summary statistics (correlation_id, root_type, event_count, started_at, streams), and `GET /timeline/traces/search` allows querying chains by aggregate_id, event_type, command_type, or stream_category. Both return `{traces: [...], count: int}`.
 - `value_object_from_entity()` utility function that auto-generates a `BaseValueObject` subclass mirroring an entity's fields, eliminating manual field duplication for command/event payloads. Supports custom naming, field exclusion, and recursive conversion of `HasOne`/`HasMany` associations. Exported from `protean` top-level package.
 - `ValueObjectFromEntity` field descriptor in `protean.fields` for inline use in commands and events, e.g. `List(content_type=ValueObjectFromEntity(OrderItem))`.
 - `BaseEntity.from_value_object()` classmethod for converting value object payloads back into entity instances, completing the round-trip.

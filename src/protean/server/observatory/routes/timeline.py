@@ -14,6 +14,8 @@ Endpoints:
     GET /timeline/stats           — Summary statistics
     GET /timeline/correlation/{correlation_id} — Correlation chain + causation tree
     GET /timeline/aggregate/{stream_category}/{aggregate_id} — Aggregate event history
+    GET /timeline/traces/recent   — Recent correlation chains with summaries
+    GET /timeline/traces/search   — Search correlation chains by criteria
 """
 
 from __future__ import annotations
@@ -533,6 +535,178 @@ def collect_aggregate_history(
 
 
 # ---------------------------------------------------------------------------
+# Trace summary helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_correlation_id(msg: dict[str, Any]) -> str | None:
+    """Extract correlation_id from a raw message dict."""
+    metadata = msg.get("metadata")
+    if not metadata or not isinstance(metadata, dict):
+        return None
+    domain_meta = metadata.get("domain")
+    if not domain_meta or not isinstance(domain_meta, dict):
+        return None
+    return domain_meta.get("correlation_id")
+
+
+def _group_by_correlation(
+    domains: list[Domain],
+) -> dict[str, list[tuple[dict[str, Any], str]]]:
+    """Read all events from the event store and group by correlation_id.
+
+    Returns a dict mapping each correlation_id to its list of
+    ``(raw_msg, domain_name)`` tuples, sorted by global_position within
+    each group.  Messages without a correlation_id are excluded.
+    """
+    groups: dict[str, list[tuple[dict[str, Any], str]]] = defaultdict(list)
+
+    for domain in _unique_store_domains(domains):
+        try:
+            with domain.domain_context():
+                store = domain.event_store.store
+                raw_messages = store._read("$all", no_of_messages=1_000_000)
+
+                for msg in raw_messages:
+                    stream = msg.get("stream_name", "")
+                    if ":snapshot-" in stream or msg.get("type") == "SNAPSHOT":
+                        continue
+                    cid = _extract_correlation_id(msg)
+                    if cid:
+                        groups[cid].append((msg, domain.name))
+        except Exception:
+            logger.debug(
+                "Failed to read events from %s for grouping",
+                domain.name,
+                exc_info=True,
+            )
+
+    # Sort each group by global_position
+    for cid in groups:
+        groups[cid].sort(key=lambda x: x[0].get("global_position", 0))
+
+    return groups
+
+
+def _build_trace_summary(
+    correlation_id: str,
+    group: list[tuple[dict[str, Any], str]],
+) -> dict[str, Any]:
+    """Build a trace summary dict from a correlation group.
+
+    Returns a summary with correlation_id, root_type, event_count,
+    started_at, and unique streams.
+    """
+    root_msg = group[0][0]
+    root_type = root_msg.get("type", "?")
+
+    # Extract started_at from the earliest message
+    time_val = root_msg.get("time")
+    started_at: str | None
+    if time_val and hasattr(time_val, "isoformat"):
+        started_at = time_val.isoformat()
+    elif time_val:
+        started_at = str(time_val)
+    else:
+        started_at = None
+
+    # Collect unique streams
+    streams: list[str] = []
+    seen_streams: set[str] = set()
+    for msg, _ in group:
+        stream = msg.get("stream_name", "")
+        if stream and stream not in seen_streams:
+            seen_streams.add(stream)
+            streams.append(stream)
+
+    return {
+        "correlation_id": correlation_id,
+        "root_type": root_type,
+        "event_count": len(group),
+        "started_at": started_at,
+        "streams": streams,
+    }
+
+
+def collect_recent_traces(
+    domains: list[Domain],
+    *,
+    limit: int = _DEFAULT_LIMIT,
+) -> list[dict[str, Any]]:
+    """Return the most recent correlation chains as trace summaries.
+
+    Chains are sorted by the timestamp of their first (root) message,
+    most recent first.  Each summary contains correlation_id, root_type,
+    event_count, started_at, and streams.
+    """
+    groups = _group_by_correlation(domains)
+
+    summaries = [_build_trace_summary(cid, grp) for cid, grp in groups.items() if grp]
+
+    # Sort by started_at descending (most recent first)
+    summaries.sort(key=lambda s: s.get("started_at") or "", reverse=True)
+
+    return summaries[:limit]
+
+
+def search_traces(
+    domains: list[Domain],
+    *,
+    aggregate_id: str | None = None,
+    event_type: str | None = None,
+    command_type: str | None = None,
+    stream_category: str | None = None,
+    limit: int = _DEFAULT_LIMIT,
+) -> list[dict[str, Any]]:
+    """Search correlation chains by criteria.
+
+    At least one search parameter must be provided.  A chain matches if
+    **any** message in its group matches the filter.
+
+    Args:
+        aggregate_id: Match chains containing a message for this aggregate ID.
+        event_type: Match chains containing a message of this type.
+        command_type: Alias for event_type — match chains containing a
+            command of this type.
+        stream_category: Match chains containing a message in this stream
+            category.
+        limit: Maximum number of results to return.
+
+    Returns:
+        List of trace summaries matching the criteria, sorted by started_at
+        descending.
+    """
+    groups = _group_by_correlation(domains)
+
+    matching: list[dict[str, Any]] = []
+
+    for cid, grp in groups.items():
+        if not grp:
+            continue
+
+        match = False
+        for msg, _ in grp:
+            if aggregate_id and _extract_aggregate_id(msg) == aggregate_id:
+                match = True
+                break
+            if event_type and _extract_event_type(msg) == event_type:
+                match = True
+                break
+            if command_type and _extract_event_type(msg) == command_type:
+                match = True
+                break
+            if stream_category and _extract_stream_category(msg) == stream_category:
+                match = True
+                break
+
+        if match:
+            matching.append(_build_trace_summary(cid, grp))
+
+    matching.sort(key=lambda s: s.get("started_at") or "", reverse=True)
+    return matching[:limit]
+
+
+# ---------------------------------------------------------------------------
 # Router factory
 # ---------------------------------------------------------------------------
 
@@ -614,5 +788,44 @@ def create_timeline_router(domains: list["Domain"]) -> APIRouter:
                 detail="No events found for aggregate",
             )
         return JSONResponse(content=result)
+
+    @router.get("/timeline/traces/recent")
+    async def list_recent_traces(
+        limit: int = Query(
+            _DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT, description="Max traces to return"
+        ),
+    ) -> JSONResponse:
+        """Recent correlation chains with summary statistics."""
+        traces = collect_recent_traces(domains, limit=limit)
+        return JSONResponse(content={"traces": traces, "count": len(traces)})
+
+    @router.get("/timeline/traces/search")
+    async def search_traces_endpoint(
+        aggregate_id: str | None = Query(None, description="Filter by aggregate ID"),
+        event_type: str | None = Query(None, description="Filter by event type"),
+        command_type: str | None = Query(None, description="Filter by command type"),
+        stream_category: str | None = Query(
+            None, description="Filter by stream category"
+        ),
+        limit: int = Query(
+            _DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT, description="Max traces to return"
+        ),
+    ) -> JSONResponse:
+        """Search correlation chains by aggregate ID, event type, or stream."""
+        if not any([aggregate_id, event_type, command_type, stream_category]):
+            return JSONResponse(
+                content={"detail": "At least one search parameter is required"},
+                status_code=400,
+            )
+
+        traces = search_traces(
+            domains,
+            aggregate_id=aggregate_id,
+            event_type=event_type,
+            command_type=command_type,
+            stream_category=stream_category,
+            limit=limit,
+        )
+        return JSONResponse(content={"traces": traces, "count": len(traces)})
 
     return router
