@@ -6,7 +6,7 @@ argument-hint: "#issue-number [--branch name] [--epic #N]"
 
 # Implement a GitHub Issue
 
-Run all 7 phases to completion. The user expects a PR as the output — not a summary, not a plan, not a question. Commit, push, and create the PR without asking. The only reasons to pause: an unresolvable failure, or a genuine ambiguity between two incompatible implementations.
+Run all 5 phases to completion. The user expects a PR as the output — not a summary, not a plan, not a question. Commit, push, and create the PR without asking. The only reasons to pause: an unresolvable failure, or a genuine ambiguity between two incompatible implementations.
 
 ## Parse arguments
 
@@ -31,19 +31,21 @@ Log one line: "Research complete. Implementing: [1-sentence summary]." — then 
 
 Create the branch (`git checkout -b <branch-name> main` or `git switch -c <branch-name>` in worktrees). Write minimal, focused changes with type hints. Reuse existing patterns. Handle edge cases.
 
-Do a quick self-check of your diff: docstrings match all code paths, test loops assert non-empty collections first, no leftover debug code.
-
-## Phase 3: Simplify
-
-Run `/simplify` to catch duplicated logic, overcomplexity, and pattern mismatches:
+Do a quick self-check of your diff: docstrings match all code paths, test loops assert non-empty collections first, no leftover debug code. Then immediately run simplify and review (Phases 3-4) before testing:
 
 ```
 Skill(skill="simplify")
 ```
 
-This edits code directly — testing in Phase 4 validates the simplified version.
+Then launch the pr-reviewer agent:
 
-## Phase 4: Test
+```
+Agent(subagent_type="pr-reviewer", prompt="Review the uncommitted changes on this branch. Run `git diff` to see them. Report blockers, suggestions, and good patterns.")
+```
+
+Fix all blockers from the review. Take suggestions that improve clarity or correctness.
+
+## Phase 3: Test
 
 Run these in order. Each must pass before the next.
 
@@ -57,17 +59,7 @@ Run these in order. Each must pass before the next.
 
 **Step 5 — Patch coverage:** If `coverage.xml` exists from Step 4, run `uv run diff-cover coverage.xml --compare-branch=main --show-uncovered`. For any uncovered lines you wrote, add tests and re-check. Target 100%. If no `coverage.xml`, use `uv run pytest <tests> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v`.
 
-## Phase 5: Self-Review
-
-Launch the pr-reviewer agent against your uncommitted diff:
-
-```
-Agent(subagent_type="pr-reviewer", prompt="Review the uncommitted changes on this branch. Run `git diff` to see them. Report blockers, suggestions, and good patterns.")
-```
-
-Fix all blockers. Take suggestions that improve clarity or correctness. Re-run affected tests after fixes.
-
-## Phase 6: Commit and PR
+## Phase 4: Commit and PR
 
 **Rebase first:** `git fetch origin main && git rebase origin/main`. Re-run your tests if conflicts arose.
 
@@ -81,7 +73,7 @@ Fix all blockers. Take suggestions that improve clarity or correctness. Re-run a
 
 **Mergeability:** `gh pr view <PR> -R proteanhq/protean --json mergeable,mergeStateStatus,statusCheckRollup`. Rebase + force-push if conflicts exist.
 
-## Phase 7: Handle CI feedback
+## Phase 5: Handle CI feedback
 
 Poll for Copilot comments and CI status every 60s, up to 10 minutes:
 
