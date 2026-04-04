@@ -598,9 +598,15 @@ def _build_trace_summary(
     started_at, and unique streams.
     """
     root_msg = group[0][0]
-    root_type = root_msg.get("type", "?")
+    metadata = root_msg.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    headers = metadata.get("headers", {})
+    if not isinstance(headers, dict):
+        headers = {}
+    root_type = root_msg.get("type", headers.get("type", "?"))
 
-    # Extract started_at from the earliest message
+    # Extract started_at from the earliest message, with headers fallback
     time_val = root_msg.get("time")
     started_at: str | None
     if time_val and hasattr(time_val, "isoformat"):
@@ -608,7 +614,7 @@ def _build_trace_summary(
     elif time_val:
         started_at = str(time_val)
     else:
-        started_at = None
+        started_at = headers.get("time")
 
     # Collect unique streams
     streams: list[str] = []
@@ -625,6 +631,7 @@ def _build_trace_summary(
         "event_count": len(group),
         "started_at": started_at,
         "streams": streams,
+        "_root_global_position": root_msg.get("global_position", 0),
     }
 
 
@@ -643,10 +650,13 @@ def collect_recent_traces(
 
     summaries = [_build_trace_summary(cid, grp) for cid, grp in groups.items() if grp]
 
-    # Sort by started_at descending (most recent first)
-    summaries.sort(key=lambda s: s.get("started_at") or "", reverse=True)
+    # Sort by root global_position descending (most recent first)
+    summaries.sort(key=lambda s: s.get("_root_global_position", 0), reverse=True)
 
-    return summaries[:limit]
+    result = summaries[:limit]
+    for s in result:
+        s.pop("_root_global_position", None)
+    return result
 
 
 def search_traces(
@@ -673,9 +683,18 @@ def search_traces(
         limit: Maximum number of results to return.
 
     Returns:
-        List of trace summaries matching the criteria, sorted by started_at
-        descending.
+        List of trace summaries matching the criteria, sorted by
+        root global_position descending.
+
+    Raises:
+        ValueError: If no search parameter is provided.
     """
+    if not any((aggregate_id, event_type, command_type, stream_category)):
+        raise ValueError(
+            "At least one search parameter must be provided: "
+            "aggregate_id, event_type, command_type, or stream_category"
+        )
+
     groups = _group_by_correlation(domains)
 
     matching: list[dict[str, Any]] = []
@@ -692,7 +711,11 @@ def search_traces(
             if event_type and _extract_event_type(msg) == event_type:
                 match = True
                 break
-            if command_type and _extract_event_type(msg) == command_type:
+            if (
+                command_type
+                and _extract_event_type(msg) == command_type
+                and _extract_kind(msg) == "COMMAND"
+            ):
                 match = True
                 break
             if stream_category and _extract_stream_category(msg) == stream_category:
@@ -702,8 +725,11 @@ def search_traces(
         if match:
             matching.append(_build_trace_summary(cid, grp))
 
-    matching.sort(key=lambda s: s.get("started_at") or "", reverse=True)
-    return matching[:limit]
+    matching.sort(key=lambda s: s.get("_root_global_position", 0), reverse=True)
+    result = matching[:limit]
+    for s in result:
+        s.pop("_root_global_position", None)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -813,9 +839,9 @@ def create_timeline_router(domains: list["Domain"]) -> APIRouter:
     ) -> JSONResponse:
         """Search correlation chains by aggregate ID, event type, or stream."""
         if not any([aggregate_id, event_type, command_type, stream_category]):
-            return JSONResponse(
-                content={"detail": "At least one search parameter is required"},
+            raise HTTPException(
                 status_code=400,
+                detail="At least one search parameter is required",
             )
 
         traces = search_traces(
