@@ -65,9 +65,9 @@
   }
 
   function _onTabClick(e) {
-    var tab = e.target.dataset && e.target.dataset.tab;
-    if (tab) {
-      _switchTab(tab);
+    var el = e.target.closest ? e.target.closest('[data-tab]') : null;
+    if (el && el.dataset.tab) {
+      _switchTab(el.dataset.tab);
     }
   }
 
@@ -307,8 +307,9 @@
       closeBtn.addEventListener('click', _hideDetail);
     }
 
-    // Node card click delegation
+    // Node card click delegation (guard for non-Element targets)
     document.addEventListener('click', function (e) {
+      if (!e.target || !e.target.closest) return;
       var card = e.target.closest('.dv-node-card');
       if (card && _data) {
         _showDetail(card.dataset.fqn, _data);

@@ -322,7 +322,7 @@ class TestBuildNodes:
 
 class TestBuildLinks:
     def test_empty_inputs(self):
-        assert _build_links({}, {}, {}) == []
+        assert _build_links({}, {}) == []
 
     def test_cross_aggregate_event_handler(self):
         clusters = {
@@ -357,7 +357,7 @@ class TestBuildLinks:
                 "aggregate": {},
             },
         }
-        links = _build_links(clusters, {"process_managers": {}, "subscribers": {}}, {})
+        links = _build_links(clusters, {"process_managers": {}, "subscribers": {}})
         assert len(links) == 1
         link = links[0]
         assert link["source"] == "app.Order"

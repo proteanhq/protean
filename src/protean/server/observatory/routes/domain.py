@@ -4,11 +4,12 @@ Transforms the domain's IR into a D3-ready graph structure with
 aggregate nodes, cross-aggregate edges, and cluster data for drill-down.
 
 Endpoints:
-    GET /domain/ir  -- D3-ready graph derived from the domain IR
+    GET /api/domain/ir  -- D3-ready graph derived from the domain IR
 """
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
@@ -18,6 +19,8 @@ from protean.ir.generators.base import short_name
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+
+logger = logging.getLogger(__name__)
 
 # Explicit mapping from IR element type keys to stat names (avoids
 # naive pluralization — e.g. ENTITY → "entities", not "entitys").
@@ -58,7 +61,7 @@ def _build_graph(ir: dict[str, Any]) -> dict[str, Any]:
     elements = ir.get("elements", {})
 
     nodes = _build_nodes(clusters)
-    links = _build_links(clusters, flows, projections)
+    links = _build_links(clusters, flows)
     stats = _build_stats(elements, clusters, flows, projections)
 
     return {
@@ -112,9 +115,12 @@ def _build_nodes(clusters: dict[str, Any]) -> list[dict[str, Any]]:
 def _build_links(
     clusters: dict[str, Any],
     flows: dict[str, Any],
-    projections: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Detect cross-aggregate edges from event handlers, PMs, and projectors."""
+    """Detect cross-aggregate edges from event handlers and process managers.
+
+    Only emits links between aggregate nodes (not projections) so every
+    link source/target exists in the ``nodes`` list.
+    """
     links: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
 
@@ -148,7 +154,7 @@ def _build_links(
     # Process managers span multiple aggregates — create undirected edges
     # between all aggregate pairs the PM touches (sorted alphabetically,
     # since PM event flow is non-directional from the IR's perspective).
-    for _pm_fqn, pm in flows.get("process_managers", {}).items():
+    for pm_fqn, pm in flows.get("process_managers", {}).items():
         pm_aggs: set[str] = set()
         for type_key in pm.get("handlers", {}):
             source_agg = event_to_agg.get(type_key)
@@ -157,7 +163,7 @@ def _build_links(
         agg_list = sorted(pm_aggs)
         for i, src in enumerate(agg_list):
             for tgt in agg_list[i + 1 :]:
-                key = (src, tgt, f"pm:{pm.get('name', '')}")
+                key = (src, tgt, f"pm:{pm_fqn}")
                 if key not in seen:
                     seen.add(key)
                     links.append(
@@ -168,24 +174,6 @@ def _build_links(
                             "label": pm.get("name", ""),
                         }
                     )
-
-    # Projectors: link source aggregates to the projection
-    for _proj_fqn, proj_data in projections.items():
-        for _projector_fqn, projector in proj_data.get("projectors", {}).items():
-            for type_key in projector.get("handlers", {}):
-                source_agg = event_to_agg.get(type_key)
-                if source_agg:
-                    key = (source_agg, _proj_fqn, f"proj:{type_key}")
-                    if key not in seen:
-                        seen.add(key)
-                        links.append(
-                            {
-                                "source": source_agg,
-                                "target": _proj_fqn,
-                                "type": "projection",
-                                "label": short_name(type_key),
-                            }
-                        )
 
     return links
 
@@ -234,14 +222,14 @@ def create_domain_router(domains: list["Domain"]) -> APIRouter:
                 ir = IRBuilder(domain).build()
             _cached_graph = _build_graph(ir)
         except Exception:
-            pass
+            logger.warning("Failed to build domain IR graph", exc_info=True)
 
     @router.get("/domain/ir")
     async def domain_ir() -> JSONResponse:
         """Domain IR transformed into a D3-ready graph structure."""
         if _cached_graph is None:
             return JSONResponse(
-                content={"error": "No domains registered"},
+                content={"error": "Domain IR unavailable"},
                 status_code=503,
             )
         return JSONResponse(content=_cached_graph)
