@@ -83,9 +83,17 @@ def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
 def _domain_from_stream(stream: str | None) -> str | None:
     """Extract the domain name from a Protean stream name.
 
-    Protean streams follow the format ``<domain>::<aggregate>-<id>``
-    (e.g. ``fulfillment::fulfillment-305d2c42``).  Returns the portion
-    before ``::`` or ``None`` if the stream doesn't contain the separator.
+    Protean stream names are domain-qualified and use ``::`` to separate the
+    domain from the remainder of the stream identifier. Common formats emitted
+    by Protean include:
+
+    - Aggregate/event streams: ``<domain>::<aggregate>-<id>``
+      (for example ``fulfillment::fulfillment-305d2c42``)
+    - Command streams: ``<domain>::<aggregate>:command-<id>``
+    - Fact streams: ``<domain>::<aggregate>-fact-<id>``
+
+    This helper returns the portion before ``::`` for any of these variants,
+    or ``None`` if the stream is empty or doesn't contain the separator.
     """
     if not stream or "::" not in stream:
         return None

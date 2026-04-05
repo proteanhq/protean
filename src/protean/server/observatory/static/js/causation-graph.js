@@ -970,9 +970,11 @@ var CausationGraph = (function () {
     // Strip instance ID (everything after the first hyphen)
     var idx = stream.indexOf('-');
     var category = idx > 0 ? stream.substring(0, idx) : stream;
-    // Strip Protean stream suffixes (:command, :fact) to group
-    // command and event streams for the same aggregate together
-    category = category.replace(/:command$/, '').replace(/:fact$/, '');
+    // Strip Protean command stream suffix (:command) to group
+    // command and event streams for the same aggregate together.
+    // Note: fact streams use "-fact-<id>" (hyphen, not colon) so
+    // they are already handled by the indexOf('-') split above.
+    category = category.replace(/:command$/, '');
     return category;
   }
 

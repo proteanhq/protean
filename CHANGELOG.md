@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Fix Observatory graph rendering with black overlays caused by DaisyUI 4→5 CSS variable mismatch. Update all `oklch(var(--b1))` references to DaisyUI 5 equivalents (`var(--color-base-100)`, `color-mix()`).
+- Fix causation graph swimlane grouping treating command and event streams for the same aggregate as separate categories. Strip `:command` suffix in stream category extraction so both share one swimlane.
+- Fix subscriber `causation_id` set to Redis Stream delivery ID instead of source event's `message_id`. Commands dispatched from subscribers now carry the correct causation link for cross-domain causation trees in the Observatory.
+- Fix Observatory assigning the first domain's name to all events when multiple domains share a single MessageDB. Domain attribution is now derived from the stream name prefix (`<domain>::<aggregate>-<id>`).
 - Fix persistence ordering in `BaseRepository`: aggregate root is now saved before child entities, and children before grandchildren (top-down). Previously the bottom-up ordering violated foreign-key constraints on databases that enforce them immediately (MSSQL, MySQL/InnoDB, SQLite with `PRAGMA foreign_keys`).
 - Pre-commit hook documentation now recommends `repo: local` with `language: system` instead of `repo: https://github.com/proteanhq/protean`, since hooks call `derive_domain()` which imports user code that is unavailable in pre-commit's isolated virtualenv
 
