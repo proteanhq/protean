@@ -75,4 +75,9 @@ def create_page_router(
         """Messages — Inspect failed and dead-letter queue messages."""
         return templates.TemplateResponse(request, "messages.html", _ctx("messages"))
 
+    @router.get("/domain")
+    async def domain(request: Request):
+        """Domain — Visualize domain topology, event flows, and process managers."""
+        return templates.TemplateResponse(request, "domain.html", _ctx("domain"))
+
     return router

@@ -386,6 +386,7 @@ const Observatory = (() => {
     't': '/timeline',
     'i': '/infrastructure',
     'm': '/messages',
+    'd': '/domain',
   };
 
   let _chordPrefix = null;

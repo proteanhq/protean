@@ -96,7 +96,7 @@ class TestCreatePageRouter:
         router = create_page_router([test_domain], templates)
         assert isinstance(router, APIRouter)
 
-    def test_registers_seven_routes(self, test_domain):
+    def test_registers_eight_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -110,6 +110,7 @@ class TestCreatePageRouter:
             "/timeline",
             "/infrastructure",
             "/messages",
+            "/domain",
         }
 
     def test_all_routes_are_get(self, test_domain):
@@ -140,7 +141,7 @@ class TestCreateAllRoutes:
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
         page_router, _ = create_all_routes([test_domain], templates)
-        assert len(page_router.routes) == 7
+        assert len(page_router.routes) == 8
 
     def test_api_router_includes_handler_routes(self, test_domain):
         from fastapi.templating import Jinja2Templates
@@ -484,6 +485,9 @@ class TestNavigationLinks:
     def test_has_link_to_infrastructure(self, overview_html):
         assert 'href="/infrastructure"' in overview_html
 
+    def test_has_link_to_domain(self, overview_html):
+        assert 'href="/domain"' in overview_html
+
 
 class TestActivePageHighlighting:
     """Each page should mark its own nav link as active."""
@@ -495,6 +499,7 @@ class TestActivePageHighlighting:
         ("/eventstore", "eventstore"),
         ("/timeline", "timeline"),
         ("/infrastructure", "infrastructure"),
+        ("/domain", "domain"),
     ]
 
     @pytest.mark.parametrize("path,page_name", PAGES)
@@ -604,6 +609,7 @@ class TestBaseTemplateElements:
         assert "Event Store" in html
         assert "Timeline" in html
         assert "Infrastructure" in html
+        assert 'href="/domain"' in html
 
     def test_has_observatory_branding(self, html):
         assert "Observatory" in html
