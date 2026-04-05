@@ -361,7 +361,7 @@ var CausationGraph = (function () {
       .attr('fill', function (d) {
         var cat = _extractStreamCategory(d.data.stream);
         var lane = _laneMap[cat];
-        return lane ? lane.color : 'oklch(var(--bc) / 0.1)';
+        return lane ? lane.color : 'color-mix(in oklch, var(--color-base-content) 10%, transparent)';
       });
 
     // Node card background
@@ -513,7 +513,7 @@ var CausationGraph = (function () {
       laneData.push({
         key: cat,
         label: lane ? lane.label : cat,
-        color: lane ? lane.color : 'oklch(var(--bc) / 0.05)',
+        color: lane ? lane.color : 'color-mix(in oklch, var(--color-base-content) 5%, transparent)',
         x: yMin - SWIMLANE_PADDING,
         y: xMin - SWIMLANE_PADDING,
         width: (yMax - yMin) + SWIMLANE_PADDING * 2,
@@ -700,7 +700,7 @@ var CausationGraph = (function () {
       .attr('class', 'cg-link')
       .attr('x1', x).attr('x2', x + 24)
       .attr('y1', y - 4).attr('y2', y - 4)
-      .style('stroke', 'oklch(var(--bc) / 0.3)')
+      .style('stroke', 'color-mix(in oklch, var(--color-base-content) 30%, transparent)')
       .style('stroke-width', 1.5);
     legendG.append('text')
       .attr('class', 'cg-legend-text')
@@ -715,7 +715,7 @@ var CausationGraph = (function () {
       .attr('x1', x).attr('x2', x + 24)
       .attr('y1', y - 4).attr('y2', y - 4)
       .style('stroke-dasharray', '6 3')
-      .style('stroke', 'oklch(var(--wa) / 0.5)')
+      .style('stroke', 'color-mix(in oklch, var(--color-warning) 50%, transparent)')
       .style('stroke-width', 1.5);
     legendG.append('text')
       .attr('class', 'cg-legend-text')
@@ -967,8 +967,13 @@ var CausationGraph = (function () {
 
   function _extractStreamCategory(stream) {
     if (!stream) return '';
+    // Strip instance ID (everything after the first hyphen)
     var idx = stream.indexOf('-');
-    return idx > 0 ? stream.substring(0, idx) : stream;
+    var category = idx > 0 ? stream.substring(0, idx) : stream;
+    // Strip Protean stream suffixes (:command, :fact) to group
+    // command and event streams for the same aggregate together
+    category = category.replace(/:command$/, '').replace(/:fact$/, '');
+    return category;
   }
 
   function _shortTypeName(fullType) {

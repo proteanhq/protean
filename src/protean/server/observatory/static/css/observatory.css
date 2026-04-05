@@ -80,7 +80,7 @@
   display: block;
   width: 30%;
   height: 100%;
-  background: oklch(var(--p));
+  background: var(--color-primary);
   border-radius: 2px;
   animation: loading-slide 1.2s ease-in-out infinite;
 }
@@ -130,7 +130,7 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: oklch(var(--bc) / 0.15);
+  background: color-mix(in oklch, var(--color-base-content) 15%, transparent);
 }
 
 .vtl-root::before {
@@ -144,7 +144,7 @@
   top: 1.1rem;
   width: 0.75rem;
   height: 2px;
-  background: oklch(var(--bc) / 0.15);
+  background: color-mix(in oklch, var(--color-base-content) 15%, transparent);
 }
 
 .vtl-root::after {
@@ -153,17 +153,17 @@
 
 .vtl-card {
   display: inline-block;
-  border: 1px solid oklch(var(--bc) / 0.1);
+  border: 1px solid color-mix(in oklch, var(--color-base-content) 10%, transparent);
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.25rem;
   transition: border-color 0.15s, box-shadow 0.15s;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 
 .vtl-card:hover {
-  border-color: oklch(var(--p) / 0.4);
-  box-shadow: 0 1px 4px oklch(var(--p) / 0.1);
+  border-color: color-mix(in oklch, var(--color-primary) 40%, transparent);
+  box-shadow: 0 1px 4px color-mix(in oklch, var(--color-primary) 10%, transparent);
 }
 
 .vtl-children {
@@ -176,7 +176,7 @@
   align-items: center;
   gap: 0.25rem;
   font-size: 0.7rem;
-  color: oklch(var(--wa));
+  color: var(--color-warning);
   font-weight: 500;
 }
 
@@ -187,7 +187,7 @@
   font-size: 0.7rem;
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
-  color: oklch(var(--su));
+  color: var(--color-success);
   font-weight: 500;
 }
 
@@ -197,21 +197,21 @@
   font-size: 0.65rem;
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
-  color: oklch(var(--bc) / 0.4);
+  color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
   margin-left: 1.5rem;
   margin-bottom: 0.125rem;
 }
 
 /* Cross-aggregate visual marker */
 .vtl-cross-aggregate {
-  border-left: 3px solid oklch(var(--in));
+  border-left: 3px solid var(--color-info);
 }
 
 .vtl-cross-aggregate-icon {
   display: inline-flex;
   align-items: center;
   font-size: 0.65rem;
-  color: oklch(var(--in));
+  color: var(--color-info);
   font-weight: 600;
 }
 
@@ -219,10 +219,10 @@
 
 .causation-graph-container {
   min-height: 400px;
-  border: 1px solid oklch(var(--bc) / 0.1);
+  border: 1px solid color-mix(in oklch, var(--color-base-content) 10%, transparent);
   border-radius: 0.5rem;
   overflow: hidden;
-  background: oklch(var(--b1));
+  background: var(--color-base-100);
 }
 
 .causation-graph-svg {
@@ -237,17 +237,17 @@
 /* Links */
 .cg-link {
   fill: none;
-  stroke: oklch(var(--bc) / 0.2);
+  stroke: color-mix(in oklch, var(--color-base-content) 35%, transparent);
   stroke-width: 1.5;
 }
 
 .cg-link--cross {
   stroke-dasharray: 6 3;
-  stroke: oklch(var(--wa) / 0.4);
+  stroke: color-mix(in oklch, var(--color-warning) 40%, transparent);
 }
 
 .cg-link.cg-highlighted {
-  stroke: oklch(var(--p) / 0.6);
+  stroke: color-mix(in oklch, var(--color-primary) 60%, transparent);
   stroke-width: 2;
 }
 
@@ -258,7 +258,7 @@
 /* Latency labels on links */
 .cg-latency {
   font-size: 9px;
-  fill: oklch(var(--bc) / 0.4);
+  fill: color-mix(in oklch, var(--color-base-content) 40%, transparent);
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
 }
@@ -274,7 +274,7 @@
 
 /* Live-update highlight for new nodes */
 .cg-node.cg-node-new .cg-card {
-  stroke: oklch(var(--su) / 0.8);
+  stroke: color-mix(in oklch, var(--color-success) 80%, transparent);
   stroke-width: 2;
   animation: cg-node-pulse 2s ease-out;
 }
@@ -290,8 +290,8 @@
 @keyframes cg-node-pulse {
   0% { opacity: 0; }
   20% { opacity: 1; }
-  30%, 50%, 70% { filter: drop-shadow(0 0 6px oklch(var(--su) / 0.4)); }
-  40%, 60% { filter: drop-shadow(0 0 2px oklch(var(--su) / 0.1)); }
+  30%, 50%, 70% { filter: drop-shadow(0 0 6px color-mix(in oklch, var(--color-success) 40%, transparent)); }
+  40%, 60% { filter: drop-shadow(0 0 2px color-mix(in oklch, var(--color-success) 10%, transparent)); }
   100% { filter: none; }
 }
 
@@ -306,30 +306,30 @@
 }
 
 .cg-card {
-  fill: oklch(var(--b1));
-  stroke: oklch(var(--bc) / 0.12);
+  fill: var(--color-base-100);
+  stroke: color-mix(in oklch, var(--color-base-content) 12%, transparent);
   stroke-width: 1;
   transition: stroke 0.15s;
 }
 
 .cg-node:hover .cg-card,
 .cg-node.cg-highlighted .cg-card {
-  stroke: oklch(var(--p) / 0.5);
-  filter: drop-shadow(0 1px 3px oklch(var(--p) / 0.1));
+  stroke: color-mix(in oklch, var(--color-primary) 50%, transparent);
+  filter: drop-shadow(0 1px 3px color-mix(in oklch, var(--color-primary) 10%, transparent));
 }
 
 /* Kind badge */
 .cg-badge--evt {
-  fill: oklch(var(--p));
+  fill: var(--color-primary);
 }
 
 .cg-badge--cmd {
-  fill: oklch(var(--s));
+  fill: var(--color-secondary);
 }
 
 .cg-badge-text {
   font-size: 8px;
-  fill: oklch(var(--pc));
+  fill: var(--color-primary-content);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -339,37 +339,37 @@
 .cg-type {
   font-size: 12px;
   font-weight: 600;
-  fill: oklch(var(--bc));
+  fill: var(--color-base-content);
 }
 
 .cg-handler {
   font-size: 10px;
-  fill: oklch(var(--bc) / 0.6);
+  fill: color-mix(in oklch, var(--color-base-content) 60%, transparent);
 }
 
 .cg-duration {
   font-size: 10px;
-  fill: oklch(var(--su));
+  fill: var(--color-success);
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
 }
 
 .cg-stream {
   font-size: 9px;
-  fill: oklch(var(--bc) / 0.4);
+  fill: color-mix(in oklch, var(--color-base-content) 40%, transparent);
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
 }
 
 .cg-position {
   font-size: 9px;
-  fill: oklch(var(--bc) / 0.35);
+  fill: color-mix(in oklch, var(--color-base-content) 35%, transparent);
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
 }
 
 .cg-collapse-indicator {
   font-size: 10px;
-  fill: oklch(var(--p) / 0.7);
+  fill: color-mix(in oklch, var(--color-primary) 70%, transparent);
   font-weight: 600;
 }
 
@@ -381,7 +381,7 @@
 /* Fan-out indicator */
 .cg-fanout {
   font-size: 10px;
-  fill: oklch(var(--bc) / 0.4);
+  fill: color-mix(in oklch, var(--color-base-content) 40%, transparent);
   font-weight: 600;
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
 }
@@ -406,18 +406,18 @@
 }
 
 .cg-axis-line {
-  stroke: oklch(var(--bc) / 0.12);
+  stroke: color-mix(in oklch, var(--color-base-content) 12%, transparent);
   stroke-width: 1;
 }
 
 .cg-axis-tick {
-  stroke: oklch(var(--bc) / 0.2);
+  stroke: color-mix(in oklch, var(--color-base-content) 20%, transparent);
   stroke-width: 1;
 }
 
 .cg-axis-label {
   font-size: 9px;
-  fill: oklch(var(--bc) / 0.4);
+  fill: color-mix(in oklch, var(--color-base-content) 40%, transparent);
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
 }
@@ -428,14 +428,14 @@
 }
 
 .cg-legend-bg {
-  fill: oklch(var(--b1) / 0.9);
-  stroke: oklch(var(--bc) / 0.1);
+  fill: color-mix(in oklch, var(--color-base-100) 90%, transparent);
+  stroke: color-mix(in oklch, var(--color-base-content) 10%, transparent);
   stroke-width: 1;
 }
 
 .cg-legend-text {
   font-size: 10px;
-  fill: oklch(var(--bc) / 0.6);
+  fill: color-mix(in oklch, var(--color-base-content) 60%, transparent);
 }
 
 /* Mini-map */
@@ -444,23 +444,23 @@
 }
 
 .cg-minimap-bg {
-  fill: oklch(var(--b1) / 0.85);
-  stroke: oklch(var(--bc) / 0.15);
+  fill: color-mix(in oklch, var(--color-base-100) 85%, transparent);
+  stroke: color-mix(in oklch, var(--color-base-content) 15%, transparent);
   stroke-width: 1;
 }
 
 .cg-minimap-node {
-  fill: oklch(var(--bc) / 0.25);
+  fill: color-mix(in oklch, var(--color-base-content) 25%, transparent);
 }
 
 .cg-minimap-link {
-  stroke: oklch(var(--bc) / 0.12);
+  stroke: color-mix(in oklch, var(--color-base-content) 12%, transparent);
   stroke-width: 0.5;
 }
 
 .cg-minimap-viewport {
-  fill: oklch(var(--p) / 0.08);
-  stroke: oklch(var(--p) / 0.4);
+  fill: color-mix(in oklch, var(--color-primary) 8%, transparent);
+  stroke: color-mix(in oklch, var(--color-primary) 40%, transparent);
   stroke-width: 1;
 }
 
@@ -488,7 +488,7 @@
   width: 0.625rem;
   height: 0.625rem;
   border-radius: 50%;
-  background: oklch(var(--p));
+  background: var(--color-primary);
   flex-shrink: 0;
   margin-top: 0.375rem;
 }
@@ -496,7 +496,7 @@
 .agg-tl-line {
   width: 2px;
   flex-grow: 1;
-  background: oklch(var(--bc) / 0.15);
+  background: color-mix(in oklch, var(--color-base-content) 15%, transparent);
   margin-top: 0.25rem;
   margin-bottom: 0.25rem;
 }
@@ -504,14 +504,14 @@
 .agg-tl-content {
   flex-grow: 1;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid oklch(var(--bc) / 0.05);
+  border-bottom: 1px solid color-mix(in oklch, var(--color-base-content) 5%, transparent);
   transition: background-color 0.15s;
   border-radius: 0.25rem;
   padding: 0.25rem 0.5rem 0.75rem 0.5rem;
 }
 
 .agg-tl-content:hover {
-  background-color: oklch(var(--bc) / 0.03);
+  background-color: color-mix(in oklch, var(--color-base-content) 3%, transparent);
 }
 
 .agg-tl-node:last-child .agg-tl-content {
@@ -526,7 +526,7 @@
 
 @keyframes sse-highlight {
   0% {
-    background-color: oklch(var(--su) / 0.2);
+    background-color: color-mix(in oklch, var(--color-success) 20%, transparent);
   }
   100% {
     background-color: transparent;
