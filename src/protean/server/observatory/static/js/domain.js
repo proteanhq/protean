@@ -72,59 +72,19 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Topology placeholder
+  // Topology — D3 Force-Directed Graph
   // ---------------------------------------------------------------------------
 
   function _renderTopology(data) {
     var container = document.getElementById('dv-topology-container');
     if (!container) return;
 
-    var nodes = data.nodes || [];
-    if (nodes.length === 0) {
-      container.innerHTML =
-        '<div class="flex items-center justify-center h-64 text-base-content/40">' +
-        'No aggregates found in domain.</div>';
-      return;
+    // Delegate to DomainTopology D3 module
+    if (typeof DomainTopology !== 'undefined') {
+      DomainTopology.render('#dv-topology-container', data, function (fqn) {
+        if (_data) _showDetail(fqn, _data);
+      });
     }
-
-    // Placeholder: list aggregates as cards (D3 force-directed graph in #876)
-    var html = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">';
-    nodes.forEach(function (node) {
-      var counts = node.counts || {};
-      var badges = [];
-      if (counts.commands) badges.push(counts.commands + ' cmd');
-      if (counts.events) badges.push(counts.events + ' evt');
-      if (counts.entities) badges.push(counts.entities + ' ent');
-      if (counts.value_objects) badges.push(counts.value_objects + ' vo');
-
-      html += '<div class="card bg-base-200 shadow-sm cursor-pointer dv-node-card" data-fqn="' +
-        _esc(node.fqn) + '">';
-      html += '<div class="card-body p-4">';
-      html += '<div class="font-bold text-base">' + _esc(node.name) + '</div>';
-      html += '<div class="text-xs text-base-content/50 font-mono mb-2">' + _esc(node.fqn) + '</div>';
-      if (node.is_event_sourced) {
-        html += '<span class="badge badge-sm badge-primary mb-2">Event Sourced</span> ';
-      }
-      if (badges.length > 0) {
-        html += '<div class="flex flex-wrap gap-1">';
-        badges.forEach(function (b) {
-          html += '<span class="badge badge-sm badge-ghost">' + _esc(b) + '</span>';
-        });
-        html += '</div>';
-      }
-      html += '</div></div>';
-    });
-    html += '</div>';
-
-    // Links summary
-    var links = data.links || [];
-    if (links.length > 0) {
-      html += '<div class="mt-4 text-sm text-base-content/60">' +
-        links.length + ' cross-aggregate link' + (links.length !== 1 ? 's' : '') +
-        ' detected</div>';
-    }
-
-    container.innerHTML = html;
   }
 
   // ---------------------------------------------------------------------------
