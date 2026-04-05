@@ -39,6 +39,12 @@ class EventStore:
     def store(self):
         return self._event_store
 
+    def close(self) -> None:
+        """Close the event store and release all connections."""
+        if self._event_store is not None:
+            self._event_store.close()
+            logger.debug("Event store closed")
+
     def _initialize_event_store(self) -> "BaseEventStore":
         configured_event_store = self.domain.config["event_store"]
         event_store_full_path = EVENT_STORE_PROVIDERS[

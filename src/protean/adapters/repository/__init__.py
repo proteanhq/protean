@@ -84,14 +84,18 @@ class Providers(collections.abc.MutableMapping):
 
         self._repositories[aggregate_name][database] = repository_cls
 
-    def _initialize(self):
-        """Read config file and initialize providers"""
-        # Close existing providers to prevent connection leaks when
-        # re-initializing (e.g., when domain.init() is called after
-        # the initial domain._initialize())
+    def close(self) -> None:
+        """Close all provider connections and release resources."""
         if self._providers:
             for provider in self._providers.values():
                 provider.close()
+            logger.debug("All providers closed")
+
+    def _initialize(self):
+        """Read config file and initialize providers"""
+        # Close existing providers before re-initializing to prevent
+        # connection leaks (e.g., when domain.init() is called again).
+        self.close()
 
         configured_providers = self.domain.config["databases"]
         provider_objects = {}

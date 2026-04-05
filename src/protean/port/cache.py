@@ -23,6 +23,15 @@ class BaseCache(metaclass=ABCMeta):
         projection_name = underscore(projection_cls.__name__)
         self._projections[projection_name] = projection_cls
 
+    def close(self) -> None:
+        """Close the cache and release all connections.
+
+        Subclasses that hold external resources (connection pools, sockets,
+        etc.) should override this to perform cleanup.  The default
+        implementation is a no-op so that adapters without external
+        resources (e.g. the in-memory cache) work without changes.
+        """
+
     @abstractmethod
     def ping(self) -> bool:
         """Healthcheck to verify cache is active and accessible"""
