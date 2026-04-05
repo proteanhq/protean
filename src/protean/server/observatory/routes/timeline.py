@@ -80,6 +80,18 @@ def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
 # ---------------------------------------------------------------------------
 
 
+def _domain_from_stream(stream: str | None) -> str | None:
+    """Extract the domain name from a Protean stream name.
+
+    Protean streams follow the format ``<domain>::<aggregate>-<id>``
+    (e.g. ``fulfillment::fulfillment-305d2c42``).  Returns the portion
+    before ``::`` or ``None`` if the stream doesn't contain the separator.
+    """
+    if not stream or "::" not in stream:
+        return None
+    return stream.split("::")[0]
+
+
 def _serialize_message(raw_msg: dict[str, Any], domain_name: str) -> dict[str, Any]:
     """Convert a raw event store message dict to a JSON-safe timeline entry."""
     metadata = raw_msg.get("metadata", {})
@@ -214,7 +226,10 @@ def collect_all_events(
                     stream = msg.get("stream_name", "")
                     if ":snapshot-" in stream or msg.get("type") == "SNAPSHOT":
                         continue
-                    all_events.append((msg, domain.name))
+                    # Derive domain from stream prefix so events from a
+                    # shared MessageDB get the correct domain attribution
+                    msg_domain = _domain_from_stream(stream) or domain.name
+                    all_events.append((msg, msg_domain))
         except Exception:
             logger.debug("Failed to read events from %s", domain.name, exc_info=True)
 
@@ -723,7 +738,8 @@ def _group_by_correlation(
                         continue
                     cid = _extract_correlation_id(msg)
                     if cid:
-                        groups[cid].append((msg, domain.name))
+                        msg_domain = _domain_from_stream(stream) or domain.name
+                        groups[cid].append((msg, msg_domain))
         except Exception:
             logger.debug(
                 "Failed to read events from %s for grouping",
