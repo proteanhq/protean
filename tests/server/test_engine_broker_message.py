@@ -1,7 +1,8 @@
-"""Tests for Engine.handle_broker_message (engine.py lines 386-440).
+"""Tests for Engine.handle_broker_message.
 
 Covers the async broker message handling path: shutdown guard, success
-and failure flows, message_in_context lifecycle.
+and failure flows, message_in_context lifecycle, and source message_id
+extraction from broker payloads.
 """
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Processing
 from protean.server import Engine
+from protean.server.engine import _extract_source_message_id
 from protean.utils.eventing import Message
 from protean.utils.globals import g
 
@@ -224,3 +226,122 @@ class TestContextCleanupOnFailure:
             assert _captured_contexts[0].metadata.headers.id == "msg-400"
             # But cleaned up after the call
             assert g.get("message_in_context") is None
+
+
+# ---------------------------------------------------------------------------
+# 7. _extract_source_message_id unit tests
+# ---------------------------------------------------------------------------
+class TestExtractSourceMessageId:
+    def test_extracts_from_protean_message_format(self):
+        """Standard Protean broker message has metadata.headers.id."""
+        message = {
+            "data": {"foo": "bar"},
+            "metadata": {
+                "headers": {"id": "catalogue::product-6ed888bb-1.1"},
+            },
+        }
+        assert _extract_source_message_id(message) == "catalogue::product-6ed888bb-1.1"
+
+    def test_returns_none_for_missing_metadata(self):
+        """Raw external message without metadata."""
+        assert _extract_source_message_id({"data": {"foo": "bar"}}) is None
+
+    def test_returns_none_for_missing_headers(self):
+        assert _extract_source_message_id({"metadata": {}}) is None
+
+    def test_returns_none_for_missing_id(self):
+        assert _extract_source_message_id({"metadata": {"headers": {}}}) is None
+
+    def test_returns_none_for_empty_string_id(self):
+        assert _extract_source_message_id({"metadata": {"headers": {"id": ""}}}) is None
+
+    def test_returns_none_for_whitespace_id(self):
+        assert (
+            _extract_source_message_id({"metadata": {"headers": {"id": "   "}}}) is None
+        )
+
+    def test_returns_none_for_none_id(self):
+        assert (
+            _extract_source_message_id({"metadata": {"headers": {"id": None}}}) is None
+        )
+
+    def test_strips_whitespace(self):
+        message = {"metadata": {"headers": {"id": "  msg-123  "}}}
+        assert _extract_source_message_id(message) == "msg-123"
+
+    def test_returns_none_for_non_string_id(self):
+        """Non-string id values are rejected."""
+        assert _extract_source_message_id({"metadata": {"headers": {"id": 42}}}) is None
+
+
+# ---------------------------------------------------------------------------
+# 8. Source message_id preferred over broker delivery ID
+# ---------------------------------------------------------------------------
+class TestSourceMessageIdPreferredOverDeliveryId:
+    @pytest.mark.asyncio
+    async def test_uses_source_message_id_from_payload(self, test_domain):
+        """When payload contains metadata.headers.id, it takes precedence
+        over the broker delivery ID for causation_id propagation."""
+        _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        source_event_id = "ordering::order-747b772c-9a-1.1"
+        redis_delivery_id = "1775350249700-0"
+
+        await engine.handle_broker_message(
+            ContextCapturingSubscriber,
+            {
+                "data": {"order_id": "123"},
+                "metadata": {
+                    "headers": {"id": source_event_id, "type": "OrderShipped"},
+                    "domain": {"correlation_id": "corr-abc"},
+                },
+            },
+            message_id=redis_delivery_id,
+            stream="ctx_stream",
+        )
+
+        assert len(_captured_contexts) == 1
+        msg = _captured_contexts[0]
+        assert isinstance(msg, Message)
+        # Source message_id from payload, NOT the Redis delivery ID
+        assert msg.metadata.headers.id == source_event_id
+        assert msg.metadata.headers.id != redis_delivery_id
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_delivery_id_for_raw_messages(self, test_domain):
+        """When payload has no metadata.headers.id (raw external message),
+        the broker delivery ID is used as fallback."""
+        _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        redis_delivery_id = "1775350249700-0"
+
+        await engine.handle_broker_message(
+            ContextCapturingSubscriber,
+            {"raw_field": "external_data"},
+            message_id=redis_delivery_id,
+            stream="ctx_stream",
+        )
+
+        assert len(_captured_contexts) == 1
+        msg = _captured_contexts[0]
+        assert msg.metadata.headers.id == redis_delivery_id
+
+    @pytest.mark.asyncio
+    async def test_falls_back_when_embedded_id_is_empty(self, test_domain):
+        """Empty/whitespace metadata.headers.id falls back to delivery ID."""
+        _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        redis_delivery_id = "1775350249700-0"
+
+        await engine.handle_broker_message(
+            ContextCapturingSubscriber,
+            {"metadata": {"headers": {"id": ""}}},
+            message_id=redis_delivery_id,
+            stream="ctx_stream",
+        )
+
+        assert len(_captured_contexts) == 1
+        assert _captured_contexts[0].metadata.headers.id == redis_delivery_id
