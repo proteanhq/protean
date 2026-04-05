@@ -27,6 +27,7 @@ from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import (
     _build_causation_tree_from_group,
     _extract_aggregate_id,
+    _domain_from_stream,
     _extract_event_type,
     _extract_kind,
     _extract_message_id,
@@ -226,6 +227,52 @@ class TestSerializeMessage:
         assert result["message_id"] == "x"
         # Falls back to top-level global_position (None here)
         assert result["global_position"] is None
+
+
+# ---------------------------------------------------------------------------
+# _domain_from_stream
+# ---------------------------------------------------------------------------
+
+
+class TestDomainFromStream:
+    def test_extracts_domain_from_standard_stream(self):
+        assert _domain_from_stream("fulfillment::fulfillment-305d2c42") == "fulfillment"
+
+    def test_extracts_domain_from_command_stream(self):
+        assert _domain_from_stream("ordering::order:command-1d9abc") == "ordering"
+
+    def test_extracts_domain_from_fact_stream(self):
+        assert _domain_from_stream("catalogue::product-fact-abc") == "catalogue"
+
+    def test_returns_none_for_stream_without_separator(self):
+        assert _domain_from_stream("user-123") is None
+
+    def test_returns_none_for_empty_string(self):
+        assert _domain_from_stream("") is None
+
+    def test_returns_none_for_none(self):
+        assert _domain_from_stream(None) is None
+
+
+class TestSerializeMessageDomainDerivation:
+    """_serialize_message uses the domain_name parameter directly.
+    Domain derivation from stream happens at the caller level
+    (collect_all_events / _group_by_correlation)."""
+
+    def test_uses_domain_name_parameter(self):
+        raw_msg = {
+            "type": "Fulfillment.FulfillmentCreated.v1",
+            "stream_name": "fulfillment::fulfillment-305d2c42",
+            "metadata": {"headers": {"id": "msg-1"}, "domain": {"kind": "EVENT"}},
+        }
+        # Caller is responsible for deriving the correct domain name
+        result = _serialize_message(raw_msg, "fulfillment")
+        assert result["domain"] == "fulfillment"
+
+    def test_passes_through_whatever_domain_name_given(self):
+        raw_msg = {"type": "SomeEvent", "stream_name": "ordering::order-abc"}
+        result = _serialize_message(raw_msg, "custom_name")
+        assert result["domain"] == "custom_name"
 
 
 class TestSerializeMessageDetail:
