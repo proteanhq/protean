@@ -87,8 +87,11 @@ class Providers(collections.abc.MutableMapping):
     def close(self) -> None:
         """Close all provider connections and release resources."""
         if self._providers:
-            for provider in self._providers.values():
-                provider.close()
+            for name, provider in self._providers.items():
+                try:
+                    provider.close()
+                except Exception:
+                    logger.exception("Error closing provider '%s'", name)
             logger.debug("All providers closed")
 
     def _initialize(self):

@@ -888,7 +888,18 @@ class Engine:
             tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
             if tasks:
                 logger.debug(f"Waiting for {len(tasks)} in-flight tasks to complete...")
-                _done, pending = await asyncio.wait(tasks, timeout=10.0)
+                done, pending = await asyncio.wait(tasks, timeout=10.0)
+
+                # Retrieve exceptions from completed tasks so Python doesn't
+                # emit "Task exception was never retrieved" warnings.
+                for task in done:
+                    if task.done() and not task.cancelled() and task.exception():
+                        logger.debug(
+                            "Task %s raised during shutdown: %s",
+                            task.get_name(),
+                            task.exception(),
+                        )
+
                 if pending:
                     logger.debug(
                         f"Cancelling {len(pending)} tasks that didn't finish in time"

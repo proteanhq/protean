@@ -43,6 +43,7 @@ class EventStore:
         """Close the event store and release all connections."""
         if self._event_store is not None:
             self._event_store.close()
+            self._event_store = None
             logger.debug("Event store closed")
 
     def _initialize_event_store(self) -> "BaseEventStore":

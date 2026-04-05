@@ -36,8 +36,11 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
     def close(self) -> None:
         """Close all broker connections and release resources."""
         if self._brokers:
-            for broker in self._brokers.values():
-                broker.close()
+            for name, broker in self._brokers.items():
+                try:
+                    broker.close()
+                except Exception:
+                    logger.exception("Error closing broker '%s'", name)
             logger.debug("All brokers closed")
 
     def _initialize(self) -> None:

@@ -43,8 +43,11 @@ class Caches(collections.abc.MutableMapping):
     def close(self) -> None:
         """Close all cache connections and release resources."""
         if self._caches:
-            for cache in self._caches.values():
-                cache.close()
+            for name, cache in self._caches.items():
+                try:
+                    cache.close()
+                except Exception:
+                    logger.exception("Error closing cache '%s'", name)
             logger.debug("All caches closed")
 
     def _initialize(self):

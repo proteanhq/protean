@@ -772,7 +772,9 @@ class Domain:
 
         Shuts down adapters in reverse initialization order so that
         dependents close before their dependencies.
-        Safe to call multiple times — each adapter's close() is idempotent.
+        Repeated calls delegate to the underlying adapters; each registry
+        guards against double-close but behavior depends on individual
+        adapter implementations.
         """
         logger.info("Closing domain infrastructure...")
 
