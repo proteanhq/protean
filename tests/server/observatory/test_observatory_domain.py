@@ -7,7 +7,10 @@ Covers:
 - base.html: Sidebar navigation entry for Domain
 """
 
+from unittest.mock import MagicMock
+
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
@@ -16,6 +19,7 @@ from protean.server.observatory.routes.domain import (
     _build_links,
     _build_nodes,
     _build_stats,
+    create_domain_router,
 )
 
 
@@ -364,6 +368,148 @@ class TestBuildLinks:
         assert link["target"] == "app.Inventory"
         assert link["type"] == "event"
 
+    def test_skips_events_with_empty_type(self):
+        """Events without __type__ should not be indexed."""
+        clusters = {
+            "app.Order": {
+                "events": {
+                    "app.SomeEvent": {"__type__": ""},
+                    "app.OtherEvent": {},
+                },
+                "event_handlers": {},
+                "aggregate": {},
+            },
+        }
+        links = _build_links(clusters, {"process_managers": {}})
+        assert links == []
+
+    def test_skips_same_aggregate_handler(self):
+        """Handlers consuming events from their own aggregate are not links."""
+        clusters = {
+            "app.Order": {
+                "events": {
+                    "app.OrderPlaced": {"__type__": "Order.OrderPlaced.v1"},
+                },
+                "event_handlers": {
+                    "app.OrderSelfHandler": {
+                        "handlers": {"Order.OrderPlaced.v1": ["on_placed"]},
+                    },
+                },
+                "aggregate": {},
+            },
+        }
+        links = _build_links(clusters, {"process_managers": {}})
+        assert links == []
+
+    def test_deduplicates_links(self):
+        """Same cross-aggregate edge from multiple handlers should appear once."""
+        clusters = {
+            "app.Order": {
+                "events": {
+                    "app.OrderPlaced": {"__type__": "Order.OrderPlaced.v1"},
+                },
+                "event_handlers": {},
+                "aggregate": {},
+            },
+            "app.Inventory": {
+                "events": {},
+                "event_handlers": {
+                    "app.Handler1": {
+                        "handlers": {"Order.OrderPlaced.v1": ["h1"]},
+                    },
+                    "app.Handler2": {
+                        "handlers": {"Order.OrderPlaced.v1": ["h2"]},
+                    },
+                },
+                "aggregate": {},
+            },
+        }
+        links = _build_links(clusters, {"process_managers": {}})
+        assert len(links) == 1
+
+    def test_process_manager_links(self):
+        """PM spanning two aggregates should create a link between them."""
+        clusters = {
+            "app.Order": {
+                "events": {
+                    "app.OrderPlaced": {"__type__": "Order.OrderPlaced.v1"},
+                },
+                "event_handlers": {},
+                "aggregate": {},
+            },
+            "app.Payment": {
+                "events": {
+                    "app.PaymentReceived": {"__type__": "Payment.PaymentReceived.v1"},
+                },
+                "event_handlers": {},
+                "aggregate": {},
+            },
+        }
+        flows = {
+            "process_managers": {
+                "app.fulfillment.FulfillmentProcess": {
+                    "name": "FulfillmentProcess",
+                    "handlers": {
+                        "Order.OrderPlaced.v1": {"methods": ["on_order_placed"]},
+                        "Payment.PaymentReceived.v1": {"methods": ["on_payment"]},
+                    },
+                },
+            },
+        }
+        links = _build_links(clusters, flows)
+        assert len(links) == 1
+        link = links[0]
+        assert link["type"] == "process_manager"
+        assert link["label"] == "FulfillmentProcess"
+        # Both aggregates should be in source/target
+        assert {link["source"], link["target"]} == {"app.Order", "app.Payment"}
+
+    def test_process_manager_single_aggregate_no_link(self):
+        """PM touching only one aggregate should create no links."""
+        clusters = {
+            "app.Order": {
+                "events": {
+                    "app.OrderPlaced": {"__type__": "Order.OrderPlaced.v1"},
+                },
+                "event_handlers": {},
+                "aggregate": {},
+            },
+        }
+        flows = {
+            "process_managers": {
+                "app.OrderProcess": {
+                    "name": "OrderProcess",
+                    "handlers": {
+                        "Order.OrderPlaced.v1": {"methods": ["on_placed"]},
+                    },
+                },
+            },
+        }
+        links = _build_links(clusters, flows)
+        assert links == []
+
+    def test_pm_handler_unknown_event_ignored(self):
+        """PM handler referencing unknown event type is safely ignored."""
+        clusters = {
+            "app.Order": {
+                "events": {},
+                "event_handlers": {},
+                "aggregate": {},
+            },
+        }
+        flows = {
+            "process_managers": {
+                "app.SomeProcess": {
+                    "name": "SomeProcess",
+                    "handlers": {
+                        "Unknown.Event.v1": {"methods": ["on_unknown"]},
+                    },
+                },
+            },
+        }
+        links = _build_links(clusters, flows)
+        assert links == []
+
 
 class TestBuildStats:
     def test_counts_from_elements_index(self):
@@ -429,3 +575,36 @@ class TestDomainJSContent:
         js = client.get("/static/js/domain.js").text
         assert "_showDetail" in js
         assert "_hideDetail" in js
+
+
+# ---------------------------------------------------------------------------
+# Router Factory Edge Cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestCreateDomainRouterEdgeCases:
+    def test_empty_domains_returns_503(self):
+        """Router with no domains returns 503 on /domain/ir."""
+        app = FastAPI()
+        app.include_router(create_domain_router([]), prefix="/api")
+        client = TestClient(app)
+        response = client.get("/api/domain/ir")
+        assert response.status_code == 503
+        assert response.json()["error"] == "Domain IR unavailable"
+
+    def test_ir_build_failure_returns_503(self):
+        """Router gracefully handles IR build failure."""
+        mock_domain = MagicMock()
+        mock_domain.name = "broken"
+        mock_domain.domain_context.return_value.__enter__ = MagicMock(
+            side_effect=RuntimeError("boom")
+        )
+        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+
+        app = FastAPI()
+        app.include_router(create_domain_router([mock_domain]), prefix="/api")
+        client = TestClient(app)
+        response = client.get("/api/domain/ir")
+        assert response.status_code == 503
+        assert response.json()["error"] == "Domain IR unavailable"
