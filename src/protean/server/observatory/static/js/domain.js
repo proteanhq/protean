@@ -172,57 +172,15 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Detail panel
+  // Detail panel (delegated to DomainDetail module)
   // ---------------------------------------------------------------------------
 
   function _showDetail(fqn, data) {
-    var panel = document.getElementById('dv-detail-panel');
-    var title = document.getElementById('dv-detail-title');
-    var content = document.getElementById('dv-detail-content');
-    if (!panel || !title || !content) return;
-
     var cluster = (data.clusters || {})[fqn];
     if (!cluster) return;
-
-    var agg = cluster.aggregate || {};
-    title.textContent = agg.name || fqn;
-
-    var html = '<div class="text-xs text-base-content/50 font-mono mb-3">' + _esc(fqn) + '</div>';
-
-    // Element counts
-    var sections = [
-      ['Commands', cluster.commands],
-      ['Events', cluster.events],
-      ['Entities', cluster.entities],
-      ['Value Objects', cluster.value_objects],
-      ['Command Handlers', cluster.command_handlers],
-      ['Event Handlers', cluster.event_handlers],
-    ];
-
-    sections.forEach(function (s) {
-      var label = s[0];
-      var items = s[1] || {};
-      var keys = Object.keys(items);
-      if (keys.length === 0) return;
-
-      html += '<div class="mb-2">';
-      html += '<div class="text-xs font-semibold text-base-content/60 mb-1">' + _esc(label) +
-        ' (' + keys.length + ')</div>';
-      html += '<div class="flex flex-wrap gap-1">';
-      keys.forEach(function (k) {
-        var name = items[k].name || k.split('.').pop();
-        html += '<span class="badge badge-sm badge-ghost">' + _esc(name) + '</span>';
-      });
-      html += '</div></div>';
-    });
-
-    content.innerHTML = html;
-    panel.classList.remove('hidden');
-  }
-
-  function _hideDetail() {
-    var panel = document.getElementById('dv-detail-panel');
-    if (panel) panel.classList.add('hidden');
+    if (typeof DomainDetail !== 'undefined') {
+      DomainDetail.show(fqn, cluster);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -266,10 +224,9 @@
     // Tab click handler
     $tabs.addEventListener('click', _onTabClick);
 
-    // Detail panel close
-    var closeBtn = document.getElementById('dv-detail-close');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', _hideDetail);
+    // Initialize detail panel (close button, backdrop, Escape key)
+    if (typeof DomainDetail !== 'undefined') {
+      DomainDetail.init();
     }
 
     // Node card click delegation (guard for non-Element targets)

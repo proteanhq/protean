@@ -77,6 +77,16 @@ def multi_agg_domain():
 
 
 @pytest.fixture
+def observatory(test_domain):
+    return Observatory(domains=[test_domain])
+
+
+@pytest.fixture
+def client(observatory):
+    return TestClient(observatory.app)
+
+
+@pytest.fixture
 def multi_agg_observatory(multi_agg_domain):
     return Observatory(domains=[multi_agg_domain])
 
