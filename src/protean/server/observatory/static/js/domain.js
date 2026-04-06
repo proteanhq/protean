@@ -84,6 +84,11 @@
       DomainTopology.render('#dv-topology-container', data, function (fqn) {
         if (_data) _showDetail(fqn, _data);
       });
+    } else {
+      container.innerHTML =
+        '<div class="flex items-center justify-center h-64 px-4 text-center text-base-content/60">' +
+        'Topology visualization could not be loaded. Please refresh the page.' +
+        '</div>';
     }
   }
 

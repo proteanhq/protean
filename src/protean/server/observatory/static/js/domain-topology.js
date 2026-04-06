@@ -80,6 +80,9 @@ var DomainTopology = (function () {
     var container = document.querySelector(containerSelector);
     if (!container) return;
 
+    // Clear any stale DOM from a previous render (single-node HTML, empty message)
+    container.innerHTML = '';
+
     var nodes = graphData.nodes || [];
     if (nodes.length === 0) {
       container.innerHTML =
@@ -486,6 +489,8 @@ var DomainTopology = (function () {
     if (!event.active) _simulation.alphaTarget(0);
     d.fx = null;
     d.fy = null;
+    // Re-render minimap to reflect new node positions after drag
+    _renderMinimap();
   }
 
   // ---------------------------------------------------------------------------
@@ -512,14 +517,14 @@ var DomainTopology = (function () {
     });
 
     _g.selectAll('.dv-link').each(function (l) {
-      var active = connectedIds[_linkId(l.source)] && connectedIds[_linkId(l.target)];
+      var active = _linkId(l.source) === node.id || _linkId(l.target) === node.id;
       var sel = d3.select(this);
       sel.classed('dv-dimmed', highlight && !active);
       sel.classed('dv-highlighted', highlight && !!active);
     });
 
     _g.selectAll('.dv-link-label').each(function (l) {
-      var active = connectedIds[_linkId(l.source)] && connectedIds[_linkId(l.target)];
+      var active = _linkId(l.source) === node.id || _linkId(l.target) === node.id;
       d3.select(this).classed('dv-dimmed', highlight && !active);
     });
   }
