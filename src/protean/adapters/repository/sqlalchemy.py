@@ -25,6 +25,7 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec
 from protean.exceptions import (
     ConfigurationError,
+    ExpectedVersionError,
     IncorrectUsageError,
     ObjectNotFoundError,
 )
@@ -511,33 +512,72 @@ class SADAO(BaseDAO):
 
         return model_obj
 
-    def _update(self, model_obj):
-        """Update a record in the sqlalchemy database"""
+    def _update(self, model_obj: Any, expected_version: int | None = None):
+        """Update a record in the sqlalchemy database.
+
+        When ``expected_version`` is not ``None``, the UPDATE is conditional:
+        ``WHERE _version = :expected``.  If no row matches, the aggregate was
+        modified concurrently and ``ExpectedVersionError`` is raised.
+        """
         conn = self._get_session()
         assert conn is not None
 
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
 
-        # Fetch the record from database
         identifier = getattr(model_obj, entity_id_field.attribute_name)
-        db_item = conn.get(self.database_model_cls, identifier)
 
-        if db_item is None:
-            if self._is_standalone:
-                conn.rollback()
-                conn.close()
-            raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
+        if expected_version is not None:
+            # Atomic conditional update — no SELECT needed
+            mapper = inspect(self.database_model_cls)
+            table = mapper.local_table
+
+            # Build SET clause from changed attributes
+            values: dict[str, Any] = {}
+            for attribute in attributes(self.entity_cls):
+                if attribute != entity_id_field.attribute_name:
+                    values[attribute] = getattr(model_obj, attribute)
+
+            id_col = getattr(table.c, entity_id_field.attribute_name)
+            version_col = table.c._version
+
+            stmt = (
+                table.update()
+                .where(id_col == identifier)
+                .where(version_col == expected_version)
+                .values(**values)
             )
+            result = conn.execute(stmt)
 
-        # Sync DB Record with current changes
-        for attribute in attributes(self.entity_cls):
-            if attribute != entity_id_field.attribute_name and getattr(
-                model_obj, attribute
-            ) != getattr(db_item, attribute):
-                setattr(db_item, attribute, getattr(model_obj, attribute))
+            if result.rowcount == 0:
+                if self._is_standalone:
+                    conn.rollback()
+                    conn.close()
+                raise ExpectedVersionError(
+                    f"Wrong expected version: {expected_version} "
+                    f"(Aggregate: {self.entity_cls.__name__}({identifier}))"
+                )
+
+            # Expire cached ORM state so subsequent reads see the new values
+            conn.expire_all()
+        else:
+            # Non-versioned update — fetch and sync (entities, non-aggregate saves)
+            db_item = conn.get(self.database_model_cls, identifier)
+
+            if db_item is None:
+                if self._is_standalone:
+                    conn.rollback()
+                    conn.close()
+                raise ObjectNotFoundError(
+                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    f"does not exist."
+                )
+
+            for attribute in attributes(self.entity_cls):
+                if attribute != entity_id_field.attribute_name and getattr(
+                    model_obj, attribute
+                ) != getattr(db_item, attribute):
+                    setattr(db_item, attribute, getattr(model_obj, attribute))
 
         self._commit_if_standalone(conn)
 

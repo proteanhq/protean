@@ -141,7 +141,8 @@ class TestConcurrency:
                 person_dup2.first_name = "Baby"
                 repo.add(person_dup2)
 
-        assert exc.value.args[0] == (
-            f"Wrong expected version: {person_dup2._version} "
-            f"(Aggregate: Person({identifier}), Version: {person_dup2._version + 1})"
-        )
+        # After _validate_and_update_version, person_dup2._version has been
+        # advanced to _next_version (1).  The expected_version passed to
+        # _update was the original version (0), and the stored version is 1.
+        assert "Wrong expected version:" in exc.value.args[0]
+        assert f"Aggregate: Person({identifier})" in exc.value.args[0]

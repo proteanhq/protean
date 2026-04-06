@@ -1,9 +1,11 @@
 """Generic optimistic locking tests that run against all database providers.
 
-Covers version increment on save, concurrent update detection, and version
-preservation through persist/retrieve round-trips.
+Covers version increment on save, concurrent update detection, version
+preservation through persist/retrieve round-trips, and true multi-threaded
+race condition detection.
 """
 
+import threading
 from uuid import uuid4
 
 import pytest
@@ -150,3 +152,62 @@ class TestVersionRoundTrip:
         updated = test_domain.repository_for(Counter).get(identifier)
         assert updated._version == 1
         assert updated.value == 5
+
+
+@pytest.mark.basic_storage
+class TestThreadedConcurrentUpdate:
+    """Verify that truly concurrent (multi-threaded) writes are safe.
+
+    Two threads modify the same aggregate simultaneously; exactly one must
+    get ExpectedVersionError.
+    """
+
+    def test_concurrent_threads_one_wins_one_fails(self, test_domain):
+        identifier = str(uuid4())
+        counter = Counter(id=identifier, name="threaded-race", value=0)
+
+        with UnitOfWork():
+            test_domain.repository_for(Counter).add(counter)
+
+        # Both threads load the same version
+        copy1 = test_domain.repository_for(Counter).get(identifier)
+        copy2 = test_domain.repository_for(Counter).get(identifier)
+
+        barrier = threading.Barrier(2, timeout=5)
+        results: dict[str, Exception | None] = {"t1": None, "t2": None}
+
+        def update(copy, value, key):
+            # Each thread needs its own domain context
+            ctx = test_domain.domain_context()
+            ctx.push()
+            try:
+                copy.value = value
+                barrier.wait()  # Synchronize so both threads write at the same time
+                with UnitOfWork():
+                    test_domain.repository_for(Counter).add(copy)
+            except Exception as exc:
+                results[key] = exc
+            finally:
+                ctx.pop()
+
+        t1 = threading.Thread(target=update, args=(copy1, 10, "t1"))
+        t2 = threading.Thread(target=update, args=(copy2, 20, "t2"))
+
+        t1.start()
+        t2.start()
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+        assert not t1.is_alive(), "Thread t1 did not complete within timeout"
+        assert not t2.is_alive(), "Thread t2 did not complete within timeout"
+
+        # Exactly one thread must have failed with ExpectedVersionError
+        errors = [v for v in results.values() if v is not None]
+        assert len(errors) == 1, (
+            f"Expected exactly one failure, got {len(errors)}: {results}"
+        )
+        assert isinstance(errors[0], ExpectedVersionError)
+
+        # The winning value persisted, version advanced to 1
+        final = test_domain.repository_for(Counter).get(identifier)
+        assert final._version == 1
+        assert final.value in (10, 20)

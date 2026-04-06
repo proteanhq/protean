@@ -7,7 +7,7 @@ from uuid import UUID
 
 import elasticsearch_dsl
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import NotFoundError
+from elasticsearch.exceptions import ConflictError, NotFoundError
 from elasticsearch_dsl import (
     Boolean as ESBoolean,
     Date as ESDate,
@@ -24,7 +24,12 @@ from elasticsearch_dsl import (
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
-from protean.exceptions import DatabaseError, NotSupportedError, ObjectNotFoundError
+from protean.exceptions import (
+    DatabaseError,
+    ExpectedVersionError,
+    NotSupportedError,
+    ObjectNotFoundError,
+)
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import IdentityStrategy, IdentityType, fully_qualified_name
@@ -386,16 +391,19 @@ class ElasticsearchDAO(BaseDAO):
 
         return model_obj
 
-    def _update(self, model_obj: Any):
-        """Update a database model object in the data store and return it"""
+    def _update(self, model_obj: Any, expected_version: int | None = None):
+        """Update a database model object in the data store and return it.
+
+        When ``expected_version`` is set, uses ES native ``if_seq_no`` /
+        ``if_primary_term`` for atomic optimistic concurrency control.
+        """
         conn = self.provider.get_connection()
 
         identifier = model_obj.meta.id
 
-        # Fetch the record from database
+        # Fetch the record to verify existence and capture seq_no/primary_term
         try:
-            # Calling `get` will raise `NotFoundError` if record was not found
-            self.database_model_cls.get(
+            existing = self.database_model_cls.get(
                 id=identifier, using=conn, index=self.database_model_cls._index._name
             )
         except NotFoundError as exc:
@@ -405,12 +413,37 @@ class ElasticsearchDAO(BaseDAO):
                 f"does not exist."
             )
 
+        if expected_version is not None:
+            # Fast-fail with a clear error message including version numbers.
+            # The ES native if_seq_no/if_primary_term guard below is the true
+            # atomic check, but its 409 response lacks version details.
+            stored_version = getattr(existing, "_version", None)
+            if stored_version != expected_version:
+                raise ExpectedVersionError(
+                    f"Wrong expected version: {expected_version} "
+                    f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
+                    f"Version: {stored_version})"
+                )
+
         try:
-            model_obj.save(
-                refresh=True,
-                index=self.database_model_cls._index._name,
-                using=conn,
-            )
+            save_kwargs: dict[str, Any] = {
+                "refresh": True,
+                "index": self.database_model_cls._index._name,
+                "using": conn,
+            }
+            # Use ES native OCC: if another write sneaked in between our
+            # GET and this SAVE, ES will reject it with a 409 Conflict.
+            if expected_version is not None:
+                save_kwargs["if_seq_no"] = existing.meta.seq_no
+                save_kwargs["if_primary_term"] = existing.meta.primary_term
+
+            model_obj.save(**save_kwargs)
+        except ConflictError as exc:
+            # ES rejected the write because seq_no/primary_term changed
+            raise ExpectedVersionError(
+                f"Wrong expected version: {expected_version} "
+                f"(Aggregate: {self.entity_cls.__name__}({identifier}))"
+            ) from exc
         except Exception as exc:
             logger.error(f"Error while updating: {exc}")
             raise DatabaseError(

@@ -1,3 +1,4 @@
+import threading
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -43,6 +44,10 @@ class MemoryMessage(BaseAggregate):
 
 
 class MemoryMessageRepository(BaseRepository):
+    def __init__(self, domain: Any, provider: Any) -> None:
+        super().__init__(domain, provider)
+        self._write_lock = threading.Lock()
+
     def is_category(self, stream_name: str) -> bool:
         if not stream_name:
             return False
@@ -68,29 +73,30 @@ class MemoryMessageRepository(BaseRepository):
         metadata: Dict = None,
         expected_version: int = None,
     ) -> int:
-        # Fetch stream version
-        _stream_version = self.stream_version(stream_name)
+        with self._write_lock:
+            # Version check + write are now atomic under the lock
+            _stream_version = self.stream_version(stream_name)
 
-        if expected_version is not None and expected_version != _stream_version:
-            raise ValueError(
-                f"Wrong expected version: {expected_version} "
-                f"(Stream: {stream_name}, Stream Version: {_stream_version})"
+            if expected_version is not None and expected_version != _stream_version:
+                raise ValueError(
+                    f"Wrong expected version: {expected_version} "
+                    f"(Stream: {stream_name}, Stream Version: {_stream_version})"
+                )
+
+            next_position = _stream_version + 1
+
+            self.add(
+                MemoryMessage(
+                    stream_name=stream_name,
+                    position=next_position,
+                    type=message_type,
+                    data=data,
+                    metadata=metadata,
+                    time=datetime.now(UTC),
+                )
             )
 
-        next_position = _stream_version + 1
-
-        self.add(
-            MemoryMessage(
-                stream_name=stream_name,
-                position=next_position,
-                type=message_type,
-                data=data,
-                metadata=metadata,
-                time=datetime.now(UTC),
-            )
-        )
-
-        return next_position
+            return next_position
 
     def read(
         self,
