@@ -417,7 +417,9 @@ class ElasticsearchDAO(BaseDAO):
             # Fast-fail with a clear error message including version numbers.
             # The ES native if_seq_no/if_primary_term guard below is the true
             # atomic check, but its 409 response lacks version details.
-            stored_version = getattr(existing, "_version", None)
+            # Note: _version is remapped to entity_version in ES to avoid
+            # conflict with ES's internal _version metadata field.
+            stored_version = getattr(existing, "entity_version", None)
             if stored_version != expected_version:
                 raise ExpectedVersionError(
                     f"Wrong expected version: {expected_version} "

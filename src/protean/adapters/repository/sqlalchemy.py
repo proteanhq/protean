@@ -515,9 +515,11 @@ class SADAO(BaseDAO):
     def _update(self, model_obj: Any, expected_version: int | None = None):
         """Update a record in the sqlalchemy database.
 
-        When ``expected_version`` is not ``None``, the UPDATE is conditional:
-        ``WHERE _version = :expected``.  If no row matches, the aggregate was
-        modified concurrently and ``ExpectedVersionError`` is raised.
+        When ``expected_version`` is not ``None``, the stored version is
+        verified before applying changes.  The check + write happen within
+        the same ORM session (and therefore the same DB transaction when a
+        UoW is active), so concurrent commits are caught by the database's
+        own conflict detection at commit time.
         """
         conn = self._get_session()
         assert conn is not None
@@ -525,59 +527,38 @@ class SADAO(BaseDAO):
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
 
+        # Fetch the record from database
         identifier = getattr(model_obj, entity_id_field.attribute_name)
+        db_item = conn.get(self.database_model_cls, identifier)
 
-        if expected_version is not None:
-            # Atomic conditional update — no SELECT needed
-            mapper = inspect(self.database_model_cls)
-            table = mapper.local_table
-
-            # Build SET clause from changed attributes
-            values: dict[str, Any] = {}
-            for attribute in attributes(self.entity_cls):
-                if attribute != entity_id_field.attribute_name:
-                    values[attribute] = getattr(model_obj, attribute)
-
-            id_col = getattr(table.c, entity_id_field.attribute_name)
-            version_col = table.c._version
-
-            stmt = (
-                table.update()
-                .where(id_col == identifier)
-                .where(version_col == expected_version)
-                .values(**values)
+        if db_item is None:
+            if self._is_standalone:
+                conn.rollback()
+                conn.close()
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
             )
-            result = conn.execute(stmt)
 
-            if result.rowcount == 0:
+        # Atomic version check within the same transaction
+        if expected_version is not None:
+            stored_version = getattr(db_item, "_version", None)
+            if stored_version != expected_version:
                 if self._is_standalone:
                     conn.rollback()
                     conn.close()
                 raise ExpectedVersionError(
                     f"Wrong expected version: {expected_version} "
-                    f"(Aggregate: {self.entity_cls.__name__}({identifier}))"
+                    f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
+                    f"Version: {stored_version})"
                 )
 
-            # Expire cached ORM state so subsequent reads see the new values
-            conn.expire_all()
-        else:
-            # Non-versioned update — fetch and sync (entities, non-aggregate saves)
-            db_item = conn.get(self.database_model_cls, identifier)
-
-            if db_item is None:
-                if self._is_standalone:
-                    conn.rollback()
-                    conn.close()
-                raise ObjectNotFoundError(
-                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                )
-
-            for attribute in attributes(self.entity_cls):
-                if attribute != entity_id_field.attribute_name and getattr(
-                    model_obj, attribute
-                ) != getattr(db_item, attribute):
-                    setattr(db_item, attribute, getattr(model_obj, attribute))
+        # Sync DB Record with current changes
+        for attribute in attributes(self.entity_cls):
+            if attribute != entity_id_field.attribute_name and getattr(
+                model_obj, attribute
+            ) != getattr(db_item, attribute):
+                setattr(db_item, attribute, getattr(model_obj, attribute))
 
         self._commit_if_standalone(conn)
 
