@@ -62,6 +62,11 @@
     if (activePanel) {
       activePanel.classList.remove('hidden');
     }
+
+    // Deferred render: event flows needs visible container for correct sizing
+    if (tab === 'event-flows' && !_flowsRendered && _data) {
+      _renderEventFlows(_data);
+    }
   }
 
   function _onTabClick(e) {
@@ -96,7 +101,12 @@
   // Event Flows — D3 Directed Acyclic Graph
   // ---------------------------------------------------------------------------
 
+  var _flowsRendered = false;
+
   function _renderEventFlows(data) {
+    // Defer rendering until the tab is visible (hidden panels have zero width)
+    if (_currentTab !== 'event-flows') return;
+
     var container = document.getElementById('dv-flows-container');
     if (!container) return;
 
@@ -105,6 +115,7 @@
     if (typeof DomainFlows !== 'undefined') {
       DomainFlows.render('#dv-flows-container', flowGraph);
       _wireFilterToggles();
+      _flowsRendered = true;
     } else {
       container.innerHTML =
         '<div class="flex items-center justify-center h-64 px-4 text-center text-base-content/60">' +

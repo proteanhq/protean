@@ -100,6 +100,7 @@ class TestBuildFlowGraph:
         assert result["nodes"] == []
         assert result["edges"] == []
 
+    @pytest.mark.no_test_domain
     def test_single_aggregate_produces_aggregate_node(self):
         from protean import Domain
         from protean.core.aggregate import BaseAggregate
