@@ -1,76 +1,86 @@
 ---
 name: changelog
-description: Generate and insert a CHANGELOG.md entry for the current branch's changes. Use when the user says "add changelog", "update changelog", "changelog entry", or when wrapping up a feature/fix and needing to document it. Also trigger when the /pr skill needs a changelog entry — this skill is designed to be composable. Trigger even when the user just says "document this change" or "what changed".
-argument-hint: "[Added|Changed|Deprecated|Removed|Fixed|Security]"
+description: Assemble changelog fragments into a CHANGELOG.md entry for a completed epic. Use when the user says "add changelog", "update changelog", "changelog entry", or when an epic is marked Done. Fragments live in `changes/` and are created per-PR by the /implement skill. This skill assembles them, groups by epic, and cleans up the fragments.
+argument-hint: "#epic-number [--title 'Epic Title']"
 ---
 
-# Smart Changelog Entry
+# Assemble Changelog from Fragments
 
-Analyze the current branch's changes, draft a changelog entry, and insert it into the correct section of CHANGELOG.md. The changelog is the project's communication channel with its users — every entry should help someone decide whether to upgrade and what to expect.
+Collect all fragment files in `changes/`, group them by epic, and insert a consolidated entry into `CHANGELOG.md` under `[Unreleased]`. Then delete the assembled fragments.
 
-## Understand what changed
+## Step 1: Identify the epic
+
+Parse `$ARGUMENTS` for an epic number (`#N` or bare number) and optional title (`--title`).
+
+If an epic number is provided, fetch its title and sub-issues:
+```bash
+gh issue view <NUMBER> -R proteanhq/protean --json title,body
+```
+
+List the sub-issue numbers so you know which fragments belong to this epic. If no epic is provided, assemble ALL fragments in `changes/`.
+
+## Step 2: Read all fragments
 
 ```bash
-git diff main...HEAD --stat
-git log main..HEAD --oneline
+ls changes/*.md 2>/dev/null | grep -v README.md
 ```
 
-Read the diffs carefully. Focus on what changed from a *user's* perspective — the capability that was added, the bug that was fixed, the behavior that shifted. File paths and line numbers are implementation details; the changelog reader cares about what they can now do (or can't, or must change).
+Each fragment is named `<issue-number>.<category>.md`. Parse the issue number and category from the filename. Read each file's content.
 
-## Categorize
+If assembling for a specific epic, only include fragments whose issue number is a sub-issue of that epic. If assembling all, include everything.
 
-Determine which subsection the entry belongs under:
+## Step 3: Group and format
 
-| Category | When to use | Signal in the diff |
-|----------|------------|-------------------|
-| **Added** | Entirely new capabilities | New classes, CLI commands, public methods, config options |
-| **Changed** | Existing behavior modified | Changed signatures, different defaults, altered semantics |
-| **Deprecated** | Marked for future removal | `DeprecationWarning`, `deprecated=` option added |
-| **Removed** | Previously deprecated, now gone | Deleted public APIs, removed config options |
-| **Fixed** | Bug corrections | Conditional fixes, edge case handling, error message fixes |
-| **Security** | Vulnerability patches | Auth fixes, input sanitization, dependency CVEs |
+Group fragments by category in this order: Added, Changed, Deprecated, Removed, Fixed, Security. Skip empty categories.
 
-If `$ARGUMENTS` specifies a category, use it directly. A single branch may warrant entries in multiple categories — for instance, a refactor that adds a new API and deprecates the old one needs both an **Added** and a **Deprecated** entry.
+Format as a per-epic section:
 
-## Draft the entry
+```markdown
+### <Epic Title> (#<epic-number>)
 
-The audience is a developer scanning the changelog before upgrading. They want to know:
-- What changed (in terms they recognize from using the framework)
-- Why it matters to them (especially for fixes and behavioral changes)
+#### Added
+- Fragment content from 752.added.md
+- Fragment content from 753.added.md
 
-**Writing style to follow** (based on this project's actual changelog):
-
-```
-- Add `protean schema generate` CLI command for JSON Schema output
-```
-```
-- Fix aggregate identity not being set when using `from_dict()` class method
-```
-```
-- `value_object_from_entity()` utility function that auto-generates a `BaseValueObject`
-  subclass mirroring an entity's fields, eliminating manual field duplication for
-  command/event payloads
+#### Fixed
+- Fragment content from 754.fixed.md
 ```
 
-Notice the patterns:
+If no epic context (assembling all fragments), use a flat structure without the epic heading — just the category subsections directly under `[Unreleased]`.
+
+## Step 4: Writing style check
+
+Before inserting, review each entry against the project's style:
+
 - Start with the feature/fix name or the affected API in backticks
 - Describe the user-visible outcome, not the files touched
-- For complex entries, one opening sentence followed by elaboration is fine
 - Bug fixes start with "Fix" and name the symptom the user would have seen
+- No file paths, no line numbers, no "Refactor internal handling of X"
 
-**Avoid these:**
-- "Update cli/schema.py to add generate subcommand" (file-centric, not user-centric)
-- "Fix bug in aggregate.py line 234" (meaningless to a user)
-- "Refactor internal handling of X" (if it's purely internal, it doesn't belong in the changelog)
+Rewrite entries that don't meet the bar. The fragments are drafts — the assembled changelog should read well as a whole.
 
-## Check for duplicates
+## Step 5: Insert into CHANGELOG.md
 
-Read the `[Unreleased]` section of `CHANGELOG.md`. If an existing entry already covers the same change, report it and suggest updating or extending that entry instead of adding a duplicate. This matters because multiple commits on a branch often touch the same feature — they should be one changelog entry, not three.
+Read `CHANGELOG.md`. Find the `## [Unreleased]` section. Insert the new epic section after any existing content under `[Unreleased]` but before the next `## [` version heading.
 
-## Insert the entry
+If there are already entries under `[Unreleased]` that aren't in epic sections (legacy flat entries), leave them as-is above the new epic section.
 
-Edit `CHANGELOG.md` to add the entry under the correct subsection within `[Unreleased]`. If the subsection doesn't exist yet, create it. The project uses this ordering: Added, Changed, Deprecated, Removed, Fixed, Security.
+## Step 6: Clean up fragments
 
-Place new entries at the end of their subsection (before the next `###` heading or the next `## [` version heading).
+Delete the assembled fragment files:
+```bash
+rm changes/<issue-number>.<category>.md
+```
 
-When invoked standalone, edit the file but don't commit — the user or the `/pr` skill handles that.
+Keep `changes/README.md` and `changes/.gitkeep`.
+
+## Step 7: Report
+
+Output a summary:
+```
+Assembled N fragments for epic #M — "Epic Title"
+Categories: Added (X), Fixed (Y), ...
+Fragments removed: list of files
+```
+
+Do not commit — the user or calling skill handles that.

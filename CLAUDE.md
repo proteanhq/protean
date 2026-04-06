@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Aim to make only minimal and necessary changes, avoiding any disruption to the eisting design.
 - Whenever possible, take advantage of components, utilities, or logic that have already been implemented to maintain consistency, reduce duplication, and streamline integration with the current system.
 - Always use the `-R proteanhq/protean` flag with `gh` CLI commands to explicitly target the correct repository.
-- **Every PR must include a `CHANGELOG.md` entry** under the `[Unreleased]` section. Use the appropriate subsection: Added, Changed, Deprecated, Removed, Fixed, or Security. The changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
+- **Changelog uses fragment files** to avoid merge conflicts. Each PR creates a file in `changes/<issue-number>.<category>.md` (e.g., `changes/752.added.md`). When an epic completes, `/changelog #<epic>` assembles fragments into `CHANGELOG.md` under `[Unreleased]` as a per-epic section, then deletes the fragments. Never edit `CHANGELOG.md` directly in a feature PR. The changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
 ## Git
 - Never override `git user.name` or `git user.email` — they are already configured correctly.
@@ -50,7 +50,7 @@ def old_method(self):
 1. **Identify** — does this rename, remove, or change the behavior of anything in `protean.*` that user code could depend on?
 2. **Classify** — Tier 1 (surface), Tier 2 (behavioral), or Tier 3 (structural)?
 3. **Mitigate** — apply the deprecation/flag/migration strategy described above, in the same PR
-4. **Document** — add a `CHANGELOG.md` entry under the appropriate section (Added, Changed, Deprecated, Removed, Fixed)
+4. **Document** — create a `changes/<issue>.<category>.md` fragment describing the breaking change and its deprecation path
 5. **Test** — ensure `protean check` can detect the deprecated usage where applicable
 
 ## Essential Commands

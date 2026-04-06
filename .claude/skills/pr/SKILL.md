@@ -1,12 +1,12 @@
 ---
 name: pr
-description: Create a pull request for the current branch following Protean's conventions — changelog entry, breaking change check, proper PR description, and issue linkage. Use this skill whenever the user says "create a PR", "open a pull request", "submit this for review", "push and create PR", or is wrapping up a piece of work and needs to get it reviewed. Also trigger when the user says "we're done with this issue" or "ship it" — those are PR signals even without the word "pull request".
+description: Create a pull request for the current branch following Protean's conventions — changelog fragment, breaking change check, proper PR description, and issue linkage. Use this skill whenever the user says "create a PR", "open a pull request", "submit this for review", "push and create PR", or is wrapping up a piece of work and needs to get it reviewed. Also trigger when the user says "we're done with this issue" or "ship it" — those are PR signals even without the word "pull request".
 argument-hint: "[#issue-number]"
 ---
 
 # Create a Pull Request
 
-Package up the current branch's work into a well-formed PR that follows the project's conventions. The goal is a PR that's ready for review — no missing changelog, no unaddressed breaking changes, no vague descriptions.
+Package up the current branch's work into a well-formed PR that follows the project's conventions. The goal is a PR that's ready for review — no missing changelog fragment, no unaddressed breaking changes, no vague descriptions.
 
 ## Step 1: Understand what changed
 
@@ -20,20 +20,9 @@ git log main..HEAD --oneline
 
 Read the diffs carefully. You need to understand the changes well enough to write a meaningful summary and detect breaking changes.
 
-## Step 2: Ensure CHANGELOG.md has an entry
+## Step 2: Verify changelog fragment
 
-Every PR in this project requires a changelog entry under the `[Unreleased]` section. Read `CHANGELOG.md` and check whether the current changes are already covered.
-
-If not, add an entry under the appropriate subsection. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/):
-
-- **Added** — new features or capabilities
-- **Changed** — modifications to existing functionality
-- **Deprecated** — features marked for future removal
-- **Removed** — features that were removed
-- **Fixed** — bug fixes
-- **Security** — vulnerability fixes
-
-Write the entry from the user's perspective — what changed for them, not what files you edited. Keep it to one or two lines.
+Check that a `changes/<issue-number>.<category>.md` fragment exists for this PR's issue. If missing, create one — a 1-2 line user-facing description of the change. Category is one of: `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`. Do NOT edit `CHANGELOG.md` directly.
 
 ## Step 3: Check for breaking changes
 

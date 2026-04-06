@@ -29,7 +29,9 @@ git checkout -b <branch-name> main
 git switch -c <branch-name>
 ```
 
-**2b. Code** — write minimal, focused changes with type hints. Reuse existing patterns. Handle edge cases. Add the CHANGELOG entry now under `[Unreleased]` (user's perspective — don't defer to commit time).
+**2b. Code** — write minimal, focused changes with type hints. Reuse existing patterns. Handle edge cases.
+
+**2b-ii. Changelog fragment** — create a file in `changes/<issue-number>.<category>.md` (e.g., `changes/752.added.md`). One or two lines, user's perspective. Category is one of: `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`. A single issue may need multiple fragments if it spans categories. Do NOT edit `CHANGELOG.md` directly — fragments are assembled per-epic.
 
 **2c. Self-check** — review your diff: docstrings match all code paths, test assertions use non-empty collections, no leftover debug code.
 
@@ -60,7 +62,7 @@ Run in order — each must pass before the next:
 
 ## Phase 4: Commit and PR
 
-Rebase first: `git fetch origin main && git rebase origin/main`. Re-run tests if conflicts arose. Verify the CHANGELOG entry is still accurate. Check for breaking changes (see CLAUDE.md for deprecation tiers).
+Rebase first: `git fetch origin main && git rebase origin/main`. Re-run tests if conflicts arose. Check for breaking changes (see CLAUDE.md for deprecation tiers).
 
 Commit with `git add <specific-files>` — message starts with a verb, no AI attribution, no Co-Authored-By. Push and create PR:
 ```bash
