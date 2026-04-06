@@ -93,37 +93,39 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Event Flows placeholder
+  // Event Flows — D3 Directed Acyclic Graph
   // ---------------------------------------------------------------------------
 
   function _renderEventFlows(data) {
     var container = document.getElementById('dv-flows-container');
     if (!container) return;
 
-    var links = (data.links || []).filter(function (l) {
-      return l.type === 'event' || l.type === 'projection';
-    });
+    var flowGraph = data.flow_graph || { nodes: [], edges: [] };
 
-    if (links.length === 0) {
+    if (typeof DomainFlows !== 'undefined') {
+      DomainFlows.render('#dv-flows-container', flowGraph);
+      _wireFilterToggles();
+    } else {
       container.innerHTML =
-        '<div class="flex items-center justify-center h-64 text-base-content/40">' +
-        'No cross-aggregate event flows detected.</div>';
-      return;
+        '<div class="flex items-center justify-center h-64 px-4 text-center text-base-content/60">' +
+        'Event flow visualization could not be loaded. Please refresh the page.' +
+        '</div>';
     }
+  }
 
-    // Table of event flows (D3 DAG in #878)
-    var html = '<table class="table table-sm"><thead><tr>' +
-      '<th>Source</th><th>Target</th><th>Type</th><th>Label</th></tr></thead><tbody>';
-    links.forEach(function (link) {
-      html += '<tr>';
-      html += '<td class="font-mono text-xs">' + _esc(_shortName(link.source)) + '</td>';
-      html += '<td class="font-mono text-xs">' + _esc(_shortName(link.target)) + '</td>';
-      html += '<td><span class="badge badge-sm badge-ghost">' + _esc(link.type) + '</span></td>';
-      html += '<td class="text-sm">' + _esc(link.label) + '</td>';
-      html += '</tr>';
+  var _filtersWired = false;
+
+  function _wireFilterToggles() {
+    if (_filtersWired) return;
+    _filtersWired = true;
+    var toggles = document.querySelectorAll('[data-flow-filter]');
+    toggles.forEach(function (toggle) {
+      toggle.addEventListener('change', function () {
+        if (typeof DomainFlows !== 'undefined') {
+          DomainFlows.setFilter(toggle.dataset.flowFilter, toggle.checked);
+        }
+      });
     });
-    html += '</tbody></table>';
-    container.innerHTML = html;
   }
 
   // ---------------------------------------------------------------------------

@@ -65,6 +65,28 @@
 <div id="dv-panel-event-flows" class="dv-panel hidden">
   <div class="card bg-base-100 shadow-sm">
     <div class="card-body p-4">
+      <div class="flex flex-wrap gap-3 mb-3 text-xs" id="dv-flow-filters">
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked class="checkbox checkbox-xs" data-flow-filter="command">
+          <span>Commands</span>
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked class="checkbox checkbox-xs" data-flow-filter="command_handler">
+          <span>Cmd Handlers</span>
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked class="checkbox checkbox-xs" data-flow-filter="event_handler">
+          <span>Evt Handlers</span>
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked class="checkbox checkbox-xs" data-flow-filter="process_manager">
+          <span>Process Managers</span>
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked class="checkbox checkbox-xs" data-flow-filter="projector">
+          <span>Projectors</span>
+        </label>
+      </div>
       <div id="dv-flows-container" class="w-full" style="min-height: 400px;">
         <div class="flex items-center justify-center h-64 text-base-content/40">
           Loading event flows...
@@ -111,5 +133,6 @@
 {% block scripts %}
 <script src="/static/js/domain-topology.js" defer></script>
 <script src="/static/js/domain-detail.js" defer></script>
+<script src="/static/js/domain-flows.js" defer></script>
 <script src="/static/js/domain.js" defer></script>
 {% endblock %}

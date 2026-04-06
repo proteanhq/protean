@@ -481,6 +481,7 @@ class TestBuildGraph:
             "flows",
             "projections",
             "stats",
+            "flow_graph",
         }
 
 
