@@ -39,6 +39,17 @@ class EventStore:
     def store(self):
         return self._event_store
 
+    def close(self) -> None:
+        """Close the event store and release all connections.
+
+        Delegates to the inner store's close() without clearing the
+        reference, so the wrapper remains usable (e.g., in test mode
+        where the domain is still accessed after Engine.shutdown()).
+        """
+        if self._event_store is not None:
+            self._event_store.close()
+            logger.debug("Event store closed")
+
     def _initialize_event_store(self) -> "BaseEventStore":
         configured_event_store = self.domain.config["event_store"]
         event_store_full_path = EVENT_STORE_PROVIDERS[

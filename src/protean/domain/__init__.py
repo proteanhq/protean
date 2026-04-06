@@ -767,6 +767,30 @@ class Domain:
         self.brokers._initialize()
         self.event_store._initialize()
 
+    def close(self) -> None:
+        """Close all domain infrastructure connections and release resources.
+
+        Shuts down adapters in reverse initialization order so that
+        dependents close before their dependencies.
+        Repeated calls delegate to the underlying adapters; each registry
+        guards against double-close but behavior depends on individual
+        adapter implementations.
+        """
+        logger.info("Closing domain infrastructure...")
+
+        for name, closeable in [
+            ("event store", self.event_store),
+            ("brokers", self.brokers),
+            ("caches", self.caches),
+            ("providers", self.providers),
+        ]:
+            try:
+                closeable.close()
+            except Exception:
+                logger.exception("Error closing %s", name)
+
+        logger.info("Domain infrastructure closed")
+
     def load_config(self, config=None):
         """Load configuration from a dict or a .toml file."""
         if config is not None:

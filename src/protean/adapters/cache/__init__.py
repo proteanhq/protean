@@ -40,8 +40,22 @@ class Caches(collections.abc.MutableMapping):
         if key in self._caches:
             del self._caches[key]
 
+    def close(self) -> None:
+        """Close all cache connections and release resources."""
+        if self._caches:
+            for name, cache in self._caches.items():
+                try:
+                    cache.close()
+                except Exception:
+                    logger.exception("Error closing cache '%s'", name)
+            logger.debug("All caches closed")
+
     def _initialize(self):
         """Read config file and initialize providers"""
+        # Close existing caches before re-initializing to prevent
+        # connection leaks (e.g., when domain.init() is called again).
+        self.close()
+
         configured_caches = self.domain.config["caches"]
         cache_objects = {}
 

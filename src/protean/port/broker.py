@@ -700,6 +700,15 @@ class BaseBroker(metaclass=ABCMeta):
     def _dlq_purge(self, dlq_stream: str) -> int:
         """Purge all messages from a DLQ stream."""
 
+    def close(self) -> None:
+        """Close the broker and release all connections.
+
+        Subclasses that hold external resources (connection pools, sockets,
+        etc.) should override this to perform cleanup.  The default
+        implementation is a no-op so that adapters without external
+        resources (e.g. the inline broker) work without changes.
+        """
+
     def register(self, subscriber_cls: Type[BaseSubscriber]) -> None:
         """Register a subscriber to this broker against its stream.
 

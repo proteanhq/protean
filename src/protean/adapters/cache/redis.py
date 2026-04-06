@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Optional, Union
 
 import redis
@@ -7,6 +8,8 @@ from protean.core.projection import BaseProjection
 from protean.port.cache import BaseCache
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
+
+logger = logging.getLogger(__name__)
 
 
 class RedisCache(BaseCache):
@@ -18,6 +21,16 @@ class RedisCache(BaseCache):
         super().__init__(name, domain, conn_info)
 
         self.r = redis.Redis.from_url(conn_info["URI"])
+
+    def close(self) -> None:
+        """Close the Redis connection and release resources."""
+        try:
+            if self.r is not None:
+                self.r.close()
+                self.r = None
+                logger.debug("Closed Redis cache connection: %s", self.name)
+        except Exception:
+            logger.exception("Error closing Redis cache %s", self.name)
 
     def ping(self):
         return self.r.ping()

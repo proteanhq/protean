@@ -33,8 +33,22 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
         if key in self._brokers:
             del self._brokers[key]
 
+    def close(self) -> None:
+        """Close all broker connections and release resources."""
+        if self._brokers:
+            for name, broker in self._brokers.items():
+                try:
+                    broker.close()
+                except Exception:
+                    logger.exception("Error closing broker '%s'", name)
+            logger.debug("All brokers closed")
+
     def _initialize(self) -> None:
         """Read config file and initialize brokers"""
+        # Close existing brokers before re-initializing to prevent
+        # connection leaks (e.g., when domain.init() is called again).
+        self.close()
+
         configured_brokers = self.domain.config["brokers"]
         broker_objects = {}
 

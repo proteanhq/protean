@@ -941,6 +941,16 @@ class RedisBroker(BaseBroker):
         logger.error(f"Failed to ensure Redis connection after {max_attempts} attempts")
         return False
 
+    def close(self) -> None:
+        """Close the Redis connection and release resources."""
+        try:
+            if self.redis_instance is not None:
+                self.redis_instance.close()
+                self.redis_instance = None
+                logger.debug("Closed Redis broker connection: %s", self.name)
+        except Exception:
+            logger.exception("Error closing Redis broker %s", self.name)
+
     def _data_reset(self) -> None:
         """Flush all data in Redis instance for testing"""
         try:

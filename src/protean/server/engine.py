@@ -842,6 +842,12 @@ class Engine:
         """
         Cleanup tasks tied to the service's shutdown.
 
+        Shutdown ordering:
+        1. Signal all subscriptions to stop accepting new messages
+        2. Wait for in-flight tasks to complete (bounded timeout), then cancel stragglers
+        3. Close domain infrastructure (event store, brokers, caches, providers)
+        4. Clean up signal handlers and stop the event loop
+
         Args:
             signal (Optional[signal]): The exit signal received. Defaults to None.
             exit_code (int): The exit code to be stored. Defaults to 0.
@@ -859,40 +865,56 @@ class Engine:
             # Store the exit code
             self.exit_code = exit_code
 
-            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-
-            # Shutdown subscriptions
-            subscription_shutdown_tasks = [
+            # Step 1: Signal all subscriptions to stop (sets keep_going=False
+            # and runs backend-specific cleanup like persisting positions)
+            subscription_shutdown_coros = [
                 subscription.shutdown()
                 for _, subscription in self._subscriptions.items()
             ]
-
-            # Add broker subscriptions to shutdown tasks
-            subscription_shutdown_tasks.extend(
-                [
-                    subscription.shutdown()
-                    for _, subscription in self._broker_subscriptions.items()
-                ]
+            subscription_shutdown_coros.extend(
+                subscription.shutdown()
+                for _, subscription in self._broker_subscriptions.items()
+            )
+            subscription_shutdown_coros.extend(
+                processor.shutdown() for _, processor in self._outbox_processors.items()
             )
 
-            # Add outbox processors to shutdown tasks
-            subscription_shutdown_tasks.extend(
-                [
-                    processor.shutdown()
-                    for _, processor in self._outbox_processors.items()
-                ]
-            )
-
-            # Cancel outstanding tasks
-            [task.cancel() for task in tasks]
-            logger.debug(f"Cancelling {len(tasks)} tasks")
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Wait for subscriptions to shut down
-            await asyncio.gather(*subscription_shutdown_tasks, return_exceptions=True)
+            await asyncio.gather(*subscription_shutdown_coros, return_exceptions=True)
             logger.info("All subscriptions have been shut down.")
 
-            # Clean up signal handlers
+            # Step 2: Wait for in-flight tasks to finish with a bounded timeout.
+            # This gives handlers processing messages a chance to complete
+            # gracefully before we force-cancel them.
+            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            if tasks:
+                logger.debug(f"Waiting for {len(tasks)} in-flight tasks to complete...")
+                done, pending = await asyncio.wait(tasks, timeout=10.0)
+
+                # Retrieve exceptions from completed tasks so Python doesn't
+                # emit "Task exception was never retrieved" warnings.
+                for task in done:
+                    if task.done() and not task.cancelled() and task.exception():
+                        logger.debug(
+                            "Task %s raised during shutdown: %s",
+                            task.get_name(),
+                            task.exception(),
+                        )
+
+                if pending:
+                    logger.debug(
+                        f"Cancelling {len(pending)} tasks that didn't finish in time"
+                    )
+                    for task in pending:
+                        task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+
+            # Step 3: Close domain infrastructure connections
+            try:
+                self.domain.close()
+            except Exception:
+                logger.exception("Error during domain infrastructure cleanup")
+
+            # Step 4: Clean up signal handlers
             self._cleanup_signal_handlers()
         finally:
             self.loop.stop()
