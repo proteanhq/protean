@@ -44,9 +44,9 @@ class MemoryMessage(BaseAggregate):
 
 
 class MemoryMessageRepository(BaseRepository):
-    def __init__(self, domain: Any, provider: Any) -> None:
-        super().__init__(domain, provider)
-        self._write_lock = threading.Lock()
+    # Class-level lock: repositories are instantiated per repository_for()
+    # call, so an instance-level lock would not be shared across callers.
+    _write_lock = threading.Lock()
 
     def is_category(self, stream_name: str) -> bool:
         if not stream_name:

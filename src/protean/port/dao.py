@@ -495,6 +495,10 @@ class BaseDAO(metaclass=ABCMeta):
 
             return entity_obj
         except Exception as exc:
+            # Roll back the version advance so the entity stays consistent
+            # with the persistence store after a failed save.
+            if expected_version is not None:
+                entity_obj._version = expected_version
             logger.error(f"Failed saving entity because {exc}")
             raise
 
