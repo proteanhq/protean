@@ -533,6 +533,176 @@
   }
 }
 
+/* ===== Domain Topology — D3 Force-Directed Graph ===== */
+
+.dv-topology-svg {
+  display: block;
+  cursor: grab;
+}
+
+.dv-topology-svg:active {
+  cursor: grabbing;
+}
+
+/* Links */
+.dv-link {
+  fill: none;
+  stroke: color-mix(in oklch, var(--color-base-content) 30%, transparent);
+  stroke-width: 1.5;
+}
+
+.dv-link--event {
+  stroke: color-mix(in oklch, var(--color-primary) 50%, transparent);
+}
+
+.dv-link--process_manager {
+  stroke: color-mix(in oklch, var(--color-warning) 50%, transparent);
+  stroke-dasharray: 8 4;
+}
+
+.dv-link.dv-highlighted {
+  stroke-width: 2.5;
+  stroke-opacity: 1;
+}
+
+.dv-link.dv-dimmed {
+  opacity: 0.15;
+}
+
+/* Link labels */
+.dv-link-label {
+  font-size: 9px;
+  fill: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.dv-link-label.dv-dimmed {
+  opacity: 0.15;
+}
+
+/* Arrow markers */
+.dv-arrow-head {
+  fill: color-mix(in oklch, var(--color-primary) 50%, transparent);
+}
+
+.dv-arrow-head-pm {
+  fill: color-mix(in oklch, var(--color-warning) 50%, transparent);
+}
+
+/* Nodes */
+.dv-node {
+  cursor: pointer;
+}
+
+.dv-node.dv-dimmed {
+  opacity: 0.15;
+}
+
+.dv-card {
+  fill: var(--color-base-100);
+  stroke: color-mix(in oklch, var(--color-base-content) 12%, transparent);
+  stroke-width: 1;
+  transition: stroke 0.15s;
+}
+
+.dv-node:hover .dv-card,
+.dv-node.dv-highlighted .dv-card {
+  stroke: color-mix(in oklch, var(--color-primary) 50%, transparent);
+  filter: drop-shadow(0 1px 4px color-mix(in oklch, var(--color-primary) 12%, transparent));
+}
+
+.dv-lane-accent {
+  pointer-events: none;
+}
+
+.dv-select-ring {
+  fill: none;
+  stroke: color-mix(in oklch, var(--color-primary) 40%, transparent);
+  stroke-width: 2;
+}
+
+/* Node text */
+.dv-name {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--color-base-content);
+}
+
+.dv-stream {
+  font-size: 9px;
+  fill: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.dv-counts {
+  font-size: 9px;
+  fill: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+}
+
+/* Architecture badge (ES / CQRS) */
+.dv-arch-badge {
+  stroke: none;
+}
+
+.dv-arch-badge--es {
+  fill: var(--color-primary);
+}
+
+.dv-arch-badge--cqrs {
+  fill: var(--color-secondary);
+}
+
+.dv-arch-badge-text {
+  font-size: 7px;
+  fill: var(--color-primary-content);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Legend */
+.dv-legend {
+  pointer-events: none;
+}
+
+.dv-legend-bg {
+  fill: color-mix(in oklch, var(--color-base-100) 90%, transparent);
+  stroke: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  stroke-width: 1;
+}
+
+.dv-legend-text {
+  font-size: 10px;
+  fill: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+}
+
+/* Mini-map */
+.dv-minimap {
+  pointer-events: none;
+}
+
+.dv-minimap-bg {
+  fill: color-mix(in oklch, var(--color-base-100) 85%, transparent);
+  stroke: color-mix(in oklch, var(--color-base-content) 15%, transparent);
+  stroke-width: 1;
+}
+
+.dv-minimap-node {
+  opacity: 0.7;
+}
+
+.dv-minimap-link {
+  stroke: color-mix(in oklch, var(--color-base-content) 12%, transparent);
+  stroke-width: 0.5;
+}
+
+.dv-minimap-viewport {
+  fill: color-mix(in oklch, var(--color-primary) 8%, transparent);
+  stroke: color-mix(in oklch, var(--color-primary) 40%, transparent);
+  stroke-width: 1;
+}
+
 /* ===== SSE Toast — Bounce-In Animation ===== */
 
 .animate-bounce-in {
