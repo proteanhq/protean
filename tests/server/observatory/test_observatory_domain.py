@@ -506,7 +506,7 @@ class TestDomainJSContent:
     def test_domain_js_has_detail_panel(self, client):
         js = client.get("/static/js/domain.js").text
         assert "_showDetail" in js
-        assert "_hideDetail" in js
+        assert "DomainDetail" in js
 
 
 # ---------------------------------------------------------------------------

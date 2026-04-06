@@ -86,25 +86,30 @@
   </div>
 </div>
 
-<!-- Aggregate Detail Panel (sidebar/modal for drill-down) -->
-<div id="dv-detail-panel" class="card bg-base-100 shadow-sm mt-6 hidden">
-  <div class="card-body p-4">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="card-title text-lg" id="dv-detail-title">--</h2>
-      <button class="btn btn-sm btn-ghost" id="dv-detail-close" title="Close">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-        </svg>
-      </button>
+<!-- Detail Panel Backdrop -->
+<div id="dv-detail-backdrop" class="dv-detail-backdrop"></div>
+
+<!-- Aggregate Detail Panel (slide-in from right) -->
+<div id="dv-detail-panel" class="dv-detail-panel">
+  <div class="dv-detail-header">
+    <div class="flex-1 min-w-0">
+      <h2 class="text-lg font-bold truncate" id="dv-detail-title">--</h2>
+      <div class="text-xs text-base-content/40 font-mono truncate" id="dv-detail-fqn"></div>
     </div>
-    <div id="dv-detail-content">
-      <div class="text-base-content/40">Select an aggregate to view details.</div>
-    </div>
+    <button class="btn btn-sm btn-ghost btn-square" id="dv-detail-close" title="Close (Esc)">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+  <div class="dv-detail-body" id="dv-detail-content">
+    <div class="text-base-content/40 text-sm p-4">Select an aggregate to view details.</div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/domain-topology.js" defer></script>
+<script src="/static/js/domain-detail.js" defer></script>
 <script src="/static/js/domain.js" defer></script>
 {% endblock %}
