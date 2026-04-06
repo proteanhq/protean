@@ -1,18 +1,88 @@
 {
   "permissions": {
     "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "NotebookEdit",
+      "WebSearch",
+
+      "Bash(ls:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(cut:*)",
+      "Bash(tr:*)",
+      "Bash(diff:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(tee:*)",
+      "Bash(xargs:*)",
+      "Bash(pwd:*)",
+      "Bash(which:*)",
+      "Bash(env:*)",
+      "Bash(date:*)",
+      "Bash(echo:*)",
+      "Bash(touch:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(dirname:*)",
+      "Bash(basename:*)",
+      "Bash(realpath:*)",
+
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git blame:*)",
+      "Bash(git shortlog:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git fetch:*)",
+      "Bash(git worktree:*)",
+
       "Bash(uv run:*)",
       "Bash(uv pip:*)",
       "Bash(uv lock:*)",
       "Bash(uv sync:*)",
+
+      "Bash(python -m pytest:*)",
+      "Bash(python -c:*)",
+      "Bash(python3:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+      "Bash(mypy:*)",
+      "Bash(pre-commit run:*)",
+      "Bash(coverage:*)",
+      "Bash(nox:*)",
+      "Bash(protean test:*)",
+      "Bash(protean check:*)",
+      "Bash(protean events:*)",
+      "Bash(protean ir:*)",
+      "Bash(mkdocs build:*)",
+
       "Bash(docker ps:*)",
+      "Bash(pg_isready:*)",
+
       "Bash(gh issue:*)",
       "Bash(gh pr:*)",
       "Bash(gh project:*)",
       "Bash(gh search:*)",
       "Bash(gh api:*)",
-      "WebSearch",
-      "Edit(/.claude/skills/test/**)"
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
     ]
   },
   "hooks": {
@@ -56,11 +126,6 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-lint-format.sh",
             "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-changelog-reminder.sh",
-            "timeout": 5
           }
         ]
       }
