@@ -332,3 +332,200 @@ class TestProvidersReinitializeClosesExisting:
         domain.providers._initialize()
 
         mock_provider.close.assert_called_once()
+
+
+@pytest.mark.no_test_domain
+class TestRegistryCloseErrorIsolation:
+    """Test that registry close() methods continue on individual adapter errors."""
+
+    def test_brokers_close_continues_on_error(self, caplog):
+        """If one broker's close() raises, the other still gets closed."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        failing_broker = MagicMock()
+        failing_broker.close.side_effect = RuntimeError("connection lost")
+        ok_broker = MagicMock()
+        domain.brokers._brokers = {"failing": failing_broker, "ok": ok_broker}
+
+        with caplog.at_level(logging.ERROR):
+            domain.brokers.close()
+
+        ok_broker.close.assert_called_once()
+        assert any(
+            "Error closing broker 'failing'" in r.message for r in caplog.records
+        )
+
+    def test_caches_close_continues_on_error(self, caplog):
+        """If one cache's close() raises, the other still gets closed."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        failing_cache = MagicMock()
+        failing_cache.close.side_effect = RuntimeError("connection lost")
+        ok_cache = MagicMock()
+        domain.caches._caches = {"failing": failing_cache, "ok": ok_cache}
+
+        with caplog.at_level(logging.ERROR):
+            domain.caches.close()
+
+        ok_cache.close.assert_called_once()
+        assert any("Error closing cache 'failing'" in r.message for r in caplog.records)
+
+    def test_providers_close_continues_on_error(self, caplog):
+        """If one provider's close() raises, the other still gets closed."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        failing_provider = MagicMock()
+        failing_provider.close.side_effect = RuntimeError("connection lost")
+        ok_provider = MagicMock()
+        domain.providers._providers = {
+            "failing": failing_provider,
+            "ok": ok_provider,
+        }
+
+        with caplog.at_level(logging.ERROR):
+            domain.providers.close()
+
+        ok_provider.close.assert_called_once()
+        assert any(
+            "Error closing provider 'failing'" in r.message for r in caplog.records
+        )
+
+
+@pytest.mark.no_test_domain
+class TestEventStoreCloseWhenNone:
+    """Test EventStore.close() when no store is initialized."""
+
+    def test_close_with_no_event_store(self):
+        """close() is a no-op when _event_store is None."""
+        domain = Domain(name="Test")
+        # Don't call init — event store is None
+        domain.event_store._event_store = None
+        domain.event_store.close()  # Should not raise
+
+
+@pytest.mark.no_test_domain
+class TestEngineShutdownTaskExceptionRetrieval:
+    """Test that Engine.shutdown() retrieves exceptions from done tasks."""
+
+    def test_shutdown_retrieves_task_exceptions(self, caplog):
+        """Completed tasks with exceptions are logged during shutdown."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+
+            task_started = asyncio.Event()
+
+            async def failing_task():
+                task_started.set()
+                # Small delay so the task is still "in-flight" when
+                # shutdown collects asyncio.all_tasks(), but finishes
+                # with an exception during the asyncio.wait() grace
+                # period — landing in the `done` set.
+                await asyncio.sleep(0.1)
+                raise ValueError("task error")
+
+            async def run_shutdown_with_failing_task():
+                asyncio.ensure_future(failing_task())
+                await task_started.wait()
+                await engine.shutdown()
+
+            with caplog.at_level(logging.DEBUG):
+                engine.loop.run_until_complete(run_shutdown_with_failing_task())
+
+            assert any(
+                "Task" in r.message and "raised during shutdown" in r.message
+                for r in caplog.records
+            )
+
+    def test_shutdown_cancels_tasks_exceeding_timeout(self, caplog):
+        """Tasks that don't finish within the grace period are cancelled."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+
+            async def stuck_task():
+                await asyncio.sleep(3600)  # Will never finish on its own
+
+            async def run_shutdown_with_stuck_task():
+                task = asyncio.ensure_future(stuck_task())
+                await engine.shutdown()
+                assert task.cancelled()
+
+            with caplog.at_level(logging.DEBUG):
+                # Patch wait to use a very short timeout
+                original_wait = asyncio.wait
+
+                async def short_wait(tasks, **kwargs):
+                    return await original_wait(tasks, timeout=0.1)
+
+                with patch(
+                    "protean.server.engine.asyncio.wait", side_effect=short_wait
+                ):
+                    engine.loop.run_until_complete(run_shutdown_with_stuck_task())
+
+            assert any("didn't finish in time" in r.message for r in caplog.records)
+
+
+@pytest.mark.no_test_domain
+class TestRedisBrokerCloseEdgeCases:
+    """Test RedisBroker.close() edge cases without needing Redis."""
+
+    def test_close_when_already_none(self):
+        """close() is a no-op when redis_instance is already None."""
+        from protean.adapters.broker.redis import RedisBroker
+
+        broker = object.__new__(RedisBroker)
+        broker.redis_instance = None
+        broker.name = "test"
+        broker.close()  # Should not raise
+
+    def test_close_exception_is_logged(self, caplog):
+        """If redis_instance.close() raises, it's logged not re-raised."""
+        from protean.adapters.broker.redis import RedisBroker
+
+        broker = object.__new__(RedisBroker)
+        broker.name = "test"
+        mock_redis = MagicMock()
+        mock_redis.close.side_effect = RuntimeError("connection error")
+        broker.redis_instance = mock_redis
+
+        with caplog.at_level(logging.ERROR):
+            broker.close()  # Should not raise
+
+        assert any("Error closing Redis broker" in r.message for r in caplog.records)
+
+
+@pytest.mark.no_test_domain
+class TestRedisCacheCloseEdgeCases:
+    """Test RedisCache.close() edge cases without needing Redis."""
+
+    def test_close_when_already_none(self):
+        """close() is a no-op when r is already None."""
+        from protean.adapters.cache.redis import RedisCache
+
+        cache = object.__new__(RedisCache)
+        cache.r = None
+        cache.name = "test"
+        cache.close()  # Should not raise
+
+    def test_close_exception_is_logged(self, caplog):
+        """If r.close() raises, it's logged not re-raised."""
+        from protean.adapters.cache.redis import RedisCache
+
+        cache = object.__new__(RedisCache)
+        cache.name = "test"
+        mock_redis = MagicMock()
+        mock_redis.close.side_effect = RuntimeError("connection error")
+        cache.r = mock_redis
+
+        with caplog.at_level(logging.ERROR):
+            cache.close()  # Should not raise
+
+        assert any("Error closing Redis cache" in r.message for r in caplog.records)
