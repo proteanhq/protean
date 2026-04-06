@@ -64,6 +64,7 @@ var DomainDetail = (function () {
     // Delegated accordion toggle — survives innerHTML replacement in show()
     if ($content) {
       $content.addEventListener('click', function (e) {
+        if (!e.target || !e.target.closest) return;
         var toggle = e.target.closest('.dv-section-toggle');
         if (!toggle) return;
         var section = toggle.closest('.dv-section');
@@ -118,8 +119,11 @@ var DomainDetail = (function () {
 
     html += _renderElementSection('Commands', cluster.commands, function (elem) {
       var meta = '';
+      if (elem.__version__) {
+        meta += '<span class="dv-badge dv-badge--version">v' + _esc(String(elem.__version__)) + '</span> ';
+      }
       if (elem.__type__) {
-        meta += '<span class="dv-badge dv-badge--version">' + _esc(elem.__type__) + '</span> ';
+        meta += '<span class="dv-elem-meta">' + _esc(elem.__type__) + '</span> ';
       }
       meta += _renderFieldsTable(elem.fields, null);
       return meta;
@@ -127,8 +131,11 @@ var DomainDetail = (function () {
 
     html += _renderElementSection('Events', cluster.events, function (elem) {
       var meta = '';
+      if (elem.__version__) {
+        meta += '<span class="dv-badge dv-badge--version">v' + _esc(String(elem.__version__)) + '</span> ';
+      }
       if (elem.__type__) {
-        meta += '<span class="dv-badge dv-badge--version">' + _esc(elem.__type__) + '</span> ';
+        meta += '<span class="dv-elem-meta">' + _esc(elem.__type__) + '</span> ';
       }
       if (elem.published) {
         meta += '<span class="dv-badge dv-badge--published">published</span> ';
