@@ -17,6 +17,7 @@ from protean.server.observatory.routes.domain import (
     _build_graph,
     _build_pm_graphs,
     _build_stats,
+    _event_name_from_type,
     _state_label_from_event,
 )
 
@@ -167,21 +168,35 @@ class TestDomainPageTemplateProcessManagers:
 # ---------------------------------------------------------------------------
 
 
+class TestEventNameFromType:
+    def test_full_type_key(self):
+        assert _event_name_from_type("Ordering.OrderPlaced.v1") == "OrderPlaced"
+
+    def test_two_segments(self):
+        assert _event_name_from_type("OrderPlaced.v1") == "OrderPlaced"
+
+    def test_single_segment(self):
+        assert _event_name_from_type("OrderPlaced") == "OrderPlaced"
+
+    def test_empty_string(self):
+        assert _event_name_from_type("") == ""
+
+
 class TestStateLabelFromEvent:
-    def test_camel_case_with_version(self):
-        assert _state_label_from_event("OrderPlaced.v1") == "Order Placed"
+    def test_full_type_key(self):
+        assert _state_label_from_event("Ordering.OrderPlaced.v1") == "Order Placed"
 
-    def test_camel_case_without_version(self):
-        assert _state_label_from_event("ShipmentDispatched") == "Shipment Dispatched"
+    def test_two_segments(self):
+        assert (
+            _state_label_from_event("Ordering.ShipmentDispatched.v1")
+            == "Shipment Dispatched"
+        )
 
-    def test_single_word(self):
-        assert _state_label_from_event("Placed.v1") == "Placed"
+    def test_single_segment(self):
+        assert _state_label_from_event("OrderPlaced") == "Order Placed"
 
     def test_empty_string(self):
         assert _state_label_from_event("") == ""
-
-    def test_multi_version(self):
-        assert _state_label_from_event("OrderPlaced.v2") == "Order Placed"
 
 
 # ---------------------------------------------------------------------------

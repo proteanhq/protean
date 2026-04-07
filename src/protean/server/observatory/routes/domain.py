@@ -167,7 +167,7 @@ def _build_links(
                                 "source": source_agg,
                                 "target": agg_fqn,
                                 "type": "event",
-                                "label": short_name(type_key),
+                                "label": _event_name_from_type(type_key),
                             }
                         )
 
@@ -431,7 +431,7 @@ def _build_pm_graphs(
                 target_id = f"after:{type_key}"
                 _add_state(
                     target_id,
-                    _state_label_from_event(short_name(type_key)),
+                    _state_label_from_event(type_key),
                     "intermediate",
                 )
                 transitions.append(
@@ -450,7 +450,7 @@ def _build_pm_graphs(
             target_id = f"after:{type_key}"
             _add_state(
                 target_id,
-                _state_label_from_event(short_name(type_key)),
+                _state_label_from_event(type_key),
                 "intermediate",
             )
             for prev in prev_states:
@@ -482,6 +482,19 @@ def _build_pm_graphs(
     return pm_graphs
 
 
+def _event_name_from_type(type_key: str) -> str:
+    """Extract the event class name from an event ``__type__`` string.
+
+    The ``__type__`` format is ``{Category}.{EventName}.{Version}``
+    (e.g. ``Ordering.OrderPlaced.v1``).  Returns the middle segment
+    (``OrderPlaced``), or the full string if it has fewer than 3 parts.
+    """
+    parts = type_key.split(".")
+    if len(parts) >= 3:
+        return parts[-2]
+    return parts[0] if parts else type_key
+
+
 def _make_transition(
     source: str,
     target: str,
@@ -492,23 +505,18 @@ def _make_transition(
     return {
         "source": source,
         "target": target,
-        "event": short_name(type_key),
+        "event": _event_name_from_type(type_key),
         "event_type": type_key,
         "methods": handler_info.get("methods", []),
     }
 
 
-def _state_label_from_event(event_short_name: str) -> str:
-    """Derive a human-readable state label from an event type short name.
+def _state_label_from_event(type_key: str) -> str:
+    """Derive a human-readable state label from an event ``__type__`` string.
 
-    E.g. ``OrderPlaced.v1`` → ``Order Placed``.
+    E.g. ``Ordering.OrderPlaced.v1`` → ``Order Placed``.
     """
-    name = (
-        event_short_name.rsplit(".", 1)[0]
-        if "." in event_short_name
-        else event_short_name
-    )
-    return titleize(name)
+    return titleize(_event_name_from_type(type_key))
 
 
 def _build_stats(ir: dict[str, Any]) -> dict[str, int]:

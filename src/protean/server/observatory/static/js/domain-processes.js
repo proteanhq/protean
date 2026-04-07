@@ -38,6 +38,7 @@ var DomainProcesses = (function () {
 
   var _container = null;
   var _expanded = {};  // pm fqn -> bool (track expand/collapse)
+  var _svgCounter = 0; // unique suffix for SVG marker IDs
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -75,6 +76,7 @@ var DomainProcesses = (function () {
       _container = null;
     }
     _expanded = {};
+    _svgCounter = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -198,15 +200,19 @@ var DomainProcesses = (function () {
       .attr('height', svgH)
       .attr('viewBox', '0 0 ' + svgW + ' ' + svgH);
 
-    // Arrow marker
+    // Arrow markers — use unique IDs per SVG to avoid document-global collisions
+    var markerId = 'dv-pm-arrow-' + (_svgCounter);
+    var markerIdEnd = 'dv-pm-arrow-end-' + (_svgCounter);
+    _svgCounter++;
+
     var defs = svg.append('defs');
-    _renderArrowMarker(defs, 'dv-pm-arrow', EDGE_COLOR);
-    _renderArrowMarker(defs, 'dv-pm-arrow-end', EDGE_COLOR_END);
+    _renderArrowMarker(defs, markerId, EDGE_COLOR);
+    _renderArrowMarker(defs, markerIdEnd, EDGE_COLOR_END);
 
     var g = svg.append('g').attr('transform', 'translate(' + CARD_PADDING + ',' + CARD_PADDING + ')');
 
     // Render edges first (below nodes)
-    _renderTransitions(g, pm.transitions, positions);
+    _renderTransitions(g, pm.transitions, positions, markerId, markerIdEnd);
 
     // Render state nodes
     _renderStates(g, pm.states, positions);
@@ -289,7 +295,7 @@ var DomainProcesses = (function () {
     });
   }
 
-  function _renderTransitions(g, transitions, positions) {
+  function _renderTransitions(g, transitions, positions, markerId, markerIdEnd) {
     var edgeG = g.append('g').attr('class', 'dv-pm-transitions');
 
     transitions.forEach(function (t) {
@@ -298,7 +304,7 @@ var DomainProcesses = (function () {
       if (!src || !tgt) return;
 
       var isEnd = t.target === 'completed';
-      var markerUrl = isEnd ? 'url(#dv-pm-arrow-end)' : 'url(#dv-pm-arrow)';
+      var markerUrl = isEnd ? 'url(#' + markerIdEnd + ')' : 'url(#' + markerId + ')';
       var edgeColor = isEnd ? EDGE_COLOR_END : EDGE_COLOR;
 
       // Compute path — curved for same-row, straight otherwise
