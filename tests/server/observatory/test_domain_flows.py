@@ -399,6 +399,176 @@ class TestBuildFlowGraph:
 
 
 # ---------------------------------------------------------------------------
+# Edge-case tests (synthetic IR) — cover partial branches
+# ---------------------------------------------------------------------------
+
+
+class TestFlowGraphEdgeCases:
+    """Tests using hand-crafted IR dicts to cover defensive branches."""
+
+    def _minimal_cluster(self, **overrides):
+        base = {
+            "aggregate": {"name": "Agg", "options": {}},
+            "commands": {},
+            "events": {},
+            "command_handlers": {},
+            "event_handlers": {},
+            "entities": {},
+            "value_objects": {},
+            "repositories": {},
+            "application_services": {},
+            "database_models": {},
+        }
+        base.update(overrides)
+        return base
+
+    def test_handler_references_unknown_command_type(self):
+        """Command handler referencing a __type__ not in any cluster's commands."""
+        ir = {
+            "clusters": {
+                "app.Order": self._minimal_cluster(
+                    command_handlers={
+                        "app.OrderHandler": {
+                            "handlers": {"Unknown.Cmd.v1": ["do_it"]},
+                        }
+                    },
+                ),
+            },
+            "flows": {"process_managers": {}},
+            "projections": {},
+            "elements": {},
+        }
+        graph = _build_flow_graph(ir)
+        cmd_edges = [e for e in graph["edges"] if e["type"] == "command"]
+        assert len(cmd_edges) == 0, "No command edge for unknown type"
+        # handler_to_agg edge should still exist
+        h2a = [e for e in graph["edges"] if e["type"] == "handler_to_agg"]
+        assert len(h2a) == 1
+
+    def test_event_handler_references_unknown_event_type(self):
+        """Event handler referencing a __type__ not in any cluster's events."""
+        ir = {
+            "clusters": {
+                "app.Order": self._minimal_cluster(
+                    event_handlers={
+                        "app.OrderEH": {
+                            "handlers": {"Unknown.Evt.v1": ["handle_it"]},
+                        }
+                    },
+                ),
+            },
+            "flows": {"process_managers": {}},
+            "projections": {},
+            "elements": {},
+        }
+        graph = _build_flow_graph(ir)
+        event_edges = [e for e in graph["edges"] if e["type"] == "event"]
+        assert len(event_edges) == 0
+
+    def test_pm_references_unknown_event_type(self):
+        """Process manager handler referencing an unknown event __type__."""
+        ir = {
+            "clusters": {"app.Order": self._minimal_cluster()},
+            "flows": {
+                "process_managers": {
+                    "app.Fulfillment": {
+                        "name": "Fulfillment",
+                        "handlers": {
+                            "Unknown.Evt.v1": {
+                                "methods": ["handle"],
+                                "start": True,
+                                "end": False,
+                                "correlate": "id",
+                            },
+                        },
+                        "stream_categories": [],
+                    }
+                }
+            },
+            "projections": {},
+            "elements": {},
+        }
+        graph = _build_flow_graph(ir)
+        pm_nodes = [n for n in graph["nodes"] if n["type"] == "process_manager"]
+        assert len(pm_nodes) == 1
+        # No edges from PM since event type is unknown
+        pm_edges = [e for e in graph["edges"] if e["target"] == pm_nodes[0]["id"]]
+        assert len(pm_edges) == 0
+
+    def test_projector_references_unknown_event_type(self):
+        """Projector handler referencing an unknown event __type__."""
+        ir = {
+            "clusters": {"app.Order": self._minimal_cluster()},
+            "flows": {"process_managers": {}},
+            "projections": {
+                "app.Summary": {
+                    "projectors": {
+                        "app.SummaryProjector": {
+                            "projector_for": "app.Summary",
+                            "handlers": {"Unknown.Evt.v1": ["on_it"]},
+                        }
+                    }
+                }
+            },
+            "elements": {},
+        }
+        graph = _build_flow_graph(ir)
+        proj_nodes = [n for n in graph["nodes"] if n["type"] == "projector"]
+        assert len(proj_nodes) == 1
+        proj_edges = [e for e in graph["edges"] if e["type"] == "projection"]
+        assert len(proj_edges) == 0
+
+    def test_duplicate_node_ids_are_deduplicated(self):
+        """_add_node should skip if node ID already exists."""
+        ir = {
+            "clusters": {
+                "app.Order": self._minimal_cluster(
+                    events={
+                        "app.OrderPlaced": {
+                            "__type__": "Order.OrderPlaced.v1",
+                            "is_fact_event": False,
+                        },
+                    },
+                    event_handlers={
+                        # EH in same cluster listening to same-cluster event
+                        "app.OrderEH": {
+                            "handlers": {"Order.OrderPlaced.v1": ["handle"]},
+                        }
+                    },
+                ),
+                # Second cluster also has an event handler for the same event
+                "app.Inventory": self._minimal_cluster(
+                    **{
+                        "aggregate": {"name": "Inventory", "options": {}},
+                        "event_handlers": {
+                            "app.InvEH": {
+                                "handlers": {"Order.OrderPlaced.v1": ["on_placed"]},
+                            }
+                        },
+                    }
+                ),
+            },
+            "flows": {"process_managers": {}},
+            "projections": {},
+            "elements": {},
+        }
+        graph = _build_flow_graph(ir)
+        # OrderPlaced event node should appear exactly once
+        evt_nodes = [n for n in graph["nodes"] if n["id"] == "app.OrderPlaced"]
+        assert len(evt_nodes) == 1
+
+        # Both event handler edges should exist
+        event_edges = [e for e in graph["edges"] if e["type"] == "event"]
+        assert len(event_edges) == 2
+
+        # One should be cross-aggregate, one same-aggregate
+        cross = [e for e in event_edges if e.get("cross_aggregate")]
+        same = [e for e in event_edges if not e.get("cross_aggregate")]
+        assert len(cross) == 1
+        assert len(same) == 1
+
+
+# ---------------------------------------------------------------------------
 # API Integration Tests
 # ---------------------------------------------------------------------------
 
