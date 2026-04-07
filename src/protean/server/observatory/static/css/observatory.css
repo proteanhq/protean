@@ -703,6 +703,127 @@
   stroke-width: 1;
 }
 
+/* ===== Domain Event Flows — D3 DAG ===== */
+
+.dv-flow-svg {
+  display: block;
+  cursor: grab;
+}
+
+.dv-flow-svg:active {
+  cursor: grabbing;
+}
+
+/* Edges */
+.dv-flow-edge {
+  fill: none;
+  stroke-width: 1.5;
+  transition: opacity 0.15s;
+}
+
+.dv-flow-edge--cross {
+  stroke-dasharray: 6 3;
+}
+
+.dv-flow-edge.dv-flow-highlighted {
+  stroke-width: 2.5;
+  opacity: 1;
+}
+
+.dv-flow-edge.dv-flow-dimmed {
+  opacity: 0.1;
+}
+
+/* Arrow markers */
+.dv-flow-arrow-head {
+  fill: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+}
+
+.dv-flow-arrow-head-cross {
+  fill: color-mix(in oklch, var(--color-warning) 60%, transparent);
+}
+
+.dv-flow-arrow-head-proj {
+  fill: color-mix(in oklch, var(--color-info) 50%, transparent);
+}
+
+/* Nodes */
+.dv-flow-node {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.dv-flow-node.dv-flow-dimmed {
+  opacity: 0.1;
+}
+
+.dv-flow-card {
+  stroke: color-mix(in oklch, var(--color-base-content) 12%, transparent);
+  stroke-width: 1;
+  transition: stroke 0.15s, filter 0.15s;
+}
+
+.dv-flow-node:hover .dv-flow-card,
+.dv-flow-node.dv-flow-highlighted .dv-flow-card {
+  stroke: color-mix(in oklch, var(--color-primary) 50%, transparent);
+  filter: drop-shadow(0 1px 4px color-mix(in oklch, var(--color-primary) 15%, transparent));
+}
+
+.dv-flow-name {
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.dv-flow-type-badge {
+  font-size: 8px;
+  fill: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  pointer-events: none;
+}
+
+/* Cluster backgrounds */
+.dv-flow-cluster-bg {
+  opacity: 0.5;
+  stroke: color-mix(in oklch, var(--color-base-content) 6%, transparent);
+  stroke-width: 1;
+}
+
+.dv-flow-cluster-label {
+  font-size: 10px;
+  font-weight: 700;
+  fill: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Column headers */
+.dv-flow-col-header {
+  font-size: 10px;
+  font-weight: 700;
+  fill: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Legend */
+.dv-flow-legend {
+  pointer-events: none;
+}
+
+.dv-flow-legend-bg {
+  fill: color-mix(in oklch, var(--color-base-100) 90%, transparent);
+  stroke: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  stroke-width: 1;
+}
+
+.dv-flow-legend-text {
+  font-size: 10px;
+  fill: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+}
+
 /* ===== Domain Detail Panel — Slide-In Overlay ===== */
 
 .dv-detail-backdrop {

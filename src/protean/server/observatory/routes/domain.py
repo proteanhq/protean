@@ -15,7 +15,11 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from protean.ir.generators.base import short_name
+from protean.ir.generators.base import (
+    build_cmd_type_to_fqn,
+    build_evt_type_to_fqn,
+    short_name,
+)
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -63,6 +67,7 @@ def _build_graph(ir: dict[str, Any]) -> dict[str, Any]:
     nodes = _build_nodes(clusters)
     links = _build_links(clusters, flows)
     stats = _build_stats(elements, clusters, flows, projections)
+    flow_graph = _build_flow_graph(ir)
 
     return {
         "nodes": nodes,
@@ -71,6 +76,7 @@ def _build_graph(ir: dict[str, Any]) -> dict[str, Any]:
         "flows": flows,
         "projections": projections,
         "stats": stats,
+        "flow_graph": flow_graph,
     }
 
 
@@ -176,6 +182,157 @@ def _build_links(
                     )
 
     return links
+
+
+def _build_flow_graph(ir: dict[str, Any]) -> dict[str, Any]:
+    """Build a detailed DAG for the event flow view.
+
+    Returns a graph with individual nodes for commands, command handlers,
+    aggregates, events, event handlers, process managers, and projectors,
+    plus directed edges showing the message flow between them.
+
+    Uses two passes: first collects all nodes, then creates edges
+    (ensuring all referenced nodes exist regardless of iteration order).
+    """
+    clusters = ir.get("clusters", {})
+    flows = ir.get("flows", {})
+    projections = ir.get("projections", {})
+
+    cmd_type_to_fqn = build_cmd_type_to_fqn(ir)
+    evt_type_to_fqn = build_evt_type_to_fqn(ir)
+
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    node_ids: set[str] = set()
+
+    def _add_node(
+        node_id: str,
+        name: str,
+        node_type: str,
+        cluster: str = "",
+        **extra: Any,
+    ) -> None:
+        if node_id in node_ids:
+            return
+        node_ids.add(node_id)
+        node: dict[str, Any] = {
+            "id": node_id,
+            "name": name,
+            "type": node_type,
+            "cluster": cluster,
+        }
+        node.update(extra)
+        nodes.append(node)
+
+    # --- Pass 1: Collect all nodes + build event→cluster index ---
+
+    evt_fqn_to_cluster: dict[str, str] = {}
+
+    for agg_fqn, cluster_data in clusters.items():
+        agg = cluster_data.get("aggregate", {})
+        agg_name = agg.get("name", short_name(agg_fqn))
+        _add_node(agg_fqn, agg_name, "aggregate", cluster=agg_fqn)
+
+        for cmd_fqn in cluster_data.get("commands", {}):
+            _add_node(cmd_fqn, short_name(cmd_fqn), "command", cluster=agg_fqn)
+
+        for evt_fqn, evt in cluster_data.get("events", {}).items():
+            evt_fqn_to_cluster[evt_fqn] = agg_fqn
+            if evt.get("is_fact_event"):
+                continue
+            _add_node(
+                evt_fqn,
+                short_name(evt_fqn),
+                "event",
+                cluster=agg_fqn,
+                published=evt.get("published", False),
+            )
+
+        for ch_fqn in cluster_data.get("command_handlers", {}):
+            _add_node(ch_fqn, short_name(ch_fqn), "command_handler", cluster=agg_fqn)
+
+        for eh_fqn in cluster_data.get("event_handlers", {}):
+            _add_node(eh_fqn, short_name(eh_fqn), "event_handler", cluster=agg_fqn)
+
+    for pm_fqn, pm in flows.get("process_managers", {}).items():
+        _add_node(pm_fqn, pm.get("name", short_name(pm_fqn)), "process_manager")
+
+    for _proj_fqn, proj_group in projections.items():
+        for projector_fqn, projector in proj_group.get("projectors", {}).items():
+            _add_node(
+                projector_fqn,
+                short_name(projector_fqn),
+                "projector",
+                projection=short_name(projector.get("projector_for", projector_fqn)),
+            )
+
+    # --- Pass 2: Create edges ---
+
+    for agg_fqn, cluster_data in clusters.items():
+        # Command Handler edges
+        for ch_fqn, ch in cluster_data.get("command_handlers", {}).items():
+            for type_key in ch.get("handlers", {}):
+                cmd_fqn = cmd_type_to_fqn.get(type_key)
+                if cmd_fqn and cmd_fqn in node_ids:
+                    edges.append(
+                        {"source": cmd_fqn, "target": ch_fqn, "type": "command"}
+                    )
+            edges.append(
+                {"source": ch_fqn, "target": agg_fqn, "type": "handler_to_agg"}
+            )
+
+        # Aggregate → Event edges
+        for evt_fqn, evt in cluster_data.get("events", {}).items():
+            if evt.get("is_fact_event"):
+                continue
+            edges.append({"source": agg_fqn, "target": evt_fqn, "type": "raises"})
+
+        # Event handler edges
+        for eh_fqn, eh in cluster_data.get("event_handlers", {}).items():
+            for type_key in eh.get("handlers", {}):
+                evt_fqn = evt_type_to_fqn.get(type_key)
+                if evt_fqn and evt_fqn in node_ids:
+                    edges.append(
+                        {
+                            "source": evt_fqn,
+                            "target": eh_fqn,
+                            "type": "event",
+                            "cross_aggregate": (
+                                evt_fqn_to_cluster.get(evt_fqn) != agg_fqn
+                            ),
+                        }
+                    )
+
+    # Process manager edges
+    for pm_fqn, pm in flows.get("process_managers", {}).items():
+        for type_key, handler_info in pm.get("handlers", {}).items():
+            evt_fqn = evt_type_to_fqn.get(type_key)
+            if evt_fqn and evt_fqn in node_ids:
+                edges.append(
+                    {
+                        "source": evt_fqn,
+                        "target": pm_fqn,
+                        "type": "event",
+                        "start": handler_info.get("start", False),
+                        "end": handler_info.get("end", False),
+                    }
+                )
+
+    # Projector edges
+    for _proj_fqn, proj_group in projections.items():
+        for projector_fqn, projector in proj_group.get("projectors", {}).items():
+            for type_key in projector.get("handlers", {}):
+                evt_fqn = evt_type_to_fqn.get(type_key)
+                if evt_fqn and evt_fqn in node_ids:
+                    edges.append(
+                        {
+                            "source": evt_fqn,
+                            "target": projector_fqn,
+                            "type": "projection",
+                        }
+                    )
+
+    return {"nodes": nodes, "edges": edges}
 
 
 def _build_stats(
