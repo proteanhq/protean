@@ -1050,6 +1050,68 @@
   color: var(--color-base-content);
 }
 
+/* ===== Domain Process Managers — D3 State Machine Diagrams ===== */
+
+.dv-pm-card {
+  overflow: hidden;
+}
+
+.dv-pm-header {
+  transition: background-color 0.15s;
+}
+
+.dv-pm-header:hover {
+  background-color: color-mix(in oklch, var(--color-base-content) 5%, transparent);
+}
+
+.dv-pm-chevron {
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.dv-pm-chevron-open {
+  transform: rotate(90deg);
+}
+
+.dv-pm-body {
+  border-top: 1px solid color-mix(in oklch, var(--color-base-content) 8%, transparent);
+  padding: 0.5rem;
+  overflow-x: auto;
+}
+
+.dv-pm-svg {
+  display: block;
+}
+
+/* State nodes */
+.dv-pm-state {
+  cursor: default;
+}
+
+.dv-pm-state-label {
+  font-size: 11px;
+  font-weight: 500;
+  fill: var(--color-base-content);
+  pointer-events: none;
+}
+
+.dv-pm-state--end .dv-pm-state-label {
+  fill: var(--color-primary-content);
+}
+
+/* Transition edges */
+.dv-pm-transition {
+  pointer-events: none;
+}
+
+.dv-pm-transition-label {
+  font-size: 10px;
+  font-weight: 500;
+  fill: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+  pointer-events: none;
+}
+
 /* ===== SSE Toast — Bounce-In Animation ===== */
 
 .animate-bounce-in {
