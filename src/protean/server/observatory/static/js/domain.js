@@ -26,8 +26,10 @@
       'dv-stat-aggregates': stats.aggregates,
       'dv-stat-commands': stats.commands,
       'dv-stat-events': stats.events,
+      'dv-stat-handlers': stats.handlers,
       'dv-stat-process-managers': stats.process_managers,
       'dv-stat-projections': stats.projections,
+      'dv-stat-diagnostics': stats.diagnostics,
     };
 
     for (const [id, value] of Object.entries(mapping)) {
@@ -63,9 +65,12 @@
       activePanel.classList.remove('hidden');
     }
 
-    // Deferred render: event flows needs visible container for correct sizing
+    // Deferred render: these tabs need visible container for correct sizing
     if (tab === 'event-flows' && !_flowsRendered && _data) {
       _renderEventFlows(_data);
+    }
+    if (tab === 'process-managers' && !_pmRendered && _data) {
+      _renderProcessManagers(_data);
     }
   }
 
@@ -140,48 +145,37 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Process Managers placeholder
+  // Process Managers — D3 State Machine Diagrams
   // ---------------------------------------------------------------------------
 
+  var _pmRendered = false;
+
   function _renderProcessManagers(data) {
+    // Defer rendering until the tab is visible (hidden panels have zero width)
+    if (_currentTab !== 'process-managers') return;
+
     var container = document.getElementById('dv-pm-container');
     if (!container) return;
 
-    var pms = data.flows && data.flows.process_managers ? data.flows.process_managers : {};
-    var pmList = Object.entries(pms);
+    var pmGraphs = data.pm_graphs || [];
 
-    if (pmList.length === 0) {
+    if (pmGraphs.length === 0) {
       container.innerHTML =
         '<div class="flex items-center justify-center h-64 text-base-content/40">' +
         'No process managers found in domain.</div>';
+      _pmRendered = true;
       return;
     }
 
-    // Cards per PM (state machine view in #879)
-    var html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
-    pmList.forEach(function (entry) {
-      var fqn = entry[0];
-      var pm = entry[1];
-      var handlers = pm.handlers || {};
-      var handlerCount = Object.keys(handlers).length;
-
-      html += '<div class="card bg-base-200 shadow-sm">';
-      html += '<div class="card-body p-4">';
-      html += '<div class="font-bold text-base">' + _esc(pm.name || fqn) + '</div>';
-      html += '<div class="text-xs text-base-content/50 font-mono mb-2">' + _esc(fqn) + '</div>';
-      html += '<div class="flex gap-2 mb-2">';
-      html += '<span class="badge badge-sm badge-ghost">' + handlerCount + ' handler' +
-        (handlerCount !== 1 ? 's' : '') + '</span>';
-      if (pm.stream_categories && pm.stream_categories.length > 0) {
-        html += '<span class="badge badge-sm badge-info">' +
-          pm.stream_categories.length + ' stream' +
-          (pm.stream_categories.length !== 1 ? 's' : '') + '</span>';
-      }
-      html += '</div>';
-      html += '</div></div>';
-    });
-    html += '</div>';
-    container.innerHTML = html;
+    if (typeof DomainProcesses !== 'undefined') {
+      DomainProcesses.render('#dv-pm-container', pmGraphs);
+      _pmRendered = true;
+    } else {
+      container.innerHTML =
+        '<div class="flex items-center justify-center h-64 px-4 text-center text-base-content/60">' +
+        'Process manager visualization could not be loaded. Please refresh the page.' +
+        '</div>';
+    }
   }
 
   // ---------------------------------------------------------------------------

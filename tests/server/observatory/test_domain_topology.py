@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.domain import (
+    _build_event_to_agg_index,
     _build_links,
     _build_nodes,
     create_domain_router,
@@ -284,7 +285,8 @@ class TestEdgeExtractionForTopology:
                 "aggregate": {},
             },
         }
-        links = _build_links(clusters, {"process_managers": {}})
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, {"process_managers": {}}, eta)
         assert len(links) == 2
         sources = {lnk["source"] for lnk in links}
         targets = {lnk["target"] for lnk in links}
@@ -322,7 +324,8 @@ class TestEdgeExtractionForTopology:
                 },
             },
         }
-        links = _build_links(clusters, flows)
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, flows, eta)
         pm_links = [lnk for lnk in links if lnk["type"] == "process_manager"]
         assert len(pm_links) == 3
         pairs = {(lnk["source"], lnk["target"]) for lnk in pm_links}
@@ -395,6 +398,6 @@ class TestEmptyDomainTopology:
     def test_empty_nodes_and_links(self):
         """An empty clusters dict should produce zero nodes and links."""
         nodes = _build_nodes({})
-        links = _build_links({}, {"process_managers": {}})
+        links = _build_links({}, {"process_managers": {}}, {})
         assert nodes == []
         assert links == []

@@ -9,7 +9,7 @@
 </div>
 
 <!-- Summary Stats -->
-<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
   <div class="stats shadow-sm bg-base-100">
     <div class="stat px-4 py-3">
       <div class="stat-title text-xs">Aggregates</div>
@@ -30,6 +30,12 @@
   </div>
   <div class="stats shadow-sm bg-base-100">
     <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Handlers</div>
+      <div class="stat-value text-lg" id="dv-stat-handlers">--</div>
+    </div>
+  </div>
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
       <div class="stat-title text-xs">Process Managers</div>
       <div class="stat-value text-lg" id="dv-stat-process-managers">--</div>
     </div>
@@ -38,6 +44,12 @@
     <div class="stat px-4 py-3">
       <div class="stat-title text-xs">Projections</div>
       <div class="stat-value text-lg" id="dv-stat-projections">--</div>
+    </div>
+  </div>
+  <div class="stats shadow-sm bg-base-100">
+    <div class="stat px-4 py-3">
+      <div class="stat-title text-xs">Diagnostics</div>
+      <div class="stat-value text-lg" id="dv-stat-diagnostics">--</div>
     </div>
   </div>
 </div>
@@ -134,5 +146,6 @@
 <script src="/static/js/domain-topology.js" defer></script>
 <script src="/static/js/domain-detail.js" defer></script>
 <script src="/static/js/domain-flows.js" defer></script>
+<script src="/static/js/domain-processes.js" defer></script>
 <script src="/static/js/domain.js" defer></script>
 {% endblock %}

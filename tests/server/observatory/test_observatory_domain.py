@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.domain import (
+    _build_event_to_agg_index,
     _build_graph,
     _build_links,
     _build_nodes,
@@ -258,7 +259,7 @@ class TestBuildNodes:
 
 class TestBuildLinks:
     def test_empty_inputs(self):
-        assert _build_links({}, {}) == []
+        assert _build_links({}, {}, {}) == []
 
     def test_cross_aggregate_event_handler(self):
         clusters = {
@@ -293,7 +294,8 @@ class TestBuildLinks:
                 "aggregate": {},
             },
         }
-        links = _build_links(clusters, {"process_managers": {}, "subscribers": {}})
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, {"process_managers": {}, "subscribers": {}}, eta)
         assert len(links) == 1
         link = links[0]
         assert link["source"] == "app.Order"
@@ -312,7 +314,8 @@ class TestBuildLinks:
                 "aggregate": {},
             },
         }
-        links = _build_links(clusters, {"process_managers": {}})
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, {"process_managers": {}}, eta)
         assert links == []
 
     def test_skips_same_aggregate_handler(self):
@@ -330,7 +333,8 @@ class TestBuildLinks:
                 "aggregate": {},
             },
         }
-        links = _build_links(clusters, {"process_managers": {}})
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, {"process_managers": {}}, eta)
         assert links == []
 
     def test_deduplicates_links(self):
@@ -356,7 +360,8 @@ class TestBuildLinks:
                 "aggregate": {},
             },
         }
-        links = _build_links(clusters, {"process_managers": {}})
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, {"process_managers": {}}, eta)
         assert len(links) == 1
 
     def test_process_manager_links(self):
@@ -388,7 +393,8 @@ class TestBuildLinks:
                 },
             },
         }
-        links = _build_links(clusters, flows)
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, flows, eta)
         assert len(links) == 1
         link = links[0]
         assert link["type"] == "process_manager"
@@ -417,7 +423,8 @@ class TestBuildLinks:
                 },
             },
         }
-        links = _build_links(clusters, flows)
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, flows, eta)
         assert links == []
 
     def test_pm_handler_unknown_event_ignored(self):
@@ -439,19 +446,24 @@ class TestBuildLinks:
                 },
             },
         }
-        links = _build_links(clusters, flows)
+        eta = _build_event_to_agg_index(clusters)
+        links = _build_links(clusters, flows, eta)
         assert links == []
 
 
 class TestBuildStats:
     def test_counts_from_elements_index(self):
-        elements = {
-            "COMMAND": ["a", "b"],
-            "EVENT": ["c"],
-            "ENTITY": ["d"],
-            "VALUE_OBJECT": ["e", "f", "g"],
+        ir = {
+            "elements": {
+                "COMMAND": ["a", "b"],
+                "EVENT": ["c"],
+                "ENTITY": ["d"],
+                "VALUE_OBJECT": ["e", "f", "g"],
+            },
+            "clusters": {"agg1": {}, "agg2": {}},
+            "projections": {"proj1": {}},
         }
-        stats = _build_stats(elements, {"agg1": {}, "agg2": {}}, {}, {"proj1": {}})
+        stats = _build_stats(ir)
         assert stats["aggregates"] == 2
         assert stats["commands"] == 2
         assert stats["events"] == 1
@@ -460,7 +472,7 @@ class TestBuildStats:
         assert stats["value_objects"] == 3
 
     def test_empty_ir(self):
-        stats = _build_stats({}, {}, {}, {})
+        stats = _build_stats({})
         assert stats["aggregates"] == 0
         assert stats["projections"] == 0
 
@@ -482,6 +494,7 @@ class TestBuildGraph:
             "projections",
             "stats",
             "flow_graph",
+            "pm_graphs",
         }
 
 

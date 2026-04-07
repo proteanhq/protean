@@ -20,6 +20,7 @@ from protean.ir.generators.base import (
     build_evt_type_to_fqn,
     short_name,
 )
+from protean.utils.inflection import titleize
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -46,6 +47,21 @@ _STAT_KEY_MAP: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
+def _build_event_to_agg_index(clusters: dict[str, Any]) -> dict[str, str]:
+    """Build a mapping from event ``__type__`` to source aggregate FQN.
+
+    Used by both link detection and PM graph building to determine which
+    aggregate originally raised each event.
+    """
+    event_to_agg: dict[str, str] = {}
+    for agg_fqn, cluster in clusters.items():
+        for _evt_fqn, evt in cluster.get("events", {}).items():
+            type_key = evt.get("__type__", "")
+            if type_key:
+                event_to_agg[type_key] = agg_fqn
+    return event_to_agg
+
+
 def _build_graph(ir: dict[str, Any]) -> dict[str, Any]:
     """Transform a raw IR dict into a D3-ready graph structure.
 
@@ -57,17 +73,21 @@ def _build_graph(ir: dict[str, Any]) -> dict[str, Any]:
             "flows": {...},      # Process managers, domain services, subscribers
             "projections": {...},# Projections with source aggregates
             "stats": {...},      # Element counts
+            "flow_graph": {...}, # DAG for event flows
+            "pm_graphs": [...],  # State machine graphs per process manager
         }
     """
     clusters = ir.get("clusters", {})
     flows = ir.get("flows", {})
     projections = ir.get("projections", {})
-    elements = ir.get("elements", {})
+
+    event_to_agg = _build_event_to_agg_index(clusters)
 
     nodes = _build_nodes(clusters)
-    links = _build_links(clusters, flows)
-    stats = _build_stats(elements, clusters, flows, projections)
+    links = _build_links(clusters, flows, event_to_agg)
+    stats = _build_stats(ir)
     flow_graph = _build_flow_graph(ir)
+    pm_graphs = _build_pm_graphs(flows, event_to_agg)
 
     return {
         "nodes": nodes,
@@ -77,6 +97,7 @@ def _build_graph(ir: dict[str, Any]) -> dict[str, Any]:
         "projections": projections,
         "stats": stats,
         "flow_graph": flow_graph,
+        "pm_graphs": pm_graphs,
     }
 
 
@@ -121,6 +142,7 @@ def _build_nodes(clusters: dict[str, Any]) -> list[dict[str, Any]]:
 def _build_links(
     clusters: dict[str, Any],
     flows: dict[str, Any],
+    event_to_agg: dict[str, str],
 ) -> list[dict[str, Any]]:
     """Detect cross-aggregate edges from event handlers and process managers.
 
@@ -129,14 +151,6 @@ def _build_links(
     """
     links: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
-
-    # Index: event __type__ → source aggregate FQN
-    event_to_agg: dict[str, str] = {}
-    for agg_fqn, cluster in clusters.items():
-        for _evt_fqn, evt in cluster.get("events", {}).items():
-            type_key = evt.get("__type__", "")
-            if type_key:
-                event_to_agg[type_key] = agg_fqn
 
     # Cross-aggregate event handlers: handler belongs to agg B but
     # listens to events from agg A (via source_stream or handler map)
@@ -335,13 +349,175 @@ def _build_flow_graph(ir: dict[str, Any]) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
-def _build_stats(
-    elements: dict[str, list[str]],
-    clusters: dict[str, Any],
+def _build_pm_graphs(
     flows: dict[str, Any],
-    projections: dict[str, Any],
-) -> dict[str, int]:
+    event_to_agg: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Build state machine graphs for each process manager.
+
+    Derives states from handler lifecycle metadata (start/end flags)
+    and the events that trigger transitions. Each PM produces a graph
+    with state nodes and event-labeled transition edges.
+
+    The states are inferred as follows:
+    - A start handler event creates a transition from the "initial" state
+    - An end handler event creates a transition to a "completed" state
+    - Other handler events create transitions between intermediate states
+    - Intermediate states are named after the triggering event
+
+    Returns a list of PM graph dicts, one per process manager.
+    """
+    pms = flows.get("process_managers", {})
+    if not pms:
+        return []
+
+    pm_graphs: list[dict[str, Any]] = []
+
+    for pm_fqn, pm in sorted(pms.items()):
+        handlers = pm.get("handlers", {})
+        if not handlers:
+            pm_graphs.append(
+                {
+                    "fqn": pm_fqn,
+                    "name": pm.get("name", short_name(pm_fqn)),
+                    "stream_categories": pm.get("stream_categories", []),
+                    "states": [],
+                    "transitions": [],
+                    "aggregates": [],
+                }
+            )
+            continue
+
+        states: list[dict[str, Any]] = []
+        transitions: list[dict[str, Any]] = []
+        state_ids: set[str] = set()
+        agg_set: set[str] = set()
+
+        # Classify handlers by lifecycle
+        start_events: list[tuple[str, dict[str, Any]]] = []
+        end_events: list[tuple[str, dict[str, Any]]] = []
+        mid_events: list[tuple[str, dict[str, Any]]] = []
+
+        for type_key, handler_info in sorted(handlers.items()):
+            is_start = handler_info.get("start", False)
+            is_end = handler_info.get("end", False)
+            entry = (type_key, handler_info)
+            if is_start:
+                start_events.append(entry)
+            elif is_end:
+                end_events.append(entry)
+            else:
+                mid_events.append(entry)
+
+            agg_fqn = event_to_agg.get(type_key)
+            if agg_fqn:
+                agg_set.add(agg_fqn)
+
+        def _add_state(sid: str, label: str, state_type: str = "intermediate") -> None:
+            if sid not in state_ids:
+                state_ids.add(sid)
+                states.append({"id": sid, "label": label, "type": state_type})
+
+        _add_state("initial", "Initial", "start")
+
+        # Build transitions from start events
+        for type_key, handler_info in start_events:
+            if handler_info.get("end", False):
+                _add_state("completed", "Completed", "end")
+                transitions.append(
+                    _make_transition("initial", "completed", type_key, handler_info)
+                )
+            else:
+                target_id = f"after:{type_key}"
+                _add_state(
+                    target_id,
+                    _state_label_from_event(short_name(type_key)),
+                    "intermediate",
+                )
+                transitions.append(
+                    _make_transition("initial", target_id, type_key, handler_info)
+                )
+
+        # Build transitions for mid events — chains from the last
+        # start state(s) through each mid-event sequentially.
+        prev_states = [
+            f"after:{tk}" for tk, hi in start_events if not hi.get("end", False)
+        ]
+        if not prev_states:
+            prev_states = ["initial"]
+
+        for type_key, handler_info in mid_events:
+            target_id = f"after:{type_key}"
+            _add_state(
+                target_id,
+                _state_label_from_event(short_name(type_key)),
+                "intermediate",
+            )
+            for prev in prev_states:
+                transitions.append(
+                    _make_transition(prev, target_id, type_key, handler_info)
+                )
+            prev_states = [target_id]
+
+        # Build transitions for end events
+        if end_events:
+            _add_state("completed", "Completed", "end")
+            for type_key, handler_info in end_events:
+                for src in prev_states:
+                    transitions.append(
+                        _make_transition(src, "completed", type_key, handler_info)
+                    )
+
+        pm_graphs.append(
+            {
+                "fqn": pm_fqn,
+                "name": pm.get("name", short_name(pm_fqn)),
+                "stream_categories": pm.get("stream_categories", []),
+                "states": states,
+                "transitions": transitions,
+                "aggregates": sorted(short_name(a) for a in agg_set),
+            }
+        )
+
+    return pm_graphs
+
+
+def _make_transition(
+    source: str,
+    target: str,
+    type_key: str,
+    handler_info: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a single transition edge dict for the PM state machine."""
+    return {
+        "source": source,
+        "target": target,
+        "event": short_name(type_key),
+        "event_type": type_key,
+        "methods": handler_info.get("methods", []),
+    }
+
+
+def _state_label_from_event(event_short_name: str) -> str:
+    """Derive a human-readable state label from an event type short name.
+
+    E.g. ``OrderPlaced.v1`` → ``Order Placed``.
+    """
+    name = (
+        event_short_name.rsplit(".", 1)[0]
+        if "." in event_short_name
+        else event_short_name
+    )
+    return titleize(name)
+
+
+def _build_stats(ir: dict[str, Any]) -> dict[str, int]:
     """Compute summary statistics from the IR."""
+    elements = ir.get("elements", {})
+    clusters = ir.get("clusters", {})
+    projections = ir.get("projections", {})
+    diagnostics = ir.get("diagnostics", [])
+
     stats: dict[str, int] = {
         "aggregates": len(clusters),
         "projections": len(projections),
@@ -349,6 +525,13 @@ def _build_stats(
 
     for ir_key, stat_key in _STAT_KEY_MAP.items():
         stats[stat_key] = len(elements.get(ir_key, []))
+
+    stats["handlers"] = (
+        stats.get("command_handlers", 0)
+        + stats.get("event_handlers", 0)
+        + stats.get("process_managers", 0)
+    )
+    stats["diagnostics"] = len(diagnostics)
 
     return stats
 
