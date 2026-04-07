@@ -29,6 +29,106 @@ def multi_agg_flow_graph(multi_agg_domain):
     return _build_flow_graph(ir)
 
 
+@pytest.fixture
+def rich_domain():
+    """Domain with process managers, projectors, and fact events."""
+    from protean import Domain
+    from protean.core.aggregate import BaseAggregate
+    from protean.core.command import BaseCommand
+    from protean.core.command_handler import BaseCommandHandler
+    from protean.core.event import BaseEvent
+    from protean.core.event_handler import BaseEventHandler
+    from protean.core.projection import BaseProjection
+    from protean.core.projector import BaseProjector, on
+    from protean.fields import DateTime, Float, Identifier, String
+    from protean.utils.mixins import handle
+
+    domain = Domain(name="RichDomain")
+
+    @domain.aggregate
+    class Order(BaseAggregate):
+        customer_id = Identifier(required=True)
+        status = String(default="draft")
+
+        def place(self):
+            self.raise_(OrderPlaced(order_id=self.id, customer_id=self.customer_id))
+
+    @domain.event(part_of=Order)
+    class OrderPlaced(BaseEvent):
+        order_id = Identifier(required=True)
+        customer_id = Identifier(required=True)
+
+    @domain.command(part_of=Order)
+    class PlaceOrder(BaseCommand):
+        order_id = Identifier(required=True)
+        customer_id = Identifier(required=True)
+
+    @domain.command_handler(part_of=Order)
+    class OrderCommandHandler(BaseCommandHandler):
+        @handle(PlaceOrder)
+        def handle_place_order(self, command):
+            pass
+
+    @domain.aggregate
+    class Shipment(BaseAggregate):
+        order_id = Identifier(required=True)
+        status = String(default="pending")
+
+    @domain.event(part_of=Shipment)
+    class ShipmentDispatched(BaseEvent):
+        shipment_id = Identifier(required=True)
+
+    @domain.event_handler(part_of=Shipment, stream_category="order")
+    class ShipmentOrderHandler(BaseEventHandler):
+        @handle(OrderPlaced)
+        def on_order_placed(self, event):
+            pass
+
+    # Process manager spanning Order and Shipment
+    @domain.process_manager(stream_categories=["order", "shipment"])
+    class OrderFulfillment:
+        order_id = Identifier(required=True)
+        status = String(default="started")
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def handle_order_placed(self, event):
+            self.order_id = event.order_id
+
+        @handle(ShipmentDispatched, end=True, correlate="order_id")
+        def handle_shipment_dispatched(self, event):
+            pass
+
+    # Projection + Projector
+    @domain.projection
+    class OrderSummary(BaseProjection):
+        order_id = Identifier(identifier=True)
+        customer_id = String()
+        placed_at = DateTime()
+        total = Float()
+
+    class OrderSummaryProjector(BaseProjector):
+        @on(OrderPlaced)
+        def on_order_placed(self, event):
+            pass
+
+    domain.register(
+        OrderSummaryProjector, projector_for=OrderSummary, aggregates=[Order]
+    )
+
+    domain.init(traverse=False)
+    return domain
+
+
+@pytest.fixture
+def rich_flow_graph(rich_domain):
+    """Build the flow graph from the rich domain."""
+    from protean.ir.builder import IRBuilder
+
+    with rich_domain.domain_context():
+        ir = IRBuilder(rich_domain).build()
+    return _build_flow_graph(ir)
+
+
 # ---------------------------------------------------------------------------
 # Static Asset Tests
 # ---------------------------------------------------------------------------
@@ -183,6 +283,119 @@ class TestBuildFlowGraph:
         graph = multi_agg_flow_graph
         ids = [n["id"] for n in graph["nodes"]]
         assert len(ids) == len(set(ids)), "Duplicate node IDs found"
+
+    def test_process_manager_node(self, rich_flow_graph):
+        """Process manager should appear as a node."""
+        graph = rich_flow_graph
+        pm_nodes = [n for n in graph["nodes"] if n["type"] == "process_manager"]
+        assert len(pm_nodes) == 1
+        assert pm_nodes[0]["name"] == "OrderFulfillment"
+
+    def test_process_manager_edges(self, rich_flow_graph):
+        """PM should have event edges from the events it handles."""
+        graph = rich_flow_graph
+        pm_node = [n for n in graph["nodes"] if n["type"] == "process_manager"][0]
+        pm_edges = [e for e in graph["edges"] if e["target"] == pm_node["id"]]
+        assert len(pm_edges) >= 2, (
+            "PM should have edges from OrderPlaced and ShipmentDispatched"
+        )
+
+        # Check start/end lifecycle annotations
+        start_edges = [e for e in pm_edges if e.get("start")]
+        end_edges = [e for e in pm_edges if e.get("end")]
+        assert len(start_edges) >= 1, "PM should have at least one start edge"
+        assert len(end_edges) >= 1, "PM should have at least one end edge"
+
+    def test_projector_node(self, rich_flow_graph):
+        """Projector should appear as a node with projection name."""
+        graph = rich_flow_graph
+        proj_nodes = [n for n in graph["nodes"] if n["type"] == "projector"]
+        assert len(proj_nodes) == 1
+        assert proj_nodes[0].get("projection") == "OrderSummary"
+
+    def test_projector_edge(self, rich_flow_graph):
+        """Projector should have a projection-type edge from the event it handles."""
+        graph = rich_flow_graph
+        proj_edges = [e for e in graph["edges"] if e["type"] == "projection"]
+        assert len(proj_edges) >= 1
+
+        proj_node_ids = {n["id"] for n in graph["nodes"] if n["type"] == "projector"}
+        for e in proj_edges:
+            assert e["target"] in proj_node_ids
+
+    @pytest.mark.no_test_domain
+    def test_fact_events_excluded(self):
+        """Fact events should not produce nodes or edges."""
+        from protean import Domain
+        from protean.core.aggregate import BaseAggregate
+        from protean.core.event import BaseEvent
+        from protean.fields import Identifier, String
+        from protean.ir.builder import IRBuilder
+
+        domain = Domain(name="FactTest")
+
+        @domain.aggregate(fact_events=True)
+        class Account(BaseAggregate):
+            name = String(required=True)
+
+        @domain.event(part_of=Account)
+        class AccountOpened(BaseEvent):
+            account_id = Identifier(required=True)
+
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            ir = IRBuilder(domain).build()
+        graph = _build_flow_graph(ir)
+
+        # Only non-fact events should be present
+        evt_nodes = [n for n in graph["nodes"] if n["type"] == "event"]
+        for n in evt_nodes:
+            assert "Fact" not in n["name"], f"Fact event node found: {n['name']}"
+
+        # The explicit AccountOpened should be present (it's not a fact event)
+        # but fact events auto-generated by fact_events=True should not
+        agg_nodes = [n for n in graph["nodes"] if n["type"] == "aggregate"]
+        assert len(agg_nodes) == 1
+
+    def test_event_handler_cross_aggregate_flag(self, rich_flow_graph):
+        """Event handler edges should have the cross_aggregate flag.
+        PM and projector edges use different types and don't carry this flag."""
+        graph = rich_flow_graph
+        eh_ids = {n["id"] for n in graph["nodes"] if n["type"] == "event_handler"}
+        eh_event_edges = [
+            e for e in graph["edges"] if e["type"] == "event" and e["target"] in eh_ids
+        ]
+        assert len(eh_event_edges) > 0, "Expected event handler edges"
+
+        for e in eh_event_edges:
+            assert "cross_aggregate" in e
+
+    def test_rich_domain_all_node_types(self, rich_flow_graph):
+        """Rich domain should have all 7 node types."""
+        graph = rich_flow_graph
+        types_present = {n["type"] for n in graph["nodes"]}
+        expected = {
+            "aggregate",
+            "command",
+            "command_handler",
+            "event",
+            "event_handler",
+            "process_manager",
+            "projector",
+        }
+        assert expected.issubset(types_present), (
+            f"Missing types: {expected - types_present}"
+        )
+
+    def test_rich_domain_all_edge_types(self, rich_flow_graph):
+        """Rich domain should have all edge types."""
+        graph = rich_flow_graph
+        edge_types = {e["type"] for e in graph["edges"]}
+        expected = {"command", "handler_to_agg", "raises", "event", "projection"}
+        assert expected.issubset(edge_types), (
+            f"Missing edge types: {expected - edge_types}"
+        )
 
 
 # ---------------------------------------------------------------------------
