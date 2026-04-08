@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import psycopg2
@@ -6,6 +8,9 @@ from message_db.client import MessageDB
 
 from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 
 class MessageDBStore(BaseEventStore):
@@ -18,7 +23,7 @@ class MessageDBStore(BaseEventStore):
     # Keys from conn_info that are forwarded to MessageDB connection pool
     _POOL_KEYS = frozenset({"max_connections"})
 
-    def __init__(self, domain, conn_info) -> None:
+    def __init__(self, domain: Domain, conn_info: dict[str, Any]) -> None:
         super().__init__("MessageDB", domain, conn_info)
 
         self._client = None
@@ -27,7 +32,7 @@ class MessageDBStore(BaseEventStore):
         }
 
     @property
-    def client(self):
+    def client(self) -> MessageDB:
         """Return the MessageDB client instance."""
         if self._client is None:
             try:

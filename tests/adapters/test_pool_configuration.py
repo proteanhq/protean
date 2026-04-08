@@ -95,6 +95,7 @@ class TestRedisBrokerPoolConfig:
             assert reconnect_call.kwargs == {"max_connections": 25}
 
     @pytest.mark.redis
+    @pytest.mark.no_test_domain
     def test_redis_broker_with_max_connections(self, test_domain):
         """Integration: Redis broker should accept max_connections in real use."""
         domain = Domain("Pool Config Broker Test")
@@ -313,6 +314,47 @@ class TestLowPoolSizeWarning:
         """Non-dict values in databases config should be silently skipped."""
         domain = Domain("Non-Dict DB Test")
         domain.config["databases"]["broken"] = "not-a-dict"
+        domain._validator._warn_low_pool_size()
+
+        warnings = domain._validator.warnings
+        assert not any(w["code"] == "LOW_POOL_SIZE" for w in warnings)
+
+    def test_string_pool_size_coerced_to_int(self):
+        """String pool_size (from env-var substitution) should be coerced to int."""
+        domain = Domain("String Pool Size Test")
+        domain.config["databases"]["default"] = {
+            "provider": "postgresql",
+            "database_uri": "postgresql://user:pass@localhost/testdb",
+            "pool_size": "2",
+        }
+        domain._validator._warn_low_pool_size()
+
+        warnings = [
+            w for w in domain._validator.warnings if w["code"] == "LOW_POOL_SIZE"
+        ]
+        assert len(warnings) == 1
+
+    def test_bool_pool_size_ignored(self):
+        """Boolean pool_size should be ignored (not treated as int)."""
+        domain = Domain("Bool Pool Size Test")
+        domain.config["databases"]["default"] = {
+            "provider": "postgresql",
+            "database_uri": "postgresql://user:pass@localhost/testdb",
+            "pool_size": True,
+        }
+        domain._validator._warn_low_pool_size()
+
+        warnings = domain._validator.warnings
+        assert not any(w["code"] == "LOW_POOL_SIZE" for w in warnings)
+
+    def test_non_numeric_string_pool_size_ignored(self):
+        """Non-numeric string pool_size should be silently skipped."""
+        domain = Domain("Bad Pool Size Test")
+        domain.config["databases"]["default"] = {
+            "provider": "postgresql",
+            "database_uri": "postgresql://user:pass@localhost/testdb",
+            "pool_size": "abc",
+        }
         domain._validator._warn_low_pool_size()
 
         warnings = domain._validator.warnings

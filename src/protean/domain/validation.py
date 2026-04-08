@@ -424,13 +424,27 @@ class DomainValidator:
     # the defaults in PostgresqlProvider / MssqlProvider.
     _MIN_PRODUCTION_POOL_SIZE = 5
 
+    @staticmethod
+    def _coerce_pool_size(value: object) -> int | None:
+        """Return a valid integer pool size, or ``None`` when invalid."""
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                return None
+        return None
+
     def _warn_low_pool_size(self) -> None:
         """Warn when a database provider has pool_size below the production default."""
         databases = self._domain.config.get("databases", {})
         for db_name, db_config in databases.items():
             if not isinstance(db_config, dict):
                 continue
-            pool_size = db_config.get("pool_size")
+            pool_size = self._coerce_pool_size(db_config.get("pool_size"))
             if pool_size is not None and pool_size < self._MIN_PRODUCTION_POOL_SIZE:
                 provider = db_config.get("provider", "unknown")
                 # Skip memory provider — it doesn't use connection pools
