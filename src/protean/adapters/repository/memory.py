@@ -12,7 +12,7 @@ from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
-from protean.exceptions import ObjectNotFoundError
+from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import fully_qualified_name
@@ -438,8 +438,12 @@ class DictDAO(BaseDAO):
 
         return result
 
-    def _update(self, model_obj):
-        """Update the entity record in the dictionary"""
+    def _update(self, model_obj: Any, expected_version: int | None = None):
+        """Update the entity record in the dictionary.
+
+        When ``expected_version`` is set, the version check and write happen
+        atomically under the database lock.
+        """
         conn = self._get_session()
         assert conn is not None
 
@@ -453,6 +457,17 @@ class DictDAO(BaseDAO):
                     f"`{self.__class__.__name__}` object with identifier {identifier} "
                     f"does not exist."
                 )
+
+            # Atomic version check under lock
+            if expected_version is not None:
+                stored = conn._db["data"][self.schema_name][identifier]
+                stored_version = stored.get("_version")
+                if stored_version != expected_version:
+                    raise ExpectedVersionError(
+                        f"Wrong expected version: {expected_version} "
+                        f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
+                        f"Version: {stored_version})"
+                    )
 
             conn._db["data"][self.schema_name][identifier] = model_obj
 

@@ -6,7 +6,6 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import QuerySet, ResultSet
 from protean.exceptions import (
-    ExpectedVersionError,
     ObjectNotFoundError,
     TooManyObjectsError,
     ValidationError,
@@ -188,17 +187,20 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _update(self, model_obj: Any):
-        """Update entity data in the persistence store. Concrete implementation will be provided by
-        the database DAO class.
+    def _update(self, model_obj: Any, expected_version: int | None = None):
+        """Update entity data in the persistence store.
 
-        Method invocation should update the existing data in the persistent store, by its unique identifier.
+        Concrete implementations must perform the version check **atomically**
+        with the write when ``expected_version`` is not ``None``.  For example,
+        a SQL adapter should use ``UPDATE … WHERE _version = :expected`` and
+        check the affected row count rather than doing a separate SELECT.
 
-        This method is invoked by the DAO's `update` wrapper method and should not be called directly.
+        Raises ``ExpectedVersionError`` when the stored version does not match
+        ``expected_version``.
 
-        Returns the updated model object.
-
-        :param model_obj: The model object supplied in an ORM/ODM/Python driver friendly/format
+        :param model_obj: The model object in an ORM/ODM/driver-friendly format.
+        :param expected_version: The version the record must currently have for
+            the update to succeed.  ``None`` means no version check is required.
         """
 
     @abstractmethod
@@ -430,26 +432,23 @@ class BaseDAO(metaclass=ABCMeta):
             logger.error(f"Failed creating entity because of {exc}")
             raise
 
-    def _validate_and_update_version(self, entity_obj) -> None:
+    def _validate_and_update_version(self, entity_obj) -> int | None:
+        """Compute the expected version and advance the entity's version.
+
+        Returns the expected version that the persistence store must match
+        atomically during the subsequent ``_update()`` call, or ``None``
+        for new (unpersisted) entities.
+        """
+        expected_version: int | None = None
+
         if entity_obj.state_.is_persisted:
-            entity_id_field = id_field(self.entity_cls)
-            assert entity_id_field is not None, (
-                f"`{self.entity_cls.__name__}` does not have an identity field"
-            )
-            identifier = getattr(entity_obj, entity_id_field.field_name)
-            persisted_entity = self.get(identifier)
+            expected_version = entity_obj._version
 
-            # The version of aggregate in the persistence store should be the same as
-            #   the version we are dealing with.
-            if persisted_entity._version != entity_obj._version:
-                raise ExpectedVersionError(
-                    f"Wrong expected version: {entity_obj._version} "
-                    f"(Aggregate: {self.entity_cls.__name__}({identifier}), Version: {persisted_entity._version})"
-                )
-
-        # Now that we are certain we are dealing with the correct version,
-        #   we can safely update the version to the next version.
+        # Advance to the next version — the model built from this entity
+        # will carry the incremented version for the UPDATE.
         entity_obj._version = entity_obj._next_version
+
+        return expected_version
 
     def save(self, entity_obj: Any) -> Any:
         """Create or update an entity in the data store, depending on its state. An identity for entity record is
@@ -467,13 +466,17 @@ class BaseDAO(metaclass=ABCMeta):
         """
         logger.debug(f"Saving `{self.entity_cls.__name__}` object")
 
+        expected_version: int | None = None
         if entity_obj.element_type == DomainObjects.AGGREGATE:
-            self._validate_and_update_version(entity_obj)
+            expected_version = self._validate_and_update_version(entity_obj)
 
         try:
             # Build the model object and create it
             if entity_obj.state_.is_persisted:
-                self._update(self.database_model_cls.from_entity(entity_obj))
+                self._update(
+                    self.database_model_cls.from_entity(entity_obj),
+                    expected_version=expected_version,
+                )
             else:
                 # Perform unique checks. Raises validation errors if unique constraints are violated.
                 self._validate_unique(entity_obj)
@@ -492,6 +495,10 @@ class BaseDAO(metaclass=ABCMeta):
 
             return entity_obj
         except Exception as exc:
+            # Roll back the version advance so the entity stays consistent
+            # with the persistence store after a failed save.
+            if expected_version is not None:
+                entity_obj._version = expected_version
             logger.error(f"Failed saving entity because {exc}")
             raise
 

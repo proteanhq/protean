@@ -25,6 +25,7 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec
 from protean.exceptions import (
     ConfigurationError,
+    ExpectedVersionError,
     IncorrectUsageError,
     ObjectNotFoundError,
 )
@@ -511,8 +512,15 @@ class SADAO(BaseDAO):
 
         return model_obj
 
-    def _update(self, model_obj):
-        """Update a record in the sqlalchemy database"""
+    def _update(self, model_obj: Any, expected_version: int | None = None):
+        """Update a record in the sqlalchemy database.
+
+        When ``expected_version`` is not ``None``, the stored version is
+        verified before applying changes.  The check + write happen within
+        the same ORM session (and therefore the same DB transaction when a
+        UoW is active), so concurrent commits are caught by the database's
+        own conflict detection at commit time.
+        """
         conn = self._get_session()
         assert conn is not None
 
@@ -531,6 +539,19 @@ class SADAO(BaseDAO):
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
             )
+
+        # Atomic version check within the same transaction
+        if expected_version is not None:
+            stored_version = getattr(db_item, "_version", None)
+            if stored_version != expected_version:
+                if self._is_standalone:
+                    conn.rollback()
+                    conn.close()
+                raise ExpectedVersionError(
+                    f"Wrong expected version: {expected_version} "
+                    f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
+                    f"Version: {stored_version})"
+                )
 
         # Sync DB Record with current changes
         for attribute in attributes(self.entity_cls):
