@@ -359,3 +359,31 @@ class TestLowPoolSizeWarning:
 
         warnings = domain._validator.warnings
         assert not any(w["code"] == "LOW_POOL_SIZE" for w in warnings)
+
+    def test_no_warning_in_development_env(self, monkeypatch):
+        """Low pool_size should not warn when PROTEAN_ENV is development."""
+        monkeypatch.setenv("PROTEAN_ENV", "development")
+        domain = Domain("Dev Env Test")
+        domain.config["databases"]["default"] = {
+            "provider": "postgresql",
+            "database_uri": "postgresql://user:pass@localhost/testdb",
+            "pool_size": 1,
+        }
+        domain._validator._warn_low_pool_size()
+
+        warnings = domain._validator.warnings
+        assert not any(w["code"] == "LOW_POOL_SIZE" for w in warnings)
+
+    def test_no_warning_in_testing_env(self, monkeypatch):
+        """Low pool_size should not warn when PROTEAN_ENV is testing."""
+        monkeypatch.setenv("PROTEAN_ENV", "testing")
+        domain = Domain("Testing Env Test")
+        domain.config["databases"]["default"] = {
+            "provider": "postgresql",
+            "database_uri": "postgresql://user:pass@localhost/testdb",
+            "pool_size": 1,
+        }
+        domain._validator._warn_low_pool_size()
+
+        warnings = domain._validator.warnings
+        assert not any(w["code"] == "LOW_POOL_SIZE" for w in warnings)

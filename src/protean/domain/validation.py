@@ -439,7 +439,17 @@ class DomainValidator:
         return None
 
     def _warn_low_pool_size(self) -> None:
-        """Warn when a database provider has pool_size below the production default."""
+        """Warn when a database provider has pool_size below the production default.
+
+        Skipped when ``PROTEAN_ENV`` is ``development`` or ``testing``,
+        where small pools are intentional.
+        """
+        from protean.domain.helpers import get_env
+
+        env = get_env()
+        if env in ("development", "testing"):
+            return
+
         databases = self._domain.config.get("databases", {})
         for db_name, db_config in databases.items():
             if not isinstance(db_config, dict):
