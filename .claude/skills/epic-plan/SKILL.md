@@ -1,6 +1,6 @@
 ---
 name: epic-plan
-description: Plan and break down an epic from the Protean roadmap into GitHub Issues with proper project board fields, dependencies, and a plan file. Use this skill whenever the user mentions planning an epic, breaking down an epic, starting a new epic, or refers to a specific epic by number or name from the roadmap (e.g., "let's plan 1.10", "break down the IR materialization epic", "start the next epic"). Also trigger when the user says "what's next on the roadmap" and the answer involves planning work.
+description: Plan and break down an epic from the Protean roadmap into self-contained GitHub Issues with proper project board fields and dependencies. Use this skill whenever the user mentions planning an epic, breaking down an epic, starting a new epic, or refers to a specific epic by number or name from the roadmap (e.g., "let's plan 1.10", "break down the IR materialization epic", "start the next epic"). Also trigger when the user says "what's next on the roadmap" and the answer involves planning work.
 argument-hint: "<epic-number-or-name>"
 ---
 
@@ -37,7 +37,7 @@ If the epic is still a draft item on the project board (not yet a real issue), y
 
 ### Deep-dive the codebase
 
-This is the most important step. Read the relevant source code, tests, and any prior plan files to understand:
+This is the most important step. Read the relevant source code and tests to understand:
 
 - What already exists that the epic builds on
 - What patterns the codebase uses that the new code should follow
@@ -45,6 +45,11 @@ This is the most important step. Read the relevant source code, tests, and any p
 - What tests exist and what test patterns to follow
 
 Don't rush this. A shallow understanding here leads to sub-issues that are either too vague or incorrectly scoped. Read actual source files, not just directory listings.
+
+**Capture findings as you go.** You will need file paths, line numbers, and design rationale when writing the epic body and sub-issues in Phase 2. Write down:
+- Every existing file/function that the epic builds on (with line numbers)
+- Design choices you're making and why — at the level of: "Health check HTTP server: **aiohttp** — lightweight, pure asyncio, no ASGI overhead; not ASGI because Engine has no web framework"
+- Patterns in the codebase that new code should follow (e.g., "DLQ maintenance should follow the OutboxProcessor async task pattern")
 
 ### Break into sub-issues
 
@@ -80,7 +85,7 @@ gh api graphql -f query='{ repository(owner: "proteanhq", name: "protean") { id 
 
 ### Set up the epic issue
 
-Add the `epic` label and flesh out the body:
+Add the `epic` label and flesh out the body. The epic issue is the **single source of truth** — everything the implementer needs to understand cross-cutting context must be here, not in a local file.
 
 ```bash
 gh issue edit <number> -R proteanhq/protean --add-label "epic" --body "$(cat <<'EOF'
@@ -93,6 +98,31 @@ Why this matters — the motivation, constraint, or stakeholder need.
 ## Success criteria
 - [ ] Criterion 1
 - [ ] Criterion 2
+
+## What already exists
+Code, patterns, and infrastructure this epic builds on. Include file paths and line numbers.
+This section prevents `/implement` from duplicating existing work or re-solving solved problems.
+
+- `src/protean/path/to/file.py` (lines N-M) — description of what it does
+- ...
+
+## Design decisions
+Key choices made during planning — library selections, API shape, config format — and *why*.
+These are constraints on implementation, not suggestions.
+
+- **Decision:** rationale — include what was considered and why it was rejected
+- e.g., "Health check HTTP server: **aiohttp** — lightweight, pure asyncio, no ASGI overhead. Not Flask/FastAPI because Engine has no web framework and adding one is disproportionate."
+- ...
+
+## Dependency order
+Brief rationale for why sub-issues are sequenced the way they are.
+
+```
+#N1 Title (foundation — other issues build on this)
+  ├── #N2 Title (needs N1 for X)
+  ├── #N3 Title (independent of N2, but needs N1)
+  └── #N4 Title (needs N2 + N3)
+```
 
 ## Sub-issues
 Created as native sub-issues below.
@@ -127,12 +157,29 @@ gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: {
 
 ### Create sub-issues
 
-For each sub-issue, create a GitHub Issue and link it as a sub-issue of the epic:
+Each sub-issue must be **self-contained** — an implementer should be able to read just the issue body and the epic's "Design Decisions" / "What Already Exists" sections to know exactly what to build. Use this structure:
 
 ```bash
 gh issue create -R proteanhq/protean \
   --title "Sub-issue title" \
-  --body "Description of what to implement, including test expectations"
+  --body "$(cat <<'EOF'
+## Sub-issue of #<EPIC> (<epic name>)
+
+### Gap
+What's missing or wrong — be specific. Include file paths and line numbers where relevant.
+
+### Deliverables
+Concrete list of what to build. Each item should be verifiable.
+
+### Key files
+- `src/protean/path/to/file.py` (what to modify and why)
+- New: `src/protean/path/to/new_file.py` (if creating)
+
+### Tests
+- What to verify, what assertions to make
+- Edge cases to cover
+EOF
+)"
 ```
 
 Then add it as a sub-issue of the epic using the GitHub UI or API. Set each sub-issue's project fields:
@@ -162,17 +209,16 @@ Update the GitHub Project board:
 
 If `todo/0-ROADMAP.md` exists locally, update it too — but the GitHub Project is the source of truth.
 
-## Phase 4: Write a plan file
+## Phase 4: Verify completeness
 
-Create a plan file at `.claude/plans/<descriptive-name>.md` that serves as the implementation reference. Include:
+Review the epic and all sub-issues you created. Check that:
 
-- Epic context and motivation
-- Sub-issue list with brief descriptions
-- Key design decisions made during the deep-dive
-- Architecture notes — what patterns to follow, what to watch out for
-- Dependency order for implementation
+1. **The epic body** has substantive "What already exists" and "Design decisions" sections — not placeholders
+2. **Each sub-issue** has Gap, Deliverables, Key Files, and Tests sections with enough detail that an implementer reading only the issue + epic can start coding without additional research
+3. **Dependencies** are set between sub-issues where ordering matters
+4. **No cross-cutting context is missing** — if a design decision affects multiple sub-issues, it must be in the epic body, not just one sub-issue
 
-This plan file is what you'll reference during execution. Make it genuinely useful, not just a copy of the issue descriptions.
+The GitHub issues are the durable artifacts. Everything needed for implementation must be there.
 
 ## Output
 
@@ -180,5 +226,4 @@ When complete, report:
 - Epic issue URL
 - List of sub-issue URLs with titles
 - Dependencies between sub-issues
-- Plan file path
 - Any design questions or decisions that need the user's input before execution begins
