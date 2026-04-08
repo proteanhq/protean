@@ -29,11 +29,11 @@ var DomainFlows = (function () {
     projector: 4,
   };
 
-  var COL_SPACING = 220;
-  var ROW_SPACING = 70;
-  var NODE_W = 160;
-  var NODE_H = 36;
-  var MARGIN = { top: 60, right: 40, bottom: 40, left: 40 };
+  var COL_SPACING = 200;
+  var ROW_SPACING = 56;
+  var NODE_W = 150;
+  var NODE_H = 34;
+  var MARGIN = { top: 40, right: 20, bottom: 20, left: 20 };
 
   var NODE_STYLES = {
     command:         { fill: 'oklch(0.82 0.10 250)', text: '#1a3a5c', rx: 14, label: 'Command' },
@@ -76,6 +76,7 @@ var DomainFlows = (function () {
   var _adjForward = {};       // id -> [target ids] (downstream adjacency)
   var _adjReverse = {};       // id -> [source ids] (upstream adjacency)
   var _hiddenTypes = {};
+  var _pinnedNodeId = null;   // Persistent search highlight
   var _svgWidth = 800;
   var _svgHeight = 500;
 
@@ -108,14 +109,14 @@ var DomainFlows = (function () {
 
     var rect = container.getBoundingClientRect();
     _svgWidth = rect.width || 800;
-    var bounds = _getGraphBounds();
-    _svgHeight = Math.max(400, bounds.yMax + MARGIN.bottom + 20);
+    // Use container height (viewport-filling) or fall back to graph bounds
+    _svgHeight = rect.height || 600;
 
     _svg = d3.select(containerSelector)
       .append('svg')
       .attr('class', 'dv-flow-svg')
       .attr('width', '100%')
-      .attr('height', _svgHeight);
+      .attr('height', '100%');
 
     var defs = _svg.append('defs');
     _renderArrowMarker(defs, 'dv-flow-arrow', 'dv-flow-arrow-head');
@@ -123,11 +124,15 @@ var DomainFlows = (function () {
     _renderArrowMarker(defs, 'dv-flow-arrow-proj', 'dv-flow-arrow-head-proj');
 
     _zoom = d3.zoom()
-      .scaleExtent([0.2, 3])
+      .scaleExtent([0.4, 2])
       .on('zoom', function (event) {
         _g.attr('transform', event.transform);
       });
     _svg.call(_zoom);
+
+    // Double-click resets to fit view
+    _svg.on('dblclick.zoom', null);
+    _svg.on('dblclick', function () { _fitToView(); });
 
     _g = _svg.append('g').attr('class', 'dv-flow-canvas');
 
@@ -136,6 +141,7 @@ var DomainFlows = (function () {
     _renderEdges();
     _renderNodes();
     _renderLegend();
+    _renderResetButton();
     _fitToView();
   }
 
@@ -153,6 +159,7 @@ var DomainFlows = (function () {
     _adjForward = {};
     _adjReverse = {};
     _hiddenTypes = {};
+    _pinnedNodeId = null;
     _svgWidth = 800;
     _svgHeight = 500;
   }
@@ -194,6 +201,38 @@ var DomainFlows = (function () {
   function _computeLayout() {
     _nodePositions = {};
 
+    // Infer cluster affinity for unclustered consumer nodes (projectors, PMs)
+    // by tracing their incoming edges back to source events' clusters.
+    _nodes.forEach(function (n) {
+      if (n.cluster) return;
+      var col = COLUMNS[n.type] != null ? COLUMNS[n.type] : 2;
+      if (col !== 4) return; // Only consumer column
+
+      // Find clusters of upstream nodes via incoming edges
+      var clusterCounts = {};
+      var sources = _adjReverse[n.id] || [];
+      sources.forEach(function (srcId) {
+        var srcNode = _nodeById[srcId];
+        if (srcNode && srcNode.cluster) {
+          clusterCounts[srcNode.cluster] = (clusterCounts[srcNode.cluster] || 0) + 1;
+        }
+      });
+
+      // Assign to most-connected cluster
+      var bestCluster = null;
+      var bestCount = 0;
+      for (var c in clusterCounts) {
+        if (clusterCounts[c] > bestCount) {
+          bestCount = clusterCounts[c];
+          bestCluster = c;
+        }
+      }
+      if (bestCluster) {
+        n.cluster = bestCluster;
+      }
+    });
+
+    // Group nodes by column and cluster
     var columnGroups = {};
     for (var col = 0; col <= 4; col++) {
       columnGroups[col] = {};
@@ -208,30 +247,63 @@ var DomainFlows = (function () {
       columnGroups[col][cluster].push(n);
     });
 
+    // Sort nodes within each group
+    for (var col = 0; col <= 4; col++) {
+      for (var key in columnGroups[col]) {
+        columnGroups[col][key].sort(function (a, b) {
+          return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+        });
+      }
+    }
+
     var allClusters = {};
     _nodes.forEach(function (n) {
       if (n.cluster) allClusters[n.cluster] = true;
     });
     var clusterOrder = Object.keys(allClusters).sort();
 
+    // Compute globally consistent vertical band per cluster:
+    // each cluster's band height = max row count across all columns
+    var clusterMaxRows = {};
+    clusterOrder.forEach(function (cluster) {
+      var maxRows = 0;
+      for (var col = 0; col <= 4; col++) {
+        var group = (columnGroups[col] || {})[cluster];
+        if (group && group.length > maxRows) {
+          maxRows = group.length;
+        }
+      }
+      clusterMaxRows[cluster] = maxRows;
+    });
+
+    // Compute the y-start for each cluster band
+    var clusterYStart = {};
+    var y = MARGIN.top + 30;
+    clusterOrder.forEach(function (cluster) {
+      clusterYStart[cluster] = y;
+      y += clusterMaxRows[cluster] * ROW_SPACING + 20; // gap between clusters
+    });
+    var unclusteredYStart = y;
+
+    // Position nodes: center each column's group within its cluster band
     for (var col = 0; col <= 4; col++) {
-      var y = MARGIN.top + 30;
       clusterOrder.forEach(function (cluster) {
         var group = (columnGroups[col] || {})[cluster];
         if (!group || group.length === 0) return;
-        group.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+        var bandHeight = clusterMaxRows[cluster] * ROW_SPACING;
+        var groupHeight = group.length * ROW_SPACING;
+        var yOffset = clusterYStart[cluster] + (bandHeight - groupHeight) / 2;
         group.forEach(function (n) {
-          _nodePositions[n.id] = { x: MARGIN.left + col * COL_SPACING, y: y };
-          y += ROW_SPACING;
+          _nodePositions[n.id] = { x: MARGIN.left + col * COL_SPACING, y: yOffset };
+          yOffset += ROW_SPACING;
         });
-        y += 10;
       });
       var unclustered = (columnGroups[col] || {}).__none__;
       if (unclustered && unclustered.length > 0) {
-        unclustered.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+        var uy = unclusteredYStart;
         unclustered.forEach(function (n) {
-          _nodePositions[n.id] = { x: MARGIN.left + col * COL_SPACING, y: y };
-          y += ROW_SPACING;
+          _nodePositions[n.id] = { x: MARGIN.left + col * COL_SPACING, y: uy };
+          uy += ROW_SPACING;
         });
       }
     }
@@ -368,8 +440,16 @@ var DomainFlows = (function () {
         var pos = _nodePositions[d.id] || { x: 0, y: 0 };
         return 'translate(' + pos.x + ',' + pos.y + ')';
       })
-      .on('mouseenter', function (event, d) { _highlightPath(d, true); })
-      .on('mouseleave', function (event, d) { _highlightPath(d, false); });
+      .on('mouseenter', function (event, d) { if (!_pinnedNodeId) _highlightPath(d, true); })
+      .on('mouseleave', function (event, d) { if (!_pinnedNodeId) _highlightPath(d, false); })
+      .on('click', function (event, d) {
+        event.stopPropagation();
+        if (_pinnedNodeId === d.id) {
+          clearSearch();
+        } else {
+          setSearch(d.id);
+        }
+      });
 
     nodeSel.append('rect')
       .attr('class', 'dv-flow-card')
@@ -466,6 +546,95 @@ var DomainFlows = (function () {
   }
 
   // ---------------------------------------------------------------------------
+  // Search — persistent highlight + zoom to connected subgraph
+  // ---------------------------------------------------------------------------
+
+  function setSearch(nodeId) {
+    if (!_g || !_nodeById[nodeId]) return;
+    _pinnedNodeId = nodeId;
+    _highlightPath(_nodeById[nodeId], true);
+
+    // Mark the focal node distinctly
+    _g.selectAll('.dv-flow-node').classed('dv-flow-focal', function (d) {
+      return d.id === nodeId;
+    });
+
+    // Highlight in place — no zoom/pan shift
+
+    // Notify external listeners (search input sync)
+    if (typeof _onSearchChange === 'function') _onSearchChange(nodeId);
+  }
+
+  function clearSearch() {
+    if (!_g) return;
+    _pinnedNodeId = null;
+    // Remove all highlight/dim classes
+    _g.selectAll('.dv-flow-node')
+      .classed('dv-flow-dimmed', false)
+      .classed('dv-flow-highlighted', false)
+      .classed('dv-flow-focal', false);
+    _g.selectAll('.dv-flow-edge')
+      .classed('dv-flow-dimmed', false)
+      .classed('dv-flow-highlighted', false);
+
+    // Stay at current position — use Reset button to refit
+
+    if (typeof _onSearchChange === 'function') _onSearchChange(null);
+  }
+
+  function getNodes() {
+    return _nodes.map(function (n) {
+      return { id: n.id, name: n.name, type: n.type, cluster: n.cluster };
+    });
+  }
+
+  var _onSearchChange = null;
+
+  function onSearchChange(fn) {
+    _onSearchChange = fn;
+  }
+
+  function _zoomToConnected(nodeId) {
+    if (!_svg || !_zoom) return;
+
+    var connected = {};
+    connected[nodeId] = true;
+    _walkAdj(nodeId, _adjReverse, connected);
+    _walkAdj(nodeId, _adjForward, connected);
+
+    var xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+    for (var id in connected) {
+      var pos = _nodePositions[id];
+      if (!pos) continue;
+      var left = pos.x - NODE_W / 2;
+      var right = pos.x + NODE_W / 2;
+      var top = pos.y - NODE_H / 2;
+      var bottom = pos.y + NODE_H / 2 + 16;
+      if (left < xMin) xMin = left;
+      if (right > xMax) xMax = right;
+      if (top < yMin) yMin = top;
+      if (bottom > yMax) yMax = bottom;
+    }
+
+    if (xMin === Infinity) return;
+
+    var pad = 60;
+    xMin -= pad; yMin -= pad; xMax += pad; yMax += pad;
+    var gw = xMax - xMin;
+    var gh = yMax - yMin;
+    if (gw <= 0 || gh <= 0) return;
+
+    var scale = Math.min(_svgWidth / gw, _svgHeight / gh, 1.5) * 0.9;
+    var tx = (_svgWidth - gw * scale) / 2 - xMin * scale;
+    var ty = (_svgHeight - gh * scale) / 2 - yMin * scale;
+
+    _svg.transition().duration(400).call(
+      _zoom.transform,
+      d3.zoomIdentity.translate(tx, ty).scale(scale)
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Column Headers (inside zoom group so they pan with the graph)
   // ---------------------------------------------------------------------------
 
@@ -536,6 +705,39 @@ var DomainFlows = (function () {
   }
 
   // ---------------------------------------------------------------------------
+  // Reset View Button (fixed position, outside zoom group)
+  // ---------------------------------------------------------------------------
+
+  function _renderResetButton() {
+    if (!_svg) return;
+
+    var btnG = _svg.append('g')
+      .attr('class', 'dv-flow-reset-btn')
+      .attr('transform', 'translate(8, 8)')
+      .style('cursor', 'pointer')
+      .on('click', function () { clearSearch(); });
+
+    btnG.append('rect')
+      .attr('rx', 4).attr('ry', 4)
+      .attr('width', 72).attr('height', 26)
+      .attr('fill', 'oklch(0.92 0.02 250)')
+      .attr('stroke', 'oklch(0.70 0.05 250)')
+      .attr('stroke-width', 1);
+
+    btnG.append('text')
+      .attr('x', 36).attr('y', 17)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '11px')
+      .attr('fill', 'oklch(0.35 0.05 250)')
+      .text('⌂ Reset');
+
+    // Show button only when view is not at default
+    btnG.style('opacity', 0.6);
+    btnG.on('mouseenter', function () { d3.select(this).style('opacity', 1); });
+    btnG.on('mouseleave', function () { d3.select(this).style('opacity', 0.6); });
+  }
+
+  // ---------------------------------------------------------------------------
   // Arrow Marker
   // ---------------------------------------------------------------------------
 
@@ -561,13 +763,18 @@ var DomainFlows = (function () {
     if (!_svg || !_g || !_zoom) return;
 
     var bounds = _getGraphBounds();
-    var gw = bounds.xMax - bounds.xMin + 40;
-    var gh = bounds.yMax - bounds.yMin + 40;
+    // Re-read actual SVG dimensions in case container resized
+    var svgEl = _svg.node();
+    var svgW = svgEl.clientWidth || _svgWidth;
+    var svgH = svgEl.clientHeight || _svgHeight;
+
+    var gw = bounds.xMax - bounds.xMin + 20;
+    var gh = bounds.yMax - bounds.yMin + 20;
     if (gw <= 0 || gh <= 0) return;
 
-    var scale = Math.min(_svgWidth / gw, _svgHeight / gh, 1.0) * 0.92;
-    var tx = (_svgWidth - gw * scale) / 2 - bounds.xMin * scale + 20;
-    var ty = 30;
+    var scale = Math.min(svgW / gw, svgH / gh, 1.0) * 0.96;
+    var tx = (svgW - gw * scale) / 2 - bounds.xMin * scale + 10;
+    var ty = (svgH - gh * scale) / 2 - bounds.yMin * scale + 10;
 
     _svg.call(_zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
   }
@@ -609,5 +816,9 @@ var DomainFlows = (function () {
     render: render,
     destroy: destroy,
     setFilter: setFilter,
+    setSearch: setSearch,
+    clearSearch: clearSearch,
+    getNodes: getNodes,
+    onSearchChange: onSearchChange,
   };
 })();

@@ -165,6 +165,52 @@ class TestDomainFlowsJS:
         assert "process_manager" in js
         assert "projector" in js
 
+    def test_flows_js_has_search_api(self, client):
+        """Module should export search methods."""
+        js = client.get("/static/js/domain-flows.js").text
+        assert "setSearch:" in js
+        assert "clearSearch:" in js
+        assert "getNodes:" in js
+        assert "onSearchChange:" in js
+
+    def test_flows_js_has_pinned_state(self, client):
+        """Search uses a pinned node ID for persistent highlighting."""
+        js = client.get("/static/js/domain-flows.js").text
+        assert "_pinnedNodeId" in js
+
+    def test_flows_js_has_zoom_to_connected(self, client):
+        """Search should zoom to the connected subgraph."""
+        js = client.get("/static/js/domain-flows.js").text
+        assert "_zoomToConnected" in js
+
+    def test_flows_js_has_focal_class(self, client):
+        """Searched node gets a distinct 'focal' class."""
+        js = client.get("/static/js/domain-flows.js").text
+        assert "dv-flow-focal" in js
+
+    def test_flows_js_reset_button_clears_search(self, client):
+        """Reset button should call clearSearch(), not just _fitToView()."""
+        js = client.get("/static/js/domain-flows.js").text
+        # The reset button click handler should invoke clearSearch
+        assert "clearSearch()" in js
+
+    def test_flows_js_hover_guards_pinned(self, client):
+        """Mouse hover should be suppressed when search is pinned."""
+        js = client.get("/static/js/domain-flows.js").text
+        assert "if (!_pinnedNodeId) _highlightPath" in js
+
+    def test_flows_js_node_click_toggles_search(self, client):
+        """Clicking a node should pin/unpin search."""
+        js = client.get("/static/js/domain-flows.js").text
+        assert "event.stopPropagation" in js
+        assert "_pinnedNodeId === d.id" in js
+
+    def test_flows_js_cluster_band_layout(self, client):
+        """Layout should use globally consistent cluster bands."""
+        js = client.get("/static/js/domain-flows.js").text
+        assert "clusterMaxRows" in js
+        assert "clusterYStart" in js
+
 
 # ---------------------------------------------------------------------------
 # Template Tests
@@ -187,6 +233,26 @@ class TestDomainPageTemplate:
     def test_has_flows_container(self, client):
         html = client.get("/domain").text
         assert 'id="dv-flows-container"' in html
+
+    def test_has_search_input(self, client):
+        """Event flows tab should have a search input."""
+        html = client.get("/domain").text
+        assert 'id="dv-flow-search"' in html
+        assert 'placeholder="Search elements..."' in html
+
+    def test_has_search_clear_button(self, client):
+        html = client.get("/domain").text
+        assert 'id="dv-flow-search-clear"' in html
+
+    def test_has_search_dropdown(self, client):
+        html = client.get("/domain").text
+        assert 'id="dv-flow-search-results"' in html
+
+    def test_search_dropdown_starts_hidden(self, client):
+        """Search dropdown should be hidden by default."""
+        html = client.get("/domain").text
+        # The dropdown <ul> should have 'hidden' class
+        assert "dv-search-dropdown hidden" in html
 
 
 # ---------------------------------------------------------------------------

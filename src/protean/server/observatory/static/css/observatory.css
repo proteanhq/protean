@@ -824,6 +824,86 @@
   fill: color-mix(in oklch, var(--color-base-content) 60%, transparent);
 }
 
+/* ===== Domain Flows — Search ===== */
+
+.dv-search-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.dv-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+  display: flex;
+  align-items: center;
+}
+
+.dv-search-clear:hover {
+  color: var(--color-base-content);
+}
+
+.dv-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklch, var(--color-base-content) 15%, transparent);
+  border-radius: 6px;
+  margin-top: 4px;
+  padding: 4px 0;
+  list-style: none;
+  box-shadow: 0 4px 12px color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.dv-search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.dv-search-item:hover,
+.dv-search-item--active {
+  background: color-mix(in oklch, var(--color-primary) 10%, transparent);
+}
+
+.dv-search-item-name {
+  font-weight: 500;
+  color: var(--color-base-content);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dv-search-item-type {
+  font-size: 10px;
+  color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+/* Focal node — the searched element itself */
+.dv-flow-node.dv-flow-focal .dv-flow-card {
+  stroke: var(--color-primary);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px color-mix(in oklch, var(--color-primary) 30%, transparent));
+}
+
 /* ===== Domain Detail Panel — Slide-In Overlay ===== */
 
 .dv-detail-backdrop {

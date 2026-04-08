@@ -522,6 +522,22 @@ class TestDomainJSContent:
         assert "_showDetail" in js
         assert "DomainDetail" in js
 
+    def test_domain_js_has_search_wiring(self, client):
+        """domain.js should wire the search input to DomainFlows."""
+        js = client.get("/static/js/domain.js").text
+        assert "_wireSearch" in js
+        assert "DomainFlows.setSearch" in js
+        assert "DomainFlows.clearSearch" in js
+        assert "DomainFlows.getNodes" in js
+        assert "DomainFlows.onSearchChange" in js
+
+    def test_domain_js_search_has_keyboard_nav(self, client):
+        """Search should support arrow key navigation and Enter selection."""
+        js = client.get("/static/js/domain.js").text
+        assert "ArrowDown" in js
+        assert "ArrowUp" in js
+        assert "Escape" in js
+
 
 # ---------------------------------------------------------------------------
 # Router Factory Edge Cases

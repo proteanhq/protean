@@ -212,6 +212,15 @@ class TestObservatoryStaticFiles:
         assert response.status_code == 200
         assert "text/css" in response.headers["content-type"]
 
+    def test_css_has_search_styles(self, client):
+        """Observatory CSS should include search-related styles."""
+        css = client.get("/static/css/observatory.css").text
+        assert ".dv-search-wrapper" in css
+        assert ".dv-search-dropdown" in css
+        assert ".dv-search-item" in css
+        assert ".dv-search-clear" in css
+        assert ".dv-flow-focal" in css
+
     def test_serves_timeline_js(self, client):
         response = client.get("/static/js/timeline.js")
         assert response.status_code == 200
@@ -610,6 +619,11 @@ class TestBaseTemplateElements:
         assert "Timeline" in html
         assert "Infrastructure" in html
         assert 'href="/domain"' in html
+
+    def test_no_domain_section_header(self, html):
+        """Domain should be a regular nav item, not under a separate section header."""
+        # menu-title is DaisyUI's section header class — Domain should not have one
+        assert "menu-title" not in html
 
     def test_has_observatory_branding(self, html):
         assert "Observatory" in html

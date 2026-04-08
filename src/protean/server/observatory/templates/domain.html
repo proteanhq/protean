@@ -65,7 +65,7 @@
 <div id="dv-panel-topology" class="dv-panel">
   <div class="card bg-base-100 shadow-sm">
     <div class="card-body p-4">
-      <div id="dv-topology-container" class="w-full" style="min-height: 400px;">
+      <div id="dv-topology-container" class="w-full" style="height: calc(100vh - 200px); min-height: 400px;">
         <div class="flex items-center justify-center h-64 text-base-content/40">
           Loading topology...
         </div>
@@ -77,7 +77,18 @@
 <div id="dv-panel-event-flows" class="dv-panel hidden">
   <div class="card bg-base-100 shadow-sm">
     <div class="card-body p-4">
-      <div class="flex flex-wrap gap-3 mb-3 text-xs" id="dv-flow-filters">
+      <div class="flex flex-wrap items-center gap-3 mb-3 text-xs" id="dv-flow-filters">
+        <div class="dv-search-wrapper relative">
+          <input type="text" id="dv-flow-search" class="input input-xs input-bordered w-56"
+                 placeholder="Search elements..." autocomplete="off">
+          <button id="dv-flow-search-clear" class="dv-search-clear hidden" title="Clear search" aria-label="Clear search">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3 h-3">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <ul id="dv-flow-search-results" class="dv-search-dropdown hidden"></ul>
+        </div>
+        <div class="border-l border-base-300 h-4 mx-1"></div>
         <label class="flex items-center gap-1.5 cursor-pointer">
           <input type="checkbox" checked class="checkbox checkbox-xs" data-flow-filter="command">
           <span>Commands</span>
@@ -99,7 +110,7 @@
           <span>Projectors</span>
         </label>
       </div>
-      <div id="dv-flows-container" class="w-full" style="min-height: 400px;">
+      <div id="dv-flows-container" class="w-full" style="height: calc(100vh - 200px); min-height: 400px;">
         <div class="flex items-center justify-center h-64 text-base-content/40">
           Loading event flows...
         </div>
@@ -111,7 +122,7 @@
 <div id="dv-panel-process-managers" class="dv-panel hidden">
   <div class="card bg-base-100 shadow-sm">
     <div class="card-body p-4">
-      <div id="dv-pm-container" class="w-full" style="min-height: 400px;">
+      <div id="dv-pm-container" class="w-full" style="height: calc(100vh - 200px); min-height: 400px;">
         <div class="flex items-center justify-center h-64 text-base-content/40">
           Loading process managers...
         </div>
