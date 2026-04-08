@@ -14,6 +14,7 @@ import pytest
 from protean import Domain
 from protean.adapters.broker.redis import RedisBroker
 from protean.adapters.cache.redis import RedisCache
+from tests.shared import REDIS_URI
 
 
 class TestRedisBrokerPoolConfig:
@@ -99,7 +100,7 @@ class TestRedisBrokerPoolConfig:
         domain = Domain("Pool Config Broker Test")
         domain.config["brokers"]["default"] = {
             "provider": "redis",
-            "URI": "redis://localhost:6379/2",
+            "URI": f"{REDIS_URI}/2",
             "max_connections": 10,
         }
         domain.init(traverse=False)
@@ -307,3 +308,12 @@ class TestLowPoolSizeWarning:
         ]
         assert len(warnings) == 1
         assert "analytics" in warnings[0]["message"]
+
+    def test_non_dict_database_config_skipped(self):
+        """Non-dict values in databases config should be silently skipped."""
+        domain = Domain("Non-Dict DB Test")
+        domain.config["databases"]["broken"] = "not-a-dict"
+        domain._validator._warn_low_pool_size()
+
+        warnings = domain._validator.warnings
+        assert not any(w["code"] == "LOW_POOL_SIZE" for w in warnings)
