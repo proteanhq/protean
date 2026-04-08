@@ -129,6 +129,12 @@ def _default_config():
             #       profile: "fast"
             #       messages_per_tick: 200
             "subscriptions": {},
+            # Health check HTTP server for Kubernetes liveness/readiness probes
+            "health": {
+                "enabled": True,
+                "host": "0.0.0.0",
+                "port": 8080,
+            },
         },
         "idempotency": {
             "redis_url": None,  # e.g. "redis://localhost:6379/5"
