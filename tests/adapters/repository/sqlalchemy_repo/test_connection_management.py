@@ -275,7 +275,7 @@ class TestPoolConfiguration:
 
     @pytest.mark.postgresql
     def test_postgresql_pool_defaults(self):
-        """PostgreSQL provider should have pool_size=2 and max_overflow=5."""
+        """PostgreSQL provider should have pool_size=5 and max_overflow=10."""
         domain = Domain("PG Pool Defaults Test")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
@@ -287,11 +287,11 @@ class TestPoolConfiguration:
             provider = domain.providers["default"]
             engine_pool = provider._engine.pool
 
-            assert engine_pool.size() == 2, (
-                f"Expected pool_size=2, got {engine_pool.size()}"
+            assert engine_pool.size() == 5, (
+                f"Expected pool_size=5, got {engine_pool.size()}"
             )
-            assert engine_pool._max_overflow == 5, (
-                f"Expected max_overflow=5, got {engine_pool._max_overflow}"
+            assert engine_pool._max_overflow == 10, (
+                f"Expected max_overflow=10, got {engine_pool._max_overflow}"
             )
         finally:
             for p in domain.providers.values():

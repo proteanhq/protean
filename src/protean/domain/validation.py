@@ -127,6 +127,7 @@ class DomainValidator:
         self._validate_query_handler_associations()
         self._validate_outbox_subscription_consistency()
         self._validate_priority_lanes_config()
+        self._warn_low_pool_size()
         self._warn_unhandled_commands()
         self._warn_missing_apply_handlers()
         self._warn_published_events_without_external_brokers()
@@ -418,6 +419,37 @@ class DomainValidator:
                         }
                     )
                     logger.warning(message)
+
+    # Minimum pool_size before a warning is emitted.  Kept in sync with
+    # the defaults in PostgresqlProvider / MssqlProvider.
+    _MIN_PRODUCTION_POOL_SIZE = 5
+
+    def _warn_low_pool_size(self) -> None:
+        """Warn when a database provider has pool_size below the production default."""
+        databases = self._domain.config.get("databases", {})
+        for db_name, db_config in databases.items():
+            if not isinstance(db_config, dict):
+                continue
+            pool_size = db_config.get("pool_size")
+            if pool_size is not None and pool_size < self._MIN_PRODUCTION_POOL_SIZE:
+                provider = db_config.get("provider", "unknown")
+                # Skip memory provider — it doesn't use connection pools
+                if provider == "memory":
+                    continue
+                message = (
+                    f"Database '{db_name}' has pool_size={pool_size} "
+                    f"(production default is {self._MIN_PRODUCTION_POOL_SIZE}). "
+                    f"Consider raising it for production workloads."
+                )
+                self._warnings.append(
+                    {
+                        "code": "LOW_POOL_SIZE",
+                        "element": f"databases.{db_name}",
+                        "level": "warning",
+                        "message": message,
+                    }
+                )
+                logger.warning(message)
 
     def _warn_published_events_without_external_brokers(self) -> None:
         """Warn when published events exist but no external brokers are configured."""

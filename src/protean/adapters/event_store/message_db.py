@@ -9,17 +9,31 @@ from protean.port.event_store import BaseEventStore
 
 
 class MessageDBStore(BaseEventStore):
+    """MessageDB event store adapter.
+
+    Connection pool parameters can be configured via conn_info:
+        - max_connections: Maximum number of connections in the pool
+    """
+
+    # Keys from conn_info that are forwarded to MessageDB connection pool
+    _POOL_KEYS = frozenset({"max_connections"})
+
     def __init__(self, domain, conn_info) -> None:
         super().__init__("MessageDB", domain, conn_info)
 
         self._client = None
+        self._pool_kwargs: dict[str, Any] = {
+            key: value for key, value in conn_info.items() if key in self._POOL_KEYS
+        }
 
     @property
     def client(self):
         """Return the MessageDB client instance."""
         if self._client is None:
             try:
-                self._client = MessageDB.from_url(self.conn_info["database_uri"])
+                self._client = MessageDB.from_url(
+                    self.conn_info["database_uri"], **self._pool_kwargs
+                )
             except psycopg2.OperationalError as exc:
                 raise ConfigurationError(
                     f"Unable to connect to Event Store - {str(exc)}"

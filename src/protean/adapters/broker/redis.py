@@ -24,14 +24,35 @@ class RedisBroker(BaseBroker):
 
     This broker leverages Redis Streams' native consumer group functionality
     with built-in ack/nack support, providing true message queue semantics.
+
+    Connection pool parameters can be configured via conn_info:
+        - max_connections: Maximum number of connections in the pool (default: Redis client default)
+        - socket_timeout: Timeout for reading from a connection in seconds
+        - socket_connect_timeout: Timeout for connecting to Redis in seconds
+        - retry_on_timeout: Whether to retry on timeout (default: False)
     """
 
     __broker__ = "redis"
 
+    # Keys from conn_info that are forwarded to Redis connection pool
+    _POOL_KEYS = frozenset(
+        {
+            "max_connections",
+            "socket_timeout",
+            "socket_connect_timeout",
+            "retry_on_timeout",
+        }
+    )
+
     def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
         super().__init__(name, domain, conn_info)
 
-        self.redis_instance = redis.Redis.from_url(conn_info["URI"])
+        self._pool_kwargs = {
+            key: value for key, value in conn_info.items() if key in self._POOL_KEYS
+        }
+        self.redis_instance = redis.Redis.from_url(
+            conn_info["URI"], **self._pool_kwargs
+        )
         self._consumer_name = f"consumer-{int(time.time() * 1000)}"
         self._created_groups_set = set()
         self._group_creation_times = {}  # Track creation times for consistency
@@ -932,7 +953,9 @@ class RedisBroker(BaseBroker):
                         f"Redis connection failed, attempting to reconnect (attempt {attempt + 1}/{max_attempts})..."
                     )
                     # Create a new Redis instance with the same connection info
-                    self.redis_instance = redis.Redis.from_url(self.conn_info["URI"])
+                    self.redis_instance = redis.Redis.from_url(
+                        self.conn_info["URI"], **self._pool_kwargs
+                    )
                 except Exception as reconnect_error:
                     logger.error(
                         f"Failed to create new Redis connection: {reconnect_error}"
