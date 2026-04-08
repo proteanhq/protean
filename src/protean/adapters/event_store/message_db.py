@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import psycopg2
@@ -7,19 +9,36 @@ from message_db.client import MessageDB
 from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
 
+if TYPE_CHECKING:
+    from protean.domain import Domain
+
 
 class MessageDBStore(BaseEventStore):
-    def __init__(self, domain, conn_info) -> None:
+    """MessageDB event store adapter.
+
+    Connection pool parameters can be configured via conn_info:
+        - max_connections: Maximum number of connections in the pool
+    """
+
+    # Keys from conn_info that are forwarded to MessageDB connection pool
+    _POOL_KEYS = frozenset({"max_connections"})
+
+    def __init__(self, domain: Domain, conn_info: dict[str, Any]) -> None:
         super().__init__("MessageDB", domain, conn_info)
 
         self._client = None
+        self._pool_kwargs: dict[str, Any] = {
+            key: value for key, value in conn_info.items() if key in self._POOL_KEYS
+        }
 
     @property
-    def client(self):
+    def client(self) -> MessageDB:
         """Return the MessageDB client instance."""
         if self._client is None:
             try:
-                self._client = MessageDB.from_url(self.conn_info["database_uri"])
+                self._client = MessageDB.from_url(
+                    self.conn_info["database_uri"], **self._pool_kwargs
+                )
             except psycopg2.OperationalError as exc:
                 raise ConfigurationError(
                     f"Unable to connect to Event Store - {str(exc)}"

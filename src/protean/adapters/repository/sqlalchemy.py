@@ -1037,8 +1037,8 @@ class PostgresqlProvider(SAProvider):
         """
         return {
             "isolation_level": "AUTOCOMMIT",
-            "pool_size": 2,
-            "max_overflow": 5,
+            "pool_size": 5,
+            "max_overflow": 10,
             "pool_pre_ping": True,
             "pool_recycle": 1800,
         }
@@ -1117,8 +1117,8 @@ class MssqlProvider(SAProvider):
         """
         return {
             "isolation_level": "AUTOCOMMIT",
-            "pool_size": 2,
-            "max_overflow": 5,
+            "pool_size": 5,
+            "max_overflow": 10,
             "pool_pre_ping": True,
             "pool_recycle": 1800,
         }

@@ -13,6 +13,25 @@ logger = logging.getLogger(__name__)
 
 
 class RedisCache(BaseCache):
+    """Redis-backed cache adapter.
+
+    Connection pool parameters can be configured via conn_info:
+        - max_connections: Maximum number of connections in the pool
+        - socket_timeout: Timeout for reading from a connection in seconds
+        - socket_connect_timeout: Timeout for connecting to Redis in seconds
+        - retry_on_timeout: Whether to retry on timeout (default: False)
+    """
+
+    # Keys from conn_info that are forwarded to Redis connection pool
+    _POOL_KEYS = frozenset(
+        {
+            "max_connections",
+            "socket_timeout",
+            "socket_connect_timeout",
+            "retry_on_timeout",
+        }
+    )
+
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Cache with Connection/Adapter details"""
 
@@ -20,7 +39,10 @@ class RedisCache(BaseCache):
         conn_info["cache"] = "redis"
         super().__init__(name, domain, conn_info)
 
-        self.r = redis.Redis.from_url(conn_info["URI"])
+        pool_kwargs = {
+            key: value for key, value in conn_info.items() if key in self._POOL_KEYS
+        }
+        self.r = redis.Redis.from_url(conn_info["URI"], **pool_kwargs)
 
     def close(self) -> None:
         """Close the Redis connection and release resources."""
