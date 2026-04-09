@@ -842,6 +842,15 @@ class Engine:
                 except (OSError, ValueError):
                     pass  # Ignore errors during cleanup
 
+    @staticmethod
+    def _on_health_server_done(task: asyncio.Task) -> None:
+        """Log unhandled exceptions from the health server startup task."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.warning("Health check server task failed: %s", exc)
+
     async def shutdown(self, signal=None, exit_code=0):
         """
         Cleanup tasks tied to the service's shutdown.
@@ -991,6 +1000,7 @@ class Engine:
         if not self.test_mode:
             health_task = self.loop.create_task(self._health_server.start())
             health_task.set_name("health-server")
+            health_task.add_done_callback(self._on_health_server_done)
 
         # Create all tasks with names for better debugging
         subscription_tasks = []
