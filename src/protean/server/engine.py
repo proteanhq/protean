@@ -27,6 +27,7 @@ from protean.utils.telemetry import (
     set_span_error,
 )
 
+from .health import HealthServer
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.factory import SubscriptionFactory
 from .tracing import TraceEmitter
@@ -230,6 +231,9 @@ class Engine:
         # Create a new event loop instead of getting the current one
         # This avoids fragility when the caller already has a running loop
         self.loop = asyncio.new_event_loop()
+
+        # Health check HTTP server for Kubernetes probes
+        self._health_server = HealthServer(self)
 
         # Initialize subscription factory for creating subscriptions
         self._subscription_factory = SubscriptionFactory(self)
@@ -838,6 +842,15 @@ class Engine:
                 except (OSError, ValueError):
                     pass  # Ignore errors during cleanup
 
+    @staticmethod
+    def _on_health_server_done(task: asyncio.Task) -> None:
+        """Log unhandled exceptions from the health server startup task."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.warning("Health check server task failed: %s", exc)
+
     async def shutdown(self, signal=None, exit_code=0):
         """
         Cleanup tasks tied to the service's shutdown.
@@ -864,6 +877,9 @@ class Engine:
 
             # Store the exit code
             self.exit_code = exit_code
+
+            # Step 0: Stop health check server so probes fail immediately
+            await self._health_server.stop()
 
             # Step 1: Signal all subscriptions to stop (sets keep_going=False
             # and runs backend-specific cleanup like persisting positions)
@@ -979,6 +995,12 @@ class Engine:
         ):
             logger.info("No subscriptions to start. Exiting...")
             return
+
+        # Start health check server as a task (skip in test mode — no HTTP needed)
+        if not self.test_mode:
+            health_task = self.loop.create_task(self._health_server.start())
+            health_task.set_name("health-server")
+            health_task.add_done_callback(self._on_health_server_done)
 
         # Create all tasks with names for better debugging
         subscription_tasks = []
