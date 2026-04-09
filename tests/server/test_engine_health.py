@@ -2,12 +2,14 @@
 
 import asyncio
 import json
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
 from protean.domain import Domain
 from protean.server.engine import Engine
 from protean.server.health import (
+    HealthServer,
     _check_liveness,
     _check_readiness,
     _json_response,
@@ -272,3 +274,229 @@ class TestHealthServerIntegration:
             _fetch_health(loop, port, method="POST", path="/healthz")
         )
         assert "405" in status
+
+    def test_empty_request_handled_gracefully(self, health_server):
+        """Connection that sends no data is handled without error."""
+        _, _, loop, port = health_server
+
+        async def _send_empty():
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.close()
+            await writer.wait_closed()
+
+        loop.run_until_complete(_send_empty())
+
+    def test_readyz_degraded_when_provider_fails(self, health_server):
+        """Readiness returns degraded when a provider is unavailable."""
+        engine, _, loop, port = health_server
+        for provider in engine.domain.providers.values():
+            provider.is_alive = lambda: False
+        status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
+        assert "503" in status
+        assert body["status"] == "degraded"
+
+    def test_readyz_degraded_when_broker_fails(self, health_server):
+        engine, _, loop, port = health_server
+        for broker in engine.domain.brokers.values():
+            broker.ping = lambda: False
+        status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
+        assert "503" in status
+        assert body["status"] == "degraded"
+
+    def test_readyz_degraded_when_event_store_fails(self, health_server):
+        engine, _, loop, port = health_server
+
+        def _raise(*a, **kw):
+            raise ConnectionError("unreachable")
+
+        engine.domain.event_store.store._read_last_message = _raise
+        status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
+        assert "503" in status
+        assert body["checks"]["event_store"] == "unavailable"
+
+    def test_readyz_degraded_when_cache_fails(self, health_server):
+        engine, _, loop, port = health_server
+
+        def _raise():
+            raise ConnectionError("cache down")
+
+        for cache in engine.domain.caches.values():
+            cache.ping = _raise
+        status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
+        assert "503" in status
+        assert body["status"] == "degraded"
+
+
+# ---------------------------------------------------------------------------
+# HealthServer edge cases and error paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestHealthServerEdgeCases:
+    def test_config_fallback_on_broken_config(self):
+        """HealthServer falls back to defaults when config.get raises."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        original_config = domain.config
+        mock_config = MagicMock()
+        mock_config.get.side_effect = AttributeError("broken")
+        mock_config.__getitem__ = original_config.__getitem__
+        mock_config.__contains__ = original_config.__contains__
+        domain.config = mock_config
+
+        with domain.domain_context():
+            with patch.object(
+                type(domain),
+                "has_outbox",
+                new_callable=PropertyMock,
+                return_value=False,
+            ):
+                engine = Engine(domain, test_mode=True)
+                hs = engine._health_server
+                assert hs.enabled is True
+                assert hs.host == "0.0.0.0"
+                assert hs.port == 8080
+
+    def test_start_fails_gracefully_on_port_conflict(self):
+        """HealthServer logs a warning and continues if port is in use."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        domain.config["server"]["health"]["port"] = 0
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            hs = engine._health_server
+
+            loop = asyncio.new_event_loop()
+            try:
+                # Start successfully first
+                loop.run_until_complete(hs.start())
+                port = hs._server.sockets[0].getsockname()[1]
+
+                # Try to start a second server on the same port
+                hs2 = HealthServer(engine)
+                hs2.port = port
+                loop.run_until_complete(hs2.start())
+                # Should not crash — just logs a warning
+                assert hs2._server is None
+            finally:
+                loop.run_until_complete(hs.stop())
+                loop.close()
+
+
+# ---------------------------------------------------------------------------
+# Engine._on_health_server_done callback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestOnHealthServerDone:
+    def test_callback_logs_exception(self, caplog):
+        """Done callback logs exceptions from the health task."""
+        task = MagicMock()
+        task.cancelled.return_value = False
+        task.exception.return_value = OSError("bind failed")
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            Engine._on_health_server_done(task)
+
+        assert any("bind failed" in r.message for r in caplog.records)
+
+    def test_callback_ignores_cancelled_task(self, caplog):
+        """Done callback does nothing for cancelled tasks."""
+        task = MagicMock()
+        task.cancelled.return_value = True
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            Engine._on_health_server_done(task)
+
+        assert not any("failed" in r.message for r in caplog.records)
+
+    def test_callback_ignores_successful_task(self, caplog):
+        """Done callback does nothing when task succeeds."""
+        task = MagicMock()
+        task.cancelled.return_value = False
+        task.exception.return_value = None
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            Engine._on_health_server_done(task)
+
+        assert not any("failed" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Connection error handling in _handle_connection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestHandleConnectionErrors:
+    def _make_mock_writer(self, **overrides):
+        """Create a mock StreamWriter with async methods."""
+        writer = MagicMock()
+        writer.drain = AsyncMock()
+        writer.close = MagicMock()
+        writer.wait_closed = AsyncMock()
+        for k, v in overrides.items():
+            setattr(writer, k, v)
+        return writer
+
+    def test_timeout_on_read_is_handled(self, health_server):
+        """asyncio.TimeoutError during read is silently handled."""
+        _, hs, loop, _ = health_server
+
+        async def _test():
+            mock_reader = MagicMock()
+            mock_reader.read = AsyncMock(side_effect=asyncio.TimeoutError)
+            await hs._handle_connection(mock_reader, self._make_mock_writer())
+
+        loop.run_until_complete(_test())
+
+    def test_connection_reset_is_handled(self, health_server):
+        """ConnectionResetError during read is silently handled."""
+        _, hs, loop, _ = health_server
+
+        async def _test():
+            mock_reader = MagicMock()
+            mock_reader.read = AsyncMock(side_effect=ConnectionResetError)
+            await hs._handle_connection(mock_reader, self._make_mock_writer())
+
+        loop.run_until_complete(_test())
+
+    def test_writer_close_exception_is_suppressed(self, health_server):
+        """Exception during writer.close() in finally block is suppressed."""
+        _, hs, loop, _ = health_server
+
+        async def _test():
+            mock_reader = MagicMock()
+            mock_reader.read = AsyncMock(return_value=b"GET /healthz HTTP/1.1\r\n\r\n")
+            writer = self._make_mock_writer(
+                close=MagicMock(side_effect=OSError("already closed")),
+            )
+            await hs._handle_connection(mock_reader, writer)
+
+        loop.run_until_complete(_test())
+
+    def test_generic_exception_is_logged(self, health_server, caplog):
+        """Non-network exceptions are logged at debug level."""
+        _, hs, loop, _ = health_server
+
+        import logging
+
+        async def _test():
+            mock_reader = MagicMock()
+            mock_reader.read = AsyncMock(side_effect=ValueError("unexpected"))
+            await hs._handle_connection(mock_reader, self._make_mock_writer())
+
+        with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
+            loop.run_until_complete(_test())
+
+        assert any(
+            "Health server connection error" in r.message for r in caplog.records
+        )
