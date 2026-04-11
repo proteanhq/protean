@@ -4,6 +4,7 @@
 |-------|-------|
 | **Status** | Accepted |
 | **Date** | 2026-03-11 |
+| **Last updated** | 2026-04-10 (removed release candidate workflow) |
 | **Author** | Subhash Bhushan |
 | **Applies to** | Protean Framework (pre-1.0) |
 | **Supersedes** | None |
@@ -38,16 +39,13 @@ Development and stabilization run in parallel. Completing an epic and shipping a
 
 There is no fixed schedule. Releases are cut when there is something worth telling users about — a meaningful feature, a significant fix, or an important behavioral improvement. The changelog is the release trigger: when the unreleased section has substantive entries, it's time to ship.
 
-### Pre-release Versions
+### No Release Candidates
 
-For releases that contain known breaking changes or significant new subsystems, use release candidates:
+Protean does **not** use release candidates. Minor versions are cut directly from `main` when the changelog has substantive entries. Patch releases on a `release/0.X.x` branch handle any bugs discovered after a minor ships.
 
-- Tag `v0.X.0-rc.1` and announce it to early adopters
-- Time-box the feedback window (2 weeks maximum)
-- Fix issues, tag `rc.2` if needed
-- If no blocking issues surface by the deadline, tag `v0.X.0`
+**Rationale:** RCs added ceremony without buying meaningful safety. In practice, the RC window became a bottleneck that delayed shipping without producing the early-adopter feedback it was meant to generate. With frequent minor releases, patch releases, and the three-tier breaking change policy (deprecations, flags, versioned schemas), users already have multiple layers of protection without needing an explicit pre-release phase.
 
-The feedback window is free development time for the next body of work.
+If a future release contains a change so large or risky that pre-release validation is warranted, that is a signal to split the change across more incremental releases — not to gate the release train behind a feedback window.
 
 ---
 
@@ -185,11 +183,12 @@ Cleanup releases are the only releases that intentionally break user code. They 
 
 For critical bugs discovered after a release:
 
-1. Fix on `main`.
-2. Tag a patch version (e.g., v0.15.1).
-3. Publish immediately.
+1. Fix on `main` through normal PR workflow.
+2. Cherry-pick the fix to the corresponding `release/0.X.x` branch.
+3. Tag a patch version (e.g., `v0.15.1`) on the release branch.
+4. Publish immediately.
 
-No ceremony needed for patch releases. The changelog entry is the documentation.
+No ceremony needed for patch releases. The changelog entry on the release branch is the documentation. The release branch pattern keeps minor-version consumers on a stable line even while `main` continues to move.
 
 ---
 

@@ -114,83 +114,81 @@ mypy src/protean    # Type checking
 
 See ADR-0004 (`docs/adr/0004-release-workflow-and-breaking-change-policy.md`) for the full release philosophy.
 
+Protean uses **direct minor releases** (no release candidates). Minor versions are cut straight from `main` when the changelog has substantive entries. Bugs discovered after a release are shipped as **patch releases** from the release branch.
+
 #### Version bump commands
 
 ```bash
 # Install bump-my-version (in dev dependencies)
 uv sync --group dev
 
-# Release candidate (e.g., 0.14.2 → 0.15.0rc1)
-bump-my-version bump minor          # Bumps minor and sets rc1
-
-# Next RC (e.g., 0.15.0rc1 → 0.15.0rc2)
-bump-my-version bump rc
-
-# Final release (e.g., 0.15.0rc2 → 0.15.0)
-bump-my-version bump rc             # rc goes from last value to "final", dropping the rc suffix
+# Minor release (e.g., 0.15.0 → 0.16.0)
+bump-my-version bump minor
 
 # Patch release (e.g., 0.15.0 → 0.15.1)
 bump-my-version bump patch
 ```
 
-Version is updated automatically in: `pyproject.toml`, `src/protean/__init__.py`, `src/protean/template/domain_template/pyproject.toml.jinja`, `docs/guides/getting-started/installation.md`.
+Version is updated automatically in: `pyproject.toml`, `src/protean/__init__.py`, `src/protean/template/domain_template/pyproject.toml.jinja`, `docs/guides/getting-started/installation.md`, `.bumpversion.toml`.
 
-`bump-my-version` auto-creates a commit and tag (e.g., `v0.15.0rc1`). Push the tag to trigger the publish workflow.
+`bump-my-version` auto-creates a commit and tag (e.g., `v0.16.0`). Push the tag to trigger the publish workflow.
 
 The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
 - Building with uv
 - Publishing to PyPI (trusted publishing)
-- Creating a GitHub Release (marked as pre-release for RC tags)
+- Creating a GitHub Release
 
-#### Release branch workflow
-
-When an RC is tagged, a release branch is created from that tag. Development continues on `main`; RC bugfixes are cherry-picked to the release branch.
+#### Minor release workflow (from main)
 
 ```
-main:              ──A──B──[tag rc1]──D──E(R2 work)──F──...
-                             │
-release/0.15.x:              └──cherry-pick(fix)──[tag rc2]──[tag v0.15.0]
+main:  ──A──B──C──[tag v0.16.0]──D──E──...
+                      │
+release/0.16.x:       └── (created on demand for patches)
 ```
 
-**Starting an RC:**
+**Cutting a minor release:**
+
 ```bash
-# On main: bump version and tag
-bump-my-version bump minor                    # 0.14.2 → 0.15.0rc1
+git checkout main
+git pull --ff-only
+
+# 1. Finalize CHANGELOG: rename [Unreleased] → [0.X.0] - YYYY-MM-DD, leave a fresh empty [Unreleased] above it
+$EDITOR CHANGELOG.md
+git add CHANGELOG.md
+git commit -m "Mark 0.X.0 release in CHANGELOG"
+
+# 2. Bump version, create commit + tag
+bump-my-version bump minor                    # 0.15.0 → 0.16.0
 git push origin main --tags
 
-# Create release branch from the RC tag
-git branch release/0.15.x v0.15.0rc1
-git push origin release/0.15.x
+# 3. Create release branch from the new tag (for future patches)
+git branch release/0.16.x v0.16.0
+git push origin release/0.16.x
 ```
 
-**Fixing an RC bug:**
+#### Patch release workflow (from release branch)
+
+Bugfixes land on `main` first, then are cherry-picked to the release branch:
+
 ```bash
-# Fix the bug on main first (or on the release branch if main-only is impractical)
-# Then cherry-pick to the release branch:
-git checkout release/0.15.x
+# Fix the bug on main, merge PR, then:
+git checkout release/0.16.x
+git pull --ff-only
 git cherry-pick <commit-hash>
-bump-my-version bump rc                      # 0.15.0rc1 → 0.15.0rc2
-git push origin release/0.15.x --tags
-```
 
-**Cutting the final release:**
-```bash
-git checkout release/0.15.x
-bump-my-version bump rc                      # 0.15.0rcN → 0.15.0
-git push origin release/0.15.x --tags
-```
+# Update CHANGELOG on the release branch under [0.16.1]
+$EDITOR CHANGELOG.md
+git add CHANGELOG.md
+git commit -m "Mark 0.16.1 release in CHANGELOG"
 
-**Hotfix after final:**
-```bash
-git checkout release/0.15.x
-git cherry-pick <fix-commit>
-bump-my-version bump patch                   # 0.15.0 → 0.15.1
-git push origin release/0.15.x --tags
+bump-my-version bump patch                    # 0.16.0 → 0.16.1
+git push origin release/0.16.x --tags
 ```
 
 **Post-release checklist:**
-1. Verify the `[Unreleased]` section in `CHANGELOG.md` on `main` is ready for the next cycle
+1. Verify the `[Unreleased]` section in `CHANGELOG.md` on `main` is empty and ready for the next cycle
 2. Verify the package on PyPI
+3. For minor releases, confirm `release/0.X.x` branch is pushed for future patches
 
 ## Architecture Overview
 

@@ -1929,7 +1929,7 @@ wheels = [
 
 [[package]]
 name = "protean"
-version = "0.15.0rc1"
+version = "0.15.0"
 source = { editable = "." }
 dependencies = [
     { name = "bleach" },

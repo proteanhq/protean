@@ -1,6 +1,6 @@
 [project]
 name = "protean"
-version = "0.15.0rc1"
+version = "0.15.0"
 description = "Protean Application Framework"
 authors = [{name = "Subhash Bhushan C", email = "subhash@team8solutions.com"}]
 license = {text = "BSD-3-Clause"}
