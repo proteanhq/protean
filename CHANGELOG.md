@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-04-10
+
 ### Fixed
 
 - Fix persistence ordering in `BaseRepository`: aggregate root is now saved before child entities, and children before grandchildren (top-down). Previously the bottom-up ordering violated foreign-key constraints on databases that enforce them immediately (MSSQL, MySQL/InnoDB, SQLite with `PRAGMA foreign_keys`).
