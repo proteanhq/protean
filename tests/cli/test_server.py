@@ -275,9 +275,65 @@ class TestServerCommand:
         """--reload aborts gracefully when watchfiles is not installed."""
         change_working_directory_to("test7")
 
-        with patch.dict("sys.modules", {"protean.server.reloader": None}):
+        import builtins
+        import sys
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "watchfiles" or name.startswith("watchfiles."):
+                raise ModuleNotFoundError(
+                    "No module named 'watchfiles'", name="watchfiles"
+                )
+            return real_import(name, globals, locals, fromlist, level)
+
+        # Drop the cached reloader module so re-importing it re-runs its
+        # module body — that triggers ``from watchfiles import ...``
+        # which the fake import will fail with ``name='watchfiles'``.
+        cached_reloader = sys.modules.pop("protean.server.reloader", None)
+        try:
+            with patch("builtins.__import__", side_effect=fake_import):
+                args = ["server", "--domain", "publishing7.py", "--reload"]
+                result = runner.invoke(app, args)
+
+            assert result.exit_code != 0
+            assert "watchfiles" in result.output
+        finally:
+            if cached_reloader is not None:
+                sys.modules["protean.server.reloader"] = cached_reloader
+
+    def test_server_reload_reraises_unrelated_import_errors(self):
+        """Non-watchfiles ImportError inside the reloader is not masked."""
+        change_working_directory_to("test7")
+
+        # ``some_other_pkg`` is not the missing-watchfiles case, so the
+        # CLI must surface the original error rather than print the
+        # install-hint and Abort.
+        masked = {
+            "protean.server.reloader": None,
+            "some_other_pkg": None,
+        }
+
+        def fake_import(name, *args, **kwargs):
+            if name == "protean.server.reloader":
+                raise ModuleNotFoundError(
+                    "No module named 'some_other_pkg'", name="some_other_pkg"
+                )
+            return real_import(name, *args, **kwargs)
+
+        import builtins
+
+        real_import = builtins.__import__
+
+        with (
+            patch.dict("sys.modules", masked),
+            patch("builtins.__import__", side_effect=fake_import),
+        ):
             args = ["server", "--domain", "publishing7.py", "--reload"]
             result = runner.invoke(app, args)
 
             assert result.exit_code != 0
-            assert "watchfiles" in result.output
+            # The install hint must NOT appear — the error is re-raised
+            # so the user sees the real ModuleNotFoundError.
+            assert "watchfiles" not in result.output
+            assert isinstance(result.exception, ModuleNotFoundError)

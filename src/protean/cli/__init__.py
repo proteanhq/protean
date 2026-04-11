@@ -115,7 +115,14 @@ def server(
         # restarts the inner Engine process on change.
         try:
             from protean.server.reloader import Reloader
-        except ImportError as exc:
+        except ModuleNotFoundError as exc:
+            # Only translate the missing-watchfiles case into the
+            # install hint. Any other ModuleNotFoundError almost
+            # certainly indicates a real bug inside the reloader (or
+            # one of its imports) and must be re-raised so it isn't
+            # masked.
+            if exc.name != "watchfiles":
+                raise
             msg = (
                 "Error: --reload requires the 'watchfiles' package. "
                 "Install it with 'pip install \"protean[dev]\"'."

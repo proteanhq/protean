@@ -205,6 +205,8 @@ class TestReloaderSignalHandling:
 
     def test_sighup_handler_installed(self):
         reloader = Reloader(domain_path="my.domain")
+        original_sigint = signal.getsignal(signal.SIGINT)
+        original_sigterm = signal.getsignal(signal.SIGTERM)
         original_sighup = signal.getsignal(signal.SIGHUP)
 
         try:
@@ -212,8 +214,8 @@ class TestReloaderSignalHandling:
             assert signal.getsignal(signal.SIGHUP) == reloader._handle_signal
         finally:
             signal.signal(signal.SIGHUP, original_sighup)
-            signal.signal(signal.SIGINT, signal.default_int_handler)
-            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.signal(signal.SIGINT, original_sigint)
+            signal.signal(signal.SIGTERM, original_sigterm)
 
     def test_handle_signal_sets_should_exit(self):
         reloader = Reloader(domain_path="my.domain")
