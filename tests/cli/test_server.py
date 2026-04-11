@@ -198,3 +198,86 @@ class TestServerCommand:
             result = runner.invoke(app, args)
 
             assert result.exit_code == 3
+
+    def test_server_reload_invokes_reloader(self):
+        """Test that the server command uses Reloader when --reload is set."""
+        change_working_directory_to("test7")
+
+        with patch("protean.server.reloader.Reloader") as MockReloader:
+            mock_reloader = MockReloader.return_value
+            mock_reloader.exit_code = 0
+
+            args = ["server", "--domain", "publishing7.py", "--reload"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 0
+            MockReloader.assert_called_once_with(
+                domain_path="publishing7.py",
+                test_mode=False,
+                debug=False,
+            )
+            mock_reloader.run.assert_called_once()
+
+    def test_server_reload_exit_code_propagated(self):
+        """Test that the server command propagates Reloader exit code."""
+        change_working_directory_to("test7")
+
+        with patch("protean.server.reloader.Reloader") as MockReloader:
+            mock_reloader = MockReloader.return_value
+            mock_reloader.exit_code = 5
+
+            args = ["server", "--domain", "publishing7.py", "--reload"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 5
+
+    def test_server_reload_forwards_test_mode_and_debug(self):
+        """--reload must forward --test-mode and --debug to the Reloader."""
+        change_working_directory_to("test7")
+
+        with patch("protean.server.reloader.Reloader") as MockReloader:
+            mock_reloader = MockReloader.return_value
+            mock_reloader.exit_code = 0
+
+            args = [
+                "server",
+                "--domain",
+                "publishing7.py",
+                "--reload",
+                "--test-mode",
+                "--debug",
+            ]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 0
+            MockReloader.assert_called_once_with(
+                domain_path="publishing7.py",
+                test_mode=True,
+                debug=True,
+            )
+
+    def test_server_reload_rejects_multiple_workers(self):
+        """--reload is incompatible with --workers > 1."""
+        args = [
+            "server",
+            "--domain",
+            "publishing7.py",
+            "--reload",
+            "--workers",
+            "2",
+        ]
+        result = runner.invoke(app, args)
+
+        assert result.exit_code != 0
+        assert "--reload cannot be combined with --workers > 1" in result.output
+
+    def test_server_reload_missing_watchfiles_aborts(self):
+        """--reload aborts gracefully when watchfiles is not installed."""
+        change_working_directory_to("test7")
+
+        with patch.dict("sys.modules", {"protean.server.reloader": None}):
+            args = ["server", "--domain", "publishing7.py", "--reload"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code != 0
+            assert "watchfiles" in result.output
