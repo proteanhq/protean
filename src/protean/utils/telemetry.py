@@ -172,6 +172,11 @@ def shutdown_telemetry(domain: Domain) -> None:
     if hasattr(domain, _DOMAIN_METRICS_KEY):
         delattr(domain, _DOMAIN_METRICS_KEY)
 
+    # Clear engine gauge sentinel so gauges can be re-registered
+    _engine_gauges_key = "_otel_engine_gauges_registered"
+    if hasattr(domain, _engine_gauges_key):
+        delattr(domain, _engine_gauges_key)
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -520,6 +525,23 @@ class DomainMetrics:
             unit="{message}",
         )
 
+        # --- Subscription counters --------------------------------------------
+        self.subscription_messages_processed = meter.create_counter(
+            "protean.subscription.messages_processed",
+            description="Messages processed by subscriptions",
+            unit="{message}",
+        )
+        self.subscription_dlq_routed = meter.create_counter(
+            "protean.subscription.dlq_routed",
+            description="Messages routed to dead letter queue",
+            unit="{message}",
+        )
+        self.subscription_retries = meter.create_counter(
+            "protean.subscription.retries",
+            description="Message retry attempts",
+            unit="{retry}",
+        )
+
         # --- Histograms -------------------------------------------------------
         self.command_duration = meter.create_histogram(
             "protean.command.duration",
@@ -539,6 +561,13 @@ class DomainMetrics:
         self.outbox_latency = meter.create_histogram(
             "protean.outbox.latency",
             description="Time from outbox write to publish",
+            unit="s",
+        )
+
+        # --- Subscription histograms ------------------------------------------
+        self.subscription_processing_duration = meter.create_histogram(
+            "protean.subscription.processing_duration",
+            description="Per-message processing duration in a subscription",
             unit="s",
         )
 
