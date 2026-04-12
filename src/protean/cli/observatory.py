@@ -1,10 +1,12 @@
 """CLI command for running the Protean Observatory observability server."""
 
+import warnings
 from typing import List, Optional
 
 import typer
 from typing_extensions import Annotated
 
+from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import configure_logging, get_logger
@@ -12,6 +14,7 @@ from protean.utils.logging import configure_logging, get_logger
 logger = get_logger(__name__)
 
 
+@handle_cli_exceptions("observatory")
 def observatory(
     domain: Annotated[
         List[str],
@@ -27,7 +30,21 @@ def observatory(
     """Run the Observatory observability dashboard."""
     from protean.server.observatory import Observatory
 
-    configure_logging(level="DEBUG" if debug else "INFO")
+    if debug:
+        warnings.warn(
+            "--debug is deprecated; use --log-level DEBUG. Will be removed in v0.17.0.",
+            DeprecationWarning,
+            stacklevel=1,
+        )
+
+    # Check parent context for CLI-level logging configuration.
+    # click.get_current_context may fail when called directly (not via CLI).
+    import click
+
+    ctx = click.get_current_context(silent=True)
+    parent_obj = getattr(ctx, "obj", None) or {} if ctx else {}
+    if not parent_obj.get(CTX_LOG_CONFIGURED):
+        configure_logging(level="DEBUG" if debug else "INFO")
 
     if not domain:
         print("Error: at least one --domain is required")

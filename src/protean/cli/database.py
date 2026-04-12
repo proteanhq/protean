@@ -4,6 +4,7 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import ConfigurationError, NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
@@ -19,6 +20,7 @@ def callback():
 
 
 @app.command()
+@handle_cli_exceptions("db setup")
 def setup(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
 ) -> None:
@@ -41,6 +43,7 @@ def setup(
 
 
 @app.command()
+@handle_cli_exceptions("db drop")
 def drop(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     yes: Annotated[
@@ -71,6 +74,7 @@ def drop(
 
 
 @app.command()
+@handle_cli_exceptions("db truncate")
 def truncate(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     yes: Annotated[
@@ -103,6 +107,7 @@ def truncate(
 
 
 @app.command(name="setup-outbox")
+@handle_cli_exceptions("db setup-outbox")
 def setup_outbox(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
 ) -> None:

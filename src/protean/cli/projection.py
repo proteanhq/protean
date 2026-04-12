@@ -19,6 +19,7 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils import DomainObjects
 from protean.utils.domain_discovery import derive_domain
@@ -38,6 +39,7 @@ def callback():
 
 
 @app.command()
+@handle_cli_exceptions("projection rebuild")
 def rebuild(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     projection: Annotated[

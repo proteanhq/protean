@@ -21,6 +21,7 @@ Typical usage in application code::
 
 import functools
 import logging
+import logging.config
 import logging.handlers
 import os
 import sys
@@ -87,6 +88,7 @@ def configure_logging(
     backup_count: int = 5,
     extra_processors: Optional[list] = None,
     per_logger: Optional[dict[str, str]] = None,
+    dict_config: Optional[dict[str, Any]] = None,
 ) -> None:
     """Configure structured logging for a Protean application.
 
@@ -115,7 +117,21 @@ def configure_logging(
         per_logger: Optional mapping of logger names to level strings. Applied
             after global setup so individual loggers can be tuned independently.
             Example: ``{"protean.server.engine": "WARNING", "myapp.orders": "DEBUG"}``.
+        dict_config: Optional ``logging.config.dictConfig``-compatible dict.
+            When provided, bypasses the environment-aware setup and applies the
+            dict directly via ``logging.config.dictConfig()``. The user-supplied
+            dict is expected to include any handlers/formatters desired. After
+            applying, ``ProteanCorrelationFilter`` is still installed on the
+            root logger for consistency with ``Domain.configure_logging()``.
     """
+    if dict_config is not None:
+        logging.config.dictConfig(dict_config)
+        # Set up structlog so that get_logger() calls produce well-formed
+        # output even when the user supplies their own stdlib dictConfig.
+        env = _detect_env()
+        _setup_structlog(env=env, format="auto", extra_processors=extra_processors)
+        return
+
     env = _detect_env()
 
     # Resolve log level: explicit arg > env var > environment default
