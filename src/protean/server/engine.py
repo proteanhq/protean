@@ -346,7 +346,10 @@ class Engine:
         # DLQ maintenance task — trims old entries and alerts on depth
         self._dlq_maintenance: DLQMaintenanceTask | None = None
         if self._has_dlq_capable_broker():
-            self._dlq_maintenance = DLQMaintenanceTask(self)
+            try:
+                self._dlq_maintenance = DLQMaintenanceTask(self)
+            except Exception:
+                logger.debug("engine.dlq_maintenance_init_skipped", exc_info=True)
 
     def _has_dlq_capable_broker(self) -> bool:
         """Return True if any configured broker supports DLQ."""
