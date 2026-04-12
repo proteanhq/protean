@@ -6,7 +6,7 @@ external services.
 """
 
 import logging
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,27 +19,27 @@ class TestSqlAlchemyCredentialRedaction:
         """is_alive() failure logs a redacted URI with password replaced by ***."""
         try:
             from protean.adapters.repository.sqlalchemy import SAProvider
+            from sqlalchemy.exc import DatabaseError
         except ImportError:
             pytest.skip("sqlalchemy not installed")
 
-        provider = SAProvider.__new__(SAProvider)
+        # Build a mock that passes isinstance checks but has the attrs
+        # is_alive() needs — avoids instantiating the abstract class.
+        provider = MagicMock(spec=SAProvider)
         provider.conn_info = {
             "database_uri": "postgresql://admin:s3cret@localhost:5432/mydb"
         }
-
-        # Mock get_connection to raise a DatabaseError
-        from sqlalchemy.exc import DatabaseError
 
         mock_conn = MagicMock()
         mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
         provider.get_connection = MagicMock(return_value=mock_conn)
 
+        # Call the real is_alive method with our mock as self
         with caplog.at_level(logging.ERROR):
-            result = provider.is_alive()
+            result = SAProvider.is_alive(provider)
 
         assert result is False
 
-        # Verify the structured event was logged
         error_records = [
             r for r in caplog.records
             if "repository.sqlalchemy.connection_failed" in r.getMessage()
@@ -64,22 +64,21 @@ class TestSqlAlchemyCredentialRedaction:
         """is_alive() failure with an unparseable URI logs '<unparseable>'."""
         try:
             from protean.adapters.repository.sqlalchemy import SAProvider
+            from sqlalchemy.exc import DatabaseError
         except ImportError:
             pytest.skip("sqlalchemy not installed")
 
-        provider = SAProvider.__new__(SAProvider)
+        provider = MagicMock(spec=SAProvider)
         provider.conn_info = {
             "database_uri": "not-a-valid-uri"
         }
-
-        from sqlalchemy.exc import DatabaseError
 
         mock_conn = MagicMock()
         mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
         provider.get_connection = MagicMock(return_value=mock_conn)
 
         with caplog.at_level(logging.ERROR):
-            result = provider.is_alive()
+            result = SAProvider.is_alive(provider)
 
         assert result is False
 
