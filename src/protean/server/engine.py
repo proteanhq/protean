@@ -22,7 +22,9 @@ from protean.utils.eventing import (
 )
 from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
+    create_observation,
     extract_context_from_traceparent,
+    get_meter,
     get_tracer,
     set_span_error,
 )
@@ -234,6 +236,12 @@ class Engine:
 
         # Health check HTTP server for Kubernetes probes
         self._health_server = HealthServer(self)
+
+        # Engine start time for uptime gauge
+        self._start_time = time.monotonic()
+
+        # Register engine-level observable gauges
+        self._register_engine_gauges()
 
         # Initialize subscription factory for creating subscriptions
         self._subscription_factory = SubscriptionFactory(self)
@@ -483,6 +491,38 @@ class Engine:
             f"Either set 'stream_category' on the handler or associate it with an "
             f"aggregate using 'part_of'."
         )
+
+    def _register_engine_gauges(self) -> None:
+        """Register engine-level observable gauges for OTEL metrics."""
+        meter = get_meter(self.domain)
+
+        meter.create_observable_gauge(
+            "protean.engine.up",
+            callbacks=[self._observe_engine_up],
+            description="1 when engine is running, 0 when shutting down",
+        )
+        meter.create_observable_gauge(
+            "protean.engine.uptime_seconds",
+            callbacks=[self._observe_uptime],
+            description="Engine uptime in seconds",
+            unit="s",
+        )
+        meter.create_observable_gauge(
+            "protean.engine.active_subscriptions",
+            callbacks=[self._observe_active_subscriptions],
+            description="Number of active subscriptions",
+            unit="{subscription}",
+        )
+
+    def _observe_engine_up(self, options: object = None) -> list:
+        return [create_observation(0 if self.shutting_down else 1)]
+
+    def _observe_uptime(self, options: object = None) -> list:
+        return [create_observation(time.monotonic() - self._start_time)]
+
+    def _observe_active_subscriptions(self, options: object = None) -> list:
+        count = len(self._subscriptions) + len(self._broker_subscriptions)
+        return [create_observation(count)]
 
     async def handle_broker_message(
         self,

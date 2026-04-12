@@ -3,6 +3,7 @@ import logging
 import os
 import secrets
 import socket
+import time
 
 from datetime import datetime, timezone
 from typing import Dict, Type
@@ -10,6 +11,7 @@ from typing import Dict, Type
 from protean.core.subscriber import BaseSubscriber
 from protean.port.broker import BaseBroker
 from protean.utils import fqn
+from protean.utils.telemetry import get_domain_metrics
 
 from . import BaseSubscription
 
@@ -159,10 +161,17 @@ class BrokerSubscription(BaseSubscription):
         """
         logger.debug(f"Processing {len(messages)} messages...")
         successful_count = 0
+        metrics = get_domain_metrics(self.engine.domain)
+        attrs = {
+            "subscription": self.subscriber_class_name,
+            "handler": self.subscriber_class_name,
+            "stream": self.stream_name,
+        }
 
         for message in messages:
             identifier, payload = message
             # Process the message and get a success/failure result
+            msg_start = time.monotonic()
             is_successful = await self.engine.handle_broker_message(
                 self.handler,
                 payload,
@@ -170,6 +179,9 @@ class BrokerSubscription(BaseSubscription):
                 stream=self.stream_name,
                 worker_id=self.subscription_id,
             )
+            elapsed = time.monotonic() - msg_start
+
+            metrics.subscription_processing_duration.record(elapsed, attrs)
 
             if is_successful:
                 # Acknowledge successful processing
@@ -178,11 +190,17 @@ class BrokerSubscription(BaseSubscription):
                 )
                 if ack_result:
                     successful_count += 1
+                    metrics.subscription_messages_processed.add(
+                        1, {**attrs, "status": "ok"}
+                    )
                     # Clear retry count on success
                     self.retry_counts.pop(identifier, None)
                 else:
                     logger.warning(f"Failed to acknowledge message {identifier}")
             else:
+                metrics.subscription_messages_processed.add(
+                    1, {**attrs, "status": "error"}
+                )
                 # Handle failure with retry/DLQ logic
                 await self._handle_failed_message(identifier, payload)
 
@@ -224,6 +242,16 @@ class BrokerSubscription(BaseSubscription):
             identifier: The broker message identifier.
             retry_count: The current retry attempt number.
         """
+        metrics = get_domain_metrics(self.engine.domain)
+        metrics.subscription_retries.add(
+            1,
+            {
+                "subscription": self.subscriber_class_name,
+                "handler": self.subscriber_class_name,
+                "stream": self.stream_name,
+            },
+        )
+
         logger.debug(
             f"[{self.subscriber_class_name}] Retrying message {identifier} "
             f"(attempt {retry_count}/{self.max_retries}) "
@@ -299,6 +327,16 @@ class BrokerSubscription(BaseSubscription):
             logger.info(
                 f"[{self.subscriber_class_name}] Moved message {identifier} "
                 f"to DLQ stream {self.dlq_stream}"
+            )
+
+            metrics = get_domain_metrics(self.engine.domain)
+            metrics.subscription_dlq_routed.add(
+                1,
+                {
+                    "subscription": self.subscriber_class_name,
+                    "handler": self.subscriber_class_name,
+                    "stream": self.stream_name,
+                },
             )
 
             # Emit trace event

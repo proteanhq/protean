@@ -3,6 +3,7 @@ import logging
 import os
 import secrets
 import socket
+import time
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from protean.core.command_handler import BaseCommandHandler
@@ -11,6 +12,7 @@ from protean.exceptions import ConfigurationError
 from protean.port.broker import BaseBroker
 from protean.utils import fqn
 from protean.utils.eventing import Message
+from protean.utils.telemetry import get_domain_metrics
 
 from . import BaseSubscription
 
@@ -464,6 +466,12 @@ class StreamSubscription(BaseSubscription):
             f"[{self.subscriber_class_name}] Received {len(messages)} message(s)"
         )
         successful_count = 0
+        metrics = get_domain_metrics(self.engine.domain)
+        attrs = {
+            "subscription": self.subscriber_class_name,
+            "handler": self.subscriber_class_name,
+            "stream": stream,
+        }
 
         for identifier, payload in messages:
             message = await self._deserialize_message(identifier, payload, stream)
@@ -480,18 +488,28 @@ class StreamSubscription(BaseSubscription):
             )
 
             # Process the message
+            msg_start = time.monotonic()
             is_successful = await self.engine.handle_message(
                 self.handler, message, worker_id=self.subscription_id
             )
+            elapsed = time.monotonic() - msg_start
+
+            metrics.subscription_processing_duration.record(elapsed, attrs)
 
             if is_successful:
                 if await self._acknowledge_message(identifier, message, stream):
                     successful_count += 1
+                    metrics.subscription_messages_processed.add(
+                        1, {**attrs, "status": "ok"}
+                    )
                     logger.info(
                         f"[{self.subscriber_class_name}] Completed {message_type} "
                         f"(ID: {short_id}...) — acked"
                     )
             else:
+                metrics.subscription_messages_processed.add(
+                    1, {**attrs, "status": "error"}
+                )
                 logger.warning(
                     f"[{self.subscriber_class_name}] Failed {message_type} "
                     f"(ID: {short_id}...) — retrying"
@@ -595,6 +613,17 @@ class StreamSubscription(BaseSubscription):
         """
         assert self.broker is not None, "Broker not initialized"
         stream = stream or self._default_stream
+
+        metrics = get_domain_metrics(self.engine.domain)
+        metrics.subscription_retries.add(
+            1,
+            {
+                "subscription": self.subscriber_class_name,
+                "handler": self.subscriber_class_name,
+                "stream": stream,
+            },
+        )
+
         logger.debug(
             f"Retrying message {identifier} (attempt {retry_count}/{self.max_retries}) "
             f"after {self.retry_delay_seconds}s delay"
@@ -671,6 +700,16 @@ class StreamSubscription(BaseSubscription):
             dlq_message = self._create_dlq_message(identifier, payload, stream)
             self.broker.publish(dlq_target, dlq_message)
             logger.info(f"Moved message {identifier} to DLQ stream {dlq_target}")
+
+            metrics = get_domain_metrics(self.engine.domain)
+            metrics.subscription_dlq_routed.add(
+                1,
+                {
+                    "subscription": self.subscriber_class_name,
+                    "handler": self.subscriber_class_name,
+                    "stream": stream,
+                },
+            )
 
             # Emit message.dlq trace
             msg_metadata = payload.get("metadata") or {}
