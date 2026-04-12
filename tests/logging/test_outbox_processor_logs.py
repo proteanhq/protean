@@ -93,7 +93,7 @@ class TestOutboxBatchCompletedLog:
         processor._process_single_message = mock_process
 
         with caplog.at_level(logging.DEBUG, logger="protean.server.outbox_processor"):
-            asyncio.get_event_loop().run_until_complete(processor.process_batch(messages))
+            asyncio.run(processor.process_batch(messages))
 
         batch_records = [
             r for r in caplog.records if "outbox.batch_completed" in r.getMessage()
@@ -139,7 +139,7 @@ class TestOutboxPublishFailedLog:
         processor._publish_message = mock_publish
 
         with caplog.at_level(logging.DEBUG, logger="protean.server.outbox_processor"):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 processor._process_single_message(message)
             )
 

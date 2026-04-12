@@ -135,7 +135,7 @@ def configure_logging(
     )
 
     # --- structlog setup ---
-    _setup_structlog(extra_processors=extra_processors)
+    _setup_structlog(env=env, format=format, extra_processors=extra_processors)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
@@ -362,16 +362,19 @@ def _setup_stdlib_logging(
 
 
 def _setup_structlog(
+    env: str,
+    format: str,
     extra_processors: Optional[list] = None,
 ) -> None:
-    """Configure structlog to pre-process events and hand them to stdlib.
+    """Configure structlog processors and renderer.
 
-    The processor chain ends with ``ProcessorFormatter.wrap_for_formatter``
-    which converts the structlog event dict into a stdlib ``LogRecord`` and
-    attaches the pre-processed dict as ``record._structlog_event``.  The
-    ``ProcessorFormatter`` on the stdlib handler then applies the final
-    renderer — exactly once — so both stdlib and structlog events share a
-    single rendering path.
+    The structlog chain retains its own renderer so that events logged via
+    ``get_logger()`` produce a fully rendered string *before* hitting the
+    stdlib handler.  This is compatible with pytest's ``caplog`` and any
+    handler that does not use ``ProcessorFormatter``.
+
+    Stdlib loggers (``logging.getLogger()``) take a separate path through
+    the ``ProcessorFormatter`` on each handler — see ``_setup_stdlib_logging``.
     """
     processors: list = [
         structlog.stdlib.filter_by_level,
@@ -395,8 +398,23 @@ def _setup_structlog(
     if extra_processors:
         processors.extend(extra_processors)
 
-    # Hand off to ProcessorFormatter for final rendering (no renderer here)
-    processors.append(structlog.stdlib.ProcessorFormatter.wrap_for_formatter)
+    # Choose renderer
+    use_json = format == "json" or (
+        format == "auto" and env in ("production", "staging")
+    )
+
+    if use_json:
+        processors.append(structlog.processors.JSONRenderer())
+    else:
+        processors.append(
+            structlog.dev.ConsoleRenderer(
+                colors=True,
+                exception_formatter=structlog.dev.RichTracebackFormatter(
+                    show_locals=True,
+                    max_frames=2,
+                ),
+            )
+        )
 
     structlog.configure(
         processors=processors,
