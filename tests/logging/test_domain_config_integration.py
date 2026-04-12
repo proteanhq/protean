@@ -197,3 +197,24 @@ class TestDomainTomlLoggingSection:
 
         root = logging.getLogger()
         assert root.level == logging.INFO  # production default
+
+    def test_repeated_configure_logging_no_duplicate_filters(self):
+        """Calling configure_logging() twice does not add duplicate filters."""
+        from protean.integrations.logging import ProteanCorrelationFilter
+
+        domain = Domain(
+            root_path=str(Path(__file__).parent),
+            name="TestNoDuplicateFilters",
+        )
+
+        _clear_root_logger()
+
+        with patch.dict(os.environ, {}, clear=True):
+            domain.configure_logging()
+            domain.configure_logging()
+
+        root = logging.getLogger()
+        correlation_filters = [
+            f for f in root.filters if isinstance(f, ProteanCorrelationFilter)
+        ]
+        assert len(correlation_filters) == 1

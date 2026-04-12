@@ -2127,8 +2127,8 @@ class Domain:
         Configuration precedence (highest to lowest):
 
         1. Explicit keyword arguments to this method
-        2. ``domain.toml [logging]`` section (via ``self.config["logging"]``)
-        3. ``PROTEAN_LOG_LEVEL`` / ``PROTEAN_LOG_FORMAT`` env vars
+        2. ``PROTEAN_LOG_LEVEL`` env var (for level only)
+        3. ``domain.toml [logging]`` section (via ``self.config["logging"]``)
         4. Environment-based defaults (``_ENV_LEVEL_MAP``)
 
         The ``per_logger`` map from ``[logging.per_logger]`` is applied after
