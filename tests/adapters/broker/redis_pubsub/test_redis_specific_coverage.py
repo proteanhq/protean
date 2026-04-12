@@ -235,10 +235,9 @@ class TestRedisHealthAndStats:
                 assert len(caplog.records) == 1
                 assert caplog.records[0].levelname == "ERROR"
                 assert (
-                    "Error getting Redis PubSub health stats"
+                    "broker.redis_pubsub.health_check_failed"
                     in caplog.records[0].message
                 )
-                assert "Connection failed" in caplog.records[0].message
 
 
 @pytest.mark.redis
@@ -299,8 +298,7 @@ class TestRedisDataReset:
                 # Should log error message
                 assert len(caplog.records) == 1
                 assert caplog.records[0].levelname == "ERROR"
-                assert "Error during data reset" in caplog.records[0].message
-                assert "Connection failed" in caplog.records[0].message
+                assert "broker.redis_pubsub.data_reset_failed" in caplog.records[0].message
 
 
 @pytest.mark.redis

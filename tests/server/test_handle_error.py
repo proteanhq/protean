@@ -252,7 +252,7 @@ async def test_event_handler_error_handling(test_domain, caplog):
     assert len(error_logs) >= 3  # At least 1 for each error case
 
     # Check for specific error messages
-    assert any("Error in error handler" in record.message for record in error_logs)
+    assert any("engine.error_handler_failed" in record.message for record in error_logs)
 
 
 @pytest.mark.asyncio
@@ -294,7 +294,7 @@ async def test_command_handler_error_handling(test_domain, caplog):
     assert len(error_logs) >= 3  # At least 1 for each error case
 
     # Check for specific error messages
-    assert any("Error in error handler" in record.message for record in error_logs)
+    assert any("engine.error_handler_failed" in record.message for record in error_logs)
 
 
 @pytest.mark.asyncio
@@ -330,5 +330,5 @@ async def test_subscriber_error_handling(test_domain, caplog):
     error_logs = [record for record in caplog.records if record.levelname == "ERROR"]
     assert len(error_logs) >= 3  # At least 1 for each error case
 
-    # Check for specific error messages
-    assert any("Error in error handler" in record.message for record in error_logs)
+    # Broker path uses broker.* prefix for error handler failures
+    assert any("broker.error_handler_failed" in record.message for record in error_logs)

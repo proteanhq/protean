@@ -586,4 +586,4 @@ class TestEngineErrorResilience:
 
         assert result is False
         assert engine.shutting_down is False
-        assert "Error handler failed" in caplog.text
+        assert "broker.error_handler_failed" in caplog.text
