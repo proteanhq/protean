@@ -442,6 +442,186 @@ class TestDLQMaintenanceCycle:
                     assert "threshold_exceeded" not in str(call)
 
 
+class TestDLQMaintenanceNonCallableCallback:
+    def test_non_callable_returns_none(self):
+        """_resolve_callback rejects non-callable attributes."""
+        # os.path.sep is a string, not callable
+        result = _resolve_callback("os.path.sep")
+        assert result is None
+
+
+class TestDLQMaintenanceCollectStreams:
+    @pytest.mark.no_test_domain
+    def test_deduplicates_streams(self):
+        """_collect_unique_dlq_streams removes duplicates."""
+        domain = _setup_domain()
+        with domain.domain_context():
+            domain.register(DLQMaintAggregate)
+            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
+            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
+            domain.init(traverse=False)
+
+            engine = MagicMock()
+            engine.domain = domain
+            engine._subscriptions = {}
+
+            task = DLQMaintenanceTask(engine)
+            # Should have at least one unique DLQ stream
+            assert len(task._dlq_streams_unique) > 0
+            # All entries should be unique
+            assert len(task._dlq_streams_unique) == len(set(task._dlq_streams_unique))
+
+
+class TestDLQMaintenanceStartAndRun:
+    @pytest.mark.no_test_domain
+    @pytest.mark.asyncio
+    async def test_start_creates_named_task(self):
+        """start() creates a task with the maintenance loop."""
+        import asyncio
+
+        domain = _setup_domain()
+        with domain.domain_context():
+            domain.init(traverse=False)
+
+            loop = asyncio.get_event_loop()
+            engine = MagicMock()
+            engine.domain = domain
+            engine.loop = loop
+            engine._subscriptions = {}
+            engine.shutting_down = False
+
+            task = DLQMaintenanceTask(engine)
+            await task.start()
+
+            # The loop task should exist
+            running_tasks = [t for t in asyncio.all_tasks() if "dlq-maintenance" in (t.get_name() or "")]
+            assert len(running_tasks) > 0
+
+            # Clean up
+            task.keep_going = False
+            for t in running_tasks:
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
+
+    @pytest.mark.no_test_domain
+    @pytest.mark.asyncio
+    async def test_run_stops_when_shutting_down(self):
+        """_run exits when engine.shutting_down is set."""
+        domain = _setup_domain()
+        with domain.domain_context():
+            domain.init(traverse=False)
+
+            engine = MagicMock()
+            engine.domain = domain
+            engine._subscriptions = {}
+            engine.shutting_down = False
+
+            task = DLQMaintenanceTask(engine)
+            task.check_interval = 0  # No sleep
+
+            # Simulate shutting_down after first check
+            call_count = 0
+            original_cycle = task._maintenance_cycle
+
+            async def mock_cycle():
+                nonlocal call_count
+                call_count += 1
+                engine.shutting_down = True
+
+            task._maintenance_cycle = mock_cycle
+            await task._run()
+            # Should have run at most once before stopping
+            assert call_count <= 1
+
+
+class TestBaseBrokerDefaultMethods:
+    def test_dlq_trim_returns_zero(self, test_domain):
+        """BaseBroker.dlq_trim default returns 0."""
+        broker = test_domain.brokers["default"]
+        result = broker.dlq_trim("some:dlq", "0-0")
+        assert result == 0
+
+    def test_dlq_depth_returns_zero(self, test_domain):
+        """BaseBroker.dlq_depth default returns 0."""
+        broker = test_domain.brokers["default"]
+        result = broker.dlq_depth("some:dlq")
+        assert result == 0
+
+
+class TestSubscriptionConfigDLQOverrides:
+    def test_from_profile_passes_dlq_overrides(self):
+        """from_profile correctly passes dlq override values."""
+        from protean.server.subscription.profiles import (
+            SubscriptionConfig,
+            SubscriptionProfile,
+        )
+
+        config = SubscriptionConfig.from_profile(
+            SubscriptionProfile.PRODUCTION,
+            dlq_retention_hours=24,
+            dlq_alert_threshold=50,
+        )
+        assert config.dlq_retention_hours == 24
+        assert config.dlq_alert_threshold == 50
+
+    def test_from_profile_defaults_none(self):
+        """from_profile leaves dlq overrides as None when not specified."""
+        from protean.server.subscription.profiles import (
+            SubscriptionConfig,
+            SubscriptionProfile,
+        )
+
+        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
+        assert config.dlq_retention_hours is None
+        assert config.dlq_alert_threshold is None
+
+    def test_from_dict_with_dlq_overrides(self):
+        """from_dict reads dlq override keys."""
+        from protean.server.subscription.profiles import SubscriptionConfig
+
+        config = SubscriptionConfig.from_dict({
+            "dlq_retention_hours": 48,
+            "dlq_alert_threshold": 25,
+        })
+        assert config.dlq_retention_hours == 48
+        assert config.dlq_alert_threshold == 25
+
+    def test_validation_rejects_negative_retention(self):
+        """Negative dlq_retention_hours raises ConfigurationError."""
+        from protean.exceptions import ConfigurationError
+        from protean.server.subscription.profiles import SubscriptionConfig
+
+        with pytest.raises(ConfigurationError, match="dlq_retention_hours must be positive"):
+            SubscriptionConfig(dlq_retention_hours=-1)
+
+    def test_validation_rejects_zero_threshold(self):
+        """Zero dlq_alert_threshold raises ConfigurationError."""
+        from protean.exceptions import ConfigurationError
+        from protean.server.subscription.profiles import SubscriptionConfig
+
+        with pytest.raises(ConfigurationError, match="dlq_alert_threshold must be positive"):
+            SubscriptionConfig(dlq_alert_threshold=0)
+
+    def test_to_dict_includes_dlq_fields(self):
+        """to_dict includes dlq override fields."""
+        from protean.server.subscription.profiles import (
+            SubscriptionConfig,
+            SubscriptionProfile,
+        )
+
+        config = SubscriptionConfig.from_profile(
+            SubscriptionProfile.PRODUCTION,
+            dlq_retention_hours=72,
+            dlq_alert_threshold=200,
+        )
+        d = config.to_dict()
+        assert d["dlq_retention_hours"] == 72
+        assert d["dlq_alert_threshold"] == 200
+
+
 class TestDLQMaintenanceShutdown:
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
