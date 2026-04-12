@@ -844,6 +844,28 @@ class SAProvider(BaseProvider):
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
 
+    def pool_stats(self) -> dict[str, int]:
+        """Return SQLAlchemy connection pool statistics.
+
+        Reads live pool counters from the engine's ``QueuePool``.
+        SQLite uses ``SingletonThreadPool`` which does not expose the
+        same attributes, so we return an empty dict for it.
+        """
+        if not hasattr(self, "_engine") or self._engine is None:
+            return {}
+
+        pool = self._engine.pool
+        try:
+            return {
+                "size": pool.size(),
+                "checked_out": pool.checkedout(),
+                "overflow": pool.overflow(),
+                "checked_in": pool.checkedin(),
+            }
+        except AttributeError:
+            # SingletonThreadPool (SQLite) lacks these methods
+            return {}
+
     def close(self):
         """Close the provider and clean up all connections.
 

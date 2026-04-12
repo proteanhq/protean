@@ -536,7 +536,7 @@ class TestMetricsEndpointConvergence:
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
         text = _hand_rolled_metrics([test_domain])
-        assert "protean_outbox_pending" in text or "# HELP" in text
+        assert "protean_outbox_pending_count" in text or "# HELP" in text
 
     def test_get_prometheus_text_returns_none_without_telemetry(self, test_domain):
         """get_prometheus_text returns None when no PrometheusMetricReader."""
@@ -717,7 +717,7 @@ class TestHandRolledMetrics:
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
         text = _hand_rolled_metrics([test_domain])
-        assert "protean_outbox_pending" in text or "# HELP" in text
+        assert "protean_outbox_pending_count" in text or "# HELP" in text
 
     def test_outbox_query_failure_gracefully_handled(self, test_domain):
         """Hand-rolled metrics handle outbox query failure."""
@@ -802,7 +802,7 @@ class TestGaugeCallbacks:
                     metric_names.add(m.name)
 
         # At minimum, outbox and broker gauges should be registered
-        assert "protean_outbox_pending" in metric_names
+        assert "protean.outbox.pending_count" in metric_names
         assert "protean_broker_up" in metric_names
 
     def test_gauge_callbacks_handle_exceptions(self, test_domain, telemetry):
@@ -891,8 +891,8 @@ class TestHandRolledSubscriptionMetrics:
         ):
             text = _hand_rolled_metrics([test_domain])
 
-        assert "protean_subscription_lag" in text
-        assert "protean_subscription_pending" in text
+        assert "protean_subscription_consumer_lag" in text
+        assert "protean_subscription_pending_messages" in text
         assert "protean_subscription_dlq_depth" in text
         assert "protean_subscription_status" in text
         assert 'handler="TestHandler"' in text
@@ -918,7 +918,7 @@ class TestHandRolledSubscriptionMetrics:
         ):
             text = _hand_rolled_metrics([test_domain])
 
-        assert "protean_subscription_pending" in text
+        assert "protean_subscription_pending_messages" in text
         assert "protean_subscription_status" in text
 
     def test_subscription_collection_failure_per_domain(self, test_domain):
@@ -932,7 +932,7 @@ class TestHandRolledSubscriptionMetrics:
             side_effect=RuntimeError("connection lost"),
         ):
             text = _hand_rolled_metrics([test_domain])
-            assert "# HELP protean_outbox_pending" in text
+            assert "# HELP protean_outbox_pending_count" in text
 
 
 # ---------------------------------------------------------------------------
@@ -1089,8 +1089,8 @@ class TestGaugeCallbackErrorPaths:
                 for m in sm.metrics:
                     metric_names.add(m.name)
 
-        assert "protean_subscription_lag" in metric_names
-        assert "protean_subscription_pending" in metric_names
+        assert "protean.subscription.consumer_lag" in metric_names
+        assert "protean.subscription.pending_messages" in metric_names
         assert "protean_subscription_dlq_depth" in metric_names
         assert "protean_subscription_status" in metric_names
 

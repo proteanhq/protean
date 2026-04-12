@@ -352,6 +352,16 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         as the base class gates access via ``raw()``.
         """
 
+    def pool_stats(self) -> dict[str, int]:
+        """Return connection pool statistics.
+
+        Providers that support connection pooling should override this to
+        return a dict with keys ``size``, ``checked_out``, ``overflow``,
+        and ``checked_in``.  The default implementation returns an empty
+        dict, signalling that no pool metrics are available.
+        """
+        return {}
+
     @abstractmethod
     def _data_reset(self) -> None:
         """Flush all data in the provider's persistence store.

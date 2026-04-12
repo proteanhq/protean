@@ -203,8 +203,8 @@ class TestSubscriptionsMetrics:
             response = client.get("/metrics")
 
         body = response.text
-        assert "# HELP protean_subscription_lag" in body
-        assert "# TYPE protean_subscription_lag gauge" in body
+        assert "# HELP protean_subscription_consumer_lag" in body
+        assert "# TYPE protean_subscription_consumer_lag gauge" in body
 
     def test_metrics_contains_subscription_lag_values(self):
         """Prometheus output contains per-subscription lag values."""
@@ -221,11 +221,11 @@ class TestSubscriptionsMetrics:
             response = client.get("/metrics")
 
         body = response.text
-        assert "protean_subscription_lag" in body
+        assert "protean_subscription_consumer_lag" in body
         assert "42" in body
 
     def test_metrics_contains_subscription_pending(self):
-        """Prometheus output includes protean_subscription_pending."""
+        """Prometheus output includes protean_subscription_pending_messages."""
         mock_domain = _make_mock_domain("metric-domain")
 
         statuses = [_lagging_status()]
@@ -239,7 +239,7 @@ class TestSubscriptionsMetrics:
             response = client.get("/metrics")
 
         body = response.text
-        assert "protean_subscription_pending" in body
+        assert "protean_subscription_pending_messages" in body
 
     def test_metrics_contains_subscription_dlq_depth(self):
         """Prometheus output includes protean_subscription_dlq_depth."""
@@ -276,7 +276,7 @@ class TestSubscriptionsMetrics:
         assert "protean_subscription_status" in body
 
     def test_metrics_skips_lag_when_none(self):
-        """When lag is None, protean_subscription_lag line is omitted."""
+        """When lag is None, protean_subscription_consumer_lag value line is omitted."""
         mock_domain = _make_mock_domain("metric-domain")
 
         unknown_status = SubscriptionStatus(
@@ -303,11 +303,11 @@ class TestSubscriptionsMetrics:
 
         body = response.text
         # The HELP/TYPE lines should still exist
-        assert "# HELP protean_subscription_lag" in body
+        assert "# HELP protean_subscription_consumer_lag" in body
         # But no value line for this handler since lag is None
         assert (
             "UnknownHandler"
-            not in body.split("protean_subscription_lag")[1].split("\n")[0]
+            not in body.split("protean_subscription_consumer_lag")[1].split("\n")[0]
         )
         # pending and dlq_depth lines should still appear
         assert 'handler="UnknownHandler"' in body
@@ -327,8 +327,8 @@ class TestSubscriptionsMetrics:
         # Should still return 200 with other metrics
         assert response.status_code == 200
         body = response.text
-        # The HELP/TYPE header lines should still be present
-        assert "# HELP protean_subscription_lag" in body
+        # Outbox metrics should still be present
+        assert "protean_outbox_pending_count" in body
 
     def test_metrics_handles_import_error(self):
         """If subscription_status module can't be imported, metrics still works."""
@@ -360,7 +360,7 @@ class TestSubscriptionsMetrics:
 
             assert response.status_code == 200
             # Subscription metrics should be absent (import failed)
-            assert "protean_subscription_lag" not in response.body.decode()
+            assert "protean_subscription_consumer_lag" not in response.body.decode()
         finally:
             # Restore the module so other tests aren't affected
             if saved is not None:
