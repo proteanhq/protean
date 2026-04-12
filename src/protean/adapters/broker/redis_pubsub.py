@@ -185,7 +185,7 @@ class RedisPubSubBroker(BaseBroker):
             return stats
 
         except Exception as e:
-            logger.error(f"Error getting Redis PubSub health stats: {e}")
+            logger.exception("broker.redis_pubsub.health_check_failed")
             return {
                 "healthy": False,
                 "error": str(e),
@@ -261,7 +261,7 @@ class RedisPubSubBroker(BaseBroker):
             self.redis_instance.flushall()
             self._consumer_groups.clear()
         except Exception as e:
-            logger.error(f"Error during data reset: {e}")
+            logger.exception("broker.redis_pubsub.data_reset_failed")
 
     # DLQ methods — not supported by PubSub broker (no DEAD_LETTER_QUEUE capability).
     # These stubs satisfy the abstract interface; the capability gate in BaseBroker

@@ -240,8 +240,8 @@ class InlineBroker(BaseBroker):
                 )
             except Exception as log_error:
                 # Logging failure shouldn't cause ACK to fail
-                logger.error(
-                    f"Failed to log ACK success for message '{identifier}': {log_error}"
+                logger.exception(
+                    "broker.inline.ack_log_failed", extra={"identifier": identifier}
                 )
                 # Clean up operation state since we can't reliably track the operation
                 self._clear_operation_state(consumer_group, identifier)
@@ -250,7 +250,7 @@ class InlineBroker(BaseBroker):
             return True
 
         except Exception as e:
-            logger.error(f"Error acknowledging message '{identifier}': {e}")
+            logger.exception("broker.inline.ack_failed", extra={"identifier": identifier})
             # Clean up operation state on failure
             self._clear_operation_state(consumer_group, identifier)
             return False
@@ -317,7 +317,7 @@ class InlineBroker(BaseBroker):
                 )
 
         except Exception as e:
-            logger.error(f"Error nacking message '{identifier}': {e}")
+            logger.exception("broker.inline.nack_failed", extra={"identifier": identifier})
             # Clean up operation state on failure
             self._clear_operation_state(consumer_group, identifier)
             return False
@@ -368,15 +368,15 @@ class InlineBroker(BaseBroker):
                 )
             except Exception as log_error:
                 # Logging failure shouldn't cause NACK to fail
-                logger.error(
-                    f"Failed to log NACK success for message '{identifier}': {log_error}"
+                logger.exception(
+                    "broker.inline.nack_log_failed", extra={"identifier": identifier}
                 )
 
             return True
 
         except Exception as e:
-            logger.error(
-                f"Error handling nack with retry for message '{identifier}': {e}"
+            logger.exception(
+                "broker.inline.nack_retry_failed", extra={"identifier": identifier}
             )
             self._clear_operation_state(consumer_group, identifier)
             return False
@@ -420,8 +420,8 @@ class InlineBroker(BaseBroker):
             return True
 
         except Exception as e:
-            logger.error(
-                f"Error handling max retries exceeded for message '{identifier}': {e}"
+            logger.exception(
+                "broker.inline.max_retries_failed", extra={"identifier": identifier}
             )
             self._clear_operation_state(consumer_group, identifier)
             return False
@@ -433,8 +433,9 @@ class InlineBroker(BaseBroker):
             if ready_messages:
                 self._requeue_messages(stream, consumer_group, ready_messages)
         except Exception as e:
-            logger.error(
-                f"Error requeuing failed messages for {consumer_group}:{stream}: {e}"
+            logger.exception(
+                "broker.inline.requeue_failed",
+                extra={"consumer_group": consumer_group, "stream": stream},
             )
 
     def get_dlq_messages(self, consumer_group: str, stream: str = None) -> dict:
@@ -709,7 +710,7 @@ class InlineBroker(BaseBroker):
 
             return False
         except Exception as e:
-            logger.error(f"Error handling NACKed message for ACK '{identifier}': {e}")
+            logger.exception("broker.inline.nack_handle_failed", extra={"identifier": identifier})
             return False
 
     def _cleanup_expired_operation_states(self) -> None:
@@ -780,7 +781,7 @@ class InlineBroker(BaseBroker):
                     return True
             return False
         except Exception as e:
-            logger.error(f"Error reprocessing DLQ message '{identifier}': {e}")
+            logger.exception("broker.inline.dlq_reprocess_failed", extra={"identifier": identifier})
             return False
 
     # ------------------------------------------------------------------

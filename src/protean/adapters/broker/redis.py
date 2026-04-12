@@ -117,7 +117,7 @@ class RedisBroker(BaseBroker):
         except redis.ResponseError as e:
             return self._handle_redis_error(e, stream, consumer_group)
         except Exception as e:
-            logger.error(f"Unexpected error in _get_next: {e}")
+            logger.exception("broker.redis.get_next_failed")
             return None
 
     def _extract_message_from_response(self, response) -> Optional[Tuple[str, dict]]:
@@ -155,7 +155,7 @@ class RedisBroker(BaseBroker):
             data_str = self._decode_if_bytes(data_field)
             return json.loads(data_str)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.error(f"Failed to deserialize message: {e}")
+            logger.exception("broker.redis.deserialize_failed")
             return {}
 
     def _extract_data_field(self, fields: dict):
@@ -216,7 +216,7 @@ class RedisBroker(BaseBroker):
                                     break
 
         except redis.ResponseError as e:
-            logger.error(f"Error reading messages: {e}")
+            logger.exception("broker.redis.read_failed")
 
         return messages[:no_of_messages]  # Ensure we don't return more than requested
 
@@ -322,12 +322,12 @@ class RedisBroker(BaseBroker):
                             messages.append((redis_id_str, message))
                     return messages
                 except Exception as retry_err:
-                    logger.error(f"Retry after NOGROUP failed: {retry_err}")
+                    logger.exception("broker.redis.nogroup_retry_failed")
                     return []
-            logger.error(f"Redis error in _read_blocking: {e}")
+            logger.exception("broker.redis.read_blocking_failed")
             return []
         except Exception as e:
-            logger.error(f"Unexpected error in _read_blocking: {e}")
+            logger.exception("broker.redis.read_blocking_failed")
             return []
 
     def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
@@ -346,7 +346,7 @@ class RedisBroker(BaseBroker):
             logger.warning(f"Failed to ack message {identifier} in {stream}: {e}")
             return False
         except Exception as e:
-            logger.error(f"Unexpected error during ack: {e}")
+            logger.exception("broker.redis.ack_failed")
             return False
 
     def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
@@ -371,7 +371,7 @@ class RedisBroker(BaseBroker):
             return True
 
         except Exception as e:
-            logger.error(f"Unexpected error during nack: {e}")
+            logger.exception("broker.redis.nack_failed")
             return False
 
     def _is_message_pending(
@@ -539,8 +539,9 @@ class RedisBroker(BaseBroker):
                     f"Failed to create consumer group {group_name} for stream {stream}: {e}"
                 )
         except Exception as e:
-            logger.error(
-                f"Error ensuring consumer group {group_name} for stream {stream}: {e}"
+            logger.exception(
+                "broker.redis.ensure_group_failed",
+                extra={"group": group_name, "stream": stream},
             )
 
     def _cleanup_stale_consumers(
@@ -630,7 +631,7 @@ class RedisBroker(BaseBroker):
             info["consumer_groups"].update(stream_info_nested)
 
         except Exception as e:
-            logger.error(f"Error getting broker info: {e}")
+            logger.exception("broker.redis.info_failed")
 
         return info
 
@@ -906,7 +907,7 @@ class RedisBroker(BaseBroker):
             return stats
 
         except Exception as e:
-            logger.error(f"Error getting Redis health stats: {e}")
+            logger.exception("broker.redis.health_check_failed")
             return {
                 "healthy": False,
                 "error": str(e),
@@ -957,11 +958,9 @@ class RedisBroker(BaseBroker):
                         self.conn_info["URI"], **self._pool_kwargs
                     )
                 except Exception as reconnect_error:
-                    logger.error(
-                        f"Failed to create new Redis connection: {reconnect_error}"
-                    )
+                    logger.exception("broker.redis.reconnect_failed")
 
-        logger.error(f"Failed to ensure Redis connection after {max_attempts} attempts")
+        logger.error("broker.redis.connection_exhausted", extra={"max_attempts": max_attempts})
         return False
 
     def close(self) -> None:
@@ -981,7 +980,7 @@ class RedisBroker(BaseBroker):
             self._created_groups_set.clear()
             self._group_creation_times.clear()
         except Exception as e:
-            logger.error(f"Error during data reset: {e}")
+            logger.exception("broker.redis.data_reset_failed")
 
 
 # Self-registration function for entry point

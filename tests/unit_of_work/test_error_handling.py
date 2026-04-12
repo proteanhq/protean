@@ -128,12 +128,11 @@ class TestUnitOfWorkErrorHandling:
             # This should not raise an exception, just log the error
             uow.rollback()
 
-            # Check that error was logged
-            mock_logger.error.assert_called_once()
-            assert "Error during Transaction rollback" in str(
-                mock_logger.error.call_args
+            # Check that error was logged via logger.exception
+            mock_logger.exception.assert_called_once()
+            assert "uow.rollback_failed" in str(
+                mock_logger.exception.call_args
             )
-            assert "Rollback failed" in str(mock_logger.error.call_args)
 
     def test_session_initialization_when_not_active(self, test_domain):
         """Test session initialization when session is not active"""

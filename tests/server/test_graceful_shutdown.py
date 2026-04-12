@@ -172,7 +172,7 @@ class TestEngineShutdownOrder:
                     engine.loop.run_until_complete(engine.shutdown())
 
             assert any(
-                "Error during domain infrastructure cleanup" in r.message
+                "engine.cleanup_failed" in r.message
                 for r in caplog.records
             )
 
@@ -470,7 +470,7 @@ class TestEngineShutdownTaskExceptionRetrieval:
                 ):
                     engine.loop.run_until_complete(run_shutdown_with_stuck_task())
 
-            assert any("didn't finish in time" in r.message for r in caplog.records)
+            assert any("engine.cancelling_tasks" in r.message for r in caplog.records)
 
 
 @pytest.mark.no_test_domain

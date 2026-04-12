@@ -341,7 +341,7 @@ class TestRedisEdgeCases:
 
         # Should return empty and log error
         assert messages == []
-        assert "Redis error in _read_blocking" in caplog.text
+        assert "broker.redis.read_blocking_failed" in caplog.text
 
     def test_read_blocking_unexpected_error(self, test_domain, caplog):
         """Test _read_blocking handling unexpected exceptions."""
@@ -362,7 +362,7 @@ class TestRedisEdgeCases:
 
         # Should return empty and log error
         assert messages == []
-        assert "Unexpected error in _read_blocking" in caplog.text
+        assert "broker.redis.read_blocking_failed" in caplog.text
 
     def test_ensure_group_existing_group_tracking(self, test_domain):
         """Test _ensure_group tracks creation time for existing groups."""
@@ -545,9 +545,9 @@ class TestRedisEdgeCases:
 
         # Should return False and log errors
         assert result is False
-        assert "Failed to create new Redis connection" in caplog.text
+        assert "broker.redis.reconnect_failed" in caplog.text
         assert "Cannot create connection" in caplog.text
-        assert "Failed to ensure Redis connection after 3 attempts" in caplog.text
+        assert "broker.redis.connection_exhausted" in caplog.text
 
 
 @pytest.mark.redis

@@ -324,7 +324,7 @@ class TestFailedPositionRecording:
         assert result == 0
         assert handler_counter == 1
         assert error_handler_counter == 1
-        assert "Error handler failed" in caplog.text
+        assert "engine.error_handler_failed" in caplog.text
 
     @pytest.mark.asyncio
     async def test_engine_doesnt_shut_down_on_failure(self, test_domain):

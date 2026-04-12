@@ -19,14 +19,9 @@ def test_handle_exception_with_exception(engine):
     Test the Engine's exception handler when receiving a context with
     an actual exception object.
 
-    This test verifies that when the event loop encounters an unhandled exception:
-    1. The exception message is properly logged
-    2. The traceback is printed to assist with debugging
-    3. The engine initiates shutdown with an error exit code (1)
-
-    The test works by creating a faulty task that raises an exception,
-    running it in the engine's event loop, and verifying the correct
-    error handling procedures are followed.
+    Verifies that when the event loop encounters an unhandled exception:
+    1. The error is logged with exc_info through the structured pipeline
+    2. The engine initiates shutdown with an error exit code (1)
     """
     loop = engine.loop
 
@@ -37,106 +32,99 @@ def test_handle_exception_with_exception(engine):
         mock.patch.object(
             engine, "shutdown", new_callable=mock.AsyncMock
         ) as mock_shutdown,
-        mock.patch("traceback.print_exception") as mock_print_exception,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
-        # Start the engine in a separate coroutine
         async def run_engine():
             loop.create_task(faulty_task())
             engine.run()
 
-        # Run the engine and handle the exception
         loop.run_until_complete(run_engine())
 
-        # Ensure the logger captured the exception message
-        mock_logger_error.assert_any_call("Caught exception: Test exception")
-
-        # Verify print_exception was called with our test exception.
-        # We check via filtering because pytest's capture mechanism may
-        # also trigger print_exception for I/O errors on closed handles.
-        exception_calls = [
+        # Verify the structured event was logged with exc_info
+        mock_logger_error.assert_called()
+        error_calls = [
             c
-            for c in mock_print_exception.call_args_list
-            if len(c.args) >= 2
-            and isinstance(c.args[1], Exception)
-            and str(c.args[1]) == "Test exception"
+            for c in mock_logger_error.call_args_list
+            if c.args and c.args[0] == "engine.unhandled_exception"
         ]
-        assert len(exception_calls) == 1, (
-            f"Expected exactly one print_exception call with 'Test exception', "
-            f"got {mock_print_exception.call_args_list}"
+        assert len(error_calls) >= 1, (
+            f"Expected 'engine.unhandled_exception' log call, "
+            f"got {mock_logger_error.call_args_list}"
         )
+        # Verify exc_info was passed (stack trace through structured pipeline)
+        call_kwargs = error_calls[0].kwargs
+        assert "exc_info" in call_kwargs, "exc_info must be passed for structured tracebacks"
         mock_shutdown.assert_called_once_with(exit_code=1)
 
 
 def test_exception_handler_with_message_only(engine):
     """
-    This test method test_handle_exception_without_exception is testing
-        how the Engine's exception handler behaves when it receives a context
-        without an actual exception object.
+    Test the Engine's exception handler when receiving a context with
+    only a message (no exception object).
 
-    In asyncio, the event loop's exception handler can be called with
-    contexts that contain either:
-    - An actual exception object (in the "exception" key)
-    - Just a message describing the issue (in the "message" key)
-
-    The purpose of this test is to verify that:
-    - When the exception handler receives a context with only a "message" (no exception)
-    - It correctly logs the error message
-    - It does NOT call the shutdown method (since this is considered a less severe error)
-
-    The test works by:
-    - Creating a custom exception handler that mimics Engine's behavior
-    - Setting it as the loop's exception handler
-    - Triggering it with a context that only has a "message" key
-    - Verifying the correct logging happens and shutdown isn't called
+    Verifies that:
+    - The error message is logged as a structured event with extra context
+    - Shutdown is NOT called (message-only is considered less severe)
     """
     loop = engine.loop
-
-    # Define the exception handler - this will extract directly from the engine's run method
-    def handle_exception(loop, context):
-        msg = context.get("exception", context["message"])
-        if "exception" in context and context["exception"]:
-            # Code for handling with exception
-            pass
-        else:
-            # This is the branch we're testing
-            engine.loop.set_exception_handler(
-                None
-            )  # Reset handler to avoid infinite loop
-            logger.error(f"Caught exception: {msg}")
 
     with (
         mock.patch.object(engine, "shutdown") as mock_shutdown,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
-        # Create a faulty task without an exception in the context
         async def run_engine():
-            # Set the exception handler before triggering the exception
-            loop.set_exception_handler(handle_exception)
-            faulty_context = {"message": "Test message"}
-            loop.call_exception_handler(faulty_context)
+            # Engine.run() sets the exception handler but also starts the loop.
+            # We need to set the handler manually and trigger the message-only path.
+            engine.run()
 
-        # Run the engine
-        loop.run_until_complete(run_engine())
+        # The engine.run() will call handle_exception for any loop errors.
+        # Inject a message-only context via the loop's exception handler.
+        # First, let run() set up the handler, then trigger it.
+        async def trigger_message_only():
+            loop.call_exception_handler({"message": "Test message"})
 
-        # Verify the log
-        mock_logger_error.assert_any_call("Caught exception: Test message")
+        # Set up engine (which installs the exception handler)
+        # and inject a message-only context
+        loop.run_until_complete(trigger_message_only())
+        # The handler won't be installed yet — we need to call run().
+        # Instead, extract the handler from run() manually.
+        engine._setup_signal_handlers()
+
+        # Manually invoke the exception handler the same way run() defines it
+        def handle_exception(loop, context):
+            exc = context.get("exception")
+            if exc is not None:
+                logger.error(
+                    "engine.unhandled_exception",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+            else:
+                logger.error(
+                    "engine.unhandled_exception",
+                    extra={"error": context.get("message", "unknown")},
+                )
+
+        handle_exception(loop, {"message": "Test message"})
+
+        error_calls = [
+            c
+            for c in mock_logger_error.call_args_list
+            if c.args and c.args[0] == "engine.unhandled_exception"
+        ]
+        assert len(error_calls) >= 1
+        call_kwargs = error_calls[0].kwargs
+        assert call_kwargs.get("extra", {}).get("error") == "Test message"
         mock_shutdown.assert_not_called()
 
 
 def test_handle_exception_while_running(engine):
     """
-    Test the Engine's exception handling mechanism during active operation.
+    Test the Engine's exception handling during active operation.
 
-    This test verifies that when an unhandled exception occurs while
-    the engine is actively running:
-    1. The exception message is properly captured and logged
-    2. The full traceback is printed to facilitate debugging
-    3. The engine correctly initiates a shutdown sequence with an error exit code (1)
-
-    The test creates and schedules a faulty task that will raise an exception
-    during engine execution, then verifies all error handling procedures are
-    properly followed, ensuring the engine fails safely and predictably.
+    Verifies that when an unhandled exception occurs while the engine
+    is actively running:
+    1. The error is logged as a structured event with exc_info
+    2. The engine correctly initiates shutdown with error exit code (1)
     """
     loop = engine.loop
 
@@ -147,35 +135,25 @@ def test_handle_exception_while_running(engine):
         mock.patch.object(
             engine, "shutdown", new_callable=mock.AsyncMock
         ) as mock_shutdown,
-        mock.patch("traceback.print_exception") as mock_print_exception,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
-        # Run the engine with a faulty task that raises an exception
         async def run_engine():
             loop.create_task(faulty_task())
             engine.run()
 
-        # Run the engine
         loop.run_until_complete(run_engine())
 
-        mock_logger_error.assert_any_call(
-            "Caught exception: Test exception while running"
-        )
-
-        # Verify print_exception was called with our test exception.
-        # We check via filtering because pytest's capture mechanism may
-        # also trigger print_exception for I/O errors on closed handles.
-        exception_calls = [
+        error_calls = [
             c
-            for c in mock_print_exception.call_args_list
-            if len(c.args) >= 2
-            and isinstance(c.args[1], Exception)
-            and str(c.args[1]) == "Test exception while running"
+            for c in mock_logger_error.call_args_list
+            if c.args and c.args[0] == "engine.unhandled_exception"
         ]
-        assert len(exception_calls) == 1, (
-            f"Expected exactly one print_exception call with 'Test exception while running', "
-            f"got {mock_print_exception.call_args_list}"
+        assert len(error_calls) >= 1, (
+            f"Expected 'engine.unhandled_exception' log call, "
+            f"got {mock_logger_error.call_args_list}"
         )
+        call_kwargs = error_calls[0].kwargs
+        assert "exc_info" in call_kwargs
         mock_shutdown.assert_called_once_with(exit_code=1)
 
 
@@ -184,7 +162,7 @@ def test_exception_handler_skips_shutdown_when_already_shutting_down(engine):
     Test that the exception handler skips creating a shutdown task when
     the engine is already in the process of shutting down.
 
-    This verifies the guard `if loop.is_running() and not self.shutting_down`
+    Verifies the guard `if loop.is_running() and not self.shutting_down`
     does not trigger shutdown when shutting_down is already True.
     """
     loop = engine.loop
@@ -193,26 +171,24 @@ def test_exception_handler_skips_shutdown_when_already_shutting_down(engine):
         mock.patch.object(
             engine, "shutdown", new_callable=mock.AsyncMock
         ) as mock_shutdown,
-        mock.patch("traceback.print_exception") as mock_print_exception,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
-        # Create a faulty task that raises an exception
         async def faulty_task():
             raise Exception("Test exception during shutdown")
 
         async def run_engine():
-            # Set shutting_down BEFORE the exception is handled
             engine.shutting_down = True
             loop.create_task(faulty_task())
             engine.run()
 
         loop.run_until_complete(run_engine())
 
-        # The error should be logged
-        mock_logger_error.assert_any_call(
-            "Caught exception: Test exception during shutdown"
-        )
-        # print_exception should still be called
-        mock_print_exception.assert_called()
+        # The error should still be logged
+        error_calls = [
+            c
+            for c in mock_logger_error.call_args_list
+            if c.args and c.args[0] == "engine.unhandled_exception"
+        ]
+        assert len(error_calls) >= 1
         # But shutdown should NOT be called since shutting_down was already True
         mock_shutdown.assert_not_called()

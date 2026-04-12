@@ -106,7 +106,7 @@ def test_engine_run_non_test_mode(test_domain, caplog):
 
     mock_run_forever.assert_called_once()
     assert any(
-        "Engine started successfully" in record.message for record in caplog.records
+        "engine.started" in record.message for record in caplog.records
     )
 
 

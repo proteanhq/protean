@@ -17,7 +17,7 @@ def test_engine_exits_if_no_subscriptions(caplog):
     engine.run()
 
     assert any(
-        record.levelname == "INFO"
-        and "No subscriptions to start. Exiting..." in record.message
+        record.levelname == "WARNING"
+        and "engine.no_subscriptions" in record.message
         for record in caplog.records
     )

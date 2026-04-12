@@ -122,7 +122,7 @@ class UnitOfWork:
             TransactionError: If the underlying database commit fails.
         """
         # Raise error if there the Unit Of Work is not active
-        logger.debug(f"Committing {self}...")
+        logger.debug("uow.committing", extra={"uow_id": id(self)})
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
 
@@ -298,9 +298,9 @@ class UnitOfWork:
             metrics.uow_commits.add(1)
             metrics.uow_events_per_commit.record(total_events)
 
-            logger.debug("Commit Successful")
+            logger.debug("uow.commit_successful")
         except ValueError as exc:
-            logger.error(str(exc))
+            logger.exception("uow.commit_failed", exc_info=True)
             set_span_error(span, exc)
 
             # Extact message based on message store platform in use
@@ -315,9 +315,7 @@ class UnitOfWork:
             set_span_error(span, exc)
             raise exc
         except Exception as exc:
-            logger.error(
-                f"Error during Commit: {str(exc)}. Rolling back Transaction..."
-            )
+            logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise TransactionError(
                 f"Unit of Work commit failed: {str(exc)}",
@@ -365,9 +363,9 @@ class UnitOfWork:
             for session in self._sessions.values():
                 session.rollback()
 
-            logger.debug("Transaction rolled back")
+            logger.debug("uow.rollback_successful")
         except Exception as exc:
-            logger.error(f"Error during Transaction rollback: {str(exc)}")
+            logger.exception("uow.rollback_failed")
 
         self._reset()
 

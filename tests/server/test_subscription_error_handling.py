@@ -134,7 +134,7 @@ async def test_event_handler_error_handling(test_domain_setup, caplog):
     # Test the handler with normal error handling
     await engine.handle_message(ErrorHandlerEventHandler, message)
     assert error_handler_counter == 1
-    assert "Failed to process" in caplog.text
+    assert "engine.message_failed" in caplog.text
     assert "Intentional test exception" in caplog.text
 
     # Test handler with exception in error handler
@@ -158,7 +158,7 @@ async def test_subscriber_error_handling(test_domain_setup, caplog):
     # Test normal subscriber with error handler
     await engine.handle_broker_message(ErrorHandlerSubscriber, test_message)
     assert error_handler_counter == 1
-    assert "Error in" in caplog.text
+    assert "broker.message_failed" in caplog.text
     assert "Intentional test exception" in caplog.text
 
     # Test subscriber with exception in error handler

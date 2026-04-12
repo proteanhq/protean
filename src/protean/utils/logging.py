@@ -122,13 +122,16 @@ def configure_logging(
 
     numeric_level = getattr(logging, level, logging.INFO)
 
-    # --- stdlib logging setup ---
+    # --- stdlib logging setup (with ProcessorFormatter bridge) ---
     _setup_stdlib_logging(
         numeric_level=numeric_level,
         log_dir=Path(log_dir) if log_dir else None,
         log_file_prefix=log_file_prefix or "protean",
         max_bytes=max_bytes,
         backup_count=backup_count,
+        env=env,
+        format=format,
+        extra_processors=extra_processors,
     )
 
     # --- structlog setup ---
@@ -230,23 +233,96 @@ def configure_for_testing() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _build_shared_processors(extra_processors: Optional[list] = None) -> list:
+    """Build the shared processor chain used by both stdlib and structlog paths.
+
+    This chain runs on every log event — whether it originated from a stdlib
+    ``logging.getLogger()`` call or a structlog ``get_logger()`` call — before
+    the final renderer produces output.
+    """
+    processors: list = [
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.stdlib.ExtraAdder(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.contextvars.merge_contextvars,
+    ]
+    if extra_processors:
+        processors.extend(extra_processors)
+    return processors
+
+
+def _build_renderer(env: str, format: str):
+    """Build the final renderer (JSON or console) based on environment."""
+    use_json = format == "json" or (
+        format == "auto" and env in ("production", "staging")
+    )
+    if use_json:
+        return structlog.processors.JSONRenderer()
+    return structlog.dev.ConsoleRenderer(
+        colors=True,
+        exception_formatter=structlog.dev.RichTracebackFormatter(
+            show_locals=True,
+            max_frames=2,
+        ),
+    )
+
+
+def _build_processor_formatter(
+    env: str,
+    format: str,
+    shared_processors: list,
+) -> structlog.stdlib.ProcessorFormatter:
+    """Build a ``ProcessorFormatter`` that handles final rendering.
+
+    Both stdlib ``LogRecord`` objects (via ``foreign_pre_chain``) and structlog
+    events (pre-processed by structlog's chain ending in ``wrap_for_formatter``)
+    converge here for a single rendering pass.  This avoids double-encoding.
+    """
+    return structlog.stdlib.ProcessorFormatter(
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            _build_renderer(env, format),
+        ],
+        foreign_pre_chain=shared_processors,
+    )
+
+
 def _setup_stdlib_logging(
     numeric_level: int,
     log_dir: Optional[Path],
     log_file_prefix: str,
     max_bytes: int,
     backup_count: int,
+    env: str = "development",
+    format: str = "auto",
+    extra_processors: Optional[list] = None,
 ) -> None:
-    """Configure stdlib logging: console handler + optional rotating file handlers."""
+    """Configure stdlib logging with ``ProcessorFormatter`` bridge.
+
+    Every stdlib handler is given a ``structlog.stdlib.ProcessorFormatter``
+    so that ``logging.getLogger()`` records flow through the same processor
+    chain as ``get_logger()`` events.  This guarantees uniform output shape
+    (JSON in production, colored console in development) regardless of
+    whether the call site uses stdlib or structlog.
+    """
     root = logging.getLogger()
     root.setLevel(numeric_level)
 
     # Remove existing handlers to avoid duplicates on re-configuration
     root.handlers = []
 
+    shared_processors = _build_shared_processors(extra_processors)
+    formatter = _build_processor_formatter(env, format, shared_processors)
+
     # Console handler (always present)
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(numeric_level)
+    console.setFormatter(formatter)
     root.addHandler(console)
 
     # Rotating file handlers (opt-in)
@@ -260,6 +336,7 @@ def _setup_stdlib_logging(
             encoding="utf-8",
         )
         main_file.setLevel(numeric_level)
+        main_file.setFormatter(formatter)
         root.addHandler(main_file)
 
         error_file = logging.handlers.RotatingFileHandler(
@@ -269,6 +346,7 @@ def _setup_stdlib_logging(
             encoding="utf-8",
         )
         error_file.setLevel(logging.ERROR)
+        error_file.setFormatter(formatter)
         root.addHandler(error_file)
 
     # Suppress noisy third-party loggers
@@ -290,11 +368,13 @@ def _setup_structlog(
 ) -> None:
     """Configure structlog processors and renderer.
 
-    Args:
-        env: Runtime environment name (production, development, test, ...).
-        format: ``"json"``, ``"console"``, or ``"auto"``.
-        extra_processors: Optional list of additional processors to insert
-            before the renderer (e.g. correlation-context injection).
+    The structlog chain retains its own renderer so that events logged via
+    ``get_logger()`` produce a fully rendered string *before* hitting the
+    stdlib handler.  This is compatible with pytest's ``caplog`` and any
+    handler that does not use ``ProcessorFormatter``.
+
+    Stdlib loggers (``logging.getLogger()``) take a separate path through
+    the ``ProcessorFormatter`` on each handler — see ``_setup_stdlib_logging``.
     """
     processors: list = [
         structlog.stdlib.filter_by_level,
@@ -315,7 +395,6 @@ def _setup_structlog(
         ),
     ]
 
-    # Inject caller-supplied processors just before the renderer
     if extra_processors:
         processors.extend(extra_processors)
 

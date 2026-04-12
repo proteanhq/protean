@@ -81,7 +81,7 @@ async def test_that_exception_is_handled_but_engine_continues(test_domain, caplo
 
     # But the error was still logged
     assert any(
-        record.levelname == "ERROR" and "Failed to process" in record.message
+        record.levelname == "ERROR" and "engine.message_failed" in record.message
         for record in caplog.records
     )
 
@@ -121,6 +121,6 @@ def test_exceptions_do_not_stop_processing(test_domain, caplog):
 
     # But the error was still logged
     assert any(
-        record.levelname == "ERROR" and "Failed to process" in record.message
+        record.levelname == "ERROR" and "engine.message_failed" in record.message
         for record in caplog.records
     )
