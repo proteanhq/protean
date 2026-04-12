@@ -129,6 +129,14 @@ def _default_config():
             #       profile: "fast"
             #       messages_per_tick: 200
             "subscriptions": {},
+            # DLQ maintenance settings
+            # Periodic trimming and alerting for dead letter queue streams
+            "dlq": {
+                "retention_hours": 168,  # 7 days
+                "alert_threshold": 100,  # Warn when DLQ depth exceeds this
+                "alert_callback": None,  # Optional dotted path to callable
+                "check_interval_seconds": 60,  # How often to run maintenance
+            },
             # Health check HTTP server for Kubernetes liveness/readiness probes
             "health": {
                 "enabled": True,
