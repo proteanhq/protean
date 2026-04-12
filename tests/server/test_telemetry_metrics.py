@@ -148,6 +148,14 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
+@pytest.fixture(autouse=True)
+def _clear_scrape_cache():
+    """Clear the per-scrape metrics cache between tests."""
+    from protean.server.observatory.metrics import _scrape_cache
+
+    _scrape_cache.clear()
+
+
 @pytest.fixture()
 def telemetry(test_domain):
     """Enable in-memory OTEL and return (span_exporter, metric_reader)."""
@@ -620,7 +628,7 @@ class TestMetricsEndpointConvergence:
         response = asyncio.get_event_loop().run_until_complete(endpoint())
         body = response.body.decode("utf-8")
         # Hand-rolled text should contain HELP and TYPE annotations
-        assert "# HELP protean_outbox_pending" in body
+        assert "# HELP protean_outbox_pending_count" in body
 
     def test_create_metrics_endpoint_otel_path(self, test_domain, telemetry):
         """Endpoint serves OTel Prometheus text when telemetry is enabled."""
@@ -729,7 +737,7 @@ class TestHandRolledMetrics:
             test_domain, "_get_outbox_repo", side_effect=RuntimeError("outbox error")
         ):
             text = _hand_rolled_metrics([test_domain])
-        assert "# HELP protean_outbox_pending" in text
+        assert "# HELP protean_outbox_pending_count" in text
 
     def test_broker_query_failure_gracefully_handled(self, test_domain):
         """Hand-rolled metrics handle broker query failure."""
@@ -741,7 +749,7 @@ class TestHandRolledMetrics:
             test_domain.brokers, "get", side_effect=RuntimeError("broker down")
         ):
             text = _hand_rolled_metrics([test_domain])
-        assert "# HELP protean_outbox_pending" in text
+        assert "# HELP protean_outbox_pending_count" in text
 
     def test_trailing_newline(self, test_domain):
         """Hand-rolled metrics text ends with newline."""
@@ -875,7 +883,7 @@ class TestHandRolledSubscriptionMetrics:
             side_effect=ImportError("no module"),
         ):
             text = _hand_rolled_metrics([test_domain])
-            assert "# HELP protean_outbox_pending" in text
+            assert "# HELP protean_outbox_pending_count" in text
 
     def test_subscription_status_rendering(self, test_domain):
         """Subscription metrics render correctly with real SubscriptionStatus."""
@@ -1270,7 +1278,7 @@ class TestHandRolledConsumerMetrics:
         mock_redis.xinfo_consumers.side_effect = RuntimeError("connection reset")
 
         text = self._run_with_redis(test_domain, mock_redis)
-        assert "# HELP protean_outbox_pending" in text
+        assert "# HELP protean_outbox_pending_count" in text
 
     def test_consumer_metrics_xinfo_groups_exception(self, test_domain):
         """xinfo_groups exception doesn't crash metrics."""
@@ -1280,7 +1288,7 @@ class TestHandRolledConsumerMetrics:
         mock_redis.xinfo_groups.side_effect = RuntimeError("timeout")
 
         text = self._run_with_redis(test_domain, mock_redis)
-        assert "# HELP protean_outbox_pending" in text
+        assert "# HELP protean_outbox_pending_count" in text
 
     def test_consumer_metrics_get_redis_failure(self, test_domain):
         """_get_redis failure doesn't crash metrics."""
@@ -1294,7 +1302,7 @@ class TestHandRolledConsumerMetrics:
         ):
             text = _hand_rolled_metrics([test_domain])
 
-        assert "# HELP protean_outbox_pending" in text
+        assert "# HELP protean_outbox_pending_count" in text
 
     def test_consumer_metrics_redis_none(self, test_domain):
         """No consumer metrics when _get_redis returns None."""
@@ -1710,7 +1718,7 @@ class TestHandRolledSubscriptionImportFailure:
             text = _hand_rolled_metrics([test_domain])
 
         # Should still produce outbox metrics even when subscription import fails
-        assert "# HELP protean_outbox_pending" in text
+        assert "# HELP protean_outbox_pending_count" in text
 
 
 # ---------------------------------------------------------------------------

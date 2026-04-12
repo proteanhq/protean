@@ -7,30 +7,37 @@ by Prometheus or any compatible monitoring system.
 
 When OpenTelemetry is installed and telemetry is enabled, the endpoint serves
 OTel-generated Prometheus text (via ``PrometheusMetricReader``) combined with
-hand-rolled infrastructure gauges registered as ``ObservableGauge`` callbacks.
+infrastructure gauges registered as ``ObservableGauge`` callbacks.
 
 When OTel is not installed (or telemetry is disabled), the endpoint falls back
-to the original hand-rolled text format with zero behavioral change.
+to a hand-rolled text format producing equivalent Prometheus metrics.
 
-Metrics:
-- protean.outbox.pending_count (gauge) — Current pending outbox messages per domain
-- protean_stream_messages_total (gauge) — Total messages in streams
-- protean_stream_pending (gauge) — Pending (unacknowledged) messages
-- protean_broker_connected_clients (gauge) — Broker connected clients
-- protean_broker_memory_bytes (gauge) — Broker memory usage
-- protean_broker_ops_per_sec (gauge) — Broker operations per second
-- protean_broker_up (gauge) — Broker health status (1=up, 0=down)
-- protean.subscription.consumer_lag (gauge) — Messages behind stream head per subscription
-- protean.subscription.pending_messages (gauge) — Unacknowledged messages per subscription
-- protean_subscription_dlq_depth (gauge) — Dead letter queue depth per subscription
-- protean_subscription_status (gauge) — Subscription health (1=ok, 0=not ok)
-- protean.db.pool_size (gauge) — Database connection pool size
-- protean.db.pool_checked_out (gauge) — Checked out database connections
-- protean.db.pool_overflow (gauge) — Overflow database connections
-- protean.db.pool_checked_in (gauge) — Available database connections
-- protean.broker.pool_active_connections (gauge) — Broker pool active connections
+**Naming convention:**
+
+OTEL instrument names use dot notation (``protean.db.pool_size``).  When
+exported to Prometheus, dots are automatically converted to underscores
+(``protean_db_pool_size``).  The hand-rolled fallback uses the underscore
+form directly.
+
+Infrastructure gauges (OTEL instrument name / Prometheus text name):
+
+- protean.outbox.pending_count — Pending outbox messages per domain
+- protean.subscription.consumer_lag — Messages behind stream head per subscription
+- protean.subscription.pending_messages — Unacknowledged messages per subscription
+- protean_subscription_dlq_depth — Dead letter queue depth per subscription
+- protean_subscription_status — Subscription health (1=ok, 0=not ok)
+- protean.db.pool_size — Database connection pool size
+- protean.db.pool_checked_out — Checked out database connections
+- protean.db.pool_overflow — Overflow database connections
+- protean.db.pool_checked_in — Available database connections
+- protean.broker.pool_active_connections — Broker pool active connections
+- protean_broker_up — Broker health (1=up, 0=down)
+- protean_broker_memory_bytes — Broker memory usage
+- protean_broker_connected_clients — Broker connected clients
+- protean_broker_ops_per_sec — Broker operations per second
 
 Plus OTel counters and histograms when telemetry is active:
+
 - protean.command.processed, protean.handler.invocations, protean.uow.commits
 - protean.outbox.published, protean.outbox.failed
 - protean.command.duration, protean.handler.duration
@@ -38,13 +45,55 @@ Plus OTel counters and histograms when telemetry is active:
 """
 
 import logging
-from typing import List
+import time
+from typing import Any, Callable, List
 
 from fastapi import Response
 
 from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Per-scrape cache
+# ---------------------------------------------------------------------------
+
+
+class _ScrapeCache:
+    """Time-based cache that avoids redundant collection within a scrape cycle.
+
+    OTEL observable gauge callbacks fire sequentially during a single
+    Prometheus scrape.  Without caching, each callback independently
+    calls the same collection helper — e.g., 4 subscription gauge
+    callbacks would query ``collect_subscription_statuses()`` 4 times.
+
+    This cache stores the result for ``ttl_seconds`` (default 2 s) so
+    all callbacks in the same scrape share one collection.
+    """
+
+    def __init__(self, ttl_seconds: float = 2.0) -> None:
+        self._ttl = ttl_seconds
+        self._data: dict[str, tuple[float, Any]] = {}
+
+    def get(self, key: str, collector: Callable[[], Any]) -> Any:
+        """Return cached value or call *collector* and cache it."""
+        now = time.monotonic()
+        entry = self._data.get(key)
+        if entry is not None:
+            ts, value = entry
+            if now - ts < self._ttl:
+                return value
+        value = collector()
+        self._data[key] = (now, value)
+        return value
+
+    def clear(self) -> None:
+        """Discard all cached entries."""
+        self._data.clear()
+
+
+# Module-level cache instance shared across gauge callbacks
+_scrape_cache = _ScrapeCache()
 
 # ---------------------------------------------------------------------------
 # Shared data collection helpers
@@ -54,24 +103,28 @@ logger = logging.getLogger(__name__)
 def _collect_subscription_statuses(domains: List[Domain]) -> list:
     """Collect subscription statuses from all domains.
 
-    Returns a list of ``(domain, status)`` tuples.  Called once per
-    scrape cycle and shared across all subscription gauge callbacks.
+    Results are cached for the duration of a single scrape cycle so
+    multiple gauge callbacks reuse the same data.
     """
-    from protean.server.subscription_status import collect_subscription_statuses
 
-    results: list = []
-    for domain in domains:
-        try:
-            statuses = collect_subscription_statuses(domain)
-            for s in statuses:
-                results.append((domain, s))
-        except Exception as exc:
-            logger.debug(
-                "Shared collection: subscription status failed for %s: %s",
-                domain.name,
-                exc,
-            )
-    return results
+    def _do_collect() -> list:
+        from protean.server.subscription_status import collect_subscription_statuses
+
+        results: list = []
+        for domain in domains:
+            try:
+                statuses = collect_subscription_statuses(domain)
+                for s in statuses:
+                    results.append((domain, s))
+            except Exception as exc:
+                logger.debug(
+                    "Shared collection: subscription status failed for %s: %s",
+                    domain.name,
+                    exc,
+                )
+        return results
+
+    return _scrape_cache.get("subscription_statuses", _do_collect)
 
 
 def _collect_pool_stats(domains: List[Domain]) -> list:
@@ -79,24 +132,30 @@ def _collect_pool_stats(domains: List[Domain]) -> list:
 
     Returns a list of ``(provider_name, database_type, stats_dict)`` tuples.
     """
-    results: list = []
-    for domain in domains:
-        try:
-            with domain.domain_context():
-                providers = domain.providers
-                if providers and providers._providers:
-                    for name, provider in providers._providers.items():
-                        stats = provider.pool_stats()
-                        if stats:
-                            db_type = getattr(provider, "__database__", "unknown")
-                            results.append((name, db_type, stats))
-        except Exception as exc:
-            logger.debug(
-                "Shared collection: pool stats failed for %s: %s",
-                domain.name,
-                exc,
-            )
-    return results
+
+    def _do_collect() -> list:
+        results: list = []
+        for domain in domains:
+            try:
+                with domain.domain_context():
+                    providers = domain.providers
+                    if providers and providers._providers:
+                        for name, provider in providers._providers.items():
+                            stats = provider.pool_stats()
+                            if stats:
+                                db_type = getattr(
+                                    provider, "__database__", "unknown"
+                                )
+                                results.append((name, db_type, stats))
+            except Exception as exc:
+                logger.debug(
+                    "Shared collection: pool stats failed for %s: %s",
+                    domain.name,
+                    exc,
+                )
+        return results
+
+    return _scrape_cache.get("pool_stats", _do_collect)
 
 
 def _collect_broker_pool_stats(domains: List[Domain]) -> list:
@@ -104,33 +163,37 @@ def _collect_broker_pool_stats(domains: List[Domain]) -> list:
 
     Returns a list of ``(broker_name, active, available, max_conn)`` tuples.
     """
-    results: list = []
-    for domain in domains:
-        try:
-            with domain.domain_context():
-                brokers = domain.brokers
-                if brokers and brokers._brokers:
-                    for name, broker in brokers._brokers.items():
-                        redis_inst = getattr(broker, "redis_instance", None)
-                        if redis_inst is None:
-                            continue
-                        pool = getattr(redis_inst, "connection_pool", None)
-                        if pool is None:
-                            continue
-                        created = getattr(pool, "_created_connections", 0)
-                        available = len(
-                            getattr(pool, "_available_connections", [])
-                        )
-                        max_conn = getattr(pool, "max_connections", 0)
-                        active = created - available
-                        results.append((name, active, available, max_conn))
-        except Exception as exc:
-            logger.debug(
-                "Shared collection: broker pool stats failed for %s: %s",
-                domain.name,
-                exc,
-            )
-    return results
+
+    def _do_collect() -> list:
+        results: list = []
+        for domain in domains:
+            try:
+                with domain.domain_context():
+                    brokers = domain.brokers
+                    if brokers and brokers._brokers:
+                        for name, broker in brokers._brokers.items():
+                            redis_inst = getattr(broker, "redis_instance", None)
+                            if redis_inst is None:
+                                continue
+                            pool = getattr(redis_inst, "connection_pool", None)
+                            if pool is None:
+                                continue
+                            created = getattr(pool, "_created_connections", 0)
+                            available = len(
+                                getattr(pool, "_available_connections", [])
+                            )
+                            max_conn = getattr(pool, "max_connections", 0)
+                            active = created - available
+                            results.append((name, active, available, max_conn))
+            except Exception as exc:
+                logger.debug(
+                    "Shared collection: broker pool stats failed for %s: %s",
+                    domain.name,
+                    exc,
+                )
+        return results
+
+    return _scrape_cache.get("broker_pool_stats", _do_collect)
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +247,7 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
                 with domain.domain_context():
                     outbox_repo = domain._get_outbox_repo("default")
                     counts = outbox_repo.count_by_status()
-                    pending_total = sum(counts.values())
+                    pending_total = counts.get("pending", 0)
                     observations.append(
                         create_observation(
                             pending_total,
@@ -356,7 +419,7 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Hand-rolled fallback (identical to the original implementation)
+# Hand-rolled fallback (used when OTel is not installed)
 # ---------------------------------------------------------------------------
 
 
@@ -376,7 +439,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
             with domain.domain_context():
                 outbox_repo = domain._get_outbox_repo("default")
                 counts = outbox_repo.count_by_status()
-                pending_total = sum(counts.values())
+                pending_total = counts.get("pending", 0)
                 lines.append(
                     f'protean_outbox_pending_count{{domain="{domain.name}"}} {pending_total}'
                 )

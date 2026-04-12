@@ -8,6 +8,14 @@ no infrastructure.
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clear_scrape_cache():
+    """Clear the per-scrape metrics cache between tests."""
+    from protean.server.observatory.metrics import _scrape_cache
+
+    _scrape_cache.clear()
 from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory

@@ -206,6 +206,12 @@ class TestMemoryProviderPoolStats:
 class TestCollectPoolStats:
     """_collect_pool_stats extracts pool data from all domain providers."""
 
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from protean.server.observatory.metrics import _scrape_cache
+
+        _scrape_cache.clear()
+
     def test_collects_from_provider_with_stats(self):
         from protean.server.observatory.metrics import _collect_pool_stats
 
@@ -263,6 +269,12 @@ class TestCollectPoolStats:
 class TestCollectBrokerPoolStats:
     """_collect_broker_pool_stats reads Redis connection pool state."""
 
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from protean.server.observatory.metrics import _scrape_cache
+
+        _scrape_cache.clear()
+
     def test_collects_active_connections(self):
         from protean.server.observatory.metrics import _collect_broker_pool_stats
 
@@ -313,6 +325,12 @@ class TestCollectBrokerPoolStats:
 
 class TestCollectSubscriptionStatuses:
     """_collect_subscription_statuses gathers subscription data from all domains."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from protean.server.observatory.metrics import _scrape_cache
+
+        _scrape_cache.clear()
 
     def test_collects_statuses(self):
         from protean.server.observatory.metrics import _collect_subscription_statuses
@@ -646,14 +664,14 @@ class TestHandRolledPoolMetrics:
 
         domain = _make_mock_domain()
         mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {"PENDING": 5, "PUBLISHED": 2}
+        mock_outbox.count_by_status.return_value = {"pending": 5, "published": 2}
         domain._get_outbox_repo.return_value = mock_outbox
         domain.brokers.get.return_value = None
 
         output = _hand_rolled_metrics([domain])
         assert "protean_outbox_pending_count" in output
-        # Total should be 5+2=7
-        assert 'protean_outbox_pending_count{domain="test"} 7' in output
+        # pending_count reflects only the "pending" status, not all statuses
+        assert 'protean_outbox_pending_count{domain="test"} 5' in output
 
     def test_subscription_uses_otel_names(self):
         from protean.server.observatory.metrics import _hand_rolled_metrics
