@@ -1113,7 +1113,13 @@ class Engine:
         # Start DLQ maintenance task if a DLQ-capable broker is present
         dlq_maintenance_tasks = []
         if self._dlq_maintenance is not None:
-            task = self.loop.create_task(self._dlq_maintenance.start())
+
+            async def _start_dlq_maintenance():
+                loop_task = await self._dlq_maintenance.start()
+                loop_task.set_name("dlq-maintenance-loop")
+                await loop_task
+
+            task = self.loop.create_task(_start_dlq_maintenance())
             task.set_name("dlq-maintenance")
             dlq_maintenance_tasks.append(task)
             logger.info("engine.dlq_maintenance_started")

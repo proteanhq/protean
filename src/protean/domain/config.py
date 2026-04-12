@@ -133,7 +133,7 @@ def _default_config():
             # Periodic trimming and alerting for dead letter queue streams
             "dlq": {
                 "retention_hours": 168,  # 7 days
-                "alert_threshold": 100,  # Warn when DLQ depth exceeds this
+                "alert_threshold": 100,  # Warn when DLQ depth meets or exceeds this
                 "alert_callback": None,  # Optional dotted path to callable
                 "check_interval_seconds": 60,  # How often to run maintenance
             },

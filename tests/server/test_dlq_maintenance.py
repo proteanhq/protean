@@ -58,7 +58,7 @@ class FakeBroker:
         self._trim_returns: dict[str, int] = {}
 
     def has_capability(self, cap) -> bool:
-        return cap in self._capabilities
+        return bool(self._capabilities & cap)
 
     def dlq_trim(self, dlq_stream: str, min_id: str) -> int:
         self._trim_calls.append((dlq_stream, min_id))

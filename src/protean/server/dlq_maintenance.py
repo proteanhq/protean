@@ -6,7 +6,8 @@ pattern as OutboxProcessor.  It periodically:
 1. Trims DLQ messages older than the configured retention period using
    ``BaseBroker.dlq_trim()``.
 2. Checks DLQ depth against a threshold and logs a WARNING / calls an
-   optional user-supplied callback when the threshold is exceeded.
+   optional user-supplied callback when the depth meets or exceeds the
+   threshold.
 
 Configuration lives in ``[server.dlq]`` within domain.toml, with
 optional per-subscription overrides via ``dlq_retention_hours`` and
@@ -44,7 +45,14 @@ def _resolve_callback(dotted_path: str | None) -> Callable[..., Any] | None:
         return None
     try:
         module = importlib.import_module(module_path)
-        return getattr(module, attr_name)
+        resolved = getattr(module, attr_name)
+        if not callable(resolved):
+            logger.warning(
+                "dlq.callback_not_callable",
+                extra={"path": dotted_path},
+            )
+            return None
+        return resolved
     except (ImportError, AttributeError) as exc:
         logger.warning(
             "dlq.callback_import_failed",
@@ -81,13 +89,14 @@ class DLQMaintenanceTask:
         self.keep_going = True
 
         dlq_config = self.domain.config.get("server", {}).get("dlq", {})
-        self.retention_hours: int = dlq_config.get("retention_hours", 168)
-        self.alert_threshold: int = dlq_config.get("alert_threshold", 100)
+        self.retention_hours: int = int(dlq_config.get("retention_hours", 168))
+        self.alert_threshold: int = int(dlq_config.get("alert_threshold", 100))
         self.alert_callback = _resolve_callback(dlq_config.get("alert_callback"))
-        self.check_interval: int = dlq_config.get("check_interval_seconds", 60)
+        self.check_interval: int = int(dlq_config.get("check_interval_seconds", 60))
 
-        # Cache subscription info — subscriptions are immutable at runtime
-        self._subscriptions = discover_subscriptions(self.domain)
+        # Build a deduplicated list of DLQ streams — multiple handlers can
+        # share a stream_category, but we only need to trim/check each once.
+        self._dlq_streams_unique: list[str] = self._collect_unique_dlq_streams()
 
         # Build per-subscription overrides from the engine's resolved configs
         self._per_sub_retention: dict[str, int] = {}
@@ -97,6 +106,14 @@ class DLQMaintenanceTask:
     @property
     def subscriber_name(self) -> str:
         return "dlq-maintenance"
+
+    def _collect_unique_dlq_streams(self) -> list[str]:
+        """Deduplicate DLQ streams from discovered subscriptions."""
+        seen: dict[str, None] = {}
+        for sub_info in discover_subscriptions(self.domain):
+            for stream in self._dlq_streams(sub_info):
+                seen.setdefault(stream, None)
+        return list(seen)
 
     def _build_per_subscription_overrides(self) -> None:
         """Cache per-subscription DLQ overrides for O(1) lookup during cycles.
@@ -118,10 +135,10 @@ class DLQMaintenanceTask:
             if config.dlq_alert_threshold is not None:
                 self._per_sub_threshold[dlq_stream] = config.dlq_alert_threshold
 
-    async def start(self) -> None:
-        """Start the maintenance loop."""
+    async def start(self) -> asyncio.Task:
+        """Start the maintenance loop and return the running task."""
         logger.info("dlq_maintenance.started")
-        self.engine.loop.create_task(self._run())
+        return self.engine.loop.create_task(self._run())
 
     async def _run(self) -> None:
         """Main loop: sleep, then run one maintenance cycle."""
@@ -130,7 +147,8 @@ class DLQMaintenanceTask:
                 await asyncio.sleep(self.check_interval)
                 if not self.keep_going or self.engine.shutting_down:
                     break
-                await self._maintenance_cycle()
+                with self.domain.domain_context():
+                    await self._maintenance_cycle()
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -144,8 +162,8 @@ class DLQMaintenanceTask:
 
         metrics = get_domain_metrics(self.domain)
 
-        for sub_info in self._subscriptions:
-            for dlq_stream in self._dlq_streams(sub_info):
+        for dlq_stream in self._dlq_streams_unique:
+            try:
                 retention = self._per_sub_retention.get(
                     dlq_stream, self.retention_hours
                 )
@@ -172,6 +190,11 @@ class DLQMaintenanceTask:
                     )
                     metrics.dlq_alerts.add(1, {"dlq_stream": dlq_stream})
                     self._invoke_callback(dlq_stream, depth, threshold)
+            except Exception:
+                logger.exception(
+                    "dlq_maintenance.stream_maintenance_failed",
+                    extra={"dlq_stream": dlq_stream},
+                )
 
     @staticmethod
     def _trim_and_depth(broker, dlq_stream: str, min_id: str) -> tuple[int, int]:
