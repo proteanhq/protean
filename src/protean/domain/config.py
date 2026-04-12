@@ -141,6 +141,24 @@ def _default_config():
             "ttl": 86400,  # Default TTL for success entries: 24 hours (in seconds)
             "error_ttl": 60,  # TTL for error entries: 60 seconds
         },
+        "logging": {
+            "level": "",  # empty = use environment-based default (_ENV_LEVEL_MAP)
+            "format": "auto",  # auto | console | json
+            "log_dir": "",  # empty = stdout only; path enables rotating file handlers
+            "log_file_prefix": "protean",
+            "max_bytes": 10485760,  # 10 MB
+            "backup_count": 5,
+            "slow_handler_threshold_ms": 500,
+            "slow_query_threshold_ms": 100,
+            "redact": [
+                "password",
+                "token",
+                "secret",
+                "api_key",
+                "authorization",
+            ],
+            "per_logger": {},
+        },
         "telemetry": {
             "enabled": False,
             "service_name": None,  # Defaults to domain name when None

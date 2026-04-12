@@ -2,13 +2,10 @@
 
 from protean.domain import Domain
 
-from .shared.logging import configure_logging, get_logger
-
-# Configure logging for the application
-configure_logging()
-
-# Get logger for this module
-logger = get_logger(__name__)
+from .shared.logging import get_logger
 
 # Domain Composition Root
 {{ domain_name }} = Domain(name="{{ domain_name }}")
+
+# Get logger for this module (available after domain.init() auto-configures logging)
+logger = get_logger(__name__)

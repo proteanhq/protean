@@ -1,30 +1,23 @@
-"""Logging configuration for {{ project_name }}.
+"""Logging utilities for {{ project_name }}.
 
-Delegates to Protean's built-in structured logging. Customize by adjusting
-the ``configure_logging()`` call below or by adding application-specific
-context via ``add_context()``.
+Protean auto-configures structured logging during ``domain.init()``.
+Customize via the ``[logging]`` section in ``domain.toml`` — no Python
+code needed for level, format, file rotation, or per-logger overrides.
+
+This module re-exports convenience helpers for application code.
 """
 
 from protean.utils.logging import (
     add_context,
     clear_context,
-    configure_logging,
     configure_for_testing,
     get_logger,
     log_method_call,
 )
 
-# Configure logging with rotating file handlers.
-# Remove log_dir to disable file logging (e.g. in containerized deployments).
-configure_logging(
-    log_dir="logs",
-    log_file_prefix="{{ package_name }}",
-)
-
 __all__ = [
     "add_context",
     "clear_context",
-    "configure_logging",
     "configure_for_testing",
     "get_logger",
     "log_method_call",
