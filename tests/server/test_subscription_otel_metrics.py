@@ -16,7 +16,6 @@ Verifies that:
 """
 
 import asyncio
-import time
 from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
@@ -42,7 +41,6 @@ from protean.utils import fqn
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 from protean.utils.telemetry import (
-    DomainMetrics,
     _DOMAIN_METRICS_KEY,
     get_domain_metrics,
 )
@@ -217,7 +215,7 @@ class TestStreamSubscriptionMessagesProcessed:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
@@ -311,7 +309,7 @@ class TestStreamSubscriptionProcessingDuration:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
@@ -354,7 +352,7 @@ class TestStreamSubscriptionRetries:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
@@ -432,7 +430,7 @@ class TestStreamSubscriptionDLQRouted:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
@@ -488,7 +486,7 @@ class TestBrokerSubscriptionMessagesProcessed:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
@@ -549,7 +547,7 @@ class TestBrokerSubscriptionProcessingDuration:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
@@ -587,7 +585,7 @@ class TestBrokerSubscriptionRetries:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
@@ -624,7 +622,7 @@ class TestBrokerSubscriptionDLQRouted:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
@@ -675,14 +673,15 @@ class TestEngineObservableGauges:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
 
     def test_engine_up_reports_one_when_running(self, test_domain, telemetry):
         metric_reader = telemetry
-        engine = Engine(test_domain, test_mode=True)
+        # Engine creation registers the gauges as a side effect
+        Engine(test_domain, test_mode=True)
 
         points = _get_metric_data_points(metric_reader, "protean.engine.up")
         assert len(points) >= 1
@@ -699,7 +698,8 @@ class TestEngineObservableGauges:
 
     def test_engine_uptime_reports_positive_value(self, test_domain, telemetry):
         metric_reader = telemetry
-        engine = Engine(test_domain, test_mode=True)
+        # Engine creation registers the gauges as a side effect
+        Engine(test_domain, test_mode=True)
 
         points = _get_metric_data_points(
             metric_reader, "protean.engine.uptime_seconds"
@@ -735,7 +735,7 @@ class TestSubscriptionMetricsInDomainMetrics:
 
     @pytest.fixture()
     def telemetry(self, test_domain):
-        span_exporter, metric_reader = _init_telemetry_in_memory(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)

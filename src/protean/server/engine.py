@@ -492,8 +492,18 @@ class Engine:
             f"aggregate using 'part_of'."
         )
 
+    _ENGINE_GAUGES_KEY = "_otel_engine_gauges_registered"
+
     def _register_engine_gauges(self) -> None:
-        """Register engine-level observable gauges for OTEL metrics."""
+        """Register engine-level observable gauges for OTEL metrics.
+
+        Uses a domain-level sentinel to ensure gauges are registered only
+        once per meter provider, avoiding duplicate-instrument warnings
+        when multiple engines share the same domain (tests, reloads).
+        """
+        if getattr(self.domain, self._ENGINE_GAUGES_KEY, False):
+            return
+
         meter = get_meter(self.domain)
 
         meter.create_observable_gauge(
@@ -513,6 +523,8 @@ class Engine:
             description="Number of active subscriptions",
             unit="{subscription}",
         )
+
+        setattr(self.domain, self._ENGINE_GAUGES_KEY, True)
 
     def _observe_engine_up(self, options: object = None) -> list:
         return [create_observation(0 if self.shutting_down else 1)]

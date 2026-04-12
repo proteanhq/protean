@@ -496,20 +496,19 @@ class StreamSubscription(BaseSubscription):
 
             metrics.subscription_processing_duration.record(elapsed, attrs)
 
+            # Record handler outcome independent of broker ACK
+            metrics.subscription_messages_processed.add(
+                1, {**attrs, "status": "ok" if is_successful else "error"}
+            )
+
             if is_successful:
                 if await self._acknowledge_message(identifier, message, stream):
                     successful_count += 1
-                    metrics.subscription_messages_processed.add(
-                        1, {**attrs, "status": "ok"}
-                    )
                     logger.info(
                         f"[{self.subscriber_class_name}] Completed {message_type} "
                         f"(ID: {short_id}...) — acked"
                     )
             else:
-                metrics.subscription_messages_processed.add(
-                    1, {**attrs, "status": "error"}
-                )
                 logger.warning(
                     f"[{self.subscriber_class_name}] Failed {message_type} "
                     f"(ID: {short_id}...) — retrying"

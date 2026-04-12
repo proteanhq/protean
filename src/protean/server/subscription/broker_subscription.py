@@ -183,6 +183,11 @@ class BrokerSubscription(BaseSubscription):
 
             metrics.subscription_processing_duration.record(elapsed, attrs)
 
+            # Record handler outcome independent of broker ACK
+            metrics.subscription_messages_processed.add(
+                1, {**attrs, "status": "ok" if is_successful else "error"}
+            )
+
             if is_successful:
                 # Acknowledge successful processing
                 ack_result = self.broker.ack(
@@ -190,17 +195,11 @@ class BrokerSubscription(BaseSubscription):
                 )
                 if ack_result:
                     successful_count += 1
-                    metrics.subscription_messages_processed.add(
-                        1, {**attrs, "status": "ok"}
-                    )
                     # Clear retry count on success
                     self.retry_counts.pop(identifier, None)
                 else:
                     logger.warning(f"Failed to acknowledge message {identifier}")
             else:
-                metrics.subscription_messages_processed.add(
-                    1, {**attrs, "status": "error"}
-                )
                 # Handle failure with retry/DLQ logic
                 await self._handle_failed_message(identifier, payload)
 

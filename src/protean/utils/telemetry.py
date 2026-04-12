@@ -172,6 +172,11 @@ def shutdown_telemetry(domain: Domain) -> None:
     if hasattr(domain, _DOMAIN_METRICS_KEY):
         delattr(domain, _DOMAIN_METRICS_KEY)
 
+    # Clear engine gauge sentinel so gauges can be re-registered
+    _engine_gauges_key = "_otel_engine_gauges_registered"
+    if hasattr(domain, _engine_gauges_key):
+        delattr(domain, _engine_gauges_key)
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
