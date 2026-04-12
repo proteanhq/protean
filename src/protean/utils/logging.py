@@ -86,6 +86,7 @@ def configure_logging(
     max_bytes: int = 10 * 1024 * 1024,
     backup_count: int = 5,
     extra_processors: Optional[list] = None,
+    per_logger: Optional[dict[str, str]] = None,
 ) -> None:
     """Configure structured logging for a Protean application.
 
@@ -111,6 +112,9 @@ def configure_logging(
         backup_count: Number of rotated log files to keep. Default 5.
         extra_processors: Optional list of additional structlog processors to
             insert before the renderer (e.g. correlation-context injection).
+        per_logger: Optional mapping of logger names to level strings. Applied
+            after global setup so individual loggers can be tuned independently.
+            Example: ``{"protean.server.engine": "WARNING", "myapp.orders": "DEBUG"}``.
     """
     env = _detect_env()
 
@@ -136,6 +140,13 @@ def configure_logging(
 
     # --- structlog setup ---
     _setup_structlog(env=env, format=format, extra_processors=extra_processors)
+
+    # --- per-logger overrides ---
+    if per_logger:
+        for logger_name, logger_level in per_logger.items():
+            logging.getLogger(logger_name).setLevel(
+                getattr(logging, logger_level.upper(), logging.INFO)
+            )
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:

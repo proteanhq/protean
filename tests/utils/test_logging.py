@@ -233,6 +233,42 @@ class TestConfigureForTesting:
         assert any(isinstance(h, logging.StreamHandler) for h in root.handlers)
 
 
+class TestPerLoggerMap:
+    """Tests for the per_logger parameter."""
+
+    def setup_method(self):
+        structlog.reset_defaults()
+        root = logging.getLogger()
+        root.handlers = []
+        root.setLevel(logging.WARNING)
+
+    def test_per_logger_map_applied(self):
+        """per_logger sets individual logger levels."""
+        with patch.dict(os.environ, {}, clear=True):
+            configure_logging(
+                per_logger={
+                    "foo.bar": "DEBUG",
+                    "baz.qux": "ERROR",
+                }
+            )
+
+        assert logging.getLogger("foo.bar").level == logging.DEBUG
+        assert logging.getLogger("baz.qux").level == logging.ERROR
+
+    def test_per_logger_case_insensitive(self):
+        """Level strings are case-insensitive."""
+        with patch.dict(os.environ, {}, clear=True):
+            configure_logging(per_logger={"test.logger": "warning"})
+
+        assert logging.getLogger("test.logger").level == logging.WARNING
+
+    def test_per_logger_none_is_noop(self):
+        """per_logger=None does not fail."""
+        with patch.dict(os.environ, {}, clear=True):
+            configure_logging(per_logger=None)
+        # No assertion needed — just verifying no exception
+
+
 class TestFormatSelection:
     """Tests for format parameter."""
 

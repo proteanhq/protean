@@ -581,6 +581,8 @@ class Domain:
 
         This method bubbles up circular import issues, if present, in the domain code.
         """
+        self._auto_configure_logging()
+
         self._prepare(traverse=traverse)
 
         # Initialize adapters after loading domain
@@ -589,6 +591,40 @@ class Domain:
         # Initialize outbox DAOs for all providers
         if self.has_outbox:
             self._initialize_outbox()
+
+    def _auto_configure_logging(self) -> None:
+        """Auto-configure logging during ``Domain.init()``.
+
+        Guardrails:
+
+        - **Escape hatch:** If ``PROTEAN_NO_AUTO_LOGGING=1`` is set, skip entirely.
+        - **Idempotency:** If the root logger already has handlers, skip —
+          the user has already configured logging.
+        - **Non-fatal:** Any exception is caught and reported to stderr so that
+          ``Domain.init()`` never fails due to logging misconfiguration.
+        """
+        try:
+            if os.environ.get("PROTEAN_NO_AUTO_LOGGING", "").lower() in (
+                "1",
+                "true",
+            ):
+                return
+
+            root = logging.getLogger()
+            if root.handlers:
+                logger.debug(
+                    "Skipping auto logging configuration: "
+                    "root logger already has handlers"
+                )
+                return
+
+            self.configure_logging()
+        except Exception as exc:
+            # Degrade gracefully — never let logging setup break Domain.init()
+            print(
+                f"Warning: auto-configuration of logging failed: {exc}",
+                file=sys.stderr,
+            )
 
     def check(self, traverse: bool = True) -> dict[str, Any]:
         """Validate the domain and return a structured diagnostic report.
@@ -2088,9 +2124,20 @@ class Domain:
         includes ``correlation_id`` and ``causation_id`` from the active
         domain context.
 
+        Configuration precedence (highest to lowest):
+
+        1. Explicit keyword arguments to this method
+        2. ``PROTEAN_LOG_LEVEL`` env var (for level only)
+        3. ``domain.toml [logging]`` section (via ``self.config["logging"]``)
+        4. Environment-based defaults (``_ENV_LEVEL_MAP``)
+
+        The ``per_logger`` map from ``[logging.per_logger]`` is applied after
+        the main configuration by setting individual logger levels.
+
         Args:
             **kwargs: Forwarded to :func:`protean.utils.logging.configure_logging`
-                (``level``, ``format``, ``log_dir``, etc.).
+                (``level``, ``format``, ``log_dir``, etc.). Explicit values
+                override anything in ``domain.toml``.
 
         Example::
 
@@ -2103,14 +2150,44 @@ class Domain:
         )
         from protean.utils.logging import configure_logging
 
+        # --- Merge domain.toml [logging] with explicit kwargs ---
+        logging_config = self.config.get("logging", {})
+        config_kwargs: dict[str, Any] = {}
+
+        # level: env var overrides config, but explicit kwargs override both.
+        # Only forward config level when the env var is absent.
+        cfg_level = logging_config.get("level", "")
+        if cfg_level and "PROTEAN_LOG_LEVEL" not in os.environ:
+            config_kwargs["level"] = cfg_level
+
+        # Other string keys: empty string means "use default"
+        for key in ("format", "log_dir", "log_file_prefix"):
+            val = logging_config.get(key, "")
+            if val:
+                config_kwargs[key] = val
+
+        # Numeric keys: forward when present (default_config always provides them)
+        for key in ("max_bytes", "backup_count"):
+            val = logging_config.get(key)
+            if val is not None:
+                config_kwargs[key] = int(val)
+
+        # Dict key: forward when non-empty
+        per_logger = logging_config.get("per_logger")
+        if per_logger:
+            config_kwargs["per_logger"] = per_logger
+
+        # Explicit kwargs override config values
+        config_kwargs.update(kwargs)
+
         # Build processor list without mutating any caller-supplied sequence
-        extra_processors = kwargs.pop("extra_processors", None)
+        extra_processors = config_kwargs.pop("extra_processors", None)
         extra: list = [
             protean_correlation_processor,
             *list(extra_processors or []),
         ]
 
-        configure_logging(extra_processors=extra, **kwargs)
+        configure_logging(extra_processors=extra, **config_kwargs)
 
         # Attach the correlation filter to the root logger so that *all*
         # stdlib handlers benefit from it.

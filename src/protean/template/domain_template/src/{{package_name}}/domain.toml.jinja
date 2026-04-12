@@ -121,3 +121,20 @@ provider = "redis"
 redis_url = ${REDIS_URL|"redis://localhost:6379/1"}
 ttl = ${CACHE_TTL|3600}
 {%- endif %}
+
+# Logging Configuration
+# Protean auto-configures logging during domain.init(). Uncomment to customize.
+# [logging]
+# level = ""                          # DEBUG | INFO | WARNING | ERROR | CRITICAL (empty = env-based default)
+# format = "auto"                     # auto | console | json
+# log_dir = ""                        # empty = stdout only; path enables rotating file handlers
+# log_file_prefix = "protean"
+# max_bytes = 10485760                # 10 MB
+# backup_count = 5
+# slow_handler_threshold_ms = 500
+# slow_query_threshold_ms = 100
+# redact = ["password", "token", "secret", "api_key", "authorization"]
+#
+# [logging.per_logger]
+# "protean.server.engine" = "INFO"
+# "protean.server.outbox_processor" = "INFO"
