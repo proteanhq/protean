@@ -90,6 +90,13 @@ def server(
     test_mode: Annotated[Optional[bool], typer.Option()] = False,
     debug: Annotated[Optional[bool], typer.Option()] = False,
     workers: Annotated[int, typer.Option(help="Number of worker processes")] = 1,
+    reload: Annotated[
+        bool,
+        typer.Option(
+            "--reload",
+            help="Enable auto-reload on file changes (development only)",
+        ),
+    ] = False,
 ):
     """Run Async Background Server"""
     # Configure logging based on debug flag
@@ -98,6 +105,42 @@ def server(
     if workers < 1:
         print("Error: --workers must be >= 1")
         raise typer.Abort()
+
+    if reload and workers > 1:
+        print("Error: --reload cannot be combined with --workers > 1")
+        raise typer.Abort()
+
+    if reload:
+        # Development path: outer Reloader watches source files and
+        # restarts the inner Engine process on change.
+        try:
+            from protean.server.reloader import Reloader
+        except ModuleNotFoundError as exc:
+            # Only translate the missing-watchfiles case into the
+            # install hint. Any other ModuleNotFoundError almost
+            # certainly indicates a real bug inside the reloader (or
+            # one of its imports) and must be re-raised so it isn't
+            # masked.
+            if exc.name != "watchfiles":
+                raise
+            msg = (
+                "Error: --reload requires the 'watchfiles' package. "
+                "Install it with 'pip install \"protean[dev]\"'."
+            )
+            print(msg)
+            logger.error("%s (%s)", msg, exc)
+            raise typer.Abort()
+
+        reloader = Reloader(
+            domain_path=domain,
+            test_mode=test_mode,
+            debug=debug,
+        )
+        reloader.run()
+
+        if reloader.exit_code != 0:
+            raise typer.Exit(code=reloader.exit_code)
+        return
 
     try:
         derived_domain = derive_domain(domain)
