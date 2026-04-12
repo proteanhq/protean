@@ -28,10 +28,10 @@ class TestPrometheusMetrics:
         assert "version=0.0.4" in response.headers["content-type"]
 
     def test_metrics_contains_outbox_gauges(self, client):
-        """Output contains protean_outbox_messages lines."""
+        """Output contains protean_outbox_pending_count lines."""
         response = client.get("/metrics")
         body = response.text
-        assert "protean_outbox_messages" in body or "protean_outbox_pending" in body
+        assert "protean_outbox_pending_count" in body
 
     def test_metrics_contains_broker_up(self, client):
         """Output contains protean_broker_up metric."""
@@ -394,7 +394,7 @@ class TestMetricsErrorPaths:
         assert response.status_code == 200
         body = response.text
         # Outbox metrics should still be present
-        assert "protean_outbox_messages" in body
+        assert "protean_outbox_pending_count" in body
 
     def test_metrics_when_broker_is_none(self):
         """Metrics endpoint handles missing broker gracefully."""
@@ -411,5 +411,5 @@ class TestMetricsErrorPaths:
         assert response.status_code == 200
         body = response.text
         # Should have outbox HELP/TYPE headers but no broker metrics
-        assert "protean_outbox_pending" in body
+        assert "protean_outbox_pending_count" in body
         assert "protean_broker_up" not in body
