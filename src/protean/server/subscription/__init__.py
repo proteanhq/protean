@@ -47,7 +47,7 @@ class BaseSubscription(ABC):
         """
         logger.info(
             "subscription.started",
-            extra={"name": self.subscriber_name},
+            extra={"subscriber": self.subscriber_name},
         )
 
         # Perform backend-specific initialization
@@ -88,7 +88,7 @@ class BaseSubscription(ABC):
             except asyncio.CancelledError:
                 logger.info(
                     "subscription.cancelled",
-                    extra={"name": self.subscriber_name},
+                    extra={"subscriber": self.subscriber_name},
                 )
                 break
 
@@ -97,7 +97,7 @@ class BaseSubscription(ABC):
                 logger.exception(
                     "subscription.error",
                     extra={
-                        "name": self.subscriber_name,
+                        "subscriber": self.subscriber_name,
                         "attempt": consecutive_errors,
                     },
                 )
@@ -130,7 +130,7 @@ class BaseSubscription(ABC):
         await self.cleanup()
         logger.info(
             "subscription.shutdown",
-            extra={"name": self.subscriber_name},
+            extra={"subscriber": self.subscriber_name},
         )
 
     async def initialize(self) -> None:

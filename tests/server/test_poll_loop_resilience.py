@@ -111,8 +111,14 @@ class TestBaseSubscriptionPollResilience:
         assert sub.tick_count == 3
         assert not engine.shutting_down
         assert "Simulated database connection error" in caplog.text
-        assert "attempt 1" in caplog.text
-        assert "attempt 2" in caplog.text
+        assert "subscription.error" in caplog.text
+        # Verify attempt counter is tracked via LogRecord extra attributes
+        error_records = [
+            r for r in caplog.records if "subscription.error" in r.getMessage()
+        ]
+        assert len(error_records) >= 2
+        assert error_records[0].attempt == 1
+        assert error_records[1].attempt == 2
 
     @pytest.mark.asyncio
     async def test_poll_survives_get_next_batch_exception(self, domain_setup, caplog):
