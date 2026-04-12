@@ -359,13 +359,13 @@ class ElasticsearchDAO(BaseDAO):
                         items=model_items,
                     )
                 except Exception as retry_exc:
-                    logger.error(f"Error while filtering (retry): {retry_exc}")
+                    logger.exception("repository.elasticsearch.filter_retry_failed")
                     raise DatabaseError(
                         f"Database error during filtering: {str(retry_exc)}",
                         original_exception=retry_exc,
                     )
             else:
-                logger.error(f"Error while filtering: {exc}")
+                logger.exception("repository.elasticsearch.filter_failed")
                 raise DatabaseError(
                     f"Database error during filtering: {str(exc)}",
                     original_exception=exc,
@@ -384,7 +384,7 @@ class ElasticsearchDAO(BaseDAO):
                 using=conn,
             )
         except Exception as exc:
-            logger.error(f"Error while creating: {exc}")
+            logger.exception("repository.elasticsearch.create_failed")
             raise DatabaseError(
                 f"Database error during creation: {str(exc)}", original_exception=exc
             )
@@ -407,7 +407,7 @@ class ElasticsearchDAO(BaseDAO):
                 id=identifier, using=conn, index=self.database_model_cls._index._name
             )
         except NotFoundError as exc:
-            logger.error(f"Database Record not found: {exc}")
+            logger.exception("repository.elasticsearch.record_not_found")
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
@@ -447,7 +447,7 @@ class ElasticsearchDAO(BaseDAO):
                 f"(Aggregate: {self.entity_cls.__name__}({identifier}))"
             ) from exc
         except Exception as exc:
-            logger.error(f"Error while updating: {exc}")
+            logger.exception("repository.elasticsearch.update_failed")
             raise DatabaseError(
                 f"Database error during update: {str(exc)}", original_exception=exc
             )
@@ -495,7 +495,7 @@ class ElasticsearchDAO(BaseDAO):
 
             return response.get("updated", 0)
         except Exception as exc:
-            logger.error(f"Error while updating all: {exc}")
+            logger.exception("repository.elasticsearch.update_all_failed")
             raise DatabaseError(
                 f"Database error during update_all: {str(exc)}", original_exception=exc
             )
@@ -511,7 +511,7 @@ class ElasticsearchDAO(BaseDAO):
                 refresh=True,
             )
         except NotFoundError as exc:
-            logger.error(f"Database Record not found: {exc}")
+            logger.exception("repository.elasticsearch.record_not_found")
             id_field_obj = id_field(self.entity_cls)
             assert id_field_obj is not None
             identifier = getattr(model_obj, id_field_obj.attribute_name)
@@ -520,7 +520,7 @@ class ElasticsearchDAO(BaseDAO):
                 f"does not exist."
             )
         except Exception as exc:
-            logger.error(f"Error while deleting: {exc}")
+            logger.exception("repository.elasticsearch.delete_failed")
             raise DatabaseError(
                 f"Database error during deletion: {str(exc)}", original_exception=exc
             )
@@ -546,7 +546,7 @@ class ElasticsearchDAO(BaseDAO):
             index = Index(name=self.entity_cls.meta_.schema_name, using=conn)
             index.refresh()
         except Exception as exc:
-            logger.error(f"Error while deleting records: {exc}")
+            logger.exception("repository.elasticsearch.delete_all_failed")
             raise DatabaseError(
                 f"Database error during delete_all: {str(exc)}", original_exception=exc
             )

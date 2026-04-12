@@ -45,7 +45,10 @@ class BaseSubscription(ABC):
         Returns:
             None
         """
-        logger.debug(f"Starting subscription: {self.subscriber_name}")
+        logger.info(
+            "subscription.started",
+            extra={"name": self.subscriber_name},
+        )
 
         # Perform backend-specific initialization
         await self.initialize()
@@ -83,14 +86,20 @@ class BaseSubscription(ABC):
                         await asyncio.sleep(0)
 
             except asyncio.CancelledError:
-                logger.info(f"Subscription cancelled: {self.subscriber_name}")
+                logger.info(
+                    "subscription.cancelled",
+                    extra={"name": self.subscriber_name},
+                )
                 break
 
             except Exception as exc:
                 consecutive_errors += 1
                 logger.exception(
-                    f"Error in subscription {self.subscriber_name} "
-                    f"(attempt {consecutive_errors}): {exc}"
+                    "subscription.error",
+                    extra={
+                        "name": self.subscriber_name,
+                        "attempt": consecutive_errors,
+                    },
                 )
                 # Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s
                 backoff = min(2 ** (consecutive_errors - 1), 30)
@@ -119,7 +128,10 @@ class BaseSubscription(ABC):
         """
         self.keep_going = False  # Signal to stop polling
         await self.cleanup()
-        logger.info(f"Shutting down subscription: {self.subscriber_name}")
+        logger.info(
+            "subscription.shutdown",
+            extra={"name": self.subscriber_name},
+        )
 
     async def initialize(self) -> None:
         """

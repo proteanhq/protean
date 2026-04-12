@@ -122,13 +122,15 @@ def configure_logging(
 
     numeric_level = getattr(logging, level, logging.INFO)
 
-    # --- stdlib logging setup ---
+    # --- stdlib logging setup (with ProcessorFormatter bridge) ---
     _setup_stdlib_logging(
         numeric_level=numeric_level,
         log_dir=Path(log_dir) if log_dir else None,
         log_file_prefix=log_file_prefix or "protean",
         max_bytes=max_bytes,
         backup_count=backup_count,
+        env=env,
+        format=format,
     )
 
     # --- structlog setup ---
@@ -230,23 +232,78 @@ def configure_for_testing() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _build_processor_formatter(env: str, format: str) -> structlog.stdlib.ProcessorFormatter:
+    """Build a ``ProcessorFormatter`` that routes stdlib ``LogRecord`` objects
+    through the same structlog processor chain used for ``get_logger()`` events.
+
+    This ensures that both stdlib loggers (used by 99% of framework modules)
+    and structlog ``BoundLogger`` instances produce structurally identical
+    output — same JSON shape in production, same console layout in development.
+    """
+    shared_processors: list = [
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.contextvars.merge_contextvars,
+    ]
+
+    use_json = format == "json" or (
+        format == "auto" and env in ("production", "staging")
+    )
+
+    if use_json:
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer(
+            colors=True,
+            exception_formatter=structlog.dev.RichTracebackFormatter(
+                show_locals=True,
+                max_frames=2,
+            ),
+        )
+
+    return structlog.stdlib.ProcessorFormatter(
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            renderer,
+        ],
+        foreign_pre_chain=shared_processors,
+    )
+
+
 def _setup_stdlib_logging(
     numeric_level: int,
     log_dir: Optional[Path],
     log_file_prefix: str,
     max_bytes: int,
     backup_count: int,
+    env: str = "development",
+    format: str = "auto",
 ) -> None:
-    """Configure stdlib logging: console handler + optional rotating file handlers."""
+    """Configure stdlib logging with ``ProcessorFormatter`` bridge.
+
+    Every stdlib handler is given a ``structlog.stdlib.ProcessorFormatter``
+    so that ``logging.getLogger()`` records flow through the same processor
+    chain as ``get_logger()`` events.  This guarantees uniform output shape
+    (JSON in production, colored console in development) regardless of
+    whether the call site uses stdlib or structlog.
+    """
     root = logging.getLogger()
     root.setLevel(numeric_level)
 
     # Remove existing handlers to avoid duplicates on re-configuration
     root.handlers = []
 
+    formatter = _build_processor_formatter(env, format)
+
     # Console handler (always present)
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(numeric_level)
+    console.setFormatter(formatter)
     root.addHandler(console)
 
     # Rotating file handlers (opt-in)
@@ -260,6 +317,7 @@ def _setup_stdlib_logging(
             encoding="utf-8",
         )
         main_file.setLevel(numeric_level)
+        main_file.setFormatter(formatter)
         root.addHandler(main_file)
 
         error_file = logging.handlers.RotatingFileHandler(
@@ -269,6 +327,7 @@ def _setup_stdlib_logging(
             encoding="utf-8",
         )
         error_file.setLevel(logging.ERROR)
+        error_file.setFormatter(formatter)
         root.addHandler(error_file)
 
     # Suppress noisy third-party loggers

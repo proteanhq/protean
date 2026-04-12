@@ -495,7 +495,7 @@ class SADAO(BaseDAO):
                 offset=offset, limit=limit, total=qs_without_limit.count(), items=items
             )
         except Exception as exc:
-            logger.error(f"Error while filtering: {exc}")
+            logger.exception("repository.sqlalchemy.filter_failed")
             raise
         finally:
             self._commit_if_standalone(conn)
@@ -578,7 +578,7 @@ class SADAO(BaseDAO):
             values.update(kwargs)
             updated_count = qs.update(values)
         except DatabaseError as exc:
-            logger.error(f"Error while updating all: {exc}")
+            logger.exception("repository.sqlalchemy.update_all_failed")
             raise
         finally:
             self._commit_if_standalone(conn)
@@ -627,7 +627,7 @@ class SADAO(BaseDAO):
         try:
             del_count = qs.delete()
         except DatabaseError as exc:
-            logger.error(f"Error while deleting all: {exc}")
+            logger.exception("repository.sqlalchemy.delete_all_failed")
             raise
         finally:
             self._commit_if_standalone(conn)
@@ -656,7 +656,7 @@ class SADAO(BaseDAO):
                 items=entity_items,
             )
         except DatabaseError as exc:
-            logger.error(f"Error while running raw query: {exc}")
+            logger.exception("repository.sqlalchemy.raw_query_failed")
             raise
         finally:
             self._commit_if_standalone(conn)
@@ -813,10 +813,7 @@ class SAProvider(BaseProvider):
             conn.execute(text("SELECT 1"))
             return True
         except DatabaseError as e:
-            logger.error(
-                f"Could not connect to database at {self.conn_info['database_uri']}"
-            )
-            logger.error(f"Error: {e}")
+            logger.exception("repository.sqlalchemy.connection_failed", extra={"database_uri": self.conn_info['database_uri']})
             return False
         finally:
             if conn is not None and not current_uow:

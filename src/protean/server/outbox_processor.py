@@ -108,7 +108,11 @@ class OutboxProcessor(BaseSubscription):
         This method initializes the broker connection and outbox repository.
         """
         logger.debug(
-            f"Initializing outbox processor: {self.database_provider_name} -> {self.broker_provider_name}"
+            "outbox.initializing",
+            extra={
+                "database_provider": self.database_provider_name,
+                "broker_provider": self.broker_provider_name,
+            },
         )
 
         # Get the broker for this provider
@@ -118,7 +122,7 @@ class OutboxProcessor(BaseSubscription):
             )
 
         self.broker = self.engine.domain.brokers[self.broker_provider_name]
-        logger.debug(f"Using broker: {self.broker.__class__.__name__}")
+        logger.debug("outbox.broker_selected", extra={"broker": self.broker.__class__.__name__})
 
         # Get the outbox repository for this database provider
         self.outbox_repo = self.engine.domain._get_outbox_repo(
@@ -130,13 +134,17 @@ class OutboxProcessor(BaseSubscription):
                 f"Outbox repository for database provider '{self.database_provider_name}' not found in domain"
             )
 
-        logger.debug(f"Using outbox repository: {self.outbox_repo.__class__.__name__}")
+        logger.debug("outbox.repo_selected", extra={"repo": self.outbox_repo.__class__.__name__})
 
         # Set the subscriber to the custom Outbox aggregate name
         self.subscriber_name = self.outbox_repo.meta_.part_of.__name__
 
         logger.debug(
-            f"Outbox processor initialized: {self.database_provider_name} -> {self.broker_provider_name}"
+            "outbox.initialized",
+            extra={
+                "database_provider": self.database_provider_name,
+                "broker_provider": self.broker_provider_name,
+            },
         )
 
     async def get_next_batch_of_messages(self) -> List[Outbox]:
@@ -159,7 +167,10 @@ class OutboxProcessor(BaseSubscription):
             target_broker=target_broker,
         )
         if messages:
-            logger.debug(f"Found {len(messages)} messages to process")
+            logger.debug(
+                "outbox.batch_fetched",
+                extra={"count": len(messages)},
+            )
         else:
             pass  # No logging needed for empty batches
 
@@ -218,8 +229,14 @@ class OutboxProcessor(BaseSubscription):
             span.set_attribute("protean.outbox.successful_count", successful_count)
 
             if len(messages) > 0:
-                logger.debug(
-                    f"Outbox batch: {successful_count}/{len(messages)} processed"
+                failed = len(messages) - successful_count
+                logger.info(
+                    "outbox.batch_completed",
+                    extra={
+                        "total": len(messages),
+                        "successful": successful_count,
+                        "failed": failed,
+                    },
                 )
             return successful_count
 
@@ -263,12 +280,16 @@ class OutboxProcessor(BaseSubscription):
 
                 if cleanup_result["total"] > 0:
                     logger.info(
-                        f"Outbox cleanup: removed {cleanup_result['total']} messages "
-                        f"({cleanup_result['published']} published, {cleanup_result['abandoned']} abandoned)"
+                        "outbox.cleanup_completed",
+                        extra={
+                            "total": cleanup_result["total"],
+                            "published": cleanup_result["published"],
+                            "abandoned": cleanup_result["abandoned"],
+                        },
                     )
 
         except Exception as exc:
-            logger.exception(f"Outbox cleanup failed: {exc}")
+            logger.exception("outbox.cleanup_failed")
 
     async def _process_single_message(self, message: Outbox) -> bool:
         """
@@ -325,7 +346,8 @@ class OutboxProcessor(BaseSubscription):
                         message, self.worker_id
                     ):
                         logger.debug(
-                            f"Message {message.message_id[:8]}... already claimed by another worker"
+                            "outbox.message_already_claimed",
+                            extra={"message_id": message.message_id[:8]},
                         )
                         span.set_attribute("protean.outbox.skipped", True)
                         return False
@@ -343,7 +365,11 @@ class OutboxProcessor(BaseSubscription):
                     if publish_success:
                         message.mark_published()
                         logger.debug(
-                            f"Published to {message.stream_name}: {message.message_id[:8]}..."
+                            "outbox.message_published",
+                            extra={
+                                "stream": message.stream_name,
+                                "message_id": message.message_id[:8],
+                            },
                         )
 
                         # Record OTel metrics for published message
@@ -379,7 +405,12 @@ class OutboxProcessor(BaseSubscription):
                     else:
                         self._mark_message_failed(message, publish_error)
                         logger.warning(
-                            f"Publish failed for {message.message_id[:8]}...: {publish_error}"
+                            "outbox.publish_failed",
+                            extra={
+                                "message_id": message.message_id[:8],
+                                "error_type": type(publish_error).__name__ if publish_error else None,
+                                "error": str(publish_error) if publish_error else None,
+                            },
                         )
                         # Record OTel metrics for failed message
                         metrics.outbox_failed.add(1)
@@ -395,7 +426,8 @@ class OutboxProcessor(BaseSubscription):
             except Exception as exc:
                 set_span_error(span, exc)
                 logger.exception(
-                    f"Error processing message {message.message_id[:8]}...: {exc}"
+                    "outbox.processing_error",
+                    extra={"message_id": message.message_id[:8]},
                 )
                 # Transaction automatically rolls back on exception
 
@@ -408,8 +440,9 @@ class OutboxProcessor(BaseSubscription):
                             self._mark_message_failed(fresh_message, exc)
                             self.outbox_repo.add(fresh_message)
                 except Exception as save_exc:
-                    logger.error(
-                        f"Failed to save failed message status for {message.message_id}: {save_exc}"
+                    logger.exception(
+                        "outbox.status_save_failed",
+                        extra={"message_id": message.message_id[:8]},
                     )
 
                 return False
@@ -460,13 +493,18 @@ class OutboxProcessor(BaseSubscription):
             broker_message_id = self.broker.publish(stream_category, message_dict)
 
             logger.debug(
-                f"Published message {message.message_id} to broker as {broker_message_id}"
+                "outbox.broker_published",
+                extra={
+                    "message_id": message.message_id[:8],
+                    "broker_message_id": str(broker_message_id),
+                },
             )
             return True, None
 
         except Exception as exc:
-            logger.error(
-                f"Broker publish failed for message {message.message_id}: {str(exc)}"
+            logger.exception(
+                "outbox.broker_publish_failed",
+                extra={"message_id": message.message_id[:8]},
             )
             return False, exc
 
@@ -477,7 +515,11 @@ class OutboxProcessor(BaseSubscription):
         This method handles any necessary cleanup when the processor is shutting down.
         """
         logger.debug(
-            f"Cleaning up OutboxProcessor for database '{self.database_provider_name}' to broker '{self.broker_provider_name}'"
+            "outbox.cleanup",
+            extra={
+                "database_provider": self.database_provider_name,
+                "broker_provider": self.broker_provider_name,
+            },
         )
         # Any cleanup specific to outbox processor can be added here
         pass

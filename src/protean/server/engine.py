@@ -266,7 +266,7 @@ class Engine:
         # Create an outbox processor for each database provider to each broker provider
         # Only if outbox is enabled in the domain
         if self.domain.has_outbox:
-            logger.debug("Outbox enabled, initializing processors")
+            logger.debug("engine.outbox_initializing")
             # Get the broker provider name from the config with validation
             outbox_config = self.domain.config.get("outbox", {})
             broker_provider_name = outbox_config.get("broker", "default")
@@ -279,7 +279,8 @@ class Engine:
             messages_per_tick = outbox_config.get("messages_per_tick", 10)
             tick_interval = outbox_config.get("tick_interval", 1)
             logger.debug(
-                f"Outbox configuration: batch_size={messages_per_tick}, interval={tick_interval}s"
+                "engine.outbox_config",
+                extra={"batch_size": messages_per_tick, "interval_s": tick_interval},
             )
 
             # Create an outbox processor for each managed database provider
@@ -287,7 +288,7 @@ class Engine:
                 if not provider.managed:
                     continue
                 processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
-                logger.debug(f"Creating outbox processor: {processor_name}")
+                logger.debug("engine.creating_outbox_processor", extra={"processor": processor_name})
                 self._outbox_processors[processor_name] = OutboxProcessor(
                     self,
                     database_provider_name,
@@ -310,7 +311,8 @@ class Engine:
                         continue
                     processor_name = f"outbox-processor-{database_provider_name}-to-{ext_broker_name}-external"
                     logger.debug(
-                        f"Creating external outbox processor: {processor_name}"
+                        "engine.creating_external_outbox_processor",
+                        extra={"processor": processor_name},
                     )
                     self._outbox_processors[processor_name] = OutboxProcessor(
                         self,
@@ -331,7 +333,7 @@ class Engine:
                         "Run 'protean db setup' or 'protean db setup-outbox' to create it."
                     )
         else:
-            logger.debug("Outbox disabled")
+            logger.debug("engine.outbox_disabled")
 
     @property
     def subscription_factory(self) -> SubscriptionFactory:
@@ -545,14 +547,20 @@ class Engine:
                 subscriber = subscriber_cls()
                 subscriber(message)
 
-                logger.debug(f"Message processed by {subscriber_cls.__name__}")
+                logger.debug(
+                    "broker.message_processed",
+                    extra={"subscriber": subscriber_cls.__name__},
+                )
                 return True
             except Exception as exc:
-                logger.exception(f"Error in {subscriber_cls.__name__}: {exc}")
+                logger.exception(
+                    "broker.message_failed",
+                    extra={"subscriber": subscriber_cls.__name__},
+                )
                 try:
                     subscriber_cls.handle_error(exc, message)
                 except Exception as error_exc:
-                    logger.exception(f"Error handler failed: {error_exc}")
+                    logger.exception("broker.error_handler_failed")
                 # Continue processing instead of shutting down
                 return False
             finally:
@@ -701,8 +709,13 @@ class Engine:
 
                 duration_ms = (time.monotonic() - start_time) * 1000
                 logger.debug(
-                    f"Processed {message_type} "
-                    f"(ID: {message_id[:8]}...) in {handler_name} [{duration_ms:.1f}ms]"
+                    "engine.message_processed",
+                    extra={
+                        "message_type": message_type,
+                        "message_id": message_id[:8],
+                        "handler": handler_name,
+                        "duration_ms": round(duration_ms, 1),
+                    },
                 )
 
                 # Emit handler.completed trace
@@ -742,8 +755,13 @@ class Engine:
             except Exception as exc:  # Includes handling `ConfigurationError`
                 duration_ms = (time.monotonic() - start_time) * 1000
                 logger.exception(
-                    f"Failed to process {message_type} "
-                    f"(ID: {message_id[:8]}...) in {handler_name}: {exc}"
+                    "engine.message_failed",
+                    extra={
+                        "message_type": message_type,
+                        "message_id": message_id[:8],
+                        "handler": handler_name,
+                        "duration_ms": round(duration_ms, 1),
+                    },
                 )
 
                 # Emit handler.failed trace
@@ -765,7 +783,7 @@ class Engine:
                     # Call the error handler if it exists
                     handler_cls.handle_error(exc, message)
                 except Exception as error_exc:
-                    logger.exception(f"Error handler failed: {error_exc}")
+                    logger.exception("engine.error_handler_failed")
                 # Continue processing instead of shutting down
                 return False
             finally:
@@ -868,12 +886,11 @@ class Engine:
         self.shutting_down = True  # Set shutdown flag
 
         try:
-            msg = (
-                f"Received exit signal {signal.name if hasattr(signal, 'name') else signal}. Shutting down..."
-                if signal
-                else "Shutting down..."
+            sig_name = signal.name if hasattr(signal, "name") else str(signal) if signal else None
+            logger.info(
+                "engine.shutting_down",
+                extra={"signal": sig_name},
             )
-            logger.info(msg)
 
             # Store the exit code
             self.exit_code = exit_code
@@ -896,14 +913,14 @@ class Engine:
             )
 
             await asyncio.gather(*subscription_shutdown_coros, return_exceptions=True)
-            logger.info("All subscriptions have been shut down.")
+            logger.info("engine.subscriptions_stopped")
 
             # Step 2: Wait for in-flight tasks to finish with a bounded timeout.
             # This gives handlers processing messages a chance to complete
             # gracefully before we force-cancel them.
             tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
             if tasks:
-                logger.debug(f"Waiting for {len(tasks)} in-flight tasks to complete...")
+                logger.debug("engine.draining_tasks", extra={"count": len(tasks)})
                 done, pending = await asyncio.wait(tasks, timeout=10.0)
 
                 # Retrieve exceptions from completed tasks so Python doesn't
@@ -918,7 +935,8 @@ class Engine:
 
                 if pending:
                     logger.debug(
-                        f"Cancelling {len(pending)} tasks that didn't finish in time"
+                        "engine.cancelling_tasks",
+                        extra={"count": len(pending)},
                     )
                     for task in pending:
                         task.cancel()
@@ -928,7 +946,7 @@ class Engine:
             try:
                 self.domain.close()
             except Exception:
-                logger.exception("Error during domain infrastructure cleanup")
+                logger.exception("engine.cleanup_failed")
 
             # Step 4: Clean up signal handlers
             self._cleanup_signal_handlers()
@@ -959,7 +977,7 @@ class Engine:
         # This ensures we use our own loop instead of any existing one
         asyncio.set_event_loop(self.loop)
 
-        logger.debug("Starting Protean Engine...")
+        logger.debug("engine.starting")
 
         # Set up signal handlers using platform-appropriate method
         self._setup_signal_handlers()
@@ -975,8 +993,8 @@ class Engine:
                     context["exception"],
                     context["exception"].__traceback__,
                 )
-                logger.error(f"Caught exception: {msg}")
-                logger.info("Shutting down...")
+                logger.error("engine.unhandled_exception", extra={"error": str(msg)})
+                logger.info("engine.shutting_down")
                 if loop.is_running() and not self.shutting_down:
                     self.shutting_down = (
                         True  # Set flag immediately to prevent multiple shutdown calls
@@ -984,7 +1002,7 @@ class Engine:
                     asyncio.create_task(self.shutdown(exit_code=1))
                 # Don't re-raise the exception - let the loop drain gracefully
             else:
-                logger.error(f"Caught exception: {msg}")
+                logger.error("engine.unhandled_exception", extra={"error": str(msg)})
 
         self.loop.set_exception_handler(handle_exception)
 
@@ -993,7 +1011,7 @@ class Engine:
             and len(self._broker_subscriptions) == 0
             and len(self._outbox_processors) == 0
         ):
-            logger.info("No subscriptions to start. Exiting...")
+            logger.warning("engine.no_subscriptions")
             return
 
         # Start health check server as a task (skip in test mode — no HTTP needed)
@@ -1008,21 +1026,21 @@ class Engine:
             task = self.loop.create_task(subscription.start())
             task.set_name(f"subscription-{name}")
             subscription_tasks.append(task)
-            logger.debug(f"Started subscription: {name}")
+            logger.info("engine.subscription_started", extra={"subscription": name})
 
         broker_subscription_tasks = []
         for name, subscription in self._broker_subscriptions.items():
             task = self.loop.create_task(subscription.start())
             task.set_name(f"broker-{name}")
             broker_subscription_tasks.append(task)
-            logger.debug(f"Started broker subscription: {name}")
+            logger.info("engine.broker_subscription_started", extra={"subscription": name})
 
         outbox_processor_tasks = []
         for name, processor in self._outbox_processors.items():
             task = self.loop.create_task(processor.start())
             task.set_name(f"outbox-{name}")
             outbox_processor_tasks.append(task)
-            logger.debug(f"Started outbox processor: {name}")
+            logger.info("engine.outbox_processor_started", extra={"processor": name})
 
         try:
             if self.test_mode:
@@ -1072,7 +1090,14 @@ class Engine:
                 # Then immediately call and await the shutdown directly
                 self.loop.run_until_complete(self.shutdown())
             else:
-                logger.info("Engine started successfully")
+                logger.info(
+                    "engine.started",
+                    extra={
+                        "subscription_count": len(self._subscriptions),
+                        "broker_subscription_count": len(self._broker_subscriptions),
+                        "outbox_enabled": bool(self._outbox_processors),
+                    },
+                )
                 self.loop.run_forever()
         finally:
             # Clean up signal handlers before closing the loop
@@ -1080,4 +1105,4 @@ class Engine:
 
             if not self.loop.is_running():
                 self.loop.close()
-            logger.info("Engine stopped")
+            logger.info("engine.stopped")
