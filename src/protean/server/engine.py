@@ -3,7 +3,6 @@ import logging
 import platform
 import signal
 import time
-import traceback
 from collections import defaultdict
 from typing import Type, Union
 
@@ -984,16 +983,13 @@ class Engine:
 
         # Handle Exceptions
         def handle_exception(loop, context):
-            msg = context.get("exception", context["message"])
+            exc = context.get("exception")
 
-            # Print the stack trace
-            if "exception" in context and context["exception"]:
-                traceback.print_exception(
-                    type(context["exception"]),
-                    context["exception"],
-                    context["exception"].__traceback__,
+            if exc is not None:
+                logger.error(
+                    "engine.unhandled_exception",
+                    exc_info=(type(exc), exc, exc.__traceback__),
                 )
-                logger.error("engine.unhandled_exception", extra={"error": str(msg)})
                 logger.info("engine.shutting_down")
                 if loop.is_running() and not self.shutting_down:
                     self.shutting_down = (
@@ -1002,7 +998,10 @@ class Engine:
                     asyncio.create_task(self.shutdown(exit_code=1))
                 # Don't re-raise the exception - let the loop drain gracefully
             else:
-                logger.error("engine.unhandled_exception", extra={"error": str(msg)})
+                logger.error(
+                    "engine.unhandled_exception",
+                    extra={"error": context.get("message", "unknown")},
+                )
 
         self.loop.set_exception_handler(handle_exception)
 

@@ -813,7 +813,17 @@ class SAProvider(BaseProvider):
             conn.execute(text("SELECT 1"))
             return True
         except DatabaseError as e:
-            logger.exception("repository.sqlalchemy.connection_failed", extra={"database_uri": self.conn_info['database_uri']})
+            # Redact credentials from the URI before logging
+            from sqlalchemy.engine.url import make_url
+
+            try:
+                safe_uri = str(make_url(self.conn_info["database_uri"]).set(password="***"))
+            except Exception:
+                safe_uri = "<unparseable>"
+            logger.exception(
+                "repository.sqlalchemy.connection_failed",
+                extra={"database_uri": safe_uri},
+            )
             return False
         finally:
             if conn is not None and not current_uow:

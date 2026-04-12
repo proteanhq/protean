@@ -122,7 +122,7 @@ class UnitOfWork:
             TransactionError: If the underlying database commit fails.
         """
         # Raise error if there the Unit Of Work is not active
-        logger.debug("uow.committing")
+        logger.debug("uow.committing", extra={"uow_id": id(self)})
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
 

@@ -131,10 +131,11 @@ def configure_logging(
         backup_count=backup_count,
         env=env,
         format=format,
+        extra_processors=extra_processors,
     )
 
     # --- structlog setup ---
-    _setup_structlog(env=env, format=format, extra_processors=extra_processors)
+    _setup_structlog(extra_processors=extra_processors)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
@@ -232,44 +233,60 @@ def configure_for_testing() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _build_processor_formatter(env: str, format: str) -> structlog.stdlib.ProcessorFormatter:
-    """Build a ``ProcessorFormatter`` that routes stdlib ``LogRecord`` objects
-    through the same structlog processor chain used for ``get_logger()`` events.
+def _build_shared_processors(extra_processors: Optional[list] = None) -> list:
+    """Build the shared processor chain used by both stdlib and structlog paths.
 
-    This ensures that both stdlib loggers (used by 99% of framework modules)
-    and structlog ``BoundLogger`` instances produce structurally identical
-    output — same JSON shape in production, same console layout in development.
+    This chain runs on every log event — whether it originated from a stdlib
+    ``logging.getLogger()`` call or a structlog ``get_logger()`` call — before
+    the final renderer produces output.
     """
-    shared_processors: list = [
+    processors: list = [
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.stdlib.ExtraAdder(),
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.contextvars.merge_contextvars,
     ]
+    if extra_processors:
+        processors.extend(extra_processors)
+    return processors
 
+
+def _build_renderer(env: str, format: str):
+    """Build the final renderer (JSON or console) based on environment."""
     use_json = format == "json" or (
         format == "auto" and env in ("production", "staging")
     )
-
     if use_json:
-        renderer = structlog.processors.JSONRenderer()
-    else:
-        renderer = structlog.dev.ConsoleRenderer(
-            colors=True,
-            exception_formatter=structlog.dev.RichTracebackFormatter(
-                show_locals=True,
-                max_frames=2,
-            ),
-        )
+        return structlog.processors.JSONRenderer()
+    return structlog.dev.ConsoleRenderer(
+        colors=True,
+        exception_formatter=structlog.dev.RichTracebackFormatter(
+            show_locals=True,
+            max_frames=2,
+        ),
+    )
 
+
+def _build_processor_formatter(
+    env: str,
+    format: str,
+    shared_processors: list,
+) -> structlog.stdlib.ProcessorFormatter:
+    """Build a ``ProcessorFormatter`` that handles final rendering.
+
+    Both stdlib ``LogRecord`` objects (via ``foreign_pre_chain``) and structlog
+    events (pre-processed by structlog's chain ending in ``wrap_for_formatter``)
+    converge here for a single rendering pass.  This avoids double-encoding.
+    """
     return structlog.stdlib.ProcessorFormatter(
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            renderer,
+            _build_renderer(env, format),
         ],
         foreign_pre_chain=shared_processors,
     )
@@ -283,6 +300,7 @@ def _setup_stdlib_logging(
     backup_count: int,
     env: str = "development",
     format: str = "auto",
+    extra_processors: Optional[list] = None,
 ) -> None:
     """Configure stdlib logging with ``ProcessorFormatter`` bridge.
 
@@ -298,7 +316,8 @@ def _setup_stdlib_logging(
     # Remove existing handlers to avoid duplicates on re-configuration
     root.handlers = []
 
-    formatter = _build_processor_formatter(env, format)
+    shared_processors = _build_shared_processors(extra_processors)
+    formatter = _build_processor_formatter(env, format, shared_processors)
 
     # Console handler (always present)
     console = logging.StreamHandler(sys.stdout)
@@ -343,17 +362,16 @@ def _setup_stdlib_logging(
 
 
 def _setup_structlog(
-    env: str,
-    format: str,
     extra_processors: Optional[list] = None,
 ) -> None:
-    """Configure structlog processors and renderer.
+    """Configure structlog to pre-process events and hand them to stdlib.
 
-    Args:
-        env: Runtime environment name (production, development, test, ...).
-        format: ``"json"``, ``"console"``, or ``"auto"``.
-        extra_processors: Optional list of additional processors to insert
-            before the renderer (e.g. correlation-context injection).
+    The processor chain ends with ``ProcessorFormatter.wrap_for_formatter``
+    which converts the structlog event dict into a stdlib ``LogRecord`` and
+    attaches the pre-processed dict as ``record._structlog_event``.  The
+    ``ProcessorFormatter`` on the stdlib handler then applies the final
+    renderer — exactly once — so both stdlib and structlog events share a
+    single rendering path.
     """
     processors: list = [
         structlog.stdlib.filter_by_level,
@@ -374,27 +392,11 @@ def _setup_structlog(
         ),
     ]
 
-    # Inject caller-supplied processors just before the renderer
     if extra_processors:
         processors.extend(extra_processors)
 
-    # Choose renderer
-    use_json = format == "json" or (
-        format == "auto" and env in ("production", "staging")
-    )
-
-    if use_json:
-        processors.append(structlog.processors.JSONRenderer())
-    else:
-        processors.append(
-            structlog.dev.ConsoleRenderer(
-                colors=True,
-                exception_formatter=structlog.dev.RichTracebackFormatter(
-                    show_locals=True,
-                    max_frames=2,
-                ),
-            )
-        )
+    # Hand off to ProcessorFormatter for final rendering (no renderer here)
+    processors.append(structlog.stdlib.ProcessorFormatter.wrap_for_formatter)
 
     structlog.configure(
         processors=processors,
