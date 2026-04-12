@@ -135,10 +135,11 @@ class DLQMaintenanceTask:
             if config.dlq_alert_threshold is not None:
                 self._per_sub_threshold[dlq_stream] = config.dlq_alert_threshold
 
-    async def start(self) -> asyncio.Task:
-        """Start the maintenance loop and return the running task."""
+    async def start(self) -> None:
+        """Start the maintenance loop."""
         logger.info("dlq_maintenance.started")
-        return self.engine.loop.create_task(self._run())
+        loop_task = self.engine.loop.create_task(self._run())
+        loop_task.set_name("dlq-maintenance-loop")
 
     async def _run(self) -> None:
         """Main loop: sleep, then run one maintenance cycle."""
