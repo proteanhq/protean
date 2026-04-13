@@ -622,6 +622,40 @@ class TestSubscriptionConfigDLQOverrides:
         assert d["dlq_alert_threshold"] == 200
 
 
+class TestEngineDLQMaintenanceIntegration:
+    @pytest.mark.no_test_domain
+    def test_engine_creates_dlq_maintenance_when_enabled(self):
+        """Engine creates DLQMaintenanceTask when [server.dlq] enabled = true."""
+        from protean.server.engine import Engine
+
+        domain = _setup_domain()
+        domain.config["server"]["dlq"]["enabled"] = True
+        with domain.domain_context():
+            domain.register(DLQMaintAggregate)
+            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
+            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
+            domain.init(traverse=False)
+
+            engine = Engine(domain, test_mode=True)
+            assert engine._dlq_maintenance is not None
+            assert engine._dlq_maintenance.subscriber_name == "dlq-maintenance"
+
+    @pytest.mark.no_test_domain
+    def test_engine_skips_dlq_maintenance_when_disabled(self):
+        """Engine does not create DLQMaintenanceTask when disabled (default)."""
+        from protean.server.engine import Engine
+
+        domain = _setup_domain()
+        with domain.domain_context():
+            domain.register(DLQMaintAggregate)
+            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
+            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
+            domain.init(traverse=False)
+
+            engine = Engine(domain, test_mode=True)
+            assert engine._dlq_maintenance is None
+
+
 class TestDLQMaintenanceShutdown:
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
