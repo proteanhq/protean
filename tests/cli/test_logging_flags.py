@@ -91,6 +91,8 @@ class TestLogLevelFlag:
 class TestLogFormatFlag:
     def test_log_format_json_configures_json(self):
         """--log-format json configures structlog with JSON rendering."""
+        import structlog
+
         change_working_directory_to("test7")
 
         with patch("protean.cli.Engine") as MockEngine:
@@ -109,6 +111,11 @@ class TestLogFormatFlag:
             )
 
             assert result.exit_code == 0
+            # Verify structlog's processor chain ends with JSONRenderer
+            cfg = structlog.get_config()
+            processors = cfg.get("processors", [])
+            assert len(processors) > 0, "Expected structlog processors"
+            assert isinstance(processors[-1], structlog.processors.JSONRenderer)
 
     def test_log_format_invalid_value(self):
         """--log-format with an invalid value exits with error."""
@@ -212,17 +219,29 @@ class TestDeprecatedDebugFlag:
 
 
 class TestGlobalFlagsInHelpText:
+    """Verify that global logging flags appear in ``protean --help``.
+
+    Rich/Typer may inject ANSI escape codes into the output, so we strip
+    them before matching to avoid false negatives on CI.
+    """
+
+    @staticmethod
+    def _strip_ansi(text: str) -> str:
+        import re
+
+        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
     def test_help_shows_log_level(self):
         """protean --help shows --log-level in the output."""
         result = runner.invoke(app, ["--help"])
-        assert "--log-level" in result.output
+        assert "--log-level" in self._strip_ansi(result.output)
 
     def test_help_shows_log_format(self):
         """protean --help shows --log-format in the output."""
         result = runner.invoke(app, ["--help"])
-        assert "--log-format" in result.output
+        assert "--log-format" in self._strip_ansi(result.output)
 
     def test_help_shows_log_config(self):
         """protean --help shows --log-config in the output."""
         result = runner.invoke(app, ["--help"])
-        assert "--log-config" in result.output
+        assert "--log-config" in self._strip_ansi(result.output)

@@ -121,7 +121,14 @@ def main(
     ctx.ensure_object(dict)
 
     if log_config is not None:
-        payload = json.loads(log_config.read_text())
+        try:
+            payload = json.loads(log_config.read_text(encoding="utf-8"))
+        except OSError as exc:
+            print(f"Error: Unable to read log config '{log_config}': {exc}")
+            raise typer.Exit(code=2) from exc
+        except json.JSONDecodeError as exc:
+            print(f"Error: Invalid JSON in log config '{log_config}': {exc}")
+            raise typer.Exit(code=2) from exc
         configure_logging(dict_config=payload)
         ctx.obj[CTX_LOG_CONFIGURED] = True
     elif log_level is not None or log_format is not None:

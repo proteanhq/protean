@@ -101,14 +101,16 @@ class TestCliExceptionHandler:
         """typer.Abort passes through the handler without logging."""
         change_working_directory_to("test7")
 
-        result = runner.invoke(
-            app,
-            ["server", "--domain", "foobar"],
-        )
+        with patch("protean.cli._helpers.logger") as mock_logger:
+            result = runner.invoke(
+                app,
+                ["server", "--domain", "foobar"],
+            )
 
-        # Abort produces exit code 1 but is NOT a RuntimeError
-        assert result.exit_code != 0
-        assert not isinstance(result.exception, RuntimeError)
+            # Abort produces exit code 1 but is NOT a RuntimeError
+            assert result.exit_code != 0
+            assert not isinstance(result.exception, RuntimeError)
+            mock_logger.exception.assert_not_called()
 
     def test_typer_exit_is_not_caught(self):
         """typer.Exit passes through the handler without logging."""

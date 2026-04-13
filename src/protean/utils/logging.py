@@ -130,6 +130,17 @@ def configure_logging(
         # output even when the user supplies their own stdlib dictConfig.
         env = _detect_env()
         _setup_structlog(env=env, format="auto", extra_processors=extra_processors)
+        # Install ProteanCorrelationFilter on the root logger so correlation_id
+        # and causation_id are available in every log record, matching the
+        # behavior of Domain.configure_logging().
+        try:
+            from protean.integrations.logging import ProteanCorrelationFilter
+
+            root = logging.getLogger()
+            if not any(isinstance(f, ProteanCorrelationFilter) for f in root.filters):
+                root.addFilter(ProteanCorrelationFilter())
+        except ImportError:
+            pass
         return
 
     env = _detect_env()
