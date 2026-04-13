@@ -34,7 +34,15 @@ The epic contains **Design Decisions** and **What Already Exists** sections. The
 
 ### Read the key files listed in the issue
 
-The issue body has a "Key files" section listing exactly which files to modify. Read those files first — they are your roadmap. Then study recent merged PRs from the same epic to understand established patterns. Read `reference.md` in this skill directory for project conventions.
+The issue body has a "Key files" section listing exactly which files to modify. Read those files first — they are your roadmap. Read `reference.md` in this skill directory for project conventions.
+
+### Study recent PRs from the same epic
+
+This is not optional. Fetch the last 2-3 merged PRs under the parent epic and study their diffs, commit messages, and PR descriptions:
+```bash
+gh pr list -R proteanhq/protean --state merged --search "label:epic-<N>" --limit 3 --json number,title,url
+```
+Or check the epic issue body for linked PRs. Understand the established patterns, naming conventions, and code style before writing anything.
 
 ### Initialize progress checklist
 
@@ -75,7 +83,15 @@ git switch -c <branch-name>
 
 → Mark `code` and `changelog` done.
 
-**2c. Self-check** — review your diff: docstrings match all code paths, test assertions use non-empty collections, no leftover debug code.
+**2c. Self-check** — run `git diff` and walk through every item below against your actual changes. Do not mark this done until you have verified each one:
+
+1. **Docstrings match all code paths.** For every docstring you wrote or modified, trace every code path in the function. If the docstring says "always does X", verify there is no early return or branch that skips X.
+2. **Tests assert behavior, not just exit codes.** A test named `test_json_output` must verify JSON was produced — `assert exit_code == 0` alone is not sufficient. If a test name promises specific behavior, the assertions must verify that behavior.
+3. **Assert non-empty before looping.** Any test that loops over a collection to check properties must first `assert len(collection) > 0`. Otherwise the loop body never executes and the test passes vacuously.
+4. **No leftover debug code.** No `print()`, `breakpoint()`, `import pdb`, or commented-out code in the diff.
+5. **Encoding and error handling at boundaries.** Any `read_text()` or `open()` call on user-provided paths must specify `encoding="utf-8"` and handle `OSError`/parse errors with clear messages.
+6. **New error-handling branches have tests.** If you added a `try/except` or `if/else` for error cases, there must be a test that exercises each branch.
+7. **Consistent with adjacent code.** Variable names, import style, and patterns match the module you're editing — don't introduce new conventions.
 
 → Mark `self_check` done.
 
@@ -103,8 +119,9 @@ Run in order — each must pass before the next:
 1. **Your tests:** `uv run pytest <your-test-file> -v --tb=short` — iterate until green → Mark `unit_tests` done.
 2. **Core suite:** `uv run protean test` — fix any failures → Mark `core_suite` done.
 3. **Quality checks:** `uv run ruff check src/ tests/ && uv run ruff format --check src/ tests/ && uv run mypy src/protean` — auto-fix ruff issues, only fix mypy errors you introduced → Mark `quality` done.
-4. **Full suite:** `make test-full` (starts Docker + all adapters) — if Docker unavailable, note it and proceed → Mark `full_suite` done.
-5. **Patch coverage:** run `uv run diff-cover coverage.xml --compare-branch=main --show-uncovered` if coverage.xml exists, otherwise `uv run pytest <tests> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v` — add tests for any uncovered lines you wrote, target 100% → Mark `coverage` done.
+4. **CI-parity check:** Run tests with `NO_COLOR=1 uv run pytest <your-test-file> -v` to catch ANSI-dependent assertions that pass locally but break in CI.
+5. **Full suite:** `make test-full` (starts Docker + all adapters) — if Docker unavailable, note it and proceed → Mark `full_suite` done.
+6. **Patch coverage:** run `uv run diff-cover coverage.xml --compare-branch=main --show-uncovered` if coverage.xml exists, otherwise `uv run pytest <tests> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v` — add tests for any uncovered lines you wrote, target 100% → Mark `coverage` done.
 
 ## Preflight gate
 
@@ -120,7 +137,12 @@ Items that commonly get skipped — verify you actually did these:
 
 Rebase first: `git fetch origin main && git rebase origin/main`. Re-run tests if conflicts arose. Check for breaking changes (see CLAUDE.md for deprecation tiers).
 
-Commit with `git add <specific-files>` — message starts with a verb, no AI attribution, no Co-Authored-By. Push and create PR:
+Commit with `git add <specific-files>` — message starts with a verb. **Before pushing**, verify the commit message is clean:
+```bash
+# Verify: no session URLs, no Co-Authored-By, no AI attribution
+git log --format='%B' -1 | grep -iE 'claude|anthropic|session|co-authored' && echo "FAIL: clean up commit message" || echo "OK"
+```
+Push and create PR:
 ```bash
 git push -u origin HEAD
 gh pr create -R proteanhq/protean --title "<title>" --body "$(cat <<'EOF'
@@ -147,7 +169,7 @@ Poll for Copilot comments and Codecov every 60s, up to 10 minutes. See `referenc
 
 **Codecov** is authoritative for coverage. If patch coverage < 100%, add tests, push, wait for re-run. Repeat until 100%.
 
-**Copilot comments** — fix valid issues, reply to each, push as one commit. Re-check mergeability after pushing.
+**Copilot comments** — fix valid issues, reply to each. If fixes introduce new code paths (e.g., error handling branches), add tests for them in the same commit. Re-run coverage check before pushing. Push as one commit with a descriptive message (e.g., "Fix correlation filter installation after dictConfig" — not "Address review feedback"). Re-check mergeability after pushing.
 
 → Mark `ci_feedback` done.
 
