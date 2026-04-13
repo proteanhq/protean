@@ -175,6 +175,39 @@ class TestLogConfigFlag:
 
         assert result.exit_code != 0
 
+    def test_log_config_oserror_on_read(self, tmp_path):
+        """--log-config prints an OSError message when the file can't be read."""
+        # Create a valid file so Typer's exists=True check passes, then
+        # patch read_text to simulate a read failure (e.g. permissions).
+        config_file = tmp_path / "config.json"
+        config_file.write_text("{}")
+
+        with patch.object(
+            type(config_file),
+            "read_text",
+            side_effect=PermissionError("Permission denied"),
+        ):
+            result = runner.invoke(
+                app,
+                ["--log-config", str(config_file), "server"],
+            )
+
+        assert result.exit_code == 2
+        assert "Unable to read log config" in result.output
+
+    def test_log_config_invalid_json(self, tmp_path):
+        """--log-config with invalid JSON prints a JSONDecodeError message."""
+        config_file = tmp_path / "bad.json"
+        config_file.write_text("{ not valid json !!!")
+
+        result = runner.invoke(
+            app,
+            ["--log-config", str(config_file), "server"],
+        )
+
+        assert result.exit_code == 2
+        assert "Invalid JSON in log config" in result.output
+
 
 class TestDeprecatedDebugFlag:
     def test_debug_flag_emits_deprecation_warning(self):
