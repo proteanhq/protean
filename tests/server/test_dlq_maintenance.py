@@ -772,13 +772,15 @@ class TestRedisBrokerDLQMethods:
         """dlq_trim removes entries older than min_id."""
         import time
 
+        from tests.shared import REDIS_URI
+
         from protean import Domain
 
         domain = Domain(__file__, "RedisDLQTest")
         domain.config["brokers"] = {
             "default": {
                 "provider": "redis",
-                "URI": "redis://127.0.0.1:6379/2",
+                "URI": f"{REDIS_URI}/2",
             }
         }
         with domain.domain_context():
@@ -807,13 +809,15 @@ class TestRedisBrokerDLQMethods:
     @pytest.mark.no_test_domain
     def test_dlq_depth_returns_stream_length(self):
         """dlq_depth returns the number of entries in a DLQ stream."""
+        from tests.shared import REDIS_URI
+
         from protean import Domain
 
         domain = Domain(__file__, "RedisDLQTest")
         domain.config["brokers"] = {
             "default": {
                 "provider": "redis",
-                "URI": "redis://127.0.0.1:6379/2",
+                "URI": f"{REDIS_URI}/2",
             }
         }
         with domain.domain_context():
@@ -835,13 +839,15 @@ class TestRedisBrokerDLQMethods:
     @pytest.mark.no_test_domain
     def test_dlq_trim_nonexistent_stream(self):
         """dlq_trim returns 0 for a stream that doesn't exist."""
+        from tests.shared import REDIS_URI
+
         from protean import Domain
 
         domain = Domain(__file__, "RedisDLQTest")
         domain.config["brokers"] = {
             "default": {
                 "provider": "redis",
-                "URI": "redis://127.0.0.1:6379/2",
+                "URI": f"{REDIS_URI}/2",
             }
         }
         with domain.domain_context():
@@ -855,13 +861,15 @@ class TestRedisBrokerDLQMethods:
     @pytest.mark.no_test_domain
     def test_dlq_depth_nonexistent_stream(self):
         """dlq_depth returns 0 for a stream that doesn't exist."""
+        from tests.shared import REDIS_URI
+
         from protean import Domain
 
         domain = Domain(__file__, "RedisDLQTest")
         domain.config["brokers"] = {
             "default": {
                 "provider": "redis",
-                "URI": "redis://127.0.0.1:6379/2",
+                "URI": f"{REDIS_URI}/2",
             }
         }
         with domain.domain_context():
