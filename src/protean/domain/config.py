@@ -132,6 +132,7 @@ def _default_config():
             # DLQ maintenance settings
             # Periodic trimming and alerting for dead letter queue streams
             "dlq": {
+                "enabled": False,  # Must be explicitly enabled
                 "retention_hours": 168,  # 7 days
                 "alert_threshold": 100,  # Warn when DLQ depth meets or exceeds this
                 "alert_callback": None,  # Optional dotted path to callable
