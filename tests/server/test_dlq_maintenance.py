@@ -653,3 +653,220 @@ class TestDLQMaintenanceSubscriberName:
 
             task = DLQMaintenanceTask(engine)
             assert task.subscriber_name == "dlq-maintenance"
+
+
+class TestDLQMaintenanceRunExceptionHandling:
+    @pytest.mark.no_test_domain
+    @pytest.mark.asyncio
+    async def test_run_handles_cycle_exception(self):
+        """_run logs and continues when _maintenance_cycle raises."""
+        domain = _setup_domain()
+        with domain.domain_context():
+            domain.register(DLQMaintAggregate)
+            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
+            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
+            domain.init(traverse=False)
+
+            engine = MagicMock()
+            engine.domain = domain
+            engine._subscriptions = {}
+            engine.shutting_down = False
+
+            task = DLQMaintenanceTask(engine)
+            task.check_interval = 0
+
+            call_count = 0
+
+            async def failing_cycle():
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise RuntimeError("boom")
+                # Stop after second call
+                task.keep_going = False
+
+            task._maintenance_cycle = failing_cycle
+            await task._run()
+            assert call_count == 2  # Continued after first exception
+
+
+class TestDLQMaintenancePerStreamException:
+    @pytest.mark.no_test_domain
+    @pytest.mark.asyncio
+    async def test_stream_exception_does_not_abort_cycle(self):
+        """An exception on one stream doesn't prevent others from processing."""
+        domain = _setup_domain()
+        domain.config["server"]["dlq"] = {
+            "retention_hours": 168,
+            "alert_threshold": 1000,
+            "alert_callback": None,
+            "check_interval_seconds": 60,
+        }
+
+        with domain.domain_context():
+            domain.register(DLQMaintAggregate)
+            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
+            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
+            domain.init(traverse=False)
+
+            # FakeBroker that raises on trim for one stream
+            class FailingTrimBroker(FakeBroker):
+                def dlq_trim(self, dlq_stream, min_id):
+                    if "fail" in dlq_stream:
+                        raise RuntimeError("trim failed")
+                    return super().dlq_trim(dlq_stream, min_id)
+
+            fake_broker = FailingTrimBroker()
+
+            engine = MagicMock()
+            engine.domain = domain
+            engine._subscriptions = {}
+            engine.shutting_down = False
+            domain.brokers._brokers = {"default": fake_broker}
+
+            task = DLQMaintenanceTask(engine)
+            # Inject two DLQ streams — one will fail, one should succeed
+            dlq_stream = _get_dlq_stream(domain)
+            task._dlq_streams_unique = ["fail:dlq", dlq_stream]
+
+            # Should complete without raising
+            await task._maintenance_cycle()
+
+
+class TestDLQStreamsStaticMethod:
+    def test_includes_backfill_when_present(self):
+        """_dlq_streams includes backfill DLQ stream when present."""
+        from protean.utils.dlq import SubscriptionInfo
+
+        info = SubscriptionInfo(
+            handler_name="TestHandler",
+            handler_fqn="test.TestHandler",
+            stream_category="orders",
+            dlq_stream="orders:dlq",
+            backfill_dlq_stream="orders:backfill:dlq",
+        )
+        streams = DLQMaintenanceTask._dlq_streams(info)
+        assert streams == ["orders:dlq", "orders:backfill:dlq"]
+
+    def test_excludes_backfill_when_none(self):
+        """_dlq_streams skips backfill when None."""
+        from protean.utils.dlq import SubscriptionInfo
+
+        info = SubscriptionInfo(
+            handler_name="TestHandler",
+            handler_fqn="test.TestHandler",
+            stream_category="orders",
+            dlq_stream="orders:dlq",
+            backfill_dlq_stream=None,
+        )
+        streams = DLQMaintenanceTask._dlq_streams(info)
+        assert streams == ["orders:dlq"]
+
+
+class TestRedisBrokerDLQMethods:
+    """Redis broker dlq_trim and dlq_depth integration tests."""
+
+    @pytest.mark.redis
+    @pytest.mark.no_test_domain
+    def test_dlq_trim_removes_old_entries(self):
+        """dlq_trim removes entries older than min_id."""
+        import time
+
+        from protean import Domain
+
+        domain = Domain(__file__, "RedisDLQTest")
+        domain.config["brokers"] = {
+            "default": {
+                "provider": "redis",
+                "URI": "redis://127.0.0.1:6379/2",
+            }
+        }
+        with domain.domain_context():
+            domain.init(traverse=False)
+            broker = domain.brokers["default"]
+
+            dlq_stream = "test-dlq-trim:dlq"
+            try:
+                # Add some messages
+                broker.redis_instance.xadd(dlq_stream, {"data": "old1"})
+                broker.redis_instance.xadd(dlq_stream, {"data": "old2"})
+                time.sleep(0.01)
+                # min_id = now (trim everything before now)
+                min_id = f"{int(time.time() * 1000)}-0"
+                broker.redis_instance.xadd(dlq_stream, {"data": "new1"})
+
+                trimmed = broker.dlq_trim(dlq_stream, min_id)
+                assert trimmed >= 2
+
+                remaining = broker.dlq_depth(dlq_stream)
+                assert remaining >= 1
+            finally:
+                broker.redis_instance.delete(dlq_stream)
+
+    @pytest.mark.redis
+    @pytest.mark.no_test_domain
+    def test_dlq_depth_returns_stream_length(self):
+        """dlq_depth returns the number of entries in a DLQ stream."""
+        from protean import Domain
+
+        domain = Domain(__file__, "RedisDLQTest")
+        domain.config["brokers"] = {
+            "default": {
+                "provider": "redis",
+                "URI": "redis://127.0.0.1:6379/2",
+            }
+        }
+        with domain.domain_context():
+            domain.init(traverse=False)
+            broker = domain.brokers["default"]
+
+            dlq_stream = "test-dlq-depth:dlq"
+            try:
+                assert broker.dlq_depth(dlq_stream) == 0
+
+                broker.redis_instance.xadd(dlq_stream, {"data": "msg1"})
+                broker.redis_instance.xadd(dlq_stream, {"data": "msg2"})
+
+                assert broker.dlq_depth(dlq_stream) == 2
+            finally:
+                broker.redis_instance.delete(dlq_stream)
+
+    @pytest.mark.redis
+    @pytest.mark.no_test_domain
+    def test_dlq_trim_nonexistent_stream(self):
+        """dlq_trim returns 0 for a stream that doesn't exist."""
+        from protean import Domain
+
+        domain = Domain(__file__, "RedisDLQTest")
+        domain.config["brokers"] = {
+            "default": {
+                "provider": "redis",
+                "URI": "redis://127.0.0.1:6379/2",
+            }
+        }
+        with domain.domain_context():
+            domain.init(traverse=False)
+            broker = domain.brokers["default"]
+
+            result = broker.dlq_trim("nonexistent:dlq", "999999999999-0")
+            assert result == 0
+
+    @pytest.mark.redis
+    @pytest.mark.no_test_domain
+    def test_dlq_depth_nonexistent_stream(self):
+        """dlq_depth returns 0 for a stream that doesn't exist."""
+        from protean import Domain
+
+        domain = Domain(__file__, "RedisDLQTest")
+        domain.config["brokers"] = {
+            "default": {
+                "provider": "redis",
+                "URI": "redis://127.0.0.1:6379/2",
+            }
+        }
+        with domain.domain_context():
+            domain.init(traverse=False)
+            broker = domain.brokers["default"]
+
+            result = broker.dlq_depth("nonexistent:dlq")
+            assert result == 0
