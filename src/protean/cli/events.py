@@ -35,6 +35,7 @@ from rich.table import Table
 from rich.tree import Tree as RichTree
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils import DomainObjects
 from protean.utils.domain_discovery import derive_domain
@@ -214,6 +215,7 @@ def _count_nodes(node: "CausationNode") -> int:
 
 
 @app.command()
+@handle_cli_exceptions("events read")
 def read(
     stream: Annotated[
         str,
@@ -258,6 +260,7 @@ def read(
 
 
 @app.command()
+@handle_cli_exceptions("events stats")
 def stats(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
 ) -> None:
@@ -330,6 +333,7 @@ def stats(
 
 
 @app.command()
+@handle_cli_exceptions("events search")
 def search(
     type_name: Annotated[
         str,
@@ -386,6 +390,7 @@ def search(
 
 
 @app.command()
+@handle_cli_exceptions("events history")
 def history(
     aggregate: Annotated[str, typer.Option(help="Aggregate class name (e.g. 'User')")],
     identifier: Annotated[
@@ -462,6 +467,7 @@ def history(
 
 
 @app.command()
+@handle_cli_exceptions("events trace")
 def trace(
     correlation_id: Annotated[str, typer.Argument(help="Correlation ID to trace")],
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",

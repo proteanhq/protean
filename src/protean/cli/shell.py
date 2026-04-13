@@ -7,7 +7,6 @@ without having to manually configure the application.
 
 """
 
-import logging
 import sys
 import typing
 
@@ -15,12 +14,15 @@ import typer
 from IPython.terminal.embed import InteractiveShellEmbed
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
+from protean.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
+@handle_cli_exceptions("shell")
 def shell(
     domain: Annotated[str, typer.Option()] = ".",
     traverse: Annotated[bool, typer.Option()] = False,

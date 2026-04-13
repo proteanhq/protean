@@ -34,6 +34,7 @@ from rich import print
 from rich.table import Table
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.port.broker import BrokerCapabilities
 from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
@@ -126,6 +127,7 @@ def _format_time(raw: str | None) -> str:
 
 
 @app.command(name="list")
+@handle_cli_exceptions("dlq list")
 def list_dlq(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     subscription: Annotated[
@@ -177,6 +179,7 @@ def list_dlq(
 
 
 @app.command()
+@handle_cli_exceptions("dlq inspect")
 def inspect(
     dlq_id: Annotated[str, typer.Argument(help="DLQ entry identifier")],
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
@@ -218,6 +221,7 @@ def inspect(
 
 
 @app.command()
+@handle_cli_exceptions("dlq replay")
 def replay(
     dlq_id: Annotated[str, typer.Argument(help="DLQ entry identifier to replay")],
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
@@ -248,6 +252,7 @@ def replay(
 
 
 @app.command(name="replay-all")
+@handle_cli_exceptions("dlq replay-all")
 def replay_all(
     subscription: Annotated[
         str,
@@ -279,6 +284,7 @@ def replay_all(
 
 
 @app.command()
+@handle_cli_exceptions("dlq purge")
 def purge(
     subscription: Annotated[
         str,

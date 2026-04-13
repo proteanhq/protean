@@ -1,12 +1,12 @@
-import logging
-
 import typer
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
+from protean.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -27,6 +27,7 @@ def callback():
 
 
 @app.command()
+@handle_cli_exceptions("generate docker-compose")
 def docker_compose(
     domain: Annotated[str, typer.Option()] = ".",
 ):

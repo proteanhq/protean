@@ -27,6 +27,7 @@ from rich import print
 from rich.console import Console
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
@@ -39,6 +40,7 @@ _CONSOLE = Console()
 _LEVEL_ORDER = {"error": 0, "warning": 1, "info": 2}
 
 
+@handle_cli_exceptions("check")
 def check(
     domain: Annotated[
         str,

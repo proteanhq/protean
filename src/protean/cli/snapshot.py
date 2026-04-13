@@ -4,6 +4,7 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import (
     IncorrectUsageError,
     NoDomainException,
@@ -24,6 +25,7 @@ def callback():
 
 
 @app.command()
+@handle_cli_exceptions("snapshot create")
 def create(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     aggregate: Annotated[

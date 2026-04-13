@@ -20,6 +20,7 @@ from rich import print
 from rich.table import Table
 from typing_extensions import Annotated
 
+from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
@@ -59,6 +60,7 @@ def _status_style(status: str) -> str:
 
 
 @app.command()
+@handle_cli_exceptions("subscriptions status")
 def status(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     output_json: Annotated[
