@@ -152,11 +152,24 @@ class UnitOfWork:
 
     def _do_commit(self, span: Any) -> None:  # noqa: C901
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
+        from protean.utils.globals import g
         from protean.utils.outbox import Outbox
         from protean.utils.processing import current_priority
 
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
+
+        # Record events raised for the access log wide event
+        try:
+            event_names = [
+                event.__class__.__name__
+                for events in all_events.values()
+                for event in events
+            ]
+            prev = getattr(g, "_access_log_events_raised", None) or []
+            g._access_log_events_raised = prev + event_names
+        except Exception:
+            pass
 
         # Compute event count for span attribute
         total_events = sum(len(events) for events in all_events.values())
@@ -298,6 +311,12 @@ class UnitOfWork:
             metrics.uow_commits.add(1)
             metrics.uow_events_per_commit.record(total_events)
 
+            # Record UoW outcome for the access log wide event
+            try:
+                g._access_log_uow_outcome = "committed"
+            except Exception:
+                pass
+
             logger.debug("uow.commit_successful")
         except ValueError as exc:
             logger.exception("uow.commit_failed", exc_info=True)
@@ -355,6 +374,14 @@ class UnitOfWork:
         # Raise error if the Unit Of Work is not active
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
+
+        # Record UoW outcome for the access log wide event
+        try:
+            from protean.utils.globals import g
+
+            g._access_log_uow_outcome = "rolled_back"
+        except Exception:
+            pass
 
         # Exit from Unit of Work
         _uow_context_stack.pop()

@@ -7,6 +7,7 @@ Provides environment-aware structured logging built on structlog. Out of the box
 - Method call tracing decorator for debugging handlers
 - Third-party and framework logger noise suppression
 - Optional rotating file handlers
+- Wide event access log for handler observability
 
 Typical usage in application code::
 
@@ -17,6 +18,16 @@ Typical usage in application code::
 
     logger = get_logger(__name__)
     logger.info("customer_registered", customer_id="abc-123")
+
+Wide event access log usage::
+
+    from protean.utils.logging import bind_event_context
+
+    class PlaceOrderHandler:
+        @handle(PlaceOrder)
+        def handle(self, command):
+            bind_event_context(user_id=command.user_id, order_total=command.total)
+            # ... handler logic ...
 """
 
 import functools
@@ -25,8 +36,10 @@ import logging.config
 import logging.handlers
 import os
 import sys
+import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Iterator, Optional, Union
 
 import structlog
 
@@ -69,9 +82,37 @@ _FRAMEWORK_LOGGERS_NORMAL = {
     "protean.server.engine": logging.INFO,
     "protean.server.subscription": logging.INFO,
     "protean.server.outbox_processor": logging.INFO,
+    "protean.access": logging.INFO,
+    "protean.perf": logging.WARNING,
     "protean.core": logging.WARNING,
     "protean.adapters": logging.WARNING,
 }
+
+# Dedicated loggers for the wide event access log and slow-handler detection
+access_logger = logging.getLogger("protean.access")
+perf_logger = logging.getLogger("protean.perf")
+
+# Framework-reserved field names that application context cannot overwrite
+_FRAMEWORK_FIELDS = frozenset(
+    {
+        "kind",
+        "message_type",
+        "message_id",
+        "aggregate",
+        "aggregate_id",
+        "events_raised",
+        "events_raised_count",
+        "repo_operations",
+        "uow_outcome",
+        "handler",
+        "duration_ms",
+        "status",
+        "error_type",
+        "error_message",
+        "correlation_id",
+        "causation_id",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +246,229 @@ def add_context(**kwargs: Any) -> None:
 def clear_context() -> None:
     """Clear all bound context variables."""
     structlog.contextvars.clear_contextvars()
+
+
+def bind_event_context(**kwargs: Any) -> None:
+    """Add business-specific fields to the current wide event.
+
+    Called from handler code to enrich the access log with domain context
+    that only the application knows (user tier, order total, feature flags, etc.).
+    Fields are merged — multiple calls accumulate, later calls overwrite
+    conflicting keys. Safe to call outside handler context (no-op).
+    """
+    structlog.contextvars.bind_contextvars(**kwargs)
+
+
+def unbind_event_context(*keys: str) -> None:
+    """Remove specific fields from the current wide event context."""
+    structlog.contextvars.unbind_contextvars(*keys)
+
+
+def _reset_access_log_counters() -> None:
+    """Reset per-handler access log counters on g."""
+    try:
+        from protean.utils.globals import g
+
+        g._access_log_repo_loads = 0
+        g._access_log_repo_saves = 0
+        g._access_log_events_raised = []
+        g._access_log_uow_outcome = "no_uow"
+    except Exception:
+        pass
+
+
+def _get_correlation_context() -> tuple[str, str]:
+    """Extract correlation_id and causation_id from the current message context."""
+    try:
+        from protean.utils.globals import g
+
+        msg = g.get("message_in_context")
+        if msg is None:
+            return ("", "")
+        metadata = getattr(msg, "metadata", None)
+        domain_meta = getattr(metadata, "domain", None) if metadata else None
+        if domain_meta is None:
+            return ("", "")
+        return (
+            domain_meta.correlation_id or "",
+            domain_meta.causation_id or "",
+        )
+    except Exception:
+        return ("", "")
+
+
+def _extract_aggregate_info(item: Any, handler_cls: type) -> tuple[str, str]:
+    """Extract aggregate type name and aggregate ID from item or handler class."""
+    aggregate = ""
+    aggregate_id = ""
+
+    # Get aggregate type from item's meta or handler's meta
+    part_of = getattr(getattr(item, "meta_", None), "part_of", None)
+    if part_of is None:
+        part_of = getattr(getattr(handler_cls, "meta_", None), "part_of", None)
+
+    if part_of is not None:
+        aggregate = part_of.__name__
+
+        # Try to extract aggregate_id from the message stream
+        metadata = getattr(item, "_metadata", None)
+        if metadata is not None:
+            headers = getattr(metadata, "headers", None)
+            if headers is not None:
+                stream = getattr(headers, "stream", None) or ""
+                stream_category = getattr(
+                    getattr(part_of, "meta_", None), "stream_category", ""
+                )
+                if stream and stream_category:
+                    cmd_prefix = f"{stream_category}:command-"
+                    evt_prefix = f"{stream_category}-"
+                    if cmd_prefix in stream:
+                        aggregate_id = stream.split(cmd_prefix, 1)[1]
+                    elif stream.startswith(evt_prefix):
+                        aggregate_id = stream[len(evt_prefix) :]
+
+    return aggregate, aggregate_id
+
+
+def _read_access_log_counters() -> tuple[list[str], dict[str, int], str]:
+    """Read per-handler access log counters from g.
+
+    Returns:
+        Tuple of (events_raised, repo_operations, uow_outcome)
+    """
+    try:
+        from protean.utils.globals import g
+
+        events_raised = getattr(g, "_access_log_events_raised", []) or []
+        repo_loads = getattr(g, "_access_log_repo_loads", 0) or 0
+        repo_saves = getattr(g, "_access_log_repo_saves", 0) or 0
+        uow_outcome = getattr(g, "_access_log_uow_outcome", "no_uow") or "no_uow"
+        return (
+            list(events_raised),
+            {"loads": repo_loads, "saves": repo_saves},
+            uow_outcome,
+        )
+    except Exception:
+        return ([], {"loads": 0, "saves": 0}, "no_uow")
+
+
+def _get_slow_handler_threshold() -> float:
+    """Read slow_handler_threshold_ms from domain config. Returns 0 to disable."""
+    try:
+        from protean.utils.globals import current_domain
+
+        if current_domain:
+            logging_config = current_domain.config.get("logging", {})
+            return float(logging_config.get("slow_handler_threshold_ms", 500))
+    except Exception:
+        pass
+    return 500.0
+
+
+@contextmanager
+def access_log_handler(
+    kind: str, item: Any, handler_cls: type, handler_method_name: str
+) -> Iterator[None]:
+    """Context manager that measures handler duration and emits a wide event.
+
+    Clears structlog contextvars at entry, collects framework + app context,
+    emits a single wide event on exit.
+
+    Args:
+        kind: Handler kind — "command", "event", "query", or "projector".
+        item: The domain object being handled (command, event, or query).
+        handler_cls: The handler class dispatching the item.
+        handler_method_name: The name of the specific handler method.
+    """
+    structlog.contextvars.clear_contextvars()
+    _reset_access_log_counters()
+
+    started_at = time.perf_counter()
+    error_info: Optional[Exception] = None
+    try:
+        yield
+    except Exception as exc:
+        error_info = exc
+        raise
+    finally:
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+
+        # Collect application-provided context (via bind_event_context)
+        app_context = structlog.contextvars.get_contextvars()
+
+        # Clear context vars before emitting to avoid double-merge
+        structlog.contextvars.clear_contextvars()
+
+        # Extract framework fields
+        message_type = getattr(item, "__class__", None)
+        message_type_name = (
+            getattr(message_type, "__type__", None)
+            or getattr(message_type, "__name__", "unknown")
+            if message_type
+            else "unknown"
+        )
+        message_id = ""
+        metadata = getattr(item, "_metadata", None)
+        if metadata is not None:
+            headers = getattr(metadata, "headers", None)
+            if headers is not None:
+                message_id = getattr(headers, "id", "") or ""
+
+        aggregate, aggregate_id = _extract_aggregate_info(item, handler_cls)
+        correlation_id, causation_id = _get_correlation_context()
+        events_raised, repo_operations, uow_outcome = _read_access_log_counters()
+
+        handler_name = f"{handler_cls.__name__}.{handler_method_name}"
+
+        # Determine status
+        if error_info is not None:
+            status = "failed"
+        else:
+            threshold = _get_slow_handler_threshold()
+            status = "slow" if (threshold > 0 and duration_ms > threshold) else "ok"
+
+        # Build the wide event — framework fields take precedence over app context
+        wide_event = {
+            k: v for k, v in app_context.items() if k not in _FRAMEWORK_FIELDS
+        }
+        wide_event.update(
+            {
+                "kind": kind,
+                "message_type": message_type_name,
+                "message_id": str(message_id),
+                "aggregate": aggregate,
+                "aggregate_id": str(aggregate_id),
+                "events_raised": events_raised,
+                "events_raised_count": len(events_raised),
+                "repo_operations": repo_operations,
+                "uow_outcome": uow_outcome,
+                "handler": handler_name,
+                "duration_ms": duration_ms,
+                "status": status,
+                "error_type": type(error_info).__name__ if error_info else None,
+                "error_message": (str(error_info)[:256] if error_info else None),
+                "correlation_id": correlation_id,
+                "causation_id": causation_id,
+            }
+        )
+
+        # Emit the wide event
+        if error_info is not None:
+            access_logger.error(
+                "access.handler_failed",
+                extra=wide_event,
+                exc_info=(
+                    type(error_info),
+                    error_info,
+                    error_info.__traceback__,
+                ),
+            )
+        elif status == "slow":
+            access_logger.warning("access.handler_completed", extra=wide_event)
+            # Separate perf logger for routing slow-handler alerts independently
+            perf_logger.warning("slow_handler", extra=wide_event)
+        else:
+            access_logger.info("access.handler_completed", extra=wide_event)
 
 
 def log_method_call(func: Callable) -> Callable:
