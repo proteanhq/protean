@@ -28,6 +28,7 @@ from protean.utils.telemetry import (
     set_span_error,
 )
 
+from .dlq_maintenance import DLQMaintenanceTask
 from .health import HealthServer
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.factory import SubscriptionFactory
@@ -341,6 +342,27 @@ class Engine:
                     )
         else:
             logger.debug("engine.outbox_disabled")
+
+        # DLQ maintenance task — trims old entries and alerts on depth.
+        # Only activated when explicitly enabled in [server.dlq].
+        self._dlq_maintenance: DLQMaintenanceTask | None = None
+        try:
+            dlq_enabled = (
+                self.domain.config.get("server", {}).get("dlq", {}).get("enabled", False)
+            )
+            if dlq_enabled and self._has_dlq_capable_broker():
+                self._dlq_maintenance = DLQMaintenanceTask(self)
+        except Exception:
+            logger.debug("engine.dlq_maintenance_init_skipped", exc_info=True)
+
+    def _has_dlq_capable_broker(self) -> bool:
+        """Return True if any configured broker supports DLQ."""
+        from protean.port.broker import BrokerCapabilities
+
+        for broker in self.domain.brokers.values():
+            if broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+                return True
+        return False
 
     @property
     def subscription_factory(self) -> SubscriptionFactory:
@@ -962,6 +984,8 @@ class Engine:
             subscription_shutdown_coros.extend(
                 processor.shutdown() for _, processor in self._outbox_processors.items()
             )
+            if self._dlq_maintenance is not None:
+                subscription_shutdown_coros.append(self._dlq_maintenance.shutdown())
 
             await asyncio.gather(*subscription_shutdown_coros, return_exceptions=True)
             logger.info("engine.subscriptions_stopped")
@@ -1093,6 +1117,14 @@ class Engine:
             outbox_processor_tasks.append(task)
             logger.info("engine.outbox_processor_started", extra={"processor": name})
 
+        # Start DLQ maintenance task if a DLQ-capable broker is present
+        dlq_maintenance_tasks = []
+        if self._dlq_maintenance is not None:
+            task = self.loop.create_task(self._dlq_maintenance.start())
+            task.set_name("dlq-maintenance")
+            dlq_maintenance_tasks.append(task)
+            logger.info("engine.dlq_maintenance_started")
+
         try:
             if self.test_mode:
                 # In test mode, run the loop multiple times to ensure all messages are processed
@@ -1103,6 +1135,7 @@ class Engine:
                         subscription_tasks
                         + broker_subscription_tasks
                         + outbox_processor_tasks
+                        + dlq_maintenance_tasks
                     )
 
                     # Run enough cycles to allow message propagation across

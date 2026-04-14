@@ -542,6 +542,18 @@ class DomainMetrics:
             unit="{retry}",
         )
 
+        # --- DLQ maintenance counters -----------------------------------------
+        self.dlq_trimmed = meter.create_counter(
+            "protean.dlq.trimmed",
+            description="DLQ messages trimmed by retention policy",
+            unit="{message}",
+        )
+        self.dlq_alerts = meter.create_counter(
+            "protean.dlq.alerts",
+            description="DLQ depth threshold alerts fired",
+            unit="{alert}",
+        )
+
         # --- Histograms -------------------------------------------------------
         self.command_duration = meter.create_histogram(
             "protean.command.duration",

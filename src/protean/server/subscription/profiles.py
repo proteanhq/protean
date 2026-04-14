@@ -240,6 +240,10 @@ class SubscriptionConfig:
     # Filtering options
     origin_stream: Optional[str] = None
 
+    # Per-subscription DLQ overrides (None = inherit global [server.dlq] values)
+    dlq_retention_hours: Optional[int] = None
+    dlq_alert_threshold: Optional[int] = None
+
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         self.validate()
@@ -270,6 +274,12 @@ class SubscriptionConfig:
 
         if self.position_update_interval <= 0:
             errors.append("position_update_interval must be positive")
+
+        if self.dlq_retention_hours is not None and self.dlq_retention_hours <= 0:
+            errors.append("dlq_retention_hours must be positive when set")
+
+        if self.dlq_alert_threshold is not None and self.dlq_alert_threshold <= 0:
+            errors.append("dlq_alert_threshold must be positive when set")
 
         # Validate DLQ is not enabled for EVENT_STORE
         if self.subscription_type == SubscriptionType.EVENT_STORE and self.enable_dlq:
@@ -334,6 +344,8 @@ class SubscriptionConfig:
         enable_dlq: Optional[bool] = None,
         position_update_interval: Optional[int] = None,
         origin_stream: Optional[str] = None,
+        dlq_retention_hours: Optional[int] = None,
+        dlq_alert_threshold: Optional[int] = None,
     ) -> "SubscriptionConfig":
         """Create a configuration from a profile with optional overrides.
 
@@ -414,6 +426,12 @@ class SubscriptionConfig:
             else profile_defaults["origin_stream"]
         )
 
+        # DLQ overrides are pass-through (None means inherit global)
+        if dlq_retention_hours is not None:
+            config_kwargs["dlq_retention_hours"] = dlq_retention_hours
+        if dlq_alert_threshold is not None:
+            config_kwargs["dlq_alert_threshold"] = dlq_alert_threshold
+
         return cls(**config_kwargs)
 
     @classmethod
@@ -483,6 +501,8 @@ class SubscriptionConfig:
             ("enable_dlq", bool),
             ("position_update_interval", int),
             ("origin_stream", str),
+            ("dlq_retention_hours", int),
+            ("dlq_alert_threshold", int),
         ]
 
         for key, expected_type in config_keys:
@@ -578,6 +598,8 @@ class SubscriptionConfig:
             "enable_dlq": self.enable_dlq,
             "position_update_interval": self.position_update_interval,
             "origin_stream": self.origin_stream,
+            "dlq_retention_hours": self.dlq_retention_hours,
+            "dlq_alert_threshold": self.dlq_alert_threshold,
         }
 
 

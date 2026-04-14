@@ -700,6 +700,41 @@ class BaseBroker(metaclass=ABCMeta):
     def _dlq_purge(self, dlq_stream: str) -> int:
         """Purge all messages from a DLQ stream."""
 
+    # ------------------------------------------------------------------
+    # DLQ Maintenance
+    # ------------------------------------------------------------------
+
+    def dlq_trim(self, dlq_stream: str, min_id: str) -> int:
+        """Trim DLQ messages older than *min_id* (time-based trimming).
+
+        This is an optional method used by the DLQ maintenance task to
+        remove messages that have exceeded their retention period.
+        Brokers that don't support time-based trimming can leave the
+        default implementation which returns 0.
+
+        Args:
+            dlq_stream: The DLQ stream to trim.
+            min_id: Cutoff identifier (format varies by broker).
+                Messages older than this cutoff will be removed.
+
+        Returns:
+            Number of messages trimmed.
+        """
+        return 0
+
+    def dlq_depth(self, dlq_stream: str) -> int:
+        """Return the current number of messages in a DLQ stream.
+
+        Brokers that don't support depth queries return 0.
+
+        Args:
+            dlq_stream: The DLQ stream to query.
+
+        Returns:
+            Number of messages in the DLQ stream.
+        """
+        return 0
+
     def close(self) -> None:
         """Close the broker and release all connections.
 

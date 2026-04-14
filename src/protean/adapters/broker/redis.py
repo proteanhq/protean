@@ -512,6 +512,35 @@ class RedisBroker(BaseBroker):
             dlq_stream=dlq_stream,
         )
 
+    def dlq_trim(self, dlq_stream: str, min_id: str) -> int:
+        """Trim DLQ entries older than *min_id* using Redis XTRIM MINID.
+
+        Args:
+            dlq_stream: The DLQ stream to trim.
+            min_id: Minimum stream ID to keep (millisecond timestamp format).
+
+        Returns:
+            Number of messages trimmed.
+        """
+        try:
+            trimmed = self.redis_instance.xtrim(dlq_stream, minid=min_id) or 0
+            if trimmed > 0:
+                logger.info(
+                    "broker.redis.dlq_trimmed",
+                    extra={"stream": dlq_stream, "trimmed": trimmed},
+                )
+            return trimmed
+        except redis.ResponseError as e:
+            logger.warning(f"Failed to trim DLQ stream {dlq_stream}: {e}")
+            return 0
+
+    def dlq_depth(self, dlq_stream: str) -> int:
+        """Return the number of messages in a DLQ stream."""
+        try:
+            return self.redis_instance.xlen(dlq_stream)
+        except redis.ResponseError:
+            return 0
+
     def _ensure_group(self, group_name: str, stream: str) -> None:
         """Create consumer group if it doesn't exist"""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
