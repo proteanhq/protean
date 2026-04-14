@@ -269,15 +269,28 @@ class HandlerMixin:
         cls, handlers: set, item: Union[BaseCommand, BaseEvent, BaseQuery]
     ) -> Any:
         """Dispatch item to registered handler methods."""
+        from protean.utils.logging import access_log_handler
+
+        # Map element_type to access log kind
+        _KIND_MAP = {
+            DomainObjects.COMMAND_HANDLER: "command",
+            DomainObjects.EVENT_HANDLER: "event",
+            DomainObjects.QUERY_HANDLER: "query",
+            DomainObjects.PROJECTOR: "projector",
+        }
+        kind = _KIND_MAP.get(cls.element_type, "unknown")
+
         if cls.element_type in (
             DomainObjects.COMMAND_HANDLER,
             DomainObjects.QUERY_HANDLER,
         ):
             handler_method = next(iter(handlers))
-            return handler_method(cls(), item)
+            with access_log_handler(kind, item, cls, handler_method.__name__):
+                return handler_method(cls(), item)
         else:
             for handler_method in handlers:
-                handler_method(cls(), item)
+                with access_log_handler(kind, item, cls, handler_method.__name__):
+                    handler_method(cls(), item)
 
         return None
 

@@ -196,6 +196,14 @@ class BaseRepository(Element, OptionsMixin):
         transaction in progress, changes are committed immediately to the persistence store. This mechanism
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
         """
+        # Increment access log repo save counter
+        try:
+            from protean.utils.globals import g
+
+            g._access_log_repo_saves = getattr(g, "_access_log_repo_saves", 0) + 1
+        except Exception:
+            pass
+
         tracer = self._domain.tracer
 
         with tracer.start_as_current_span(
@@ -401,6 +409,14 @@ class BaseRepository(Element, OptionsMixin):
         `find_residents_of_area(zipcode)`, etc. It is also possible to make use of more complicated,
         domain-friendly design patterns like the `Specification` pattern.
         """
+        # Increment access log repo load counter
+        try:
+            from protean.utils.globals import g
+
+            g._access_log_repo_loads = getattr(g, "_access_log_repo_loads", 0) + 1
+        except Exception:
+            pass
+
         tracer = self._domain.tracer
 
         with tracer.start_as_current_span(
