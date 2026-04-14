@@ -2145,13 +2145,16 @@ class Domain:
             domain.configure_logging(level="DEBUG", format="json")
         """
         from protean.integrations.logging import (
+            OTelTraceContextFilter,
             ProteanCorrelationFilter,
             protean_correlation_processor,
+            protean_otel_processor,
         )
         from protean.utils.logging import configure_logging
 
         # --- Merge domain.toml [logging] with explicit kwargs ---
         logging_config = self.config.get("logging", {})
+        telemetry_enabled = bool(self.config.get("telemetry", {}).get("enabled"))
         config_kwargs: dict[str, Any] = {}
 
         # level: env var overrides config, but explicit kwargs override both.
@@ -2186,6 +2189,10 @@ class Domain:
             protean_correlation_processor,
             *list(extra_processors or []),
         ]
+        # Skip OTel injection when telemetry is disabled so the structlog
+        # chain does not pay the cost of a no-op processor on every log call.
+        if telemetry_enabled:
+            extra.append(protean_otel_processor)
 
         configure_logging(extra_processors=extra, **config_kwargs)
 
@@ -2195,3 +2202,7 @@ class Domain:
         # Avoid adding duplicate filters on repeated calls.
         if not any(isinstance(f, ProteanCorrelationFilter) for f in root.filters):
             root.addFilter(ProteanCorrelationFilter())
+        if telemetry_enabled and not any(
+            isinstance(f, OTelTraceContextFilter) for f in root.filters
+        ):
+            root.addFilter(OTelTraceContextFilter())

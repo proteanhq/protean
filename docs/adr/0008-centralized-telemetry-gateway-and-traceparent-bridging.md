@@ -231,9 +231,36 @@ because OTEL is the industry convergence point. Jaeger and Zipkin both
 accept OTLP. Choosing OTEL avoids vendor lock-in and gives users
 freedom to pick their backend.
 
+## Update — Log↔Trace Correlation (Epic 6.6, sub-issue #917)
+
+Epic 6.6 (Logging Overhaul) extended this story with automatic log↔trace
+correlation. When `telemetry.enabled=True`, `Domain.configure_logging()`
+installs a stdlib `OTelTraceContextFilter` on the root logger and appends a
+`protean_otel_processor` to the structlog pipeline. Both read the active
+span via `opentelemetry.trace.get_current_span()` and inject `trace_id`
+(32-char hex), `span_id` (16-char hex), and `trace_flags` (`int`) into
+every log record. Outside a valid span, or when the `opentelemetry` extra
+is not installed, the fields default to empty strings / `0` — no lazy
+import fires when telemetry is disabled.
+
+Epic 6.6 also closed a gap in the Epic 6.5 correlation extraction: the
+existing `ProteanCorrelationFilter` and `protean_correlation_processor`
+now fall back to `g.correlation_id` and `g.causation_id` when no
+`g.message_in_context` is in scope. These two attributes are the
+documented extension point for HTTP middleware, CLI commands, and
+background jobs that need log records tagged *before* a domain message
+exists. Message-based extraction (from `g.message_in_context.metadata.domain`)
+still takes precedence when available.
+
+Together, the two additions complete the end-to-end OOTB promise Epic 6.5
+made for logs: every log record emitted under an active domain context now
+carries both the correlation identifiers and the trace identifiers needed
+to jump between log aggregators and APM tools without code changes.
+
 ## References
 
 - [OpenTelemetry Python SDK](https://opentelemetry-python.readthedocs.io/)
 - [W3C Trace Context specification](https://www.w3.org/TR/trace-context/)
 - Epic 6.1: OpenTelemetry Integration (#742)
+- Epic 6.6: Logging Overhaul (#912) — log↔trace correlation (#917)
 - ADR-0007: Domain-Scoped OpenTelemetry Providers (companion decision)
