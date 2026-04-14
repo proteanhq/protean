@@ -137,11 +137,13 @@ Items that commonly get skipped — verify you actually did these:
 
 Rebase first: `git fetch origin main && git rebase origin/main`. Re-run tests if conflicts arose. Check for breaking changes (see CLAUDE.md for deprecation tiers).
 
-Commit with `git add <specific-files>` — message starts with a verb. **Before pushing**, verify the commit message is clean:
+Commit with `git add <specific-files>` — message starts with a verb. No Claude links, no AI attribution (see reference.md "Git & PR hygiene"). **Before pushing**, verify the commit message is clean:
 ```bash
-# Verify: no session URLs, no Co-Authored-By, no AI attribution
-git log --format='%B' -1 | grep -iE 'claude|anthropic|session|co-authored' && echo "FAIL: clean up commit message" || echo "OK"
+# Verify: no claude.ai URLs, no Co-Authored-By, no AI attribution
+git log --format='%B' -1 | grep -iE 'claude\.ai|anthropic|co-authored|session_' && echo "FAIL: clean up commit message" || echo "OK"
 ```
+The same rule applies to PR descriptions and review comment replies — no `claude.ai` links anywhere in the PR.
+
 Push and create PR:
 ```bash
 git push -u origin HEAD

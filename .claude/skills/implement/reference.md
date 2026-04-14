@@ -76,11 +76,14 @@ gh api repos/proteanhq/protean/pulls/<PR>/comments/<COMMENT_ID>/replies \
 gh pr view <PR> -R proteanhq/protean --json mergeable,mergeStateStatus,statusCheckRollup
 ```
 
-## Commit message rules
+## Git & PR hygiene
 
-- Start with a verb: Add, Fix, Update, Remove, Refactor
-- No AI attribution, no session links, no "Co-Authored-By"
-- Don't override git user config
+**No Claude links anywhere.** Do not include `claude.ai` URLs, session links, plan links, or any AI attribution in commit messages, PR titles, PR descriptions, or review comment replies. These are private links nobody else can access, and they clutter the permanent record.
+
+- Commit messages: start with a verb (Add, Fix, Update, Remove, Refactor). No Co-Authored-By lines.
+- PR descriptions: no "Generated with Claude" footers, no session references.
+- Review replies: explain the fix, don't link to a Claude session.
+- Don't override git user config.
 
 ## Breaking change tiers
 
