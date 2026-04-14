@@ -8,6 +8,8 @@ Verifies that:
 - bind_event_context outside handler is a no-op
 - Context is cleared between handler invocations
 - App context cannot overwrite framework-reserved fields
+- Outer structlog context is preserved across handler invocations
+- LogRecord-reserved attribute names are stripped from app context
 """
 
 import logging
@@ -80,6 +82,13 @@ class FrameworkOverrideHandler(BaseCommandHandler):
     @handle(CreateAccount)
     def handle_create(self, command: CreateAccount) -> None:
         bind_event_context(kind="hacked", duration_ms=-1)
+
+
+class LogRecordCollisionHandler(BaseCommandHandler):
+    @handle(CreateAccount)
+    def handle_create(self, command: CreateAccount) -> None:
+        # Bind keys that collide with stdlib LogRecord attributes
+        bind_event_context(name="bad", levelno=99, msg="bad", safe_key="safe_value")
 
 
 class BindContextEventHandler(BaseEventHandler):
@@ -250,3 +259,62 @@ class TestAppContextDoesNotOverwriteFrameworkFields:
         # Framework fields should take precedence
         assert record.kind == "command"  # NOT "hacked"
         assert record.duration_ms > 0  # NOT -1
+
+
+class TestOuterContextPreservedAcrossHandlers:
+    """Outer structlog context (bound via add_context) is restored after handler."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(AccountActivated, part_of=Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.register(BindContextHandler, part_of=Account)
+        test_domain.init(traverse=False)
+
+    def test_outer_context_preserved(self, test_domain, caplog):
+        import structlog
+
+        # Bind outer context before handler invocation
+        structlog.contextvars.bind_contextvars(request_id="req-999")
+
+        with caplog.at_level(logging.DEBUG, logger="protean.access"):
+            test_domain.process(
+                CreateAccount(account_id=str(uuid4()), name="Preserve Test")
+            )
+
+        # Outer context should be restored after handler completes
+        ctx = structlog.contextvars.get_contextvars()
+        assert ctx.get("request_id") == "req-999", (
+            "Outer structlog context should be preserved after handler invocation"
+        )
+
+        # Clean up
+        structlog.contextvars.clear_contextvars()
+
+
+class TestLogRecordReservedKeysStripped:
+    """App context keys that collide with LogRecord attrs are stripped."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(AccountActivated, part_of=Account)
+        test_domain.register(CreateAccount, part_of=Account)
+        test_domain.register(LogRecordCollisionHandler, part_of=Account)
+        test_domain.init(traverse=False)
+
+    def test_logrecord_reserved_keys_stripped(self, test_domain, caplog):
+        """Binding keys that collide with LogRecord attributes should not
+        cause errors — they are silently stripped."""
+        with caplog.at_level(logging.DEBUG, logger="protean.access"):
+            test_domain.process(
+                CreateAccount(account_id=str(uuid4()), name="Collision Test")
+            )
+
+        # The handler should complete successfully (no KeyError)
+        records = _access_records(caplog)
+        assert len(records) >= 1
+        assert records[0].status == "ok"
+        # The safe key should still be present
+        assert records[0].safe_key == "safe_value"

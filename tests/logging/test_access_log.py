@@ -315,3 +315,67 @@ class TestCorrelationAndCausationPresent:
         event_records = [r for r in records if r.kind == "event"]
         if event_records:
             assert event_records[0].correlation_id != ""
+
+
+class TestAccessLogEmissionFailureSafety:
+    """Emission failures in the access log must not crash the handler."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(OrderConfirmed, part_of=Order)
+        test_domain.register(PlaceOrder, part_of=Order)
+        test_domain.register(PlaceOrderHandler, part_of=Order)
+        test_domain.register(OrderEventHandler, part_of=Order)
+        test_domain.init(traverse=False)
+
+    def test_emission_failure_does_not_crash_handler(self, test_domain, caplog):
+        """Even if _emit_wide_event raises, the handler result is returned."""
+        from unittest.mock import patch
+
+        order_id = str(uuid4())
+        with patch(
+            "protean.utils.logging._emit_wide_event",
+            side_effect=RuntimeError("broken emission"),
+        ):
+            # Should not raise — the emission error is swallowed
+            test_domain.process(
+                PlaceOrder(order_id=order_id, customer_name="Safe Test")
+            )
+
+        # No access records since emission was broken, but handler succeeded
+        # (verified by absence of exception)
+
+
+class TestAccessLogHelperFallbacks:
+    """Helper functions return safe defaults when no domain context exists."""
+
+    def test_get_correlation_context_without_domain(self):
+        from protean.utils.logging import _get_correlation_context
+
+        corr, caus = _get_correlation_context()
+        assert corr == ""
+        assert caus == ""
+
+    def test_read_access_log_counters_without_domain(self):
+        from protean.utils.logging import _read_access_log_counters
+
+        events, ops, outcome = _read_access_log_counters()
+        assert events == []
+        assert ops == {"loads": 0, "saves": 0}
+        assert outcome == "no_uow"
+
+    def test_get_slow_handler_threshold_without_domain(self):
+        from protean.utils.logging import _get_slow_handler_threshold
+
+        threshold = _get_slow_handler_threshold()
+        assert threshold == 500.0
+
+    def test_extract_aggregate_info_with_bare_object(self):
+        from protean.utils.logging import _extract_aggregate_info
+
+        # Object with no meta_ or _metadata
+        agg, agg_id = _extract_aggregate_info(object(), type)
+        assert agg == ""
+        assert agg_id == ""

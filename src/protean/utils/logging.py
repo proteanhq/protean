@@ -92,6 +92,36 @@ _FRAMEWORK_LOGGERS_NORMAL = {
 access_logger = logging.getLogger("protean.access")
 perf_logger = logging.getLogger("protean.perf")
 
+# stdlib LogRecord attributes that must never appear in `extra` to avoid
+# collisions with the logging framework's own fields.
+_RESERVED_LOG_RECORD_ATTRS = frozenset(
+    {
+        "name",
+        "msg",
+        "args",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "lineno",
+        "funcName",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "process",
+        "processName",
+        "message",
+        "asctime",
+        "taskName",
+    }
+)
+
 # Framework-reserved field names that application context cannot overwrite
 _FRAMEWORK_FIELDS = frozenset(
     {
@@ -254,7 +284,9 @@ def bind_event_context(**kwargs: Any) -> None:
     Called from handler code to enrich the access log with domain context
     that only the application knows (user tier, order total, feature flags, etc.).
     Fields are merged — multiple calls accumulate, later calls overwrite
-    conflicting keys. Safe to call outside handler context (no-op).
+    conflicting keys. Outside handler code, this still binds keys to the
+    current structlog context — they will be cleared when the next handler
+    invocation starts.
     """
     structlog.contextvars.bind_contextvars(**kwargs)
 
@@ -371,8 +403,10 @@ def access_log_handler(
 ) -> Iterator[None]:
     """Context manager that measures handler duration and emits a wide event.
 
-    Clears structlog contextvars at entry, collects framework + app context,
-    emits a single wide event on exit.
+    Saves the current structlog contextvars at entry (so outer context such as
+    per-request bindings from ``add_context()`` is preserved), resets them for
+    a clean handler scope, collects framework + app context, emits a single
+    wide event on exit, and restores the previous contextvars.
 
     Args:
         kind: Handler kind — "command", "event", "query", or "projector".
@@ -380,6 +414,8 @@ def access_log_handler(
         handler_cls: The handler class dispatching the item.
         handler_method_name: The name of the specific handler method.
     """
+    # Snapshot and clear outer context so each handler starts clean
+    saved_context = structlog.contextvars.get_contextvars()
     structlog.contextvars.clear_contextvars()
     _reset_access_log_counters()
 
@@ -396,79 +432,116 @@ def access_log_handler(
         # Collect application-provided context (via bind_event_context)
         app_context = structlog.contextvars.get_contextvars()
 
-        # Clear context vars before emitting to avoid double-merge
+        # Restore the outer context that was active before this handler
         structlog.contextvars.clear_contextvars()
+        if saved_context:
+            structlog.contextvars.bind_contextvars(**saved_context)
 
-        # Extract framework fields
-        message_type = getattr(item, "__class__", None)
-        message_type_name = (
-            getattr(message_type, "__type__", None)
-            or getattr(message_type, "__name__", "unknown")
-            if message_type
-            else "unknown"
-        )
-        message_id = ""
-        metadata = getattr(item, "_metadata", None)
-        if metadata is not None:
-            headers = getattr(metadata, "headers", None)
-            if headers is not None:
-                message_id = getattr(headers, "id", "") or ""
-
-        aggregate, aggregate_id = _extract_aggregate_info(item, handler_cls)
-        correlation_id, causation_id = _get_correlation_context()
-        events_raised, repo_operations, uow_outcome = _read_access_log_counters()
-
-        handler_name = f"{handler_cls.__name__}.{handler_method_name}"
-
-        # Determine status
-        if error_info is not None:
-            status = "failed"
-        else:
-            threshold = _get_slow_handler_threshold()
-            status = "slow" if (threshold > 0 and duration_ms > threshold) else "ok"
-
-        # Build the wide event — framework fields take precedence over app context
-        wide_event = {
-            k: v for k, v in app_context.items() if k not in _FRAMEWORK_FIELDS
-        }
-        wide_event.update(
-            {
-                "kind": kind,
-                "message_type": message_type_name,
-                "message_id": str(message_id),
-                "aggregate": aggregate,
-                "aggregate_id": str(aggregate_id),
-                "events_raised": events_raised,
-                "events_raised_count": len(events_raised),
-                "repo_operations": repo_operations,
-                "uow_outcome": uow_outcome,
-                "handler": handler_name,
-                "duration_ms": duration_ms,
-                "status": status,
-                "error_type": type(error_info).__name__ if error_info else None,
-                "error_message": (str(error_info)[:256] if error_info else None),
-                "correlation_id": correlation_id,
-                "causation_id": causation_id,
-            }
-        )
-
-        # Emit the wide event
-        if error_info is not None:
-            access_logger.error(
-                "access.handler_failed",
-                extra=wide_event,
-                exc_info=(
-                    type(error_info),
-                    error_info,
-                    error_info.__traceback__,
-                ),
+        # Build and emit the wide event inside a try/except so that
+        # emission failures never mask the original handler exception
+        # or break otherwise-successful handling.
+        try:
+            _emit_wide_event(
+                kind,
+                item,
+                handler_cls,
+                handler_method_name,
+                duration_ms,
+                error_info,
+                app_context,
             )
-        elif status == "slow":
-            access_logger.warning("access.handler_completed", extra=wide_event)
-            # Separate perf logger for routing slow-handler alerts independently
-            perf_logger.warning("slow_handler", extra=wide_event)
-        else:
-            access_logger.info("access.handler_completed", extra=wide_event)
+        except Exception:
+            # Last-resort: log that the access log itself failed, but
+            # never let this propagate.
+            logging.getLogger(__name__).debug(
+                "access_log_emission_failed", exc_info=True
+            )
+
+
+def _emit_wide_event(
+    kind: str,
+    item: Any,
+    handler_cls: type,
+    handler_method_name: str,
+    duration_ms: float,
+    error_info: Optional[Exception],
+    app_context: dict[str, Any],
+) -> None:
+    """Build and emit the wide event log entry.
+
+    Extracted from ``access_log_handler`` so that emission failures can be
+    caught without interfering with handler exception propagation.
+    """
+    # Extract framework fields
+    message_type = getattr(item, "__class__", None)
+    message_type_name = (
+        getattr(message_type, "__type__", None)
+        or getattr(message_type, "__name__", "unknown")
+        if message_type
+        else "unknown"
+    )
+    message_id = ""
+    metadata = getattr(item, "_metadata", None)
+    if metadata is not None:
+        headers = getattr(metadata, "headers", None)
+        if headers is not None:
+            message_id = getattr(headers, "id", "") or ""
+
+    aggregate, aggregate_id = _extract_aggregate_info(item, handler_cls)
+    correlation_id, causation_id = _get_correlation_context()
+    events_raised, repo_operations, uow_outcome = _read_access_log_counters()
+
+    handler_name = f"{handler_cls.__name__}.{handler_method_name}"
+
+    # Determine status
+    if error_info is not None:
+        status = "failed"
+    else:
+        threshold = _get_slow_handler_threshold()
+        status = "slow" if (threshold > 0 and duration_ms > threshold) else "ok"
+
+    # Build the wide event — strip keys that collide with framework-reserved
+    # names or stdlib LogRecord attributes to prevent KeyError / overwrites.
+    forbidden_keys = _FRAMEWORK_FIELDS | _RESERVED_LOG_RECORD_ATTRS
+    wide_event = {k: v for k, v in app_context.items() if k not in forbidden_keys}
+    wide_event.update(
+        {
+            "kind": kind,
+            "message_type": message_type_name,
+            "message_id": str(message_id),
+            "aggregate": aggregate,
+            "aggregate_id": str(aggregate_id),
+            "events_raised": events_raised,
+            "events_raised_count": len(events_raised),
+            "repo_operations": repo_operations,
+            "uow_outcome": uow_outcome,
+            "handler": handler_name,
+            "duration_ms": duration_ms,
+            "status": status,
+            "error_type": type(error_info).__name__ if error_info else None,
+            "error_message": (str(error_info)[:256] if error_info else None),
+            "correlation_id": correlation_id,
+            "causation_id": causation_id,
+        }
+    )
+
+    # Emit the wide event
+    if error_info is not None:
+        access_logger.error(
+            "access.handler_failed",
+            extra=wide_event,
+            exc_info=(
+                type(error_info),
+                error_info,
+                error_info.__traceback__,
+            ),
+        )
+    elif status == "slow":
+        access_logger.warning("access.handler_completed", extra=wide_event)
+        # Separate perf logger for routing slow-handler alerts independently
+        perf_logger.warning("slow_handler", extra=wide_event)
+    else:
+        access_logger.info("access.handler_completed", extra=wide_event)
 
 
 def log_method_call(func: Callable) -> Callable:
