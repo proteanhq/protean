@@ -1,47 +1,98 @@
-"""Automatic correlation context injection for Python logging.
+"""Automatic correlation and trace context injection for Python logging.
 
-Provides a stdlib ``logging.Filter`` and a ``structlog`` processor that read
-the current domain context (``g.message_in_context``) and inject
-``correlation_id`` and ``causation_id`` into every log record — zero
-boilerplate required.
+Provides stdlib ``logging.Filter`` classes and ``structlog`` processors that
+read the active domain context (``g.message_in_context`` or ``g.correlation_id``)
+and the active OpenTelemetry span, then inject ``correlation_id``,
+``causation_id``, ``trace_id``, ``span_id``, and ``trace_flags`` into every
+log record — zero boilerplate required.
 
 Typical usage with stdlib logging::
 
     import logging
-    from protean.integrations.logging import ProteanCorrelationFilter
+    from protean.integrations.logging import (
+        ProteanCorrelationFilter,
+        OTelTraceContextFilter,
+    )
 
     handler = logging.StreamHandler()
     handler.addFilter(ProteanCorrelationFilter())
+    handler.addFilter(OTelTraceContextFilter())
     handler.setFormatter(
-        logging.Formatter("%(message)s correlation_id=%(correlation_id)s")
+        logging.Formatter(
+            "%(message)s correlation_id=%(correlation_id)s trace_id=%(trace_id)s"
+        )
     )
     logging.getLogger().addHandler(handler)
 
 Typical usage with structlog::
 
     import structlog
-    from protean.integrations.logging import protean_correlation_processor
+    from protean.integrations.logging import (
+        protean_correlation_processor,
+        protean_otel_processor,
+    )
 
     structlog.configure(
         processors=[
             protean_correlation_processor,
+            protean_otel_processor,
             structlog.dev.ConsoleRenderer(),
         ]
     )
 
-Both integrations are safe to use when no domain context is active — they
-silently set fields to empty strings.
+All integrations are safe to use when no domain context, no active span, or
+no ``opentelemetry`` installation exists — they silently fall back to empty
+strings (or ``0`` for ``trace_flags``).
 """
 
 import logging
 from typing import Any
 
+# OpenTelemetry trace helpers are resolved lazily on first use so that merely
+# importing this module (e.g. from ``Domain.configure_logging``) does not
+# trigger the ``opentelemetry`` import when telemetry is disabled. After the
+# first call the module-level slots act as a cache, keeping the hot path a
+# pure attribute lookup — no repeated ``from ... import`` on every log record.
+_OTEL_UNLOADED = object()  # sentinel: helpers have not been resolved yet
+_get_current_span: Any = _OTEL_UNLOADED
+_format_trace_id: Any = _OTEL_UNLOADED
+_format_span_id: Any = _OTEL_UNLOADED
+
+
+def _load_otel_helpers() -> None:
+    """Populate the module-level OTel trace helper slots.
+
+    Called on the first access from :func:`_get_otel_trace_context`. Sets the
+    slots to ``None`` when ``opentelemetry`` is not installed, so subsequent
+    calls short-circuit without re-attempting the import.
+    """
+    global _get_current_span, _format_trace_id, _format_span_id
+    try:
+        from opentelemetry.trace import (
+            format_span_id,
+            format_trace_id,
+            get_current_span,
+        )
+    except ImportError:  # pragma: no cover - opentelemetry is installed in dev/CI
+        _get_current_span = None
+        _format_trace_id = None
+        _format_span_id = None
+        return
+    _get_current_span = get_current_span
+    _format_trace_id = format_trace_id
+    _format_span_id = format_span_id
+
 
 def _get_correlation_context() -> tuple[str, str]:
     """Extract correlation_id and causation_id from the active domain context.
 
-    Returns a ``(correlation_id, causation_id)`` tuple.  Both values default
-    to ``""`` when no domain context or message context is available.
+    Returns a ``(correlation_id, causation_id)`` tuple. The message-based
+    extraction from ``g.message_in_context.metadata.domain`` takes precedence.
+    When no message is in scope, falls back to the conventional
+    ``g.correlation_id`` / ``g.causation_id`` attributes — the documented
+    extension point for HTTP middleware, CLI commands, and background jobs
+    that want their log records tagged before any domain message exists.
+    Both values default to ``""`` when nothing is available.
 
     Uses the public ``has_domain_context()`` and ``g`` proxy rather than
     reaching into private stack internals.
@@ -55,29 +106,58 @@ def _get_correlation_context() -> tuple[str, str]:
     if not has_domain_context():
         return ("", "")
 
-    msg = g.get("message_in_context") if hasattr(g, "get") else None
-    if msg is None:
-        return ("", "")
+    # Primary: extract from the active message's domain metadata.
+    msg = g.get("message_in_context")
+    if msg is not None:
+        metadata = getattr(msg, "metadata", None)
+        domain_meta = getattr(metadata, "domain", None) if metadata else None
+        if domain_meta is not None:
+            return (
+                domain_meta.correlation_id or "",
+                domain_meta.causation_id or "",
+            )
 
-    metadata = getattr(msg, "metadata", None)
-    domain_meta = getattr(metadata, "domain", None) if metadata else None
+    # Fallback: explicit g.correlation_id / g.causation_id — the documented
+    # extension point for HTTP middleware, CLI commands, and background jobs
+    # that need logs tagged before any domain message exists.
+    return (g.get("correlation_id", "") or "", g.get("causation_id", "") or "")
 
-    if domain_meta is None:
-        return ("", "")
+
+def _get_otel_trace_context() -> tuple[str, str, int]:
+    """Extract trace_id, span_id, and trace_flags from the active OTel span.
+
+    Returns a ``(trace_id, span_id, trace_flags)`` tuple. ``trace_id`` is a
+    32-character hex string, ``span_id`` is a 16-character hex string, and
+    ``trace_flags`` is an integer (``0`` or ``1``).
+
+    Safe no-op when ``opentelemetry`` is not installed (the ``telemetry``
+    extra is optional) or when no valid span is active — returns
+    ``("", "", 0)``.
+    """
+    if _get_current_span is _OTEL_UNLOADED:
+        _load_otel_helpers()
+    if _get_current_span is None:
+        return ("", "", 0)
+
+    span = _get_current_span()
+    ctx = span.get_span_context()
+    if not ctx.is_valid:
+        return ("", "", 0)
 
     return (
-        domain_meta.correlation_id or "",
-        domain_meta.causation_id or "",
+        _format_trace_id(ctx.trace_id),
+        _format_span_id(ctx.span_id),
+        int(ctx.trace_flags),
     )
 
 
 class ProteanCorrelationFilter(logging.Filter):
     """Stdlib logging filter that adds ``correlation_id`` and ``causation_id``.
 
-    When a Protean domain context is active and ``g.message_in_context``
-    holds a message with metadata, the filter sets the corresponding
-    attributes on the ``LogRecord``.  Otherwise both attributes are set to
-    ``""`` so formatters that reference ``%(correlation_id)s`` never raise
+    The filter prefers values from ``g.message_in_context.metadata.domain``;
+    when no message is in scope it falls back to ``g.correlation_id`` and
+    ``g.causation_id``. Outside any domain context both attributes are set
+    to ``""`` so formatters that reference ``%(correlation_id)s`` never raise
     ``KeyError``.
 
     The filter never suppresses records — it always returns ``True``.
@@ -97,14 +177,42 @@ class ProteanCorrelationFilter(logging.Filter):
         return True
 
 
+class OTelTraceContextFilter(logging.Filter):
+    """Stdlib logging filter that adds OpenTelemetry trace context.
+
+    Reads the current OTel span via ``opentelemetry.trace.get_current_span``
+    and sets ``record.trace_id`` (32-char hex), ``record.span_id``
+    (16-char hex), and ``record.trace_flags`` (``int``) on the ``LogRecord``.
+
+    When ``opentelemetry`` is not installed or no valid span is active,
+    ``trace_id`` and ``span_id`` default to ``""`` and ``trace_flags`` to
+    ``0``. The filter never suppresses records — it always returns ``True``.
+
+    Example::
+
+        import logging
+        from protean.integrations.logging import OTelTraceContextFilter
+
+        logging.getLogger().addFilter(OTelTraceContextFilter())
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        trace_id, span_id, trace_flags = _get_otel_trace_context()
+        record.trace_id = trace_id  # type: ignore[attr-defined]
+        record.span_id = span_id  # type: ignore[attr-defined]
+        record.trace_flags = trace_flags  # type: ignore[attr-defined]
+        return True
+
+
 def protean_correlation_processor(
     logger: Any, method: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
     """Structlog processor that injects correlation context into the event dict.
 
-    Reads ``g.message_in_context`` from the active Protean domain context and
-    adds ``correlation_id`` and ``causation_id`` keys.  When no context is
-    available, the keys are set to ``""``.
+    Reads the active domain context and adds ``correlation_id`` and
+    ``causation_id`` keys. Prefers ``g.message_in_context`` metadata, falling
+    back to ``g.correlation_id`` / ``g.causation_id`` when no message is in
+    scope. Both keys default to ``""`` when no context is available.
 
     Add this processor to your structlog pipeline::
 
@@ -124,7 +232,38 @@ def protean_correlation_processor(
     return event_dict
 
 
+def protean_otel_processor(
+    logger: Any, method: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Structlog processor that injects OpenTelemetry trace context.
+
+    Reads the active OTel span and adds ``trace_id`` (32-char hex),
+    ``span_id`` (16-char hex), and ``trace_flags`` (``int``) to the event
+    dict. Safe no-op when ``opentelemetry`` is not installed or no valid
+    span is active — fields default to ``""``, ``""``, and ``0``.
+
+    Add this processor to your structlog pipeline::
+
+        import structlog
+        from protean.integrations.logging import protean_otel_processor
+
+        structlog.configure(
+            processors=[
+                protean_otel_processor,
+                structlog.dev.ConsoleRenderer(),
+            ]
+        )
+    """
+    trace_id, span_id, trace_flags = _get_otel_trace_context()
+    event_dict["trace_id"] = trace_id
+    event_dict["span_id"] = span_id
+    event_dict["trace_flags"] = trace_flags
+    return event_dict
+
+
 __all__ = [
+    "OTelTraceContextFilter",
     "ProteanCorrelationFilter",
     "protean_correlation_processor",
+    "protean_otel_processor",
 ]

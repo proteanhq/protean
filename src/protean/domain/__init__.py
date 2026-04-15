@@ -2145,13 +2145,16 @@ class Domain:
             domain.configure_logging(level="DEBUG", format="json")
         """
         from protean.integrations.logging import (
+            OTelTraceContextFilter,
             ProteanCorrelationFilter,
             protean_correlation_processor,
+            protean_otel_processor,
         )
         from protean.utils.logging import configure_logging
 
         # --- Merge domain.toml [logging] with explicit kwargs ---
         logging_config = self.config.get("logging", {})
+        telemetry_enabled = bool(self.config.get("telemetry", {}).get("enabled"))
         config_kwargs: dict[str, Any] = {}
 
         # level: env var overrides config, but explicit kwargs override both.
@@ -2180,12 +2183,17 @@ class Domain:
         # Explicit kwargs override config values
         config_kwargs.update(kwargs)
 
-        # Build processor list without mutating any caller-supplied sequence
+        # Build processor list without mutating any caller-supplied sequence.
+        # Built-in context injectors (correlation, OTel) run before any
+        # caller-supplied processors so user code observing the event dict
+        # (e.g. redaction, routing, enrichment) sees the injected fields.
+        # Skip OTel injection when telemetry is disabled so the structlog
+        # chain does not pay the cost of a no-op processor on every log call.
         extra_processors = config_kwargs.pop("extra_processors", None)
-        extra: list = [
-            protean_correlation_processor,
-            *list(extra_processors or []),
-        ]
+        extra: list = [protean_correlation_processor]
+        if telemetry_enabled:
+            extra.append(protean_otel_processor)
+        extra.extend(list(extra_processors or []))
 
         configure_logging(extra_processors=extra, **config_kwargs)
 
@@ -2195,3 +2203,7 @@ class Domain:
         # Avoid adding duplicate filters on repeated calls.
         if not any(isinstance(f, ProteanCorrelationFilter) for f in root.filters):
             root.addFilter(ProteanCorrelationFilter())
+        if telemetry_enabled and not any(
+            isinstance(f, OTelTraceContextFilter) for f in root.filters
+        ):
+            root.addFilter(OTelTraceContextFilter())
