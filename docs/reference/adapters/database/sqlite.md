@@ -93,6 +93,14 @@ class UserModel:
     The column names specified in the model should exactly match the attribute
     names of the Aggregate or Entity it represents.
 
+## Slow Query Detection
+
+The SQLAlchemy-based SQLite provider emits the same structured
+``protean.adapters.repository.sqlalchemy.slow_query`` WARNING and
+``protean.adapters.repository.sqlalchemy.query`` DEBUG events as the
+[PostgreSQL provider](./postgresql.md#slow-query-detection). Configure the
+threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
+
 ## Limitations
 
 - **Single-Writer Concurrency** -- SQLite supports only one writer at a time.
