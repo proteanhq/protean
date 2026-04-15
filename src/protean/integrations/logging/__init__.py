@@ -48,21 +48,39 @@ strings (or ``0`` for ``trace_flags``).
 import logging
 from typing import Any
 
-# Resolve OpenTelemetry trace helpers once at import time when the optional
-# ``telemetry`` extra is installed. The filter/processor only run when
-# telemetry is enabled in the domain config, so binding these callables at
-# module scope (rather than re-importing on every log record) keeps the
-# hot path a pure attribute lookup.
-try:
-    from opentelemetry.trace import (
-        format_span_id as _format_span_id,
-        format_trace_id as _format_trace_id,
-        get_current_span as _get_current_span,
-    )
-except ImportError:  # pragma: no cover - opentelemetry is installed in dev/CI
-    _format_span_id = None  # type: ignore[assignment]
-    _format_trace_id = None  # type: ignore[assignment]
-    _get_current_span = None  # type: ignore[assignment]
+# OpenTelemetry trace helpers are resolved lazily on first use so that merely
+# importing this module (e.g. from ``Domain.configure_logging``) does not
+# trigger the ``opentelemetry`` import when telemetry is disabled. After the
+# first call the module-level slots act as a cache, keeping the hot path a
+# pure attribute lookup — no repeated ``from ... import`` on every log record.
+_OTEL_UNLOADED = object()  # sentinel: helpers have not been resolved yet
+_get_current_span: Any = _OTEL_UNLOADED
+_format_trace_id: Any = _OTEL_UNLOADED
+_format_span_id: Any = _OTEL_UNLOADED
+
+
+def _load_otel_helpers() -> None:
+    """Populate the module-level OTel trace helper slots.
+
+    Called on the first access from :func:`_get_otel_trace_context`. Sets the
+    slots to ``None`` when ``opentelemetry`` is not installed, so subsequent
+    calls short-circuit without re-attempting the import.
+    """
+    global _get_current_span, _format_trace_id, _format_span_id
+    try:
+        from opentelemetry.trace import (
+            format_span_id,
+            format_trace_id,
+            get_current_span,
+        )
+    except ImportError:  # pragma: no cover - opentelemetry is installed in dev/CI
+        _get_current_span = None
+        _format_trace_id = None
+        _format_span_id = None
+        return
+    _get_current_span = get_current_span
+    _format_trace_id = format_trace_id
+    _format_span_id = format_span_id
 
 
 def _get_correlation_context() -> tuple[str, str]:
@@ -116,6 +134,8 @@ def _get_otel_trace_context() -> tuple[str, str, int]:
     extra is optional) or when no valid span is active — returns
     ``("", "", 0)``.
     """
+    if _get_current_span is _OTEL_UNLOADED:
+        _load_otel_helpers()
     if _get_current_span is None:
         return ("", "", 0)
 

@@ -283,6 +283,27 @@ class TestDomainConfigureLoggingOTel:
         ]
         assert len(otel_filters) == 1
 
+    def test_otel_processor_runs_before_user_extra_processors(
+        self, tracer_provider: SDKTracerProvider
+    ) -> None:
+        """User-supplied processors must see the injected trace fields."""
+
+        def user_processor(logger, method, event_dict):  # noqa: ARG001
+            return event_dict
+
+        domain = Domain(
+            root_path=str(Path(__file__).parent),
+            name="TestOTelOrdering",
+            config={"telemetry": {"enabled": True}},
+        )
+        _clear_root_logger()
+        domain.configure_logging(extra_processors=[user_processor])
+
+        processors = structlog.get_config()["processors"]
+        otel_idx = processors.index(protean_otel_processor)
+        user_idx = processors.index(user_processor)
+        assert otel_idx < user_idx
+
 
 # ---------------------------------------------------------------------------
 # ProteanCorrelationFilter / processor — g.correlation_id fallback

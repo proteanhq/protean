@@ -2183,16 +2183,17 @@ class Domain:
         # Explicit kwargs override config values
         config_kwargs.update(kwargs)
 
-        # Build processor list without mutating any caller-supplied sequence
-        extra_processors = config_kwargs.pop("extra_processors", None)
-        extra: list = [
-            protean_correlation_processor,
-            *list(extra_processors or []),
-        ]
+        # Build processor list without mutating any caller-supplied sequence.
+        # Built-in context injectors (correlation, OTel) run before any
+        # caller-supplied processors so user code observing the event dict
+        # (e.g. redaction, routing, enrichment) sees the injected fields.
         # Skip OTel injection when telemetry is disabled so the structlog
         # chain does not pay the cost of a no-op processor on every log call.
+        extra_processors = config_kwargs.pop("extra_processors", None)
+        extra: list = [protean_correlation_processor]
         if telemetry_enabled:
             extra.append(protean_otel_processor)
+        extra.extend(list(extra_processors or []))
 
         configure_logging(extra_processors=extra, **config_kwargs)
 
