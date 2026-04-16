@@ -391,14 +391,16 @@ def get_logging_config_value(key: str, default: _T) -> _T:
     """Read a single value from the domain's ``[logging]`` config section.
 
     Returns ``default`` when no domain is bound to the current context or when
-    the key is absent. Any unexpected failure while resolving
-    ``current_domain.config`` also yields ``default`` so callers on a hot path
-    (e.g. per-query instrumentation) can safely swallow it.
+    the key is absent. Uses ``has_domain_context()`` to avoid triggering the
+    ``LocalProxy`` warning that ``current_domain`` would emit outside a domain
+    context. Any unexpected failure also yields ``default`` so callers on a hot
+    path (e.g. per-query instrumentation) can safely swallow it.
     """
     try:
+        from protean.domain.context import has_domain_context
         from protean.utils.globals import current_domain
 
-        if current_domain:
+        if has_domain_context():
             return current_domain.config.get("logging", {}).get(key, default)
     except Exception:
         pass

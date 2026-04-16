@@ -83,7 +83,13 @@ def _maybe_log_query(statement: str, parameters: Any, duration_ms: float) -> Non
     onto the record. Parameters are passed through unchanged here — redaction
     is applied by the shared redaction filter/processor (see #919).
     """
-    threshold_ms = float(get_logging_config_value("slow_query_threshold_ms", 100))
+    try:
+        threshold_ms = float(
+            get_logging_config_value("slow_query_threshold_ms", 100)
+        )
+    except (TypeError, ValueError):
+        threshold_ms = 100.0
+
     is_slow = duration_ms > threshold_ms
 
     # Fast path: when the query is not slow and DEBUG tracing is disabled for
@@ -92,7 +98,12 @@ def _maybe_log_query(statement: str, parameters: Any, duration_ms: float) -> Non
     if not is_slow and not query_logger.isEnabledFor(logging.DEBUG):
         return
 
-    truncate_chars = int(get_logging_config_value("slow_query_truncate_chars", 500))
+    try:
+        truncate_chars = int(
+            get_logging_config_value("slow_query_truncate_chars", 500)
+        )
+    except (TypeError, ValueError):
+        truncate_chars = 500
     extra = {
         "statement": _truncate_statement(statement, truncate_chars),
         "duration_ms": duration_ms,
