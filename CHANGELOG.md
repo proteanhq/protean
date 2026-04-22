@@ -149,7 +149,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `ProjectionResult`, `ProcessManagerSetup`, `ProcessManagerResult`
 - Snapshot testing — JSON snapshot files with `assert_snapshot()` and
   `--update-snapshots` pytest flag
-- `assert_invalid()` and `assert_valid()` assertion helpers
 - Process managers — `@domain.process_manager` for multi-aggregate process
   coordination with state transitions
 - Query handlers — `@domain.query_handler` and `domain.dispatch()` for

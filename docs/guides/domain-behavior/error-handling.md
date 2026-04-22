@@ -187,20 +187,16 @@ See [FastAPI Integration](../fastapi/index.md) for full setup.
 
 ## Testing error conditions
 
-Use `pytest.raises` or Protean's `assert_invalid` helper:
+Use `pytest.raises`:
 
 ```python
 import pytest
 from protean.exceptions import ValidationError
-from protean.testing import assert_invalid
 
 def test_order_requires_items():
     with pytest.raises(ValidationError) as exc:
         Order(customer_id="c1", items=[])
     assert "must contain at least one item" in str(exc.value)
-
-# Or use the helper
-assert_invalid(lambda: Order(customer_id="c1", items=[]))
 ```
 
 ---

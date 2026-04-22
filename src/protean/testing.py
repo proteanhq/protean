@@ -67,17 +67,7 @@ an ``EventSequence`` for testing projections::
     result.has(name="Alice", balance=100)
     assert result.projection.balance == 100
 
-Invariant helpers
------------------
-
-``assert_invalid`` and ``assert_valid`` test validation behavior::
-
-    assert_invalid(
-        lambda: OrderPlacementService(order, [empty_inventory])(),
-        message="Product is out of stock",
-    )
-
-    assert_valid(lambda: OrderPlacementService(order, [sufficient_inventory])())
+To test invariants, use ``pytest.raises(ValidationError)`` directly.
 """
 
 from __future__ import annotations
@@ -90,10 +80,10 @@ from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from protean.exceptions import ProteanExceptionWithMessage, ValidationError
+from protean.exceptions import ProteanExceptionWithMessage
 
 if TYPE_CHECKING:
     from protean.core.event import BaseEvent
@@ -831,81 +821,6 @@ class ProjectionResult:
         status = "found" if self.found else "not_found"
         proj_name = self._projection_cls.__name__
         return f"<ProjectionResult({proj_name}) {status}>"
-
-
-# ---------------------------------------------------------------------------
-# Invariant testing helpers
-# ---------------------------------------------------------------------------
-
-
-def assert_invalid(
-    operation: Callable[[], Any],
-    *,
-    message: str | None = None,
-) -> ValidationError:
-    """Assert that an operation raises a ``ValidationError``.
-
-    Args:
-        operation: A callable (typically a lambda) wrapping the code
-            that should fail validation.
-        message: If provided, asserts that this string appears in at
-            least one of the flattened validation error messages.
-
-    Returns:
-        The caught ``ValidationError`` for further assertions.
-
-    Raises:
-        AssertionError: If no ``ValidationError`` is raised, or if
-            *message* is provided and not found in the error messages.
-
-    Example::
-
-        exc = assert_invalid(
-            lambda: OrderPlacementService(order, [empty_inventory])(),
-            message="Product is out of stock",
-        )
-    """
-    try:
-        operation()
-    except ValidationError as exc:
-        if message is not None:
-            flat_messages = [msg for msgs in exc.messages.values() for msg in msgs]
-            if not any(message in m for m in flat_messages):
-                raise AssertionError(
-                    f"Expected validation message containing {message!r}, "
-                    f"got: {flat_messages}"
-                ) from None
-        return exc
-
-    raise AssertionError("Expected ValidationError but no exception was raised")
-
-
-def assert_valid(operation: Callable[[], Any]) -> Any:
-    """Assert that an operation completes without raising a ``ValidationError``.
-
-    Args:
-        operation: A callable (typically a lambda) wrapping the code
-            that should pass validation.
-
-    Returns:
-        The return value of the operation.
-
-    Raises:
-        AssertionError: If a ``ValidationError`` is raised.
-
-    Example::
-
-        assert_valid(
-            lambda: OrderPlacementService(order, [sufficient_inventory])()
-        )
-    """
-    try:
-        return operation()
-    except ValidationError as exc:
-        flat_messages = [msg for msgs in exc.messages.values() for msg in msgs]
-        raise AssertionError(
-            f"Expected no ValidationError but got: {flat_messages}"
-        ) from exc
 
 
 # ---------------------------------------------------------------------------
