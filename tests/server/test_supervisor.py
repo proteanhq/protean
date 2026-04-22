@@ -291,7 +291,16 @@ class TestSupervisorRun:
         mock_ctx = MagicMock()
         mock_ctx.Process.return_value = mock_process
 
-        with patch("multiprocessing.get_context", return_value=mock_ctx):
+        with (
+            patch("multiprocessing.get_context", return_value=mock_ctx),
+            # Multi-worker mode starts a QueueListener — stub it so the
+            # listener's monitor thread does not attempt to poll a
+            # MagicMock queue, which would trigger a thread warning.
+            patch(
+                "protean.server.supervisor._build_queue_listener",
+                return_value=MagicMock(),
+            ),
+        ):
             supervisor._monitor = MagicMock()
             supervisor.run()
 
@@ -335,7 +344,7 @@ class TestSupervisorRun:
 
             mock_ctx.Process.assert_called_once_with(
                 target=_worker_entry,
-                args=("my.domain", True, True, 0),
+                args=("my.domain", True, True, 0, None),
                 name="protean-worker-0",
             )
 

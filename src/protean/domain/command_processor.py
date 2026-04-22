@@ -358,6 +358,14 @@ class CommandProcessor:
                             worker_id="api",
                         )
 
+                        # Validation errors that cross the command boundary
+                        # are potential abuse/attack signals — route them to
+                        # the dedicated protean.security logger so operators
+                        # can alert independently of the access log.
+                        self._emit_security_on_boundary_failure(
+                            exc, command_type, handler_name
+                        )
+
                         # Record failure with short TTL to allow retry
                         if idempotency_key and store.is_active:
                             store.record_error(idempotency_key, "handler_failed")
@@ -416,3 +424,37 @@ class CommandProcessor:
             Optional[BaseCommandHandler]: Command Handler registered to process the command
         """
         return self._domain.event_store.command_handler_for(command)
+
+    @staticmethod
+    def _emit_security_on_boundary_failure(
+        exc: Exception, command_type: str, handler_name: str
+    ) -> None:
+        """Route boundary-crossing ValidationError to ``protean.security``.
+
+        Only fires for ``ValidationError`` — other exceptions are either
+        already routed by the underlying exception class (``InvalidOperationError``,
+        ``InvalidStateError``) or are not security-relevant (infrastructure
+        failures, programmer errors). Safe no-op on any unexpected failure.
+        """
+        from protean.exceptions import ValidationError
+
+        if not isinstance(exc, ValidationError):
+            return
+
+        try:
+            from protean.integrations.logging import (
+                SECURITY_EVENT_VALIDATION_FAILED,
+                log_security_event,
+            )
+        except ImportError:  # pragma: no cover - defensive: package always installed
+            return
+
+        try:
+            log_security_event(
+                SECURITY_EVENT_VALIDATION_FAILED,
+                command_type=command_type,
+                handler=handler_name,
+                error=str(exc)[:256],
+            )
+        except Exception:  # pragma: no cover - defensive: logging must not mask errors
+            pass

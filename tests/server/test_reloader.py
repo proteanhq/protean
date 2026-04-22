@@ -79,7 +79,7 @@ class TestReloaderProcessLifecycle:
 
         reloader._ctx.Process.assert_called_once_with(
             target=_worker_entry,
-            args=("my.domain", True, False, 0),
+            args=("my.domain", True, False, 0, None),
             name="protean-reload-worker",
         )
         mock_process.start.assert_called_once()

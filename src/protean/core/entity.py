@@ -652,11 +652,13 @@ class BaseEntity(BaseModel, OptionsMixin):
             return {} if return_errors else None
 
         errors: dict[str, list[str]] = defaultdict(list)
+        failed_invariants: list[str] = []
 
-        for invariant_method in self._invariants.get(stage, {}).values():
+        for method_name, invariant_method in self._invariants.get(stage, {}).items():
             try:
                 invariant_method(self)
             except ValidationError as err:
+                failed_invariants.append(method_name)
                 for field_name in err.messages:
                     errors[field_name].extend(err.messages[field_name])
 
@@ -679,9 +681,51 @@ class BaseEntity(BaseModel, OptionsMixin):
             return dict(errors) if errors else {}
 
         if errors:
+            self._emit_invariant_failed(stage, failed_invariants, errors)
             raise ValidationError(errors)
 
         return None
+
+    def _emit_invariant_failed(
+        self,
+        stage: str,
+        failed_invariants: list[str],
+        errors: dict[str, list[str]],
+    ) -> None:
+        """Emit a ``protean.security.invariant_failed`` WARNING per failed invariant.
+
+        Called from ``_run_invariants`` right before raising a
+        ``ValidationError``. Skipped when ``return_errors=True`` because
+        callers in that mode are aggregating (e.g., associated entities) — the
+        outer raise site emits for the root aggregate.
+        """
+        try:
+            from protean.integrations.logging import (
+                SECURITY_EVENT_INVARIANT_FAILED,
+                log_security_event,
+            )
+            from protean.utils.reflection import _ID_FIELD_NAME
+        except ImportError:  # pragma: no cover - defensive: package always installed
+            return
+
+        id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
+        aggregate_id = str(getattr(self, id_field_name, "")) if id_field_name else ""
+        # Use the list of invariant method names that raised; fall back to the
+        # aggregated field names so operators still see a useful signal when
+        # the error came from nested state without a method name (e.g.
+        # association-level errors collected recursively).
+        names = failed_invariants or sorted(errors.keys())
+        try:
+            for invariant_name in names:
+                log_security_event(
+                    SECURITY_EVENT_INVARIANT_FAILED,
+                    aggregate=self.__class__.__name__,
+                    aggregate_id=aggregate_id,
+                    invariant=invariant_name,
+                    stage=stage,
+                )
+        except Exception:  # pragma: no cover - defensive: logging must not mask errors
+            pass
 
     def _precheck(self, return_errors: bool = False):
         """Invariant checks performed before entity changes."""

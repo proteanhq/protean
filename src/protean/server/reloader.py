@@ -148,7 +148,7 @@ class Reloader:
         """Spawn a new inner Engine worker process."""
         process = self._ctx.Process(
             target=_worker_entry,
-            args=(self.domain_path, self.test_mode, self.debug, 0),
+            args=(self.domain_path, self.test_mode, self.debug, 0, None),
             name="protean-reload-worker",
         )
         process.start()
