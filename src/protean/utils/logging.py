@@ -39,9 +39,11 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterator, Optional, Union
+from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import structlog
+
+_T = TypeVar("_T")
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +88,7 @@ _FRAMEWORK_LOGGERS_NORMAL = {
     "protean.perf": logging.WARNING,
     "protean.core": logging.WARNING,
     "protean.adapters": logging.WARNING,
+    "protean.adapters.repository.sqlalchemy.slow_query": logging.WARNING,
 }
 
 # Dedicated loggers for the wide event access log and slow-handler detection
@@ -384,17 +387,29 @@ def _read_access_log_counters() -> tuple[list[str], dict[str, int], str]:
         return ([], {"loads": 0, "saves": 0}, "no_uow")
 
 
-def _get_slow_handler_threshold() -> float:
-    """Read slow_handler_threshold_ms from domain config. Returns 0 to disable."""
+def get_logging_config_value(key: str, default: _T) -> _T:
+    """Read a single value from the domain's ``[logging]`` config section.
+
+    Returns ``default`` when no domain is bound to the current context or when
+    the key is absent. Uses ``has_domain_context()`` to avoid triggering the
+    ``LocalProxy`` warning that ``current_domain`` would emit outside a domain
+    context. Any unexpected failure also yields ``default`` so callers on a hot
+    path (e.g. per-query instrumentation) can safely swallow it.
+    """
     try:
+        from protean.domain.context import has_domain_context
         from protean.utils.globals import current_domain
 
-        if current_domain:
-            logging_config = current_domain.config.get("logging", {})
-            return float(logging_config.get("slow_handler_threshold_ms", 500))
+        if has_domain_context():
+            return current_domain.config.get("logging", {}).get(key, default)
     except Exception:
         pass
-    return 500.0
+    return default
+
+
+def _get_slow_handler_threshold() -> float:
+    """Read slow_handler_threshold_ms from domain config. Returns 0 to disable."""
+    return float(get_logging_config_value("slow_handler_threshold_ms", 500))
 
 
 @contextmanager

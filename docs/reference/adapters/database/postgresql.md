@@ -108,6 +108,35 @@ results = domain.providers["default"].raw(
 Raw queries execute immediately in their own transaction context. Results are
 returned as-is from the database without entity conversion.
 
+## Slow Query Detection
+
+Protean installs SQLAlchemy ``before_cursor_execute`` /
+``after_cursor_execute`` listeners on the engine at provider construction
+time and emits two structured log events per query:
+
+- ``protean.adapters.repository.sqlalchemy.query`` at **DEBUG** for every
+  query (opt-in via normal level configuration).
+- ``protean.adapters.repository.sqlalchemy.slow_query`` at **WARNING** when
+  a query exceeds the configured threshold.
+
+Both events carry ``statement``, ``parameters``, ``duration_ms``, and
+``threshold_ms``. The slow-query logger is separate so operators can route
+its alerts independently (e.g. to PagerDuty) while leaving the DEBUG
+tracing logger silent in production.
+
+Tune the behavior via the ``[logging]`` section of ``domain.toml``:
+
+```toml
+[logging]
+slow_query_threshold_ms = 100    # WARN when a query exceeds this (ms)
+slow_query_truncate_chars = 500  # max statement length in log events
+```
+
+Set ``slow_query_threshold_ms = 0`` to WARN on every query (useful during
+performance investigations). Correlation context (``correlation_id``,
+``causation_id``) flows onto every record automatically via the root
+logger's ``ProteanCorrelationFilter``.
+
 ## Limitations
 
 - **Requires Running Server** -- PostgreSQL must be installed and running as a

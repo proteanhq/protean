@@ -3,6 +3,7 @@
 import copy
 import json
 import logging
+import time
 import uuid
 from abc import abstractmethod
 from datetime import date as _date, datetime as _datetime
@@ -11,7 +12,17 @@ from typing import Any  # type: ignore[reportAssignmentType]
 
 import sqlalchemy.dialects.postgresql as psql
 import sqlalchemy.dialects.mssql as mssql
-from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm, text, true
+from sqlalchemy import (
+    Column,
+    MetaData,
+    and_,
+    create_engine,
+    event,
+    or_,
+    orm,
+    text,
+    true,
+)
 from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
@@ -37,11 +48,111 @@ from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import IdentityType, fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
+from protean.utils.logging import get_logging_config_value
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, id_field
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
+
+# Dedicated child loggers for query instrumentation. The slow-query logger is
+# separate so operators can route its WARNINGs independently from other
+# repository errors. The general query logger stays at DEBUG for opt-in tracing.
+slow_query_logger = logging.getLogger(__name__ + ".slow_query")
+query_logger = logging.getLogger(__name__ + ".query")
+
+# Key under which ``_install_query_timing`` stashes a ``perf_counter()`` start
+# value on ``conn.info`` between the SQLAlchemy ``before_cursor_execute`` and
+# ``after_cursor_execute`` events. Cursors run sequentially on a DBAPI
+# connection, so a scalar is sufficient — no stack required.
+_QUERY_START_KEY = "protean_query_start_time"
+
+
+def _truncate_statement(statement: str, max_chars: int) -> str:
+    """Truncate a SQL statement for logging, appending ``...`` if cut."""
+    if max_chars <= 0 or len(statement) <= max_chars:
+        return statement
+    return statement[:max_chars] + "..."
+
+
+def _maybe_log_query(statement: str, parameters: Any, duration_ms: float) -> None:
+    """Emit a DEBUG query event or a WARNING slow-query event based on threshold.
+
+    Uses stdlib loggers so the ``ProteanCorrelationFilter`` installed on the
+    root logger automatically injects ``correlation_id`` / ``causation_id``
+    onto the record. Parameters are passed through unchanged here — redaction
+    is applied by the shared redaction filter/processor (see #919).
+    """
+    try:
+        threshold_ms = float(
+            get_logging_config_value("slow_query_threshold_ms", 100)
+        )
+    except (TypeError, ValueError):
+        threshold_ms = 100.0
+
+    is_slow = duration_ms > threshold_ms
+
+    # Fast path: when the query is not slow and DEBUG tracing is disabled for
+    # the generic query logger (the common production case), skip truncation
+    # and record construction entirely.
+    if not is_slow and not query_logger.isEnabledFor(logging.DEBUG):
+        return
+
+    try:
+        truncate_chars = int(
+            get_logging_config_value("slow_query_truncate_chars", 500)
+        )
+    except (TypeError, ValueError):
+        truncate_chars = 500
+    extra = {
+        "statement": _truncate_statement(statement, truncate_chars),
+        "duration_ms": duration_ms,
+        "parameters": parameters,
+        "threshold_ms": threshold_ms,
+    }
+    if is_slow:
+        slow_query_logger.warning("repository.sqlalchemy.slow_query", extra=extra)
+    else:
+        query_logger.debug("repository.sqlalchemy.query", extra=extra)
+
+
+def _install_query_timing(engine: Any) -> None:
+    """Attach SQLAlchemy engine events that measure query latency.
+
+    Installed once per engine at provider construction time so listener setup
+    does not appear on the hot path. ``conn.info`` holds the ``perf_counter``
+    start value between the ``before_cursor_execute`` / ``after_cursor_execute``
+    events.
+    """
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def _before(
+        conn: Any,
+        cursor: Any,
+        statement: str,
+        parameters: Any,
+        context: Any,
+        executemany: bool,
+    ) -> None:
+        conn.info[_QUERY_START_KEY] = time.perf_counter()
+
+    @event.listens_for(engine, "after_cursor_execute")
+    def _after(
+        conn: Any,
+        cursor: Any,
+        statement: str,
+        parameters: Any,
+        context: Any,
+        executemany: bool,
+    ) -> None:
+        start = conn.info.pop(_QUERY_START_KEY, None)
+        if start is None:  # pragma: no cover - defensive: mismatched before/after
+            return
+        duration_ms = (time.perf_counter() - start) * 1000
+        try:
+            _maybe_log_query(statement, parameters, duration_ms)
+        except Exception:  # pragma: no cover - defensive: logging must never raise
+            logger.debug("slow_query_log_emission_failed", exc_info=True)
 
 
 class GUID(TypeDecorator):
@@ -730,6 +841,8 @@ class SAProvider(BaseProvider):
             json_serializer=_custom_json_dumps,
             **self._additional_engine_args(),
         )
+
+        _install_query_timing(self._engine)
 
         # Use `schema` value if specified as part of the conn info. Otherwise, construct
         #   and use default schema name as `DB`_schema.

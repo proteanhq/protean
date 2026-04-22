@@ -159,6 +159,7 @@ def _default_config():
             "backup_count": 5,
             "slow_handler_threshold_ms": 500,
             "slow_query_threshold_ms": 100,
+            "slow_query_truncate_chars": 500,
             "redact": [
                 "password",
                 "token",
