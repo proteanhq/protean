@@ -43,6 +43,10 @@ from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import structlog
 
+from protean.integrations.logging import (
+    LOG_RECORD_RESERVED_ATTRS as _RESERVED_LOG_RECORD_ATTRS,
+)
+
 _T = TypeVar("_T")
 
 
@@ -96,12 +100,9 @@ _FRAMEWORK_LOGGERS_NORMAL = {
 access_logger = logging.getLogger("protean.access")
 perf_logger = logging.getLogger("protean.perf")
 
-# stdlib LogRecord attributes that must never appear in `extra` to avoid
-# collisions with the logging framework's own fields. Sourced from
-# :mod:`protean.integrations.logging` so both subsystems stay in sync.
-from protean.integrations.logging import (  # noqa: E402
-    LOG_RECORD_RESERVED_ATTRS as _RESERVED_LOG_RECORD_ATTRS,
-)
+# ``_RESERVED_LOG_RECORD_ATTRS`` is imported from ``protean.integrations.logging``
+# at the top of this module; the re-export keeps the name consistent with
+# prior usage while the frozenset lives in a single place.
 
 # Framework-reserved field names that application context cannot overwrite
 _FRAMEWORK_FIELDS = frozenset(

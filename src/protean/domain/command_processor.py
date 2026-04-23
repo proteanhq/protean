@@ -18,6 +18,10 @@ from protean.exceptions import (
     IncorrectUsageError,
     ValidationError,
 )
+from protean.integrations.logging import (
+    SECURITY_EVENT_VALIDATION_FAILED,
+    log_security_event,
+)
 from protean.utils import DomainObjects, Processing, fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -441,11 +445,6 @@ class CommandProcessor:
         when raised inside handler context, so this path covers the remaining
         ``ValidationError`` case only.
         """
-        from protean.integrations.logging import (
-            SECURITY_EVENT_VALIDATION_FAILED,
-            log_security_event,
-        )
-
         log_security_event(
             SECURITY_EVENT_VALIDATION_FAILED,
             command_type=command_type,

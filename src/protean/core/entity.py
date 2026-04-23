@@ -10,13 +10,17 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, dataclass_transf
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
 
-from protean.fields.resolved import ResolvedField
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     InvalidOperationError,
     NotSupportedError,
     ValidationError,
+)
+from protean.fields.resolved import ResolvedField
+from protean.integrations.logging import (
+    SECURITY_EVENT_INVARIANT_FAILED,
+    log_security_event,
 )
 from protean.fields import (
     HasMany,
@@ -36,6 +40,7 @@ from protean.utils import (
     inflection,
 )
 from protean.utils.container import OptionsMixin
+from protean.utils.globals import g
 from protean.utils.reflection import (
     _FIELDS,
     _ID_FIELD_NAME,
@@ -705,14 +710,12 @@ class BaseEntity(BaseModel, OptionsMixin):
         that catches and retries — never reach the ``protean.security``
         channel. The intent is "boundary-crossing only": a failed invariant
         is a security signal only when it surfaces during message handling.
+
+        ``protean.domain.context`` is imported lazily because moving it to
+        the top creates a circular import via ``domain/__init__.py`` →
+        ``adapters`` → ``core.projection`` → ``core.entity``.
         """
         from protean.domain.context import has_domain_context
-        from protean.integrations.logging import (
-            SECURITY_EVENT_INVARIANT_FAILED,
-            log_security_event,
-        )
-        from protean.utils.globals import g
-        from protean.utils.reflection import _ID_FIELD_NAME
 
         if not has_domain_context() or g.get("message_in_context") is None:
             return

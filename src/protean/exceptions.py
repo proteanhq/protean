@@ -20,8 +20,9 @@ def _emit_security_event(event_type: str, args: tuple) -> None:
     checks) therefore stay off the channel — matching the gating applied to
     ``invariant_failed``.
 
-    Imports are lazy because ``protean.integrations.logging`` sits above this
-    module in the import graph.
+    Imports are lazy because ``protean.domain.context`` transitively pulls
+    in ``protean.adapters``, which imports back from ``protean.exceptions``.
+    Lifting these to module level would break package initialization.
     """
     from protean.domain.context import has_domain_context
     from protean.integrations.logging import log_security_event
