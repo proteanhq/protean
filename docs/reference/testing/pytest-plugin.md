@@ -3,9 +3,11 @@
 Auto-registered via the `pytest11` entry point — installed alongside
 Protean. No `conftest.py` registration required.
 
-For the workflow — switching environments, running dual-mode tests,
-regenerating snapshots — see the
-[Pytest Plugin Guide](../../guides/testing/pytest-plugin.md).
+For task-oriented workflow guidance see
+[Dual-Mode Testing](../../guides/testing/index.md#dual-mode-testing) for
+switching environments via `--protean-env`, and
+[Fixtures and Patterns](../../guides/testing/fixtures-and-patterns.md)
+for `DomainFixture` and `conftest.py` recipes.
 
 ## CLI options
 

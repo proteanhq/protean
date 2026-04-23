@@ -51,8 +51,10 @@ lines — "started processing", "loaded aggregate", "validated input",
 reconstruct the full story by filtering on `correlation_id`.
 
 The **wide event pattern** replaces that stream of thin events with one
-**rich event per unit of work**. Stripe's engineering blog codified this
-as the [canonical log line pattern](https://brandur.org/canonical-log-lines):
+**rich event per unit of work**. The term itself was popularised by
+Jamie Brandon's [*Logging Sucks, So Use Wide Events*](https://loggingsucks.com),
+and the same pattern was independently codified by Stripe engineering
+as the [canonical log line](https://brandur.org/canonical-log-lines):
 
 > We emit one log line for every request our application handles. The
 > log line contains every field we might want to query on: request id,
@@ -87,6 +89,38 @@ Examples of queries wide events enable when the right fields are bound:
 
 If your wide event can answer those questions, you've picked the right
 fields. If it can't, you're still doing archaeology.
+
+---
+
+## The stdlib → structlog pipeline bridge
+
+Protean uses `structlog` for its processor chain but keeps stdlib
+`logging.getLogger(__name__)` in framework internals. The two worlds meet
+in a single `structlog.stdlib.ProcessorFormatter` installed on every
+stdlib handler:
+
+```mermaid
+flowchart LR
+    A["Stdlib<br/><code>logging.getLogger(__name__)</code>"] -->|LogRecord| B[ProcessorFormatter]
+    C["Structlog<br/><code>get_logger(__name__)</code>"] -->|event dict| D[structlog pipeline]
+    B -->|foreign_pre_chain| E[shared processor chain]
+    D --> E
+    E --> F{PROTEAN_ENV}
+    F -->|production / staging| G[JSONRenderer]
+    F -->|development / test| H[ConsoleRenderer]
+```
+
+The shared processor chain applies correlation injection, OpenTelemetry
+trace context (when telemetry is enabled), caller-supplied processors,
+tail sampling, and redaction — in that order — before the renderer
+produces the final output. This means a stdlib call like
+`logger.error("db.query_failed", extra={"stmt": stmt})` and a structlog
+call like `get_logger(__name__).error("db.query_failed", stmt=stmt)` emit
+identical JSON in production.
+
+See [ADR-0010 §1](../../adr/0010-logging-overhaul-and-wide-event-architecture.md)
+for why this bridge is preferred over mass-migrating every internal
+module to structlog.
 
 ---
 
@@ -289,19 +323,96 @@ unchanged — no queue overhead.
 
 ## Two layers of wide events
 
-Protean emits wide events at the **handler** layer: one event per
-handled command, event, query, or projector invocation, on the
-`protean.access` logger.
+Protean emits wide events at **two** layers, deliberately kept as separate
+loggers so operators can route and sample them independently:
 
-For applications fronted by FastAPI, the HTTP request is the outermost
-unit of work, which may trigger zero, one, or several command or query
-dispatches. The wide event at the handler layer captures each dispatched
-domain operation; the HTTP envelope is captured separately by FastAPI's
-own middleware layer (see [FastAPI Integration](../../guides/fastapi/index.md)).
+| Logger | Answers | Emitted from |
+|--------|---------|-------------|
+| `protean.access` | *"What did my handler do?"* — aggregate, events raised, repo operations, UoW outcome. | Every command / event / query / projector handler dispatch. |
+| `protean.access.http` | *"What happened at the HTTP boundary?"* — method, path, status, duration, commands dispatched. | FastAPI requests routed through `DomainContextMiddleware`. |
 
-All layers share `correlation_id`, so operators can query `correlation_id = X`
-and see the HTTP envelope plus every domain operation it triggered in a
-single result set.
+A single HTTP request that dispatches three commands produces **one**
+`access.http_completed` event and **three** `access.handler_completed`
+events. All four share the same `correlation_id`, so operators can pull
+the full thread with a single log-aggregator query:
+
+```logql
+{logger=~"protean.access.*"} | json | correlation_id="req-abc-123"
+```
+
+### Why the split
+
+A unified `protean.access` logger covering both layers was considered and
+rejected. Operational concerns differ:
+
+- HTTP 4xx rate limits and domain-level handler failures are different
+  problems with different alerting rules. Routing them under one logger
+  name would force operators to re-split them by regex at ingestion time.
+- HTTP requests are often higher-cardinality than domain operations
+  (scanners, bots, rate-limit probes). Sampling aggressively at the HTTP
+  layer while keeping every domain handler makes more sense as two
+  independent dials.
+
+Because `protean.access.http` is nested under `protean.access` in the
+Python logger hierarchy, filters attached to the parent (like the tail
+sampling filter) naturally apply to both — the split doesn't cost
+operators a second place to configure sampling.
+
+See the [HTTP wide events guide](../../guides/fastapi/http-wide-events.md)
+for the full field schema of `access.http_completed`, and the
+[logging reference](../../reference/logging.md#proteanaccesshttp) for a
+factual lookup of every HTTP-layer field.
+
+### Enrichment flows across both layers
+
+`bind_event_context()` called from a FastAPI endpoint reaches **both**
+the HTTP wide event and the domain wide event. Internally the API does
+two things: it binds via `structlog.contextvars` (picked up by the
+domain-layer emission) and mirrors the kwargs onto
+`g._http_wide_event_extras` (picked up by the middleware when the
+request finishes). The mirror is necessary because Starlette runs
+endpoint functions in a child asyncio task whose contextvars copy is
+not observable from the middleware's parent task.
+
+Application code does not need to know this — one call, both layers. It
+is documented here so operators debugging field drift between the two
+layers know where to look.
+
+---
+
+## Tail sampling: keep what matters at scale
+
+Wide events are rich and expensive. At volume, storing one per message
+can outgrow your log backend's budget. But the naive fix — **head
+sampling** (decide at request entry whether to log it) — loses exactly
+the events you most want at exactly the wrong moment: a 2 % head sample
+drops 98 % of your production errors.
+
+Protean uses **tail sampling**: the keep/drop decision happens after the
+unit of work completes, when `status`, `duration_ms`, and `message_type`
+are known. Operators specify rules:
+
+1. **Always keep errors** — `status="failed"` or level >= `ERROR`.
+2. **Always keep slow requests** — `status="slow"`.
+3. **Always keep critical message types** — glob match on `message_type`,
+   for when a whole family of operations (Payment\*, Auth\*) must be
+   kept regardless of outcome.
+4. **Random sample the rest** at `default_rate`.
+
+Rules run in order, first match wins. Every surviving event carries
+three metadata fields — `sampling_decision`, `sampling_rule`,
+`sampling_rate` — so downstream aggregators can compute accurate
+throughput (`actual_count = sampled_count / sampling_rate`). Without
+those fields, sampled logs silently lie about volume.
+
+The safety defaults (`always_keep_errors=true`, `always_keep_slow=true`)
+are non-negotiable in the sense that a careless `default_rate=0.001`
+combined with unset safety flags would drop the entire debugging signal.
+Operators can turn them off, but the defaults refuse to punish absentmindedness.
+
+See the [logging guide](../../guides/server/logging.md#control-wide-event-volume-with-tail-sampling)
+for enabling it, and the [reference](../../reference/logging.md#loggingsampling)
+for the config schema.
 
 ---
 

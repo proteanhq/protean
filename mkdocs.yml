@@ -259,6 +259,7 @@ nav:
       - guides/consume-state/event-upcasting.md
     - FastAPI Integration:
       - guides/fastapi/index.md
+      - guides/fastapi/http-wide-events.md
       - guides/fastapi/testing-endpoints.md
     - Run the Server:
       - guides/server/index.md

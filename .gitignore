@@ -154,6 +154,7 @@ tmp/*
 .claude/plans
 .claude/scratch
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 
 # Poetry (legacy - removed in favor of uv)
 poetry.lock

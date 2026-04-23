@@ -151,12 +151,13 @@ specific area.
 
 - [Configuration](./reference/configuration/index.md) -- Configure Protean through domain.toml and environment variables.
 - [FastAPI Integration](./guides/fastapi/index.md) -- Domain context middleware, exception handlers, and best practices for using Protean with FastAPI.
+- [HTTP wide events](./guides/fastapi/http-wide-events.md) -- One wide event per HTTP request via `DomainContextMiddleware`, correlation with domain-layer wide events, `[logging.http]` configuration.
 
 **Observability**
 
-- [Logging](./guides/server/logging.md) -- Configure structured logging, enrich wide events with business context, disable auto-configuration.
+- [Logging](./guides/server/logging.md) -- Configure structured logging, enrich wide events with business context, tail sampling, security events, disable auto-configuration.
 - [Logging Reference](./reference/logging.md) -- Every `[logging]` key, every framework logger, every structured event and its fields.
-- [Logging Concepts](./concepts/observability/logging.md) -- Wide events, query-oriented field design, high-cardinality backends, redaction as a pipeline stage.
+- [Logging Concepts](./concepts/observability/logging.md) -- Wide events, query-oriented field design, the two-layer HTTP + domain split, tail sampling, high-cardinality backends, redaction as a pipeline stage.
 
 **Server**
 

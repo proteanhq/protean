@@ -42,6 +42,78 @@ redact = ["password", "token", "secret", "api_key", "authorization", "cookie", "
 | `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults — never replaces them. |
 | `per_logger` | table | `{}` | Map of logger name → level. Applied after the global setup so individual loggers can be tuned. |
 
+### `[logging.sampling]`
+
+Opt-in tail sampling for `protean.access` wide events. Disabled by default;
+every handled message produces one wide event. Enable when wide-event volume
+becomes a cost concern at scale.
+
+```toml
+[logging.sampling]
+enabled = true
+default_rate = 0.05
+always_keep_errors = true
+always_keep_slow = true
+critical_streams = ["Payment*", "Auth*"]
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Master switch. When `false`, no sampling is applied and every event is kept. |
+| `default_rate` | float | `0.05` | Fraction of happy-path events kept (0.0–1.0). Applied after the always-keep rules. |
+| `always_keep_errors` | bool | `true` | Keep events with `status="failed"` or emitted at level `ERROR` / `CRITICAL` / `FATAL`. |
+| `always_keep_slow` | bool | `true` | Keep events with `status="slow"` (duration exceeded `slow_handler_threshold_ms`). |
+| `critical_streams` | list[str] | `[]` | `fnmatch` glob patterns matched against `message_type` (case-sensitive). Matching events are always kept. |
+
+Rules apply in this order; first match wins:
+
+1. `always_keep_errors` — kept with `sampling_rule="error"`.
+2. `always_keep_slow` — kept with `sampling_rule="slow"`.
+3. `critical_streams` glob match — kept with `sampling_rule="critical_stream"`.
+4. Random sampling at `default_rate` — kept with `sampling_rule="random"`.
+5. Otherwise dropped.
+
+Every kept event carries three sampling-metadata fields so aggregators can
+compute accurate throughput — `actual_count = sampled_count / sampling_rate`:
+
+| Field | Type | Values |
+|-------|------|--------|
+| `sampling_decision` | `str` | Always `"kept"`. Dropped events never reach a handler. |
+| `sampling_rule` | `str` | `"error"`, `"slow"`, `"critical_stream"`, or `"random"`. |
+| `sampling_rate` | `float` | `1.0` for always-kept rules; `default_rate` for `"random"`. |
+
+Sampling only affects the `protean.access` logger (and its nested loggers
+like `protean.access.http`). No other logger is filtered.
+
+See [Logging concepts → Tail sampling](../concepts/observability/logging.md#tail-sampling-keep-what-matters-at-scale)
+for the design rationale.
+
+### `[logging.http]`
+
+Controls HTTP-layer wide event emission by
+[`DomainContextMiddleware`](../guides/fastapi/http-wide-events.md). Enabled by
+default; one wide event per HTTP request lands on the `protean.access.http`
+logger.
+
+```toml
+[logging.http]
+enabled = true
+exclude_paths = ["/healthz", "/readyz", "/metrics"]
+log_request_headers = false
+log_response_headers = false
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Master switch for HTTP wide event emission. |
+| `exclude_paths` | list[str] | `[]` | Request paths (exact match) that never emit a wide event. Use for liveness probes, static assets, or high-volume health endpoints. |
+| `log_request_headers` | bool | `false` | Include the incoming request headers dict in the wide event. Redaction applies. |
+| `log_response_headers` | bool | `false` | Include the outgoing response headers dict in the wide event. Redaction applies. |
+
+Explicit keyword arguments to the `DomainContextMiddleware` constructor
+(`emit_http_wide_event=`, `exclude_paths=`, `log_request_headers=`,
+`log_response_headers=`) override these values for that middleware instance.
+
 ### Precedence
 
 Effective values are resolved in this order (first match wins):
@@ -281,6 +353,86 @@ Same fields as `access.handler_completed`, plus:
 | `error_type` | `str` | Exception class name. |
 | `error_message` | `str` | `str(exc)` truncated to 256 characters. |
 
+#### Sample rendered output
+
+A successful `PlaceOrder` command under `PROTEAN_ENV=production` (JSON
+renderer):
+
+```json
+{
+  "event": "access.handler_completed",
+  "level": "info",
+  "logger": "protean.access",
+  "timestamp": "2026-04-23T10:15:32.418912Z",
+  "kind": "command",
+  "message_type": "PlaceOrder",
+  "message_id": "7a2b4f...",
+  "aggregate": "Order",
+  "aggregate_id": "ord-9b1c...",
+  "events_raised": ["OrderPlaced"],
+  "events_raised_count": 1,
+  "repo_operations": {"loads": 0, "saves": 1},
+  "uow_outcome": "committed",
+  "handler": "PlaceOrderHandler.handle_place_order",
+  "duration_ms": 14.27,
+  "status": "ok",
+  "error_type": null,
+  "error_message": null,
+  "correlation_id": "req-abc-123",
+  "causation_id": "",
+  "user_tier": "premium",
+  "order_total": 99.95
+}
+```
+
+`user_tier` and `order_total` come from a `bind_event_context()` call
+inside the handler. A failed handler raises the level to `error`, sets
+`status="failed"`, populates `error_type` / `error_message`, and inlines
+the exception traceback under the `exception` key.
+
+---
+
+### `protean.access.http`
+
+Level: INFO on 2xx/3xx, WARNING on 4xx, ERROR on 5xx and unhandled
+exceptions.
+
+One wide event per HTTP request processed by
+[`DomainContextMiddleware`](../guides/fastapi/http-wide-events.md). Nested
+under `protean.access` so tail sampling attached to the parent namespace
+applies automatically.
+
+#### `access.http_completed`
+
+Emitted on responses with status `< 500`.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `http_method` | `str` | HTTP method (`GET`, `POST`, …). |
+| `http_path` | `str` | Requested URL path, query string excluded. |
+| `http_status` | `int` | Response status code. |
+| `http_duration_ms` | `float` | Time from request entry to response, rounded to 2 decimals. |
+| `route_name` | `str` | FastAPI route name, `""` when no route matched. |
+| `route_pattern` | `str` | FastAPI route pattern (e.g. `"/orders/{id}"`). |
+| `request_id` | `str` | Value of the incoming `X-Request-ID` header or an auto-generated hex (max 200 chars). |
+| `correlation_id` | `str` | Resolved correlation ID (header, used domain correlation, or auto-generated). Empty when no domain context. |
+| `commands_dispatched` | `list[str]` | Type names of commands processed by `domain.process()` during the request, in dispatch order. |
+| `commands_dispatched_count` | `int` | `len(commands_dispatched)`. |
+| `client_ip` | `str` | First hop of `X-Forwarded-For`, else direct peer, else `""`. |
+| `user_agent` | `str` | `User-Agent` header, truncated to 256 characters. |
+| `http_request_headers` | `dict[str, str] \| None` | Present only when `[logging.http].log_request_headers = true`. |
+| `http_response_headers` | `dict[str, str] \| None` | Present only when `[logging.http].log_response_headers = true`. |
+| **Application fields** | any | Everything bound via `bind_event_context()` inside the endpoint; see [Two layers of wide events](../concepts/observability/logging.md#two-layers-of-wide-events). |
+
+#### `access.http_failed`
+
+Emitted on responses with status `>= 500` and on unhandled endpoint
+exceptions. Same fields as `access.http_completed`, plus `error_type` and
+`error_message` when an exception was raised (and `exc_info` carrying the
+traceback). The middleware always echoes `X-Request-ID` on the response —
+including on synthesised 500s — so operators can pivot from an HTTP
+failure back into the log aggregator.
+
 ---
 
 ### `protean.perf`
@@ -298,8 +450,44 @@ Same field set as the wide event.
 ### `protean.security`
 
 Level: WARNING. A dedicated channel for invariant, validation, and
-authorization failures that cross a domain boundary. Populate via
-`protean.integrations.logging.log_security_event(event_type, **fields)`.
+authorization failures that cross a domain boundary. Route this logger
+to a SIEM or alerting pipeline without sampling or format changes
+interfering — it is deliberately narrow so operators can trust that every
+entry merits attention.
+
+#### `log_security_event`
+
+```python
+from protean.integrations.logging import (
+    SECURITY_EVENT_INVARIANT_FAILED,
+    log_security_event,
+)
+
+log_security_event(
+    SECURITY_EVENT_INVARIANT_FAILED,
+    aggregate="Order",
+    aggregate_id="ord-9b1c",
+    invariant="total_must_equal_sum_of_items",
+)
+```
+
+Signature: `log_security_event(event_type: str, **fields: Any) -> None`.
+Emits a WARNING on `protean.security`. The framework fills in
+`correlation_id` and `causation_id` from the active domain context; the
+caller supplies domain-specific fields. Keys that collide with stdlib
+`LogRecord` attributes are silently dropped.
+
+The four event-type constants are exposed so call sites never drift
+typographically from operator queries:
+
+```python
+from protean.integrations.logging import (
+    SECURITY_EVENT_INVARIANT_FAILED,   # "invariant_failed"
+    SECURITY_EVENT_VALIDATION_FAILED,  # "validation_failed"
+    SECURITY_EVENT_INVALID_OPERATION,  # "invalid_operation"
+    SECURITY_EVENT_INVALID_STATE,      # "invalid_state"
+)
+```
 
 | Event name | Emitted for |
 |------------|-------------|

@@ -149,6 +149,11 @@ need by what you're trying to accomplish.
 | Enrich wide events with business context        | [Logging](./guides/server/logging.md#enrich-wide-events-with-business-context) |
 | Redact sensitive fields from logs               | [Logging Reference](./reference/logging.md#redaction) |
 | Tail the access log                             | [Logging Reference](./reference/logging.md#proteanaccess) |
+| Sample wide events at scale                     | [Logging](./guides/server/logging.md#control-wide-event-volume-with-tail-sampling) |
+| Emit a security event for SIEM                  | [Logging](./guides/server/logging.md#emit-a-security-event) |
+| Log one wide event per HTTP request             | [HTTP wide events](./guides/fastapi/http-wide-events.md) |
+| Correlate HTTP and domain wide events           | [HTTP wide events](./guides/fastapi/http-wide-events.md#correlate-http-and-domain-events) |
+| Exclude health checks from the access log       | [HTTP wide events](./guides/fastapi/http-wide-events.md#tune-via-domaintoml) |
 | Disable automatic logging configuration         | [Logging](./guides/server/logging.md#disable-auto-configuration) |
 | Set up structured logging                       | [Logging](./guides/server/logging.md) |
 | Add request-scoped context to logs              | [Logging](./guides/server/logging.md#use-structured-events-in-application-code) |

@@ -122,6 +122,15 @@ For the full story on how correlation IDs propagate through commands, events,
 logging, and OTEL spans, see
 [Correlation and Causation IDs](../observability/correlation-and-causation.md).
 
+### HTTP wide event logging
+
+`DomainContextMiddleware` also emits one **wide event per HTTP request**
+on the `protean.access.http` logger — request envelope, commands
+dispatched during the request, `request_id`, and `correlation_id` shared
+with any domain-layer wide events. See the dedicated
+[HTTP wide events guide](./http-wide-events.md) for configuration,
+enrichment, and tail sampling.
+
 ---
 
 ## Exception handlers

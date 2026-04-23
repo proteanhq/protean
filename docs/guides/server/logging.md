@@ -43,6 +43,59 @@ f-strings so values remain queryable downstream — see
 [why structured logs?](../../concepts/observability/logging.md#why-structured-logs)
 for the rationale.
 
+### What a wide event looks like
+
+When a command handler runs, Protean emits one wide event on the
+`protean.access` logger. Under `PROTEAN_ENV=production` the renderer is
+JSON:
+
+```json
+{
+  "event": "access.handler_completed",
+  "level": "info",
+  "logger": "protean.access",
+  "timestamp": "2026-04-23T10:15:32.418912Z",
+  "kind": "command",
+  "message_type": "PlaceOrder",
+  "aggregate": "Order",
+  "aggregate_id": "ord-9b1c",
+  "events_raised": ["OrderPlaced"],
+  "events_raised_count": 1,
+  "repo_operations": {"loads": 0, "saves": 1},
+  "uow_outcome": "committed",
+  "handler": "PlaceOrderHandler.handle_place_order",
+  "duration_ms": 14.27,
+  "status": "ok",
+  "correlation_id": "req-abc-123",
+  "causation_id": ""
+}
+```
+
+A failing handler lifts the level to `error`, flips `status` to `"failed"`,
+and preserves the traceback:
+
+```json
+{
+  "event": "access.handler_failed",
+  "level": "error",
+  "logger": "protean.access",
+  "kind": "command",
+  "message_type": "ChargeCard",
+  "handler": "ChargeCardHandler.handle_charge_card",
+  "duration_ms": 842.13,
+  "status": "failed",
+  "error_type": "PaymentDeclined",
+  "error_message": "Insufficient funds",
+  "correlation_id": "req-def-456",
+  "exception": "Traceback (most recent call last):\n  ..."
+}
+```
+
+Running under `PROTEAN_ENV=development` swaps the JSON renderer for a
+colored `ConsoleRenderer`, with the same fields inline as
+`key=value` pairs. See the [Logging reference](../../reference/logging.md#proteanaccess)
+for the full field list.
+
 ---
 
 ## Configure via `domain.toml`
@@ -166,6 +219,86 @@ finally:
 
 ---
 
+## Control wide event volume with tail sampling
+
+By default Protean emits one wide event per handled message. At scale —
+millions of messages per day — this can become expensive to store and
+query. **Tail sampling** keeps every error and slow request (the events
+that actually help you debug) and samples the happy path at a configurable
+rate.
+
+Enable it declaratively:
+
+```toml
+[logging.sampling]
+enabled = true
+default_rate = 0.05         # keep 5 % of happy-path events
+always_keep_errors = true   # status="failed" / ERROR+ level
+always_keep_slow = true     # status="slow"
+critical_streams = ["Payment*", "Auth*"]   # fnmatch globs on message_type
+```
+
+Every kept event carries three metadata fields so log aggregators can
+compute accurate throughput from sampled data:
+
+```json
+{
+  "event": "access.handler_completed",
+  "sampling_decision": "kept",
+  "sampling_rule": "random",
+  "sampling_rate": 0.05
+}
+```
+
+To reconstruct the true count: `actual_count = sampled_count / sampling_rate`.
+
+Rules apply in order; first match wins: `always_keep_errors` →
+`always_keep_slow` → `critical_streams` → random sampling at `default_rate`.
+See the [reference](../../reference/logging.md#loggingsampling)
+for per-key details and the
+[concept page](../../concepts/observability/logging.md#tail-sampling-keep-what-matters-at-scale)
+for why tail sampling beats head sampling.
+
+!!! warning "Keep the safety defaults on"
+    Setting `always_keep_errors = false` or `always_keep_slow = false`
+    combined with a low `default_rate` will silently drop the events you
+    most want to see. The safety defaults exist for a reason.
+
+---
+
+## Emit a security event
+
+`protean.security` is a dedicated channel for invariant, validation, and
+authorization failures that cross a domain boundary. Framework code emits
+to this channel automatically for aggregate invariant violations and the
+three `Invalid*` exceptions. To emit from application code:
+
+```python
+from protean.integrations.logging import (
+    SECURITY_EVENT_VALIDATION_FAILED,
+    log_security_event,
+)
+
+def check_admin_access(user, resource):
+    if not user.can_access(resource):
+        log_security_event(
+            SECURITY_EVENT_VALIDATION_FAILED,
+            aggregate="Resource",
+            aggregate_id=resource.id,
+            user_id=user.id,
+            reason="not_authorized",
+        )
+        raise PermissionDenied()
+```
+
+`correlation_id` and `causation_id` are auto-injected from the active
+domain context. Route this logger to your SIEM with no sampling or
+format filters attached so every entry is delivered intact. See the
+[reference](../../reference/logging.md#proteansecurity) for the full list
+of framework-emitted event types.
+
+---
+
 ## Disable auto-configuration
 
 When Protean is embedded inside an application that already configured its
@@ -221,5 +354,9 @@ structlog writes to stdlib handlers.
   spans, and log records.
 - **[OpenTelemetry Integration](./opentelemetry.md)** — distributed tracing
   and how `trace_id` / `span_id` reach log records.
-- **[Production Deployment](./production-deployment.md)** — container logging,
-  log forwarders, rotation, multi-worker hygiene.
+- **[FastAPI HTTP wide events](../fastapi/http-wide-events.md)** — one wide
+  event per HTTP request, correlated with the domain-layer access log.
+- **[Production Deployment](./production-deployment.md)** — container
+  deployment, supervisor configuration, multi-worker mode (see also the
+  [multi-worker logging](../../reference/logging.md#multi-worker-logging)
+  reference for the `QueueHandler` / `QueueListener` hygiene pattern).
