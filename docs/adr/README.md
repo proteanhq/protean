@@ -65,3 +65,19 @@ In other ADRs, reference by number: "as established in ADR-0003."
 ## Template
 
 See `TEMPLATE.md` in the `adr/` directory for the ADR template.
+
+## Current ADRs
+
+| # | Title |
+|---|-------|
+| [0000](0000-guiding-principles.md) | Guiding Principles |
+| [0001](0001-monotonic-integer-event-versioning.md) | Monotonic Integer Event Versioning |
+| [0002](0002-event-publication-visibility.md) | Event Publication Visibility |
+| [0003](0003-one-ir-document-per-bounded-context.md) | One IR Document per Bounded Context |
+| [0004](0004-release-workflow-and-breaking-change-policy.md) | Release Workflow and Breaking Change Policy |
+| [0005](0005-ir-first-schema-generation.md) | IR-First Schema Generation |
+| [0006](0006-standard-json-schema-with-x-extensions.md) | Standard JSON Schema with X-Extensions |
+| [0007](0007-domain-scoped-opentelemetry-providers.md) | Domain-Scoped OpenTelemetry Providers |
+| [0008](0008-centralized-telemetry-gateway-and-traceparent-bridging.md) | Centralized Telemetry Gateway and TraceParent Bridging |
+| [0009](0009-concurrent-event-processing-strategy.md) | Concurrent Event Processing Strategy |
+| [0010](0010-logging-overhaul-and-wide-event-architecture.md) | Logging Overhaul and Wide Event Architecture |
