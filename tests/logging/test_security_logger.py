@@ -74,7 +74,31 @@ class DebitWithInternalRetryHandler(BaseCommandHandler):
 class TestInvariantFailureLogged:
     """Aggregate invariant violations emit ``invariant_failed`` on ``protean.security``."""
 
-    def test_invariant_failure_emits_warning(self, test_domain, caplog):
+    def test_invariant_failure_emits_warning_during_handler(self, test_domain, caplog):
+        """Invariant violation that surfaces during command handling emits the event."""
+        test_domain.register(Balance)
+        test_domain.register(Debit, part_of=Balance)
+        test_domain.register(DebitHandler, part_of=Balance)
+        test_domain.init(traverse=False)
+
+        with caplog.at_level(logging.WARNING, logger="protean.security"):
+            with pytest.raises(ValidationError):
+                test_domain.process(Debit(account_id="acc-1", amount=500))
+
+        invariant_records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.security" and r.getMessage() == "invariant_failed"
+        ]
+        assert len(invariant_records) > 0, "Expected invariant_failed event"
+        rec = invariant_records[0]
+        assert rec.levelno == logging.WARNING
+        assert getattr(rec, "aggregate", None) == "Balance"
+        assert getattr(rec, "aggregate_id", None) == "acc-1"
+        assert getattr(rec, "invariant", None)
+
+    def test_invariant_failure_outside_handler_is_not_logged(self, test_domain, caplog):
+        """Direct aggregate manipulation outside any handler stays off the channel."""
         test_domain.register(Balance)
         test_domain.init(traverse=False)
 
@@ -83,16 +107,14 @@ class TestInvariantFailureLogged:
                 balance = Balance(account_id="acc-1", amount=100)
                 balance.amount = -50
 
-        records = [r for r in caplog.records if r.name == "protean.security"]
-        assert len(records) > 0, "Expected at least one protean.security record"
-        invariant_records = [r for r in records if r.getMessage() == "invariant_failed"]
-        assert len(invariant_records) > 0, "Expected invariant_failed event"
-        rec = invariant_records[0]
-        assert rec.levelno == logging.WARNING
-        # Structured fields are attached via ``extra`` on the helper.
-        assert getattr(rec, "aggregate", None) == "Balance"
-        assert getattr(rec, "aggregate_id", None) == "acc-1"
-        assert getattr(rec, "invariant", None)
+        invariant_records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.security" and r.getMessage() == "invariant_failed"
+        ]
+        assert len(invariant_records) == 0, (
+            "invariant_failed must not fire outside an active handler context"
+        )
 
     def test_invariant_failure_includes_correlation(self, test_domain, caplog):
         test_domain.register(Balance)

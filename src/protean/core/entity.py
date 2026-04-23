@@ -698,14 +698,27 @@ class BaseEntity(BaseModel, OptionsMixin):
         ``ValidationError``. Skipped when ``return_errors=True`` because
         callers in that mode are aggregating (e.g., associated entities) — the
         outer raise site emits for the root aggregate.
+
+        Gated on an active handler context (``g.message_in_context``) so
+        invariant checks performed outside command/event/query/projector
+        handling — fixtures, unit tests against raw aggregates, library code
+        that catches and retries — never reach the ``protean.security``
+        channel. The intent is "boundary-crossing only": a failed invariant
+        is a security signal only when it surfaces during message handling.
         """
         try:
+            from protean.domain.context import has_domain_context
             from protean.integrations.logging import (
                 SECURITY_EVENT_INVARIANT_FAILED,
                 log_security_event,
             )
+            from protean.utils.globals import g
             from protean.utils.reflection import _ID_FIELD_NAME
         except ImportError:  # pragma: no cover - defensive: package always installed
+            return
+
+        # Only emit when an active handler is on the stack.
+        if not has_domain_context() or g.get("message_in_context") is None:
             return
 
         id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)

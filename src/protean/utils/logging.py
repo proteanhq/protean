@@ -183,13 +183,14 @@ def configure_logging(
             list, or configure ``[logging].redact`` in ``domain.toml`` so
             ``Domain.configure_logging()`` forwards it here.
     """
-    # Prepend the redaction processor to extra_processors so downstream
-    # renderers see masked values. Avoid mutating a caller-supplied list.
+    # Append the redaction processor so it runs AFTER any caller-supplied
+    # processors (correlation, OTel, custom enrichment), guaranteeing that
+    # sensitive fields added anywhere upstream are masked before the renderer.
     if redact:
         from protean.integrations.logging import make_redaction_processor
 
         redaction_proc = make_redaction_processor(redact)
-        extra_processors = [redaction_proc] + list(extra_processors or [])
+        extra_processors = list(extra_processors or []) + [redaction_proc]
 
     if dict_config is not None:
         logging.config.dictConfig(dict_config)

@@ -370,7 +370,31 @@ class TestWorkerEntry:
             _worker_entry("my.domain", test_mode=True, debug=False, worker_id=0)
 
         mock_domain.init.assert_called_once()
+        # Domain-level logging config is applied so worker picks up
+        # [logging].redact, per_logger overrides, etc.
+        mock_domain.configure_logging.assert_called_once_with()
         mock_engine.run.assert_called_once()
+
+    def test_worker_entry_debug_propagates_to_domain_config(self):
+        """`debug=True` forwards `level="DEBUG"` to domain.configure_logging."""
+        mock_domain = MagicMock()
+        mock_domain.domain_context.return_value.__enter__ = MagicMock()
+        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_engine = MagicMock()
+        mock_engine.exit_code = 0
+
+        with (
+            patch(
+                "protean.utils.domain_discovery.derive_domain",
+                return_value=mock_domain,
+            ),
+            patch("protean.server.engine.Engine", return_value=mock_engine),
+            patch("protean.utils.logging.configure_logging"),
+            pytest.raises(SystemExit, match="0"),
+        ):
+            _worker_entry("my.domain", test_mode=True, debug=True, worker_id=0)
+
+        mock_domain.configure_logging.assert_called_once_with(level="DEBUG")
 
     def test_worker_entry_domain_derivation_failure(self):
         """_worker_entry exits with code 1 when domain derivation fails."""

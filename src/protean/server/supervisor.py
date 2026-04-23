@@ -289,12 +289,11 @@ def _worker_entry(
     from protean.utils.domain_discovery import derive_domain
     from protean.utils.logging import configure_logging
 
+    # Bootstrap logging so the worker has *some* output for derive/init errors.
+    # This is replaced below by the domain's own configuration (which carries
+    # ``[logging].redact``, per-logger overrides, etc.) once the domain is
+    # available.
     configure_logging(level="DEBUG" if debug else "INFO")
-
-    # Multi-worker mode: replace direct handlers with a QueueHandler so
-    # records are serialized through the supervisor's listener.
-    if log_queue is not None:
-        _install_worker_log_queue(log_queue)
 
     worker_logger = logging.getLogger(f"protean.server.worker-{worker_id}")
     worker_logger.info(f"Worker {worker_id} (PID {os.getpid()}) starting...")
@@ -306,6 +305,23 @@ def _worker_entry(
                 f"Worker {worker_id}: Failed to derive domain from '{domain_path}'"
             )
             sys.exit(1)
+
+        # Apply domain-level logging config (redact list, per_logger levels,
+        # OTel trace context filter when telemetry.enabled is True). This must
+        # run BEFORE installing the QueueHandler so we know which handlers the
+        # listener should mirror, and so filters attached to root by
+        # ``Domain.configure_logging`` survive into the queue path.
+        log_overrides: dict = {}
+        if debug:
+            log_overrides["level"] = "DEBUG"
+        domain.configure_logging(**log_overrides)
+
+        # Multi-worker mode: replace direct handlers with a QueueHandler so
+        # records are serialized through the supervisor's listener. Done after
+        # domain.configure_logging so we replace its handlers, not the
+        # bootstrap ones.
+        if log_queue is not None:
+            _install_worker_log_queue(log_queue)
 
         domain.init()
 

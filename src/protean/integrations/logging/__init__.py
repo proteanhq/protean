@@ -325,10 +325,17 @@ _MAX_REDACT_DEPTH = 5
 
 
 def _build_key_set(redact: Optional[Iterable[str]]) -> frozenset[str]:
-    """Return a frozenset of lowercased redact keys."""
+    """Return a frozenset of lowercased redact keys.
+
+    Always includes :data:`DEFAULT_REDACT_KEYS` so operators cannot
+    accidentally stop masking core fields (``password``, ``token``, …) by
+    supplying a custom list — the configured list is unioned with the
+    defaults rather than replacing them.
+    """
+    defaults = (k.lower() for k in DEFAULT_REDACT_KEYS)
     if not redact:
-        return frozenset(k.lower() for k in DEFAULT_REDACT_KEYS)
-    return frozenset(k.lower() for k in redact)
+        return frozenset(defaults)
+    return frozenset(defaults) | frozenset(k.lower() for k in redact)
 
 
 def _redact(value: Any, keys: frozenset[str], depth: int) -> Any:

@@ -86,6 +86,10 @@ jobs:
 
       - name: Start service containers
         run: |
+          # Remove any leaked containers from a previous run on this runner so
+          # the host port bindings below are guaranteed to be free.
+          docker rm -f postgres redis message-db mssql elasticsearch 2>/dev/null || true
+
           docker run -d --name postgres \
             -p 55432:5432 \
             -e POSTGRES_PASSWORD=postgres \

@@ -91,13 +91,18 @@ class TestRedactionProcessor:
         out = proc(None, "info", event)
         assert out["x_custom_field"] == "[REDACTED]"
 
-    def test_custom_redact_list_does_not_use_defaults(self):
-        """An explicit list replaces (does not extend) the defaults."""
+    def test_custom_redact_list_unions_with_defaults(self):
+        """An explicit list extends (does not replace) the defaults.
+
+        Operators cannot accidentally turn off masking of core fields like
+        ``password`` by supplying their own list — the configured list is
+        unioned with :data:`DEFAULT_REDACT_KEYS`.
+        """
         proc = make_redaction_processor(["only_this"])
-        event = {"event": "evt", "password": "leaked", "only_this": "gone"}
+        event = {"event": "evt", "password": "still_masked", "only_this": "gone"}
         out = proc(None, "info", event)
         assert out["only_this"] == "[REDACTED]"
-        assert out["password"] == "leaked"  # not in the custom list
+        assert out["password"] == "[REDACTED]"
 
     def test_case_insensitive(self):
         proc = protean_redaction_processor
@@ -166,13 +171,13 @@ class TestRedactionFilter:
         assert record.payload["authorization"] == "[REDACTED]"  # type: ignore[attr-defined]
         assert record.payload["safe"] == "v"  # type: ignore[attr-defined]
 
-    def test_custom_redact_list(self):
+    def test_custom_redact_list_unions_with_defaults(self):
         filt = ProteanRedactionFilter(redact=["my_secret_key"])
-        record = self._build_record(my_secret_key="v", password="kept")
+        record = self._build_record(my_secret_key="v", password="still_masked")
         filt.filter(record)
         assert record.my_secret_key == "[REDACTED]"  # type: ignore[attr-defined]
-        # Defaults are not applied when a custom list is given.
-        assert record.password == "kept"  # type: ignore[attr-defined]
+        # Defaults remain in effect alongside the configured custom keys.
+        assert record.password == "[REDACTED]"  # type: ignore[attr-defined]
 
     def test_reserved_attrs_are_not_touched(self):
         filt = ProteanRedactionFilter()
