@@ -274,3 +274,84 @@ class TestConfigureLoggingWiresRedaction:
         output = buf.getvalue()
         assert "s3cret" not in output
         assert "[REDACTED]" in output
+
+
+# ---------------------------------------------------------------------------
+# Contract tests — lock invariants that have been broken in past PRs.
+# These guard against regressions of two specific failure modes:
+#   (1) The redaction stage being inserted ahead of caller-supplied stages,
+#       letting later processors smuggle sensitive fields past the masker.
+#   (2) The configured ``redact`` list silently dropping the framework
+#       defaults (so an operator adding one custom key turns OFF masking
+#       of ``password``/``token``/etc.).
+# ---------------------------------------------------------------------------
+
+
+class TestRedactionContractInvariants:
+    """Locked invariants for the redaction subsystem — do not relax."""
+
+    def test_default_redact_keys_always_present(self):
+        """``_build_key_set`` must be a superset of :data:`DEFAULT_REDACT_KEYS`.
+
+        Operators cannot disable framework-default protection by supplying
+        their own ``[logging].redact`` list. Any change that turns this
+        from a union into a replacement is a security regression.
+        """
+        from protean.integrations.logging import _build_key_set
+
+        defaults = {k.lower() for k in DEFAULT_REDACT_KEYS}
+
+        # No input → defaults only.
+        assert defaults <= _build_key_set(None)
+        # Empty input → still defaults only.
+        assert defaults <= _build_key_set([])
+        # Custom input → defaults are still present.
+        assert defaults <= _build_key_set(["x_custom"])
+        # The custom key is also there.
+        assert "x_custom" in _build_key_set(["x_custom"])
+        # Multiple custom keys, mixed-case input still matched.
+        assert defaults <= _build_key_set(["UPPER_KEY", "x"])
+        assert "upper_key" in _build_key_set(["UPPER_KEY", "x"])
+
+    def test_redaction_runs_after_caller_processors(self):
+        """Sensitive fields injected by a later processor are still masked.
+
+        This is the canonical pipeline-ordering contract: the redaction
+        processor MUST be appended (not prepended) so anything a
+        caller-supplied processor adds to the event dict gets scrubbed
+        before the renderer sees it. A regression here would let a custom
+        processor smuggle ``password=...`` past the masker.
+        """
+
+        # A "caller-supplied" processor that injects a sensitive field
+        # AFTER the user's call site — modelling correlation/OTel/business
+        # processors that enrich events in the chain.
+        def smuggler_processor(logger, method, event_dict):
+            event_dict["password"] = "leaked_via_late_processor"
+            return event_dict
+
+        buf = StringIO()
+        with patch.dict("os.environ", {}, clear=True):
+            from protean.utils.logging import configure_logging as _cfg
+
+            _cfg(
+                level="DEBUG",
+                format="json",
+                redact=["password"],
+                extra_processors=[smuggler_processor],
+            )
+
+        root = logging.getLogger()
+        assert len(root.handlers) == 1
+        root.handlers[0].stream = buf
+        root.setLevel(logging.DEBUG)
+
+        sl = get_logger("protean.test.redaction.contract")
+        sl.info("event_without_password")  # caller didn't pass `password`
+
+        output = buf.getvalue()
+        assert "leaked_via_late_processor" not in output, (
+            "Redaction processor must run AFTER caller-supplied processors — "
+            "if it runs first, fields injected later bypass masking."
+        )
+        assert "[REDACTED]" in output

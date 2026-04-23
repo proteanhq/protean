@@ -41,6 +41,10 @@ Catch these during the Phase 2 self-check — both the pr-reviewer agent and Git
 - New public APIs without `__init__.py` exports
 - Inconsistent naming with adjacent code in the same module
 - Missing edge cases in middleware: no domain context, no command processed, missing headers
+- **Pipeline ordering**: a sanitization/redaction stage inserted in the wrong slot (prepended vs appended). Sanitization runs LAST, so caller-supplied processors can't smuggle sensitive data past it. When you add a stage to a chain, walk through every other stage and ask "does ordering matter relative to this one?".
+- **Defaults & extensibility footgun**: a list-typed parameter that *replaces* its defaults instead of *unioning* with them. Safety/allowlist/redact-style lists should be additive — operators must not be able to disable core protection by supplying a custom list.
+- **Intent-vs-implementation drift on log emissions**: an emission with stated "boundary-only" / "X-only" semantics that fires outside that boundary. Every new `protean.security`, `protean.access`, or `protean.perf` emission needs **both** a positive test (it fires when expected) and a negative test (it does NOT fire when not expected).
+- **Multi-entry-point coverage gap**: a new `domain.toml` config key wired through one bootstrap path but not all. Every new config key must be exercised through (a) `Domain.init()` programmatic, (b) `protean server` worker entry, (c) `protean shell` / `protean test`, (d) FastAPI integration where applicable.
 
 ## Phase 5: CI feedback commands
 
