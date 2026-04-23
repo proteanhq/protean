@@ -317,10 +317,22 @@ max_retries = 3              # Fast retries before propagating
 base_delay_seconds = 0.05    # 50ms initial backoff
 max_delay_seconds = 1.0      # Cap backoff at 1 second
 
+# DLQ maintenance (retention + alerting)
+# Off by default; opt in by setting enabled = true.
+[server.dlq]
+enabled = false              # Master switch for the maintenance task
+retention_hours = 168        # Trim DLQ entries older than this (default: 7 days)
+alert_threshold = 100        # Warn when a DLQ stream reaches this depth
+check_interval_seconds = 60  # How often the maintenance cycle runs
+alert_callback = "myapp.alerts.notify_oncall"  # Optional dotted path, called on breach
+
 # Handler-specific overrides
 [server.subscriptions.OrderEventHandler]
 profile = "fast"
 messages_per_tick = 50
+# Per-subscription DLQ overrides (inherit from [server.dlq] when unset)
+dlq_retention_hours = 72
+dlq_alert_threshold = 25
 
 [server.subscriptions.InventoryProjector]
 subscription_type = "event_store"
@@ -340,6 +352,32 @@ Pre-configured settings for common scenarios:
 | `projection` | event_store | Building read models |
 
 Read more in [Server → Configuration](../server/configuration.md) section.
+
+#### DLQ Maintenance
+
+The `[server.dlq]` section configures a periodic maintenance task that
+trims old DLQ entries and alerts when DLQ streams grow deep. It is
+**disabled by default** — set `enabled = true` to activate it. Requires
+a broker that implements the DLQ contract (currently Redis Streams).
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `false` | Master switch. When `true`, the Engine starts the maintenance task. |
+| `retention_hours` | int | `168` | Trim DLQ entries older than this window (default 7 days). |
+| `alert_threshold` | int | `100` | Emit a `WARNING` log and invoke `alert_callback` when a DLQ stream reaches this depth. |
+| `check_interval_seconds` | int | `60` | How often the maintenance cycle runs. |
+| `alert_callback` | str \| None | `None` | Dotted import path to a callable invoked on threshold breach. Signature: `(dlq_stream: str, depth: int, threshold: int) -> None`. Exceptions raised by the callback are caught and logged. |
+
+Per-subscription overrides are available on each handler's
+`[server.subscriptions.<HandlerName>]` block:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `dlq_retention_hours` | int \| None | inherit | Override `retention_hours` for this subscription's DLQ stream only. |
+| `dlq_alert_threshold` | int \| None | inherit | Override `alert_threshold` for this subscription's DLQ stream only. |
+
+For the operational workflow — discover, inspect, replay, purge — see
+[Dead Letter Queues](../../guides/server/dead-letter-queues.md).
 
 ### `outbox`
 

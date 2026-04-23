@@ -34,6 +34,11 @@ Declare attributes on your domain elements. Pick the right field type,
 make fields required, set defaults, constrain values, add custom
 validation, and wire up relationships.
 
+### [Identity](./identity.md)
+
+Configure how aggregate and entity identifiers are generated — UUIDs,
+integers, user-supplied keys, or a custom function you write yourself.
+
 ### [Relationships](./relationships.md)
 
 Connect domain elements with `HasOne`, `HasMany`, and `Reference` fields.
@@ -47,9 +52,9 @@ can be processed synchronously or asynchronously.
 
 ## Related
 
-- [Identity](../../reference/domain-elements/identity.md) -- Configure
-  identity strategies, types, and custom generators.
 - [Fields Reference](../../reference/fields/index.md) -- All field types,
   arguments, and definition styles.
+- [Identity Reference](../../reference/domain-elements/identity.md) -- Full
+  configuration surface for identity strategies and types.
 - [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md)
   -- Guidance on when to use an aggregate vs. entity vs. value object.

@@ -50,132 +50,36 @@ sequenceDiagram
 
 ## How It Works
 
-### 1. Event Storage
+Three things happen, in order:
 
-When you save an aggregate that raises events, Protean stores the events in the
-outbox table within the same transaction:
+**1. Event storage.** When an aggregate is saved through a repository,
+any events it raised are written to the outbox table *within the same
+transaction* as the aggregate state. If the transaction rolls back,
+both disappear together; if it commits, both are durable.
 
-```python
-with domain.domain_context():
-    order = Order.create(customer_id="123", items=[...])
-    # Order raises OrderCreated event internally
+**2. Outbox processing.** The `OutboxProcessor` runs as part of the
+Engine, polling the outbox table, publishing each row to the configured
+broker, and marking the row as `PUBLISHED` on success. Failures are
+retried with exponential backoff.
 
-    domain.repository_for(Order).add(order)
-    # Transaction commits:
-    # - Order saved to orders table
-    # - OrderCreated saved to outbox table
-```
+**3. Message consumption.** StreamSubscription consumers read from the
+broker stream, just as they would for any other message. They have no
+awareness of the outbox — it's an implementation detail of the
+publisher side.
 
-### 2. Outbox Processing
+The guarantee that holds this together: step 1 is transactional with
+the aggregate save. Steps 2 and 3 are eventually consistent but never
+lossy — a row that's written in the outbox is published exactly once
+(with at-least-once semantics from the consumer's perspective).
 
-The `OutboxProcessor` runs as part of the Engine, polling the outbox table and
-publishing messages to the configured broker:
+One outbox processor runs per database provider. A domain with one
+database has one processor; a domain with a `default` database and an
+`analytics` database has two, each publishing its own outbox to the
+configured broker.
 
-```python
-# Simplified flow
-messages = outbox_repo.find_unprocessed(limit=10)
-
-for message in messages:
-    message.start_processing(worker_id)
-    broker.publish(message.stream_name, message.data)
-    message.mark_published()
-```
-
-### 3. Message Consumption
-
-StreamSubscription consumers read from the broker stream:
-
-```python
-@domain.event_handler(part_of=Inventory, stream_category="order")
-class InventoryEventHandler:
-    @handle(OrderCreated)
-    def reserve_stock(self, event):
-        # Process the event
-        ...
-```
-
-## Configuration
-
-### Enabling the Outbox
-
-The outbox is automatically enabled when you set the subscription type to
-`"stream"`.  This is the **recommended** way to enable the outbox:
-
-```toml
-# domain.toml
-[server]
-default_subscription_type = "stream"   # Enables outbox automatically
-
-[outbox]
-broker = "default"         # Which broker to publish to
-external_brokers = []      # External broker(s) for published events
-messages_per_tick = 10     # Messages processed per cycle
-tick_interval = 1          # Seconds between cycles
-
-# Retry configuration
-[outbox.retry]
-max_attempts = 3           # Maximum retry attempts
-base_delay_seconds = 60    # Initial retry delay
-max_backoff_seconds = 3600 # Maximum retry delay (1 hour)
-backoff_multiplier = 2     # Exponential backoff multiplier
-jitter = true              # Add randomization to delays
-jitter_factor = 0.25       # ±25% randomization
-
-# Cleanup configuration
-[outbox.cleanup]
-published_retention_hours = 168   # Keep published messages for 7 days
-abandoned_retention_hours = 720   # Keep abandoned messages for 30 days
-cleanup_interval_ticks = 86400    # Cleanup every 86400 ticks
-```
-
-!!! note "Backward Compatibility"
-    The legacy `enable_outbox = true` flag still works and will activate the
-    outbox regardless of subscription type.  However, setting
-    `enable_outbox = true` with `default_subscription_type = "event_store"`
-    is a configuration error (the outbox publishes to Redis Streams, but
-    event-store subscriptions never read from them).
-
-### Setting Up the Outbox Table
-
-Before starting the server with outbox enabled, create the outbox database
-table:
-
-```bash
-# Create all tables (aggregates, entities, projections, outbox)
-protean db setup --domain my_domain
-
-# Or create only the outbox table (useful when migrating)
-protean db setup-outbox --domain my_domain
-```
-
-### Broker Configuration
-
-Ensure you have a broker configured for the outbox:
-
-```toml
-[brokers.default]
-provider = "redis"
-URI = "redis://localhost:6379/0"
-```
-
-### Multiple Database Providers
-
-If your domain uses multiple database providers, Protean creates an outbox
-processor for each one:
-
-```toml
-[databases.default]
-provider = "postgresql"
-database_uri = "postgresql://localhost/main"
-
-[databases.analytics]
-provider = "postgresql"
-database_uri = "postgresql://localhost/analytics"
-
-# Creates two outbox processors:
-# - outbox-processor-default-to-default
-# - outbox-processor-analytics-to-default
-```
+See the [Outbox Guide](../../guides/server/outbox.md) for enabling the
+outbox, creating the table, configuring retries and cleanup, and
+investigating abandoned messages.
 
 ## External Dispatch for Published Events
 
@@ -219,15 +123,7 @@ External messages use a stripped envelope that removes internal-only fields
 `checksum`) while preserving fields external consumers need: headers for
 deduplication, domain context for routing, and user-provided extensions.
 
-### Configuration
-
-```toml
-[outbox]
-broker = "default"
-external_brokers = ["partner_events"]   # One or more external broker names
-```
-
-For the full setup guide, see
+For setup, see
 [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md).
 For architectural trade-offs, see
 [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md).
@@ -262,7 +158,7 @@ stateDiagram-v2
 
 ## Retry Mechanism
 
-Failed messages are automatically retried with exponential backoff:
+Failed messages are retried with exponential backoff:
 
 ```
 Attempt 1: Immediate
@@ -272,36 +168,24 @@ Attempt 4: 240 seconds later (base_delay * 4)
 ... up to max_backoff_seconds
 ```
 
-With jitter enabled (default), delays are randomized by ±25% to prevent
-thundering herd problems.
+With jitter enabled, delays are randomized by ±25% to prevent
+thundering-herd problems when a broker recovers and many messages
+become retry-eligible simultaneously.
 
-### Retry Configuration
+After `max_attempts` failures, the message is marked `ABANDONED` and
+stops retrying. It remains in the outbox table as a durable record of
+the failure until cleanup removes it.
 
-```toml
-[outbox.retry]
-max_attempts = 3           # Give up after 3 attempts
-base_delay_seconds = 60    # Start with 1 minute delay
-max_backoff_seconds = 3600 # Cap at 1 hour
-backoff_multiplier = 2     # Double delay each attempt
-jitter = true              # Add randomization
-jitter_factor = 0.25       # ±25%
-```
+For tuning retry attempts, backoff, and jitter, see the
+[Outbox Guide](../../guides/server/outbox.md#configure-retries).
 
 ## Message Cleanup
 
-Old messages are automatically cleaned up based on retention settings:
-
-```toml
-[outbox.cleanup]
-published_retention_hours = 168   # Remove published after 7 days
-abandoned_retention_hours = 720   # Remove abandoned after 30 days
-cleanup_interval_ticks = 86400    # Run cleanup daily (approx)
-```
-
-Cleanup removes:
-
-- **Published messages**: Successfully delivered, kept for audit trail
-- **Abandoned messages**: Failed after max retries
+`PUBLISHED` and `ABANDONED` rows are purged on a schedule so the outbox
+table doesn't grow unbounded. Published rows are kept long enough to
+serve as an audit trail; abandoned rows are kept long enough to
+investigate. The retention windows are separately configurable — see
+[Outbox Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
 
 ## Multi-Worker Support
 
@@ -363,68 +247,25 @@ duration (default 5 minutes). The message remains in `PROCESSING` status with
 an expired `locked_until` timestamp. Another worker detects the expired lock
 and the message becomes eligible for reprocessing.
 
-## Monitoring
+## Operational Signals
 
-The outbox processor logs important events:
+Four signals characterize outbox health. Any of them drifting
+persistently is worth investigating:
 
-```
-DEBUG: Found 10 messages to process
-DEBUG: Published to orders: abc12345...
-DEBUG: Outbox batch: 10/10 processed
-INFO:  Outbox cleanup: removed 100 messages (95 published, 5 abandoned)
-```
+| Signal | Meaning | Likely cause when elevated |
+|---|---|---|
+| Pending count | Rows waiting to be processed | Worker throughput below publish rate; broker slow or unreachable |
+| Failed count | Rows that failed at least once | Transient broker errors; downstream schema drift |
+| Retry rate | Fraction of attempts that retry | Persistent broker issue; publish-side bug |
+| Abandoned count | Rows that exhausted retries | Chronic failure — needs investigation before cleanup removes the evidence |
 
-### Key Metrics to Monitor
+Runtime visibility is available via Observatory's `/api/outbox`
+endpoint and via direct queries on the outbox repository. See
+[Outbox Guide: Investigate abandoned messages](../../guides/server/outbox.md#investigate-abandoned-messages).
 
-| Metric | Description | Action if High |
-|--------|-------------|----------------|
-| Pending messages | Messages waiting to be processed | Increase workers or throughput |
-| Failed messages | Messages that failed publishing | Check broker connectivity |
-| Retry rate | Messages being retried | Investigate root cause |
-| Processing time | Time to process a batch | Tune batch size |
+## Related
 
-## Best Practices
-
-### 1. Size Your Batches Appropriately
-
-```toml
-[outbox]
-messages_per_tick = 100  # Larger batches for high throughput
-tick_interval = 0        # No delay between batches
-```
-
-### 2. Configure Retries Conservatively
-
-```toml
-[outbox.retry]
-max_attempts = 5         # More attempts for critical messages
-base_delay_seconds = 30  # Start with shorter delays
-```
-
-### 3. Monitor Abandoned Messages
-
-Set up alerts for abandoned messages - they indicate persistent problems:
-
-```python
-# Query for abandoned messages
-abandoned = outbox_repo.find_by_status(OutboxStatus.ABANDONED)
-if abandoned:
-    alert("Outbox has abandoned messages!")
-```
-
-### 4. Use Appropriate Retention
-
-Balance audit requirements with storage costs:
-
-```toml
-[outbox.cleanup]
-published_retention_hours = 24    # Keep 1 day for debugging
-abandoned_retention_hours = 168   # Keep 7 days for investigation
-```
-
-## Next Steps
-
-- [Subscription Types](../../reference/server/subscription-types.md) - How StreamSubscription consumes
-  outbox messages
-- [Configuration](../../reference/server/configuration.md) - Full configuration reference
-- [Running the Server](../../guides/server/index.md) - Starting the server with outbox processing
+- [Using the Outbox](../../guides/server/outbox.md) — Enable the outbox, create the table, configure retries and cleanup, investigate abandoned messages.
+- [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md) — Routing events to partner systems.
+- [Subscription Types](../../reference/server/subscription-types.md) — How StreamSubscription consumes outbox-published messages.
+- [Server Configuration](../../reference/server/configuration.md) — Full configuration reference.

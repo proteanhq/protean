@@ -77,6 +77,7 @@ specific area.
 - [Activate the Domain](./guides/compose-a-domain/activate-domain.md) -- Bind the domain to a context for use.
 - [When to Compose](./guides/compose-a-domain/when-to-compose.md) -- Lifecycle and timing of domain composition.
 - [Configure for Production](./guides/compose-a-domain/production-configuration.md) -- Environment overlays, env var substitution, adapter selection.
+- [Choosing Adapters](./guides/compose-a-domain/choosing-adapters.md) -- Pick the right database, broker, event store, and cache for each workload.
 - [Inspecting the IR](./guides/compose-a-domain/inspecting-the-ir.md) -- Generate and explore the domain's Intermediate Representation.
 - [Schema Generation](./guides/compose-a-domain/schema-generation.md) -- Generate JSON Schema files for domain elements.
 - [Domain Constructor](./reference/domain-elements/domain-constructor.md) -- `Domain()` parameters: root_path, name, config, identity_function.
@@ -90,11 +91,12 @@ specific area.
 - [Entities](./guides/domain-definition/entities.md) -- Objects with identity that compose aggregates.
 - [Value Objects](./guides/domain-definition/value-objects.md) -- Immutable descriptive objects identified by their attributes.
 - [Fields](./guides/domain-definition/fields.md) -- Declare attributes on domain elements: types, required flags, defaults, constraints, validators.
+- [Identity](./guides/domain-definition/identity.md) -- Configure identity generation: UUIDs, integers, user-supplied keys, or a custom function.
 - [Expressing Relationships](./guides/domain-definition/relationships.md) -- Model associations between domain elements.
 - [Events](./guides/domain-definition/events.md) -- Model past changes as discrete, meaningful facts.
 - [Choosing Element Types](./concepts/building-blocks/choosing-element-types.md) -- Checklists and decision flows for choosing element types.
 
-**Fields**
+**Field & Identity Reference**
 
 - [Fields Overview](./reference/fields/index.md) -- Field types, attributes, options, and functionalities.
 - [Defining Fields](./reference/fields/defining-fields.md) -- Three styles for declaring fields: annotation, assignment, and raw Pydantic.
@@ -102,7 +104,7 @@ specific area.
 - [Container Fields](./reference/fields/container-fields.md) -- Fields that hold and embed value objects.
 - [Association Fields](./reference/fields/association-fields.md) -- HasOne, HasMany, and Reference fields for relationships.
 - [Common Arguments](./reference/fields/arguments.md) -- Shared field arguments like `required`, `default`, and `description`.
-- [Identity](./reference/domain-elements/identity.md) -- Identity generation strategies, types, and configuration.
+- [Identity Reference](./reference/domain-elements/identity.md) -- Identity strategies, types, and per-field customization.
 
 ### Add Rules and Behavior
 
@@ -162,6 +164,8 @@ specific area.
 - [OpenTelemetry Integration](./guides/server/opentelemetry.md) -- Distributed tracing, metrics, APM setup, and TraceParent propagation with OpenTelemetry.
 - [Running the Server](./guides/server/index.md) -- Start, configure, and operate the Protean server.
 - [Error Handling](./guides/server/error-handling.md) -- Retry logic, dead letter queues, and recovery mechanisms for message processing failures.
+- [Dead Letter Queues](./guides/server/dead-letter-queues.md) -- Discover, inspect, replay, and purge messages that failed after retries were exhausted.
+- [Using the Outbox](./guides/server/outbox.md) -- Reliably publish domain events via the outbox pattern; configuration, retries, cleanup.
 - [Dispatching Published Events to External Brokers](./guides/server/external-event-dispatch.md) -- Configure external brokers to deliver published events to other bounded contexts.
 
 **CLI**
@@ -189,6 +193,7 @@ specific area.
 - [Event Sourcing Tests](./guides/testing/event-sourcing-tests.md) -- Fluent test DSL for event-sourced aggregates using `protean.testing.given`.
 - [Integration Tests](./guides/testing/integration-tests.md) -- Verify behavior with real infrastructure.
 - [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md) -- Reusable pytest fixtures and conftest recipes.
+- [Pytest Plugin Reference](./reference/testing/pytest-plugin.md) -- `--protean-env`, `--update-snapshots`, and the registered markers.
 
 ---
 

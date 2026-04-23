@@ -1,41 +1,41 @@
 # Type Checking
 
-Protean ships with a **mypy plugin** that makes static type checkers understand
-the framework's runtime transformations. Without the plugin, tools like mypy
-report false errors because they cannot see the base classes and field types
-that Protean injects dynamically.
+Protean ships a **mypy plugin** that teaches static type checkers about
+the framework's runtime transformations — field factories that resolve
+to native Python types and decorators that inject base classes. Without
+the plugin, mypy reports false errors on perfectly correct Protean code.
 
-## Why a Plugin is Needed
+The plugin handles two patterns:
 
-Protean uses two patterns that are invisible to static analysis:
+1. **Field factories** — `String()`, `Integer()`, and peers return
+   `FieldSpec` at the class level but resolve to `str`, `int`, etc. at
+   runtime. The plugin maps each factory to its Python type.
+2. **Decorator-based registration** — `@domain.aggregate`,
+   `@domain.entity`, and the other element decorators dynamically inject
+   base classes at runtime. The plugin injects the same base classes
+   during type analysis so methods like `raise_()`, `to_dict()`, and
+   injected attributes like `id` are visible to mypy.
 
-1. **Field factories** — `String()`, `Integer()`, etc. return `FieldSpec`
-   objects at the class level, but at runtime the descriptor protocol resolves
-   them to `str`, `int`, and so on. The plugin teaches mypy the correct return
-   types.
+For the background on why this is needed, see
+[Field System Internals](../../concepts/internals/field-system.md).
 
-2. **Decorator-based registration** — `@domain.aggregate`, `@domain.entity`,
-   and other decorators call `derive_element_class()` at runtime, which
-   dynamically injects a base class (e.g. `BaseAggregate`) via
-   `type(name, (base_cls,), ...)`. The plugin injects these base classes
-   during type analysis so that methods like `raise_()`, `to_dict()`, and
-   auto-injected attributes like `id` are visible.
+## Enabling the plugin
 
-## Quick Setup
-
-Add the plugin to your mypy configuration in `pyproject.toml`:
+Add the plugin to `[tool.mypy]` in `pyproject.toml` (or an equivalent
+`mypy.ini` / `setup.cfg`):
 
 ```toml
 [tool.mypy]
 plugins = ["protean.ext.mypy_plugin"]
 ```
 
-That's it. Both field type resolution and decorator base class injection are
-enabled automatically.
+Field type resolution and decorator base class injection are both
+enabled by this single entry — there are no further flags.
 
-## What the Plugin Does
+Debug mode: set `PROTEAN_MYPY_DEBUG=1` to print plugin diagnostic
+traces to stderr while mypy runs.
 
-### Field Type Resolution
+## Field Type Resolution
 
 Field factories resolve to their Python types:
 
@@ -58,40 +58,31 @@ Fields are `Optional` (union with `None`) unless they are `required=True`,
 have a `default`, or are `identifier=True`. Container fields (`List`, `Dict`)
 always have an implicit default and are never `Optional`.
 
-### Decorator Base Class Injection
+## Decorator Base Class Injection
 
-When you write:
+After `@domain.aggregate`-decorated (or equivalently decorated) classes are
+analyzed, mypy sees them as if they inherit from the corresponding base
+class. For aggregates, this exposes:
 
-```python
-@domain.aggregate
-class Customer:
-    name = String(required=True)
-```
-
-The plugin makes mypy see `Customer` as if it inherits from `BaseAggregate`,
-giving access to:
-
-- `customer.id` — auto-injected `str` for aggregates and entities
-- `customer.raise_(event)` — raise domain events
-- `customer.to_dict()` — serialize to dictionary
-- `customer._events` — event list
+- `.id` — auto-injected `str`
+- `.raise_(event)`
+- `.to_dict()`
+- `._events`
 - All other `BaseAggregate` methods and attributes
 
-This works for all 15 decorator types: `aggregate`, `entity`, `value_object`,
-`command`, `event`, `domain_service`, `command_handler`, `event_handler`,
-`application_service`, `subscriber`, `projection`, `projector`, `repository`,
-`database_model`, and `email`.
+Supported decorators: `aggregate`, `entity`, `value_object`, `command`,
+`event`, `domain_service`, `command_handler`, `event_handler`,
+`application_service`, `subscriber`, `projection`, `projector`,
+`repository`, `database_model`, `email`.
 
-Both `@domain.aggregate` (without parens) and `@domain.aggregate()` (with
-parens) are supported.
+Both `@domain.aggregate` (bare) and `@domain.aggregate()` (called) forms
+are detected.
 
-## VS Code Setup
+## VS Code
 
-For the best experience in VS Code:
-
-1. Install the **mypy** extension (`ms-python.mypy-type-checker`)
-2. Disable Pylance's type checking (keep Pylance for autocomplete and
-   go-to-definition):
+When running mypy through the VS Code **Mypy Type Checker** extension
+(`ms-python.mypy-type-checker`), Pylance's strict checker has to be
+disabled because it cannot read the plugin. The settings combination:
 
 ```json
 {
@@ -101,8 +92,8 @@ For the best experience in VS Code:
 }
 ```
 
-The project's `.vscode/settings.json` and `.vscode/extensions.json` already
-include these settings and extension recommendations.
+Protean's own repository ships this configuration in its
+`.vscode/settings.json` for reference.
 
 ## Known Limitations
 

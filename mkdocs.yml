@@ -213,12 +213,14 @@ nav:
       - guides/compose-a-domain/activate-domain.md
       - guides/compose-a-domain/when-to-compose.md
       - guides/compose-a-domain/production-configuration.md
+      - guides/compose-a-domain/choosing-adapters.md
     - Model Your Domain:
       - guides/domain-definition/index.md
       - guides/domain-definition/aggregates.md
       - guides/domain-definition/entities.md
       - guides/domain-definition/value-objects.md
       - guides/domain-definition/fields.md
+      - guides/domain-definition/identity.md
       - guides/domain-definition/relationships.md
       - guides/domain-definition/events.md
     - Add Rules and Behavior:
@@ -261,6 +263,8 @@ nav:
     - Run the Server:
       - guides/server/index.md
       - guides/server/error-handling.md
+      - guides/server/dead-letter-queues.md
+      - guides/server/outbox.md
       - guides/server/production-deployment.md
       - guides/server/using-priority-lanes.md
       - guides/server/external-event-dispatch.md

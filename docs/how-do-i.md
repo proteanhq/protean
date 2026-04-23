@@ -25,6 +25,10 @@ need by what you're trying to accomplish.
 | Connect entities with relationships             | [Relationships](./guides/domain-definition/relationships.md) |
 | Add typed attributes to domain objects          | [Fields](./guides/domain-definition/fields.md) |
 | Choose between field definition styles          | [Defining Fields](./reference/fields/defining-fields.md) |
+| Configure how aggregate IDs are generated       | [Identity](./guides/domain-definition/identity.md) |
+| Use integer or native UUID identifiers          | [Identity: Change the identity type](./guides/domain-definition/identity.md#change-the-identity-type) |
+| Mint custom identifiers (epoch, prefixed, snowflake) | [Identity: Use a custom identity function](./guides/domain-definition/identity.md#use-a-custom-identity-function) |
+| Accept user-supplied identifiers (email, SKU, tax ID) | [Identity: Accept identities from the outside](./guides/domain-definition/identity.md#accept-identities-from-the-outside) |
 | Define a domain event                           | [Events](./guides/domain-definition/events.md) |
 | Understand field arguments and options          | [Arguments](./reference/fields/arguments.md) |
 | Use simple scalar fields (String, Integer...)   | [Simple Fields](./reference/fields/simple-fields.md) |
@@ -105,8 +109,10 @@ need by what you're trying to accomplish.
 | Register domain elements                        | [Register Elements](./guides/compose-a-domain/register-elements.md) |
 | Initialize and activate a domain                | [Initialize Domain](./guides/compose-a-domain/initialize-domain.md) |
 | Configure for production with environment overlays | [Configure for Production](./guides/compose-a-domain/production-configuration.md) |
+| Choose a database, broker, cache, or event store adapter | [Choosing Adapters](./guides/compose-a-domain/choosing-adapters.md) |
 | Configure databases, brokers, and caches        | [Configuration](./reference/configuration/index.md) |
-| Understand identity and ID generation           | [Identity](./reference/domain-elements/identity.md) |
+| Understand identity and ID generation           | [Identity](./guides/domain-definition/identity.md) |
+| Look up all identity configuration options      | [Identity Reference](./reference/domain-elements/identity.md) |
 | Understand stream categories                    | [Stream Categories](./concepts/async-processing/stream-categories.md) |
 | Activate a domain for use                       | [Activate Domain](./guides/compose-a-domain/activate-domain.md) |
 | Understand element decorators                   | [Element Decorators](./reference/domain-elements/element-decorators.md) |
@@ -128,7 +134,10 @@ need by what you're trying to accomplish.
 |-------------------------------------------------|-------|
 | Process events and commands asynchronously      | [Server](./concepts/async-processing/index.md) |
 | Understand subscriptions and event processing   | [Subscriptions](./concepts/async-processing/subscriptions.md) |
-| Use the outbox pattern for reliable messaging   | [Outbox](./concepts/async-processing/outbox.md) |
+| Use the outbox pattern for reliable messaging   | [Using the Outbox](./guides/server/outbox.md) |
+| Configure outbox retries, retention, and cleanup | [Using the Outbox](./guides/server/outbox.md#configure-retries) |
+| Investigate abandoned outbox messages           | [Using the Outbox](./guides/server/outbox.md#investigate-abandoned-messages) |
+| Understand the outbox pattern conceptually      | [Outbox Pattern](./concepts/async-processing/outbox.md) |
 | Dispatch published events to external brokers   | [External Event Dispatch](./guides/server/external-event-dispatch.md) |
 | Understand how correlation IDs propagate end-to-end | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md) |
 | Inject correlation IDs into logs automatically  | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#structured-logging-setup) |
@@ -154,7 +163,11 @@ need by what you're trying to accomplish.
 | Run a bulk migration with priority lanes        | [Running Data Migrations with Priority Lanes](./patterns/running-data-migrations-with-priority-lanes.md) |
 | Classify and handle errors in async handlers    | [Classify Async Processing Errors](./patterns/classify-async-processing-errors.md) |
 | Handle message processing failures              | [Error Handling](./guides/server/error-handling.md) |
-| Inspect and replay dead letter queue messages   | [Error Handling](./guides/server/error-handling.md#dead-letter-queue-lifecycle) |
+| Inspect and replay dead letter queue messages   | [Dead Letter Queues](./guides/server/dead-letter-queues.md) |
+| Bulk-replay DLQ messages after a transient outage | [Dead Letter Queues: Bulk replay](./guides/server/dead-letter-queues.md#bulk-replay-after-a-transient-incident) |
+| Purge unrecoverable DLQ messages                | [Dead Letter Queues: Purge](./guides/server/dead-letter-queues.md#purge-messages-that-will-never-succeed) |
+| Automatically trim old DLQ entries              | [Dead Letter Queues: Trim old entries and alert on depth](./guides/server/dead-letter-queues.md#trim-old-entries-and-alert-on-depth) |
+| Page on-call when a DLQ stream grows too deep   | [Dead Letter Queues: Route alerts to your paging system](./guides/server/dead-letter-queues.md#route-alerts-to-your-paging-system) |
 | Configure retry and DLQ settings                | [Error Handling](./guides/server/error-handling.md#configuration-reference) |
 
 ## Check Compatibility
@@ -220,6 +233,8 @@ need by what you're trying to accomplish.
 | Set up test fixtures and patterns               | [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md) |
 | Set up databases for integration tests          | [Database Setup/Teardown](./patterns/setting-up-and-tearing-down-database-for-tests.md) |
 | Test a full event-driven flow end-to-end        | [Test Event-Driven Flows](./patterns/testing-event-driven-flows.md) |
+| Switch test environments (memory vs real adapters) | [Dual-Mode Testing](./patterns/dual-mode-testing.md) |
+| Look up pytest plugin options and markers       | [Pytest Plugin Reference](./reference/testing/pytest-plugin.md) |
 
 ## Use Specific Technologies
 

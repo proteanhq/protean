@@ -66,6 +66,11 @@ scripts, and the Protean server.
 Environment overlays, environment variable substitution, adapter
 selection, and dual-mode testing configuration.
 
+### [Choosing Adapters](./choosing-adapters.md)
+
+Decide which database, broker, event store, and cache to use for each
+workload. Compares the built-in options by use case and trade-offs.
+
 ### [Inspecting the IR](./inspecting-the-ir.md)
 
 Generate and explore the domain's Intermediate Representation.
