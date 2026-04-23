@@ -10,3 +10,4 @@ For running the server, see [Running the Server](../../guides/server/index.md).
 - [**Configuration**](./configuration.md) — Server configuration options in `domain.toml`.
 - [**Supervisor**](./supervisor.md) — Multi-worker deployment with the supervisor process.
 - [**Observability**](./observability.md) — Observatory dashboard, traces, and Prometheus metrics.
+- [**Hardening**](./hardening.md) — Connection pools, health probes, DLQ policy, subscription profiles, OpenTelemetry metrics, shutdown, optimistic locking, hot reload.

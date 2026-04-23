@@ -167,6 +167,16 @@ need by what you're trying to accomplish.
 | Run the async background server                 | [`protean server`](./reference/cli/runtime/server.md) |
 | Use the CLI for development and operations      | [CLI](./reference/cli/index.md) |
 | Understand the server engine architecture       | [Engine](./concepts/async-processing/engine.md) |
+| Raise SQLAlchemy and Redis pool limits for production | [Harden the Server](./guides/server/hardening.md#raise-connection-pool-limits) |
+| Expose Kubernetes liveness and readiness probes | [Harden the Server](./guides/server/hardening.md#expose-health-probes-to-kubernetes) |
+| Add health endpoints to a FastAPI app           | [Harden the Server](./guides/server/hardening.md#fastapi-apps) |
+| Trim old DLQ entries and alert on depth         | [Harden the Server](./guides/server/hardening.md#keep-the-dlq-under-control) |
+| Override DLQ retention per handler              | [Harden the Server](./guides/server/hardening.md#keep-the-dlq-under-control) |
+| Pick a subscription profile for a handler       | [Harden the Server](./guides/server/hardening.md#pick-a-subscription-profile) |
+| Emit per-subscription OpenTelemetry metrics     | [Harden the Server](./guides/server/hardening.md#emit-opentelemetry-metrics) |
+| Reload the server on file changes (dev)         | [Run the Server — Hot Reload](./guides/server/index.md#hot-reload-in-development) |
+| Shut the server down gracefully                 | [Harden the Server](./guides/server/hardening.md#shut-down-gracefully) |
+| Look up a specific hardening option or metric   | [Server Hardening Reference](./reference/server/hardening.md) |
 | Learn about subscription types                  | [Subscription Types](./reference/server/subscription-types.md) |
 | Configure subscriptions                         | [Server Configuration](./reference/server/configuration.md) |
 | Run multiple workers with the supervisor        | [Supervisor](./reference/server/supervisor.md) |

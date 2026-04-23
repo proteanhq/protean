@@ -170,6 +170,8 @@ specific area.
 - [Observability](./reference/server/observability.md) -- Real-time tracing, the Observatory monitoring server, SSE streaming, and Prometheus metrics.
 - [OpenTelemetry Integration](./guides/server/opentelemetry.md) -- Distributed tracing, metrics, APM setup, and TraceParent propagation with OpenTelemetry.
 - [Running the Server](./guides/server/index.md) -- Start, configure, and operate the Protean server.
+- [Harden the Server](./guides/server/hardening.md) -- Raise pool limits, enable K8s health probes, run DLQ maintenance, pick subscription profiles, emit OTEL metrics, and shut down gracefully.
+- [Server Hardening Reference](./reference/server/hardening.md) -- Every option, default, metric, and profile shipped by the hardening epic.
 - [Error Handling](./guides/server/error-handling.md) -- Retry logic, dead letter queues, and recovery mechanisms for message processing failures.
 - [Dead Letter Queues](./guides/server/dead-letter-queues.md) -- Discover, inspect, replay, and purge messages that failed after retries were exhausted.
 - [Using the Outbox](./guides/server/outbox.md) -- Reliably publish domain events via the outbox pattern; configuration, retries, cleanup.

@@ -8,6 +8,8 @@ argument-hint: "#issue-number [--branch name] [--epic #N]"
 
 Execute 5 phases autonomously with tracked progress. The final output is a PR with all CI feedback addressed. Commit, push, and create the PR without asking for permission.
 
+**Doc-only fast path** — If the diff will only touch `docs/**`, `changes/**.md`, and/or `mkdocs.yml` (no Python source, no tests, no configuration), skip the branch and the PR. Commit directly to `main` and push. `/simplify`, the pr-reviewer agent, and the commit-message hygiene rules in Phase 4 still apply. Phase 3 (test suite, coverage) and Phase 5 (CI feedback) don't apply — verify with `uv run mkdocs build --strict` instead. If a doc change also requires touching Python source, it's no longer doc-only — use the full PR flow.
+
 **Progress tracking:** You MUST initialize a TODO checklist at the end of Phase 1 and update it as you complete each step. Before creating the PR (Phase 4), you MUST verify every pre-PR item is done. The TODO list is your memory — if context gets compressed, read it to recover where you are.
 
 Parse `$ARGUMENTS` for: issue number (`#N` or bare number), branch name (`--branch <name>` or derive `work/<N>-<slug>`), epic (`--epic #N` or detect from sub-issues).

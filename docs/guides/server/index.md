@@ -23,6 +23,7 @@ protean server [OPTIONS]
 | `--test-mode` | Run in test mode | `False` |
 | `--debug` | Enable debug logging | `False` |
 | `--workers` | Number of worker processes | `1` |
+| `--reload` | Auto-reload on Python source changes (development only) | `False` |
 | `--help` | Show help message | |
 
 ## Database Setup
@@ -121,6 +122,29 @@ Debug mode logs:
 - Position updates
 - Configuration resolution
 
+### Hot Reload in Development
+
+Pass `--reload` to watch the working directory and restart the Engine
+on every Python source change:
+
+```bash
+pip install "protean[dev]"
+protean server --domain=my_domain --reload
+```
+
+An outer process watches the working directory with
+[`watchfiles`](https://watchfiles.helpmanual.io/) — using
+`watchfiles.PythonFilter` (which skips `.pyc`, `__pycache__`, `.venv`,
+and `node_modules`), plus an extra exclusion for the `.protean/`
+cache directory — and replaces the inner Engine worker when sources
+change. `--reload` requires the `dev` extra (`pip install
+"protean[dev]"`) and is incompatible with `--workers > 1`.
+
+!!! warning "Never enable `--reload` in production"
+    Hot reload spawns a second Python process and restarts
+    unconditionally on file changes. It is a development ergonomics
+    feature, not a deployment strategy.
+
 ### Test Mode
 
 Test mode processes available messages and exits, useful for integration tests:
@@ -194,6 +218,7 @@ During graceful shutdown:
 - [Dead Letter Queues](./dead-letter-queues.md) — Discover, inspect, replay, and purge failed messages
 - [Using the Outbox](./outbox.md) — Reliably publish domain events via the outbox pattern
 - [Production Deployment](./production-deployment.md) — Process management, Docker, Kubernetes, scaling, and health checks
+- [Harden the Server](./hardening.md) — Raise pool limits, enable K8s health probes, run DLQ maintenance, pick subscription profiles, and emit OTEL metrics
 - [Logging](./logging.md) — Configure structured logging, enrich wide events with business context, disable auto-configuration
 - [Monitoring](./monitoring.md) — Observatory dashboard, Prometheus metrics, and subscription lag tracking
 - [Multi-Worker Mode](../../reference/server/supervisor.md) — Run multiple Engine processes for higher throughput

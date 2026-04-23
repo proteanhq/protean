@@ -267,6 +267,7 @@ nav:
       - guides/server/dead-letter-queues.md
       - guides/server/outbox.md
       - guides/server/production-deployment.md
+      - guides/server/hardening.md
       - guides/server/using-priority-lanes.md
       - guides/server/external-event-dispatch.md
     - Observe Your System:
@@ -336,6 +337,7 @@ nav:
       - reference/server/configuration.md
       - reference/server/supervisor.md
       - reference/server/observability.md
+      - reference/server/hardening.md
     - Adapters:
       - reference/adapters/index.md
       - Database:
