@@ -433,6 +433,12 @@ def _get_slow_handler_threshold() -> float:
 # Tail sampling for wide events
 # ---------------------------------------------------------------------------
 
+#: Level-name strings that mean "ERROR or above". ``structlog.stdlib.add_log_level``
+#: maps ``.exception()`` to ``"error"`` and ``.critical()`` to ``"critical"``,
+#: but ``.fatal()`` yields ``"fatal"`` unchanged — so we include it explicitly
+#: to match the documented ``level >= ERROR`` semantics.
+_ERROR_LEVEL_NAMES: frozenset[str] = frozenset({"error", "critical", "fatal"})
+
 
 def _match_critical_stream(message_type: str, patterns: Iterable[str]) -> bool:
     """Return True when ``message_type`` matches any pattern in ``patterns``.
@@ -494,11 +500,20 @@ class TailSamplingProcessor:
         ):
             return event_dict
 
+        # When a stdlib record is rendered through ``ProcessorFormatter``'s
+        # ``foreign_pre_chain``, the ``TailSamplingFilter`` has already made
+        # the keep/drop decision and annotated the record. Re-sampling here
+        # would draw ``random()`` twice and could override the filter's
+        # ``kept`` decision with a drop. Short-circuit when the metadata
+        # is already present — the filter's decision is authoritative.
+        if "sampling_decision" in event_dict:
+            return event_dict
+
         status = event_dict.get("status")
         level = str(event_dict.get("level", "")).lower()
 
         if self.always_keep_errors and (
-            status == "failed" or level in ("error", "critical")
+            status == "failed" or level in _ERROR_LEVEL_NAMES
         ):
             return _kept(event_dict, "error", 1.0)
 

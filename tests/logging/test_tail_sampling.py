@@ -284,6 +284,40 @@ class TestTailSamplingProcessor:
         with pytest.raises(structlog.DropEvent):
             proc(None, "info", event)
 
+    def test_level_fatal_kept_as_error(self):
+        """``level="fatal"`` maps to the stdlib ``FATAL`` alias of ``CRITICAL``
+        and must be treated as ``>= ERROR``."""
+        proc = TailSamplingProcessor(default_rate=0.0)
+        event = {
+            "logger": "protean.access",
+            "level": "fatal",
+            "status": "ok",
+        }
+        out = proc(None, "error", event)
+        assert out["sampling_rule"] == "error"
+
+    def test_already_sampled_event_passes_through(self):
+        """When the stdlib filter has already annotated a record and it later
+        traverses ``ProcessorFormatter``'s foreign_pre_chain, the processor
+        must not re-sample — doing so would draw random() twice and could
+        override the filter's keep decision."""
+        proc = TailSamplingProcessor(default_rate=0.0)
+        event = {
+            "logger": "protean.access",
+            "level": "info",
+            "status": "ok",
+            "message_type": "UpdateProfile",
+            # Metadata already applied by TailSamplingFilter
+            "sampling_decision": "kept",
+            "sampling_rule": "random",
+            "sampling_rate": 0.05,
+        }
+        out = proc(None, "info", event)
+        assert out is event
+        assert out["sampling_decision"] == "kept"
+        assert out["sampling_rule"] == "random"
+        assert out["sampling_rate"] == 0.05
+
     def test_random_drop_raises_drop_event(self):
         proc = TailSamplingProcessor(default_rate=0.0)
         event = {
