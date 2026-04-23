@@ -89,6 +89,7 @@ specific area.
 - [Aggregates](./guides/domain-definition/aggregates.md) -- Model domain concepts with unique identity.
 - [Entities](./guides/domain-definition/entities.md) -- Objects with identity that compose aggregates.
 - [Value Objects](./guides/domain-definition/value-objects.md) -- Immutable descriptive objects identified by their attributes.
+- [Fields](./guides/domain-definition/fields.md) -- Declare attributes on domain elements: types, required flags, defaults, constraints, validators.
 - [Expressing Relationships](./guides/domain-definition/relationships.md) -- Model associations between domain elements.
 - [Events](./guides/domain-definition/events.md) -- Model past changes as discrete, meaningful facts.
 - [Choosing Element Types](./concepts/building-blocks/choosing-element-types.md) -- Checklists and decision flows for choosing element types.

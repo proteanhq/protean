@@ -28,6 +28,12 @@ Model immutable descriptive concepts like Money, Email, or Address. Value
 objects are defined by their attributes, not identity, and are embedded
 within aggregates or entities.
 
+### [Fields](./fields.md)
+
+Declare attributes on your domain elements. Pick the right field type,
+make fields required, set defaults, constrain values, add custom
+validation, and wire up relationships.
+
 ### [Relationships](./relationships.md)
 
 Connect domain elements with `HasOne`, `HasMany`, and `Reference` fields.

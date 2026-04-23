@@ -218,6 +218,7 @@ nav:
       - guides/domain-definition/aggregates.md
       - guides/domain-definition/entities.md
       - guides/domain-definition/value-objects.md
+      - guides/domain-definition/fields.md
       - guides/domain-definition/relationships.md
       - guides/domain-definition/events.md
     - Add Rules and Behavior:
