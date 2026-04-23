@@ -706,39 +706,31 @@ class BaseEntity(BaseModel, OptionsMixin):
         channel. The intent is "boundary-crossing only": a failed invariant
         is a security signal only when it surfaces during message handling.
         """
-        try:
-            from protean.domain.context import has_domain_context
-            from protean.integrations.logging import (
-                SECURITY_EVENT_INVARIANT_FAILED,
-                log_security_event,
-            )
-            from protean.utils.globals import g
-            from protean.utils.reflection import _ID_FIELD_NAME
-        except ImportError:  # pragma: no cover - defensive: package always installed
-            return
+        from protean.domain.context import has_domain_context
+        from protean.integrations.logging import (
+            SECURITY_EVENT_INVARIANT_FAILED,
+            log_security_event,
+        )
+        from protean.utils.globals import g
+        from protean.utils.reflection import _ID_FIELD_NAME
 
-        # Only emit when an active handler is on the stack.
         if not has_domain_context() or g.get("message_in_context") is None:
             return
 
         id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
         aggregate_id = str(getattr(self, id_field_name, "")) if id_field_name else ""
-        # Use the list of invariant method names that raised; fall back to the
-        # aggregated field names so operators still see a useful signal when
+        # Fall back to field names so operators still see a useful signal when
         # the error came from nested state without a method name (e.g.
         # association-level errors collected recursively).
         names = failed_invariants or sorted(errors.keys())
-        try:
-            for invariant_name in names:
-                log_security_event(
-                    SECURITY_EVENT_INVARIANT_FAILED,
-                    aggregate=self.__class__.__name__,
-                    aggregate_id=aggregate_id,
-                    invariant=invariant_name,
-                    stage=stage,
-                )
-        except Exception:  # pragma: no cover - defensive: logging must not mask errors
-            pass
+        for invariant_name in names:
+            log_security_event(
+                SECURITY_EVENT_INVARIANT_FAILED,
+                aggregate=self.__class__.__name__,
+                aggregate_id=aggregate_id,
+                invariant=invariant_name,
+                stage=stage,
+            )
 
     def _precheck(self, return_errors: bool = False):
         """Invariant checks performed before entity changes."""

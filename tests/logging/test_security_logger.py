@@ -71,6 +71,26 @@ class DebitWithInternalRetryHandler(BaseCommandHandler):
         repo.add(balance)
 
 
+class RaiseInvalidOperation(BaseCommand):
+    account_id = Identifier(identifier=True)
+
+
+class RaiseInvalidOperationHandler(BaseCommandHandler):
+    @handle(RaiseInvalidOperation)
+    def do_raise(self, command: RaiseInvalidOperation) -> None:
+        raise InvalidOperationError("operation not allowed")
+
+
+class RaiseInvalidState(BaseCommand):
+    account_id = Identifier(identifier=True)
+
+
+class RaiseInvalidStateHandler(BaseCommandHandler):
+    @handle(RaiseInvalidState)
+    def do_raise(self, command: RaiseInvalidState) -> None:
+        raise InvalidStateError("state conflict")
+
+
 class TestInvariantFailureLogged:
     """Aggregate invariant violations emit ``invariant_failed`` on ``protean.security``."""
 
@@ -185,10 +205,59 @@ class TestValidationFailureAtBoundary:
 
 
 class TestInvalidOperationAndStateLogged:
-    """Raising the two boundary-level exceptions emits to ``protean.security``."""
+    """``InvalidOperationError`` / ``InvalidStateError`` emit to ``protean.security``
+    only when raised inside an active handler context — matching the gating
+    applied to ``invariant_failed``.
+    """
+
+    def test_invalid_operation_inside_handler_logs_security_event(
+        self, test_domain, caplog
+    ):
+        test_domain.register(Balance)
+        test_domain.register(RaiseInvalidOperation, part_of=Balance)
+        test_domain.register(RaiseInvalidOperationHandler, part_of=Balance)
+        test_domain.init(traverse=False)
+
+        with caplog.at_level(logging.WARNING, logger="protean.security"):
+            with pytest.raises(InvalidOperationError):
+                test_domain.process(RaiseInvalidOperation(account_id="acc-1"))
+
+        records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.security" and r.getMessage() == "invalid_operation"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+        assert getattr(records[0], "detail", None) == "operation not allowed"
+
+    def test_invalid_state_inside_handler_logs_security_event(
+        self, test_domain, caplog
+    ):
+        test_domain.register(Balance)
+        test_domain.register(RaiseInvalidState, part_of=Balance)
+        test_domain.register(RaiseInvalidStateHandler, part_of=Balance)
+        test_domain.init(traverse=False)
+
+        with caplog.at_level(logging.WARNING, logger="protean.security"):
+            with pytest.raises(InvalidStateError):
+                test_domain.process(RaiseInvalidState(account_id="acc-1"))
+
+        records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.security" and r.getMessage() == "invalid_state"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+        assert getattr(records[0], "detail", None) == "state conflict"
 
     @pytest.mark.no_test_domain
-    def test_invalid_operation_error_logs_security_event(self, caplog):
+    def test_invalid_operation_outside_handler_is_not_logged(self, caplog):
+        """Raising outside any handler stays off the channel — fixtures, unit
+        tests, REPL work, and framework internals that catch and recover
+        (e.g., ``UnitOfWork`` state checks) do not pollute ``protean.security``.
+        """
         with caplog.at_level(logging.WARNING, logger="protean.security"):
             with pytest.raises(InvalidOperationError):
                 raise InvalidOperationError("operation not allowed")
@@ -198,11 +267,10 @@ class TestInvalidOperationAndStateLogged:
             for r in caplog.records
             if r.name == "protean.security" and r.getMessage() == "invalid_operation"
         ]
-        assert len(records) > 0
-        assert records[0].levelno == logging.WARNING
+        assert len(records) == 0
 
     @pytest.mark.no_test_domain
-    def test_invalid_state_error_logs_security_event(self, caplog):
+    def test_invalid_state_outside_handler_is_not_logged(self, caplog):
         with caplog.at_level(logging.WARNING, logger="protean.security"):
             with pytest.raises(InvalidStateError):
                 raise InvalidStateError("state conflict")
@@ -212,8 +280,7 @@ class TestInvalidOperationAndStateLogged:
             for r in caplog.records
             if r.name == "protean.security" and r.getMessage() == "invalid_state"
         ]
-        assert len(records) > 0
-        assert records[0].levelno == logging.WARNING
+        assert len(records) == 0
 
 
 class TestSecurityLoggerRegistered:
@@ -225,35 +292,15 @@ class TestSecurityLoggerRegistered:
         assert _FRAMEWORK_LOGGERS_NORMAL.get("protean.security") == logging.WARNING
 
 
-class TestBoundaryEmitterFiltersNonValidationErrors:
-    """Non-ValidationError exceptions never emit ``validation_failed``."""
-
-    @pytest.mark.no_test_domain
-    def test_runtime_error_at_boundary_is_not_logged(self, caplog):
-        """`_emit_security_on_boundary_failure` only fires for ``ValidationError``."""
-        from protean.domain.command_processor import CommandProcessor
-
-        with caplog.at_level(logging.WARNING, logger="protean.security"):
-            CommandProcessor._emit_security_on_boundary_failure(
-                RuntimeError("infrastructure failure"),
-                command_type="my.domain.SomeCommand",
-                handler_name="SomeHandler",
-            )
-
-        boundary_records = [
-            r
-            for r in caplog.records
-            if r.name == "protean.security" and r.getMessage() == "validation_failed"
-        ]
-        assert len(boundary_records) == 0
+class TestBoundaryEmitterHappyPath:
+    """``_emit_validation_failed`` populates the expected fields."""
 
     @pytest.mark.no_test_domain
     def test_validation_error_at_boundary_is_logged(self, caplog):
-        """Direct call with a ``ValidationError`` exercises the happy path."""
         from protean.domain.command_processor import CommandProcessor
 
         with caplog.at_level(logging.WARNING, logger="protean.security"):
-            CommandProcessor._emit_security_on_boundary_failure(
+            CommandProcessor._emit_validation_failed(
                 ValidationError({"x": ["bad"]}),
                 command_type="my.domain.SomeCommand",
                 handler_name="SomeHandler",

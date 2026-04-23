@@ -8,37 +8,30 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+_SECURITY_DETAIL_MAX_LEN = 256
+
+
 def _emit_security_event(event_type: str, args: tuple) -> None:
     """Route boundary-level exceptions to the ``protean.security`` logger.
 
-    Import lazily to avoid a circular dependency with
-    ``protean.integrations.logging`` (which sits above ``protean.exceptions``
-    in the import graph). ``ImportError`` covers environments where the
-    integrations module is unavailable; anything else must propagate so
-    logging bugs are not masked, _except_ inside the log call itself — if
-    emission blows up we swallow it so the original exception keeps its
-    traceback intact.
+    Only emits when a domain handler is on the stack (``g.message_in_context``
+    is set). Exceptions constructed in tests, fixtures, REPL sessions, or
+    framework internals that catch and recover (e.g. ``UnitOfWork`` state
+    checks) therefore stay off the channel — matching the gating applied to
+    ``invariant_failed``.
+
+    Imports are lazy because ``protean.integrations.logging`` sits above this
+    module in the import graph.
     """
-    try:
-        from protean.integrations.logging import log_security_event
-    except ImportError:  # pragma: no cover - defensive: package always installed
+    from protean.domain.context import has_domain_context
+    from protean.integrations.logging import log_security_event
+    from protean.utils.globals import g
+
+    if not has_domain_context() or g.get("message_in_context") is None:
         return
 
-    detail = str(args[0]) if args else ""
-    try:
-        log_security_event(event_type, detail=detail)
-    except Exception:  # pragma: no cover - defensive: logging must not mask errors
-        pass
-
-
-# Canonical event-type names for the ``protean.security`` logger. Defined
-# locally here (rather than imported from ``protean.integrations.logging``)
-# because this module sits at the root of the import graph and cannot
-# depend on higher-level packages at module scope. The literal strings are
-# the single source of truth in :mod:`protean.integrations.logging` — keep
-# these two sets in sync if they are ever renamed.
-_SECURITY_EVENT_INVALID_STATE = "invalid_state"
-_SECURITY_EVENT_INVALID_OPERATION = "invalid_operation"
+    detail = str(args[0])[:_SECURITY_DETAIL_MAX_LEN] if args else ""
+    log_security_event(event_type, detail=detail)
 
 
 class ProteanException(Exception):
@@ -109,7 +102,7 @@ class InvalidStateError(ProteanException):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        _emit_security_event(_SECURITY_EVENT_INVALID_STATE, args)
+        _emit_security_event("invalid_state", args)
 
 
 class InvalidOperationError(ProteanException):
@@ -117,7 +110,7 @@ class InvalidOperationError(ProteanException):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        _emit_security_event(_SECURITY_EVENT_INVALID_OPERATION, args)
+        _emit_security_event("invalid_operation", args)
 
 
 class NotSupportedError(ProteanException):

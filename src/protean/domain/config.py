@@ -6,6 +6,7 @@ import warnings
 import tomllib
 
 from protean.exceptions import ConfigurationError
+from protean.integrations.logging import DEFAULT_REDACT_KEYS
 from protean.utils import Processing
 
 logger = logging.getLogger(__name__)
@@ -160,16 +161,7 @@ def _default_config():
             "slow_handler_threshold_ms": 500,
             "slow_query_threshold_ms": 100,
             "slow_query_truncate_chars": 500,
-            "redact": [
-                "password",
-                "token",
-                "secret",
-                "api_key",
-                "authorization",
-                "cookie",
-                "session",
-                "csrf",
-            ],
+            "redact": list(DEFAULT_REDACT_KEYS),
             "per_logger": {},
         },
         "telemetry": {

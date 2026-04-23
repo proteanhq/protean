@@ -389,7 +389,7 @@ class ProteanRedactionFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         for attr_name in list(vars(record).keys()):
-            if attr_name in LOG_RECORD_RESERVED_ATTRS or attr_name.startswith("_"):
+            if attr_name in LOG_RECORD_RESERVED_ATTRS:
                 continue
             if attr_name.lower() in self._keys:
                 setattr(record, attr_name, _REDACTED)

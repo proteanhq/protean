@@ -25,7 +25,7 @@ import os
 import signal
 import sys
 import time
-from typing import Any, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class Supervisor:
         # is created from the spawn context so it is safe to share with child
         # processes; the listener runs on the supervisor and owns the real
         # stream/file handlers.
-        self._log_queue: Optional[Any] = None  # type: ignore[assignment]
+        self._log_queue: Optional[multiprocessing.Queue] = None
         self._queue_listener: Optional[logging.handlers.QueueListener] = None
 
     def run(self) -> None:
@@ -224,7 +224,9 @@ class Supervisor:
         logger.info("All workers have been shut down")
 
 
-def _build_queue_listener(queue: Any) -> logging.handlers.QueueListener:
+def _build_queue_listener(
+    queue: multiprocessing.Queue,
+) -> logging.handlers.QueueListener:
     """Construct a ``QueueListener`` bound to the supervisor's real handlers.
 
     Copies the current root logger handlers (populated by
@@ -242,7 +244,7 @@ def _build_queue_listener(queue: Any) -> logging.handlers.QueueListener:
     return logging.handlers.QueueListener(queue, *handlers, respect_handler_level=True)
 
 
-def _install_worker_log_queue(queue: Any) -> None:
+def _install_worker_log_queue(queue: multiprocessing.Queue) -> None:
     """Install a ``QueueHandler`` as the sole root handler for this worker.
 
     Called from :func:`_worker_entry` after ``configure_logging()`` so the
@@ -263,7 +265,7 @@ def _worker_entry(
     test_mode: bool,
     debug: bool,
     worker_id: int,
-    log_queue: Optional[Any] = None,
+    log_queue: Optional[multiprocessing.Queue] = None,
 ) -> None:
     """Entry point for each spawned worker process.
 
