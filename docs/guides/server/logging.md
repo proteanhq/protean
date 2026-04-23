@@ -23,9 +23,10 @@ domain.init()  # auto-configures logging
 ```
 
 That is the whole setup. `Domain.init()` auto-detects `PROTEAN_ENV`, picks a
-sensible level and format, and installs correlation + OpenTelemetry trace
-context injection so every log record is queryable by `correlation_id` and
-`trace_id`.
+sensible level and format, and installs correlation injection so every log
+record is queryable by `correlation_id`. When `telemetry.enabled = true`,
+Protean additionally injects OpenTelemetry `trace_id`, `span_id`, and
+`trace_flags` so logs line up with traces in your APM tool.
 
 To log from application code:
 

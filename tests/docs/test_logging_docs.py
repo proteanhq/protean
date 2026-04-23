@@ -122,10 +122,10 @@ def test_pages_cross_link(page: Path) -> None:
 
     assert others, "cross-link targets must not be empty"
     for target in others:
-        target_name = Path(target).name
-        # Require an actual markdown link, not just an incidental mention
-        # in a code block or filename list — the whole point is navigability.
-        link_pattern = re.compile(rf"\]\([^)]*{re.escape(target_name)}[^)]*\)")
+        # Match the full relative path, not just the basename: all three
+        # pages share the filename ``logging.md``, so a basename-only check
+        # would accept a page that links to itself twice.
+        link_pattern = re.compile(rf"\]\([^)]*{re.escape(target)}[^)]*\)")
         assert link_pattern.search(content), (
             f"page {page.name} has no markdown link to {target}"
         )
