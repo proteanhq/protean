@@ -54,6 +54,15 @@ For step-by-step instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Async Processing](async-processing/index.md)
 
+-   **:material-chart-line-variant: Observability**
+
+    ---
+
+    Wide events, query-oriented field design, correlation and trace
+    context in logs, high-cardinality backends.
+
+    [:material-arrow-right-box: Logging](observability/logging.md)
+
 -   **:material-puzzle-outline: Ports & Adapters**
 
     ---

@@ -143,9 +143,16 @@ need by what you're trying to accomplish.
 | Inject correlation IDs into logs automatically  | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#structured-logging-setup) |
 | Pass a correlation ID from an API gateway       | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#passing-correlation-ids-from-external-callers) |
 | Preserve correlation chains across services     | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#service-boundary-handling) |
-| Set up structured logging                       | [Running the Server](./guides/server/index.md) |
-| Add request-scoped context to logs              | [Running the Server](./guides/server/index.md) |
-| Minimize logging noise in tests                 | [Running the Server](./guides/server/index.md#test-mode) |
+| Configure logging                               | [Logging](./guides/server/logging.md#configure-via-domaintoml) |
+| Override the log level or format from the CLI    | [Logging](./guides/server/logging.md#override-from-the-cli) |
+| Parse JSON logs                                 | [Logging](./guides/server/logging.md#quick-start) |
+| Enrich wide events with business context        | [Logging](./guides/server/logging.md#enrich-wide-events-with-business-context) |
+| Redact sensitive fields from logs               | [Logging Reference](./reference/logging.md#redaction) |
+| Tail the access log                             | [Logging Reference](./reference/logging.md#proteanaccess) |
+| Disable automatic logging configuration         | [Logging](./guides/server/logging.md#disable-auto-configuration) |
+| Set up structured logging                       | [Logging](./guides/server/logging.md) |
+| Add request-scoped context to logs              | [Logging](./guides/server/logging.md#use-structured-events-in-application-code) |
+| Minimize logging noise in tests                 | [Logging](./guides/server/logging.md#minimize-noise-in-tests) |
 | Monitor message flow in real time               | [Observability](./reference/server/observability.md) |
 | Expose Prometheus metrics for the message pipeline | [Observability](./reference/server/observability.md) |
 | Stream trace events via SSE                     | [Observability](./reference/server/observability.md) |

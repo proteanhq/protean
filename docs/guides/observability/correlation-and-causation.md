@@ -351,33 +351,28 @@ For details on the Observatory, see the
 
 ## Structured logging setup
 
-Protean provides automatic correlation context injection for both stdlib
-`logging` and `structlog`. Every log record emitted during message processing
-includes `correlation_id` and `causation_id` fields -- no manual threading
-required.
+`Domain.init()` auto-configures logging and installs the correlation
+integrations — `ProteanCorrelationFilter` on the root stdlib logger and
+`protean_correlation_processor` on the structlog pipeline. Every log
+record emitted during message processing includes `correlation_id` and
+`causation_id` fields; no manual wiring required.
 
-### stdlib logging
+For the full setup, config keys, and the wide event schema, see the
+[Logging guide](../server/logging.md) and the
+[Logging reference](../../reference/logging.md).
 
-Add the `ProteanCorrelationFilter` to any handler:
+### Manual wiring when auto-configuration is disabled
+
+When `PROTEAN_NO_AUTO_LOGGING=1` is set, or when the framework is embedded
+in an application that manages its own logging, wire the integrations
+explicitly:
 
 ```python
 import logging
 from protean.integrations.logging import ProteanCorrelationFilter
 
-handler = logging.StreamHandler()
-handler.addFilter(ProteanCorrelationFilter())
-handler.setFormatter(
-    logging.Formatter(
-        "%(levelname)s %(message)s correlation_id=%(correlation_id)s "
-        "causation_id=%(causation_id)s"
-    )
-)
-logging.getLogger().addHandler(handler)
+logging.getLogger().addFilter(ProteanCorrelationFilter())
 ```
-
-### structlog
-
-Add the `protean_correlation_processor` to your processor pipeline:
 
 ```python
 import structlog
@@ -391,28 +386,15 @@ structlog.configure(
 )
 ```
 
-### With `configure_logging()`
-
-The domain's `configure_logging()` convenience method wires up both the
-standard library filter and the `protean_correlation_processor` in one call.
-Use the `extra_processors` argument only for *additional* structlog processors:
-
-```python
-import structlog
-
-domain.configure_logging(
-    extra_processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-    ],
-)
-```
-
 ### Safe when no context is active
 
 Both integrations check for an active domain context and a
 `g.message_in_context` before reading IDs. When no context is available
 (e.g., during startup or in a background thread), both fields default to
-`""` so formatters never raise `KeyError`.
+`""` so formatters never raise `KeyError`. When no message is in scope,
+both integrations fall back to `g.correlation_id` / `g.causation_id` —
+the documented extension point for HTTP middleware, CLI commands, and
+background jobs that need logs tagged before any domain message exists.
 
 ---
 
@@ -441,7 +423,11 @@ Both integrations check for an active domain context and a
 
     **Guide:** [OpenTelemetry Integration](../server/opentelemetry.md) -- Full span catalog, metrics, APM setup, and TraceParent propagation.
 
-    **Guide:** [Structured Logging](../server/logging.md) -- Environment-aware logging configuration, context variables, and method call tracing.
+    **Guide:** [Logging](../server/logging.md) -- Configure logging, enrich wide events, and disable auto-configuration.
+
+    **Reference:** [Logging](../../reference/logging.md) -- `[logging]` config keys, framework logger catalog, event schemas, redaction, trace-context fields.
+
+    **Explanation:** [Logging concepts](../../concepts/observability/logging.md) -- Wide events, query-oriented field design, high-cardinality backends, redaction as a pipeline stage.
 
     **Reference:** [Observability](../../reference/server/observability.md) -- TraceEmitter, Observatory server, SSE streaming, and Prometheus metrics.
 
