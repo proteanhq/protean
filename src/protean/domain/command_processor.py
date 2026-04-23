@@ -13,7 +13,15 @@ from uuid import uuid4
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.exceptions import DuplicateCommandError, IncorrectUsageError
+from protean.exceptions import (
+    DuplicateCommandError,
+    IncorrectUsageError,
+    ValidationError,
+)
+from protean.integrations.logging import (
+    SECURITY_EVENT_VALIDATION_FAILED,
+    log_security_event,
+)
 from protean.utils import DomainObjects, Processing, fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -358,6 +366,15 @@ class CommandProcessor:
                             worker_id="api",
                         )
 
+                        # Validation errors that cross the command boundary
+                        # are potential abuse/attack signals — route them to
+                        # the dedicated protean.security logger so operators
+                        # can alert independently of the access log.
+                        if isinstance(exc, ValidationError):
+                            self._emit_validation_failed(
+                                exc, command_type, handler_name
+                            )
+
                         # Record failure with short TTL to allow retry
                         if idempotency_key and store.is_active:
                             store.record_error(idempotency_key, "handler_failed")
@@ -416,3 +433,21 @@ class CommandProcessor:
             Optional[BaseCommandHandler]: Command Handler registered to process the command
         """
         return self._domain.event_store.command_handler_for(command)
+
+    @staticmethod
+    def _emit_validation_failed(
+        exc: ValidationError, command_type: str, handler_name: str
+    ) -> None:
+        """Route a boundary-crossing ``ValidationError`` to ``protean.security``.
+
+        Sibling exceptions (``InvalidOperationError``, ``InvalidStateError``)
+        emit themselves via :func:`protean.exceptions._emit_security_event`
+        when raised inside handler context, so this path covers the remaining
+        ``ValidationError`` case only.
+        """
+        log_security_event(
+            SECURITY_EVENT_VALIDATION_FAILED,
+            command_type=command_type,
+            handler=handler_name,
+            error=str(exc)[:256],
+        )

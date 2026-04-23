@@ -19,11 +19,13 @@ Usage:
 """
 
 import logging
+import logging.handlers
 import multiprocessing
 import os
 import signal
 import sys
 import time
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,10 @@ class Supervisor:
     - Propagating shutdown signals (SIGINT, SIGTERM) to all workers
     - Monitoring workers and detecting crashes
     - Enforcing a shutdown timeout with SIGKILL as a last resort
+    - In multi-worker mode, running a ``QueueListener`` on the supervisor so
+      worker log lines never interleave at byte boundaries (long JSON records
+      from separate processes can otherwise corrupt each other since stdout
+      writes above ``PIPE_BUF`` are not atomic)
     """
 
     def __init__(
@@ -71,6 +77,13 @@ class Supervisor:
         self.exit_code: int = 0
         self._shutting_down: bool = False
 
+        # Log queue plumbing — only populated in multi-worker mode. The queue
+        # is created from the spawn context so it is safe to share with child
+        # processes; the listener runs on the supervisor and owns the real
+        # stream/file handlers.
+        self._log_queue: Optional[multiprocessing.Queue] = None
+        self._queue_listener: Optional[logging.handlers.QueueListener] = None
+
     def run(self) -> None:
         """Spawn workers and block until all have exited."""
         # Use 'spawn' start method for safety on all platforms.
@@ -85,11 +98,24 @@ class Supervisor:
             f"for domain '{self.domain_path}'"
         )
 
+        # In multi-worker mode, set up a QueueListener on the supervisor so
+        # that all worker log records are serialized through a single sink.
+        if self.num_workers > 1:
+            self._log_queue = ctx.Queue(-1)
+            self._queue_listener = _build_queue_listener(self._log_queue)
+            self._queue_listener.start()
+
         # Spawn all workers
         for worker_id in range(self.num_workers):
             process = ctx.Process(
                 target=_worker_entry,
-                args=(self.domain_path, self.test_mode, self.debug, worker_id),
+                args=(
+                    self.domain_path,
+                    self.test_mode,
+                    self.debug,
+                    worker_id,
+                    self._log_queue,
+                ),
                 name=f"protean-worker-{worker_id}",
             )
             process.start()
@@ -97,7 +123,17 @@ class Supervisor:
             logger.info(f"Started worker {worker_id} (PID {process.pid})")
 
         # Block in the monitor loop until all workers exit
-        self._monitor()
+        try:
+            self._monitor()
+        finally:
+            # Drain and stop the listener so any buffered records are flushed
+            # before the supervisor exits.
+            if self._queue_listener is not None:
+                try:
+                    self._queue_listener.stop()
+                except Exception:
+                    logger.exception("supervisor.queue_listener_stop_failed")
+                self._queue_listener = None
 
     # ------------------------------------------------------------------
     # Signal handling
@@ -188,11 +224,48 @@ class Supervisor:
         logger.info("All workers have been shut down")
 
 
+def _build_queue_listener(
+    queue: multiprocessing.Queue,
+) -> logging.handlers.QueueListener:
+    """Construct a ``QueueListener`` bound to the supervisor's real handlers.
+
+    Copies the current root logger handlers (populated by
+    :func:`protean.utils.logging.configure_logging`) so that worker log
+    records flow through the same formatters the supervisor uses.  A stdout
+    ``StreamHandler`` is installed as a fallback when the supervisor has no
+    handlers configured, so worker logs still reach somewhere visible.
+    """
+    root = logging.getLogger()
+    handlers = list(root.handlers)
+    if not handlers:
+        fallback = logging.StreamHandler(sys.stdout)
+        fallback.setLevel(logging.INFO)
+        handlers = [fallback]
+    return logging.handlers.QueueListener(queue, *handlers, respect_handler_level=True)
+
+
+def _install_worker_log_queue(queue: multiprocessing.Queue) -> None:
+    """Install a ``QueueHandler`` as the sole root handler for this worker.
+
+    Called from :func:`_worker_entry` after ``configure_logging()`` so the
+    worker's real handlers are replaced by a single ``QueueHandler`` that
+    funnels every record to the supervisor's listener.  Preserves filters
+    (correlation/redaction) attached to the root logger by
+    ``Domain.configure_logging()``.
+    """
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+        handler.close()
+    root.addHandler(logging.handlers.QueueHandler(queue))
+
+
 def _worker_entry(
     domain_path: str,
     test_mode: bool,
     debug: bool,
     worker_id: int,
+    log_queue: Optional[multiprocessing.Queue] = None,
 ) -> None:
     """Entry point for each spawned worker process.
 
@@ -209,11 +282,19 @@ def _worker_entry(
         test_mode: Run Engine in test mode.
         debug: Run Engine with DEBUG-level logging.
         worker_id: Numeric identifier for this worker (for logging).
+        log_queue: Optional ``multiprocessing.Queue`` for forwarding log
+            records to the supervisor's ``QueueListener``.  When ``None``
+            (single-worker mode) the worker uses direct handlers from
+            ``configure_logging()``.
     """
     from protean.server.engine import Engine
     from protean.utils.domain_discovery import derive_domain
     from protean.utils.logging import configure_logging
 
+    # Bootstrap logging so the worker has *some* output for derive/init errors.
+    # This is replaced below by the domain's own configuration (which carries
+    # ``[logging].redact``, per-logger overrides, etc.) once the domain is
+    # available.
     configure_logging(level="DEBUG" if debug else "INFO")
 
     worker_logger = logging.getLogger(f"protean.server.worker-{worker_id}")
@@ -226,6 +307,23 @@ def _worker_entry(
                 f"Worker {worker_id}: Failed to derive domain from '{domain_path}'"
             )
             sys.exit(1)
+
+        # Apply domain-level logging config (redact list, per_logger levels,
+        # OTel trace context filter when telemetry.enabled is True). This must
+        # run BEFORE installing the QueueHandler so we know which handlers the
+        # listener should mirror, and so filters attached to root by
+        # ``Domain.configure_logging`` survive into the queue path.
+        log_overrides: dict = {}
+        if debug:
+            log_overrides["level"] = "DEBUG"
+        domain.configure_logging(**log_overrides)
+
+        # Multi-worker mode: replace direct handlers with a QueueHandler so
+        # records are serialized through the supervisor's listener. Done after
+        # domain.configure_logging so we replace its handlers, not the
+        # bootstrap ones.
+        if log_queue is not None:
+            _install_worker_log_queue(log_queue)
 
         domain.init()
 

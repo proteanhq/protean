@@ -11,6 +11,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Always use the `-R proteanhq/protean` flag with `gh` CLI commands to explicitly target the correct repository.
 - **Changelog uses fragment files** to avoid merge conflicts. Each PR creates a file in `changes/<issue-number>.<category>.md` (e.g., `changes/752.added.md`). When an epic completes, `/changelog #<epic>` assembles fragments into `CHANGELOG.md` under `[Unreleased]` as a per-epic section, then deletes the fragments. Never edit `CHANGELOG.md` directly in a feature PR. The changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
 
+## Common Pitfalls
+
+Patterns that have bitten the framework in past PRs — apply on every change touching pipelines, config, or log emissions.
+
+- **Pipeline ordering**: when inserting a stage into an existing chain (structlog processors, middleware, filters), prepending vs appending matters. Sanitization / redaction stages run **last**, so caller-supplied stages cannot smuggle sensitive data past them. Walk the chain and confirm ordering relative to every neighbour.
+- **Safety lists are additive, not substitutional**: any list-typed parameter that backstops security or correctness (`redact`, allowlists, deny-lists) must union with its defaults rather than replace them. Operators must not be able to disable a core protection by supplying their own list.
+- **Negative-path tests for log emissions**: every new `protean.security`, `protean.access`, or `protean.perf` emission ships with **both** a positive test (it fires when expected) and a negative test (it does NOT fire outside its stated scope). Stated intent like "boundary-only" or "Nth-failure-only" silently drifts without one.
+- **Config keys reach every entry point**: a new `domain.toml` key must be exercised through every bootstrap path the framework has — programmatic `Domain.init()`, `protean server` worker entry, `protean shell`, FastAPI middleware. A key wired in one place is a key half-wired.
+
 ## Git
 - Never override `git user.name` or `git user.email` — they are already configured correctly.
 

@@ -46,7 +46,7 @@ strings (or ``0`` for ``trace_flags``).
 """
 
 import logging
-from typing import Any
+from typing import Any, Callable, Iterable, Optional
 
 # OpenTelemetry trace helpers are resolved lazily on first use so that merely
 # importing this module (e.g. from ``Domain.configure_logging``) does not
@@ -261,9 +261,256 @@ def protean_otel_processor(
     return event_dict
 
 
+# ---------------------------------------------------------------------------
+# stdlib LogRecord reserved attribute names
+# ---------------------------------------------------------------------------
+
+#: stdlib ``LogRecord`` attribute names that must never be overwritten by
+#: user ``extra`` fields or by redaction — they are part of the logging
+#: contract (timestamps, source info, levels, etc.). Exposed as a module
+#: constant so other subsystems (:mod:`protean.utils.logging`) can share it.
+LOG_RECORD_RESERVED_ATTRS: frozenset[str] = frozenset(
+    {
+        "name",
+        "msg",
+        "args",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "lineno",
+        "funcName",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "process",
+        "processName",
+        "message",
+        "asctime",
+        "taskName",
+    }
+)
+
+
+# ---------------------------------------------------------------------------
+# Sensitive-field redaction
+# ---------------------------------------------------------------------------
+
+#: Default keys whose values are replaced with ``[REDACTED]`` in log output.
+#: Matching is case-insensitive. Operators can extend this list via
+#: ``[logging].redact`` in ``domain.toml``.
+DEFAULT_REDACT_KEYS: tuple[str, ...] = (
+    "password",
+    "token",
+    "secret",
+    "api_key",
+    "authorization",
+    "cookie",
+    "session",
+    "csrf",
+)
+
+_REDACTED = "[REDACTED]"
+
+# Hard cap on recursion depth to prevent pathological payloads from triggering
+# unbounded traversal. Beyond this depth, nested structures are left untouched
+# — redaction is a best-effort hygiene filter, not a security boundary.
+_MAX_REDACT_DEPTH = 5
+
+
+def _build_key_set(redact: Optional[Iterable[str]]) -> frozenset[str]:
+    """Return a frozenset of lowercased redact keys.
+
+    Always includes :data:`DEFAULT_REDACT_KEYS` so operators cannot
+    accidentally stop masking core fields (``password``, ``token``, …) by
+    supplying a custom list — the configured list is unioned with the
+    defaults rather than replacing them.
+    """
+    defaults = (k.lower() for k in DEFAULT_REDACT_KEYS)
+    if not redact:
+        return frozenset(defaults)
+    return frozenset(defaults) | frozenset(k.lower() for k in redact)
+
+
+def _redact(value: Any, keys: frozenset[str], depth: int) -> Any:
+    """Return ``value`` with keys in ``keys`` replaced by ``[REDACTED]``.
+
+    Recurses into ``dict`` and ``list`` up to ``_MAX_REDACT_DEPTH`` levels.
+    Keys are matched case-insensitively. Other value types are returned
+    unchanged. The input is never mutated in place.
+    """
+    if depth >= _MAX_REDACT_DEPTH:
+        return value
+
+    if isinstance(value, dict):
+        return {
+            k: (
+                _REDACTED
+                if isinstance(k, str) and k.lower() in keys
+                else _redact(v, keys, depth + 1)
+            )
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact(item, keys, depth + 1) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact(item, keys, depth + 1) for item in value)
+    return value
+
+
+class ProteanRedactionFilter(logging.Filter):
+    """Stdlib logging filter that masks sensitive fields on log records.
+
+    Walks every non-reserved attribute on the ``LogRecord`` and replaces the
+    value with ``"[REDACTED]"`` when the attribute name matches one of the
+    configured keys (case-insensitive). Nested ``dict`` and ``list`` values
+    are scanned up to :data:`_MAX_REDACT_DEPTH` levels deep; deeper nesting
+    is left untouched so pathological payloads cannot stall logging.
+
+    The filter never suppresses records — it always returns ``True``.
+
+    Example::
+
+        import logging
+        from protean.integrations.logging import ProteanRedactionFilter
+
+        logging.getLogger().addFilter(ProteanRedactionFilter())
+    """
+
+    def __init__(self, redact: Optional[Iterable[str]] = None) -> None:
+        super().__init__()
+        self._keys = _build_key_set(redact)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        for attr_name in list(vars(record).keys()):
+            if attr_name in LOG_RECORD_RESERVED_ATTRS:
+                continue
+            if attr_name.lower() in self._keys:
+                setattr(record, attr_name, _REDACTED)
+                continue
+            value = getattr(record, attr_name)
+            if isinstance(value, (dict, list, tuple)):
+                setattr(record, attr_name, _redact(value, self._keys, 0))
+        return True
+
+
+def make_redaction_processor(
+    redact: Optional[Iterable[str]] = None,
+) -> Callable[[Any, str, dict[str, Any]], dict[str, Any]]:
+    """Build a structlog processor that masks sensitive fields in the event dict.
+
+    Returns a callable suitable for the ``structlog.configure`` ``processors``
+    list. The returned processor walks the event dict, replacing values whose
+    key matches the configured redact list (case-insensitive) with
+    ``"[REDACTED]"``. Nested ``dict`` and ``list`` values are scanned up to
+    :data:`_MAX_REDACT_DEPTH` levels deep.
+
+    Example::
+
+        import structlog
+        from protean.integrations.logging import make_redaction_processor
+
+        structlog.configure(
+            processors=[
+                make_redaction_processor(["password", "token"]),
+                structlog.processors.JSONRenderer(),
+            ]
+        )
+    """
+    keys = _build_key_set(redact)
+
+    def _processor(
+        logger: Any, method: str, event_dict: dict[str, Any]
+    ) -> dict[str, Any]:
+        for k in list(event_dict.keys()):
+            if not isinstance(k, str):
+                continue
+            if k.lower() in keys:
+                event_dict[k] = _REDACTED
+                continue
+            value = event_dict[k]
+            if isinstance(value, (dict, list, tuple)):
+                event_dict[k] = _redact(value, keys, 0)
+        return event_dict
+
+    return _processor
+
+
+def protean_redaction_processor(
+    logger: Any, method: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Default-configured redaction processor using :data:`DEFAULT_REDACT_KEYS`.
+
+    Equivalent to ``make_redaction_processor()`` called with no arguments,
+    exposed as a module-level callable for direct use in structlog pipelines::
+
+        structlog.configure(
+            processors=[
+                protean_redaction_processor,
+                structlog.processors.JSONRenderer(),
+            ]
+        )
+    """
+    return _DEFAULT_REDACTION_PROCESSOR(logger, method, event_dict)
+
+
+_DEFAULT_REDACTION_PROCESSOR = make_redaction_processor()
+
+
+# ---------------------------------------------------------------------------
+# Security logger helpers
+# ---------------------------------------------------------------------------
+
+_security_logger = logging.getLogger("protean.security")
+
+#: Event-type constants emitted on the ``protean.security`` logger. Kept as
+#: module constants so call sites never drift typographically from what
+#: operators query in log aggregators.
+SECURITY_EVENT_INVARIANT_FAILED = "invariant_failed"
+SECURITY_EVENT_VALIDATION_FAILED = "validation_failed"
+SECURITY_EVENT_INVALID_OPERATION = "invalid_operation"
+SECURITY_EVENT_INVALID_STATE = "invalid_state"
+
+
+def log_security_event(event_type: str, **fields: Any) -> None:
+    """Emit a WARNING on the ``protean.security`` logger.
+
+    Dedicated channel for invariant violations, validation failures that
+    cross a domain boundary, and other signals operators may want to route
+    to a SIEM or alerting pipeline.
+
+    ``correlation_id`` and ``causation_id`` are pulled from the active domain
+    context when available, so callers only need to pass domain-specific
+    fields (``aggregate``, ``aggregate_id``, ``invariant``, etc.). Keys that
+    collide with stdlib ``LogRecord`` attributes are silently dropped to keep
+    the logging contract intact.
+    """
+    correlation_id, causation_id = _get_correlation_context()
+    extra = {k: v for k, v in fields.items() if k not in LOG_RECORD_RESERVED_ATTRS}
+    extra.setdefault("correlation_id", correlation_id)
+    extra.setdefault("causation_id", causation_id)
+    _security_logger.warning(event_type, extra=extra)
+
+
 __all__ = [
+    "DEFAULT_REDACT_KEYS",
+    "LOG_RECORD_RESERVED_ATTRS",
     "OTelTraceContextFilter",
     "ProteanCorrelationFilter",
+    "ProteanRedactionFilter",
+    "SECURITY_EVENT_INVALID_OPERATION",
+    "SECURITY_EVENT_INVALID_STATE",
+    "SECURITY_EVENT_INVARIANT_FAILED",
+    "SECURITY_EVENT_VALIDATION_FAILED",
+    "log_security_event",
+    "make_redaction_processor",
     "protean_correlation_processor",
     "protean_otel_processor",
+    "protean_redaction_processor",
 ]

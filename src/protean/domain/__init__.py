@@ -2180,6 +2180,11 @@ class Domain:
         if per_logger:
             config_kwargs["per_logger"] = per_logger
 
+        # List of sensitive keys to redact
+        redact = logging_config.get("redact")
+        if redact:
+            config_kwargs["redact"] = list(redact)
+
         # Explicit kwargs override config values
         config_kwargs.update(kwargs)
 

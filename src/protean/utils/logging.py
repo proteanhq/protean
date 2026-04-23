@@ -43,6 +43,10 @@ from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import structlog
 
+from protean.integrations.logging import (
+    LOG_RECORD_RESERVED_ATTRS as _RESERVED_LOG_RECORD_ATTRS,
+)
+
 _T = TypeVar("_T")
 
 
@@ -86,6 +90,7 @@ _FRAMEWORK_LOGGERS_NORMAL = {
     "protean.server.outbox_processor": logging.INFO,
     "protean.access": logging.INFO,
     "protean.perf": logging.WARNING,
+    "protean.security": logging.WARNING,
     "protean.core": logging.WARNING,
     "protean.adapters": logging.WARNING,
     "protean.adapters.repository.sqlalchemy.slow_query": logging.WARNING,
@@ -95,35 +100,9 @@ _FRAMEWORK_LOGGERS_NORMAL = {
 access_logger = logging.getLogger("protean.access")
 perf_logger = logging.getLogger("protean.perf")
 
-# stdlib LogRecord attributes that must never appear in `extra` to avoid
-# collisions with the logging framework's own fields.
-_RESERVED_LOG_RECORD_ATTRS = frozenset(
-    {
-        "name",
-        "msg",
-        "args",
-        "levelname",
-        "levelno",
-        "pathname",
-        "filename",
-        "module",
-        "exc_info",
-        "exc_text",
-        "stack_info",
-        "lineno",
-        "funcName",
-        "created",
-        "msecs",
-        "relativeCreated",
-        "thread",
-        "threadName",
-        "process",
-        "processName",
-        "message",
-        "asctime",
-        "taskName",
-    }
-)
+# ``_RESERVED_LOG_RECORD_ATTRS`` is imported from ``protean.integrations.logging``
+# at the top of this module; the re-export keeps the name consistent with
+# prior usage while the frozenset lives in a single place.
 
 # Framework-reserved field names that application context cannot overwrite
 _FRAMEWORK_FIELDS = frozenset(
@@ -163,6 +142,7 @@ def configure_logging(
     extra_processors: Optional[list] = None,
     per_logger: Optional[dict[str, str]] = None,
     dict_config: Optional[dict[str, Any]] = None,
+    redact: Optional[list[str]] = None,
 ) -> None:
     """Configure structured logging for a Protean application.
 
@@ -197,7 +177,22 @@ def configure_logging(
             dict is expected to include any handlers/formatters desired. After
             applying, ``ProteanCorrelationFilter`` is still installed on the
             root logger for consistency with ``Domain.configure_logging()``.
+        redact: Optional list of field names to mask in log output. Values are
+            replaced with ``"[REDACTED]"`` on log records (stdlib) and event
+            dicts (structlog). Matching is case-insensitive. When ``None``
+            (default), redaction is disabled — opt in by passing an explicit
+            list, or configure ``[logging].redact`` in ``domain.toml`` so
+            ``Domain.configure_logging()`` forwards it here.
     """
+    # Append the redaction processor so it runs AFTER any caller-supplied
+    # processors (correlation, OTel, custom enrichment), guaranteeing that
+    # sensitive fields added anywhere upstream are masked before the renderer.
+    if redact:
+        from protean.integrations.logging import make_redaction_processor
+
+        redaction_proc = make_redaction_processor(redact)
+        extra_processors = list(extra_processors or []) + [redaction_proc]
+
     if dict_config is not None:
         logging.config.dictConfig(dict_config)
         # Set up structlog so that get_logger() calls produce well-formed
@@ -208,11 +203,18 @@ def configure_logging(
         # and causation_id are available in every log record, matching the
         # behavior of Domain.configure_logging().
         try:
-            from protean.integrations.logging import ProteanCorrelationFilter
+            from protean.integrations.logging import (
+                ProteanCorrelationFilter,
+                ProteanRedactionFilter,
+            )
 
             root = logging.getLogger()
             if not any(isinstance(f, ProteanCorrelationFilter) for f in root.filters):
                 root.addFilter(ProteanCorrelationFilter())
+            if redact and not any(
+                isinstance(f, ProteanRedactionFilter) for f in root.filters
+            ):
+                root.addFilter(ProteanRedactionFilter(redact))
         except ImportError:
             pass
         return
@@ -241,6 +243,14 @@ def configure_logging(
 
     # --- structlog setup ---
     _setup_structlog(env=env, format=format, extra_processors=extra_processors)
+
+    # --- redaction filter on root logger (stdlib path) ---
+    if redact:
+        from protean.integrations.logging import ProteanRedactionFilter
+
+        root = logging.getLogger()
+        if not any(isinstance(f, ProteanRedactionFilter) for f in root.filters):
+            root.addFilter(ProteanRedactionFilter(redact))
 
     # --- per-logger overrides ---
     if per_logger:

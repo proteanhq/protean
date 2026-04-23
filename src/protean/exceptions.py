@@ -8,6 +8,33 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
+_SECURITY_DETAIL_MAX_LEN = 256
+
+
+def _emit_security_event(event_type: str, args: tuple) -> None:
+    """Route boundary-level exceptions to the ``protean.security`` logger.
+
+    Only emits when a domain handler is on the stack (``g.message_in_context``
+    is set). Exceptions constructed in tests, fixtures, REPL sessions, or
+    framework internals that catch and recover (e.g. ``UnitOfWork`` state
+    checks) therefore stay off the channel — matching the gating applied to
+    ``invariant_failed``.
+
+    Imports are lazy because ``protean.domain.context`` transitively pulls
+    in ``protean.adapters``, which imports back from ``protean.exceptions``.
+    Lifting these to module level would break package initialization.
+    """
+    from protean.domain.context import has_domain_context
+    from protean.integrations.logging import log_security_event
+    from protean.utils.globals import g
+
+    if not has_domain_context() or g.get("message_in_context") is None:
+        return
+
+    detail = str(args[0])[:_SECURITY_DETAIL_MAX_LEN] if args else ""
+    log_security_event(event_type, detail=detail)
+
+
 class ProteanException(Exception):
     """Base class for all Exceptions raised within Protean"""
 
@@ -74,9 +101,17 @@ class InvalidStateError(ProteanException):
 
     Equivalent to 409 (Conflict)"""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        _emit_security_event("invalid_state", args)
+
 
 class InvalidOperationError(ProteanException):
     """Operation being performed is not permitted"""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        _emit_security_event("invalid_operation", args)
 
 
 class NotSupportedError(ProteanException):

@@ -291,7 +291,16 @@ class TestSupervisorRun:
         mock_ctx = MagicMock()
         mock_ctx.Process.return_value = mock_process
 
-        with patch("multiprocessing.get_context", return_value=mock_ctx):
+        with (
+            patch("multiprocessing.get_context", return_value=mock_ctx),
+            # Multi-worker mode starts a QueueListener — stub it so the
+            # listener's monitor thread does not attempt to poll a
+            # MagicMock queue, which would trigger a thread warning.
+            patch(
+                "protean.server.supervisor._build_queue_listener",
+                return_value=MagicMock(),
+            ),
+        ):
             supervisor._monitor = MagicMock()
             supervisor.run()
 
@@ -335,7 +344,7 @@ class TestSupervisorRun:
 
             mock_ctx.Process.assert_called_once_with(
                 target=_worker_entry,
-                args=("my.domain", True, True, 0),
+                args=("my.domain", True, True, 0, None),
                 name="protean-worker-0",
             )
 
@@ -361,7 +370,31 @@ class TestWorkerEntry:
             _worker_entry("my.domain", test_mode=True, debug=False, worker_id=0)
 
         mock_domain.init.assert_called_once()
+        # Domain-level logging config is applied so worker picks up
+        # [logging].redact, per_logger overrides, etc.
+        mock_domain.configure_logging.assert_called_once_with()
         mock_engine.run.assert_called_once()
+
+    def test_worker_entry_debug_propagates_to_domain_config(self):
+        """`debug=True` forwards `level="DEBUG"` to domain.configure_logging."""
+        mock_domain = MagicMock()
+        mock_domain.domain_context.return_value.__enter__ = MagicMock()
+        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        mock_engine = MagicMock()
+        mock_engine.exit_code = 0
+
+        with (
+            patch(
+                "protean.utils.domain_discovery.derive_domain",
+                return_value=mock_domain,
+            ),
+            patch("protean.server.engine.Engine", return_value=mock_engine),
+            patch("protean.utils.logging.configure_logging"),
+            pytest.raises(SystemExit, match="0"),
+        ):
+            _worker_entry("my.domain", test_mode=True, debug=True, worker_id=0)
+
+        mock_domain.configure_logging.assert_called_once_with(level="DEBUG")
 
     def test_worker_entry_domain_derivation_failure(self):
         """_worker_entry exits with code 1 when domain derivation fails."""
