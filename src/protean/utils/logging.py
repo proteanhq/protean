@@ -30,16 +30,18 @@ Wide event access log usage::
             # ... handler logic ...
 """
 
+import fnmatch
 import functools
 import logging
 import logging.config
 import logging.handlers
 import os
+import random
 import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterator, Optional, TypeVar, Union
+from typing import Any, Callable, Iterable, Iterator, Optional, TypeVar, Union
 
 import structlog
 
@@ -96,8 +98,13 @@ _FRAMEWORK_LOGGERS_NORMAL = {
     "protean.adapters.repository.sqlalchemy.slow_query": logging.WARNING,
 }
 
+# The logger name whose events are subject to tail sampling. All other
+# loggers pass through both the processor and the filter unmodified.
+_ACCESS_LOGGER_NAME = "protean.access"
+_ACCESS_LOGGER_PREFIX = _ACCESS_LOGGER_NAME + "."
+
 # Dedicated loggers for the wide event access log and slow-handler detection
-access_logger = logging.getLogger("protean.access")
+access_logger = logging.getLogger(_ACCESS_LOGGER_NAME)
 perf_logger = logging.getLogger("protean.perf")
 
 # ``_RESERVED_LOG_RECORD_ATTRS`` is imported from ``protean.integrations.logging``
@@ -420,6 +427,166 @@ def get_logging_config_value(key: str, default: _T) -> _T:
 def _get_slow_handler_threshold() -> float:
     """Read slow_handler_threshold_ms from domain config. Returns 0 to disable."""
     return float(get_logging_config_value("slow_handler_threshold_ms", 500))
+
+
+# ---------------------------------------------------------------------------
+# Tail sampling for wide events
+# ---------------------------------------------------------------------------
+
+
+def _match_critical_stream(message_type: str, patterns: Iterable[str]) -> bool:
+    """Return True when ``message_type`` matches any pattern in ``patterns``.
+
+    Patterns are ``fnmatch`` globs (``"Payment*"``, ``"Auth*"``). Matching is
+    case-sensitive so operators can target specific message types without
+    fear of accidental matches from case-folded lookalikes.
+    """
+    if not message_type:
+        return False
+    for pattern in patterns:
+        if fnmatch.fnmatchcase(message_type, pattern):
+            return True
+    return False
+
+
+class TailSamplingProcessor:
+    """Structlog processor that samples wide events from ``protean.access``.
+
+    Operates on the structlog pipeline — events from any other logger pass
+    through unchanged. For events on the ``protean.access`` logger, applies
+    the sampling rules below in order (first match wins) and either enriches
+    the event dict with sampling metadata (``sampling_decision``,
+    ``sampling_rule``, ``sampling_rate``) or raises
+    :class:`structlog.DropEvent` to drop it.
+
+    Rules (in order, first match wins):
+
+    1. Errors kept — ``status == "failed"`` or log level >= ``ERROR``.
+    2. Slow requests kept — ``status == "slow"``.
+    3. Critical streams kept — ``message_type`` matches any
+       ``critical_streams`` glob pattern.
+    4. Random sampling — kept at ``default_rate``.
+
+    Use :class:`TailSamplingFilter` for the stdlib→``ProcessorFormatter``
+    path; most Protean wide events flow through that path because
+    ``access_logger`` is a stdlib ``logging.Logger``. The structlog processor
+    covers direct ``structlog.get_logger("protean.access")`` call sites.
+    """
+
+    def __init__(
+        self,
+        default_rate: float = 0.05,
+        always_keep_errors: bool = True,
+        always_keep_slow: bool = True,
+        critical_streams: Optional[Iterable[str]] = None,
+    ) -> None:
+        self.default_rate = float(default_rate)
+        self.always_keep_errors = bool(always_keep_errors)
+        self.always_keep_slow = bool(always_keep_slow)
+        self.critical_streams: tuple[str, ...] = tuple(critical_streams or ())
+
+    def __call__(
+        self, logger: Any, method: str, event_dict: dict[str, Any]
+    ) -> dict[str, Any]:
+        logger_name = event_dict.get("logger", "") or ""
+        if logger_name != _ACCESS_LOGGER_NAME and not logger_name.startswith(
+            _ACCESS_LOGGER_PREFIX
+        ):
+            return event_dict
+
+        status = event_dict.get("status")
+        level = str(event_dict.get("level", "")).lower()
+
+        if self.always_keep_errors and (
+            status == "failed" or level in ("error", "critical")
+        ):
+            return _kept(event_dict, "error", 1.0)
+
+        if self.always_keep_slow and status == "slow":
+            return _kept(event_dict, "slow", 1.0)
+
+        if self.critical_streams:
+            message_type = event_dict.get("message_type") or ""
+            if _match_critical_stream(message_type, self.critical_streams):
+                return _kept(event_dict, "critical_stream", 1.0)
+
+        if random.random() < self.default_rate:
+            return _kept(event_dict, "random", self.default_rate)
+
+        raise structlog.DropEvent
+
+
+def _kept(event_dict: dict[str, Any], rule: str, rate: float) -> dict[str, Any]:
+    """Annotate ``event_dict`` with sampling metadata and return it."""
+    event_dict["sampling_decision"] = "kept"
+    event_dict["sampling_rule"] = rule
+    event_dict["sampling_rate"] = rate
+    return event_dict
+
+
+class TailSamplingFilter(logging.Filter):
+    """Stdlib logging filter that samples wide events from ``protean.access``.
+
+    Mirrors :class:`TailSamplingProcessor` for stdlib records. The filter is
+    attached to the ``protean.access`` logger so it runs before any handler
+    sees the record. Records outside the ``protean.access`` namespace are
+    never dropped and are not annotated with sampling metadata.
+
+    When a record is kept, ``sampling_decision``, ``sampling_rule``, and
+    ``sampling_rate`` are set on the record so they flow through
+    ``ProcessorFormatter`` / ``ExtraAdder`` into the rendered output. When
+    dropped, :meth:`filter` returns ``False`` and the record never reaches a
+    handler.
+    """
+
+    def __init__(
+        self,
+        default_rate: float = 0.05,
+        always_keep_errors: bool = True,
+        always_keep_slow: bool = True,
+        critical_streams: Optional[Iterable[str]] = None,
+    ) -> None:
+        super().__init__()
+        self.default_rate = float(default_rate)
+        self.always_keep_errors = bool(always_keep_errors)
+        self.always_keep_slow = bool(always_keep_slow)
+        self.critical_streams: tuple[str, ...] = tuple(critical_streams or ())
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        name = record.name
+        if name != _ACCESS_LOGGER_NAME and not name.startswith(_ACCESS_LOGGER_PREFIX):
+            return True
+
+        status = getattr(record, "status", None)
+
+        if self.always_keep_errors and (
+            status == "failed" or record.levelno >= logging.ERROR
+        ):
+            _annotate_record(record, "error", 1.0)
+            return True
+
+        if self.always_keep_slow and status == "slow":
+            _annotate_record(record, "slow", 1.0)
+            return True
+
+        if self.critical_streams:
+            message_type = getattr(record, "message_type", None) or ""
+            if _match_critical_stream(message_type, self.critical_streams):
+                _annotate_record(record, "critical_stream", 1.0)
+                return True
+
+        if random.random() < self.default_rate:
+            _annotate_record(record, "random", self.default_rate)
+            return True
+
+        return False
+
+
+def _annotate_record(record: logging.LogRecord, rule: str, rate: float) -> None:
+    """Set sampling metadata attributes on a stdlib ``LogRecord``."""
+    record.sampling_decision = "kept"  # type: ignore[attr-defined]
+    record.sampling_rule = rule  # type: ignore[attr-defined]
+    record.sampling_rate = rate  # type: ignore[attr-defined]
 
 
 @contextmanager

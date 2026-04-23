@@ -2150,7 +2150,12 @@ class Domain:
             protean_correlation_processor,
             protean_otel_processor,
         )
-        from protean.utils.logging import configure_logging
+        from protean.utils.logging import (
+            TailSamplingFilter,
+            TailSamplingProcessor,
+            access_logger,
+            configure_logging,
+        )
 
         # --- Merge domain.toml [logging] with explicit kwargs ---
         logging_config = self.config.get("logging", {})
@@ -2200,6 +2205,22 @@ class Domain:
             extra.append(protean_otel_processor)
         extra.extend(list(extra_processors or []))
 
+        # Tail sampling for wide events — opt-in via [logging.sampling].enabled.
+        # Sampling runs against the un-redacted event dict so `status` and
+        # `message_type` are still readable; redaction (appended later inside
+        # configure_logging) masks what survives.
+        sampling_config = logging_config.get("sampling", {}) or {}
+        sampling_enabled = bool(sampling_config.get("enabled", False))
+        sampling_kwargs: dict[str, Any] = {}
+        if sampling_enabled:
+            sampling_kwargs = {
+                "default_rate": sampling_config.get("default_rate", 0.05),
+                "always_keep_errors": sampling_config.get("always_keep_errors", True),
+                "always_keep_slow": sampling_config.get("always_keep_slow", True),
+                "critical_streams": sampling_config.get("critical_streams", []),
+            }
+            extra.append(TailSamplingProcessor(**sampling_kwargs))
+
         configure_logging(extra_processors=extra, **config_kwargs)
 
         # Attach the correlation filter to the root logger so that *all*
@@ -2212,3 +2233,11 @@ class Domain:
             isinstance(f, OTelTraceContextFilter) for f in root.filters
         ):
             root.addFilter(OTelTraceContextFilter())
+
+        # Tail sampling filter on the protean.access stdlib logger — covers
+        # the primary wide event emission path (access_logger is a stdlib
+        # logger so events never reach the structlog processor chain).
+        if sampling_enabled and not any(
+            isinstance(f, TailSamplingFilter) for f in access_logger.filters
+        ):
+            access_logger.addFilter(TailSamplingFilter(**sampling_kwargs))
