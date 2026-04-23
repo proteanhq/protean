@@ -121,6 +121,7 @@ class DomainValidator:
         self._validate_identity_config()
         self._validate_association_fields()
         self._validate_event_sourced_aggregates()
+        self._validate_unique_command_handlers()
         self._validate_entity_providers()
         self._validate_projector_associations()
         self._validate_query_associations()
@@ -153,6 +154,7 @@ class DomainValidator:
             self._validate_identity_config,
             self._validate_association_fields,
             self._validate_event_sourced_aggregates,
+            self._validate_unique_command_handlers,
             self._validate_entity_providers,
             self._validate_projector_associations,
             self._validate_query_associations,
@@ -255,6 +257,36 @@ class DomainValidator:
             raise IncorrectUsageError(
                 f"Events are associated with multiple event sourced aggregates: "
                 f"{', '.join(duplicate_event_class_names)}"
+            )
+
+    def _validate_unique_command_handlers(self) -> None:
+        """Check that no command is handled by more than one command handler class.
+
+        Intra-class duplicates (two ``@handle`` methods for the same command
+        inside a single handler) are caught earlier by
+        ``HandlerConfigurator.setup_command_handlers``.  This validation
+        covers the cross-class case, which otherwise only surfaces at
+        dispatch time.
+        """
+        registry = self._domain.registry
+        handlers_by_command: dict[str, list[str]] = {}
+        for _, ch_record in registry._elements[
+            DomainObjects.COMMAND_HANDLER.value
+        ].items():
+            for command_type in ch_record.cls._handlers.keys():
+                handlers_by_command.setdefault(command_type, []).append(
+                    ch_record.cls.__name__
+                )
+
+        duplicates = sorted(
+            command_type
+            for command_type, handler_names in handlers_by_command.items()
+            if len(handler_names) > 1
+        )
+        if duplicates:
+            raise IncorrectUsageError(
+                f"Commands cannot be handled by multiple handlers: "
+                f"{', '.join(duplicates)}"
             )
 
     def _validate_entity_providers(self) -> None:

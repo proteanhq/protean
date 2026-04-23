@@ -49,6 +49,18 @@ class Register(BaseCommand):
     password_hash: String()
 
 
+class RegisterWithError(BaseCommand):
+    email: String()
+    name: String()
+    password_hash: String()
+
+
+class RegisterWithErrorInErrorHandler(BaseCommand):
+    email: String()
+    name: String()
+    password_hash: String()
+
+
 class User(BaseAggregate):
     email: String()
     name: String()
@@ -113,7 +125,7 @@ class NormalCommandHandler(BaseCommandHandler):
 class ErrorCommandHandler(BaseCommandHandler):
     """Command handler that raises an exception and has a handle_error method"""
 
-    @handle(Register)
+    @handle(RegisterWithError)
     def handle_register(self, command):
         global handler_counter
         handler_counter += 1
@@ -128,7 +140,7 @@ class ErrorCommandHandler(BaseCommandHandler):
 class ErrorInErrorHandlerCommandHandler(BaseCommandHandler):
     """Command handler that raises an exception in both the handler and handle_error"""
 
-    @handle(Register)
+    @handle(RegisterWithErrorInErrorHandler)
     def handle_register(self, command):
         global handler_counter
         handler_counter += 1
@@ -189,6 +201,8 @@ def register(test_domain):
     test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Register, part_of=User)
+    test_domain.register(RegisterWithError, part_of=User)
+    test_domain.register(RegisterWithErrorInErrorHandler, part_of=User)
 
     # Register handlers
     test_domain.register(NormalEventHandler, part_of=User)
@@ -258,31 +272,45 @@ async def test_event_handler_error_handling(test_domain, caplog):
 @pytest.mark.asyncio
 async def test_command_handler_error_handling(test_domain, caplog):
     """Test that handle_error is called when an exception occurs in a command handler"""
-    # Create test command
-    command = Register(
-        email="john.doe@example.com",
-        name="John Doe",
-        password_hash="hash",
+
+    # Each handler class is wired to its own command type, so we
+    # build a dedicated message per handler.
+    def message_for(cmd):
+        return Message.from_domain_object(
+            test_domain._enrich_command(cmd, asynchronous=True)
+        )
+
+    normal_message = message_for(
+        Register(email="john.doe@example.com", name="John Doe", password_hash="hash")
     )
-    message = Message.from_domain_object(
-        test_domain._enrich_command(command, asynchronous=True)
+    error_message = message_for(
+        RegisterWithError(
+            email="john.doe@example.com", name="John Doe", password_hash="hash"
+        )
+    )
+    error_in_error_message = message_for(
+        RegisterWithErrorInErrorHandler(
+            email="john.doe@example.com", name="John Doe", password_hash="hash"
+        )
     )
 
     # Create engine
     engine = Engine(domain=test_domain, test_mode=True)
 
     # Test normal handler
-    await engine.handle_message(NormalCommandHandler, message)
+    await engine.handle_message(NormalCommandHandler, normal_message)
     assert handler_counter == 1
     assert error_handler_counter == 0
 
     # Test handler with error that has handle_error
-    await engine.handle_message(ErrorCommandHandler, message)
+    await engine.handle_message(ErrorCommandHandler, error_message)
     assert handler_counter == 2  # +1 from the handler
     assert error_handler_counter == 1  # +1 from handle_error
 
     # Test handler with error in handle_error
-    await engine.handle_message(ErrorInErrorHandlerCommandHandler, message)
+    await engine.handle_message(
+        ErrorInErrorHandlerCommandHandler, error_in_error_message
+    )
     assert handler_counter == 3  # +1 from the handler
     assert error_in_error_handler_counter == 1  # +1 from handle_error
 

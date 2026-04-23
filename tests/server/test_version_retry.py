@@ -117,7 +117,9 @@ def register_elements(test_domain):
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
     test_domain.register(RenameUser, part_of=User)
-    test_domain.register(UserCommandHandler, part_of=User)
+    # `UserCommandHandler` is NOT registered here — tests that define
+    # their own `RenameUser` handler would otherwise collide with it.
+    # The one test that needs `UserCommandHandler` registers it itself.
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.init(traverse=False)
 
@@ -221,6 +223,9 @@ class TestRetryOnVersionError:
     @patch("protean.utils.mixins.time.sleep")
     def test_succeeds_on_first_attempt(self, mock_sleep, test_domain):
         """No retry needed when handler succeeds immediately."""
+        test_domain.register(UserCommandHandler, part_of=User)
+        test_domain.init(traverse=False)
+
         identifier = _create_user(test_domain)
 
         command = RenameUser(user_id=identifier, name="Jane")

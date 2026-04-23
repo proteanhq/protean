@@ -3,7 +3,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.exceptions import ConfigurationError, NotSupportedError
+from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import Identifier, String, Text
 from protean.utils.mixins import handle
 
@@ -95,13 +95,14 @@ def test_retrieving_handlers_for_unknown_command(test_domain):
 
 def test_error_on_defining_multiple_handlers_for_a_command(test_domain):
     test_domain.register(User, is_event_sourced=True)
+    test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.register(AdminUserCommandHandlers, part_of=User)
-    test_domain.init(traverse=False)
 
-    with pytest.raises(NotSupportedError) as exc:
-        test_domain.command_handler_for(Register())
+    with pytest.raises(IncorrectUsageError) as exc:
+        test_domain.init(traverse=False)
 
     assert (
-        exc.value.args[0] == "Command Register cannot be handled by multiple handlers"
+        exc.value.args[0]
+        == f"Commands cannot be handled by multiple handlers: {Register.__type__}"
     )

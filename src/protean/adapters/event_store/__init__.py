@@ -10,7 +10,7 @@ from protean.core.event_sourced_repository import (
     event_sourced_repository_factory,
 )
 from protean.core.projector import BaseProjector
-from protean.exceptions import ConfigurationError, NotSupportedError
+from protean.exceptions import ConfigurationError
 from protean.utils import fqn
 
 if TYPE_CHECKING:
@@ -180,27 +180,9 @@ class EventStore:
         stream_category = command.meta_.part_of.meta_.stream_category
 
         handler_classes = self._command_streams.get(stream_category, set())
-
-        # No command handlers have been configured to run this command
-        if len(handler_classes) == 0:
-            return None
-
-        # Ensure that a command has a unique handler across all handlers.
-        # HandlerConfigurator validates this at domain.init() time; this is
-        # a runtime safety net.
-        handler_methods = set()
+        command_type = command.__class__.__type__
         for handler_cls in handler_classes:
-            try:
-                handler_method = next(
-                    iter(handler_cls._handlers[command.__class__.__type__])
-                )
-                handler_methods.add((handler_cls, handler_method))
-            except StopIteration:
-                pass
+            if handler_cls._handlers.get(command_type):
+                return handler_cls
 
-        if len(handler_methods) > 1:
-            raise NotSupportedError(
-                f"Command {command.__class__.__name__} cannot be handled by multiple handlers"
-            )
-
-        return next(iter(handler_methods))[0] if handler_methods else None
+        return None
