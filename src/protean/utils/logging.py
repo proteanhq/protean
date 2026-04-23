@@ -91,6 +91,7 @@ _FRAMEWORK_LOGGERS_NORMAL = {
     "protean.server.subscription": logging.INFO,
     "protean.server.outbox_processor": logging.INFO,
     "protean.access": logging.INFO,
+    "protean.access.http": logging.INFO,
     "protean.perf": logging.WARNING,
     "protean.security": logging.WARNING,
     "protean.core": logging.WARNING,
@@ -105,6 +106,10 @@ _ACCESS_LOGGER_PREFIX = _ACCESS_LOGGER_NAME + "."
 
 # Dedicated loggers for the wide event access log and slow-handler detection
 access_logger = logging.getLogger(_ACCESS_LOGGER_NAME)
+# Sub-logger used by the FastAPI HTTP wide event middleware. Because the
+# name is nested under ``protean.access``, tail sampling filters attached to
+# the parent logger propagate naturally.
+http_access_logger = logging.getLogger(_ACCESS_LOGGER_NAME + ".http")
 perf_logger = logging.getLogger("protean.perf")
 
 # ``_RESERVED_LOG_RECORD_ATTRS`` is imported from ``protean.integrations.logging``
@@ -307,13 +312,44 @@ def bind_event_context(**kwargs: Any) -> None:
     conflicting keys. Outside handler code, this still binds keys to the
     current structlog context — they will be cleared when the next handler
     invocation starts.
+
+    When called inside a FastAPI endpoint running under
+    ``DomainContextMiddleware``, the kwargs are *also* mirrored onto
+    ``g._http_wide_event_extras`` (initialised by the middleware before
+    ``call_next`` is awaited). Starlette runs the endpoint in a child task
+    whose ``contextvars`` copy is not observable from the parent, so the
+    plain structlog binding alone would be lost at the HTTP boundary.
     """
     structlog.contextvars.bind_contextvars(**kwargs)
+    extras = _http_wide_event_extras()
+    if extras is not None:
+        extras.update(kwargs)
 
 
 def unbind_event_context(*keys: str) -> None:
     """Remove specific fields from the current wide event context."""
     structlog.contextvars.unbind_contextvars(*keys)
+    extras = _http_wide_event_extras()
+    if extras is not None:
+        for key in keys:
+            extras.pop(key, None)
+
+
+def _http_wide_event_extras() -> Optional[dict[str, Any]]:
+    """Return the HTTP wide-event extras dict, or ``None`` when absent.
+
+    Only present when ``DomainContextMiddleware`` has initialised it for
+    the current request. Any failure to reach ``g`` (no domain context,
+    LocalProxy errors) yields ``None`` so callers can treat absence the
+    same as "no middleware in play".
+    """
+    try:
+        from protean.utils.globals import g
+
+        extras = g.get("_http_wide_event_extras")
+    except (AttributeError, RuntimeError):
+        return None
+    return extras if isinstance(extras, dict) else None
 
 
 def _reset_access_log_counters() -> None:

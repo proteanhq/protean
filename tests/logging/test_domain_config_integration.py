@@ -135,6 +135,41 @@ class TestDomainTomlLoggingSection:
         # to be consumed by the redaction filter in a future PR)
         assert domain.config["logging"]["redact"] == ["custom_field"]
 
+    def test_http_section_defaults_exposed(self):
+        """The [logging.http] defaults are present on every fresh domain."""
+        domain = Domain(
+            root_path=str(Path(__file__).parent),
+            name="TestHttpDefaults",
+        )
+        http_cfg = domain.config["logging"]["http"]
+        assert http_cfg == {
+            "enabled": True,
+            "log_request_headers": False,
+            "log_response_headers": False,
+            "exclude_paths": [],
+        }
+
+    def test_http_section_overrides_merged(self):
+        """User-supplied [logging.http] keys merge onto the defaults."""
+        domain = Domain(
+            root_path=str(Path(__file__).parent),
+            name="TestHttpOverrides",
+            config={
+                "logging": {
+                    "http": {
+                        "enabled": False,
+                        "exclude_paths": ["/healthz", "/readyz"],
+                    }
+                }
+            },
+        )
+        http_cfg = domain.config["logging"]["http"]
+        assert http_cfg["enabled"] is False
+        assert http_cfg["exclude_paths"] == ["/healthz", "/readyz"]
+        # Unspecified keys fall back to defaults
+        assert http_cfg["log_request_headers"] is False
+        assert http_cfg["log_response_headers"] is False
+
     def test_per_logger_map_from_config(self):
         """per_logger from [logging.per_logger] sets individual logger levels."""
         domain = Domain(

@@ -224,6 +224,12 @@ class CommandProcessor:
         command_type = command.__class__.__type__
         process_start = time.monotonic()
 
+        # Populate the HTTP wide-event commands list when the FastAPI
+        # middleware has installed one; absent for every other call site.
+        http_commands = g.get("_http_commands_dispatched")
+        if isinstance(http_commands, list):
+            http_commands.append(command_type)
+
         # Extract incoming traceparent as parent OTEL context so the
         # processing span becomes a child of the distributed trace.
         parent_ctx = None

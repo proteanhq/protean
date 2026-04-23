@@ -172,6 +172,15 @@ def _default_config():
                 "always_keep_slow": True,
                 "critical_streams": [],
             },
+            # HTTP-layer wide event emission (protean.access.http). When
+            # enabled (default), FastAPI requests routed through
+            # DomainContextMiddleware emit one wide event per request.
+            "http": {
+                "enabled": True,
+                "log_request_headers": False,
+                "log_response_headers": False,
+                "exclude_paths": [],
+            },
         },
         "telemetry": {
             "enabled": False,
