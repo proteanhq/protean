@@ -174,6 +174,11 @@ class TestHttpWideEventEmission:
         with caplog.at_level(logging.DEBUG, logger="protean.access.http"):
             response = client.get("/orders/boom")
         assert response.status_code == 500
+        # Contract: X-Request-ID is always echoed, even on unhandled
+        # exceptions — the middleware synthesises a 500 response so the
+        # request-scoped headers survive.
+        assert response.headers["X-Request-ID"]
+        assert response.headers["X-Correlation-ID"]
 
         records = _http_records(caplog)
         assert len(records) == 1
@@ -196,6 +201,66 @@ class TestHttpWideEventEmission:
         assert record.levelno == logging.WARNING
         assert record.http_status == 418
         assert record.getMessage() == "access.http_completed"
+
+
+class TestIdHeaderSanitization:
+    """Client-supplied IDs are stripped and length-capped."""
+
+    def test_oversized_request_id_truncated(self, client, caplog):
+        huge = "r" * 500
+        with caplog.at_level(logging.DEBUG, logger="protean.access.http"):
+            response = client.post("/orders", headers={"X-Request-ID": huge})
+        assert response.status_code == 200
+
+        # Cap kicks in — see _ID_HEADER_MAX_CHARS (200).
+        assert len(response.headers["X-Request-ID"]) == 200
+        assert response.headers["X-Request-ID"] == "r" * 200
+
+        records = _http_records(caplog)
+        assert len(records) == 1
+        assert len(records[0].request_id) == 200
+
+    def test_oversized_correlation_id_truncated(self, client, caplog):
+        huge = "c" * 500
+        with caplog.at_level(logging.DEBUG, logger="protean.access.http"):
+            response = client.post("/orders", headers={"X-Correlation-ID": huge})
+        assert response.status_code == 200
+
+        assert len(response.headers["X-Correlation-ID"]) == 200
+
+        records = _http_records(caplog)
+        assert len(records) == 1
+        assert len(records[0].correlation_id) == 200
+
+    def test_whitespace_only_id_auto_generates(self, client, caplog):
+        """An all-whitespace ID is treated as absent."""
+        with caplog.at_level(logging.DEBUG, logger="protean.access.http"):
+            response = client.post(
+                "/orders",
+                headers={"X-Request-ID": "   ", "X-Correlation-ID": "\t\n"},
+            )
+        assert response.status_code == 200
+
+        auto_req = response.headers["X-Request-ID"]
+        auto_corr = response.headers["X-Correlation-ID"]
+        assert len(auto_req) == 32
+        assert len(auto_corr) == 32
+        assert auto_req != auto_corr
+
+
+class TestUnhandledExceptionReturns500WithHeaders:
+    """Starlette's ServerErrorMiddleware would otherwise strip our headers."""
+
+    def test_unhandled_exception_synthesises_500_with_request_id(self, client, caplog):
+        with caplog.at_level(logging.DEBUG, logger="protean.access.http"):
+            response = client.get(
+                "/orders/boom",
+                headers={"X-Request-ID": "trace-on-error"},
+            )
+        assert response.status_code == 500
+        assert response.headers["X-Request-ID"] == "trace-on-error"
+        # Body is the middleware's plain 500 fallback.
+        assert response.text == "Internal Server Error"
 
 
 class TestRequestIdPropagation:

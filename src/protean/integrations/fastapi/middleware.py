@@ -33,7 +33,7 @@ from uuid import uuid4
 import structlog
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp
 
 from protean.domain import Domain
@@ -49,6 +49,29 @@ _USER_AGENT_HEADER = "user-agent"
 # Cap overly-large User-Agent strings so operators cannot accidentally blow
 # up log storage with a crafted header. Matches the issue spec (256 chars).
 _USER_AGENT_MAX_CHARS = 256
+
+# Cap client-supplied request/correlation IDs at a generous limit so that
+# a malformed or malicious header cannot balloon log volume or trip
+# downstream header-size validators. Well-formed identifiers (UUID,
+# hex, snowflake) all fit comfortably under 200 characters.
+_ID_HEADER_MAX_CHARS = 200
+
+
+def _sanitize_id_header(value: Optional[str]) -> Optional[str]:
+    """Strip and truncate a client-supplied ID header.
+
+    Returns ``None`` when the input is ``None`` or empty after stripping,
+    otherwise the first :data:`_ID_HEADER_MAX_CHARS` characters of the
+    trimmed value. Preserves the original token form so operators can
+    still match it in their log aggregator.
+    """
+    if value is None:
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    return trimmed[:_ID_HEADER_MAX_CHARS]
+
 
 # Keys that the middleware fills in itself. Application-provided context
 # bound via ``bind_event_context`` must not silently overwrite them.
@@ -176,11 +199,15 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
         """Extract correlation ID from request headers.
 
         Checks ``X-Correlation-ID`` first, then falls back to ``X-Request-ID``.
-        Returns ``None`` when neither header is present.
+        Returns ``None`` when neither header is present. Values are
+        whitespace-stripped and truncated to :data:`_ID_HEADER_MAX_CHARS`
+        so a malformed or oversized client-supplied header cannot balloon
+        log volume.
         """
-        return request.headers.get(_CORRELATION_HEADER) or request.headers.get(
+        raw = request.headers.get(_CORRELATION_HEADER) or request.headers.get(
             _REQUEST_ID_HEADER
         )
+        return _sanitize_id_header(raw)
 
     def _resolve_http_logging_config(
         self, request_domain: Optional[Domain]
@@ -224,7 +251,9 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
         """Push domain context for the request and forward to the next handler."""
         domain = self._resolve_domain(request.url.path)
         correlation_id = self._extract_correlation_id(request)
-        request_id = request.headers.get(_REQUEST_ID_HEADER) or uuid4().hex
+        request_id = (
+            _sanitize_id_header(request.headers.get(_REQUEST_ID_HEADER)) or uuid4().hex
+        )
 
         http_config = self._resolve_http_logging_config(domain)
         emit_wide_event = http_config["enabled"] and (
@@ -257,19 +286,27 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
                 request, call_next
             )
 
-            if response is not None:
-                response.headers[_REQUEST_ID_HEADER] = request_id
-                if domain is not None:
-                    # Prefer the correlation id command processing actually
-                    # used (set by CommandProcessor.enrich), falling back to
-                    # the request-supplied one when no command ran.
-                    # ``correlation_id`` is guaranteed non-None in this branch
-                    # because the block above auto-generates one when absent.
-                    assert correlation_id is not None
-                    used_id: str = (
-                        getattr(g, "used_correlation_id", None) or correlation_id
-                    )
-                    response.headers[_CORRELATION_HEADER] = used_id
+            # Unhandled exceptions produce no response; synthesise a plain 500
+            # here so ``X-Request-ID`` (and ``X-Correlation-ID`` when a domain
+            # is active) are always echoed back. Returning from the middleware
+            # pre-empts Starlette's ``ServerErrorMiddleware``, which would
+            # otherwise strip our request-scoped headers.
+            if response is None:
+                response = PlainTextResponse(
+                    "Internal Server Error",
+                    status_code=status_code,
+                )
+
+            response.headers[_REQUEST_ID_HEADER] = request_id
+            if domain is not None:
+                # Prefer the correlation id command processing actually used
+                # (set by CommandProcessor.enrich), falling back to the
+                # request-supplied one when no command ran. ``correlation_id``
+                # is guaranteed non-None in this branch because the block
+                # above auto-generates one when absent.
+                assert correlation_id is not None
+                used_id: str = getattr(g, "used_correlation_id", None) or correlation_id
+                response.headers[_CORRELATION_HEADER] = used_id
 
         if emit_wide_event:
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
@@ -293,8 +330,6 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
                 config=http_config,
             )
 
-        if error_info is not None:
-            raise error_info
         return response  # type: ignore[return-value]
 
     @staticmethod
