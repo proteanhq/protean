@@ -163,6 +163,15 @@ def _default_config():
             "slow_query_truncate_chars": 500,
             "redact": list(DEFAULT_REDACT_KEYS),
             "per_logger": {},
+            # Opt-in tail sampling for wide events. When disabled, the
+            # framework emits one wide event per handled message.
+            "sampling": {
+                "enabled": False,
+                "default_rate": 0.05,
+                "always_keep_errors": True,
+                "always_keep_slow": True,
+                "critical_streams": [],
+            },
         },
         "telemetry": {
             "enabled": False,
