@@ -424,6 +424,48 @@ class TestClientMetadata:
         # The first hop wins — subsequent hops are trusted proxies.
         assert records[0].client_ip == "203.0.113.42"
 
+    def test_client_ip_empty_when_no_forwarded_and_no_peer(self, test_domain, caplog):
+        """Covers the fallthrough when X-Forwarded-For is absent and scope has no client."""
+        from starlette.datastructures import Headers
+        from starlette.requests import Request
+
+        # Build a bare ASGI scope that mimics a request without a client peer
+        # (some deployment scenarios — e.g. lifespan-bound handlers — leave
+        # ``client`` as ``None`` in the scope).
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/ping",
+            "scheme": "http",
+            "headers": Headers({}).raw,
+            "client": None,
+            "server": ("testserver", 80),
+            "query_string": b"",
+            "root_path": "",
+        }
+        bare_request = Request(scope)  # type: ignore[arg-type]
+
+        caplog.set_level(logging.DEBUG, logger="protean.access.http")
+        DomainContextMiddleware._emit_http_wide_event(
+            request=bare_request,
+            response=None,
+            status_code=200,
+            duration_ms=1.0,
+            request_id="rid",
+            correlation_id="cid",
+            commands_dispatched=[],
+            error_info=None,
+            app_context={},
+            config={
+                "log_request_headers": False,
+                "log_response_headers": False,
+            },
+        )
+
+        records = _http_records(caplog)
+        assert len(records) == 1
+        assert records[0].client_ip == ""
+
 
 class TestHeaderLogging:
     def test_log_request_headers_opt_in(self, test_domain, caplog):
