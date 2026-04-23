@@ -37,6 +37,15 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Configuration](configuration/index.md)
 
+-   **:material-file-document-outline: Logging**
+
+    ---
+
+    `[logging]` config schema, CLI flags, framework logger catalog, wide
+    event field schemas, redaction, trace-context fields.
+
+    [:material-arrow-right-box: Logging](logging.md)
+
 -   **:material-console: CLI**
 
     ---

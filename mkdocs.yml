@@ -304,6 +304,7 @@ nav:
       - reference/fields/arguments.md
     - Configuration:
       - reference/configuration/index.md
+    - Logging: reference/logging.md
     - CLI:
       - reference/cli/index.md
       - Project:
@@ -426,6 +427,7 @@ nav:
       - concepts/async-processing/outbox.md
       - concepts/async-processing/priority-lanes.md
       - concepts/async-processing/stream-categories.md
+    - "Observability: Logging": concepts/observability/logging.md
     - Ports & Adapters:
       - concepts/ports-and-adapters/index.md
     - Internals:

@@ -438,46 +438,51 @@ LOG_LEVEL=INFO          # DEBUG, INFO, WARNING, ERROR, CRITICAL (optional)
 
 ### Logging Configuration
 
-This project includes comprehensive structured logging with:
+`domain.init()` auto-configures Protean's structured logging pipeline:
 
 #### Features
-- **Structured logging** with JSON output for production
-- **Human-readable** console output for development
-- **Automatic log rotation** with size and time-based policies
-- **Environment-specific** log levels
-- **Context propagation** for tracing requests
+- **Structured logging** with JSON output for production, colored console for development
+- **Wide event access log** — one rich event per handled command, event, query, or projector with full domain context (aggregate, events raised, UoW outcome, correlation IDs)
+- **Automatic correlation** — every log record carries `correlation_id`, `causation_id`, and (when telemetry is enabled) `trace_id` / `span_id`
+- **Declarative config** via the `[logging]` section of `domain.toml`
+- **CLI overrides** via `protean --log-level`, `--log-format`, `--log-config`
 
 #### Usage
 
 ```python
-from {{ package_name }}.shared.logging import get_logger, add_context, log_method_call
+from protean.utils.logging import get_logger, add_context, bind_event_context
 
-# Get a logger
+# Get a logger (keyword args become structured fields)
 logger = get_logger(__name__)
+logger.info("processing_request", user_id=123, action="create")
 
-# Basic logging
-logger.info("Processing request", user_id=123, action="create")
+# Enrich the current wide event with business context
+bind_event_context(user_tier="premium", order_total=199.99)
 
-# Add context that persists across log messages
-add_context(request_id="abc-123", user_id=456)
-logger.info("Starting process")  # Will include request_id and user_id
-
-# Use decorator for automatic method logging
-@log_method_call
-def process_order(order_id: str):
-    # Method entry, exit, and errors are logged automatically
-    return {"status": "processed"}
+# Add request-scoped context that persists across log messages
+add_context(request_id="abc-123", tenant_id="tenant-42")
+logger.info("starting_process")  # includes request_id and tenant_id
 ```
 
-#### Configuration Files
-- `logging.toml` - Logging configuration (optional)
-- `logs/` - Directory for log files (auto-created)
-  - `{{ package_name }}.log` - Main application log
-  - `{{ package_name }}_error.log` - Error-only log
+#### Configuration
+
+Configure in `domain.toml`:
+
+```toml
+[logging]
+level = "INFO"
+format = "json"
+log_dir = "logs"
+slow_handler_threshold_ms = 500
+redact = ["x-internal-token"]
+```
 
 #### Environment Variables
-- `ENVIRONMENT` - Sets default log level (production=INFO, development=DEBUG)
-- `LOG_LEVEL` - Override default log level
+- `PROTEAN_ENV` - Sets environment defaults (production=INFO JSON, development=DEBUG console)
+- `PROTEAN_LOG_LEVEL` - Override default log level
+- `PROTEAN_NO_AUTO_LOGGING=1` - Disable auto-configuration when embedding Protean in another logging setup
+
+See the [Protean logging guide](https://docs.proteanhq.com/guides/server/logging/) for details.
 
 ## Contributing
 
