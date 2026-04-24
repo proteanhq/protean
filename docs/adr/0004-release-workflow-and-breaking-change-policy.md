@@ -126,6 +126,18 @@ In the short term (pre-1.0), a clear "Upgrade Notes" section in each release is 
 | Behavioral | Changed return value, reordered execution | Silent incorrect behavior | Opt-in flag → warning → default flip | 3 minor versions |
 | Structural | Event schema change, config format change | Varies | Versioned schema + migration docs | Case-by-case |
 
+### Exception: Operational Defaults
+
+A narrow exception to the Tier-2 transition path applies to **operational defaults** — values that tune infrastructure behaviour (connection pool sizes, bound ports, timeout thresholds, retention windows) without changing any public API signature or method semantics. These may be flipped in a single release when **all** of the following hold:
+
+1. The previous value remains available via a config key in `domain.toml` — operators can restore old behaviour declaratively without touching code.
+2. The flip is documented as a Tier-2 change in the release notes with an explicit opt-out recipe.
+3. Failures caused by the new value are observable and non-silent — typically a domain validator warning (e.g. `LOW_POOL_SIZE`) or a logged runtime warning on first use.
+
+This exception exists because operational defaults have different risk economics than API breaks: they fail loudly when wrong (connection exhaustion, port collision) rather than silently producing incorrect results, and operators who have invested in tuning already set these keys explicitly. Forcing the 3-version transition imposes friction without commensurate safety gain.
+
+Epic 5.1 applied this exception to two shipped changes — SQLAlchemy pool defaults `2/5 → 5/10` (#794) and the Engine health server binding port 8080 by default (#795). Both carry opt-out paths in `domain.toml` and non-silent failure modes (pool warning, port-collision log entry).
+
 ---
 
 ## 3. Compatibility Checking
