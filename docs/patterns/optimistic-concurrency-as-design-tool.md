@@ -404,6 +404,49 @@ To disable auto-retry entirely, set `enabled = false` in
 
 ---
 
+## Atomicity guarantee across adapters
+
+The pattern above assumes that `ExpectedVersionError` is raised
+reliably whenever two writers race on the same aggregate. That
+guarantee is only as strong as the adapter behind the repository. Since
+the 5.1 hardening work, every first-party adapter checks the expected
+version **in the same atomic operation as the write** — there is no
+window in which two writers can both observe the same version and both
+commit.
+
+| Adapter | Mechanism |
+|---------|-----------|
+| SQLAlchemy repository | Conditional `UPDATE ... WHERE _version = :expected` with rowcount verification inside the same transaction |
+| Memory repository | `threading.Lock` serialises the version check and the write |
+| Elasticsearch repository | Native `if_seq_no` and `if_primary_term` on the index operation |
+| Memory event store | `threading.Lock` guards the `write()` call |
+| MessageDB event store | Stored-procedure API enforces expected version inside PostgreSQL |
+
+Earlier versions of the SQLAlchemy and memory adapters used a
+SELECT-then-UPDATE pattern with a time-of-check to time-of-use window:
+two concurrent handlers could both pass the `SELECT _version` check,
+both issue their `UPDATE`, and the slower writer would silently
+overwrite the faster one without raising `ExpectedVersionError`. That
+window is now closed. Two concurrent writers on the same aggregate will
+always surface one success and one `ExpectedVersionError`, regardless
+of adapter.
+
+**What this means for the pattern.** Category 2 handlers (seat
+reservations, inventory allocation) can trust the version check as the
+single source of truth for "did someone else get there first?". Before
+5.1, a hand-written defensive `SELECT FOR UPDATE` was sometimes
+needed; today, the adapter's conditional write is sufficient.
+
+**What this means for custom adapters.** A third-party repository or
+event store implementation must preserve this invariant: the version
+check and the write must be one atomic step. Implement it using the
+database's native conditional-write primitive (row-level lock plus
+`WHERE _version = :expected`, `compare-and-swap`, or equivalent). A
+SELECT-then-UPDATE shortcut will reintroduce the race and silently
+discard writes.
+
+---
+
 ## Anti-Patterns
 
 ### Generic catch-all handler
