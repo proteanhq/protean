@@ -41,6 +41,23 @@ Run `protean check` before deploying. It surfaces a `LOW_POOL_SIZE`
 warning for SQLAlchemy databases configured below the production
 default, and catches other misconfigurations at the same time.
 
+### Size the pool against your database's ceiling
+
+Each worker owns its own pool, so the peak connection count is
+`workers × (pool_size + max_overflow)`. With four engine workers and
+the configuration above (`pool_size = 10`, `max_overflow = 20`):
+
+```
+4 × (10 + 20) = 120 connections
+```
+
+If the same database also serves an API tier with its own pool, add
+those connections too. Compare the total against your database's
+`max_connections` setting and leave headroom for admin sessions,
+migrations, and read replicas. On PostgreSQL the default
+`max_connections` is `100` — under-sizing the database is the more
+common failure than under-sizing Protean's pool.
+
 ## Expose health probes to Kubernetes
 
 ### Async engine (`protean server`)
@@ -110,6 +127,45 @@ alert_callback = "myapp.alerts.on_dlq_alert"
 The alert callback runs inside the engine; keep it cheap and
 non-blocking (page the on-call rotation, post to Slack, open a
 ticket). Time-based trimming requires a Redis Streams broker.
+
+A minimal Slack webhook alert:
+
+```python
+# myapp/alerts.py
+import logging
+import os
+import httpx
+
+logger = logging.getLogger(__name__)
+_SLACK_WEBHOOK = os.environ.get("SLACK_DLQ_WEBHOOK")
+
+
+def on_dlq_alert(dlq_stream: str, depth: int, threshold: int) -> None:
+    """Post a Slack message when a DLQ crosses its depth threshold."""
+    if not _SLACK_WEBHOOK:
+        logger.warning(
+            "DLQ alert: %s depth=%d threshold=%d", dlq_stream, depth, threshold
+        )
+        return
+
+    try:
+        httpx.post(
+            _SLACK_WEBHOOK,
+            json={
+                "text": (
+                    f":warning: DLQ `{dlq_stream}` has {depth} messages "
+                    f"(threshold {threshold}). Investigate before replaying."
+                )
+            },
+            timeout=2.0,
+        )
+    except httpx.HTTPError:
+        logger.exception("Failed to post DLQ alert to Slack")
+```
+
+The callback fires once per maintenance cycle while the threshold is
+breached. Any exception it raises is caught and logged — a broken
+alert handler will not stall the engine.
 
 Override retention or alerting per handler when a subscription needs
 different SLAs — for example, an auditing handler that must keep 30

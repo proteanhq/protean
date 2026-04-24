@@ -219,7 +219,21 @@ class User:
 1. `sqlite` is the key of the database definition in the `[databases.sqlite]`
 section.
 
-Read more in [Adapters → Database](../adapters/database/index.md) section.
+SQLAlchemy providers (`postgresql`, `mssql`) accept pool tuning keys
+directly on the `[databases.<name>]` block:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `pool_size` | `5` | Base connections kept open per worker |
+| `max_overflow` | `10` | Additional temporary connections beyond `pool_size` |
+| `pool_recycle` | unset | Recycle connections older than N seconds |
+
+Setting `pool_size` below `5` triggers a `LOW_POOL_SIZE` warning from
+`protean check` (suppressed when `PROTEAN_ENV` is `development` or
+`testing`).
+
+Read more in [Adapters → Database](../adapters/database/index.md) or the
+full catalogue in [Server Hardening reference](../server/hardening.md#connection-pools).
 
 ### `caches`
 
@@ -233,9 +247,17 @@ provider = "memory"
 provider = "redis"
 URI = "redis://127.0.0.1:6379/2"
 TTL = 300
+max_connections = 50
+socket_timeout = 5
+socket_connect_timeout = 5
+retry_on_timeout = true
 ```
 
 Default provider: `memory`
+
+Redis caches forward `max_connections`, `socket_timeout`,
+`socket_connect_timeout`, and `retry_on_timeout` to the underlying
+`redis.ConnectionPool`.
 
 Read more in [Adapters → Cache](../adapters/cache/index.md) section.
 
@@ -251,9 +273,16 @@ provider = "memory"
 provider = "redis_pubsub"
 URI = "redis://127.0.0.1:6379/0"
 IS_ASYNC = true
+max_connections = 50
+socket_timeout = 5
+socket_connect_timeout = 5
+retry_on_timeout = true
 ```
 
 Default provider: `memory`
+
+Redis brokers (`redis_pubsub`, `redis_stream`) forward the same pool
+keys as the Redis cache to `redis.ConnectionPool`.
 
 Read more in [Adapters → Broker](../adapters/broker/index.md) section.
 
@@ -266,11 +295,15 @@ section.
 [event_store]
 provider = "message_db"
 database_uri = "postgresql://message_store@localhost:5433/message_store"
+max_connections = 20
 ```
 
 Note that there can only be only event store defined per domain.
 
 Default provider: `memory`
+
+MessageDB forwards `max_connections` through `conn_info` to cap the
+connection pool used for event reads and writes.
 
 Read more in [Adapters → Event Store](../adapters/eventstore/index.md) section.
 
@@ -326,6 +359,13 @@ alert_threshold = 100        # Warn when a DLQ stream reaches this depth
 check_interval_seconds = 60  # How often the maintenance cycle runs
 alert_callback = "myapp.alerts.notify_oncall"  # Optional dotted path, called on breach
 
+# Kubernetes-compatible health HTTP server
+# Enabled by default on port 8080; disable for tests or embedded use.
+[server.health]
+enabled = true               # Start the built-in health server
+host = "0.0.0.0"             # Bind address
+port = 8080                  # Listen port
+
 # Handler-specific overrides
 [server.subscriptions.OrderEventHandler]
 profile = "fast"
@@ -378,6 +418,23 @@ Per-subscription overrides are available on each handler's
 
 For the operational workflow — discover, inspect, replay, purge — see
 [Dead Letter Queues](../../guides/server/dead-letter-queues.md).
+
+#### Health Checks
+
+The `[server.health]` section configures the built-in HTTP server used
+for Kubernetes liveness and readiness probes. The server is **enabled by
+default** on port `8080`.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `true` | Start the health HTTP server. Set to `false` for tests or embedded deployments. |
+| `host` | str | `"0.0.0.0"` | Bind address. |
+| `port` | int | `8080` | Listen port. |
+
+The server exposes `GET /healthz`, `GET /livez`, and `GET /readyz`. For
+the probe response bodies, readiness semantics, and FastAPI router
+factory, see
+[Server Hardening reference](../server/hardening.md#health-checks).
 
 ### `outbox`
 

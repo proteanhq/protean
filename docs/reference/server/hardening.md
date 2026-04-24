@@ -58,6 +58,24 @@ database with `pool_size < 5` unless `PROTEAN_ENV` is `development` or
 `testing`. Memory providers are skipped. The warning is advisory — it
 does not block startup.
 
+Sample output from `protean check` when `pool_size = 2` on a
+PostgreSQL provider:
+
+```
+$ protean check --domain=my_domain
+
+  Domain: my_domain  WARN
+  1 warning(s)
+
+  Warnings (1):
+    ! LOW_POOL_SIZE: Database 'default' has pool_size=2 (production
+      default is 5). Consider raising it for production workloads.
+```
+
+`protean check` exits with code `2` on warnings, so CI pipelines that
+enforce `--strict` will fail. Raise `pool_size` or set `PROTEAN_ENV` to
+`development`/`testing` to silence the warning.
+
 ## Health checks
 
 ### `[server.health]`
@@ -76,9 +94,24 @@ does not block startup.
 | `GET /livez` | Liveness (alias for `/healthz`) | Same as `/healthz` |
 | `GET /readyz` | Readiness | `200` when all checks pass, `503` otherwise |
 
-`/readyz` body:
+Sample responses — liveness while the engine is running:
 
-```json
+```bash
+$ curl -i http://localhost:8080/livez
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 55
+
+{"status": "ok", "checks": {"event_loop": "responsive"}}
+```
+
+Readiness when every dependency is reachable:
+
+```bash
+$ curl -i http://localhost:8080/readyz
+HTTP/1.1 200 OK
+Content-Type: application/json
+
 {
   "status": "ok",
   "checks": {
@@ -92,9 +125,43 @@ does not block startup.
 }
 ```
 
-`status` is `"ok"` when every dependency check passes, `"degraded"`
-when any component fails, and `"unavailable"` when the engine is
-already shutting down.
+Readiness when one component is unreachable — the status flips to
+`"degraded"` and the HTTP code to `503`, which K8s treats as
+"not ready":
+
+```bash
+$ curl -i http://localhost:8080/readyz
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+
+{
+  "status": "degraded",
+  "checks": {
+    "shutting_down": false,
+    "providers": {"default": "ok"},
+    "brokers": {"default": "unavailable"},
+    "event_store": "ok",
+    "caches": {"default": "ok"},
+    "subscriptions": 12
+  }
+}
+```
+
+Readiness after `SIGTERM` arrives — the engine reports
+`"unavailable"` immediately so the load balancer drains traffic before
+in-flight handlers are affected:
+
+```bash
+$ curl -i http://localhost:8080/readyz
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+
+{"status": "unavailable", "checks": {"shutting_down": true}}
+```
+
+`/livez` keeps returning `200` during the drain window; it only fails
+when the event loop itself is blocked. This asymmetry is deliberate:
+liveness triggers a restart, readiness pulls the pod out of rotation.
 
 ### FastAPI router factory
 
@@ -152,17 +219,11 @@ no-op `dlq_trim()`.
 
 ## Subscription profiles
 
-Profile defaults resolved at engine startup.
-
-| Profile | Subscription type | `messages_per_tick` | `blocking_timeout_ms`[^1] | `max_retries`[^1] | `enable_dlq` |
-|---------|-------------------|---------------------|----------------------------|--------------------|--------------|
-| `PRODUCTION` | `STREAM` | 100 | 5000 | 3 | true |
-| `FAST` | `STREAM` | 10 | 100 | 2 | true |
-| `BATCH` | `STREAM` | 500 | 10000 | 5 | true |
-| `DEBUG` | `STREAM` | 1 | 1000 | 1 | false |
-| `PROJECTION` | `EVENT_STORE` | 100 | 5000 | 3 | false |
-
-[^1]: Ignored for `EVENT_STORE` subscriptions.
+Five profiles — `PRODUCTION`, `FAST`, `BATCH`, `DEBUG`, `PROJECTION` —
+resolve at engine startup to concrete `SubscriptionConfig` values. For
+the full per-profile value dictionaries (`messages_per_tick`,
+`blocking_timeout_ms`, `max_retries`, `enable_dlq`, etc.), see
+[Subscription Configuration → Profile Defaults](./configuration.md#profile-defaults).
 
 `SubscriptionConfig` fields resolvable at every precedence level:
 
