@@ -81,3 +81,5 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0008](0008-centralized-telemetry-gateway-and-traceparent-bridging.md) | Centralized Telemetry Gateway and TraceParent Bridging |
 | [0009](0009-concurrent-event-processing-strategy.md) | Concurrent Event Processing Strategy |
 | [0010](0010-logging-overhaul-and-wide-event-architecture.md) | Logging Overhaul and Wide Event Architecture |
+| [0011](0011-engine-shutdown-and-resource-lifecycle-contract.md) | Engine Shutdown and Resource Lifecycle Contract |
+| [0012](0012-health-check-architecture.md) | Health Check Architecture |

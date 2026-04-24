@@ -246,6 +246,70 @@ application, see [Multi-Tenancy in Event-Driven Systems](../../patterns/multi-te
 
 ---
 
+## Shutdown sequence
+
+The Engine owns the lifecycle of every infrastructure adapter it
+opens. When it receives `SIGINT`, `SIGTERM`, or `SIGHUP`, it walks a
+deliberate four-step sequence that preserves three invariants:
+
+1. **Load balancers pull the pod out of rotation first** — readiness
+   probes flip to `503` before handlers stop, so new traffic stops
+   arriving before in-flight work is disturbed.
+2. **In-flight handlers finish or are bounded** — each handler gets up
+   to 10 seconds to complete, after which stragglers are cancelled.
+   This bounds shutdown time without sacrificing successful commits
+   that are already underway.
+3. **Resources close in reverse-initialisation order** — dependents
+   close before their dependencies, so a handler mid-commit never
+   finds its repository's connection pool closed out from under it.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant OS as Signal handler
+    participant Eng as Engine
+    participant HS as Health server
+    participant Sub as Subscriptions / Outbox / DLQ
+    participant Dom as Domain
+    participant Adp as Adapters
+    OS->>Eng: SIGTERM
+    Eng->>Eng: shutting_down = True
+    Eng->>HS: stop() — /readyz now returns 503
+    Eng->>Sub: shutdown() each subscription
+    Note over Sub: positions persisted,<br/>consumer-group state flushed
+    Eng->>Eng: gather in-flight tasks (10s bound)
+    Eng->>Eng: cancel stragglers
+    Eng->>Dom: domain.close()
+    Dom->>Adp: event store → brokers → caches → providers
+    Note over Adp: each close() wrapped in try/except<br/>so one failure cannot block the rest
+    Eng->>OS: loop.stop()
+```
+
+Two guarantees fall out of this sequence:
+
+- **`/readyz` fails before any handler is disturbed.** The health
+  server stops in step 3; subscriptions stop in step 4; in-flight
+  handlers drain in step 5. A load balancer that polls `/readyz` every
+  5 seconds pulls the pod within that window, and requests already in
+  flight complete on the old pod.
+- **`Domain.close()` is safe to call from application code.** Tests
+  and tooling that create domains on demand can invoke `domain.close()`
+  directly. Each adapter's `close()` is wrapped in `try/except` inside
+  the Domain so a misbehaving adapter cannot prevent the rest from
+  closing. Custom adapters inherit a no-op `close()`; override it when
+  the adapter holds sockets, file handles, or background threads.
+
+For the `terminationGracePeriodSeconds` you need in Kubernetes, and
+the full reference — what `Domain.close()` does per adapter, when
+`SIGHUP` vs `SIGTERM` matter, how to disable the health server — see
+[Server Hardening reference](../../reference/server/hardening.md#shutdown-sequence)
+and [Harden the Server](../../guides/server/hardening.md#shut-down-gracefully).
+The design rationale — why subscriptions stop first, why 10 seconds,
+why per-adapter error isolation — is captured in
+[ADR-0011](../../adr/0011-engine-shutdown-and-resource-lifecycle-contract.md).
+
+---
+
 ## Running the Engine
 
 For comprehensive information on how to start, configure, and operate the engine, including:
