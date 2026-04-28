@@ -359,12 +359,12 @@ When planning and executing an epic, follow this structured workflow. The goal i
 
 Single layer — all tracking uses **real GitHub Issues**:
 
-- **Epic issue** — Every epic already exists as a **draft item** in the GitHub Project with its Sequence, Release, Requires, and Item Type fields pre-populated. **Do not create a new issue.** Instead, convert the existing draft item to a real issue:
+- **Epic issue** — Every epic already exists as a **draft item** in the GitHub Project with its Sequence, Capability, Requires, and Item Type fields pre-populated. **Do not create a new issue.** Instead, convert the existing draft item to a real issue:
   1. Open the draft item in the project board
   2. Click the item title → select **"Convert to issue"** → choose the `proteanhq/protean` repository
   3. Add the `epic` label and flesh out the body with outcome, why, and success criteria
-  4. The project fields (Sequence, Release, Requires, Status, Item Type) are preserved automatically
-- **Sub-issues** — real GitHub Issues linked as native sub-issues of the epic. Each sub-issue = one PR. Added to the project board with Item Type = Task and the same Release field as the parent epic.
+  4. The project fields (Sequence, Capability, Requires, Status, Item Type) are preserved automatically
+- **Sub-issues** — real GitHub Issues linked as native sub-issues of the epic. Each sub-issue = one PR. Added to the project board with Item Type = Task and the same Capability field as the parent epic.
 - PR descriptions reference "Closes #N" to create permanent cross-references.
 - Use GitHub's **issue relationships** ("Blocked by" / "Blocks") for dependencies between sub-issues.
 
@@ -400,7 +400,7 @@ mutation { convertProjectV2DraftIssueItemToIssue(input: {
 }) { item { id } } }
 ```
 
-**Set a field value on a project item** (works for Status, Release, Sequence, Requires, Item Type):
+**Set a field value on a project item** (works for Status, Capability, Sequence, Requires, Item Type):
 ```
 mutation { updateProjectV2ItemFieldValue(input: {
   projectId: "PVT_kwDOAmXm_s4BRFMC"
@@ -435,7 +435,7 @@ Returns "already taken" validation error if the relationship already exists — 
 |-------|----|-------|
 | Status | `PVTSSF_lADOAmXm_s4BRFMCzg_A5gY` | Backlog=`f75ad846`, Active=`5a1d9210`, In Progress=`47fc9ee4`, Done=`98236657` |
 | Item Type | `PVTSSF_lADOAmXm_s4BRFMCzg_KRSg` | Epic=`1acf4758`, Task=`ae8e6519` |
-| Release | `PVTSSF_lADOAmXm_s4BRFMCzg_A5uY` | R1=`10eabad0`, R2=`38bb22fc`, R3=`821b3922` |
+| Capability | `PVTSSF_lADOAmXm_s4BRFMCzg_A5uY` | Knows Itself=`3251b733`, Explains Itself=`36a2deff`, Shows Itself=`76850904`, Exposes Itself=`258cdab9`, Builds Itself=`5931373c`, Deploys Itself=`d1e4e43d` |
 | Sequence | `PVTF_lADOAmXm_s4BRFMCzg_kOnU` | Number field (1–37 global execution order) |
 | Requires | `PVTF_lADOAmXm_s4BRFMCzg_kQTc` | Text field, e.g. `"1.1, 1.6"` |
 
