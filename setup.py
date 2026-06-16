@@ -22,7 +22,7 @@ def read(*names, **kwargs):
     ).read()
 
 
-elasticsearch_requires = ["elasticsearch>=7.13.1", "elasticsearch-dsl>=7.3.0"]
+elasticsearch_requires = ["elasticsearch>=8.0.0", "elasticsearch-dsl>=8.0.0"]
 redis_requires = ["redis==3.5.2"]
 sqlite_requires = ["sqlalchemy==1.4.27"]
 postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy==1.4.27"]

@@ -351,11 +351,7 @@ class ESProvider(BaseProvider):
     def get_connection(self):
         """Get the connection object for the repository"""
 
-        return Elasticsearch(
-            self.conn_info["DATABASE_URI"]["hosts"],
-            use_ssl=self.conn_info.get("USE_SSL", False),
-            verify_certs=self.conn_info.get("VERIFY_CERTS", False),
-        )
+        return Elasticsearch(self.conn_info.get("DATABASE_URI").get("hosts")[0],verify_certs=self.conn_info.get("VERIFY_CERTS", False))
 
     def get_dao(self, entity_cls, model_cls):
         """Return a DAO object configured with a live connection"""
@@ -463,9 +459,7 @@ class ESProvider(BaseProvider):
             model_cls = self.domain.get_model(element_record.cls)
             if provider.conn_info[
                 "DATABASE"
-            ] == Database.ELASTICSEARCH.value and conn.indices.exists(
-                model_cls._index._name
-            ):
+            ] == Database.ELASTICSEARCH.value and conn.indices.exists(index=model_cls._index._name):
                 conn.delete_by_query(
                     refresh=True,
                     index=model_cls._index._name,
@@ -505,7 +499,7 @@ class ESProvider(BaseProvider):
             if provider.conn_info[
                 "DATABASE"
             ] == Database.ELASTICSEARCH.value and model_cls._index.exists(using=conn):
-                conn.indices.delete(model_cls._index._name)
+                conn.indices.delete(index=model_cls._index._name)
 
 
 class DefaultLookup(BaseLookup):
