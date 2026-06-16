@@ -1,6 +1,18 @@
 Release History
 ===============
 
+0.8.3
+-----
+
+* Upgrade Elasticsearch client to v8 to resolve ``urllib3`` security vulnerability (#962)
+
+0.8.2
+-----
+
+* Add support for PostgreSQL schema switching
+* Resolve Elasticsearch index name during connection
+* Treat ``''`` value as ``None`` in Date and DateTime fields (#365)
+
 0.8.1
 -----
 
