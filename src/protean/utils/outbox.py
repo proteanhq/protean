@@ -311,7 +311,9 @@ class OutboxRepository(BaseRepository):
         if limit is not None and limit > 0:
             query = query.limit(limit)
 
-        return query.all().items
+        # The poll path only needs the rows, never the full match count, so
+        # skip the adapter's total-count round-trip (a wrapped ``COUNT`` on SQL).
+        return query.all(with_total=False).items
 
     def find_unprocessed(
         self,
@@ -323,8 +325,14 @@ class OutboxRepository(BaseRepository):
         Returns messages that are:
         - PENDING status OR
         - FAILED status and past retry time
-        - Not locked
+        - Not locked (``locked_until`` is null or in the past)
         - Not expired based on retry count
+
+        Status, lock-window, and retry-window predicates are evaluated at the
+        database. The retry-count check (``retry_count < max_retries``) is a
+        column-to-column comparison and remains in Python until F() expressions
+        land; in practice this filter eliminates near-zero rows on a healthy
+        workload.
 
         Args:
             limit: Maximum number of messages to return
@@ -338,9 +346,12 @@ class OutboxRepository(BaseRepository):
         if limit is not None and limit == 0:
             return []
 
+        now = datetime.now(timezone.utc)
         query = self._dao.query.filter(
             status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]
         )
+        query = query.filter(Q(locked_until__isnull=True) | Q(locked_until__lt=now))
+        query = query.filter(Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
 
         if target_broker is not None:
             query = query.filter(target_broker=target_broker)
@@ -348,25 +359,11 @@ class OutboxRepository(BaseRepository):
         # Order by priority (higher first)
         query = query.order_by("-priority")
 
-        # Apply larger limit for initial query since we'll filter afterwards
-        # If a specific limit is requested, fetch more to account for filtering
-        query_limit = None
-        if limit is not None and limit > 0:
-            # Fetch more records to account for filtering, but cap it reasonably
-            query_limit = min(limit * 3, 1000)
+        candidates = self._apply_limit_and_execute(query, limit)
 
-        results = self._apply_limit_and_execute(query, query_limit)
-
-        # Filter out messages that are not ready for processing
-        # (locked, not past retry time, or exceeded max retries)
-        # Keep the original ordering from the database query
-        ready_messages = [msg for msg in results if msg.is_ready_for_processing()]
-
-        # Apply the actual limit to the filtered results
-        if limit is not None and limit > 0:
-            ready_messages = ready_messages[:limit]
-
-        return ready_messages
+        # Final guard: retry_count < max_retries (column-to-column).
+        # Pushed to SQL once F() expressions land.
+        return [msg for msg in candidates if msg.retry_count < msg.max_retries]
 
     def claim_for_processing(
         self,
@@ -623,13 +620,10 @@ class OutboxRepository(BaseRepository):
         Returns:
             Dictionary with status as key and count as value
         """
-        counts = {}
-
-        for status in OutboxStatus:
-            results = self._dao.query.filter(status=status.value).limit(1).all()
-            counts[status.value] = results.total
-
-        return counts
+        return {
+            status.value: self._dao.query.filter(status=status.value).count()
+            for status in OutboxStatus
+        }
 
     def cleanup_old_published(self, older_than_hours: int = 168) -> int:
         """Clean up published messages older than specified hours.
@@ -642,18 +636,9 @@ class OutboxRepository(BaseRepository):
         """
         threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
 
-        criteria = Q(
-            status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time
+        return self._dao._delete_all(
+            Q(status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time)
         )
-
-        # Get count before deletion
-        messages_to_delete = self._dao.query.filter(criteria).all()
-        count = len(messages_to_delete)
-
-        # Delete the messages
-        self._dao._delete_all(criteria)
-
-        return count
 
     def cleanup_old_abandoned(self, older_than_hours: int = 720) -> int:
         """Clean up abandoned messages older than specified hours.
@@ -669,18 +654,12 @@ class OutboxRepository(BaseRepository):
         """
         threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
 
-        criteria = Q(
-            status=OutboxStatus.ABANDONED.value, last_processed_at__lt=threshold_time
+        return self._dao._delete_all(
+            Q(
+                status=OutboxStatus.ABANDONED.value,
+                last_processed_at__lt=threshold_time,
+            )
         )
-
-        # Get count before deletion
-        messages_to_delete = self._dao.query.filter(criteria).all()
-        count = len(messages_to_delete)
-
-        # Delete the messages
-        self._dao._delete_all(criteria)
-
-        return count
 
     def cleanup_old_messages(
         self, published_retention_hours: int = 168, abandoned_retention_hours: int = 720

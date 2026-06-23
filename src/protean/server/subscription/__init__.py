@@ -17,7 +17,7 @@ class BaseSubscription(ABC):
         self,
         engine,
         messages_per_tick: int = 10,
-        tick_interval: int = 1,
+        tick_interval: float = 1,
     ) -> None:
         """
         Initialize the BaseSubscription object.
@@ -26,7 +26,7 @@ class BaseSubscription(ABC):
             engine: The Protean engine instance.
             handler: The handler instance.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
-            tick_interval (int, optional): The interval between ticks. Defaults to 1.
+            tick_interval (float, optional): The interval between ticks (seconds). Defaults to 1.
         """
         self.engine = engine
         self.loop = engine.loop
@@ -92,7 +92,7 @@ class BaseSubscription(ABC):
                 )
                 break
 
-            except Exception as exc:
+            except Exception:
                 consecutive_errors += 1
                 logger.exception(
                     "subscription.error",

@@ -232,15 +232,15 @@ class MemoryProvider(BaseProvider):
     def _evaluate_lookup(self, key, value, negated, db):
         """Extract values from DB that match the given criteria"""
         results = {}
+        stripped_key, lookup_class = self._extract_lookup(key)
+        null_safe = getattr(lookup_class, "null_safe", False)
         for record_key, record_value in db.items():
-            match = True
+            source_value = record_value[stripped_key]
+            lookup = lookup_class(source_value, value)
 
-            stripped_key, lookup_class = self._extract_lookup(key)
-            lookup = lookup_class(record_value[stripped_key], value)
-
-            if record_value[stripped_key] is not None:
+            if source_value is not None or null_safe:
                 result = lookup.evaluate()
-                match &= not result if negated else result
+                match = not result if negated else result
             else:
                 match = False
 
@@ -371,7 +371,12 @@ class DictDAO(BaseDAO):
         return input_db
 
     def _filter(
-        self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()
+        self,
+        criteria: Q,
+        offset: int = 0,
+        limit: int = 10,
+        order_by: list = (),
+        with_total: bool = True,
     ):
         """Read the repository and return results as per the filer"""
         conn = self._get_session()
@@ -428,12 +433,13 @@ class DictDAO(BaseDAO):
 
             items = sorted(items, key=compound_sort_key)
 
+        # When limit is not set, we return all items
+        returned = items[offset : offset + limit] if limit else items
         result = ResultSet(
             offset=offset,
             limit=limit,
-            total=len(items),
-            # When limit is not set, we return all items
-            items=items[offset : offset + limit] if limit else items,
+            total=len(items) if with_total else len(returned),
+            items=returned,
         )
 
         return result
@@ -516,6 +522,16 @@ class DictDAO(BaseDAO):
         self._commit_if_standalone(conn)
 
         return model_obj
+
+    def _count(self, criteria: Q) -> int:
+        """Count items matching ``criteria`` without materializing entities."""
+        conn = self._get_session()
+        assert conn is not None
+
+        records = conn._db["data"].get(self.schema_name, {})
+        if criteria.children:
+            return len(self._filter_items(criteria, records))
+        return len(records)
 
     def _delete_all(self, criteria: Q = None):
         """Delete the dictionary object by its criteria"""
@@ -707,6 +723,21 @@ class Any(MemoryLookup):
             self.target if isinstance(self.target, (list, tuple)) else [self.target]
         )
         return any(self._coerce(x) in [self._coerce(t) for t in target] for x in source)
+
+
+@MemoryProvider.register_lookup
+class IsNull(MemoryLookup):
+    """IS NULL / IS NOT NULL Query.
+
+    ``Q(field__isnull=True)`` matches rows where ``field`` is ``None``;
+    ``Q(field__isnull=False)`` matches rows where ``field`` is not ``None``.
+    """
+
+    lookup_name = "isnull"
+    null_safe = True
+
+    def evaluate(self) -> bool:
+        return self.source is None if self.target else self.source is not None
 
 
 def register() -> None:

@@ -28,9 +28,10 @@ class OutboxProcessor(BaseSubscription):
         database_provider_name: str,
         broker_provider_name: str,
         messages_per_tick: int = 10,
-        tick_interval: int = 1,
+        tick_interval: float = 1,
         worker_id: Optional[str] = None,
         is_external: bool = False,
+        max_tick_interval: Optional[float] = None,
     ) -> None:
         """
         Initialize the OutboxProcessor.
@@ -40,12 +41,36 @@ class OutboxProcessor(BaseSubscription):
             database_provider_name (str): Name of the database provider to read outbox messages from.
             broker_provider_name (str): Name of the broker provider to publish messages to.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
-            tick_interval (int, optional): The interval between ticks. Defaults to 1.
+            tick_interval (float, optional): Base interval between ticks (seconds). Defaults to 1.
             worker_id (str, optional): Worker identifier for message locking. Defaults to subscription_id.
             is_external (bool): Whether this processor handles external broker dispatch.
+            max_tick_interval (float, optional): Cap for adaptive backoff. When set
+                above ``tick_interval``, the processor doubles ``tick_interval`` after
+                each empty poll up to this cap and resets to ``tick_interval`` whenever
+                a non-empty batch is fetched. ``None`` (default) disables backoff and
+                preserves the constant-rate polling behavior.
         """
         # Initialize parent class - use dummy handler to satisfy BaseSubscription requirements
         super().__init__(engine, messages_per_tick, tick_interval)
+
+        # Adaptive polling backoff: remember the base interval so we can reset
+        # to it when a non-empty batch is found.  When ``max_tick_interval`` is
+        # ``None`` or is configured at/below the base, backoff is disabled and
+        # ``tick_interval`` stays constant.
+        self._base_tick_interval = float(tick_interval)
+        if max_tick_interval is None:
+            self.max_tick_interval = self._base_tick_interval
+        else:
+            cap = float(max_tick_interval)
+            if cap < self._base_tick_interval:
+                logger.warning(
+                    "outbox.max_tick_interval_ignored",
+                    extra={
+                        "tick_interval": self._base_tick_interval,
+                        "max_tick_interval": cap,
+                    },
+                )
+            self.max_tick_interval = max(cap, self._base_tick_interval)
 
         self.is_external = is_external
         suffix = "-external" if is_external else ""
@@ -122,7 +147,9 @@ class OutboxProcessor(BaseSubscription):
             )
 
         self.broker = self.engine.domain.brokers[self.broker_provider_name]
-        logger.debug("outbox.broker_selected", extra={"broker": self.broker.__class__.__name__})
+        logger.debug(
+            "outbox.broker_selected", extra={"broker": self.broker.__class__.__name__}
+        )
 
         # Get the outbox repository for this database provider
         self.outbox_repo = self.engine.domain._get_outbox_repo(
@@ -134,7 +161,9 @@ class OutboxProcessor(BaseSubscription):
                 f"Outbox repository for database provider '{self.database_provider_name}' not found in domain"
             )
 
-        logger.debug("outbox.repo_selected", extra={"repo": self.outbox_repo.__class__.__name__})
+        logger.debug(
+            "outbox.repo_selected", extra={"repo": self.outbox_repo.__class__.__name__}
+        )
 
         # Set the subscriber to the custom Outbox aggregate name
         self.subscriber_name = self.outbox_repo.meta_.part_of.__name__
@@ -242,12 +271,20 @@ class OutboxProcessor(BaseSubscription):
 
     async def tick(self):
         """
-        Override base tick method to add periodic cleanup functionality.
+        Override base tick method to add periodic cleanup and adaptive backoff.
 
-        This method processes messages and periodically performs cleanup of old messages.
+        Processes messages, periodically performs cleanup of old messages, and
+        adapts the polling interval based on whether the last poll returned
+        any work — doubling on empty polls (up to ``max_tick_interval``) and
+        resetting to the base interval whenever a non-empty batch is fetched.
         """
-        # Call parent tick method to process messages
-        await super().tick()
+        messages = await self.get_next_batch_of_messages()
+        if messages:
+            self.tick_interval = self._base_tick_interval
+            await self.process_batch(messages)
+        elif self.max_tick_interval > self._base_tick_interval:
+            # Double the wait, capped at the configured maximum.
+            self.tick_interval = min(self.tick_interval * 2, self.max_tick_interval)
 
         # Increment tick counter and check if cleanup is due
         self.tick_count += 1
@@ -288,7 +325,7 @@ class OutboxProcessor(BaseSubscription):
                         },
                     )
 
-        except Exception as exc:
+        except Exception:
             logger.exception("outbox.cleanup_failed")
 
     async def _process_single_message(self, message: Outbox) -> bool:
@@ -408,7 +445,9 @@ class OutboxProcessor(BaseSubscription):
                             "outbox.publish_failed",
                             extra={
                                 "message_id": message.message_id[:8],
-                                "error_type": type(publish_error).__name__ if publish_error else None,
+                                "error_type": type(publish_error).__name__
+                                if publish_error
+                                else None,
                                 "error": str(publish_error) if publish_error else None,
                             },
                         )
@@ -439,7 +478,7 @@ class OutboxProcessor(BaseSubscription):
                         if fresh_message:
                             self._mark_message_failed(fresh_message, exc)
                             self.outbox_repo.add(fresh_message)
-                except Exception as save_exc:
+                except Exception:
                     logger.exception(
                         "outbox.status_save_failed",
                         extra={"message_id": message.message_id[:8]},
