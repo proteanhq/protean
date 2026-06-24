@@ -598,7 +598,6 @@ class SADAO(BaseDAO):
             )
 
         qs = qs.order_by(*order_cols)
-        qs_without_limit = qs
         qs = qs.limit(limit).offset(offset)
 
         # Return the results
@@ -606,12 +605,12 @@ class SADAO(BaseDAO):
             items = qs.all()
             if with_total:
                 # Flat ``SELECT COUNT(*)`` over the same criteria — avoids the
-                # subquery-wrapped count (and the carried ORDER BY) that
-                # ``Query.count()`` would generate.
-                total = (
-                    qs_without_limit.order_by(None).with_entities(func.count()).scalar()
-                    or 0
-                )
+                # subquery-wrapped count that ``Query.count()`` generates. Built
+                # the same way as ``_count`` so the FROM/WHERE is explicit.
+                count_q = conn.query(func.count()).select_from(self.database_model_cls)
+                if criteria.children:
+                    count_q = count_q.filter(self._build_filters(criteria))
+                total = count_q.scalar() or 0
             else:
                 # Caller only needs ``items`` (e.g. the outbox poll path); skip
                 # the count round-trip entirely.
