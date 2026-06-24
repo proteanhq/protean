@@ -197,6 +197,7 @@ markers = [
     "eventstore",
     "no_test_domain",
     "fastapi",
+    "flaky: timing-sensitive or non-deterministic test; run in isolation via `make test-flaky`",
     "asyncio: mark test as an asyncio coroutine (registered by pytest-asyncio)",
     # Capability-based markers for broker testing
     "basic_pubsub: tests for basic pub/sub capability (publish/subscribe only)",

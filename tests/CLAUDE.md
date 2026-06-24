@@ -16,9 +16,16 @@ All commands below assume this virtual environment is active.
 
 ## Running Tests
 
+> **Always invoke the suite through `uv run` or `make`, never a bare `protean`/`pytest`.**
+> A bare `protean test` can resolve to a stale interpreter on PATH (e.g. a pyenv
+> shim with missing deps), which surfaces as a flood of phantom *collection*
+> errors that have nothing to do with the code. `uv run protean test` and the
+> `make test` / `make test-full` targets always use the project `.venv`. The
+> session pulse hook warns when `protean` on PATH is not the project `.venv`.
+
 ```bash
 # Core tests with in-memory adapters (fast, no infrastructure needed)
-protean test
+uv run protean test      # or: make test
 
 # Run a specific test file or test
 uv run pytest tests/aggregate/test_aggregate_initialization.py
@@ -47,6 +54,25 @@ without a specific file or directory.
 - **No mocks** unless truly necessary. Test against real (in-memory) adapters.
 - **Check for tests with every change** and add if necessary.
 - Tests in `tests/support/` are excluded from collection (`--ignore=tests/support/`).
+- **No naked `sleep`s for timing.** A test that sleeps a fixed interval and then
+  asserts on elapsed wall-clock time will pass in isolation and flake under
+  parallel CPU load. Prefer a controllable/injected clock or polling with a
+  generous timeout. If a test is irreducibly timing-sensitive, mark it
+  `@pytest.mark.flaky` so it is quarantined from trust-critical signal.
+
+### Flaky and timing-sensitive tests
+
+A single spurious red trains everyone (and every agent) to ignore failures, which
+is corrosive for autonomous loops. Quarantine known non-deterministic tests:
+
+- Mark them `@pytest.mark.flaky` with a one-line comment explaining *why*.
+- Run them in isolation with `make test-flaky` (`uv run pytest -m flaky`) to
+  confirm they pass when not competing for CPU.
+- Treat a `flaky` failure in the main suite as "re-check in isolation," not "broken
+  code." A `flaky` test that fails *in isolation* is a real bug.
+
+The marker is documentation + an isolation lane today; excluding it from the
+default/matrix runner is a planned follow-up (see `todo/1-AI-NATIVE-FOUNDATION.md`).
 
 ### Marker-Based Test Selection (Important)
 

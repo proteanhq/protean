@@ -208,6 +208,9 @@ Pytest markers are used to categorize tests and control their execution. Protean
 - `broker_common`: Tests for message broker functionality
 - `eventstore`: Tests for event store functionality
 - `no_test_domain`: Tests that should not use the default test domain
+- `flaky`: Timing-sensitive or non-deterministic tests, quarantined from
+  trust-critical runs. Run them in isolation with `make test-flaky`. Avoid
+  fixed `sleep`-and-assert timing; prefer a controllable clock or polling.
 
 **Capability markers** (used by the generic adapter test suite):
 

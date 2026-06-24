@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 
 def test_basic_retry_mechanism(broker):
     """Test basic retry mechanism after NACK."""
@@ -35,6 +37,7 @@ def test_basic_retry_mechanism(broker):
     assert result[1] == message
 
 
+@pytest.mark.flaky  # naked sleeps drift under parallel CPU load; see tests/CLAUDE.md
 def test_exponential_backoff(broker):
     """Test exponential backoff for retries."""
     stream = "test_stream"

@@ -11,12 +11,14 @@ Checks:
   3. Docs not wired into the mkdocs nav (local).
   4. Skills with no row in .claude/skills/INDEX.md (local).
   5. Fragments for already-CLOSED issues still unassembled (network, opt-in).
+  6. `protean` on PATH resolving outside the project .venv (local).
 """
 
 from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -160,6 +162,32 @@ def closed_issue_fragments(root: Path):
     return None
 
 
+def interpreter_drift(root: Path):
+    """Warn when a project .venv exists but `protean` on PATH points elsewhere.
+
+    This is the silent footgun where `protean test` resolves to a stale pyenv
+    shim (missing deps → phantom collection errors) instead of the project's
+    .venv. `uv run protean ...` / `make test` always use the right interpreter.
+    """
+    venv = root / ".venv"
+    if not venv.is_dir():
+        return None
+    resolved = shutil.which("protean")
+    if not resolved:
+        return None  # nothing on PATH to disagree with
+    try:
+        resolved_parent = Path(resolved).resolve().parent
+        venv_bin = (venv / "bin").resolve()
+    except Exception:
+        return None
+    if resolved_parent != venv_bin:
+        return (
+            f"`protean` on PATH is {resolved} (not the project .venv) — "
+            "use `uv run protean ...` or `make test` to avoid a stale interpreter"
+        )
+    return None
+
+
 def main() -> None:
     root = project_dir()
     checks = (
@@ -168,6 +196,7 @@ def main() -> None:
         orphan_docs,
         uncatalogued_skills,
         closed_issue_fragments,
+        interpreter_drift,
     )
     lines = []
     for fn in checks:
