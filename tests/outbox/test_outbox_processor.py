@@ -1809,3 +1809,144 @@ class TestOutboxPeriodicCleanup:
 
         # Test that tick count starts at 0
         assert processor.tick_count == 0
+
+
+@pytest.mark.database
+class TestOutboxProcessorAdaptiveBackoff:
+    """Verify adaptive polling backoff updates ``tick_interval`` correctly."""
+
+    def test_max_tick_interval_defaults_to_disable_backoff(self, outbox_test_domain):
+        """Without an explicit cap, ``max_tick_interval`` equals the base interval."""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default", tick_interval=1.0)
+        assert processor.max_tick_interval == 1.0
+        assert processor._base_tick_interval == 1.0
+
+    def test_max_tick_interval_below_base_disables_backoff(self, outbox_test_domain):
+        """A cap at or below the base is silently treated as disabled."""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(
+            engine,
+            "default",
+            "default",
+            tick_interval=1.0,
+            max_tick_interval=0.5,
+        )
+        assert processor.max_tick_interval == 1.0  # falls back to base
+
+    def test_max_tick_interval_above_base_enables_backoff(self, outbox_test_domain):
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(
+            engine,
+            "default",
+            "default",
+            tick_interval=1.0,
+            max_tick_interval=5.0,
+        )
+        assert processor.max_tick_interval == 5.0
+
+    @pytest.mark.asyncio
+    async def test_empty_poll_doubles_tick_interval_up_to_cap(self, outbox_test_domain):
+        """Each empty tick doubles the wait until ``max_tick_interval``."""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(
+            engine,
+            "default",
+            "default",
+            tick_interval=1.0,
+            max_tick_interval=5.0,
+        )
+        await processor.initialize()
+
+        await processor.tick()
+        assert processor.tick_interval == 2.0
+        await processor.tick()
+        assert processor.tick_interval == 4.0
+        await processor.tick()
+        assert processor.tick_interval == 5.0  # capped, not 8.0
+        await processor.tick()
+        assert processor.tick_interval == 5.0  # stays at cap
+
+    @pytest.mark.asyncio
+    async def test_non_empty_poll_resets_tick_interval_to_base(
+        self, outbox_test_domain
+    ):
+        """A non-empty batch returns the wait to the base interval."""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(
+            engine,
+            "default",
+            "default",
+            tick_interval=1.0,
+            max_tick_interval=5.0,
+        )
+        await processor.initialize()
+
+        # Drift up.
+        await processor.tick()
+        await processor.tick()
+        assert processor.tick_interval == 4.0
+
+        # Now seed a message and tick again.
+        persist_outbox_messages(outbox_test_domain)
+        await processor.tick()
+        assert processor.tick_interval == 1.0
+
+    @pytest.mark.asyncio
+    async def test_disabled_backoff_keeps_constant_interval(self, outbox_test_domain):
+        """When backoff is disabled, ``tick_interval`` never changes."""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default", tick_interval=2.0)
+        await processor.initialize()
+
+        await processor.tick()
+        await processor.tick()
+        assert processor.tick_interval == 2.0
+
+
+@pytest.mark.database
+class TestOutboxAdaptiveBackoffConfig:
+    """Verify the engine wires ``max_tick_interval`` into processors."""
+
+    def test_engine_propagates_max_tick_interval(self):
+        custom_config = {
+            "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
+            "outbox": {
+                "broker": "default",
+                "messages_per_tick": 5,
+                "tick_interval": 1.0,
+                "max_tick_interval": 5.0,
+            },
+            "brokers": {"default": {"provider": "inline"}},
+        }
+        domain = Domain(name="TestAdaptiveBackoffConfig", config=custom_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            assert len(engine._outbox_processors) > 0
+            for processor in engine._outbox_processors.values():
+                assert processor._base_tick_interval == 1.0
+                assert processor.max_tick_interval == 5.0
+
+    def test_engine_default_disables_backoff(self):
+        """When ``max_tick_interval`` is unset, processors keep constant rate."""
+        custom_config = {
+            "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
+            "outbox": {
+                "broker": "default",
+                "tick_interval": 1.0,
+            },
+            "brokers": {"default": {"provider": "inline"}},
+        }
+        domain = Domain(name="TestNoBackoffConfig", config=custom_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            assert len(engine._outbox_processors) > 0
+            for processor in engine._outbox_processors.values():
+                # max == base means doubling never kicks in.
+                assert processor.max_tick_interval == processor._base_tick_interval

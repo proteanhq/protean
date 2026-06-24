@@ -171,7 +171,12 @@ class TestOutboxRepositoryBasicQueries:
         assert failed_count == 2
 
     def test_find_unprocessed_respects_limit(self, outbox_repo, create_sample_messages):
-        """Test that find_unprocessed respects the limit parameter."""
+        """Test that find_unprocessed respects the limit parameter.
+
+        With predicates pushed into SQL, the query no longer over-fetches by 3×
+        — the database returns at most ``limit`` rows and Python only filters
+        out the rare ``retry_count >= max_retries`` case.
+        """
         create_sample_messages()
 
         unprocessed = outbox_repo.find_unprocessed(limit=2)
@@ -235,6 +240,97 @@ class TestOutboxRepositoryBasicQueries:
 
         assert len(processing) == 1
         assert processing[0].status == OutboxStatus.PROCESSING.value
+
+
+class TestFindUnprocessedBoundaryConditions:
+    """Boundary cases now that lock and retry-window predicates run in SQL."""
+
+    def test_just_expired_lock_is_picked_up(self, outbox_repo, sample_metadata):
+        """A row whose ``locked_until`` is in the past must be returned."""
+        msg = Outbox.create_message(
+            message_id="just-expired-lock",
+            stream_name="stream",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+        )
+        # Lock expired 1 second ago — still PENDING since claim is what flips
+        # status to PROCESSING.
+        msg.locked_by = "old-worker"
+        msg.locked_until = datetime.now(timezone.utc) - timedelta(seconds=1)
+        outbox_repo.add(msg)
+
+        unprocessed = outbox_repo.find_unprocessed()
+        assert len(unprocessed) == 1
+        assert unprocessed[0].message_id == "just-expired-lock"
+
+    def test_lock_held_by_another_worker_is_skipped(self, outbox_repo, sample_metadata):
+        """A row with a future ``locked_until`` must not be returned."""
+        msg = Outbox.create_message(
+            message_id="active-lock",
+            stream_name="stream",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+        )
+        msg.locked_by = "worker-A"
+        msg.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        outbox_repo.add(msg)
+
+        assert outbox_repo.find_unprocessed() == []
+
+    def test_just_arrived_retry_window_is_picked_up(self, outbox_repo, sample_metadata):
+        """A FAILED row with ``next_retry_at <= now`` must be returned."""
+        msg = Outbox.create_message(
+            message_id="retry-now",
+            stream_name="stream",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+        )
+        msg.status = OutboxStatus.FAILED.value
+        msg.retry_count = 1
+        msg.next_retry_at = datetime.now(timezone.utc) - timedelta(milliseconds=1)
+        outbox_repo.add(msg)
+
+        unprocessed = outbox_repo.find_unprocessed()
+        assert len(unprocessed) == 1
+        assert unprocessed[0].message_id == "retry-now"
+
+    def test_future_retry_window_is_skipped(self, outbox_repo, sample_metadata):
+        """A FAILED row with ``next_retry_at`` in the future is held back."""
+        msg = Outbox.create_message(
+            message_id="retry-later",
+            stream_name="stream",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+        )
+        msg.status = OutboxStatus.FAILED.value
+        msg.retry_count = 1
+        msg.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        outbox_repo.add(msg)
+
+        assert outbox_repo.find_unprocessed() == []
+
+    def test_retries_exhausted_row_is_filtered_out(self, outbox_repo, sample_metadata):
+        """``retry_count >= max_retries`` rows are still excluded.
+
+        This is the one predicate left in Python pending F() expressions.
+        """
+        msg = Outbox.create_message(
+            message_id="retries-exhausted",
+            stream_name="stream",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+            max_retries=3,
+        )
+        msg.status = OutboxStatus.FAILED.value
+        msg.retry_count = 3  # equals max_retries → not eligible
+        outbox_repo.add(msg)
+
+        assert outbox_repo.find_unprocessed() == []
 
 
 class TestOutboxRepositoryFilterQueries:
@@ -495,10 +591,20 @@ class TestOutboxRepositoryAggregateQueries:
     def test_count_by_status_returns_correct_counts(
         self, outbox_repo, create_sample_messages
     ):
-        """Test that count_by_status returns correct counts for each status."""
+        """Test that count_by_status returns correct counts for each status.
+
+        Counts are now produced via flat ``SELECT COUNT(*)`` queries (one per
+        status) instead of subquery-wrapped projections, so the returned values
+        must still match the seeded distribution.
+        """
         create_sample_messages()
 
         counts = outbox_repo.count_by_status()
+
+        # Result is a plain dict whose values are integers from QuerySet.count().
+        assert isinstance(counts, dict)
+        for value in counts.values():
+            assert isinstance(value, int)
 
         assert counts[OutboxStatus.PENDING.value] == 3
         assert counts[OutboxStatus.FAILED.value] == 2

@@ -841,3 +841,132 @@ class TestQuerySetOffsetEdge:
         query = test_domain.repository_for(Person).query
         clone = query.offset("not_an_int")
         assert clone._offset == 0  # Original offset preserved
+
+
+# ---------------------------------------------------------------------------
+# Tests: QuerySet.count()
+# ---------------------------------------------------------------------------
+class TestQuerySetCount:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+
+    def _seed(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        repo.add(Person(id=1, first_name="Alice", last_name="Wonder", age=30))
+        repo.add(Person(id=2, first_name="Bob", last_name="Wonder", age=40))
+        repo.add(Person(id=3, first_name="Carol", last_name="Other", age=25))
+
+    def test_count_on_empty_repository_returns_zero(self, test_domain):
+        assert test_domain.repository_for(Person).query.count() == 0
+
+    def test_count_without_criteria_returns_total(self, test_domain):
+        self._seed(test_domain)
+        assert test_domain.repository_for(Person).query.count() == 3
+
+    def test_count_respects_filter_criteria(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Person)
+        assert repo.query.filter(last_name="Wonder").count() == 2
+        assert repo.query.filter(age__gte=30).count() == 2
+
+    def test_count_ignores_limit_and_offset(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Person)
+        # ``limit``/``offset`` only affect materialization; ``count()`` returns
+        # the total matching the criteria so callers can paginate safely.
+        assert repo.query.limit(1).count() == 3
+        assert repo.query.offset(1).count() == 3
+
+    def test_count_returns_int(self, test_domain):
+        self._seed(test_domain)
+        result = test_domain.repository_for(Person).query.count()
+        assert isinstance(result, int)
+
+
+# ---------------------------------------------------------------------------
+# Tests: __isnull lookup
+# ---------------------------------------------------------------------------
+class TestIsNullLookupOnMemoryAdapter:
+    """Verify the ``__isnull`` lookup works on the in-memory adapter."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+
+    def _seed(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        repo.add(Person(id=1, first_name="Alice", last_name="Wonder", age=30))
+        repo.add(Person(id=2, first_name="Bob", last_name="Wonder", age=40))
+
+    def test_isnull_lookup_evaluates_true_when_source_is_none(self):
+        from protean.adapters.repository.memory import IsNull
+
+        assert IsNull(None, True).evaluate() is True
+        assert IsNull("value", True).evaluate() is False
+
+    def test_isnull_lookup_evaluates_false_when_source_is_not_none(self):
+        from protean.adapters.repository.memory import IsNull
+
+        assert IsNull(None, False).evaluate() is False
+        assert IsNull("value", False).evaluate() is True
+
+    def test_isnull_lookup_is_null_safe(self):
+        """``IsNull`` opts into evaluation when source is None via ``null_safe``."""
+        from protean.adapters.repository.memory import IsNull
+
+        assert getattr(IsNull, "null_safe", False) is True
+
+    def test_filter_isnull_false_returns_rows_with_non_null_field(self, test_domain):
+        """End-to-end: ``__isnull=False`` returns rows where the field is set."""
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Person)
+        assert repo.query.filter(last_name__isnull=False).count() == 2
+
+    def test_filter_isnull_true_returns_no_rows_when_field_always_set(
+        self, test_domain
+    ):
+        """End-to-end: ``__isnull=True`` returns nothing when no row is null."""
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Person)
+        assert repo.query.filter(last_name__isnull=True).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: QuerySet.all(with_total=...) and offset/limit pagination
+# ---------------------------------------------------------------------------
+class TestQuerySetAllWithTotal:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+
+    def _seed(self, test_domain, count=5):
+        repo = test_domain.repository_for(Person)
+        for i in range(count):
+            repo.add(Person(id=i + 1, first_name=f"P{i}", last_name="Same", age=20 + i))
+
+    def test_all_with_total_false_skips_count_but_returns_items(self, test_domain):
+        """``with_total=False`` returns the same items; ``total`` reflects the page."""
+        self._seed(test_domain, count=5)
+        repo = test_domain.repository_for(Person)
+
+        full = repo.query.all()
+        lite = repo.query.all(with_total=False)
+
+        assert len(lite.items) == len(full.items) == 5
+        # Memory derives the page-sized total when the full count is skipped.
+        assert lite.total == len(lite.items)
+
+    def test_all_with_total_true_is_default(self, test_domain):
+        self._seed(test_domain, count=3)
+        repo = test_domain.repository_for(Person)
+        assert repo.query.all().total == 3
+
+    def test_offset_without_limit_still_applies_offset(self, test_domain):
+        """A bare offset (no limit) must skip the leading rows, not return all."""
+        self._seed(test_domain, count=5)
+        repo = test_domain.repository_for(Person)
+
+        page = repo.query.order_by("id").offset(2).all()
+
+        assert [p.id for p in page.items] == [3, 4, 5]

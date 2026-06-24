@@ -211,7 +211,7 @@ class QuerySet:
 
         return clone
 
-    def all(self) -> "ResultSet":
+    def all(self, with_total: bool = True) -> "ResultSet":
         """Primary method to fetch data based on filters
 
         Also trigged when the QuerySet is evaluated by calling one of the following methods:
@@ -220,6 +220,11 @@ class QuerySet:
             * list()
             * Iteration
             * Slicing
+
+        When ``with_total`` is ``False`` the adapter may skip any expensive
+        total-count computation (e.g. SQL's separate ``COUNT`` query); use this
+        when only ``ResultSet.items`` is needed and ``ResultSet.total`` can be
+        disregarded.
         """
         logger.debug(f"Query `{self.__class__.__name__}` objects with filters {self}")
 
@@ -228,7 +233,11 @@ class QuerySet:
 
         # Call the read method of the dao
         results = self._owner_dao._filter(
-            self._criteria, self._offset, self._limit, self._order_by
+            self._criteria,
+            self._offset,
+            self._limit,
+            self._order_by,
+            with_total=with_total,
         )
 
         # Convert the returned results to entity and return it
@@ -249,6 +258,15 @@ class QuerySet:
         self._result_cache = results
 
         return results
+
+    def count(self) -> int:
+        """Return the count of records matching the current criteria.
+
+        Issues a single ``SELECT COUNT(*)`` (or adapter equivalent) without
+        projecting columns or materializing entities. Ignores ``offset``,
+        ``limit``, and ``order_by`` since they do not affect the row count.
+        """
+        return self._owner_dao._count(self._criteria)
 
     def update(self, *data: Any, **kwargs: Any) -> int:
         """Updates all objects with details given if they match a set of conditions supplied.

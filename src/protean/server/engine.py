@@ -286,9 +286,14 @@ class Engine:
 
             messages_per_tick = outbox_config.get("messages_per_tick", 10)
             tick_interval = outbox_config.get("tick_interval", 1)
+            max_tick_interval = outbox_config.get("max_tick_interval")
             logger.debug(
                 "engine.outbox_config",
-                extra={"batch_size": messages_per_tick, "interval_s": tick_interval},
+                extra={
+                    "batch_size": messages_per_tick,
+                    "interval_s": tick_interval,
+                    "max_interval_s": max_tick_interval,
+                },
             )
 
             # Create an outbox processor for each managed database provider
@@ -296,13 +301,17 @@ class Engine:
                 if not provider.managed:
                     continue
                 processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
-                logger.debug("engine.creating_outbox_processor", extra={"processor": processor_name})
+                logger.debug(
+                    "engine.creating_outbox_processor",
+                    extra={"processor": processor_name},
+                )
                 self._outbox_processors[processor_name] = OutboxProcessor(
                     self,
                     database_provider_name,
                     broker_provider_name,
                     messages_per_tick=messages_per_tick,
                     tick_interval=tick_interval,
+                    max_tick_interval=max_tick_interval,
                 )
 
             # Create external outbox processors for published event dispatch
@@ -328,6 +337,7 @@ class Engine:
                         ext_broker_name,
                         messages_per_tick=messages_per_tick,
                         tick_interval=tick_interval,
+                        max_tick_interval=max_tick_interval,
                         is_external=True,
                     )
 
@@ -348,7 +358,9 @@ class Engine:
         self._dlq_maintenance: DLQMaintenanceTask | None = None
         try:
             dlq_enabled = (
-                self.domain.config.get("server", {}).get("dlq", {}).get("enabled", False)
+                self.domain.config.get("server", {})
+                .get("dlq", {})
+                .get("enabled", False)
             )
             if dlq_enabled and self._has_dlq_capable_broker():
                 self._dlq_maintenance = DLQMaintenanceTask(self)
@@ -632,7 +644,7 @@ class Engine:
                 )
                 try:
                     subscriber_cls.handle_error(exc, message)
-                except Exception as error_exc:
+                except Exception:
                     logger.exception("broker.error_handler_failed")
                 # Continue processing instead of shutting down
                 return False
@@ -855,7 +867,7 @@ class Engine:
                 try:
                     # Call the error handler if it exists
                     handler_cls.handle_error(exc, message)
-                except Exception as error_exc:
+                except Exception:
                     logger.exception("engine.error_handler_failed")
                 # Continue processing instead of shutting down
                 return False
@@ -959,7 +971,13 @@ class Engine:
         self.shutting_down = True  # Set shutdown flag
 
         try:
-            sig_name = signal.name if hasattr(signal, "name") else str(signal) if signal else None
+            sig_name = (
+                signal.name
+                if hasattr(signal, "name")
+                else str(signal)
+                if signal
+                else None
+            )
             logger.info(
                 "engine.shutting_down",
                 extra={"signal": sig_name},
@@ -1108,7 +1126,9 @@ class Engine:
             task = self.loop.create_task(subscription.start())
             task.set_name(f"broker-{name}")
             broker_subscription_tasks.append(task)
-            logger.info("engine.broker_subscription_started", extra={"subscription": name})
+            logger.info(
+                "engine.broker_subscription_started", extra={"subscription": name}
+            )
 
         outbox_processor_tasks = []
         for name, processor in self._outbox_processors.items():

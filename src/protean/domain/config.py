@@ -60,6 +60,7 @@ def _default_config():
             "external_brokers": [],  # List of broker names for published event dispatch
             "messages_per_tick": 50,  # Process outbox in efficient batches
             "tick_interval": 0.01,  # 10ms check interval for outbox
+            "max_tick_interval": None,  # Cap for adaptive backoff; None = no backoff
             "retry": {
                 "max_attempts": 3,
                 "base_delay_seconds": 1,  # Faster initial retry

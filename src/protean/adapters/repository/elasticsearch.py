@@ -272,11 +272,20 @@ class ElasticsearchDAO(BaseDAO):
         return composed_query
 
     def _filter(
-        self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()
+        self,
+        criteria: Q,
+        offset: int = 0,
+        limit: int = 10,
+        order_by: list = (),
+        with_total: bool = True,
     ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
-        object
+        object.
+
+        ``with_total`` is accepted for interface parity; Elasticsearch returns
+        the hit count for free on every response, so the total is always
+        populated regardless of the flag.
         """
         conn = self.provider.get_connection()
 
@@ -406,7 +415,7 @@ class ElasticsearchDAO(BaseDAO):
             existing = self.database_model_cls.get(
                 id=identifier, using=conn, index=self.database_model_cls._index._name
             )
-        except NotFoundError as exc:
+        except NotFoundError:
             logger.exception("repository.elasticsearch.record_not_found")
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
@@ -510,7 +519,7 @@ class ElasticsearchDAO(BaseDAO):
                 using=conn,
                 refresh=True,
             )
-        except NotFoundError as exc:
+        except NotFoundError:
             logger.exception("repository.elasticsearch.record_not_found")
             id_field_obj = id_field(self.entity_cls)
             assert id_field_obj is not None
@@ -526,6 +535,21 @@ class ElasticsearchDAO(BaseDAO):
             )
 
         return model_obj
+
+    def _count(self, criteria: Q) -> int:
+        """Count documents matching ``criteria`` via the ``_count`` API.
+
+        Errors propagate as-is, consistent with the SQLAlchemy and Memory
+        ``_count`` implementations (which do not wrap them).
+        """
+        conn = self.provider.get_connection()
+
+        q = elasticsearch_dsl.Q()
+        if criteria.children:
+            q = self._build_filters(criteria)
+
+        s = Search(using=conn, index=self.database_model_cls._index._name).query(q)
+        return s.count()
 
     def _delete_all(self, criteria: Q = None):
         """Delete all records matching criteria from the Repository"""
@@ -1138,6 +1162,22 @@ class Endswith(DefaultLookup):
             "wildcard",
             **{field_name: {"value": f"*{self.process_target()}"}},
         )
+
+
+@ESProvider.register_lookup
+class IsNull(DefaultLookup):
+    """IS NULL / IS NOT NULL Query.
+
+    Translates to Elasticsearch's ``exists`` query: ``Q(field__isnull=False)``
+    matches documents where ``field`` is present, and ``Q(field__isnull=True)``
+    matches the negation.
+    """
+
+    lookup_name = "isnull"
+
+    def as_expression(self):
+        exists = query.Q("exists", field=self.process_source())
+        return ~exists if self.target else exists
 
 
 def register() -> None:

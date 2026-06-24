@@ -165,11 +165,22 @@ class BaseDAO(metaclass=ABCMeta):
 
     @abstractmethod
     def _filter(
-        self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()
+        self,
+        criteria: Q,
+        offset: int = 0,
+        limit: int = 10,
+        order_by: list = (),
+        with_total: bool = True,
     ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
-        object
+        object.
+
+        When ``with_total`` is ``False`` the caller does not need the full
+        match count, so adapters may skip any expensive total computation
+        (e.g. SQL's separate ``COUNT`` query) and report only the size of the
+        returned page in ``ResultSet.total``. Adapters that derive the total
+        for free (memory, Elasticsearch) may continue to populate it.
         """
 
     @abstractmethod
@@ -257,6 +268,17 @@ class BaseDAO(metaclass=ABCMeta):
 
         :param criteria: A ``Q`` object wrapping one or more filter conditions.
             If ``None``, all records of the table/document are removed.
+        """
+
+    @abstractmethod
+    def _count(self, criteria: Q) -> int:
+        """Count rows matching ``criteria`` without materializing them.
+
+        Concrete implementations should issue a single ``SELECT COUNT(*)``
+        (or equivalent) without projecting columns or fetching rows.
+
+        :param criteria: A ``Q`` object wrapping the filter conditions.
+        :return: The number of matching rows.
         """
 
     @abstractmethod
