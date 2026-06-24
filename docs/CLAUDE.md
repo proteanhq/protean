@@ -96,7 +96,16 @@ For example, "Aggregates" appears in:
 
 ### General
 - Use `---` (horizontal rules) to separate major sections within a page.
-- Use em dashes (`--`) in the contents page for descriptions.
+- Avoid the `--` and em dash (`—`) as typographic dashes in prose. There is no
+  SmartyPants extension enabled, so `--` renders as two literal hyphens, and a
+  bare em dash reads as artificial. Restructure the sentence instead: a colon
+  for a definition or expansion, a comma for an appositive, a semicolon for two
+  linked clauses, parentheses for an aside, or a period to split it. For a bold
+  lead-in to a list item, use "**Term.** Sentence." rather than "**Term** --
+  sentence".
+- Separate a link from its description with a colon, not a dash, in list-style
+  listings (the contents page, "Related reading" blocks): `[Title](link):
+  Description.`
 - Use sentence case for headings ("Design small aggregates", not "Design
   Small Aggregates"). Exception: proper nouns and acronyms.
 - Keep code examples valid Protean syntax. Use decorators (`@domain.aggregate`,
