@@ -3,7 +3,7 @@
 Gated behind ``@pytest.mark.database`` so it runs only against a real SQL
 provider (e.g. ``protean test --sqlite`` / ``--postgresql``), where emitted
 statements are observable and meaningful. The test attaches a SQLAlchemy
-``after_cursor_execute`` listener to count statements issued on the poll path
+``before_cursor_execute`` listener to count statements issued on the poll path
 and asserts the performance contract introduced by #942:
 
 - ``find_unprocessed`` issues a single ``SELECT`` (the 3x over-fetch loop is

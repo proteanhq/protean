@@ -537,7 +537,11 @@ class ElasticsearchDAO(BaseDAO):
         return model_obj
 
     def _count(self, criteria: Q) -> int:
-        """Count documents matching ``criteria`` via the ``_count`` API."""
+        """Count documents matching ``criteria`` via the ``_count`` API.
+
+        Errors propagate as-is, consistent with the SQLAlchemy and Memory
+        ``_count`` implementations (which do not wrap them).
+        """
         conn = self.provider.get_connection()
 
         q = elasticsearch_dsl.Q()
@@ -545,13 +549,7 @@ class ElasticsearchDAO(BaseDAO):
             q = self._build_filters(criteria)
 
         s = Search(using=conn, index=self.database_model_cls._index._name).query(q)
-        try:
-            return s.count()
-        except Exception as exc:
-            logger.exception("repository.elasticsearch.count_failed")
-            raise DatabaseError(
-                f"Database error during count: {str(exc)}", original_exception=exc
-            )
+        return s.count()
 
     def _delete_all(self, criteria: Q = None):
         """Delete all records matching criteria from the Repository"""

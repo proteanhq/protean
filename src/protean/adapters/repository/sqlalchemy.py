@@ -604,9 +604,18 @@ class SADAO(BaseDAO):
         # Return the results
         try:
             items = qs.all()
-            # Skip the separate ``SELECT COUNT(*)`` round-trip when the caller
-            # does not need the full match count (e.g. the outbox poll path).
-            total = qs_without_limit.count() if with_total else len(items)
+            if with_total:
+                # Flat ``SELECT COUNT(*)`` over the same criteria — avoids the
+                # subquery-wrapped count (and the carried ORDER BY) that
+                # ``Query.count()`` would generate.
+                total = (
+                    qs_without_limit.order_by(None).with_entities(func.count()).scalar()
+                    or 0
+                )
+            else:
+                # Caller only needs ``items`` (e.g. the outbox poll path); skip
+                # the count round-trip entirely.
+                total = len(items)
             result = ResultSet(offset=offset, limit=limit, total=total, items=items)
         except Exception:
             logger.exception("repository.sqlalchemy.filter_failed")

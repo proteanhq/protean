@@ -930,3 +930,43 @@ class TestIsNullLookupOnMemoryAdapter:
         self._seed(test_domain)
         repo = test_domain.repository_for(Person)
         assert repo.query.filter(last_name__isnull=True).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: QuerySet.all(with_total=...) and offset/limit pagination
+# ---------------------------------------------------------------------------
+class TestQuerySetAllWithTotal:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+
+    def _seed(self, test_domain, count=5):
+        repo = test_domain.repository_for(Person)
+        for i in range(count):
+            repo.add(Person(id=i + 1, first_name=f"P{i}", last_name="Same", age=20 + i))
+
+    def test_all_with_total_false_skips_count_but_returns_items(self, test_domain):
+        """``with_total=False`` returns the same items; ``total`` reflects the page."""
+        self._seed(test_domain, count=5)
+        repo = test_domain.repository_for(Person)
+
+        full = repo.query.all()
+        lite = repo.query.all(with_total=False)
+
+        assert len(lite.items) == len(full.items) == 5
+        # Memory derives the page-sized total when the full count is skipped.
+        assert lite.total == len(lite.items)
+
+    def test_all_with_total_true_is_default(self, test_domain):
+        self._seed(test_domain, count=3)
+        repo = test_domain.repository_for(Person)
+        assert repo.query.all().total == 3
+
+    def test_offset_without_limit_still_applies_offset(self, test_domain):
+        """A bare offset (no limit) must skip the leading rows, not return all."""
+        self._seed(test_domain, count=5)
+        repo = test_domain.repository_for(Person)
+
+        page = repo.query.order_by("id").offset(2).all()
+
+        assert [p.id for p in page.items] == [3, 4, 5]

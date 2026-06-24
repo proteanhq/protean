@@ -53,6 +53,20 @@ class TestQuerySetCountAcrossAdapters:
         repo = test_domain.repository_for(Member)
         assert repo.query.filter(last_name="Wonder", age__gte=35).count() == 1
 
+    def test_all_with_total_false_returns_items_without_full_count(self, test_domain):
+        """``all(with_total=False)`` returns the same items on every adapter; the
+        SQL adapter skips its separate ``COUNT`` round-trip (total reflects the
+        returned page rather than the full match count)."""
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Member)
+
+        full = repo.query.filter(last_name="Wonder").all()
+        lite = repo.query.filter(last_name="Wonder").all(with_total=False)
+
+        assert {m.first_name for m in lite.items} == {m.first_name for m in full.items}
+        assert len(lite.items) == 2
+        assert lite.total == len(lite.items)
+
 
 @pytest.mark.basic_storage
 @pytest.mark.usefixtures("db")

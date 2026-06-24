@@ -433,8 +433,8 @@ class DictDAO(BaseDAO):
 
             items = sorted(items, key=compound_sort_key)
 
-        # When limit is not set, we return all items
-        returned = items[offset : offset + limit] if limit else items
+        # Apply offset always; when no limit is set, return the rest of the page
+        returned = items[offset : offset + limit] if limit else items[offset:]
         result = ResultSet(
             offset=offset,
             limit=limit,
