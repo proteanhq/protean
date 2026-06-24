@@ -469,6 +469,7 @@ nav:
     - Architecture & Quality:
       - patterns/organize-by-domain-concept.md
       - patterns/validation-layering.md
+      - patterns/model-reference-data.md
       - patterns/thin-handlers-rich-domain.md
       - patterns/application-service-vs-command-handler.md
       - patterns/projection-granularity.md

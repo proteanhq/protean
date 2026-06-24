@@ -342,6 +342,7 @@ Protean supports but does not enforce.
 
 - [Organize by Domain Concept](./patterns/organize-by-domain-concept.md) -- The folder tree owns domain concepts; the framework carries layer metadata. Organize by aggregate, colocate capabilities, separate projections.
 - [Validation Layering](./patterns/validation-layering.md) -- Different validation belongs at different layers: fields, value objects, invariants, handlers.
+- [Model Reference Data as Domain Concepts](./patterns/model-reference-data.md) -- Avoid the One True Lookup Table; model each kind as an enumeration value object or an aggregate keyed by its natural code.
 - [Thin Handlers, Rich Domain](./patterns/thin-handlers-rich-domain.md) -- Handlers orchestrate; aggregates and domain services contain all logic.
 - [Choose Between Application Services and Command Handlers](./patterns/application-service-vs-command-handler.md) -- Decision tree for choosing synchronous application services vs async command handlers.
 - [Design Projection Granularity Around Consumer Needs](./patterns/projection-granularity.md) -- Shape projections around UI views and API resources, not domain entities or endpoints.

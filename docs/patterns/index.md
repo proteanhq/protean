@@ -29,6 +29,11 @@ If you are new to these patterns, these sequences build on each other:
     [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md) →
     [Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md)
 
+**Modeling values** -- turning primitives and lookup tables into real concepts:
+:   [Replace Primitives with Value Objects](replace-primitives-with-value-objects.md) →
+    [Model Reference Data as Domain Concepts](model-reference-data.md) →
+    [Validation Layering](validation-layering.md)
+
 **Idempotency** -- from identity generation through command and event deduplication:
 :   [Creating Identities Early](creating-identities-early.md) →
     [Command Idempotency](command-idempotency.md) →
@@ -162,6 +167,12 @@ If you are new to these patterns, these sequences build on each other:
   validation belong at different layers: field constraints for types, value
   object invariants for concept rules, aggregate invariants for business rules,
   and handler guards for contextual checks.
+
+- **[Model Reference Data as Domain Concepts](model-reference-data.md)** --
+  Avoid the One True Lookup Table. Model each kind of reference data as its own
+  type -- an enumeration value object when it is closed and static, an aggregate
+  keyed by its natural code when it is editable -- and treat any shared storage
+  table as an adapter detail, never a domain model.
 
 - **[Thin Handlers, Rich Domain](thin-handlers-rich-domain.md)** -- Handlers
   orchestrate (load, call, save). Aggregates and domain services contain all
