@@ -8,6 +8,8 @@ argument-hint: "<epic-number-or-name>"
 
 Take an epic from the Protean roadmap and turn it into a concrete, actionable set of GitHub Issues ready for execution. This is a multi-phase process that produces durable tracking artifacts — the issues, PRs, and commit messages are the permanent trail, not the project board.
 
+> **Project automation reference:** the Project ID, GraphQL mutations, and the full field/option-ID table live in [`reference.md`](reference.md). Consult it whenever you set project fields or dependencies below.
+
 ## Phase 1: Understand the epic
 
 Start by building a deep understanding of what the epic requires.
@@ -184,7 +186,7 @@ EOF
 
 Then add it as a sub-issue of the epic using the GitHub UI or API. Set each sub-issue's project fields:
 - Item Type = Task (`ae8e6519`)
-- Release = same as parent epic
+- Capability = same as parent epic
 - Status = Backlog (`f75ad846`)
 
 ### Set dependencies

@@ -3,13 +3,10 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Instructions for Claude
-- Always suggest Pythonic code
-- Add Typehints to new code, or existing code when touched
-- Think harder and thoroughly examine similar areas of the codebase to ensure your proposed approach fits seamlessly with the established patterns and architecture.
-- Aim to make only minimal and necessary changes, avoiding any disruption to the eisting design.
-- Whenever possible, take advantage of components, utilities, or logic that have already been implemented to maintain consistency, reduce duplication, and streamline integration with the current system.
-- Always use the `-R proteanhq/protean` flag with `gh` CLI commands to explicitly target the correct repository.
-- **Changelog uses fragment files** to avoid merge conflicts. Each PR creates a file in `changes/<issue-number>.<category>.md` (e.g., `changes/752.added.md`). When an epic completes, `/changelog #<epic>` assembles fragments into `CHANGELOG.md` under `[Unreleased]` as a per-epic section, then deletes the fragments. Never edit `CHANGELOG.md` directly in a feature PR. The changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format.
+- Write Pythonic code with type hints; add hints to existing code you touch.
+- Study similar areas of the codebase first and match established patterns. Prefer reusing existing components and utilities over adding new ones, and keep changes minimal.
+- Always pass `-R proteanhq/protean` to `gh` CLI commands.
+- **Changelog uses fragment files** to avoid merge conflicts. Each PR creates `changes/<issue-number>.<category>.md` (e.g., `changes/752.added.md`). When an epic completes, `/changelog #<epic>` assembles fragments into `CHANGELOG.md` under `[Unreleased]`, then deletes them. Never edit `CHANGELOG.md` directly in a feature PR. Follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Common Pitfalls
 
@@ -64,140 +61,31 @@ def old_method(self):
 
 ## Essential Commands
 
-### Development Setup
 ```bash
-# Install development dependencies
-uv sync --all-extras --all-groups
+uv sync --all-extras --all-groups   # Install dev dependencies
+pre-commit install                  # Install pre-commit hooks
 
-# Install pre-commit hooks
-pre-commit install
+protean test                        # Core tests (in-memory adapters, no Docker)
+uv run pytest <path>                # Run specific tests
+make up                             # Start Redis/Elasticsearch/PostgreSQL/MessageDB
+protean test -c FULL                # Full suite across adapters (needs Docker)
+
+ruff check                          # Lint
+ruff format                         # Format
+mypy src/protean                    # Type check
 ```
 
-### Testing
-```bash
-# Basic tests with memory adapters
-protean test
+CLI tools: `protean shell` (domain REPL), `protean server` (async engine), `protean observatory` (dashboard, `--domain` required), `protean new`, `protean generate`.
 
-# Run specific test configurations
-protean test -c BROKER      # Test all broker implementations
-protean test -c DATABASE    # Test all database implementations
-protean test -c EVENTSTORE  # Test all event store implementations
-protean test -c FULL        # Full test suite with coverage
-protean test -c COVERAGE    # Coverage report
+Full test matrix (categories `BROKER`/`DATABASE`/`EVENTSTORE`/`FULL`/`COVERAGE`, technology flags, nox multi-version): see `tests/CLAUDE.md`.
 
-# Test with specific technologies
-protean test --redis --postgresql --elasticsearch --sqlite
+## Releasing
 
-# Run specific tests with pytest
-uv run pytest <individual tests or test files>
+Protean uses **direct minor releases** cut from `main` (no release candidates); patches are cut from `release/0.X.x` branches. `bump-my-version bump minor|patch` updates the version across all tracked files and creates the commit + tag; pushing the tag triggers `.github/workflows/publish.yml`.
 
-# Multi-version testing with nox (requires pyenv with 3.11, 3.12, 3.13, 3.14)
-make test-matrix           # Core tests across all Python versions
-make test-matrix-full      # Full suite across all Python versions (starts Docker services)
-uv run nox -s tests-3.13   # Core tests on a specific version
-```
-
-### Docker Services
-```bash
-make up    # Start Redis, Elasticsearch, PostgreSQL, MessageDB
-make down  # Stop services
-```
-
-### CLI Tools
-```bash
-protean shell       # Interactive shell with domain context
-protean server      # Run async message processing engine
-protean observatory # Run observability dashboard (--domain required)
-protean new         # Create new projects
-protean generate    # Generate docker-compose files
-```
-
-### Code Quality
-```bash
-ruff check          # Linting
-ruff format         # Formatting
-mypy src/protean    # Type checking
-```
-
-### Releasing
-
-See ADR-0004 (`docs/adr/0004-release-workflow-and-breaking-change-policy.md`) for the full release philosophy.
-
-Protean uses **direct minor releases** (no release candidates). Minor versions are cut straight from `main` when the changelog has substantive entries. Bugs discovered after a release are shipped as **patch releases** from the release branch.
-
-#### Version bump commands
-
-```bash
-# Install bump-my-version (in dev dependencies)
-uv sync --group dev
-
-# Minor release (e.g., 0.15.0 → 0.16.0)
-bump-my-version bump minor
-
-# Patch release (e.g., 0.15.0 → 0.15.1)
-bump-my-version bump patch
-```
-
-Version is updated automatically in: `pyproject.toml`, `src/protean/__init__.py`, `src/protean/template/domain_template/pyproject.toml.jinja`, `docs/guides/getting-started/installation.md`, `.bumpversion.toml`.
-
-`bump-my-version` auto-creates a commit and tag (e.g., `v0.16.0`). Push the tag to trigger the publish workflow.
-
-The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
-- Building with uv
-- Publishing to PyPI (trusted publishing)
-- Creating a GitHub Release
-
-#### Minor release workflow (from main)
-
-```
-main:  ──A──B──C──[tag v0.16.0]──D──E──...
-                      │
-release/0.16.x:       └── (created on demand for patches)
-```
-
-**Cutting a minor release:**
-
-```bash
-git checkout main
-git pull --ff-only
-
-# 1. Finalize CHANGELOG: rename [Unreleased] → [0.X.0] - YYYY-MM-DD, leave a fresh empty [Unreleased] above it
-$EDITOR CHANGELOG.md
-git add CHANGELOG.md
-git commit -m "Mark 0.X.0 release in CHANGELOG"
-
-# 2. Bump version, create commit + tag
-bump-my-version bump minor                    # 0.15.0 → 0.16.0
-git push origin main --tags
-
-# 3. Create release branch from the new tag (for future patches)
-git branch release/0.16.x v0.16.0
-git push origin release/0.16.x
-```
-
-#### Patch release workflow (from release branch)
-
-Bugfixes land on `main` first, then are cherry-picked to the release branch:
-
-```bash
-# Fix the bug on main, merge PR, then:
-git checkout release/0.16.x
-git pull --ff-only
-git cherry-pick <commit-hash>
-
-# Update CHANGELOG on the release branch under [0.16.1]
-$EDITOR CHANGELOG.md
-git add CHANGELOG.md
-git commit -m "Mark 0.16.1 release in CHANGELOG"
-
-bump-my-version bump patch                    # 0.16.0 → 0.16.1
-git push origin release/0.16.x --tags
-```
-
-**Post-release checklist:**
-1. Verify the `[Unreleased]` section in `CHANGELOG.md` on `main` is empty and ready for the next cycle
-2. Verify the package on PyPI
-3. For minor releases, confirm `release/0.X.x` branch is pushed for future patches
+- Philosophy & breaking-change rationale: ADR-0004 (`docs/adr/0004-release-workflow-and-breaking-change-policy.md`).
+- Step-by-step runbook (cut a minor, cut a patch, post-release checklist): `.claude/skills/release-check/reference.md`.
+- Validate readiness before bumping: run `/release-check`.
 
 ## Architecture Overview
 
@@ -347,97 +235,17 @@ Check `todo/0-ROADMAP.md` for current roadmap state before starting work on any 
 
 ## Epic Planning Workflow
 
-When planning and executing an epic, follow this structured workflow. The goal is to produce a durable historical trail in commits, PRs, and issues.
+Epics are planned and broken into PR-sized GitHub sub-issues via the `/epic-plan` skill. The durable trail is commits, PRs, and issues — not the project board, which gets archived.
 
-### Phase 1: Deep-Dive and Issue Breakdown
+- **Single layer**: all tracking is real GitHub Issues. Epic = issue labeled `epic` (Item Type = Epic), converted from its pre-populated draft item on Project #15; each sub-issue = one PR (Item Type = Task), linked as a native sub-issue with the same Capability as the parent. No draft issues or `N.M.x` numbering.
+- **One issue = one PR**; tests ship with the code in the same PR, never separately.
+- PRs reference "Closes #N"; dependencies use GitHub's "Blocked by"/"Blocks" relationships.
+- Update `todo/0-ROADMAP.md` when epic status changes (mark previous Done, new Active).
+- Full phase-by-phase workflow, board automation, and the GitHub Project GraphQL/field-ID reference live with the skill: `.claude/skills/epic-plan/SKILL.md` and `.claude/skills/epic-plan/reference.md`.
 
-1. **Review the epic** on the GitHub Project (private, `github.com/orgs/proteanhq/projects/15`) and the roadmap (`todo/0-ROADMAP.md`).
-2. **Deep-dive into the codebase** — understand what exists, what's missing, what patterns to follow.
-3. **Break down into sub-issues** — each sub-issue is a coherent, PR-sized unit of work. Tests ship with the code they test. Avoid mocks. Aim for 100% coverage.
+## Skills
 
-### Phase 2: Create Tracking Artifacts
-
-Single layer — all tracking uses **real GitHub Issues**:
-
-- **Epic issue** — Every epic already exists as a **draft item** in the GitHub Project with its Sequence, Capability, Requires, and Item Type fields pre-populated. **Do not create a new issue.** Instead, convert the existing draft item to a real issue:
-  1. Open the draft item in the project board
-  2. Click the item title → select **"Convert to issue"** → choose the `proteanhq/protean` repository
-  3. Add the `epic` label and flesh out the body with outcome, why, and success criteria
-  4. The project fields (Sequence, Capability, Requires, Status, Item Type) are preserved automatically
-- **Sub-issues** — real GitHub Issues linked as native sub-issues of the epic. Each sub-issue = one PR. Added to the project board with Item Type = Task and the same Capability field as the parent epic.
-- PR descriptions reference "Closes #N" to create permanent cross-references.
-- Use GitHub's **issue relationships** ("Blocked by" / "Blocks") for dependencies between sub-issues.
-
-No draft issues or internal numbering schemes (N.M.x). Everything is public and self-contained.
-
-### Phase 3: Update Roadmap
-
-- Update `todo/0-ROADMAP.md`: mark previous epic Done, new epic Active
-- Update the Active Work section with current focus, plan file path, and issue count
-
-### Phase 4: Execute
-
-- Work through sub-issues sequentially for deep context
-- Each PR closes its corresponding sub-issue
-- Run full test suite before each PR
-
-### Key Principles
-
-- **Commits and PRs are the durable artifacts** — project boards get archived, but PR descriptions, commit messages, and review threads are the permanent trail
-- **One issue = one PR** — every sub-issue maps to exactly one PR
-- **Tests ship with code** — never as a separate PR; each PR is independently verifiable
-
-### GitHub Project API Reference
-
-Useful GraphQL mutations and queries for project management tasks. Project ID: `PVT_kwDOAmXm_s4BRFMC`.
-
-**Convert a draft item to a real issue** (preserves all project fields):
-```
-mutation { convertProjectV2DraftIssueItemToIssue(input: {
-  projectId: "PVT_kwDOAmXm_s4BRFMC"
-  itemId: "<draft-item-id>"
-  repositoryId: "<repo-node-id>"
-}) { item { id } } }
-```
-
-**Set a field value on a project item** (works for Status, Capability, Sequence, Requires, Item Type):
-```
-mutation { updateProjectV2ItemFieldValue(input: {
-  projectId: "PVT_kwDOAmXm_s4BRFMC"
-  itemId: "<item-id>"
-  fieldId: "<field-id>"
-  value: { singleSelectOptionId: "<option-id>" }  # or: { text: "..." } / { number: N }
-}) { projectV2Item { id } } }
-```
-
-**Add a blocked-by relationship between two real issues** (`issueId` is the blocked one):
-```
-mutation { addBlockedBy(input: {
-  issueId: "<blocked-issue-node-id>"
-  blockingIssueId: "<blocking-issue-node-id>"
-}) { issue { number } blockingIssue { number } } }
-```
-Returns "already taken" validation error if the relationship already exists — safe to treat as a no-op.
-
-**Query blocked-by/blocking on an issue:**
-```
-{ repository(owner: "proteanhq", name: "protean") {
-  issue(number: N) {
-    blockedBy(first: 10) { nodes { number title } }
-    blocking(first: 10) { nodes { number title } }
-  }
-} }
-```
-
-**Key field IDs** (project #15):
-
-| Field | ID | Notes |
-|-------|----|-------|
-| Status | `PVTSSF_lADOAmXm_s4BRFMCzg_A5gY` | Backlog=`f75ad846`, Active=`5a1d9210`, In Progress=`47fc9ee4`, Done=`98236657` |
-| Item Type | `PVTSSF_lADOAmXm_s4BRFMCzg_KRSg` | Epic=`1acf4758`, Task=`ae8e6519` |
-| Capability | `PVTSSF_lADOAmXm_s4BRFMCzg_A5uY` | Knows Itself=`3251b733`, Explains Itself=`36a2deff`, Shows Itself=`76850904`, Exposes Itself=`258cdab9`, Builds Itself=`5931373c`, Deploys Itself=`d1e4e43d` |
-| Sequence | `PVTF_lADOAmXm_s4BRFMCzg_kOnU` | Number field (1–37 global execution order) |
-| Requires | `PVTF_lADOAmXm_s4BRFMCzg_kQTc` | Text field, e.g. `"1.1, 1.6"` |
+This repo ships Claude Code skills under `.claude/skills/` (e.g. `/implement`, `/pr`, `/check`, `/epic-plan`). For the full catalogue — what each does, when *not* to reach for it, and how they compose — see `.claude/skills/INDEX.md`.
 
 ## Architecture Decision Records (ADRs)
 

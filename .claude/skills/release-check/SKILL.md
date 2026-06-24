@@ -102,3 +102,5 @@ Blockers: 2 open sub-issues need resolution before release.
 ```
 
 If everything passes, confirm explicitly: "All checks pass — safe to run `bump-my-version bump <type>`."
+
+For the step-by-step procedure to actually cut the release once checks pass (minor from `main`, patch from `release/0.X.x`, post-release checklist), see [`reference.md`](reference.md).
