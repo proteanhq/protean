@@ -46,9 +46,9 @@ BaseRepository._dao
 ```
 
 The repository speaks domain language (`add`, `get`, `query`, `find_by`, and
-custom methods). The DAO speaks database language (`_filter`, `_create`,
-`_update`, `_delete`). Custom repository methods use `self.query` and
-`self.find_by` (which delegate to the internal `_dao`) to build queries.
+custom methods). The DAO speaks database language (`_filter`, `_count`,
+`_create`, `_update`, `_delete`). Custom repository methods use `self.query`
+and `self.find_by` (which delegate to the internal `_dao`) to build queries.
 
 **Key source files:**
 
@@ -56,8 +56,8 @@ custom methods). The DAO speaks database language (`_filter`, `_create`,
   `_dao` property, and `_sync_children()` for cascading child entities.
 - `src/protean/port/dao.py` -- `BaseDAO` with lifecycle methods (`get`,
   `find_by`, `exists`, `create`, `save`, `update`, `delete`) and abstract
-  methods for concrete implementations (`_filter`, `_create`, `_update`,
-  `_delete`, `_raw`).
+  methods for concrete implementations (`_filter`, `_count`, `_create`,
+  `_update`, `_delete`, `_raw`).
 
 ### DAO → QuerySet
 
@@ -100,6 +100,19 @@ results = self._owner_dao._filter(
 The concrete DAO implementation (e.g., `DictDAO` for memory, `SADAO` for
 SQLAlchemy) recursively walks the Q object tree, resolves each lookup using
 the provider's lookup registry, and builds a database-specific query.
+
+`_filter` accepts a `with_total` flag (default `True`). When it is `False`
+the caller only needs `ResultSet.items`, so adapters may skip an expensive
+total-count computation (such as SQL's separate wrapped `COUNT` query) and
+report only the size of the returned page. Adapters that derive the total for
+free (memory, Elasticsearch) may continue to populate it.
+
+Counting takes a lighter path that bypasses `_filter` entirely. `count()` on
+a QuerySet calls the DAO's `_count` method with just the Q object tree; the
+concrete DAO issues a single `SELECT COUNT(*)` (SQLAlchemy `func.count()`,
+memory `len` over the filtered set, Elasticsearch's `_count` API) with no
+projection wrapper and no entity materialization. `offset`, `limit`, and
+`order_by` are ignored, since none of them affect the row count.
 
 ---
 
@@ -237,6 +250,17 @@ class BaseLookup:
 Each database adapter provides its own implementations. For example, the
 memory adapter's `Exact` lookup checks Python equality, while SQLAlchemy's
 `Exact` lookup produces a SQLAlchemy `column == value` expression.
+
+Some lookups must evaluate even when the source value is absent. The `isnull`
+lookup (`Q(field__isnull=True/False)`) is the canonical example: to match rows
+where a field *is* `None`, the predicate has to run against a `None` source.
+The memory adapter marks such lookups with a `null_safe = True` class
+attribute so `_evaluate_lookup` still applies them instead of
+short-circuiting when the source value is `None`. SQLAlchemy and Elasticsearch
+translate `isnull` to `IS NULL` / `IS NOT NULL` and the `exists` query
+respectively. `isnull` is one of the required lookups every adapter must
+register, since core framework machinery such as the outbox poll path
+depends on it.
 
 **Key source files:**
 

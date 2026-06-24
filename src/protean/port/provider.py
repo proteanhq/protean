@@ -117,7 +117,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
 
     4. **Lookups** (extends ``BaseLookup`` from ``protean.port.dao``)
        - Required lookups: exact, iexact, contains, icontains, startswith,
-         endswith, gt, gte, lt, lte, in (see ``REQUIRED_LOOKUPS``)
+         endswith, gt, gte, lt, lte, in, isnull (see ``REQUIRED_LOOKUPS``)
        - Register with ``@YourProvider.register_lookup``
        - Each lookup implements ``as_expression()`` returning adapter-native
          comparison
@@ -207,6 +207,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
             "lt",
             "lte",
             "in",
+            "isnull",
         }
     )
 

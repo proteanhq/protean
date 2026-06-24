@@ -451,6 +451,7 @@ default_subscription_type = "stream"  # Enables outbox automatically
 broker = "default"         # Target broker for publishing
 messages_per_tick = 10     # Messages per processing cycle
 tick_interval = 1          # Seconds between cycles
+max_tick_interval = 30     # Adaptive backoff cap when idle (None disables backoff)
 
 # Retry configuration
 [outbox.retry]
