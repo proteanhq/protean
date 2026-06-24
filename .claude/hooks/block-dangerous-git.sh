@@ -2,6 +2,15 @@
 # PreToolUse hook: Block dangerous git operations.
 # Exit code 2 = block the tool use.
 
+# Resolve hook input: prefer the legacy $TOOL_INPUT env var; otherwise read the
+# JSON payload current Claude Code delivers on stdin ({"tool_input": {...}}).
+if [ -z "${TOOL_INPUT:-}" ]; then
+    _PAYLOAD=$(cat 2>/dev/null || true)
+    if [ -n "$_PAYLOAD" ]; then
+        TOOL_INPUT=$(printf '%s' "$_PAYLOAD" | jq -c '.tool_input // {}' 2>/dev/null)
+    fi
+fi
+
 COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command // ""' 2>/dev/null)
 
 if [ -z "$COMMAND" ]; then

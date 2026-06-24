@@ -2,6 +2,17 @@
 # PreToolUse hook: Prevent Claude from modifying linter/formatter/CI configs.
 # If a lint or format check fails, Claude should fix the code, not weaken the rules.
 
+# Resolve hook input: prefer the legacy $TOOL_NAME/$TOOL_INPUT env vars; otherwise
+# read the JSON payload current Claude Code delivers on stdin
+# ({"tool_name": "...", "tool_input": {...}}).
+if [ -z "${TOOL_INPUT:-}" ]; then
+    _PAYLOAD=$(cat 2>/dev/null || true)
+    if [ -n "$_PAYLOAD" ]; then
+        TOOL_INPUT=$(printf '%s' "$_PAYLOAD" | jq -c '.tool_input // {}' 2>/dev/null)
+        TOOL_NAME="${TOOL_NAME:-$(printf '%s' "$_PAYLOAD" | jq -r '.tool_name // ""' 2>/dev/null)}"
+    fi
+fi
+
 TOOL_NAME_VAR="${TOOL_NAME:-}"
 
 # For Edit/Write tools, check the file path
