@@ -1,5 +1,7 @@
 # Protean — Repository Instructions
 
+> **Derived mirror.** This file is a condensed copy maintained for GitHub Copilot. The source of truth for these conventions is `CLAUDE.md` (and `docs/adr/0004-release-workflow-and-breaking-change-policy.md` for the breaking-change policy). When guidance changes, edit those first, then update this mirror to match.
+
 Protean is a Python framework for building domain-driven, event-sourced applications using DDD, CQRS, and Event Sourcing patterns. It uses a Ports & Adapters architecture to separate core domain logic from infrastructure.
 
 ## Build and test
@@ -49,7 +51,7 @@ mypy src/protean           # Type checking
 - **Type hints** on all new code and any existing code touched.
 - **uv** for dependency management (not Poetry). Lock file is `uv.lock`, build backend is `hatchling`.
 - Follow ruff formatting and linting rules configured in `pyproject.toml`.
-- **Every PR must include a `CHANGELOG.md` entry** under `[Unreleased]` using [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) sections: Added, Changed, Deprecated, Removed, Fixed, or Security.
+- **Every PR adds a changelog fragment, not a direct `CHANGELOG.md` edit.** Create `changes/<issue-number>.<category>.md` (e.g. `changes/752.added.md`), where `<category>` is one of the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) sections: added, changed, deprecated, removed, fixed, or security. **Never edit `CHANGELOG.md` directly in a feature PR** — fragments are assembled into `CHANGELOG.md` when an epic closes. This avoids merge conflicts.
 
 ## Breaking change policy
 
@@ -64,7 +66,7 @@ Every PR that touches a public API must answer: **does this break existing usage
 1. **Identify** — does this rename, remove, or change behavior of anything in `protean.*` that user code could depend on?
 2. **Classify** — Tier 1, 2, or 3?
 3. **Mitigate** — apply the deprecation/flag/migration strategy in the same PR
-4. **Document** — add a `CHANGELOG.md` entry (Added, Changed, Deprecated, Removed, Fixed)
+4. **Document** — add a `changes/<issue>.<category>.md` fragment (added, changed, deprecated, removed, fixed, or security); never edit `CHANGELOG.md` directly
 5. **Test** — verify `protean check` detects deprecated usage where applicable
 
 ## Domain element patterns
