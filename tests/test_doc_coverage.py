@@ -21,8 +21,6 @@ _API = _ROOT / "docs" / "api"
 # Element types currently/intentionally without a dedicated building-block or API page,
 # each with its reason. Burn these down (write the page, drop the entry) over time.
 ALLOWLIST = {
-    "QUERY": "Covered within the query-handlers concept/guide; no standalone page yet "
-    "(TODO: docs/concepts/building-blocks/queries.md).",
     "EMAIL": "Infrastructure/adapter element, not a domain building block; documented "
     "(if at all) under adapters rather than building-blocks/API.",
     "EVENT_SOURCED_REPOSITORY": "Covered in the event-sourcing / repositories docs; "
