@@ -150,6 +150,29 @@ Tune these with two trade-offs in mind:
 
 ---
 
+## Reduce idle polling
+
+By default the processor polls every `tick_interval` seconds whether or not
+there is work, which keeps a quiet outbox under constant low-level load. Set
+`max_tick_interval` to let an idle processor back off:
+
+```toml
+[outbox]
+tick_interval = 1          # Base interval between polls
+max_tick_interval = 30     # Back off to at most 30s when idle
+```
+
+Each empty poll doubles the wait (1s, 2s, 4s, and so on up to 30s); the first
+non-empty batch resets it to the base `tick_interval`. This trims wasted
+queries on a mostly idle deployment without adding latency under load, since a
+pending message snaps polling back to full speed on the next tick.
+
+Backoff is disabled by default: omit `max_tick_interval` (or set it to a value
+at or below `tick_interval`) and the processor polls at a constant
+`tick_interval`. Set it above `tick_interval` to enable the backoff.
+
+---
+
 ## Investigate abandoned messages
 
 Messages that exhaust `max_attempts` move to the `ABANDONED` state and

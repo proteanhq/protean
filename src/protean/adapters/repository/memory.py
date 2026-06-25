@@ -501,6 +501,30 @@ class DictDAO(BaseDAO):
 
         return update_count
 
+    def _claim(
+        self,
+        criteria: Q,
+        claim_fields: dict[str, Any],
+        limit: int,
+        order_by: str | None = None,
+    ) -> list:
+        """Atomic find-and-claim for the in-memory adapter.
+
+        The memory adapter has no row-level locking, and its ``_update_all`` is
+        not atomic across threads (it reads-then-writes). Holding the provider's
+        ``threading.Lock`` across the whole read-and-claim section serializes
+        concurrent claimers in-process, which is the strongest guarantee the
+        single-process memory store can offer. With the lock held, the portable
+        :meth:`BaseDAO._claim` default is race-free.
+
+        The lock is non-reentrant; neither ``_filter`` nor ``_update_all``
+        (which the default delegates to) reacquires it, so there is no deadlock.
+        """
+        conn = self._get_session()
+        assert conn is not None
+        with conn._db["lock"]:
+            return super()._claim(criteria, claim_fields, limit, order_by)
+
     def _delete(self, model_obj):
         """Delete the entity record in the dictionary"""
         conn = self._get_session()

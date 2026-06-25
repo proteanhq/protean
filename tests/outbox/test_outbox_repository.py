@@ -788,113 +788,181 @@ class TestOutboxRepositoryEdgeCases:
         assert len(stale_messages) >= 1
 
 
-class TestClaimForProcessing:
-    """Test atomic claim_for_processing method."""
+class TestClaimBatch:
+    """Test the atomic find-and-claim entry point (claim_batch)."""
 
-    def test_claim_pending_message(self, outbox_repo, sample_metadata):
-        """Claiming a PENDING message should succeed and update DB state."""
+    def test_claims_pending_and_ready_failed_messages(
+        self, outbox_repo, create_sample_messages
+    ):
+        """claim_batch returns PENDING and retry-ready FAILED messages."""
+        create_sample_messages()
+
+        claimed = outbox_repo.claim_batch("worker-A", limit=50)
+
+        # 3 PENDING + 2 retry-ready FAILED = 5 eligible
+        assert len(claimed) == 5
+        for msg in claimed:
+            assert msg.status == OutboxStatus.PROCESSING.value
+            assert msg.locked_by == "worker-A"
+            assert msg.locked_until is not None
+            assert msg.last_processed_at is not None
+
+    def test_claimed_rows_are_persisted_as_processing(
+        self, outbox_repo, create_sample_messages
+    ):
+        """The claim is durable: re-reading shows PROCESSING state."""
+        create_sample_messages()
+
+        claimed = outbox_repo.claim_batch("worker-A", limit=50)
+        assert len(claimed) > 0
+
+        for msg in claimed:
+            refreshed = outbox_repo.get(msg.id)
+            assert refreshed.status == OutboxStatus.PROCESSING.value
+            assert refreshed.locked_by == "worker-A"
+
+    def test_orders_by_priority_descending(self, outbox_repo, create_sample_messages):
+        """Higher-priority messages are claimed first."""
+        create_sample_messages()
+
+        claimed = outbox_repo.claim_batch("worker-A", limit=50)
+
+        priorities = [msg.priority for msg in claimed]
+        assert len(priorities) > 1
+        assert priorities == sorted(priorities, reverse=True)
+
+    def test_respects_limit(self, outbox_repo, create_sample_messages):
+        """claim_batch claims at most ``limit`` messages."""
+        create_sample_messages()
+
+        claimed = outbox_repo.claim_batch("worker-A", limit=2)
+        assert len(claimed) == 2
+
+    def test_zero_or_negative_limit_claims_nothing(
+        self, outbox_repo, create_sample_messages
+    ):
+        """A non-positive limit claims nothing and touches no rows."""
+        create_sample_messages()
+
+        assert outbox_repo.claim_batch("worker-A", limit=0) == []
+        assert outbox_repo.claim_batch("worker-A", limit=-1) == []
+
+    def test_second_claim_returns_nothing(self, outbox_repo, create_sample_messages):
+        """Once claimed, messages are not handed to a second claimer."""
+        create_sample_messages()
+
+        first = outbox_repo.claim_batch("worker-1", limit=50)
+        assert len(first) == 5
+
+        # All eligible rows are now PROCESSING and locked.
+        second = outbox_repo.claim_batch("worker-2", limit=50)
+        assert second == []
+
+    def test_does_not_claim_locked_messages(self, outbox_repo, sample_metadata):
+        """A row locked into the future is skipped."""
         msg = Outbox.create_message(
-            message_id="claim-test-1",
-            stream_name="test-stream",
+            message_id="locked-1",
+            stream_name="s",
             message_type="TestEvent",
-            data={"test": True},
-            metadata=sample_metadata,
-        )
-        outbox_repo.add(msg)
-
-        claimed = outbox_repo.claim_for_processing(msg, "worker-A")
-        assert claimed is True
-
-        # Verify DB state was updated
-        refreshed = outbox_repo.get(msg.id)
-        assert refreshed.status == OutboxStatus.PROCESSING.value
-        assert refreshed.locked_by == "worker-A"
-        assert refreshed.locked_until is not None
-        assert refreshed.last_processed_at is not None
-
-    def test_claim_failed_message(self, outbox_repo, sample_metadata):
-        """Claiming a FAILED message should succeed (eligible for retry)."""
-        msg = Outbox.create_message(
-            message_id="claim-test-2",
-            stream_name="test-stream",
-            message_type="TestEvent",
-            data={"test": True},
-            metadata=sample_metadata,
-        )
-        msg.status = OutboxStatus.FAILED.value
-        msg.retry_count = 1
-        outbox_repo.add(msg)
-
-        claimed = outbox_repo.claim_for_processing(msg, "worker-B")
-        assert claimed is True
-
-        refreshed = outbox_repo.get(msg.id)
-        assert refreshed.status == OutboxStatus.PROCESSING.value
-        assert refreshed.locked_by == "worker-B"
-
-    def test_claim_already_processing_message(self, outbox_repo, sample_metadata):
-        """Claiming a message that is already PROCESSING should fail."""
-        msg = Outbox.create_message(
-            message_id="claim-test-3",
-            stream_name="test-stream",
-            message_type="TestEvent",
-            data={"test": True},
+            data={},
             metadata=sample_metadata,
         )
         msg.status = OutboxStatus.PROCESSING.value
-        msg.locked_by = "worker-X"
+        msg.locked_by = "other-worker"
         msg.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
         outbox_repo.add(msg)
 
-        claimed = outbox_repo.claim_for_processing(msg, "worker-Y")
-        assert claimed is False
+        assert outbox_repo.claim_batch("worker-A", limit=50) == []
 
-    def test_claim_already_published_message(self, outbox_repo, sample_metadata):
-        """Claiming a PUBLISHED message should fail."""
-        msg = Outbox.create_message(
-            message_id="claim-test-4",
-            stream_name="test-stream",
-            message_type="TestEvent",
-            data={"test": True},
-            metadata=sample_metadata,
-        )
-        msg.status = OutboxStatus.PUBLISHED.value
-        msg.published_at = datetime.now(timezone.utc)
-        outbox_repo.add(msg)
-
-        claimed = outbox_repo.claim_for_processing(msg, "worker-Z")
-        assert claimed is False
-
-    def test_claim_abandoned_message(self, outbox_repo, sample_metadata):
-        """Claiming an ABANDONED message should fail."""
-        msg = Outbox.create_message(
-            message_id="claim-test-5",
-            stream_name="test-stream",
-            message_type="TestEvent",
-            data={"test": True},
-            metadata=sample_metadata,
-        )
-        msg.status = OutboxStatus.ABANDONED.value
-        outbox_repo.add(msg)
-
-        claimed = outbox_repo.claim_for_processing(msg, "worker-Z")
-        assert claimed is False
-
-    def test_second_claim_fails_after_first_succeeds(
+    def test_reclaims_crashed_processing_with_expired_lock(
         self, outbox_repo, sample_metadata
     ):
-        """After one worker claims a message, a second claim should fail."""
+        """A PROCESSING row whose lock has expired (a worker claimed it and
+        died before finishing) is reclaimed, so a crashed batch self-heals."""
         msg = Outbox.create_message(
-            message_id="claim-test-6",
-            stream_name="test-stream",
+            message_id="crashed-1",
+            stream_name="s",
             message_type="TestEvent",
-            data={"test": True},
+            data={},
             metadata=sample_metadata,
         )
+        msg.status = OutboxStatus.PROCESSING.value
+        msg.locked_by = "dead-worker"
+        msg.locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
         outbox_repo.add(msg)
 
-        # First claim succeeds
-        assert outbox_repo.claim_for_processing(msg, "worker-1") is True
+        claimed = outbox_repo.claim_batch("worker-A", limit=50)
+        assert len(claimed) == 1
+        assert claimed[0].locked_by == "worker-A"
+        assert claimed[0].status == OutboxStatus.PROCESSING.value
 
-        # Second claim fails — status is now PROCESSING
-        assert outbox_repo.claim_for_processing(msg, "worker-2") is False
+    def test_reclaims_messages_with_expired_lock(self, outbox_repo, sample_metadata):
+        """A row whose lock has expired is eligible again."""
+        msg = Outbox.create_message(
+            message_id="expired-lock-1",
+            stream_name="s",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+        )
+        # FAILED with an expired lock and no pending retry delay.
+        msg.status = OutboxStatus.FAILED.value
+        msg.retry_count = 1
+        msg.locked_by = "dead-worker"
+        msg.locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+        outbox_repo.add(msg)
+
+        claimed = outbox_repo.claim_batch("worker-A", limit=50)
+        assert len(claimed) == 1
+        assert claimed[0].locked_by == "worker-A"
+
+    def test_filters_by_target_broker(self, outbox_repo, sample_metadata):
+        """Only rows for the requested broker are claimed."""
+        for broker in ("default", "external"):
+            msg = Outbox.create_message(
+                message_id=f"broker-{broker}",
+                stream_name="s",
+                message_type="TestEvent",
+                data={},
+                metadata=sample_metadata,
+                target_broker=broker,
+            )
+            outbox_repo.add(msg)
+
+        claimed = outbox_repo.claim_batch(
+            "worker-A", limit=50, target_broker="external"
+        )
+        assert len(claimed) == 1
+        assert claimed[0].target_broker == "external"
+
+    def test_retry_exhausted_row_is_excluded_and_warns(
+        self, outbox_repo, sample_metadata, caplog
+    ):
+        """A claimable row that fails the retry-count guard is dropped from the
+        batch and logged (defense-in-depth; normally unreachable since such a
+        row would already be ABANDONED)."""
+        import logging
+
+        msg = Outbox.create_message(
+            message_id="exhausted",
+            stream_name="s",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+        )
+        # FAILED + retry_count >= max_retries: matches the eligibility criteria
+        # (which cannot express the column-to-column retry check) but fails the
+        # Python guard in claim_batch.
+        msg.status = OutboxStatus.FAILED.value
+        msg.retry_count = 5
+        msg.max_retries = 3
+        outbox_repo.add(msg)
+
+        with caplog.at_level(logging.WARNING):
+            claimed = outbox_repo.claim_batch("worker-A", limit=50)
+
+        assert claimed == []
+        assert any(
+            "claimed_rows_excluded_by_retry_guard" in r.getMessage()
+            for r in caplog.records
+        )

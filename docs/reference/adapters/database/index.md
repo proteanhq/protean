@@ -253,7 +253,7 @@ guide.
 
 ## Required Lookups
 
-Every provider must register a minimum set of **11 standard lookups** that
+Every provider must register a minimum set of **12 standard lookups** that
 power Protean's filtering API. These are validated when a provider is first
 loaded -- missing lookups produce a warning, and filters using them will raise
 `NotImplementedError`.
@@ -271,6 +271,12 @@ loaded -- missing lookups produce a warning, and filters using them will raise
 | `lt` | `age__lt=65` |
 | `lte` | `age__lte=65` |
 | `in` | `status__in=['active', 'pending']` |
+| `isnull` | `status__isnull=True` / `status__isnull=False` |
+
+The `isnull` lookup resolves to `IS NULL` / `IS NOT NULL` predicates (or the
+adapter's equivalent, such as Elasticsearch's `exists` query). It is required
+because core framework machinery, including the outbox poll path, depends on
+it.
 
 Providers may register additional lookups beyond this required set.
 

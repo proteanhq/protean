@@ -60,7 +60,12 @@ both disappear together; if it commits, both are durable.
 **2. Outbox processing.** The `OutboxProcessor` runs as part of the
 Engine, polling the outbox table, publishing each row to the configured
 broker, and marking the row as `PUBLISHED` on success. Failures are
-retried with exponential backoff.
+retried with exponential backoff. Each poll pushes its status, lock-window,
+and retry-window predicates into the database so a healthy outbox issues a
+single `SELECT` per tick. When `outbox.max_tick_interval` is set, an idle
+processor backs off its poll interval (doubling after each empty poll, up to
+the cap) and snaps back to the base `tick_interval` as soon as a batch is
+found.
 
 **3. Message consumption.** StreamSubscription consumers read from the
 broker stream, just as they would for any other message. They have no

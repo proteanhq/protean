@@ -343,10 +343,9 @@ class TestOutboxProcessor:
             assert msg_1.status == OutboxStatus.FAILED.value
 
     @pytest.mark.asyncio
-    async def test_process_batch_concurrent_processing_protection(
-        self, outbox_test_domain
-    ):
-        """Test that messages are protected from concurrent processing"""
+    async def test_locked_messages_are_not_claimed(self, outbox_test_domain):
+        """A message locked by another worker is not handed out by the claim
+        batch (concurrency protection now lives in ``claim_batch``)."""
         outbox_messages = persist_outbox_messages(outbox_test_domain)
 
         engine = MockEngine(outbox_test_domain)
@@ -360,10 +359,8 @@ class TestOutboxProcessor:
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         outbox_repo.add(message)
 
-        # Processing should skip locked messages
-        with patch.object(processor.broker, "publish", return_value="broker-msg-id"):
-            successful_count = await processor.process_batch([message])
-            assert successful_count == 0  # Message was locked, so not processed
+        claimed = await processor.get_next_batch_of_messages()
+        assert message.id not in {m.id for m in claimed}
 
     @pytest.mark.asyncio
     async def test_process_batch_save_failure_during_error_handling(
@@ -1381,9 +1378,9 @@ class TestAtomicTransactionProcessing:
 
     @pytest.mark.asyncio
     async def test_concurrent_processor_lock_contention(self, outbox_test_domain):
-        """Test that multiple processors handle lock contention correctly"""
-        messages = persist_outbox_messages(outbox_test_domain)
-        message = messages[0]
+        """Two processors claiming concurrently never claim the same message —
+        the atomic ``claim_batch`` partitions the work between them."""
+        persist_outbox_messages(outbox_test_domain)
 
         # Create two processors with different worker IDs
         engine1 = MockEngine(outbox_test_domain)
@@ -1397,23 +1394,17 @@ class TestAtomicTransactionProcessing:
         processor2.worker_id = "worker-2"
         await processor2.initialize()
 
-        # Mock both brokers to succeed
-        with (
-            patch.object(processor1.broker, "publish", return_value="broker-msg-1"),
-            patch.object(processor2.broker, "publish", return_value="broker-msg-2"),
-        ):
-            # Both processors try to process the same message
-            success1 = await processor1._process_single_message(message)
-            success2 = await processor2._process_single_message(message)
+        batch1 = await processor1.get_next_batch_of_messages()
+        batch2 = await processor2.get_next_batch_of_messages()
 
-        # Only one should succeed (the one that got the lock first)
-        assert success1 != success2  # Exactly one should be True
-        assert success1 or success2  # At least one should succeed
+        ids1 = {m.id for m in batch1}
+        ids2 = {m.id for m in batch2}
 
-        # Verify message was processed exactly once
-        outbox_repo = outbox_test_domain._get_outbox_repo("default")
-        updated_message = outbox_repo.get(message.id)
-        assert updated_message.status == OutboxStatus.PUBLISHED.value
+        # No message is claimed by both processors.
+        assert ids1.isdisjoint(ids2)
+        # The first processor actually claimed something, locked to it.
+        assert len(ids1) > 0
+        assert all(m.locked_by == "worker-1" for m in batch1)
 
     @pytest.mark.asyncio
     async def test_individual_message_transaction_isolation(self, outbox_test_domain):

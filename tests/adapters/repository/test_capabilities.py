@@ -363,6 +363,7 @@ class TestRequiredLookups:
             "lt",
             "lte",
             "in",
+            "isnull",
         }
         assert BaseProvider.REQUIRED_LOOKUPS == expected
 

@@ -48,7 +48,8 @@ underscored internals:
 
 | Method | Purpose |
 |--------|---------|
-| `_filter(criteria, offset, limit, order_by)` | Query records, return `ResultSet` |
+| `_filter(criteria, offset, limit, order_by, with_total=True)` | Query records, return `ResultSet`. When `with_total=False`, skip the total-count computation if it is expensive |
+| `_count(criteria)` | Count matching records via a single `COUNT`, without projecting columns or materializing entities |
 | `_create(model_obj)` | Insert a new record |
 | `_update(model_obj)` | Update an existing record |
 | `_update_all(criteria, values)` | Bulk update matching records |
@@ -87,7 +88,9 @@ def from_entity(cls, entity):
 
 Lookups translate filter criteria into adapter-native comparison expressions.
 Every adapter must register
-[11 required lookups](./index.md#required-lookups). Register them with the
+[12 required lookups](./index.md#required-lookups), including `isnull`
+(`Q(field__isnull=True/False)`), which core framework machinery such as the
+outbox poll path relies on. Register them with the
 `@YourProvider.register_lookup` decorator:
 
 ```python
@@ -351,9 +354,18 @@ Repository.add(aggregate)
 Repository.get(identifier)
   → DAO.get(identifier)
     → DAO.query.filter(id=identifier).all()
-      → DAO._filter(criteria, offset, limit, order_by)
+      → DAO._filter(criteria, offset, limit, order_by, with_total)
         # Must return ResultSet(items, total)
       → DatabaseModel.to_entity(item)            # your conversion
+```
+
+**Count:**
+
+```
+dao.query.filter(...).count()
+  → DAO._count(criteria)
+    # Single COUNT query — no projection, no entity materialization
+    # Returns an int
 ```
 
 ## Declaring Capabilities
@@ -421,7 +433,7 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
 3. **Use `_entity_to_dict()`** -- Avoid duplicating entity-to-dict conversion
    logic. The helper handles value objects, shadow fields, and associations
    consistently.
-4. **Register All Required Lookups** -- Protean validates that all 11 standard
+4. **Register All Required Lookups** -- Protean validates that all 12 standard
    lookups are registered. Missing lookups produce warnings at domain init.
 5. **Provide No-Op Sessions** -- If your database does not support transactions,
    provide a session with no-op `commit()`, `rollback()`, and `close()`.

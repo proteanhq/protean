@@ -69,6 +69,7 @@ need by what you're trying to accomplish.
 | Define a custom repository with domain queries  | [Repositories](./guides/change-state/repositories.md) | All |
 | Query aggregates with complex filters            | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Paginate query results                           | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
+| Count matching records without loading them      | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md#counting-matches) | All |
 | Use Q objects for AND/OR/NOT queries             | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Perform bulk updates or deletes                  | [Retrieve Aggregates](./guides/change-state/retrieve-aggregates.md) | All |
 | Manage transactions                             | [Unit of Work](./guides/change-state/unit-of-work.md) | All |
@@ -137,6 +138,7 @@ need by what you're trying to accomplish.
 | Understand subscriptions and event processing   | [Subscriptions](./concepts/async-processing/subscriptions.md) |
 | Use the outbox pattern for reliable messaging   | [Using the Outbox](./guides/server/outbox.md) |
 | Configure outbox retries, retention, and cleanup | [Using the Outbox](./guides/server/outbox.md#configure-retries) |
+| Reduce idle outbox polling with adaptive backoff | [Using the Outbox](./guides/server/outbox.md#reduce-idle-polling) |
 | Investigate abandoned outbox messages           | [Using the Outbox](./guides/server/outbox.md#investigate-abandoned-messages) |
 | Understand the outbox pattern conceptually      | [Outbox Pattern](./concepts/async-processing/outbox.md) |
 | Dispatch published events to external brokers   | [External Event Dispatch](./guides/server/external-event-dispatch.md) |

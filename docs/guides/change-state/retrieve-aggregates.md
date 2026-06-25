@@ -229,6 +229,7 @@ is assumed.
 - **`lt`** -- less than
 - **`lte`** -- less than or equal to
 - **`in`** -- value is in a given list
+- **`isnull`** -- field is null (`True`) or not null (`False`)
 - **`any`** -- any of given values matches items in a list field
 
 ```shell
@@ -240,6 +241,16 @@ Out[2]: 3
 
 In [3]: repository.query.filter(name__in=["John Doe", "Jane Doe"]).all().total
 Out[3]: 2
+```
+
+The `isnull` lookup is handy for fields that may be unset:
+
+```python
+# Aggregates whose `archived_at` timestamp has never been set
+repository.query.filter(archived_at__isnull=True).all().items
+
+# Aggregates that have been archived
+repository.query.filter(archived_at__isnull=False).all().items
 ```
 
 !!!note
@@ -642,6 +653,37 @@ Out[3]: 'Baby Doe'
 In [4]: query.last.name
 Out[4]: 'John Doe'
 ```
+
+## Counting matches
+
+When you only need *how many* records match, `count()` issues a single
+`SELECT COUNT(*)` (or the adapter's equivalent) without projecting columns or
+materializing entities:
+
+```shell
+In [1]: repository.query.filter(country="CA").count()
+Out[1]: 5
+```
+
+`count()` ignores `offset`, `limit`, and `order_by`, since none of them affect
+the number of matching rows. Prefer it over `len(queryset)` or `.all().total`
+when you don't need the rows themselves: those evaluate the full query and
+build entity objects, while `count()` asks the database for the number alone.
+
+### Fetching items without a total
+
+`all()` normally reports both the page of `items` and the `total` count of
+matching rows. On some adapters (SQLAlchemy) the total requires a second
+`COUNT` round-trip. When you only need the items and can disregard
+`ResultSet.total`, pass `with_total=False` to skip that round-trip:
+
+```python
+# Only the rows are needed, so the separate count query is skipped
+items = repository.query.filter(country="CA").all(with_total=False).items
+```
+
+Adapters that derive the total for free (memory, Elasticsearch) continue to
+populate `total` regardless.
 
 ## Bulk operations
 

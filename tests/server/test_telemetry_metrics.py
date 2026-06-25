@@ -1758,7 +1758,6 @@ class TestOutboxProcessorMetrics:
             "jitter_factor": 0.25,
         }
         processor.outbox_repo = MagicMock()
-        processor.outbox_repo.claim_for_processing.return_value = True
         return processor
 
     def _make_message(self, created_at=None):

@@ -132,16 +132,13 @@ class TestOutboxPublishFailedLog:
         async def mock_publish(msg):
             return False, RuntimeError("connection refused")
 
-        # Mock claim_for_processing to succeed
-        processor.outbox_repo.claim_for_processing = Mock(return_value=True)
+        # The message is already claimed by claim_batch; processing re-fetches it.
         processor.outbox_repo.get = Mock(return_value=message)
         processor.outbox_repo.add = Mock()
         processor._publish_message = mock_publish
 
         with caplog.at_level(logging.DEBUG, logger="protean.server.outbox_processor"):
-            asyncio.run(
-                processor._process_single_message(message)
-            )
+            asyncio.run(processor._process_single_message(message))
 
         publish_failed_records = [
             r for r in caplog.records if "outbox.publish_failed" in r.getMessage()
@@ -174,8 +171,8 @@ class TestOutboxProcessingErrorLog:
         with exc_info populated."""
         message = _make_outbox_message("msg-crash")
 
-        # Mock claim to raise an unexpected error
-        processor.outbox_repo.claim_for_processing = Mock(
+        # Mock the re-fetch to raise an unexpected error during processing
+        processor.outbox_repo.get = Mock(
             side_effect=RuntimeError("database connection lost")
         )
 
