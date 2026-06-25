@@ -354,9 +354,15 @@ class BaseDAO(metaclass=ABCMeta):
 
         The contract every implementation must uphold:
 
-        - No two callers ever observe the same row as claimed.
-        - Rows already locked by other workers are skipped, not blocked on.
+        - No two callers ever observe the same row as claimed (no
+          double-claim). A caller that loses a race for a row simply does not
+          get it.
         - Returned rows reflect post-claim state (the applied ``claim_fields``).
+
+        Non-blocking is *not* part of the contract: the portable default may
+        briefly block on a contended row's lock before its guard rejects the
+        claim. Only the ``FOR UPDATE SKIP LOCKED`` fast path steps over locked
+        rows without waiting.
 
         :param criteria: A ``Q`` object selecting eligible (claimable) rows.
         :param claim_fields: Attribute values to write on each claimed row.

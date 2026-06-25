@@ -874,6 +874,28 @@ class TestClaimBatch:
 
         assert outbox_repo.claim_batch("worker-A", limit=50) == []
 
+    def test_reclaims_crashed_processing_with_expired_lock(
+        self, outbox_repo, sample_metadata
+    ):
+        """A PROCESSING row whose lock has expired (a worker claimed it and
+        died before finishing) is reclaimed, so a crashed batch self-heals."""
+        msg = Outbox.create_message(
+            message_id="crashed-1",
+            stream_name="s",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+        )
+        msg.status = OutboxStatus.PROCESSING.value
+        msg.locked_by = "dead-worker"
+        msg.locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+        outbox_repo.add(msg)
+
+        claimed = outbox_repo.claim_batch("worker-A", limit=50)
+        assert len(claimed) == 1
+        assert claimed[0].locked_by == "worker-A"
+        assert claimed[0].status == OutboxStatus.PROCESSING.value
+
     def test_reclaims_messages_with_expired_lock(self, outbox_repo, sample_metadata):
         """A row whose lock has expired is eligible again."""
         msg = Outbox.create_message(

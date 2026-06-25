@@ -37,8 +37,11 @@ We introduce a DAO-level primitive, `BaseDAO._claim(criteria,
 claim_fields, limit, order_by=None)`, that selects up to `limit` rows matching
 `criteria`, applies `claim_fields` as an update, and returns the claimed rows in
 post-claim state. Implementations must guarantee that no two callers observe the
-same row as claimed, that rows locked by other workers are skipped rather than
-blocked on, and that the returned rows reflect the applied `claim_fields`.
+same row as claimed (no double-claim) and that the returned rows reflect the
+applied `claim_fields`. Non-blocking is not part of the contract: only the
+`FOR UPDATE SKIP LOCKED` fast path steps over locked rows without waiting; the
+portable default may briefly block on a contended row before its guard rejects
+the claim.
 
 **Portable default (`BaseDAO`).** Reads candidates via the entity query API,
 then issues a guarded `UPDATE … WHERE id = :id AND <criteria>` per row. The
@@ -115,9 +118,12 @@ epic 5.1 (`BaseDAO._validate_and_update_version`): version checking guards
   never select rows they cannot claim.
 - Because the claim now happens once at batch fetch (not per message), a worker
   that dies after claiming but before publishing leaves the **whole claimed
-  batch** in `processing` until `locked_until` expires, after which the rows are
-  reclaimed. This is a wider stall window than the previous per-message claim
-  (which stranded only the in-flight message), but it is still at-least-once and
+  batch** in `processing` until `locked_until` expires. The eligibility criteria
+  include `PROCESSING` rows whose lock has expired, so those rows are then
+  reclaimed automatically (an actively-locked `PROCESSING` row is still
+  excluded, so in-flight messages are never stolen). This is a wider stall
+  window than the previous per-message claim (which stranded only the in-flight
+  message), but it is still at-least-once and
   self-healing; size `locked_until` against `messages_per_tick` and expected
   processing time.
 - New adapters get correct behaviour for free via the portable default;

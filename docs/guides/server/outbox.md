@@ -167,9 +167,9 @@ non-empty batch resets it to the base `tick_interval`. This trims wasted
 queries on a mostly idle deployment without adding latency under load, since a
 pending message snaps polling back to full speed on the next tick.
 
-`max_tick_interval` defaults to `None`, which keeps polling at a constant
-`tick_interval`. A value at or below `tick_interval` is ignored, leaving
-backoff disabled.
+Backoff is disabled by default: omit `max_tick_interval` (or set it to a value
+at or below `tick_interval`) and the processor polls at a constant
+`tick_interval`. Set it above `tick_interval` to enable the backoff.
 
 ---
 

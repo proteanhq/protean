@@ -324,12 +324,28 @@ class OutboxRepository(BaseRepository):
     ) -> Q:
         """Build the ``Q`` selecting messages ready for processing.
 
-        Eligible messages are ``PENDING``, or ``FAILED`` and past their retry
-        time, and not currently locked. When ``target_broker`` is given, only
-        rows destined for that broker match. Shared by :meth:`find_unprocessed`
-        and :meth:`claim_batch` so the two cannot drift.
+        A message is eligible when its lock is free (``locked_until`` is null or
+        in the past) and its status is one of:
+
+        - ``PENDING`` — never processed;
+        - ``FAILED`` — eligible once its retry time has passed;
+        - ``PROCESSING`` — only if the lock has **expired**, i.e. a worker
+          claimed it and died before finishing. Including these makes a crashed
+          claim self-heal: the row becomes claimable again once ``locked_until``
+          passes. An actively-locked ``PROCESSING`` row (lock in the future) is
+          excluded, so an in-flight message is never stolen.
+
+        When ``target_broker`` is given, only rows destined for that broker
+        match. Shared by :meth:`find_unprocessed` and :meth:`claim_batch` so the
+        two cannot drift.
         """
-        criteria = Q(status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value])
+        criteria = Q(
+            status__in=[
+                OutboxStatus.PENDING.value,
+                OutboxStatus.FAILED.value,
+                OutboxStatus.PROCESSING.value,
+            ]
+        )
         criteria &= Q(locked_until__isnull=True) | Q(locked_until__lt=now)
         criteria &= Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now)
         if target_broker is not None:
@@ -343,11 +359,13 @@ class OutboxRepository(BaseRepository):
     ) -> List[Outbox]:
         """Find messages that are ready for processing.
 
-        Returns messages that are:
-        - PENDING status OR
-        - FAILED status and past retry time
-        - Not locked (``locked_until`` is null or in the past)
-        - Not expired based on retry count
+        Returns messages whose lock is free (``locked_until`` null or in the
+        past) that are:
+        - PENDING, or
+        - FAILED and past their retry time, or
+        - PROCESSING with an expired lock (a crashed claim, now reclaimable)
+
+        and not expired based on retry count. See :meth:`_eligibility_criteria`.
 
         Status, lock-window, and retry-window predicates are evaluated at the
         database. The retry-count check (``retry_count < max_retries``) is a
@@ -396,15 +414,15 @@ class OutboxRepository(BaseRepository):
 
         This is the production claim path. It selects eligible messages and
         marks them ``PROCESSING`` (setting ``locked_by`` and ``locked_until``)
-        in a single atomic operation per the DAO's ``_claim``
-        contract — with no TOCTOU window between selecting a message and
-        claiming it.
+        per the DAO's :meth:`~protean.port.dao.BaseDAO._claim` contract: no two
+        workers ever claim the same message. On PostgreSQL this is a single
+        ``UPDATE … RETURNING`` statement; other backends use a guarded
+        read-then-update that resolves the race without double-claiming.
 
-        Eligible messages are those that are:
-
-        - ``PENDING``, or ``FAILED`` and past their retry time;
-        - not locked (``locked_until`` is null or in the past);
-        - destined for ``target_broker`` when one is given.
+        Eligibility is defined by :meth:`_eligibility_criteria`: a lock-free
+        ``PENDING`` row, a retry-due ``FAILED`` row, or a ``PROCESSING`` row
+        whose lock has expired (a crashed claim, reclaimed for self-healing),
+        optionally filtered to ``target_broker``.
 
         Args:
             worker_id: Identifier of the worker claiming the messages.
