@@ -267,6 +267,7 @@ Architectural theory and the building blocks of domain-driven systems.
 - [Subscribers](./concepts/building-blocks/subscribers.md) -- Consume messages from external brokers.
 - [Projections](./concepts/building-blocks/projections.md) -- Read-optimized denormalized views.
 - [Projectors](./concepts/building-blocks/projectors.md) -- Specialized event handlers that maintain projections.
+- [Queries](./concepts/building-blocks/queries.md) -- Immutable, validated read intents targeting a projection.
 - [Query Handlers](./concepts/building-blocks/query-handlers.md) -- Process queries and return read-side results from projections.
 - [Process Managers](./concepts/building-blocks/process-managers.md) -- Stateful coordinators for multi-step processes across aggregates.
 
