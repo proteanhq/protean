@@ -1,3 +1,4 @@
+import logging
 import traceback
 from datetime import datetime, timezone, timedelta
 from enum import Enum
@@ -13,7 +14,10 @@ from protean.utils.eventing import Metadata
 from protean.utils.query import Q
 
 
+logger = logging.getLogger(__name__)
+
 PAGE_SIZE = 50  # Default page size for fetching messages
+DEFAULT_LOCK_DURATION_MINUTES = 5  # How long a claim holds a processing lock
 
 
 class OutboxStatus(Enum):
@@ -315,6 +319,23 @@ class OutboxRepository(BaseRepository):
         # skip the adapter's total-count round-trip (a wrapped ``COUNT`` on SQL).
         return query.all(with_total=False).items
 
+    def _eligibility_criteria(
+        self, now: datetime, target_broker: str | None = None
+    ) -> Q:
+        """Build the ``Q`` selecting messages ready for processing.
+
+        Eligible messages are ``PENDING``, or ``FAILED`` and past their retry
+        time, and not currently locked. When ``target_broker`` is given, only
+        rows destined for that broker match. Shared by :meth:`find_unprocessed`
+        and :meth:`claim_batch` so the two cannot drift.
+        """
+        criteria = Q(status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value])
+        criteria &= Q(locked_until__isnull=True) | Q(locked_until__lt=now)
+        criteria &= Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now)
+        if target_broker is not None:
+            criteria &= Q(target_broker=target_broker)
+        return criteria
+
     def find_unprocessed(
         self,
         limit: Optional[int] = None,
@@ -341,20 +362,19 @@ class OutboxRepository(BaseRepository):
 
         Returns:
             List of Outbox messages ready for processing
+
+        Note:
+            This is a **read-only** query — it does not lock or claim rows. For
+            the processing path, use :meth:`claim_batch`, which atomically
+            selects and claims rows in one round trip. ``find_unprocessed`` is
+            for inspection and monitoring of the queue.
         """
         # Handle zero limit case
         if limit is not None and limit == 0:
             return []
 
         now = datetime.now(timezone.utc)
-        query = self._dao.query.filter(
-            status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]
-        )
-        query = query.filter(Q(locked_until__isnull=True) | Q(locked_until__lt=now))
-        query = query.filter(Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
-
-        if target_broker is not None:
-            query = query.filter(target_broker=target_broker)
+        query = self._dao.query.filter(self._eligibility_criteria(now, target_broker))
 
         # Order by priority (higher first)
         query = query.order_by("-priority")
@@ -365,44 +385,70 @@ class OutboxRepository(BaseRepository):
         # Pushed to SQL once F() expressions land.
         return [msg for msg in candidates if msg.retry_count < msg.max_retries]
 
-    def claim_for_processing(
+    def claim_batch(
         self,
-        message: Outbox,
         worker_id: str,
-        lock_duration_minutes: int = 5,
-    ) -> bool:
-        """Atomically claim a message for processing using database-level locking.
+        limit: int,
+        target_broker: str | None = None,
+        lock_duration_minutes: int = DEFAULT_LOCK_DURATION_MINUTES,
+    ) -> List[Outbox]:
+        """Atomically select and claim up to ``limit`` ready messages.
 
-        Uses UPDATE...WHERE with a status check to prevent concurrent workers
-        from claiming the same message (TOCTOU race condition). Under READ
-        COMMITTED isolation (PostgreSQL, MSSQL), a concurrent UPDATE on the same
-        row blocks until the first transaction commits, then re-evaluates the
-        WHERE clause — so only one worker can succeed.
+        This is the production claim path. It selects eligible messages and
+        marks them ``PROCESSING`` (setting ``locked_by`` and ``locked_until``)
+        in a single atomic operation per the DAO's ``_claim``
+        contract — with no TOCTOU window between selecting a message and
+        claiming it.
+
+        Eligible messages are those that are:
+
+        - ``PENDING``, or ``FAILED`` and past their retry time;
+        - not locked (``locked_until`` is null or in the past);
+        - destined for ``target_broker`` when one is given.
 
         Args:
-            message: The outbox message to claim.
-            worker_id: Identifier of the worker claiming this message.
-            lock_duration_minutes: How long to hold the processing lock.
+            worker_id: Identifier of the worker claiming the messages.
+            limit: Maximum number of messages to claim. ``<= 0`` claims none.
+            target_broker: When provided, only claim rows for this broker.
+            lock_duration_minutes: How long the processing lock is held.
 
         Returns:
-            True if this worker successfully claimed the message, False if
-            another worker already claimed it or the message is no longer eligible.
+            The claimed messages, already in ``PROCESSING`` state, ordered by
+            priority (higher first).
         """
-        now = datetime.now(timezone.utc)
-        locked_until = now + timedelta(minutes=lock_duration_minutes)
+        if limit <= 0:
+            return []
 
-        claimed_count = self._dao._update_all(
-            Q(
-                id=message.id,
-                status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value],
-            ),
-            status=OutboxStatus.PROCESSING.value,
-            locked_by=worker_id,
-            locked_until=locked_until,
-            last_processed_at=now,
+        now = datetime.now(timezone.utc)
+
+        claimed = self._dao._claim(
+            criteria=self._eligibility_criteria(now, target_broker),
+            claim_fields={
+                "status": OutboxStatus.PROCESSING.value,
+                "locked_by": worker_id,
+                "locked_until": now + timedelta(minutes=lock_duration_minutes),
+                "last_processed_at": now,
+            },
+            limit=limit,
+            order_by="-priority",
         )
 
-        return claimed_count > 0
+        # Defense-in-depth guard: retry_count < max_retries (column-to-column,
+        # stays in Python until F() expressions land). By the FAILED/ABANDONED
+        # invariant a claimable row always satisfies this, so it excludes no
+        # claimed row in practice.
+        ready = [msg for msg in claimed if msg.retry_count < msg.max_retries]
+
+        # An excluded row has already been marked PROCESSING by the claim, so it
+        # would sit locked until ``locked_until`` expires. This only happens if
+        # the FAILED/ABANDONED invariant is violated upstream — surface it.
+        if len(ready) != len(claimed):
+            logger.warning(
+                "outbox.claimed_rows_excluded_by_retry_guard",
+                extra={"claimed": len(claimed), "returned": len(ready)},
+            )
+
+        return ready
 
     def find_failed(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
         """Find messages that have failed processing.

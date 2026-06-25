@@ -310,6 +310,89 @@ class BaseDAO(metaclass=ABCMeta):
         :return: Boolean indicating if the table/collection exists
         """
 
+    def _claim(
+        self,
+        criteria: Q,
+        claim_fields: dict[str, Any],
+        limit: int,
+        order_by: str | None = None,
+    ) -> list[BaseEntity]:
+        """Atomically select up to ``limit`` rows matching ``criteria``, apply
+        ``claim_fields`` as an update, and return the claimed rows.
+
+        .. important::
+            Call this **outside** an active Unit of Work. The claim is committed
+            via the DAO's standalone commit so the lock and state change are
+            durable the moment the method returns; inside a UoW the write would
+            not commit until the UoW does, so other workers would not see the
+            claim and the "lock-then-return" guarantee would not hold.
+
+        This is the **portable default**. It reads candidate rows and then
+        re-asserts ``criteria`` inside a guarded update for each one
+        (``UPDATE … WHERE id = :id AND <criteria>``), at the cost of ``1 + N``
+        round trips. Its concurrency behaviour depends on the backend:
+
+        - **Relational backends** (PostgreSQL, MySQL, SQL Server): the guarded
+          ``UPDATE`` re-evaluates its predicate against committed state once it
+          acquires the row lock, so a row another worker already claimed no
+          longer matches — the update affects zero rows and the row is skipped.
+          No double-claim.
+        - **SQLite**: writers are serialized at the database level, so claims
+          are effectively sequential (a contended write may raise
+          ``SQLITE_BUSY`` rather than skip).
+        - **The in-memory adapter** overrides this to hold its provider lock
+          across the whole read-and-claim, serializing claimers in-process.
+        - **Elasticsearch**: document versioning prevents a double write, so no
+          two callers claim the same row — but a lost race surfaces as a
+          version-conflict error rather than a graceful skip. Elasticsearch is
+          not recommended as a concurrently-consumed claim store.
+
+        Adapters with single-statement claim support (e.g. SQLAlchemy on
+        PostgreSQL via ``UPDATE … FOR UPDATE SKIP LOCKED … RETURNING``) override
+        this with a faster path. See
+        ``docs/adr/0013-optimistic-concurrency-and-claim-contract.md``.
+
+        The contract every implementation must uphold:
+
+        - No two callers ever observe the same row as claimed.
+        - Rows already locked by other workers are skipped, not blocked on.
+        - Returned rows reflect post-claim state (the applied ``claim_fields``).
+
+        :param criteria: A ``Q`` object selecting eligible (claimable) rows.
+        :param claim_fields: Attribute values to write on each claimed row.
+        :param limit: Maximum number of rows to claim. ``<= 0`` claims none.
+        :param order_by: Optional single ordering key (e.g. ``"-priority"``).
+        :return: List of claimed entity instances reflecting ``claim_fields``.
+        """
+        if limit <= 0:
+            return []
+
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None, (
+            f"`{self.entity_cls.__name__}` does not have an identity field"
+        )
+        id_name = entity_id_field.field_name
+
+        # Read candidate entities via the entity-level query API (``self.query``
+        # returns entities; the low-level ``_filter`` returns raw model objects).
+        candidate_qs = self.query.filter(criteria)
+        if order_by:
+            candidate_qs = candidate_qs.order_by(order_by)
+        candidates = candidate_qs.limit(limit).all(with_total=False).items
+
+        claimed = []
+        for entity in candidates:
+            identifier = getattr(entity, id_name)
+            # Re-assert the eligibility criteria in the update so a row claimed
+            # by another worker between the read and this write is skipped.
+            guard = Q(**{id_name: identifier}) & criteria
+            if self._update_all(guard, dict(claim_fields)) > 0:
+                for attr, value in claim_fields.items():
+                    setattr(entity, attr, value)
+                claimed.append(entity)
+
+        return claimed
+
     ######################
     # Life-cycle methods #
     ######################

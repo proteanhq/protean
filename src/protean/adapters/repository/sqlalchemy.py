@@ -21,8 +21,10 @@ from sqlalchemy import (
     func,
     or_,
     orm,
+    select,
     text,
     true,
+    update,
 )
 from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
@@ -706,6 +708,106 @@ class SADAO(BaseDAO):
             self._commit_if_standalone(conn)
 
         return updated_count
+
+    # Dialects that support the single-statement claim below. It relies on
+    # ``UPDATE … RETURNING`` with a ``FOR UPDATE SKIP LOCKED`` sub-select, which
+    # only PostgreSQL provides together. MySQL and MariaDB have ``SKIP LOCKED``
+    # but no ``UPDATE … RETURNING``; SQL Server and SQLite use different
+    # constructs. All of those — and any future dialect — fall back to the
+    # portable :meth:`BaseDAO._claim` default, which is correct everywhere.
+    _SKIP_LOCKED_DIALECTS = frozenset({"postgresql"})
+
+    def _claim(
+        self,
+        criteria: Q,
+        claim_fields: dict[str, Any],
+        limit: int,
+        order_by: str | None = None,
+    ) -> list:
+        """Atomic find-and-claim in a single ``UPDATE … RETURNING`` statement.
+
+        On PostgreSQL this issues::
+
+            UPDATE <table> SET <claim_fields>
+            WHERE id IN (
+                SELECT id FROM <table> WHERE <criteria>
+                ORDER BY <order> LIMIT <n> FOR UPDATE SKIP LOCKED
+            )
+            RETURNING *
+
+        The inner ``FOR UPDATE SKIP LOCKED`` selects and locks eligible rows
+        while skipping rows other workers have locked, and the surrounding
+        ``UPDATE`` claims exactly those rows — all in one round trip with no
+        TOCTOU window between the read and the claim. ``RETURNING`` hands back
+        the post-claim rows.
+
+        Every other dialect (MySQL/MariaDB — which lack ``UPDATE … RETURNING``;
+        SQL Server; SQLite) falls back to the portable
+        :meth:`BaseDAO._claim` default. That default is correct everywhere a
+        guarded ``UPDATE … WHERE`` re-evaluates its predicate against committed
+        state under row-lock contention (PostgreSQL, MySQL, SQL Server) or where
+        writes are serialized (SQLite); it does ``1 + N`` round trips instead of
+        one.
+        """
+        if limit <= 0:
+            return []
+
+        if self.provider._engine.dialect.name not in self._SKIP_LOCKED_DIALECTS:
+            return super()._claim(criteria, claim_fields, limit, order_by)
+
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None
+        id_attr = entity_id_field.attribute_name
+
+        model = self.database_model_cls
+        table = model.__table__
+        id_col = table.c[id_attr]
+
+        if order_by:
+            col = table.c[order_by.lstrip("-")]
+            order_col = col.desc() if order_by.startswith("-") else col
+        else:
+            # A deterministic order keeps LIMIT stable across workers.
+            order_col = id_col.asc()
+
+        inner = select(id_col)
+        if criteria.children:
+            inner = inner.where(self._build_filters(criteria))
+        inner = inner.order_by(order_col).limit(limit).with_for_update(skip_locked=True)
+
+        stmt = (
+            update(table)
+            .where(id_col.in_(inner.scalar_subquery()))
+            .values(**claim_fields)
+            .returning(table)
+        )
+
+        conn = self._get_session()
+        assert conn is not None
+        try:
+            # Core ``Row`` objects support attribute access by column name,
+            # which is what ``to_entity`` (via ``getattr``) expects.
+            rows = conn.execute(stmt).all()
+            claimed = []
+            for row in rows:
+                entity = model.to_entity(row)
+                entity.state_.mark_retrieved()
+                claimed.append(entity)
+
+            # ``RETURNING`` does not preserve the inner ``ORDER BY`` used to
+            # select the top-N rows, so restore the requested order here.
+            if order_by and claimed:
+                claimed.sort(
+                    key=lambda e: getattr(e, order_by.lstrip("-")),
+                    reverse=order_by.startswith("-"),
+                )
+        except DatabaseError:
+            logger.exception("repository.sqlalchemy.claim_atomically_failed")
+            raise
+        finally:
+            self._commit_if_standalone(conn)
+
+        return claimed
 
     def _delete(self, model_obj):
         """Delete the entity record in the database"""

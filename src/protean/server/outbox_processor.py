@@ -178,22 +178,25 @@ class OutboxProcessor(BaseSubscription):
 
     async def get_next_batch_of_messages(self) -> List[Outbox]:
         """
-        Get the next batch of unprocessed outbox messages.
+        Atomically claim the next batch of outbox messages for processing.
 
         Returns:
-            List[Outbox]: The next batch of outbox messages ready for processing.
+            List[Outbox]: The claimed batch of messages, already marked
+            ``PROCESSING`` and locked to this worker.
         """
         if not self.outbox_repo:
             logger.warning("Outbox repository not available")
             return []
 
-        # Run the database query in a thread pool to avoid blocking the event loop
-        # This allows other async tasks to run concurrently
+        # Run the claim in a thread pool to avoid blocking the event loop.
+        # ``claim_batch`` selects and locks the rows atomically, so no separate
+        # per-message claim is needed during processing.
         target_broker = self.broker_provider_name if self._filter_by_broker else None
         messages = await asyncio.to_thread(
-            self.outbox_repo.find_unprocessed,
-            limit=self.messages_per_tick,
-            target_broker=target_broker,
+            self.outbox_repo.claim_batch,
+            self.worker_id,
+            self.messages_per_tick,
+            target_broker,
         )
         if messages:
             logger.debug(
@@ -372,24 +375,14 @@ class OutboxProcessor(BaseSubscription):
                 span.set_attribute("protean.causation_id", message.causation_id)
 
             try:
-                # Use UnitOfWork for atomic transaction management
-                # This ensures all operations (lock, publish, status update) are atomic
+                # In the production flow the message was already claimed
+                # atomically when the batch was fetched (see
+                # ``OutboxRepository.claim_batch``), so there is no per-message
+                # claim here. Publish and record the final status in one
+                # transaction.
                 with UnitOfWork():
-                    # Atomically claim the message at the database level.
-                    # Under READ COMMITTED isolation, concurrent UPDATEs on the same
-                    # row block until the first transaction commits, then re-evaluate
-                    # the WHERE clause — so only one worker can succeed.
-                    if not self.outbox_repo.claim_for_processing(
-                        message, self.worker_id
-                    ):
-                        logger.debug(
-                            "outbox.message_already_claimed",
-                            extra={"message_id": message.message_id[:8]},
-                        )
-                        span.set_attribute("protean.outbox.skipped", True)
-                        return False
-
-                    # Re-fetch the message to get the updated state
+                    # Re-fetch to bind the row to this UoW and read its current
+                    # persisted state before transitioning it.
                     message = self.outbox_repo.get(message.id)
 
                     # Publish message to broker
