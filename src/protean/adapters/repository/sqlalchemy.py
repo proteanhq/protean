@@ -1053,7 +1053,7 @@ class SADAO(BaseDAO):
         conn = self._get_session()
         assert conn is not None
         try:
-            # Core ``Record`` objects support attribute access by column name,
+            # Core ``Row`` objects support attribute access by column name,
             # which is what ``to_entity`` (via ``getattr``) expects.
             rows = conn.execute(stmt).all()
             claimed = []

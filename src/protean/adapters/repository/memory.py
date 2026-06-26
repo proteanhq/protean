@@ -379,12 +379,12 @@ class DictDAO(BaseDAO):
         with_total: bool = True,
         projection: list | None = None,
     ):
-        """Read the repository and return results as per the filer.
+        """Read the repository and return results as per the filter.
 
         ``projection`` is accepted for interface parity. The in-memory store
         holds whole records in process, so there is no per-column fetch cost to
         save; the requested subset is selected when the caller builds ``Record``
-        objects via ``to_row``. Records are returned whole here.
+        objects via ``to_records``. Records are returned whole here.
         """
         conn = self._get_session()
         assert conn is not None
