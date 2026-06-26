@@ -176,15 +176,7 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
             item_dict[field_name] = values.get(field_name, None)
 
         assert item.meta is not None
-        identifier = None
-        if (
-            current_domain.config["identity_strategy"] == IdentityStrategy.UUID.value
-            and current_domain.config["identity_type"] == IdentityType.UUID.value
-            and isinstance(item.meta.id, str)
-        ):
-            identifier = UUID(item.meta.id)
-        else:
-            identifier = item.meta.id
+        identifier = cls._identity_from_meta(item.meta.id)
 
         # Elasticsearch stores identity in a special field `meta.id`.
         # Extract identity from `meta.id` and set identifier
@@ -203,6 +195,58 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
         entity_obj = cls.meta_.part_of(item_dict)
 
         return entity_obj
+
+    @classmethod
+    def _identity_from_meta(cls, meta_id: Any) -> Any:
+        """Coerce the Elasticsearch ``meta.id`` to the entity's identity type.
+
+        Mirrors the identity handling in :meth:`to_entity`.
+        """
+        if (
+            current_domain.config["identity_strategy"] == IdentityStrategy.UUID.value
+            and current_domain.config["identity_type"] == IdentityType.UUID.value
+            and isinstance(meta_id, str)
+        ):
+            return UUID(meta_id)
+        return meta_id
+
+    @classmethod
+    def to_records(cls, items: list, projection: list):
+        """Build read-only ``Record`` objects from Elasticsearch documents.
+
+        Like :meth:`to_entity`, identity is read from ``meta.id`` rather than a
+        stored field; all other projected fields are read from ``_source``.
+        Field metadata is resolved once and reused for every document.
+        """
+        from protean.core.queryset import Record
+
+        attrs = attributes(cls.meta_.part_of)
+        entity_name = cls.meta_.part_of.__name__
+        id_field_obj = id_field(cls.meta_.part_of)
+        id_attr = id_field_obj.attribute_name if id_field_obj else None
+        # Records are keyed by the projected attribute name. The source key
+        # honours ``referenced_as`` so remapped fields read the right document
+        # key, matching how ``from_entity`` writes them.
+        projected = [
+            (
+                attr_name,
+                attr_name == id_attr,
+                attrs[attr_name].referenced_as or attr_name,
+            )
+            for attr_name in projection
+        ]
+
+        records = []
+        for item in items:
+            values = item.to_dict()
+            data: dict[str, Any] = {}
+            for key, is_identity, source in projected:
+                if is_identity:
+                    data[key] = cls._identity_from_meta(item.meta.id)
+                else:
+                    data[key] = values.get(source)
+            records.append(Record(entity_name, data))
+        return records
 
 
 class ESSession:
@@ -278,6 +322,7 @@ class ElasticsearchDAO(BaseDAO):
         limit: int = 10,
         order_by: list = (),
         with_total: bool = True,
+        projection: list | None = None,
     ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
@@ -286,6 +331,10 @@ class ElasticsearchDAO(BaseDAO):
         ``with_total`` is accepted for interface parity; Elasticsearch returns
         the hit count for free on every response, so the total is always
         populated regardless of the flag.
+
+        When ``projection`` is set, ``_source`` filtering restricts the fields
+        returned per hit to the projected attributes (identity always comes
+        from ``meta.id``).
         """
         conn = self.provider.get_connection()
 
@@ -299,6 +348,9 @@ class ElasticsearchDAO(BaseDAO):
             .query(q)
             .params(version=True)
         )
+
+        if projection is not None:
+            s = s.source(list(projection))
 
         if order_by:
             s = s.sort(*order_by)
@@ -344,6 +396,9 @@ class ElasticsearchDAO(BaseDAO):
                         .query(q)
                         .params(version=True)
                     )
+
+                    if projection is not None:
+                        s_no_sort = s_no_sort.source(list(projection))
 
                     if limit is not None:
                         s_no_sort = s_no_sort[offset : offset + limit]

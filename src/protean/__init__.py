@@ -4,7 +4,7 @@ from .core.aggregate import apply, atomic_change
 from .core.application_service import use_case
 from .core.entity import invariant
 from .core.index import Index
-from .core.queryset import Q, QuerySet, ReadOnlyQuerySet
+from .core.queryset import Q, QuerySet, ReadOnlyQuerySet, Record
 from .core.unit_of_work import UnitOfWork
 from .core.value_object import value_object_from_entity
 from .core.view import ReadView
@@ -35,6 +35,7 @@ __all__ = [
     "read",
     "ReadOnlyQuerySet",
     "ReadView",
+    "Record",
     "UnitOfWork",
     "use_case",
     "value_object_from_entity",

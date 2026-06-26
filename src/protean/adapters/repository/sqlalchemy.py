@@ -821,11 +821,27 @@ class SADAO(BaseDAO):
         limit: int = 10,
         order_by: list = (),
         with_total: bool = True,
+        projection: list | None = None,
     ) -> ResultSet:
         """Filter objects from the sqlalchemy database"""
         conn = self._get_session()
         assert conn is not None
         qs = conn.query(self.database_model_cls)
+
+        # Restrict the columns loaded to the projection (plus the primary key,
+        # which SQLAlchemy always loads). Large/unneeded columns — JSON blobs in
+        # particular — are left out of the SELECT entirely. The mapped attribute
+        # honours ``referenced_as`` so it matches the key ``to_records`` reads.
+        if projection is not None:
+            entity_attrs = attributes(self.entity_cls)
+            cols = [
+                getattr(
+                    self.database_model_cls,
+                    entity_attrs[attr].referenced_as or attr,
+                )
+                for attr in projection
+            ]
+            qs = qs.options(orm.load_only(*cols))
 
         # Build the filters from the criteria
         if criteria.children:
@@ -1037,7 +1053,7 @@ class SADAO(BaseDAO):
         conn = self._get_session()
         assert conn is not None
         try:
-            # Core ``Row`` objects support attribute access by column name,
+            # Core ``Record`` objects support attribute access by column name,
             # which is what ``to_entity`` (via ``getattr``) expects.
             rows = conn.execute(stmt).all()
             claimed = []
