@@ -121,6 +121,37 @@ class TestRenderIndexDDL:
         assert render_index_ddl(Plain, "postgresql") == []
 
 
+class TestMergeTableArgs:
+    """`__table_args__` may be a dict or a tuple ending in a dict (SQLAlchemy
+    table kwargs); the trailing dict must stay last when indexes are appended."""
+
+    def test_empty_returns_indexes(self):
+        from protean.adapters.repository.sqlalchemy import _merge_table_args
+
+        assert _merge_table_args(None, ["i1", "i2"]) == ("i1", "i2")
+
+    def test_dict_kept_last(self):
+        from protean.adapters.repository.sqlalchemy import _merge_table_args
+
+        opts = {"schema": "reporting"}
+        assert _merge_table_args(opts, ["i1"]) == ("i1", opts)
+
+    def test_tuple_ending_in_dict_keeps_dict_last(self):
+        from protean.adapters.repository.sqlalchemy import _merge_table_args
+
+        opts = {"schema": "reporting"}
+        assert _merge_table_args(("existing", opts), ["i1"]) == (
+            "existing",
+            "i1",
+            opts,
+        )
+
+    def test_plain_tuple_appends(self):
+        from protean.adapters.repository.sqlalchemy import _merge_table_args
+
+        assert _merge_table_args(("existing",), ["i1"]) == ("existing", "i1")
+
+
 @pytest.mark.sqlite
 class TestPartialIndexPredicate:
     """The where= predicate reuses Q; cover OR, negation, and lookups."""

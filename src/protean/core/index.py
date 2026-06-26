@@ -130,7 +130,10 @@ class RawIndex:
 
 
 def validate_indexes(element_cls: type) -> None:
-    """Validate the ``indexes`` declared on an element at registration time.
+    """Validate the ``indexes`` declared on an element.
+
+    Invoked by ``DomainValidator`` during ``Domain.init()`` (after reference
+    resolution), so field/attribute introspection sees a fully resolved element.
 
     Checks, fail-fast, that:
 

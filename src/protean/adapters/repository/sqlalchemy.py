@@ -432,6 +432,26 @@ def _attribute_map(entity_cls):
     }
 
 
+def _merge_table_args(existing, sa_indexes):
+    """Append SQLAlchemy ``Index`` objects to a model's ``__table_args__``.
+
+    SQLAlchemy allows ``__table_args__`` to be a dict (table kwargs), a tuple of
+    positional args, or a tuple whose last element is a dict of table kwargs.
+    The trailing dict (when present) must stay last, so indexes are inserted
+    before it.
+    """
+    indexes = tuple(sa_indexes)
+    if not existing:
+        return indexes
+    if isinstance(existing, dict):
+        # Pure table-kwargs dict — indexes go first, dict stays last.
+        return (*indexes, existing)
+    existing = tuple(existing)
+    if existing and isinstance(existing[-1], dict):
+        return (*existing[:-1], *indexes, existing[-1])
+    return (*existing, *indexes)
+
+
 def _build_sa_indexes(model_cls, entity_cls, dialect_name):
     """Translate an entity's ``Index`` declarations into SQLAlchemy constructs.
 
@@ -698,8 +718,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             raw_dialect = cls.__dict__["engine"].dialect.name
             sa_indexes, raw_indexes = _build_sa_indexes(cls, entity_cls, raw_dialect)
             if sa_indexes:
-                existing = tuple(cls.__dict__.get("__table_args__", ()) or ())
-                cls.__table_args__ = existing + tuple(sa_indexes)
+                cls.__table_args__ = _merge_table_args(
+                    cls.__dict__.get("__table_args__"), sa_indexes
+                )
 
         super().__init_subclass__(**kwargs)
 
