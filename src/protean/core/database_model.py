@@ -1,5 +1,6 @@
 from abc import abstractmethod
 
+from protean.core.queryset import Record
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
@@ -138,8 +139,6 @@ class BaseDatabaseModel(Element, OptionsMixin):
         :param items: The raw storage records returned by ``_filter``.
         :param projection: Attribute (column) names to read from each record.
         """
-        from protean.core.queryset import Record
-
         attrs = attributes(cls.meta_.part_of)
         entity_name = cls.meta_.part_of.__name__
         # Records are keyed by the attribute name the caller projected (what

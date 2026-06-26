@@ -107,6 +107,15 @@ total-count computation (such as SQL's separate wrapped `COUNT` query) and
 report only the size of the returned page. Adapters that derive the total for
 free (memory, Elasticsearch) may continue to populate it.
 
+`_filter` also accepts an optional `projection` argument (a list of attribute
+names) set via `QuerySet.only()`. When present, the adapter fetches only those
+columns (SQLAlchemy `load_only`, Elasticsearch `_source` filtering; the memory
+store selects when building the result) and the QuerySet builds read-only
+`Record` objects through the model's `to_records` instead of materializing
+entities. Because a `Record` never enters the entity layer, the projection path
+runs no invariants and does no event-position sync or Unit of Work tracking,
+which is what keeps it cheap and the domain model uncompromised.
+
 Counting takes a lighter path that bypasses `_filter` entirely. `count()` on
 a QuerySet calls the DAO's `_count` method with just the Q object tree; the
 concrete DAO issues a single `SELECT COUNT(*)` (SQLAlchemy `func.count()`,

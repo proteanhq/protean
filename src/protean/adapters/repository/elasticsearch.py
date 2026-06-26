@@ -23,7 +23,7 @@ from elasticsearch_dsl import (
 )
 
 from protean.core.database_model import BaseDatabaseModel
-from protean.core.queryset import ResultSet
+from protean.core.queryset import Record, ResultSet
 from protean.exceptions import (
     DatabaseError,
     ExpectedVersionError,
@@ -218,8 +218,6 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
         stored field; all other projected fields are read from ``_source``.
         Field metadata is resolved once and reused for every document.
         """
-        from protean.core.queryset import Record
-
         attrs = attributes(cls.meta_.part_of)
         entity_name = cls.meta_.part_of.__name__
         id_field_obj = id_field(cls.meta_.part_of)
