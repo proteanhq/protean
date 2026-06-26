@@ -50,7 +50,13 @@ class Outbox(BaseAggregate):
     # indexed on SQL Server, require blind prefix lengths on MySQL, and waste
     # storage everywhere, and the outbox path needs indexes on exactly these
     # columns. ``data`` and ``metadata_`` stay unbounded JSON blobs.
-    message_id: Annotated[str, Field(max_length=64)]
+    #
+    # ``message_id`` is a composite Protean message id (headers.id), e.g.
+    # ``testdomain::order-<aggregate-id>-3``, not a bare UUID, so it needs the
+    # same 255 ceiling as ``stream_name``. Same reasoning applies to
+    # ``causation_id`` (holds a parent message id) and ``correlation_id`` (a
+    # flexible, often caller-supplied tracing string) below.
+    message_id: Annotated[str, Field(max_length=255)]
     stream_name: Annotated[str, Field(max_length=255)]
     type: Annotated[str, Field(max_length=255)]
     data: dict
@@ -79,9 +85,9 @@ class Outbox(BaseAggregate):
     # For maintaining message order within a stream
     sequence_number: int | None = None
 
-    # For distributed tracing
-    correlation_id: Annotated[str | None, Field(max_length=64)] = None
-    causation_id: Annotated[str | None, Field(max_length=64)] = None
+    # For distributed tracing (see note above: identity-shaped / caller-supplied)
+    correlation_id: Annotated[str | None, Field(max_length=255)] = None
+    causation_id: Annotated[str | None, Field(max_length=255)] = None
 
     # Message priority for processing order
     priority: int = 0  # Higher = more important

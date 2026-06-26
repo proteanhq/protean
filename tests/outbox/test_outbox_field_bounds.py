@@ -15,13 +15,13 @@ from protean.utils.reflection import fields
 
 # Field -> expected max_length, per the design in issue #948.
 EXPECTED_BOUNDS = {
-    "message_id": 64,
+    "message_id": 255,
     "stream_name": 255,
     "type": 255,
     "status": 32,
     "locked_by": 128,
-    "correlation_id": 64,
-    "causation_id": 64,
+    "correlation_id": 255,
+    "causation_id": 255,
     "target_broker": 128,
 }
 
@@ -78,18 +78,18 @@ class TestOutboxFieldBoundsValidation:
 
     def test_value_at_bound_is_accepted(self, sample_metadata):
         outbox = Outbox(
-            message_id="m" * 64,
+            message_id="m" * 255,
             stream_name="s" * 255,
             type="t" * 255,
             data={"key": "value"},
             metadata_=sample_metadata,
             status="p" * 32,
             locked_by="w" * 128,
-            correlation_id="c" * 64,
-            causation_id="z" * 64,
+            correlation_id="c" * 255,
+            causation_id="z" * 255,
             target_broker="b" * 128,
         )
-        assert len(outbox.message_id) == 64
+        assert len(outbox.message_id) == 255
         assert len(outbox.status) == 32
         assert len(outbox.locked_by) == 128
 

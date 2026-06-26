@@ -11,13 +11,13 @@ from protean.utils.outbox import Outbox
 
 # Field -> expected VARCHAR length emitted by the SQLAlchemy adapter.
 EXPECTED_LENGTHS = {
-    "message_id": 64,
+    "message_id": 255,
     "stream_name": 255,
     "type": 255,
     "status": 32,
     "locked_by": 128,
-    "correlation_id": 64,
-    "causation_id": 64,
+    "correlation_id": 255,
+    "causation_id": 255,
     "target_broker": 128,
 }
 
