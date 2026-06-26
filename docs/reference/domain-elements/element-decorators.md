@@ -31,13 +31,15 @@ logic, enforce invariants, and own the transaction lifecycle.
 | `auto_add_id_field` | `True` | Auto-adds an `id` identity field |
 | `is_event_sourced` | `False` | Enables event sourcing for this aggregate |
 | `fact_events` | `False` | Auto-generates fact events on state changes |
+| `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `provider` | `"default"` | Database provider name |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
 | `stream_category` | `snake_case(cls)` | Message stream category |
 | `database_model` | `None` | Custom database model class |
 | `limit` | `100` | Default query result limit |
 
-Guide: [Aggregates](../../guides/domain-definition/aggregates.md)
+Guide: [Aggregates](../../guides/domain-definition/aggregates.md) ·
+[Declaring Indexes](../../guides/domain-definition/indexes.md)
 
 ### `Domain.entity`
 
@@ -48,12 +50,14 @@ accessed through their parent aggregate and cannot exist independently.
 |--------|---------|-------------|
 | **`part_of`** | — | **Required.** Parent aggregate class |
 | `auto_add_id_field` | `True` | Auto-adds an `id` identity field |
+| `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `provider` | `"default"` | Database provider name |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
 | `database_model` | `None` | Custom database model class |
 | `limit` | `100` | Default query result limit |
 
-Guide: [Entities](../../guides/domain-definition/entities.md)
+Guide: [Entities](../../guides/domain-definition/entities.md) ·
+[Declaring Indexes](../../guides/domain-definition/indexes.md)
 
 ### `Domain.value_object`
 
@@ -196,10 +200,12 @@ objects.
 | `cache` | `None` | Cache provider (takes precedence over `provider`) |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
 | `database_model` | `None` | Custom database model class |
+| `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `order_by` | `()` | Default field ordering |
 | `limit` | `100` | Default query result limit |
 
-Guide: [Projections](../../guides/consume-state/projections.md)
+Guide: [Projections](../../guides/consume-state/projections.md) ·
+[Declaring Indexes](../../guides/domain-definition/indexes.md)
 
 ### `Domain.projector`
 

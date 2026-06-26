@@ -83,6 +83,7 @@ class BaseAggregate(BaseEntity):
             ("aggregate_cluster", None),
             ("auto_add_id_field", True),
             ("fact_events", False),
+            ("indexes", ()),
             ("is_event_sourced", False),
             ("database_model", None),
             ("provider", "default"),

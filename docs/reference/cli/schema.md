@@ -13,6 +13,7 @@ All commands accept either `--domain` (live domain module) or `--ir`
 |---------|-------------|
 | `protean schema generate` | Generate JSON Schema files for all data-carrying elements |
 | `protean schema show` | Display the JSON Schema for a specific element |
+| `protean schema render` | Render index DDL artifacts (with `--indexes`) |
 
 ---
 
@@ -116,6 +117,56 @@ Multiple elements match 'Order':
 
 Use the full FQN to disambiguate.
 ```
+
+---
+
+## `protean schema render`
+
+Renders the index declarations on a domain's aggregates and entities to
+per-dialect `CREATE INDEX` DDL files. It never executes DDL — it writes `.sql`
+artifacts for review or for application through your own migration tooling.
+
+```bash
+# Render index DDL for the default dialects
+protean schema render --indexes --domain=my_app.domain
+
+# Restrict to specific dialects
+protean schema render --indexes --domain=my_app.domain --dialects=postgresql,sqlite
+
+# Custom output directory
+protean schema render --indexes --domain=my_app.domain --output=build
+```
+
+**Options**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--indexes` | Render index DDL (required; nothing is applied without it) | `false` |
+| `--domain`, `-d` | Path to the domain module (e.g. `my_app.domain`) | |
+| `--dialects` | Comma-separated dialects to render | `postgresql,sqlite,mssql` |
+| `--output`, `-o` | Root output directory | `.protean` |
+
+`--indexes` requires `--domain`: rendering partial-index predicates needs the
+live `Index` declarations (the `Q` objects), which an IR file does not carry.
+
+**Output structure**
+
+One `.sql` file per element per dialect is written under
+`<output>/schemas/<cluster>/`:
+
+```
+.protean/
+└── schemas/
+    └── Order/
+        ├── order.indexes.postgresql.sql
+        └── order.indexes.sqlite.sql
+```
+
+Each file is headed with the element FQN and dialect, followed by the
+`CREATE INDEX` statements. Dialects that do not support a partial `where=` or
+covering `include=` emit a full index instead. See
+[Indexes](../domain-elements/indexes.md) for the declaration syntax and dialect
+support matrix.
 
 ---
 

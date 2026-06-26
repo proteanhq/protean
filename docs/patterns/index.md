@@ -163,6 +163,11 @@ If you are new to these patterns, these sequences build on each other:
   capabilities, separate projections, and let Protean's decorators carry
   architectural metadata.
 
+- **[Index Aggregates for Query Paths](index-aggregates-for-query-paths.md)**
+  -- Declare indexes for the query paths an aggregate actually has. Match
+  composite order to filter-then-sort, keep hot-set indexes small with partial
+  indexes, and keep storage-specific tuning out of the domain.
+
 - **[Validation Layering](validation-layering.md)** -- Different kinds of
   validation belong at different layers: field constraints for types, value
   object invariants for concept rules, aggregate invariants for business rules,

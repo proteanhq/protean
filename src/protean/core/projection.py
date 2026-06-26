@@ -117,6 +117,7 @@ class BaseProjection(BaseModel, OptionsMixin):
             ("abstract", False),
             ("cache", None),
             ("database_model", None),
+            ("indexes", ()),
             ("order_by", ()),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),

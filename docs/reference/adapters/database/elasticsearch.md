@@ -81,6 +81,14 @@ The Elasticsearch provider supports the following capabilities:
   refers to SQL-style JSON columns
 - :x: **NATIVE_ARRAY** -- No SQL-style array columns
 
+## Indexes
+
+Elasticsearch does not use relational indexes, so portable
+[`Index`](../../domain-elements/indexes.md) declarations are not translated into
+DDL here. Configure search behavior through the Elasticsearch field mapping
+(below) instead. Index declarations on an aggregate remain valid (they are
+honored by SQL providers); they are simply not applied by this adapter.
+
 ## Field Mapping
 
 Protean auto-generates an explicit Elasticsearch mapping for every

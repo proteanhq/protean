@@ -3,6 +3,7 @@ __version__ = "0.15.0"
 from .core.aggregate import apply, atomic_change
 from .core.application_service import use_case
 from .core.entity import invariant
+from .core.index import Index
 from .core.queryset import Q, QuerySet, ReadOnlyQuerySet
 from .core.unit_of_work import UnitOfWork
 from .core.value_object import value_object_from_entity
@@ -25,6 +26,7 @@ __all__ = [
     "g",
     "get_version",
     "handle",
+    "Index",
     "invariant",
     "Priority",
     "processing_priority",

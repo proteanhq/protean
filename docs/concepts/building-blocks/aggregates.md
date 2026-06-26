@@ -57,6 +57,17 @@ Invariants can be specified at the level of an aggregate's fields, the entire
 aggregate cluster, individual [entities](./entities.md), or
 [domain services](./domain-services.md) that operate on multiple aggregates.
 
+### Aggregates declare their own indexes. { data-toc-label="Indexes" }
+
+An aggregate knows how it will be queried, so it declares the indexes those
+query paths need with the `indexes=` option — uniqueness on identifiers,
+composite ordering for hot paths, partial indexes for active subsets. Keeping
+the declaration on the aggregate (rather than in a hand-maintained migration)
+means the query shape and its index live in one place. See
+[Declaring Indexes](../../guides/domain-definition/indexes.md) and the
+[Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md)
+pattern.
+
 ## Object Graphs
 
 Aggregates compose a graph of enclosed elements. The objects themselves can nest

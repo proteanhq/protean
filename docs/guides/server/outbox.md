@@ -65,6 +65,14 @@ $ protean db setup-outbox --domain=my_domain
 Multiple database providers produce one outbox per provider — each
 provider owns its own outbox table and its own `OutboxProcessor`.
 
+The outbox table ships with the indexes the processor needs, created
+automatically by the commands above: a partial index on the active set
+(`status`, `priority`) for the polling query, a unique index on `message_id`
+for idempotency, and an index on `correlation_id`. These are declared as
+[index declarations](../domain-definition/indexes.md) on the framework's
+`Outbox` aggregate, so on a large, long-running outbox the polling and
+cleanup paths stay fast without any manual tuning.
+
 ---
 
 ## Verify the outbox is running

@@ -265,6 +265,11 @@ def _build_extension_metadata(
     if options.get("is_event_sourced"):
         extensions["x-protean-is-event-sourced"] = True
 
+    # Index declarations (aggregates/entities)
+    indexes = element.get("indexes")
+    if indexes:
+        extensions["x-protean-indexes"] = indexes
+
     return dict(sorted(extensions.items()))
 
 

@@ -62,6 +62,14 @@ The Memory provider supports the following capabilities:
     only discards uncommitted changes -- it cannot undo side effects that
     already happened in the Python process.
 
+## Indexes
+
+The memory provider accepts [`Index`](../../domain-elements/indexes.md)
+declarations but treats them as **advisory**: they are validated for shape at
+`Domain.init()` but not enforced, since the in-memory store does not use
+indexes. This lets you declare the indexes your aggregates need, develop against
+the memory provider, and switch to a SQL backend without changing the domain.
+
 ## Raw Queries
 
 The Memory provider supports raw queries through JSON-string criteria that are

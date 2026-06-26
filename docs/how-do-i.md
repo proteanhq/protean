@@ -35,6 +35,9 @@ need by what you're trying to accomplish.
 | Use simple scalar fields (String, Integer...)   | [Simple Fields](./reference/fields/simple-fields.md) |
 | Use container fields (List, Dict, Nested)       | [Container Fields](./reference/fields/container-fields.md) |
 | Use association fields (HasOne, HasMany, Reference) | [Association Fields](./reference/fields/association-fields.md) |
+| Declare an index on an aggregate or entity      | [Declaring Indexes](./guides/domain-definition/indexes.md) |
+| Speed up a query that filters or sorts          | [Declaring Indexes](./guides/domain-definition/indexes.md) |
+| Add a unique, composite, or partial index       | [Declaring Indexes](./guides/domain-definition/indexes.md) |
 
 ## Add Business Rules
 
@@ -220,6 +223,7 @@ need by what you're trying to accomplish.
 | Rebuild projections from events                 | [`protean projection`](./reference/cli/data/projection.md) |
 | Inspect events in the event store               | [`protean events`](./reference/cli/data/events.md) |
 | Generate JSON Schemas for domain elements       | [Schema Generation](./guides/compose-a-domain/schema-generation.md) |
+| Render index DDL to `.sql` files                | [`protean schema render`](./reference/cli/schema.md#protean-schema-render) |
 | View the event history of an aggregate          | [`protean events history`](./reference/cli/data/events.md) |
 | Follow a causal chain by correlation ID         | [`protean events trace`](./reference/cli/data/events.md) |
 

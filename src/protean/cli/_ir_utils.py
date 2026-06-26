@@ -21,12 +21,13 @@ from protean.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-def load_domain_ir(domain_path: str) -> dict[str, Any]:
-    """Build and return the IR from a live domain.
+def load_domain(domain_path: str) -> Any:
+    """Import and initialise a live domain, returning the Domain object.
 
-    Imports the domain module at *domain_path*, initialises it, and
-    returns the full IR dict.  On failure the function prints a
-    diagnostic and raises ``typer.Abort()``.
+    Imports the domain module at *domain_path* and initialises it. Callers can
+    introspect the returned domain's registered element classes (e.g. their
+    index declarations). On failure the function prints a diagnostic and raises
+    ``typer.Abort()``.
     """
     try:
         derived_domain = derive_domain(domain_path)
@@ -40,6 +41,25 @@ def load_domain_ir(domain_path: str) -> dict[str, Any]:
 
     try:
         derived_domain.init()
+    except Exception as exc:
+        msg = f"Error initialising Protean domain: {exc}"
+        print(f"[red]Error:[/red] {msg}")
+        logger.error(msg)
+        raise typer.Abort()
+
+    return derived_domain
+
+
+def load_domain_ir(domain_path: str) -> dict[str, Any]:
+    """Build and return the IR from a live domain.
+
+    Loads and initialises the domain (via :func:`load_domain`), then returns
+    the full IR dict. On failure the function prints a diagnostic and raises
+    ``typer.Abort()``.
+    """
+    derived_domain = load_domain(domain_path)
+
+    try:
         return derived_domain.to_ir()
     except Exception as exc:
         msg = f"Error generating IR from Protean domain: {exc}"

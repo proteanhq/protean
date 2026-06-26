@@ -7,6 +7,7 @@ from typing import Annotated, List, Optional, Tuple
 from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.fields import Auto
 from protean.utils import ensure_utc_aware
@@ -315,6 +316,26 @@ class Outbox(BaseAggregate):
         """
         delay = min(base_delay_seconds * (2**self.retry_count), max_backoff_seconds)
         self.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
+
+
+# Recommended indexes for the outbox table. Applied when the framework
+# registers a per-provider Outbox (see ``DomainInfrastructure.initialize_outbox``).
+#
+# - The active-set partial index keeps the polling index tiny: only pending and
+#   failed rows are indexed, not the published archive (which dominates volume).
+# - ``message_id`` is unique for idempotency / find-by-message-id.
+# - ``correlation_id`` supports trace-oriented lookups.
+OUTBOX_INDEXES = [
+    Index(
+        "status",
+        "priority",
+        desc=("priority",),
+        where=Q(status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]),
+        name="ix_outbox_active",
+    ),
+    Index("message_id", unique=True),
+    Index("correlation_id"),
+]
 
 
 class OutboxRepository(BaseRepository):

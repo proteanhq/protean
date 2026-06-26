@@ -228,6 +228,35 @@ class AuditLog:
     ...
 ```
 
+### `indexes`
+
+Declares the indexes the persistence layer should create for the aggregate.
+Pass a list of [`Index`](../../reference/domain-elements/indexes.md) objects —
+one per query path beyond primary-key lookup (a uniqueness invariant, a
+composite filter-plus-sort, a correlation lookup):
+
+```python
+from protean import Index, Q
+
+
+@domain.aggregate(indexes=[
+    Index("email", unique=True),
+    Index("status", "priority", desc=("priority",),
+          where=Q(status__in=["pending", "failed"]), name="ix_active"),
+])
+class Order:
+    email = String(max_length=255, required=True)
+    status = String(max_length=32, default="pending")
+    priority = Integer(default=0)
+```
+
+The portable options (composite, `desc`, `unique`) are honored by every SQL
+adapter; partial (`where=`) and covering (`include=`) indexes are honored where
+the dialect supports them. See the [Declaring Indexes](indexes.md) guide for the
+full workflow and
+[Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md)
+for choosing what to index.
+
 ### `aggregate_cluster`
 
 Groups an aggregate with other aggregates into a named cluster. This is
