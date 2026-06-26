@@ -48,7 +48,7 @@ class Outbox(BaseAggregate):
     # String fields declare ``max_length`` so SQL providers emit ``VARCHAR(N)``
     # instead of ``TEXT`` / ``VARCHAR(MAX)``. Unbounded columns cannot be
     # indexed on SQL Server, require blind prefix lengths on MySQL, and waste
-    # storage everywhere, and the outbox path needs indexes on exactly these
+    # storage everywhere. The outbox path needs indexes on exactly these
     # columns. ``data`` and ``metadata_`` stay unbounded JSON blobs.
     #
     # ``message_id`` is a composite Protean message id (headers.id), e.g.
