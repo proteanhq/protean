@@ -2,7 +2,7 @@ import logging
 import traceback
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import Annotated, List, Optional, Tuple
 
 from pydantic import Field
 
@@ -43,10 +43,16 @@ class Outbox(BaseAggregate):
 
     id = Auto(identifier=True)
 
-    # Fields to be pushed to broker
-    message_id: str
-    stream_name: str
-    type: str
+    # Fields to be pushed to broker.
+    #
+    # String fields declare ``max_length`` so SQL providers emit ``VARCHAR(N)``
+    # instead of ``TEXT`` / ``VARCHAR(MAX)``. Unbounded columns cannot be
+    # indexed on SQL Server, require blind prefix lengths on MySQL, and waste
+    # storage everywhere, and the outbox path needs indexes on exactly these
+    # columns. ``data`` and ``metadata_`` stay unbounded JSON blobs.
+    message_id: Annotated[str, Field(max_length=64)]
+    stream_name: Annotated[str, Field(max_length=255)]
+    type: Annotated[str, Field(max_length=255)]
     data: dict
     metadata_: Metadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -57,7 +63,7 @@ class Outbox(BaseAggregate):
     last_processed_at: datetime | None = None
     last_error: dict | None = None
 
-    status: str = OutboxStatus.PENDING.value
+    status: Annotated[str, Field(max_length=32)] = OutboxStatus.PENDING.value
 
     # Maximum retry attempts before abandoning
     max_retries: int = 3
@@ -67,20 +73,21 @@ class Outbox(BaseAggregate):
 
     # Lock mechanism to prevent concurrent processing
     locked_until: datetime | None = None
-    locked_by: str | None = None  # Worker/process identifier
+    # Worker/process identifier
+    locked_by: Annotated[str | None, Field(max_length=128)] = None
 
     # For maintaining message order within a stream
     sequence_number: int | None = None
 
     # For distributed tracing
-    correlation_id: str | None = None
-    causation_id: str | None = None
+    correlation_id: Annotated[str | None, Field(max_length=64)] = None
+    causation_id: Annotated[str | None, Field(max_length=64)] = None
 
     # Message priority for processing order
     priority: int = 0  # Higher = more important
 
     # Target broker for this message (None = legacy/unqualified)
-    target_broker: str | None = None
+    target_broker: Annotated[str | None, Field(max_length=128)] = None
 
     @classmethod
     def create_message(
