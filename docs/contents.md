@@ -91,6 +91,7 @@ specific area.
 - [Entities](./guides/domain-definition/entities.md) -- Objects with identity that compose aggregates.
 - [Value Objects](./guides/domain-definition/value-objects.md) -- Immutable descriptive objects identified by their attributes.
 - [Fields](./guides/domain-definition/fields.md) -- Declare attributes on domain elements: types, required flags, defaults, constraints, validators.
+- [Declaring Indexes](./guides/domain-definition/indexes.md) -- Declare composite, unique, partial, and covering indexes on aggregates and entities.
 - [Identity](./guides/domain-definition/identity.md) -- Configure identity generation: UUIDs, integers, user-supplied keys, or a custom function.
 - [Expressing Relationships](./guides/domain-definition/relationships.md) -- Model associations between domain elements.
 - [Events](./guides/domain-definition/events.md) -- Model past changes as discrete, meaningful facts.
@@ -105,6 +106,7 @@ specific area.
 - [Association Fields](./reference/fields/association-fields.md) -- HasOne, HasMany, and Reference fields for relationships.
 - [Common Arguments](./reference/fields/arguments.md) -- Shared field arguments like `required`, `default`, and `description`.
 - [Identity Reference](./reference/domain-elements/identity.md) -- Identity strategies, types, and per-field customization.
+- [Indexes Reference](./reference/domain-elements/indexes.md) -- The `Index` API, options, dialect support matrix, and `Index.from_sql` escape hatch.
 
 ### Add Rules and Behavior
 
@@ -342,6 +344,7 @@ Protean supports but does not enforce.
 ### Architecture & Quality
 
 - [Organize by Domain Concept](./patterns/organize-by-domain-concept.md) -- The folder tree owns domain concepts; the framework carries layer metadata. Organize by aggregate, colocate capabilities, separate projections.
+- [Index Aggregates for Query Paths](./patterns/index-aggregates-for-query-paths.md) -- Declare indexes for the query paths an aggregate actually has; match composite order to filter-then-sort; keep hot-set indexes small with partial indexes.
 - [Validation Layering](./patterns/validation-layering.md) -- Different validation belongs at different layers: fields, value objects, invariants, handlers.
 - [Model Reference Data as Domain Concepts](./patterns/model-reference-data.md) -- Avoid the One True Lookup Table; model each kind as an enumeration value object or an aggregate keyed by its natural code.
 - [Thin Handlers, Rich Domain](./patterns/thin-handlers-rich-domain.md) -- Handlers orchestrate; aggregates and domain services contain all logic.

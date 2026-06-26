@@ -366,6 +366,43 @@ class IRBuilder:
             "pre": sorted(invariants.get("pre", {}).keys()),
         }
 
+    def _extract_indexes(self, cls: type) -> list[dict[str, Any]]:
+        """Extract a JSON-safe summary of an element's index declarations.
+
+        The ``where`` partial predicate is summarized as ``partial: true``
+        rather than serialized; the rendered DDL (via ``protean schema render
+        --indexes``) carries the exact predicate.
+        """
+        from protean.core.index import Index, RawIndex
+
+        declared = getattr(getattr(cls, "meta_", None), "indexes", ()) or ()
+        result: list[dict[str, Any]] = []
+        for idx in declared:
+            if isinstance(idx, RawIndex):
+                raw_entry: dict[str, Any] = {
+                    "raw": True,
+                    "dialect": idx.dialect,
+                    "ddl": idx.ddl,
+                }
+                if idx.name:
+                    raw_entry["name"] = idx.name
+                result.append(raw_entry)
+            elif isinstance(idx, Index):
+                entry: dict[str, Any] = {
+                    "fields": list(idx.fields),
+                    "unique": idx.unique,
+                }
+                if idx.name:
+                    entry["name"] = idx.name
+                if idx.desc:
+                    entry["desc"] = list(idx.desc)
+                if idx.include:
+                    entry["include"] = list(idx.include)
+                if idx.where is not None:
+                    entry["partial"] = True
+                result.append(entry)
+        return result
+
     def _extract_aggregate(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract aggregate IR dict."""
         from protean.utils import fqn
@@ -397,6 +434,11 @@ class IRBuilder:
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
         entry["identity_field"] = getattr(cls, _ID_FIELD_NAME, "id")
+
+        indexes = self._extract_indexes(cls)
+        if indexes:
+            entry["indexes"] = indexes
+
         entry["invariants"] = self._extract_invariants(cls)
         entry["module"] = cls.__module__
         entry["name"] = cls.__name__
@@ -436,6 +478,11 @@ class IRBuilder:
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
         entry["identity_field"] = getattr(cls, _ID_FIELD_NAME, "id")
+
+        indexes = self._extract_indexes(cls)
+        if indexes:
+            entry["indexes"] = indexes
+
         entry["invariants"] = self._extract_invariants(cls)
         entry["module"] = cls.__module__
         entry["name"] = cls.__name__
@@ -739,6 +786,11 @@ class IRBuilder:
         entry["fields"] = self._extract_fields(cls)
         entry["fqn"] = fqn(cls)
         entry["identity_field"] = getattr(cls, _ID_FIELD_NAME, None)
+
+        indexes = self._extract_indexes(cls)
+        if indexes:
+            entry["indexes"] = indexes
+
         entry["module"] = cls.__module__
         entry["name"] = cls.__name__
 

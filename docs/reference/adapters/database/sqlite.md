@@ -67,6 +67,16 @@ The SQLite provider supports the following capabilities:
 - :x: **NATIVE_JSON** -- No native JSON column type (stored as text)
 - :x: **NATIVE_ARRAY** -- No native array column type (stored as text)
 
+## Indexes
+
+SQLite honors most of the [`Index`](../../domain-elements/indexes.md) surface,
+emitted during `protean db setup`:
+
+- Composite, descending (`desc=`), and unique (`unique=`) indexes.
+- Partial indexes (`where=Q(...)`).
+- Covering columns (`include=`) are **not** supported; the index is created
+  without them and a warning is logged.
+
 ## SQLAlchemy Model
 
 You can supply a custom SQLAlchemy Model in place of the one that Protean

@@ -170,6 +170,10 @@ class User:
     name: String(max_length=100)
 ```
 
+For multi-field uniqueness, conditional (partial) uniqueness, or non-unique
+indexes that speed up queries, declare an
+[index on the aggregate](indexes.md) instead.
+
 ---
 
 ## Adding custom validation

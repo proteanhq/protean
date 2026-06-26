@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from protean.core.index import validate_indexes
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import HasMany, HasOne
 from protean.utils import DomainObjects, fqn
@@ -128,6 +129,7 @@ class DomainValidator:
         self._validate_query_handler_associations()
         self._validate_outbox_subscription_consistency()
         self._validate_priority_lanes_config()
+        self._validate_indexes()
         self._warn_low_pool_size()
         self._warn_unhandled_commands()
         self._warn_missing_apply_handlers()
@@ -161,6 +163,7 @@ class DomainValidator:
             self._validate_query_handler_associations,
             self._validate_outbox_subscription_consistency,
             self._validate_priority_lanes_config,
+            self._validate_indexes,
         ]
 
         for validator_fn in validators:
@@ -390,6 +393,23 @@ class DomainValidator:
                 f"server.priority_lanes.backfill_suffix must be a non-empty string, "
                 f"got {type(suffix).__name__}: {suffix!r}"
             )
+
+    def _validate_indexes(self) -> None:
+        """Validate ``Index`` declarations on aggregates, entities, projections.
+
+        Runs here (after reference resolution) rather than at registration
+        time so that field/attribute introspection sees fully resolved
+        elements. Delegates the per-element checks to
+        :func:`protean.core.index.validate_indexes`.
+        """
+        registry = self._domain.registry
+        for element_type in (
+            DomainObjects.AGGREGATE.value,
+            DomainObjects.ENTITY.value,
+            DomainObjects.PROJECTION.value,
+        ):
+            for _, record in registry._elements[element_type].items():
+                validate_indexes(record.cls)
 
     def _warn_unhandled_commands(self) -> None:
         """Warn about registered Commands that have no handler."""

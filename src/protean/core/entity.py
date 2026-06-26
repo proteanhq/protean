@@ -206,6 +206,7 @@ class BaseEntity(BaseModel, OptionsMixin):
             ("aggregate_cluster", None),
             ("auto_add_id_field", True),
             ("database_model", None),
+            ("indexes", ()),
             ("part_of", None),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),

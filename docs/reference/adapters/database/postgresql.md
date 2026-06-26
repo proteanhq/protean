@@ -81,6 +81,18 @@ PostgreSQL is the only built-in provider that supports **all 12 capability
 flags** (excluding `SIMULATED_TRANSACTIONS`, which is specific to the Memory
 provider).
 
+## Indexes
+
+PostgreSQL honors the full [`Index`](../../domain-elements/indexes.md) surface.
+Declarations on an aggregate or entity are emitted as `CREATE INDEX` statements
+during `protean db setup`:
+
+- Composite, descending (`desc=`), and unique (`unique=`) indexes.
+- Partial indexes (`where=Q(...)`) via `CREATE INDEX … WHERE …`.
+- Covering columns (`include=`) via `INCLUDE (...)`.
+- Storage-specific indexes (GIN, GiST, BRIN, expression) via
+  `Index.from_sql("postgresql", ddl)`.
+
 ## SQLAlchemy Model
 
 You can supply a custom SQLAlchemy Model in place of the one that Protean

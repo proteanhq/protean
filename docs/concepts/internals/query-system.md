@@ -300,6 +300,29 @@ dao.query.order_by("-user_id")
 
 ---
 
+## Indexes back the query paths
+
+The query system decides *how* to ask; indexes decide *how fast the database
+answers*. Every filter or sort beyond a primary-key lookup needs a matching
+index or the database resorts to a full scan.
+
+Protean keeps that knowledge in the domain layer: an aggregate declares the
+indexes its query paths need with the `indexes=` decorator option, alongside
+its fields and invariants. This mirrors the ports-and-adapters split the query
+system already follows — the portable `Q`/QuerySet API on one side, the
+adapter-specific SQL on the other. Portable index declarations (composite,
+descending, unique) live on the aggregate and are honored by every SQL adapter;
+storage-specific tuning (GIN, BRIN, expression indexes) drops to
+`Index.from_sql` on the model. A partial index whose `where=` predicate is a
+`Q` object reuses the very same expression tree described above, compiled to the
+dialect's partial-index clause.
+
+See [Indexes](../../reference/domain-elements/indexes.md) for the API and
+[ADR-0014](../../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md)
+for the rationale.
+
+---
+
 ## Lazy evaluation and caching
 
 QuerySets use a **lazy evaluation** strategy:

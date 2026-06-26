@@ -220,6 +220,7 @@ nav:
       - guides/domain-definition/entities.md
       - guides/domain-definition/value-objects.md
       - guides/domain-definition/fields.md
+      - guides/domain-definition/indexes.md
       - guides/domain-definition/identity.md
       - guides/domain-definition/relationships.md
       - guides/domain-definition/events.md
@@ -297,6 +298,7 @@ nav:
       - reference/domain-elements/element-decorators.md
       - reference/domain-elements/object-model.md
       - reference/domain-elements/identity.md
+      - reference/domain-elements/indexes.md
     - Fields:
       - reference/fields/index.md
       - reference/fields/defining-fields.md
@@ -386,6 +388,8 @@ nav:
       - adr/0010-logging-overhaul-and-wide-event-architecture.md
       - adr/0011-engine-shutdown-and-resource-lifecycle-contract.md
       - adr/0012-health-check-architecture.md
+      - adr/0013-optimistic-concurrency-and-claim-contract.md
+      - adr/0014-aggregate-metadata-decorator-params-over-meta-class.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
@@ -470,6 +474,7 @@ nav:
       - patterns/cloudevents-interoperability.md
     - Architecture & Quality:
       - patterns/organize-by-domain-concept.md
+      - patterns/index-aggregates-for-query-paths.md
       - patterns/validation-layering.md
       - patterns/model-reference-data.md
       - patterns/thin-handlers-rich-domain.md

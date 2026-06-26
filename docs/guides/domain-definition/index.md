@@ -34,6 +34,12 @@ Declare attributes on your domain elements. Pick the right field type,
 make fields required, set defaults, constrain values, add custom
 validation, and wire up relationships.
 
+### [Declaring Indexes](./indexes.md)
+
+Declare the indexes your aggregates and entities need for fast queries —
+composite, unique, partial, and covering indexes — and render the DDL for
+review or migration tooling.
+
 ### [Identity](./identity.md)
 
 Configure how aggregate and entity identifiers are generated — UUIDs,

@@ -14,7 +14,10 @@ import sqlalchemy.dialects.postgresql as psql
 import sqlalchemy.dialects.mssql as mssql
 from sqlalchemy import (
     Column,
+    DDL,
+    Index as SAIndex,
     MetaData,
+    Table,
     and_,
     create_engine,
     event,
@@ -27,12 +30,15 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy import types as sa_types
+from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy import inspect
+from sqlalchemy.schema import CreateIndex
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.database_model import BaseDatabaseModel
+from protean.core.index import Index as ProteanIndex, RawIndex
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.fields.resolved import ResolvedField
@@ -53,7 +59,7 @@ from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
 from protean.utils.query import Q
-from protean.utils.reflection import attributes, id_field
+from protean.utils.reflection import attributes, fields, id_field
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
@@ -301,6 +307,212 @@ _PYTHON_TYPE_TO_SA: dict[type, type] = {
 }
 
 
+# Lookup operators supported inside a partial-index ``where=`` predicate.
+# Kept deliberately small: a partial index predicate is a filter, not a full
+# query, so only comparison/membership/null lookups make sense here.
+_PARTIAL_INDEX_OPS = {
+    "exact": lambda c, v: c == v,
+    "in": lambda c, v: c.in_(v),
+    "gt": lambda c, v: c > v,
+    "gte": lambda c, v: c >= v,
+    "lt": lambda c, v: c < v,
+    "lte": lambda c, v: c <= v,
+    "isnull": lambda c, v: c.is_(None) if v else c.isnot(None),
+}
+
+# Dialects that support each opt-in index feature.
+_PARTIAL_INDEX_DIALECTS = frozenset({"postgresql", "sqlite"})
+_INCLUDE_INDEX_DIALECTS = frozenset({"postgresql", "mssql"})
+
+
+def _q_field_names(criteria) -> set[str]:
+    """Collect the field names referenced by a ``Q`` predicate (recursively)."""
+    names: set[str] = set()
+    for child in criteria.children:
+        if isinstance(child, Q):
+            names |= _q_field_names(child)
+        else:
+            names.add(child[0].split("__")[0])
+    return names
+
+
+def _partial_index_predicate(criteria, column_for):
+    """Render a :class:`~protean.utils.query.Q` into a SQLAlchemy expression.
+
+    Used to compile an :class:`~protean.core.index.Index` ``where=`` predicate
+    into the dialect-specific partial-index clause (``postgresql_where`` /
+    ``sqlite_where``).
+    """
+    clauses = []
+    for child in criteria.children:
+        if isinstance(child, Q):
+            clauses.append(_partial_index_predicate(child, column_for))
+            continue
+
+        key, value = child
+        parts = key.split("__")
+        field_name = parts[0]
+        op = parts[1] if len(parts) > 1 else "exact"
+        if op not in _PARTIAL_INDEX_OPS:
+            raise IncorrectUsageError(
+                f"Lookup '{op}' is not supported in a partial-index `where=` "
+                f"predicate. Supported: {sorted(_PARTIAL_INDEX_OPS)}."
+            )
+        clauses.append(_PARTIAL_INDEX_OPS[op](column_for(field_name), value))
+
+    combined = and_(*clauses) if criteria.connector == criteria.AND else or_(*clauses)
+    return ~combined if criteria.negated else combined
+
+
+def _make_sa_indexes(
+    declared, column_for, attr_for, table_name, dialect_name, owner_name
+):
+    """Core translation of portable ``Index`` declarations into SQLAlchemy.
+
+    Column-agnostic so it can serve both the live model path (columns resolved
+    from the mapped class) and the DDL-rendering path (columns from a throwaway
+    table). Returns ``(sa_indexes, raw_indexes)``.
+    """
+    sa_indexes = []
+    raw_indexes = []
+
+    for index in declared:
+        if isinstance(index, RawIndex):
+            raw_indexes.append(index)
+            continue
+        if not isinstance(
+            index, ProteanIndex
+        ):  # pragma: no cover - guarded at registration
+            continue
+
+        name = index.resolved_name(table_name)
+        columns = [
+            column_for(f).desc() if f in index.desc else column_for(f)
+            for f in index.fields
+        ]
+        kwargs = {"unique": index.unique}
+
+        if index.where is not None:
+            if dialect_name in _PARTIAL_INDEX_DIALECTS:
+                kwargs[f"{dialect_name}_where"] = _partial_index_predicate(
+                    index.where, column_for
+                )
+            else:
+                logger.warning(
+                    "Partial index '%s' on '%s' declares where=, which the '%s' "
+                    "dialect does not support; emitting a full index instead.",
+                    name,
+                    owner_name,
+                    dialect_name,
+                )
+
+        if index.include:
+            if dialect_name in _INCLUDE_INDEX_DIALECTS:
+                kwargs[f"{dialect_name}_include"] = [
+                    attr_for.get(f, f) for f in index.include
+                ]
+            else:
+                logger.warning(
+                    "Index '%s' on '%s' declares include=, which the '%s' dialect "
+                    "does not support; emitting an index without covering columns.",
+                    name,
+                    owner_name,
+                    dialect_name,
+                )
+
+        sa_indexes.append(SAIndex(name, *columns, **kwargs))
+
+    return sa_indexes, raw_indexes
+
+
+def _attribute_map(entity_cls):
+    """Map declared field names to their persisted column attribute names."""
+    return {
+        name: field_obj.attribute_name for name, field_obj in fields(entity_cls).items()
+    }
+
+
+def _build_sa_indexes(model_cls, entity_cls, dialect_name):
+    """Translate an entity's ``Index`` declarations into SQLAlchemy constructs.
+
+    Returns a tuple of ``(sa_indexes, raw_indexes)``: SQLAlchemy ``Index``
+    objects to attach to the table, and any :class:`RawIndex` escape-hatch
+    declarations whose verbatim DDL must be emitted separately.
+    """
+    declared = getattr(entity_cls.meta_, "indexes", ()) or ()
+    if not declared:
+        return [], []
+
+    attr_for = _attribute_map(entity_cls)
+
+    def column_for(field_name):
+        return getattr(model_cls, attr_for.get(field_name, field_name))
+
+    return _make_sa_indexes(
+        declared,
+        column_for,
+        attr_for,
+        model_cls.derive_schema_name(),
+        dialect_name,
+        entity_cls.__name__,
+    )
+
+
+def render_index_ddl(entity_cls, dialect_name):
+    """Render an entity's index declarations to ``CREATE INDEX`` DDL strings.
+
+    Builds the indexes against a throwaway table (column names only; types are
+    irrelevant to index DDL) and compiles them with the target dialect. Used by
+    ``protean schema render --indexes`` to write ``.sql`` artifacts without a
+    live database connection.
+    """
+    declared = getattr(entity_cls.meta_, "indexes", ()) or ()
+    if not declared:
+        return []
+
+    attr_for = _attribute_map(entity_cls)
+    table_name = entity_cls.meta_.schema_name or entity_cls.derive_schema_name()
+
+    # Throwaway table with a column for every field any index references.
+    referenced: set[str] = set()
+    for index in declared:
+        if isinstance(index, ProteanIndex):
+            referenced.update(index.fields)
+            referenced.update(index.include)
+            if index.where is not None:
+                referenced.update(_q_field_names(index.where))
+
+    metadata = MetaData()
+    columns = {
+        field: Column(attr_for.get(field, field), sa_types.String())
+        for field in referenced
+    }
+    table = Table(table_name, metadata, *columns.values())
+
+    def column_for(field_name):
+        return table.c[attr_for.get(field_name, field_name)]
+
+    sa_indexes, raw_indexes = _make_sa_indexes(
+        declared, column_for, attr_for, table_name, dialect_name, entity_cls.__name__
+    )
+
+    dialect_impls = {
+        "postgresql": psql.dialect(),
+        "sqlite": sqlite_dialect.dialect(),
+        "mssql": mssql.dialect(),
+    }
+    dialect = dialect_impls.get(dialect_name, sqlite_dialect.dialect())
+
+    statements = [
+        str(CreateIndex(sa_index).compile(dialect=dialect)).strip()
+        for sa_index in sa_indexes
+    ]
+    statements.extend(
+        raw.ddl.strip() for raw in raw_indexes if raw.dialect == dialect_name
+    )
+    return statements
+
+
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
@@ -476,7 +688,26 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     column = Column(sa_type_cls(*type_args, **type_kwargs), **col_args)
                     setattr(cls, attribute_name, column)  # Set class attribute
 
+        # Translate portable Index declarations into table-level indexes.
+        # Must happen before super().__init_subclass__() so the declarative
+        # mapper picks up __table_args__ when it builds the Table.
+        raw_indexes = []
+        raw_dialect = None
+        if "meta_" in cls.__dict__:
+            entity_cls = cls.__dict__["meta_"].part_of
+            raw_dialect = cls.__dict__["engine"].dialect.name
+            sa_indexes, raw_indexes = _build_sa_indexes(cls, entity_cls, raw_dialect)
+            if sa_indexes:
+                existing = tuple(cls.__dict__.get("__table_args__", ()) or ())
+                cls.__table_args__ = existing + tuple(sa_indexes)
+
         super().__init_subclass__(**kwargs)
+
+        # Emit verbatim DDL for RawIndex escape-hatch declarations whose
+        # dialect matches the configured engine, on table creation.
+        for raw in raw_indexes:
+            if raw.dialect == raw_dialect:
+                event.listen(cls.__table__, "after_create", DDL(raw.ddl))
 
     @orm.declared_attr
     def __tablename__(cls):

@@ -13,7 +13,7 @@ from inflection import camelize
 
 from protean.exceptions import ConfigurationError
 from protean.utils import clone_class
-from protean.utils.outbox import Outbox, OutboxRepository
+from protean.utils.outbox import OUTBOX_INDEXES, Outbox, OutboxRepository
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -58,6 +58,7 @@ class InfrastructureManager:
                         auto_generated=True,
                         schema_name="outbox",
                         provider=provider_name,
+                        indexes=OUTBOX_INDEXES,
                     )
 
                     # Synthesize new repository class specific to this provider

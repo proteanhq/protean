@@ -778,6 +778,26 @@ SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
     database technology. Use them sparingly and only when the QuerySet API
     cannot express your query.
 
+## Query performance
+
+A query that filters or sorts on the same fields repeatedly needs a database
+index to stay fast as the table grows — without one, the database falls back to
+a full scan. Declare the indexes a query path needs on the aggregate itself:
+
+```python
+from protean import Index
+
+@domain.aggregate(indexes=[Index("country", "age", desc=("age",))])
+class Customer:
+    country = String(max_length=2)
+    age = Integer()
+```
+
+This backs `filter(country="US").order_by("-age")` with a single index. See
+[Declaring Indexes](../domain-definition/indexes.md) for the full workflow and
+[Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md)
+for choosing what to index.
+
 ---
 
 !!! tip "See also"
@@ -787,3 +807,4 @@ SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
 
     - [Repositories](./repositories.md) — Define custom repositories with domain-named query methods.
     - [Persist Aggregates](./persist-aggregates.md) — Save and update aggregates through repositories.
+    - [Declaring Indexes](../domain-definition/indexes.md) — Index the fields your queries filter and sort on.

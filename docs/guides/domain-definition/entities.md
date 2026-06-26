@@ -90,6 +90,24 @@ The maximum number of entity instances returned by default queries
     An Entity is always persisted in the same persistence store as
     its Aggregate.
 
+### `indexes`
+
+Declares indexes for the entity's own table, using the same
+[`Index`](../../reference/domain-elements/indexes.md) declarations as
+aggregates:
+
+```python
+from protean import Index
+
+
+@domain.entity(part_of=Order, indexes=[Index("sku", unique=True)])
+class LineItem:
+    sku = String(max_length=64)
+    quantity = Integer()
+```
+
+See [Declaring Indexes](indexes.md) for the full workflow.
+
 ## Entity Lifecycle
 
 Protean tracks the lifecycle state of every entity instance internally. The

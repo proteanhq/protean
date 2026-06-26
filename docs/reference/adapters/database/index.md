@@ -305,6 +305,23 @@ Providers may register additional lookups beyond this required set.
 6. **Monitor provider health** -- Use `provider.is_alive()` to verify
    connectivity during health checks.
 
+## Indexes
+
+Aggregates and entities declare the indexes their query paths need with the
+`indexes=` option (see [Indexes](../../domain-elements/indexes.md)). The
+portable subset — composite, descending, unique, and named indexes — is honored
+by every SQL provider; opt-in features degrade gracefully where a dialect
+cannot support them:
+
+| Feature | PostgreSQL | SQLite | SQL Server | Memory | Elasticsearch |
+|---------|:----------:|:------:|:----------:|:------:|:-------------:|
+| Composite / `unique` / `desc` | ✅ | ✅ | ✅ | advisory | — |
+| Partial (`where=`) | ✅ | ✅ | ⚠️ | advisory | — |
+| Covering (`include=`) | ✅ | ⚠️ | ✅ | advisory | — |
+
+⚠️ = falls back to a full index with a logged warning. The memory provider
+validates declarations but does not enforce them.
+
 ## Next Steps
 
 - Configure a specific provider: [Memory](./memory.md),

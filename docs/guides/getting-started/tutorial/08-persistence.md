@@ -66,6 +66,33 @@ $ protean database truncate --domain bookshelf
 In development, Protean creates tables automatically. In production,
 use `protean database setup` as part of your deployment process.
 
+## Indexing for Performance
+
+Now that the data lives in a real database, queries that aren't simple
+identifier lookups need indexes to stay fast. The catalog is browsed by
+`category` and looked up by `isbn`, so declare indexes for those paths on the
+`Book` aggregate:
+
+```python
+from protean import Index
+
+@domain.aggregate(indexes=[
+    Index("isbn", unique=True),
+    Index("category"),
+])
+class Book:
+    isbn = String(max_length=20, required=True)
+    title = String(max_length=255, required=True)
+    category = String(max_length=64)
+    ...
+```
+
+`protean database setup` creates these indexes alongside the table. The same
+declaration works unchanged on every SQL backend — and on the in-memory
+provider you used in earlier chapters, where it is simply ignored. See
+[Declaring Indexes](../../domain-definition/indexes.md) for composite,
+descending, and partial indexes.
+
 ## Verifying Persistence
 
 To confirm data is in the database, use the Protean shell:
