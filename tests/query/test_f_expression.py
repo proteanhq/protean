@@ -48,10 +48,10 @@ class TestFClass:
         assert hash(F("max_retries")) == hash(F("max_retries"))
         assert {F("a"), F("a"), F("b")} == {F("a"), F("b")}
 
-    def test_is_immutable(self):
+    def test_slots_reject_unknown_attributes(self):
         f = F("max_retries")
         with pytest.raises(AttributeError):
-            f.other = "x"  # __slots__ forbids new attributes
+            f.other = "x"  # __slots__ forbids attributes other than `name`
 
 
 class TestFInMemoryFilter:
