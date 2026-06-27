@@ -271,6 +271,17 @@ respectively. `isnull` is one of the required lookups every adapter must
 register, since core framework machinery such as the outbox poll path
 depends on it.
 
+By default a lookup's `target` is a literal value. An `F("other_field")`
+target instead names another column of the same row, turning the predicate
+into a column-to-column comparison (`retry_count < max_retries`). Each adapter
+handles it in `process_target`: SQLAlchemy resolves `F` to the column object so
+the comparison renders as native SQL; the memory adapter resolves it per record
+to the referenced attribute; the Elasticsearch adapter raises
+`NotImplementedError`, since the equivalent needs a Painless script query.
+Because `F` resolution lives in `process_target`, it composes with every
+comparison lookup without per-lookup changes. The outbox poll and claim paths
+use `F` to push `retry_count < max_retries` into the database.
+
 **Key source files:**
 
 - `src/protean/port/dao.py` -- `BaseLookup` base class.

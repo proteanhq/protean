@@ -59,7 +59,7 @@ from protean.utils import IdentityType, fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
-from protean.utils.query import Q
+from protean.utils.query import F, Q
 from protean.utils.reflection import attributes, fields, id_field
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
@@ -1772,7 +1772,14 @@ class DefaultLookup(BaseLookup):
         return source_col
 
     def process_target(self):
-        """Return target with transformations, if any"""
+        """Return target with transformations, if any.
+
+        An :class:`~protean.utils.query.F` target is resolved to the referenced
+        column on the same table, so the comparison renders as a SQL
+        column-to-column predicate rather than a bind parameter.
+        """
+        if isinstance(self.target, F):
+            return getattr(self.database_model_cls, self.target.name)
         return self.target
 
     def as_expression(self):

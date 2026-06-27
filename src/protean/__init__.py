@@ -14,6 +14,7 @@ from .utils import get_version
 from .utils.globals import current_domain, current_uow, g
 from .utils.mixins import handle, read
 from .utils.processing import Priority, current_priority, processing_priority
+from .utils.query import F
 
 __all__ = [
     "apply",
@@ -23,6 +24,7 @@ __all__ = [
     "current_uow",
     "Domain",
     "Engine",
+    "F",
     "g",
     "get_version",
     "handle",

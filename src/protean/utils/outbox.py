@@ -1,4 +1,3 @@
-import logging
 import traceback
 from datetime import datetime, timezone, timedelta
 from enum import Enum
@@ -12,10 +11,7 @@ from protean.core.repository import BaseRepository
 from protean.fields import Auto
 from protean.utils import ensure_utc_aware
 from protean.utils.eventing import Metadata
-from protean.utils.query import Q
-
-
-logger = logging.getLogger(__name__)
+from protean.utils.query import F, Q
 
 PAGE_SIZE = 50  # Default page size for fetching messages
 DEFAULT_LOCK_DURATION_MINUTES = 5  # How long a claim holds a processing lock
@@ -369,6 +365,11 @@ class OutboxRepository(BaseRepository):
           passes. An actively-locked ``PROCESSING`` row (lock in the future) is
           excluded, so an in-flight message is never stolen.
 
+        The row must also still have retries left (``retry_count <
+        max_retries``). This is a column-to-column comparison, pushed into the
+        query via an ``F`` expression so every predicate is evaluated at the
+        database.
+
         When ``target_broker`` is given, only rows destined for that broker
         match. Shared by :meth:`find_unprocessed` and :meth:`claim_batch` so the
         two cannot drift.
@@ -382,6 +383,7 @@ class OutboxRepository(BaseRepository):
         )
         criteria &= Q(locked_until__isnull=True) | Q(locked_until__lt=now)
         criteria &= Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now)
+        criteria &= Q(retry_count__lt=F("max_retries"))
         if target_broker is not None:
             criteria &= Q(target_broker=target_broker)
         return criteria
@@ -401,11 +403,9 @@ class OutboxRepository(BaseRepository):
 
         and not expired based on retry count. See :meth:`_eligibility_criteria`.
 
-        Status, lock-window, and retry-window predicates are evaluated at the
-        database. The retry-count check (``retry_count < max_retries``) is a
-        column-to-column comparison and remains in Python until F() expressions
-        land; in practice this filter eliminates near-zero rows on a healthy
-        workload.
+        Every predicate — status, lock window, retry window, and the
+        ``retry_count < max_retries`` column-to-column check — is evaluated at
+        the database, so the poll is a single SELECT with no Python post-filter.
 
         Args:
             limit: Maximum number of messages to return
@@ -431,11 +431,7 @@ class OutboxRepository(BaseRepository):
         # Order by priority (higher first)
         query = query.order_by("-priority")
 
-        candidates = self._apply_limit_and_execute(query, limit)
-
-        # Final guard: retry_count < max_retries (column-to-column).
-        # Pushed to SQL once F() expressions land.
-        return [msg for msg in candidates if msg.retry_count < msg.max_retries]
+        return self._apply_limit_and_execute(query, limit)
 
     def claim_batch(
         self,
@@ -456,7 +452,9 @@ class OutboxRepository(BaseRepository):
         Eligibility is defined by :meth:`_eligibility_criteria`: a lock-free
         ``PENDING`` row, a retry-due ``FAILED`` row, or a ``PROCESSING`` row
         whose lock has expired (a crashed claim, reclaimed for self-healing),
-        optionally filtered to ``target_broker``.
+        with retries remaining (``retry_count < max_retries``), optionally
+        filtered to ``target_broker``. Every predicate is enforced in the claim
+        query itself, so a retry-exhausted row is never claimed.
 
         Args:
             worker_id: Identifier of the worker claiming the messages.
@@ -473,7 +471,7 @@ class OutboxRepository(BaseRepository):
 
         now = datetime.now(timezone.utc)
 
-        claimed = self._dao._claim(
+        return self._dao._claim(
             criteria=self._eligibility_criteria(now, target_broker),
             claim_fields={
                 "status": OutboxStatus.PROCESSING.value,
@@ -484,23 +482,6 @@ class OutboxRepository(BaseRepository):
             limit=limit,
             order_by="-priority",
         )
-
-        # Defense-in-depth guard: retry_count < max_retries (column-to-column,
-        # stays in Python until F() expressions land). By the FAILED/ABANDONED
-        # invariant a claimable row always satisfies this, so it excludes no
-        # claimed row in practice.
-        ready = [msg for msg in claimed if msg.retry_count < msg.max_retries]
-
-        # An excluded row has already been marked PROCESSING by the claim, so it
-        # would sit locked until ``locked_until`` expires. This only happens if
-        # the FAILED/ABANDONED invariant is violated upstream — surface it.
-        if len(ready) != len(claimed):
-            logger.warning(
-                "outbox.claimed_rows_excluded_by_retry_guard",
-                extra={"claimed": len(claimed), "returned": len(ready)},
-            )
-
-        return ready
 
     def find_failed(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
         """Find messages that have failed processing.
