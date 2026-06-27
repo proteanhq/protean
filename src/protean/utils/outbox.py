@@ -12,6 +12,7 @@ from protean.core.repository import BaseRepository
 from protean.fields import Auto
 from protean.utils import ensure_utc_aware
 from protean.utils.eventing import Metadata
+from protean.utils.globals import current_domain
 from protean.utils.query import Q
 
 
@@ -723,22 +724,59 @@ class OutboxRepository(BaseRepository):
             for status in OutboxStatus
         }
 
-    def cleanup_old_published(self, older_than_hours: int = 168) -> int:
+    def _cleanup_batch_size(self) -> int:
+        """Resolve the cleanup batch size from ``[outbox.cleanup]`` config.
+
+        Defaults to 5000 when unset, matching ``domain.config`` defaults.
+        """
+        return (
+            current_domain.config.get("outbox", {})
+            .get("cleanup", {})
+            .get("batch_size", 5000)
+        )
+
+    def _delete_in_batches(self, criteria: Q, batch_size: Optional[int]) -> int:
+        """Delete all rows matching ``criteria`` in bounded batches.
+
+        Loops :meth:`BaseDAO._delete_top` until a batch deletes fewer than
+        ``batch_size`` rows (the table is drained). When called outside a Unit
+        of Work each batch commits before the next begins, so a large backlog
+        is cleared without one long-held lock or an oversized transaction.
+        """
+        if batch_size is None:
+            batch_size = self._cleanup_batch_size()
+
+        total = 0
+        while True:
+            deleted = self._dao._delete_top(criteria, limit=batch_size)
+            total += deleted
+            if deleted < batch_size:
+                break
+        return total
+
+    def cleanup_old_published(
+        self, older_than_hours: int = 168, batch_size: Optional[int] = None
+    ) -> int:
         """Clean up published messages older than specified hours.
 
         Args:
             older_than_hours: Age in hours after which published messages should be cleaned up
+            batch_size: Rows to delete per batch. Defaults to the
+                ``[outbox.cleanup]`` config value (5000).
 
         Returns:
             Number of messages deleted
         """
         threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
 
-        return self._dao._delete_all(
-            Q(status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time)
+        return self._delete_in_batches(
+            Q(status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time),
+            batch_size,
         )
 
-    def cleanup_old_abandoned(self, older_than_hours: int = 720) -> int:
+    def cleanup_old_abandoned(
+        self, older_than_hours: int = 720, batch_size: Optional[int] = None
+    ) -> int:
         """Clean up abandoned messages older than specified hours.
 
         Abandoned messages remain in the table for observability but can be cleaned up
@@ -746,21 +784,27 @@ class OutboxRepository(BaseRepository):
 
         Args:
             older_than_hours: Age in hours after which abandoned messages should be cleaned up (default: 720 = 30 days)
+            batch_size: Rows to delete per batch. Defaults to the
+                ``[outbox.cleanup]`` config value (5000).
 
         Returns:
             Number of messages deleted
         """
         threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
 
-        return self._dao._delete_all(
+        return self._delete_in_batches(
             Q(
                 status=OutboxStatus.ABANDONED.value,
                 last_processed_at__lt=threshold_time,
-            )
+            ),
+            batch_size,
         )
 
     def cleanup_old_messages(
-        self, published_retention_hours: int = 168, abandoned_retention_hours: int = 720
+        self,
+        published_retention_hours: int = 168,
+        abandoned_retention_hours: int = 720,
+        batch_size: Optional[int] = None,
     ) -> dict:
         """Clean up old published and abandoned messages based on retention periods.
 
@@ -770,15 +814,17 @@ class OutboxRepository(BaseRepository):
         Args:
             published_retention_hours: Age in hours after which published messages should be cleaned up (default: 168 = 7 days)
             abandoned_retention_hours: Age in hours after which abandoned messages should be cleaned up (default: 720 = 30 days)
+            batch_size: Rows to delete per batch. Defaults to the
+                ``[outbox.cleanup]`` config value (5000).
 
         Returns:
             dict: Number of messages deleted by status {'published': count, 'abandoned': count, 'total': total_count}
         """
         published_count = self.cleanup_old_published(
-            older_than_hours=published_retention_hours
+            older_than_hours=published_retention_hours, batch_size=batch_size
         )
         abandoned_count = self.cleanup_old_abandoned(
-            older_than_hours=abandoned_retention_hours
+            older_than_hours=abandoned_retention_hours, batch_size=batch_size
         )
 
         total_count = published_count + abandoned_count

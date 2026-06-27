@@ -103,6 +103,7 @@ class OutboxProcessor(BaseSubscription):
             "cleanup_interval_ticks": cleanup_config.get(
                 "cleanup_interval_ticks", 86400
             ),
+            "batch_size": cleanup_config.get("batch_size", 5000),
         }
 
         # Load priority lanes configuration
@@ -307,26 +308,31 @@ class OutboxProcessor(BaseSubscription):
         if not self.outbox_repo:
             return
 
+        # Cleanup is a bulk infrastructure delete with no cross-aggregate
+        # atomicity to preserve, so it runs outside a Unit of Work. That lets
+        # ``_delete_top`` commit each batch standalone (via
+        # ``_commit_if_standalone``) instead of accumulating a single oversized
+        # transaction across every batch — the whole point of batching.
         try:
-            with UnitOfWork():
-                cleanup_result = self.outbox_repo.cleanup_old_messages(
-                    published_retention_hours=self.cleanup_config[
-                        "published_retention_hours"
-                    ],
-                    abandoned_retention_hours=self.cleanup_config[
-                        "abandoned_retention_hours"
-                    ],
-                )
+            cleanup_result = self.outbox_repo.cleanup_old_messages(
+                published_retention_hours=self.cleanup_config[
+                    "published_retention_hours"
+                ],
+                abandoned_retention_hours=self.cleanup_config[
+                    "abandoned_retention_hours"
+                ],
+                batch_size=self.cleanup_config["batch_size"],
+            )
 
-                if cleanup_result["total"] > 0:
-                    logger.info(
-                        "outbox.cleanup_completed",
-                        extra={
-                            "total": cleanup_result["total"],
-                            "published": cleanup_result["published"],
-                            "abandoned": cleanup_result["abandoned"],
-                        },
-                    )
+            if cleanup_result["total"] > 0:
+                logger.info(
+                    "outbox.cleanup_completed",
+                    extra={
+                        "total": cleanup_result["total"],
+                        "published": cleanup_result["published"],
+                        "abandoned": cleanup_result["abandoned"],
+                    },
+                )
 
         except Exception:
             logger.exception("outbox.cleanup_failed")

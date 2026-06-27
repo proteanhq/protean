@@ -604,6 +604,43 @@ class ElasticsearchDAO(BaseDAO):
         s = Search(using=conn, index=self.database_model_cls._index._name).query(q)
         return s.count()
 
+    def _delete_top(
+        self,
+        criteria: Q,
+        limit: int,
+        order_by: str | None = None,
+    ) -> int:
+        """Bounded delete via ``delete_by_query`` with ``max_docs``."""
+        if limit <= 0:
+            return 0
+
+        conn = self.provider.get_connection()
+
+        q = elasticsearch_dsl.Q()
+        if criteria and criteria.children:
+            q = self._build_filters(criteria)
+
+        s = Search(using=conn, index=self.database_model_cls._index._name).query(q)
+        if order_by:
+            s = s.sort(order_by)
+        # ``max_docs`` caps how many documents the delete-by-query removes.
+        s = s.params(max_docs=limit)
+
+        try:
+            response = s.delete()
+
+            # ``Search.delete`` does not refresh the index; do it explicitly so
+            # the deletion is visible to the next batch.
+            index = Index(name=self.entity_cls.meta_.schema_name, using=conn)
+            index.refresh()
+        except Exception as exc:
+            logger.exception("repository.elasticsearch.delete_top_failed")
+            raise DatabaseError(
+                f"Database error during delete_top: {str(exc)}", original_exception=exc
+            )
+
+        return response.deleted
+
     def _delete_all(self, criteria: Q = None):
         """Delete all records matching criteria from the Repository"""
         conn = self.provider.get_connection()

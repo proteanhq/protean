@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Max identifiers per ``IN (...)`` clause in the portable ``_delete_top``
+# default. Kept under SQLite's default ``SQLITE_MAX_VARIABLE_NUMBER`` of 999 so
+# the fallback path is safe on every backend regardless of batch size.
+_DELETE_IN_CHUNK_SIZE = 900
+
 
 class BaseDAO(metaclass=ABCMeta):
     """Base class for concrete DAO (Data Access Object) implementations.
@@ -406,6 +411,71 @@ class BaseDAO(metaclass=ABCMeta):
                 claimed.append(entity)
 
         return claimed
+
+    def _delete_top(
+        self,
+        criteria: Q,
+        limit: int,
+        order_by: str | None = None,
+    ) -> int:
+        """Delete up to ``limit`` rows matching ``criteria``. Returns the count
+        of rows deleted.
+
+        This is the bounded counterpart to :meth:`_delete_all`. It lets
+        high-volume cleanups run in fixed-size batches instead of one
+        unbounded ``DELETE``, so a backlog of millions of rows can be cleared
+        without holding locks for the duration of a single statement or
+        bloating the transaction log.
+
+        .. warning::
+
+            Like :meth:`_delete_all`, this is an **internal framework method**
+            reserved for infrastructure needs (outbox cleanup, table pruning).
+            It bypasses domain validation, invariants, and the Unit of Work.
+            Do not call it from domain-level code.
+
+        This is the **portable default**: it selects up to ``limit``
+        identifiers (projecting only the id via :meth:`QuerySet.only`, so large
+        columns such as JSON blobs are never materialized) and then deletes
+        those rows by identifier. Two statements, correct on every backend.
+        Adapters with a single-statement bounded delete (e.g. ``DELETE … WHERE
+        id IN (SELECT … LIMIT n)``) override this with a faster path.
+
+        :param criteria: A ``Q`` object selecting deletable rows.
+        :param limit: Maximum number of rows to delete. ``<= 0`` deletes none.
+        :param order_by: Optional single ordering key (e.g. ``"-priority"``)
+            controlling which rows are removed first.
+        :return: The number of rows deleted (``<= limit``).
+        """
+        if limit <= 0:
+            return 0
+
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None, (
+            f"`{self.entity_cls.__name__}` does not have an identity field"
+        )
+        id_name = entity_id_field.field_name
+
+        # Read up to ``limit`` identifiers via the entity-level query API,
+        # projecting only the id so blob columns are left unread.
+        candidate_qs = self.query.filter(criteria)
+        if order_by:
+            candidate_qs = candidate_qs.order_by(order_by)
+        records = candidate_qs.only(id_name).limit(limit).all(with_total=False).items
+
+        if not records:
+            return 0
+
+        # Delete by identifier in sub-batches so the ``IN`` clause never
+        # exceeds a backend's bind-parameter ceiling (e.g. SQLite's default
+        # limit of 999). ``limit`` can be larger than that on this portable
+        # path, so chunk rather than emit one oversized ``IN (...)``.
+        ids = [getattr(record, id_name) for record in records]
+        deleted = 0
+        for start in range(0, len(ids), _DELETE_IN_CHUNK_SIZE):
+            chunk = ids[start : start + _DELETE_IN_CHUNK_SIZE]
+            deleted += self._delete_all(Q(**{f"{id_name}__in": chunk}))
+        return deleted
 
     ######################
     # Life-cycle methods #

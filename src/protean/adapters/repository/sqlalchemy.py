@@ -20,6 +20,7 @@ from sqlalchemy import (
     Table,
     and_,
     create_engine,
+    delete,
     event,
     func,
     or_,
@@ -986,6 +987,36 @@ class SADAO(BaseDAO):
     # portable :meth:`BaseDAO._claim` default, which is correct everywhere.
     _SKIP_LOCKED_DIALECTS = frozenset({"postgresql"})
 
+    def _bounded_id_select(self, criteria: Q, limit: int, order_by: str | None):
+        """Build ``(table, id_col, select-of-ids)`` for bounded id-subquery
+        operations (:meth:`_claim`, :meth:`_delete_top`).
+
+        The returned ``select`` yields up to ``limit`` identifiers matching
+        ``criteria`` in ``order_by`` order (identifier-ascending when
+        unspecified, keeping the bounded set deterministic). Callers wrap it:
+        ``_claim`` adds ``FOR UPDATE SKIP LOCKED`` under an ``UPDATE …
+        RETURNING``; ``_delete_top`` wraps it in ``DELETE … WHERE id IN (…)``.
+        """
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None
+        id_attr = entity_id_field.attribute_name
+
+        table = self.database_model_cls.__table__
+        id_col = table.c[id_attr]
+
+        if order_by:
+            col = table.c[order_by.lstrip("-")]
+            order_col = col.desc() if order_by.startswith("-") else col
+        else:
+            # A deterministic order keeps the bounded set stable.
+            order_col = id_col.asc()
+
+        inner = select(id_col)
+        if criteria.children:
+            inner = inner.where(self._build_filters(criteria))
+        inner = inner.order_by(order_col).limit(limit)
+        return table, id_col, inner
+
     def _claim(
         self,
         criteria: Q,
@@ -1024,25 +1055,8 @@ class SADAO(BaseDAO):
         if self.provider._engine.dialect.name not in self._SKIP_LOCKED_DIALECTS:
             return super()._claim(criteria, claim_fields, limit, order_by)
 
-        entity_id_field = id_field(self.entity_cls)
-        assert entity_id_field is not None
-        id_attr = entity_id_field.attribute_name
-
-        model = self.database_model_cls
-        table = model.__table__
-        id_col = table.c[id_attr]
-
-        if order_by:
-            col = table.c[order_by.lstrip("-")]
-            order_col = col.desc() if order_by.startswith("-") else col
-        else:
-            # A deterministic order keeps LIMIT stable across workers.
-            order_col = id_col.asc()
-
-        inner = select(id_col)
-        if criteria.children:
-            inner = inner.where(self._build_filters(criteria))
-        inner = inner.order_by(order_col).limit(limit).with_for_update(skip_locked=True)
+        table, id_col, inner = self._bounded_id_select(criteria, limit, order_by)
+        inner = inner.with_for_update(skip_locked=True)
 
         stmt = (
             update(table)
@@ -1059,7 +1073,7 @@ class SADAO(BaseDAO):
             rows = conn.execute(stmt).all()
             claimed = []
             for row in rows:
-                entity = model.to_entity(row)
+                entity = self.database_model_cls.to_entity(row)
                 entity.state_.mark_retrieved()
                 claimed.append(entity)
 
@@ -1142,6 +1156,44 @@ class SADAO(BaseDAO):
             self._commit_if_standalone(conn)
 
         return del_count
+
+    # Dialects on which the single-statement bounded delete below is known to
+    # work: ``DELETE … WHERE id IN (SELECT id … LIMIT n)``. SQLAlchemy renders
+    # the inner ``LIMIT`` per dialect (PostgreSQL/SQLite ``LIMIT``, SQL Server
+    # ``OFFSET/FETCH`` or ``TOP``). MySQL/MariaDB reject a subquery that selects
+    # from the same table being deleted, so they fall back to the portable
+    # :meth:`BaseDAO._delete_top` default (select-ids then delete-by-id).
+    _BOUNDED_DELETE_DIALECTS = frozenset({"postgresql", "sqlite", "mssql"})
+
+    def _delete_top(
+        self,
+        criteria: Q,
+        limit: int,
+        order_by: str | None = None,
+    ) -> int:
+        """Bounded delete in a single ``DELETE … WHERE id IN (SELECT … LIMIT n)``
+        statement on supported dialects; falls back to the portable
+        :meth:`BaseDAO._delete_top` default elsewhere.
+        """
+        if limit <= 0:
+            return 0
+
+        if self.provider._engine.dialect.name not in self._BOUNDED_DELETE_DIALECTS:
+            return super()._delete_top(criteria, limit, order_by)
+
+        table, id_col, inner = self._bounded_id_select(criteria, limit, order_by)
+        stmt = delete(table).where(id_col.in_(inner.scalar_subquery()))
+
+        conn = self._get_session()
+        assert conn is not None
+        try:
+            result = conn.execute(stmt)
+            return result.rowcount or 0
+        except DatabaseError:
+            logger.exception("repository.sqlalchemy.delete_top_failed")
+            raise
+        finally:
+            self._commit_if_standalone(conn)
 
     def _raw(self, query: Any, data: Any = None):
         """Run a raw query on the repository and return entity objects"""
