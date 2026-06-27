@@ -211,7 +211,7 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
         return meta_id
 
     @classmethod
-    def to_records(cls, items: list, projection: list):
+    def to_records(cls, items: list, fields: list):
         """Build read-only ``Record`` objects from Elasticsearch documents.
 
         Like :meth:`to_entity`, identity is read from ``meta.id`` rather than a
@@ -231,7 +231,7 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
                 attr_name == id_attr,
                 attrs[attr_name].referenced_as or attr_name,
             )
-            for attr_name in projection
+            for attr_name in fields
         ]
 
         records = []
@@ -320,7 +320,7 @@ class ElasticsearchDAO(BaseDAO):
         limit: int = 10,
         order_by: list = (),
         with_total: bool = True,
-        projection: list | None = None,
+        fields: list | None = None,
     ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
@@ -330,8 +330,8 @@ class ElasticsearchDAO(BaseDAO):
         the hit count for free on every response, so the total is always
         populated regardless of the flag.
 
-        When ``projection`` is set, ``_source`` filtering restricts the fields
-        returned per hit to the projected attributes (identity always comes
+        When ``fields`` is set, ``_source`` filtering restricts the fields
+        returned per hit to the selected attributes (identity always comes
         from ``meta.id``).
         """
         conn = self.provider.get_connection()
@@ -347,8 +347,8 @@ class ElasticsearchDAO(BaseDAO):
             .params(version=True)
         )
 
-        if projection is not None:
-            s = s.source(list(projection))
+        if fields is not None:
+            s = s.source(list(fields))
 
         if order_by:
             s = s.sort(*order_by)
@@ -395,8 +395,8 @@ class ElasticsearchDAO(BaseDAO):
                         .params(version=True)
                     )
 
-                    if projection is not None:
-                        s_no_sort = s_no_sort.source(list(projection))
+                    if fields is not None:
+                        s_no_sort = s_no_sort.source(list(fields))
 
                     if limit is not None:
                         s_no_sort = s_no_sort[offset : offset + limit]

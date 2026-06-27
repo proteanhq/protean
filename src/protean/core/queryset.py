@@ -51,7 +51,7 @@ class QuerySet:
         offset: int = 0,
         limit: int = None,  # No limit by default
         order_by: list = None,
-        projection: list = None,
+        only_fields: list = None,
     ):
         """Initialize either with empty preferences (when invoked on an Entity)
         or carry forward filters and preferences when chained
@@ -63,11 +63,11 @@ class QuerySet:
         self._result_cache = None
         self._offset = offset or 0
 
-        # Column projection set via ``only()``. ``None`` means "fetch full
+        # Field selection set via ``only()``. ``None`` means "fetch full
         # rows and materialize entities"; a list means "fetch only these
         # attributes and return read-only ``Record`` objects". Stored as
         # attribute (column) names so adapters can consume it directly.
-        self._projection = projection
+        self._only_fields = only_fields
 
         # If an explicit limit is not provided, use the limit from the entity class
         self._limit = limit or entity_cls.meta_.limit
@@ -93,7 +93,7 @@ class QuerySet:
             offset=self._offset,
             limit=self._limit,
             order_by=self._order_by,
-            projection=self._projection,
+            only_fields=self._only_fields,
         )
         return clone
 
@@ -232,11 +232,11 @@ class QuerySet:
         A ``Record`` is **not** a domain entity: it has no behavior, runs no
         invariants, and cannot be persisted. It is purely a read-side carrier
         of column values. Domain operations must continue to go through full
-        entities; ``only()`` is for projection-only reads.
+        entities; ``only()`` is for field-selection reads.
 
-        Calling ``only()`` again **replaces** the projection — projections do
-        not compose. Calling ``only()`` with no arguments clears any projection
-        and restores full-entity materialization.
+        Calling ``only()`` again **replaces** the selection (selections do not
+        compose). Calling ``only()`` with no arguments clears any selection and
+        restores full-entity materialization.
 
         :param field_names: Names of persisted fields to project. The
             identifier is always included automatically.
@@ -246,9 +246,9 @@ class QuerySet:
         """
         clone = self._clone()
 
-        # No arguments clears the projection (last call wins).
+        # No arguments clears the selection (last call wins).
         if not field_names:
-            clone._projection = None
+            clone._only_fields = None
             return clone
 
         entity_attributes = attributes(self._entity_cls)
@@ -259,7 +259,7 @@ class QuerySet:
 
             # Only persisted attributes (real columns) can be projected.
             # Associations and other non-persisted fields have no column to
-            # fetch and would make the projection meaningless.
+            # fetch and would make the selection meaningless.
             if attr_name not in entity_attributes:
                 raise NotSupportedError(
                     f"`.only()` cannot project '{name}' on "
@@ -277,7 +277,7 @@ class QuerySet:
         for name in field_names:
             _add(name)
 
-        clone._projection = resolved
+        clone._only_fields = resolved
         return clone
 
     def _resolve_attribute_name(self, name: str) -> str:
@@ -308,7 +308,7 @@ class QuerySet:
         mutation has nothing valid to act on. Raise rather than silently
         operating on the wrong type.
         """
-        if self._projection is not None:
+        if self._only_fields is not None:
             raise NotSupportedError(
                 f"`{action}()` cannot be combined with `only()`. Projections "
                 f"yield read-only records, not entities; drop `only()` to "
@@ -342,15 +342,15 @@ class QuerySet:
             self._limit,
             self._order_by,
             with_total=with_total,
-            projection=self._projection,
+            fields=self._only_fields,
         )
 
-        if self._projection is not None:
+        if self._only_fields is not None:
             # Projection path: build inert, read-only Record objects. These are
             # not domain entities, so they are deliberately not retrieved-
             # marked, event-synced, or tracked in the Unit of Work.
             results.items = self._owner_dao.database_model_cls.to_records(
-                results.items, self._projection
+                results.items, self._only_fields
             )
             self._result_cache = results
             return results
@@ -417,8 +417,8 @@ class QuerySet:
             database are passed as-is. Data passed will be transferred as-is to the plugin.
 
         All other query options like `order_by`, `offset`, `limit`, and any
-        `only()` projection are ignored for this action — `raw()` always returns
-        full Entity objects, never projected records.
+        `only()` field selection are ignored for this action; `raw()` always
+        returns full Entity objects, never `Record` objects.
 
         Raises NotSupportedError if the provider does not support raw queries.
         """
@@ -703,20 +703,20 @@ class ResultSet:
 
 
 class Record:
-    """A read-only projection of selected fields from a single record.
+    """A read-only selection of fields from a single result.
 
     Returned by :meth:`QuerySet.only` instead of a fully materialized domain
     entity. A ``Record`` is intentionally **inert**: it is not a domain entity, it
     carries no behavior, runs no invariants, and cannot be persisted. It exists
     purely to carry a subset of column values on read-optimized paths (counts,
-    cleanups, statistics) without the cost — or the validity guarantees — of a
-    full entity. This keeps the domain model airtight: projections never
-    produce a partially-valid aggregate.
+    cleanups, statistics) without the cost, or the validity guarantees, of a
+    full entity. This keeps the domain model airtight: field selection never
+    produces a partially-valid aggregate.
 
-    Access projected values by attribute (``record.status``) or item
-    (``record["status"]``). Reading a field that was not part of the projection
-    raises :class:`AttributeError` / :class:`KeyError` rather than returning a
-    silent ``None``, so a missing projection is never mistaken for a null value.
+    Access selected values by attribute (``record.status``) or item
+    (``record["status"]``). Reading a field that was not selected raises
+    :class:`AttributeError` / :class:`KeyError` rather than returning a silent
+    ``None``, so an unselected field is never mistaken for a null value.
     """
 
     # Records compare by value but are deliberately unhashable: they are
@@ -737,13 +737,13 @@ class Record:
             return self._data[name]
         except KeyError:
             raise AttributeError(
-                f"'{self._entity_name}' projection has no field '{name}'. "
-                f"Projected fields: {sorted(self._data)}. "
+                f"'{self._entity_name}' record has no field '{name}'. "
+                f"Selected fields: {sorted(self._data)}. "
                 f"Add it to .only(...) to fetch it."
             ) from None
 
     def __setattr__(self, name: str, value: Any) -> None:
-        raise NotSupportedError("`Record` projections are read-only.")
+        raise NotSupportedError("`Record` objects are read-only.")
 
     def __getitem__(self, key: str) -> Any:
         return self._data[key]

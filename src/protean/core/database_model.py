@@ -121,13 +121,13 @@ class BaseDatabaseModel(Element, OptionsMixin):
         return cls.meta_.part_of(**item_dict)
 
     @classmethod
-    def to_records(cls, items: list, projection: list) -> list:
-        """Build read-only ``Record`` objects from storage records for ``projection``.
+    def to_records(cls, items: list, fields: list) -> list:
+        """Build read-only ``Record`` objects from storage records for ``fields``.
 
         Unlike :meth:`to_entity`, this does **not** materialize domain
-        entities: it reads only the projected attributes and returns inert
+        entities: it reads only the selected attributes and returns inert
         :class:`~protean.core.queryset.Record` objects, skipping all validation
-        and invariants. It is the projection counterpart used by
+        and invariants. It is the field-selection counterpart used by
         :meth:`QuerySet.only`.
 
         Field metadata is resolved once up front and reused across every
@@ -137,16 +137,16 @@ class BaseDatabaseModel(Element, OptionsMixin):
         ``meta.id`` identity extraction) should override this method.
 
         :param items: The raw storage records returned by ``_filter``.
-        :param projection: Attribute (column) names to read from each record.
+        :param fields: Attribute (column) names to read from each record.
         """
         attrs = attributes(cls.meta_.part_of)
         entity_name = cls.meta_.part_of.__name__
-        # Records are keyed by the attribute name the caller projected (what
+        # Records are keyed by the attribute name the caller selected (what
         # they passed to ``only()``); the value is read from the storage key,
         # honouring ``referenced_as``. Resolve both once for the batch.
         resolved = [
             (attr_name, attrs[attr_name].referenced_as or attr_name)
-            for attr_name in projection
+            for attr_name in fields
         ]
         return [
             Record(
