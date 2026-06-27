@@ -1,5 +1,6 @@
 from abc import abstractmethod
 
+from protean.core.queryset import Record
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
@@ -118,6 +119,42 @@ class BaseDatabaseModel(Element, OptionsMixin):
             else:
                 item_dict[attr_name] = cls._get_value(item, attr_name)
         return cls.meta_.part_of(**item_dict)
+
+    @classmethod
+    def to_records(cls, items: list, fields: list) -> list:
+        """Build read-only ``Record`` objects from storage records for ``fields``.
+
+        Unlike :meth:`to_entity`, this does **not** materialize domain
+        entities: it reads only the selected attributes and returns inert
+        :class:`~protean.core.queryset.Record` objects, skipping all validation
+        and invariants. It is the field-selection counterpart used by
+        :meth:`QuerySet.only`.
+
+        Field metadata is resolved once up front and reused across every
+        record, so the per-row work is just value reads.
+
+        Adapters with storage-specific record access (e.g. Elasticsearch's
+        ``meta.id`` identity extraction) should override this method.
+
+        :param items: The raw storage records returned by ``_filter``.
+        :param fields: Attribute (column) names to read from each record.
+        """
+        attrs = attributes(cls.meta_.part_of)
+        entity_name = cls.meta_.part_of.__name__
+        # Records are keyed by the attribute name the caller selected (what
+        # they passed to ``only()``); the value is read from the storage key,
+        # honouring ``referenced_as``. Resolve both once for the batch.
+        resolved = [
+            (attr_name, attrs[attr_name].referenced_as or attr_name)
+            for attr_name in fields
+        ]
+        return [
+            Record(
+                entity_name,
+                {key: cls._get_value(item, source) for key, source in resolved},
+            )
+            for item in items
+        ]
 
 
 def _entity_to_dict(model_cls: type, entity: Any) -> dict[str, Any]:

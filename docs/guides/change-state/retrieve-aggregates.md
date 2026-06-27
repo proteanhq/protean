@@ -685,6 +685,52 @@ items = repository.query.filter(country="CA").all(with_total=False).items
 Adapters that derive the total for free (memory, Elasticsearch) continue to
 populate `total` regardless.
 
+## Projecting fields with `only`
+
+When you need a few columns rather than whole aggregates, `only()` restricts
+the query to the named fields (the identifier is always included) and returns
+read-only `Record` objects instead of fully materialized entities:
+
+```python
+records = repository.query.filter(country="CA").only("name", "age").all().items
+```
+
+```shell
+In [1]: record = repository.query.only("name").all().first
+In [2]: record.name
+Out[2]: 'John Doe'
+In [3]: record.id          # identifier is always projected
+Out[3]: '8c2e...'
+In [4]: record["name"]     # item access works too
+Out[4]: 'John Doe'
+```
+
+This avoids loading large columns (JSON blobs, long text) on read-optimized
+paths such as cleanups, exports, and per-field statistics. Each adapter prunes
+the fetch natively: SQLAlchemy with `load_only`, Elasticsearch with `_source`
+filtering, and the in-memory store when it builds the result.
+
+A `Record` is intentionally **not** a domain entity. It carries no behavior,
+runs no invariants, and cannot be saved. Reading a field that was not projected
+raises an error rather than returning a silent `None`, so a missing projection
+is never mistaken for a null value:
+
+```python
+record = repository.query.only("name").all().first
+record.age          # AttributeError: 'age' was not projected
+record.name = "X"   # NotSupportedError: Records are read-only
+```
+
+Because a `Record` is not an entity, `only()` cannot be combined with the
+entity-loading operations `update()` and `delete()`; both raise
+`NotSupportedError`. `count()` works with `only()` (the projection is moot for a
+count), and `raw()` ignores any projection and always returns full entities.
+
+Calling `only()` again replaces the projection (projections do not compose);
+calling it with no arguments clears the projection and restores full-entity
+loading. See the [QuerySet API reference](../../api/queryset.md) for the full
+`Record` surface.
+
 ## Bulk operations
 
 QuerySets provide methods for updating and deleting multiple records at once.

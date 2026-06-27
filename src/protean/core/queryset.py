@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Union
 from protean.exceptions import NotSupportedError
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
-from protean.utils.reflection import attributes, fields
+from protean.utils.reflection import attributes, fields, id_field
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
@@ -51,6 +51,7 @@ class QuerySet:
         offset: int = 0,
         limit: int = None,  # No limit by default
         order_by: list = None,
+        only_fields: list = None,
     ):
         """Initialize either with empty preferences (when invoked on an Entity)
         or carry forward filters and preferences when chained
@@ -61,6 +62,12 @@ class QuerySet:
         self._criteria = criteria or Q()
         self._result_cache = None
         self._offset = offset or 0
+
+        # Field selection set via ``only()``. ``None`` means "fetch full
+        # rows and materialize entities"; a list means "fetch only these
+        # attributes and return read-only ``Record`` objects". Stored as
+        # attribute (column) names so adapters can consume it directly.
+        self._only_fields = only_fields
 
         # If an explicit limit is not provided, use the limit from the entity class
         self._limit = limit or entity_cls.meta_.limit
@@ -86,6 +93,7 @@ class QuerySet:
             offset=self._offset,
             limit=self._limit,
             order_by=self._order_by,
+            only_fields=self._only_fields,
         )
         return clone
 
@@ -211,6 +219,102 @@ class QuerySet:
 
         return clone
 
+    def only(self, *field_names: str) -> "QuerySet":
+        """Restrict the query to a subset of persisted fields.
+
+        Returns a new ``QuerySet`` that, when evaluated, fetches only the
+        requested columns (plus the identifier, which is always included) and
+        yields read-only :class:`Record` objects instead of fully materialized
+        domain entities. This avoids the I/O of loading large columns (e.g.
+        JSON blobs) on read-optimized paths — counts, cleanups, statistics —
+        that never need the whole record.
+
+        A ``Record`` is **not** a domain entity: it has no behavior, runs no
+        invariants, and cannot be persisted. It is purely a read-side carrier
+        of column values. Domain operations must continue to go through full
+        entities; ``only()`` is for field-selection reads.
+
+        Calling ``only()`` again **replaces** the selection (selections do not
+        compose). Calling ``only()`` with no arguments clears any selection and
+        restores full-entity materialization.
+
+        :param field_names: Names of persisted fields to project. The
+            identifier is always included automatically.
+        :raises KeyError: if a name is not a field or attribute of the entity.
+        :raises NotSupportedError: if a name resolves to a non-persisted field
+            (e.g. an association), which cannot be projected.
+        """
+        clone = self._clone()
+
+        # No arguments clears the selection (last call wins).
+        if not field_names:
+            clone._only_fields = None
+            return clone
+
+        entity_attributes = attributes(self._entity_cls)
+        resolved: list[str] = []
+
+        def _add(name: str) -> None:
+            attr_name = self._resolve_attribute_name(name)
+
+            # Only persisted attributes (real columns) can be projected.
+            # Associations and other non-persisted fields have no column to
+            # fetch and would make the selection meaningless.
+            if attr_name not in entity_attributes:
+                raise NotSupportedError(
+                    f"`.only()` cannot project '{name}' on "
+                    f"{self._entity_cls.__name__}: it is not a persisted field."
+                )
+
+            if attr_name not in resolved:
+                resolved.append(attr_name)
+
+        # The identifier is always included so every Record is addressable.
+        id_field_obj = id_field(self._entity_cls)
+        if id_field_obj is not None:
+            _add(id_field_obj.field_name)
+
+        for name in field_names:
+            _add(name)
+
+        clone._only_fields = resolved
+        return clone
+
+    def _resolve_attribute_name(self, name: str) -> str:
+        """Resolve a field or attribute name to its persisted attribute name.
+
+        Accepts both field names and attribute names, mirroring the lookup used
+        by ``filter`` and ``order_by``.
+
+        :raises KeyError: if ``name`` is neither a field nor an attribute.
+        """
+        entity_fields = fields(self._entity_cls)
+        if name in entity_fields:
+            return entity_fields[name].attribute_name
+
+        entity_attributes = attributes(self._entity_cls)
+        if name in entity_attributes:
+            return entity_attributes[name].attribute_name
+
+        raise KeyError(
+            f"Key '{name}' not found in either fields or attributes "
+            f"of {self._entity_cls}"
+        )
+
+    def _reject_if_projected(self, action: str) -> None:
+        """Guard mutating operations against a projected query.
+
+        Projections yield read-only ``Record`` objects rather than entities, so a
+        mutation has nothing valid to act on. Raise rather than silently
+        operating on the wrong type.
+        """
+        if self._only_fields is not None:
+            raise NotSupportedError(
+                f"`{action}()` cannot be combined with `only()`. Projections "
+                f"yield read-only records, not entities; drop `only()` to "
+                f"{action}."
+            )
+
     def all(self, with_total: bool = True) -> "ResultSet":
         """Primary method to fetch data based on filters
 
@@ -238,7 +342,18 @@ class QuerySet:
             self._limit,
             self._order_by,
             with_total=with_total,
+            fields=self._only_fields,
         )
+
+        if self._only_fields is not None:
+            # Projection path: build inert, read-only Record objects. These are
+            # not domain entities, so they are deliberately not retrieved-
+            # marked, event-synced, or tracked in the Unit of Work.
+            results.items = self._owner_dao.database_model_cls.to_records(
+                results.items, self._only_fields
+            )
+            self._result_cache = results
+            return results
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -277,6 +392,8 @@ class QuerySet:
         Returns the number of objects matched (which may not be equal to the number of objects
             updated if objects rows already have the new value).
         """
+        self._reject_if_projected("update")
+
         updated_item_count = 0
 
         try:
@@ -299,7 +416,9 @@ class QuerySet:
         `query` is not checked for correctness or validity, and any errors thrown by the plugin or
             database are passed as-is. Data passed will be transferred as-is to the plugin.
 
-        All other query options like `order_by`, `offset` and `limit` are ignored for this action.
+        All other query options like `order_by`, `offset`, `limit`, and any
+        `only()` field selection are ignored for this action; `raw()` always
+        returns full Entity objects, never `Record` objects.
 
         Raises NotSupportedError if the provider does not support raw queries.
         """
@@ -349,6 +468,8 @@ class QuerySet:
         Returns the number of objects matched (which may not be equal to the number of objects
             deleted if objects rows already have the new value).
         """
+        self._reject_if_projected("delete")
+
         # Fetch Model class and connected repository from Domain
         deleted_item_count = 0
 
@@ -579,3 +700,81 @@ class ResultSet:
             "has_prev": self.has_prev,
             "items": self.items,
         }
+
+
+class Record:
+    """A read-only selection of fields from a single result.
+
+    Returned by :meth:`QuerySet.only` instead of a fully materialized domain
+    entity. A ``Record`` is intentionally **inert**: it is not a domain entity, it
+    carries no behavior, runs no invariants, and cannot be persisted. It exists
+    purely to carry a subset of column values on read-optimized paths (counts,
+    cleanups, statistics) without the cost, or the validity guarantees, of a
+    full entity. This keeps the domain model airtight: field selection never
+    produces a partially-valid aggregate.
+
+    Access selected values by attribute (``record.status``) or item
+    (``record["status"]``). Reading a field that was not selected raises
+    :class:`AttributeError` / :class:`KeyError` rather than returning a silent
+    ``None``, so an unselected field is never mistaken for a null value.
+    """
+
+    # Records compare by value but are deliberately unhashable: they are
+    # mutable-shaped data carriers, not identities, and should not be used as
+    # dict keys or set members (use the entity for that).
+    __hash__ = None
+
+    __slots__ = ("_entity_name", "_data")
+
+    def __init__(self, entity_name: str, data: dict) -> None:
+        object.__setattr__(self, "_entity_name", entity_name)
+        object.__setattr__(self, "_data", dict(data))
+
+    def __getattr__(self, name: str) -> Any:
+        # ``__getattr__`` only fires when normal lookup fails, so the slots
+        # (``_entity_name``, ``_data``) resolve directly and never reach here.
+        try:
+            return self._data[name]
+        except KeyError:
+            raise AttributeError(
+                f"'{self._entity_name}' record has no field '{name}'. "
+                f"Selected fields: {sorted(self._data)}. "
+                f"Add it to .only(...) to fetch it."
+            ) from None
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise NotSupportedError("`Record` objects are read-only.")
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._data
+
+    def keys(self):
+        """Return the projected field names."""
+        return self._data.keys()
+
+    def to_dict(self) -> dict:
+        """Return the projected values as a plain dict."""
+        return dict(self._data)
+
+    # Explicit pickle/copy hooks so that read-only ``__setattr__`` does not
+    # break ``copy.deepcopy`` (used when a QuerySet hands out cached results).
+    def __getstate__(self) -> dict:
+        return {"_entity_name": self._entity_name, "_data": self._data}
+
+    def __setstate__(self, state: dict) -> None:
+        object.__setattr__(self, "_entity_name", state["_entity_name"])
+        object.__setattr__(self, "_data", state["_data"])
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            isinstance(other, Record)
+            and self._entity_name == other._entity_name
+            and self._data == other._data
+        )
+
+    def __repr__(self) -> str:
+        inner = ", ".join(f"{k}={v!r}" for k, v in self._data.items())
+        return f"<Record {self._entity_name}({inner})>"

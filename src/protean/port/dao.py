@@ -171,6 +171,7 @@ class BaseDAO(metaclass=ABCMeta):
         limit: int = 10,
         order_by: list = (),
         with_total: bool = True,
+        fields: list | None = None,
     ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
@@ -181,6 +182,13 @@ class BaseDAO(metaclass=ABCMeta):
         (e.g. SQL's separate ``COUNT`` query) and report only the size of the
         returned page in ``ResultSet.total``. Adapters that derive the total
         for free (memory, Elasticsearch) may continue to populate it.
+
+        When ``fields`` is a list of attribute (column) names (set via
+        ``QuerySet.only()``), adapters should fetch only those columns (the
+        identifier is always among them) instead of full rows. The returned
+        ``ResultSet.items`` are still raw storage records; the caller builds
+        read-only ``Record`` objects from them via the model's ``to_records``.
+        ``None`` means fetch full rows as usual.
         """
 
     @abstractmethod
