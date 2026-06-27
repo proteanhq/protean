@@ -12,7 +12,6 @@ from protean.core.repository import BaseRepository
 from protean.fields import Auto
 from protean.utils import ensure_utc_aware
 from protean.utils.eventing import Metadata
-from protean.utils.globals import current_domain
 from protean.utils.query import Q
 
 
@@ -727,10 +726,12 @@ class OutboxRepository(BaseRepository):
     def _cleanup_batch_size(self) -> int:
         """Resolve the cleanup batch size from ``[outbox.cleanup]`` config.
 
-        Defaults to 5000 when unset, matching ``domain.config`` defaults.
+        Reads from the repository's own domain (not the ``current_domain``
+        global) so cleanup works in standalone/cron usage with no active domain
+        context. Defaults to 5000 when unset, matching ``domain.config``.
         """
         return (
-            current_domain.config.get("outbox", {})
+            self._dao.domain.config.get("outbox", {})
             .get("cleanup", {})
             .get("batch_size", 5000)
         )
