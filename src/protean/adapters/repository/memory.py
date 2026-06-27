@@ -18,7 +18,7 @@ from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
-from protean.utils.query import Q
+from protean.utils.query import F, Q
 from protean.utils.reflection import fields, id_field
 
 
@@ -230,19 +230,31 @@ class MemoryProvider(BaseProvider):
         return DictDAO(self.domain, self, entity_cls, database_model_cls)
 
     def _evaluate_lookup(self, key, value, negated, db):
-        """Extract values from DB that match the given criteria"""
+        """Extract values from DB that match the given criteria.
+
+        When ``value`` is an :class:`~protean.utils.query.F`, the right-hand
+        side is resolved per record to the referenced column, enabling
+        column-to-column comparisons (e.g. ``retry_count < max_retries``).
+        """
         results = {}
         stripped_key, lookup_class = self._extract_lookup(key)
         null_safe = getattr(lookup_class, "null_safe", False)
+        target_is_column = isinstance(value, F)
+        target_name = value.name if target_is_column else None
         for record_key, record_value in db.items():
             source_value = record_value[stripped_key]
-            lookup = lookup_class(source_value, value)
+            target_value = record_value[target_name] if target_is_column else value
 
-            if source_value is not None or null_safe:
-                result = lookup.evaluate()
-                match = not result if negated else result
-            else:
+            # A comparison against NULL on either side is UNKNOWN in SQL and
+            # never matches, even when negated. ``isnull`` is the null_safe
+            # exception that intentionally tests for NULL.
+            if (source_value is None and not null_safe) or (
+                target_is_column and target_value is None
+            ):
                 match = False
+            else:
+                result = lookup_class(source_value, target_value).evaluate()
+                match = not result if negated else result
 
             if match:
                 results[record_key] = record_value

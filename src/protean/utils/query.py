@@ -85,6 +85,44 @@ class RegisterLookupMixin:
         del cls.class_lookups[lookup_name]
 
 
+class F:
+    """Reference to another column of the same row, for use inside ``Q`` lookups.
+
+    ``F`` lets a filter compare two columns of the same row instead of comparing
+    a column against a literal value::
+
+        # column against a literal
+        query.filter(retry_count__lt=3)
+
+        # column against another column
+        query.filter(retry_count__lt=F("max_retries"))
+
+    Only a bare column reference is supported. Arithmetic (``F("a") + 1``),
+    function calls (``Lower(F("email"))``), and aggregations are intentionally
+    out of scope.
+
+    Adapter support: the in-memory and SQLAlchemy adapters resolve ``F`` to the
+    referenced column natively. The Elasticsearch adapter raises
+    ``NotImplementedError`` for ``F``-bearing predicates (column-to-column
+    comparison there needs a Painless script query, which is not implemented);
+    use the in-memory or SQLAlchemy backend for such filters.
+    """
+
+    __slots__ = ("name",)
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __repr__(self) -> str:
+        return f"F({self.name!r})"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, F) and self.name == other.name
+
+    def __hash__(self) -> int:
+        return hash(("F", self.name))
+
+
 class Node:
     """
     A class for storing a tree graph. Primarily used for filter constructs.

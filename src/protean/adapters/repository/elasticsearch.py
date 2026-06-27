@@ -35,7 +35,7 @@ from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import IdentityStrategy, IdentityType, fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
-from protean.utils.query import Q
+from protean.utils.query import F, Q
 from protean.utils.reflection import attributes, id_field
 from protean.fields.association import _ReferenceField
 from protean.fields.basic import ValueObjectList
@@ -1053,7 +1053,21 @@ class DefaultLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
 
     def process_target(self):
-        """Return target with transformations, if any"""
+        """Return target with transformations, if any.
+
+        Column-to-column comparisons via :class:`~protean.utils.query.F` would
+        require a Painless ``script`` query on Elasticsearch. That path is not
+        implemented, so an ``F`` target fails loudly rather than diverging
+        silently from the other adapters.
+        """
+        if isinstance(self.target, F):
+            raise NotImplementedError(
+                f"Column-to-column comparison via F({self.target.name!r}) is not "
+                "supported on the Elasticsearch adapter. This lookup needs a "
+                "Painless script query, which is not implemented. Use a backend "
+                "that supports column-to-column comparison (the in-memory or "
+                "SQLAlchemy adapter), or express the predicate without F()."
+            )
         if isinstance(self.target, UUID):
             self.target = str(self.target)
 

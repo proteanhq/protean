@@ -253,6 +253,30 @@ repository.query.filter(archived_at__isnull=True).all().items
 repository.query.filter(archived_at__isnull=False).all().items
 ```
 
+### Comparing two fields with `F`
+
+By default the right-hand side of a lookup is a literal value. To compare one
+field against **another field of the same aggregate**, wrap the other field's
+name in `F`:
+
+```python
+from protean import F
+
+# Messages that still have retries left (retry_count < max_retries)
+repository.query.filter(retry_count__lt=F("max_retries")).all().items
+```
+
+`F` works with any comparison lookup (`exact`, `gt`, `gte`, `lt`, `lte`). The
+comparison is evaluated at the database, so no rows are fetched only to be
+discarded in Python. Only a bare field reference is supported: arithmetic
+(`F("a") + 1`) and functions are not.
+
+!!!note
+    The in-memory and SQLAlchemy adapters resolve `F` to the referenced column.
+    The Elasticsearch adapter raises `NotImplementedError` for `F`-bearing
+    predicates, since column-to-column comparison there would need a script
+    query.
+
 !!!note
     These lookups have database-specific implementations. Refer to your chosen
     adapter's documentation for supported filtering criteria.

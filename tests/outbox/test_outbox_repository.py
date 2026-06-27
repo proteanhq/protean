@@ -314,9 +314,10 @@ class TestFindUnprocessedBoundaryConditions:
         assert outbox_repo.find_unprocessed() == []
 
     def test_retries_exhausted_row_is_filtered_out(self, outbox_repo, sample_metadata):
-        """``retry_count >= max_retries`` rows are still excluded.
+        """``retry_count >= max_retries`` rows are excluded.
 
-        This is the one predicate left in Python pending F() expressions.
+        The predicate is pushed to the database via an ``F`` expression in
+        ``_eligibility_criteria``; no Python post-filter is involved.
         """
         msg = Outbox.create_message(
             message_id="retries-exhausted",
@@ -935,14 +936,12 @@ class TestClaimBatch:
         assert len(claimed) == 1
         assert claimed[0].target_broker == "external"
 
-    def test_retry_exhausted_row_is_excluded_and_warns(
-        self, outbox_repo, sample_metadata, caplog
-    ):
-        """A claimable row that fails the retry-count guard is dropped from the
-        batch and logged (defense-in-depth; normally unreachable since such a
-        row would already be ABANDONED)."""
-        import logging
+    def test_retry_exhausted_row_is_not_claimed(self, outbox_repo, sample_metadata):
+        """A retry-exhausted row is never claimed.
 
+        ``retry_count < max_retries`` is part of ``_eligibility_criteria``, so
+        the claim query itself excludes the row — it is never marked
+        PROCESSING."""
         msg = Outbox.create_message(
             message_id="exhausted",
             stream_name="s",
@@ -950,19 +949,15 @@ class TestClaimBatch:
             data={},
             metadata=sample_metadata,
         )
-        # FAILED + retry_count >= max_retries: matches the eligibility criteria
-        # (which cannot express the column-to-column retry check) but fails the
-        # Python guard in claim_batch.
         msg.status = OutboxStatus.FAILED.value
         msg.retry_count = 5
         msg.max_retries = 3
         outbox_repo.add(msg)
 
-        with caplog.at_level(logging.WARNING):
-            claimed = outbox_repo.claim_batch("worker-A", limit=50)
+        claimed = outbox_repo.claim_batch("worker-A", limit=50)
 
         assert claimed == []
-        assert any(
-            "claimed_rows_excluded_by_retry_guard" in r.getMessage()
-            for r in caplog.records
-        )
+        # The row stays FAILED — the claim never touched it.
+        reloaded = outbox_repo.get(msg.id)
+        assert reloaded.status == OutboxStatus.FAILED.value
+        assert reloaded.locked_by is None
