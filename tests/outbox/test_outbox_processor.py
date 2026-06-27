@@ -1714,6 +1714,7 @@ class TestOutboxPeriodicCleanup:
         processor.cleanup_config = {
             "published_retention_hours": 24,  # 1 day
             "abandoned_retention_hours": 48,  # 2 days
+            "batch_size": 5000,
         }
         await processor.initialize()
 

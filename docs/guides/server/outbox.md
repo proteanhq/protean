@@ -146,6 +146,7 @@ removes successfully published and abandoned messages on a schedule:
 published_retention_hours = 168   # Keep published messages 7 days
 abandoned_retention_hours = 720   # Keep abandoned messages 30 days
 cleanup_interval_ticks = 86400    # Run cleanup roughly daily
+batch_size = 5000                 # Rows deleted per bounded batch
 ```
 
 Tune these with two trade-offs in mind:
@@ -155,6 +156,13 @@ Tune these with two trade-offs in mind:
 - **Longer `abandoned_retention_hours`** = more time to investigate
   chronic failures before the evidence disappears. 30+ days is
   reasonable while a system is stabilizing.
+
+Cleanup deletes in bounded batches of `batch_size` rows rather than one large
+`DELETE`, so a backlog of millions of rows is cleared without holding a long
+lock or bloating the transaction log. When you run cleanup standalone (a cron
+job calling `cleanup_old_messages()`), each batch commits before the next
+begins. Lower `batch_size` for gentler load on a busy table; raise it for fewer
+round trips on a quiet one.
 
 ---
 

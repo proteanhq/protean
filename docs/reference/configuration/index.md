@@ -465,7 +465,12 @@ jitter = true              # Add randomization to delays
 [outbox.cleanup]
 published_retention_hours = 168   # Keep published for 7 days
 abandoned_retention_hours = 720   # Keep abandoned for 30 days
+batch_size = 5000                 # Rows deleted per bounded cleanup batch
 ```
+
+Cleanup runs as bounded `batch_size` deletes rather than one unbounded
+`DELETE`, so large backlogs are cleared without long lock holds; each batch
+commits before the next when cleanup runs standalone.
 
 Read more in [Server → Outbox Pattern](../../concepts/async-processing/outbox.md) section.
 

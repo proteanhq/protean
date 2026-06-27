@@ -564,6 +564,48 @@ class DictDAO(BaseDAO):
             return len(self._filter_items(criteria, records))
         return len(records)
 
+    def _delete_top(
+        self,
+        criteria: Q,
+        limit: int,
+        order_by: str | None = None,
+    ) -> int:
+        """Bounded delete for the in-memory adapter.
+
+        Holds the provider lock across the match-and-delete so a concurrent
+        writer cannot remove or insert rows between selecting the batch and
+        deleting it, mirroring :meth:`_claim`'s serialization guarantee.
+        """
+        if limit <= 0:
+            return 0
+
+        conn = self._get_session()
+        assert conn is not None
+
+        with conn._db["lock"]:
+            records = conn._db["data"].get(self.schema_name, {})
+            # No copy when there is no criteria: we only read keys/values here
+            # and delete from the live store below, all under the lock.
+            matched = (
+                self._filter_items(criteria, records) if criteria.children else records
+            )
+
+            keys = list(matched.keys())
+            if order_by:
+                field_name = order_by.lstrip("-")
+                keys.sort(
+                    key=lambda k: matched[k].get(field_name),
+                    reverse=order_by.startswith("-"),
+                )
+
+            to_delete = keys[:limit]
+            for identifier in to_delete:
+                conn._db["data"][self.schema_name].pop(identifier, None)
+
+        self._commit_if_standalone(conn)
+
+        return len(to_delete)
+
     def _delete_all(self, criteria: Q = None):
         """Delete the dictionary object by its criteria"""
         conn = self._get_session()

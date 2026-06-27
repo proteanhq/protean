@@ -73,6 +73,7 @@ def _default_config():
                 "published_retention_hours": 168,  # 7 days
                 "abandoned_retention_hours": 720,  # 30 days
                 "cleanup_interval_ticks": 86400,  # 1 day (24 hours)
+                "batch_size": 5000,  # Rows deleted per bounded cleanup batch
             },
         },
         "server": {
