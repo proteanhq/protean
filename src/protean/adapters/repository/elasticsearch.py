@@ -686,7 +686,9 @@ class ElasticsearchDAO(BaseDAO):
         Returns True if the index exists, False otherwise.
         """
         conn = self.provider.get_connection()
-        return conn.indices.exists(index=self.database_model_cls._index._name)
+        # The v8 client returns a ``HeadApiResponse`` (truthy/falsy) rather than
+        # a plain ``bool``, so coerce to ``bool`` to honor the return contract.
+        return bool(conn.indices.exists(index=self.database_model_cls._index._name))
 
 
 class ESProvider(BaseProvider):
