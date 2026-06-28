@@ -52,6 +52,28 @@ User application tests should construct their domain lifecycle with
 `DomainFixture` instead — see
 [Fixtures and Patterns](../../guides/testing/fixtures-and-patterns.md).
 
+## Query-shape assertions
+
+Three context managers assert query count and shape against a SQLAlchemy
+backend, to catch query-cost regressions in tests. They are no-ops when no
+SQLAlchemy engine is resolved (e.g. the in-memory adapter). See
+[Test Query Shape](../../guides/testing/query-shape-tests.md) for usage.
+
+::: protean.integrations.pytest.assert_query_count
+    options:
+      show_root_heading: true
+      show_source: false
+
+::: protean.integrations.pytest.assert_no_subquery_wrap
+    options:
+      show_root_heading: true
+      show_source: false
+
+::: protean.integrations.pytest.assert_no_overfetch
+    options:
+      show_root_heading: true
+      show_source: false
+
 ## Framework development
 
 The `protean test` CLI command is used to run Protean's own test suite

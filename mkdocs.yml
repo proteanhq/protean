@@ -288,6 +288,7 @@ nav:
       - guides/testing/application-tests.md
       - guides/testing/event-sourcing-tests.md
       - guides/testing/integration-tests.md
+      - guides/testing/query-shape-tests.md
       - guides/testing/fixtures-and-patterns.md
 
   - Reference:

@@ -12,10 +12,22 @@ adapter package, load the conformance plugin in your ``conftest.py``::
 For event-sourcing test DSL, use :mod:`protean.testing`::
 
     from protean.testing import given
+
+For asserting query shape and round-trip count, use the query assertions::
+
+    from protean.integrations.pytest import assert_query_count
 """
 
+from .query_assertions import (
+    assert_no_overfetch,
+    assert_no_subquery_wrap,
+    assert_query_count,
+)
 from .testbed import DomainFixture
 
 __all__ = [
     "DomainFixture",
+    "assert_no_overfetch",
+    "assert_no_subquery_wrap",
+    "assert_query_count",
 ]
