@@ -50,7 +50,7 @@ jobs:
           IMAGES=(
             "postgres:16"
             "redis:7"
-            "elasticsearch:7.12.0"
+            "elasticsearch:8.7.0"
             "ethangarofolo/message-db:1.2.6"
             "mcr.microsoft.com/mssql/server:2022-latest"
           )
@@ -115,7 +115,7 @@ jobs:
             -e "discovery.type=single-node" \
             -e "xpack.security.enabled=false" \
             -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
-            elasticsearch:7.12.0
+            elasticsearch:8.7.0
 
       - name: Wait for services
         run: |
@@ -136,7 +136,7 @@ jobs:
           echo "MSSQL is ready!"
 
           echo "Waiting for Elasticsearch..."
-          timeout 60 bash -c 'until curl -s http://localhost:59200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
+          timeout 120 bash -c 'until curl -s http://localhost:59200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
           echo "Elasticsearch is ready!"
 
           echo "All services are ready!"
