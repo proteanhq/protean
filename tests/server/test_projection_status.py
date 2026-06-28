@@ -214,6 +214,11 @@ class TestParseTime:
     def test_garbage_returns_none(self):
         assert _parse_time("not-a-timestamp") is None
 
+    def test_z_suffix_parsed_as_utc(self):
+        result = _parse_time("2026-06-27T10:00:00Z")
+        assert result is not None
+        assert result.tzinfo == timezone.utc
+
 
 # ---------------------------------------------------------------------------
 # _extract_position_time
@@ -249,6 +254,15 @@ class TestExtractPositionTime:
 
     def test_malformed_headers_json_returns_none(self):
         assert _extract_position_time({"metadata": {"headers": "{bad"}}) is None
+
+    def test_datetime_value_normalized_to_isoformat(self):
+        dt = datetime(2026, 5, 5, 12, 0, 0, tzinfo=timezone.utc)
+        assert _extract_position_time({"time": dt}) == dt.isoformat()
+
+    def test_metadata_datetime_value_normalized(self):
+        dt = datetime(2026, 5, 5, 12, 0, 0, tzinfo=timezone.utc)
+        msg = {"metadata": {"headers": {"time": dt}}}
+        assert _extract_position_time(msg) == dt.isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +388,14 @@ class TestAggregate:
         )
         assert result.status == "lagging"
         assert result.staleness_seconds is None
+
+    def test_future_timestamp_clamps_staleness_to_zero(self):
+        # Clock skew: position timestamp ahead of "now" must not go negative.
+        future = (_NOW + timedelta(seconds=30)).isoformat()
+        result = _aggregate(
+            Balances, [_feeder(5, future)], ["BalancesProjector"], _NOW, 0
+        )
+        assert result.staleness_seconds == 0.0
 
     def test_no_feeders_is_unknown(self):
         result = _aggregate(Balances, [], [], _NOW, None)

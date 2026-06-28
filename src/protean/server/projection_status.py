@@ -185,7 +185,8 @@ def _aggregate(
             stale_values.append(0.0)
             continue
         if feeder_time is not None:
-            stale_values.append((now - feeder_time).total_seconds())
+            # Clamp clock skew (position timestamp slightly ahead of now) to 0.
+            stale_values.append(max(0.0, (now - feeder_time).total_seconds()))
     staleness_seconds = max(stale_values) if stale_values else None
 
     status = _classify_status(lag)
@@ -220,7 +221,9 @@ def _parse_time(iso_value: str | None) -> datetime | None:
     if not iso_value:
         return None
     try:
-        parsed = datetime.fromisoformat(iso_value)
+        # ``fromisoformat`` does not reliably accept a trailing ``Z``; normalize
+        # to ``+00:00`` so timestamps from any adapter parse consistently.
+        parsed = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
     return ensure_utc_aware(parsed)

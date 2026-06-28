@@ -20,6 +20,7 @@ import json
 import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from protean.server.subscription.config_resolver import ConfigResolver
@@ -628,15 +629,20 @@ def _extract_position_time(last_msg: dict | None) -> str | None:
     """Pull the ISO timestamp of a position write from its stored message.
 
     ``write_position`` stamps ``metadata.headers.time``; some stores also expose a
-    top-level ``time``. Returns ``None`` when no message or timestamp is present.
+    top-level ``time``. Some adapters return that value as a ``datetime`` rather
+    than a string, so normalize to ISO format. Returns ``None`` when no message or
+    timestamp is present.
     """
     if not last_msg:
         return None
-    if last_msg.get("time"):
-        return last_msg["time"]
-    metadata = _as_dict(last_msg.get("metadata"))
-    headers = _as_dict(metadata.get("headers")) if metadata else None
-    return headers.get("time") if headers else None
+    raw = last_msg.get("time")
+    if not raw:
+        metadata = _as_dict(last_msg.get("metadata"))
+        headers = _as_dict(metadata.get("headers")) if metadata else None
+        raw = headers.get("time") if headers else None
+    if isinstance(raw, datetime):
+        return raw.isoformat()
+    return raw if isinstance(raw, str) else None
 
 
 def _classify_status(lag: int | None, pending: int = 0) -> str:
