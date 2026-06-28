@@ -278,11 +278,17 @@ def _deadline_exceeded_after(delay: float) -> bool:
     skips expired commands; ``raise_if_expired`` rejects them synchronously).
     The retry loop therefore stops instead of sleeping into an attempt that
     would start already-expired. Events and deadline-less commands are never
-    constrained.
+    constrained. When no domain context is active (e.g. a handler invoked
+    directly in a script or test), there is no in-context message to read, so
+    the retry path is left unconstrained rather than raising.
     """
-    from protean.utils.globals import g
+    try:
+        from protean.utils.globals import g
 
-    msg = g.get("message_in_context")
+        msg = g.get("message_in_context")
+    except Exception:
+        # No active domain/message context -> no deadline to honor.
+        return False
     headers = getattr(getattr(msg, "metadata", None), "headers", None)
     if headers is None or getattr(headers, "deadline", None) is None:
         return False

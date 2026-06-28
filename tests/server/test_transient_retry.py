@@ -795,6 +795,18 @@ class TestDeadlineExceededHelper:
         g.pop("message_in_context", None)
         assert _deadline_exceeded_after(10.0) is False
 
+    def test_no_domain_context_is_unconstrained(self, test_domain):
+        """Without an active domain context, `g` is unbound; the guard returns
+        False (unconstrained) instead of raising, keeping the retry wrapper
+        robust for handlers invoked outside a domain context."""
+        from protean.utils.globals import _domain_context_stack
+
+        ctx = _domain_context_stack.pop()
+        try:
+            assert _deadline_exceeded_after(10.0) is False
+        finally:
+            _domain_context_stack.push(ctx)
+
     def test_message_without_deadline_is_unconstrained(self, test_domain):
         g.message_in_context = _message_with_deadline(test_domain, None)
         assert _deadline_exceeded_after(10.0) is False
