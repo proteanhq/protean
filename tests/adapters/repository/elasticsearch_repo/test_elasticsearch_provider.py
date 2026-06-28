@@ -47,7 +47,10 @@ class TestElasticsearchProvider:
         with pytest.raises(ConfigurationError) as exc:
             domain.init(traverse=False)
 
-        assert "Could not connect to database at" in str(exc.value)
+        assert "Invalid Elasticsearch connection configuration" in str(exc.value)
+        # The host configuration (which may carry credentials) must not leak
+        # into the error message.
+        assert "imaginary" not in str(exc.value)
 
     def test_elasticsearch_raw_query_raises_not_supported(self, test_domain):
         """Elasticsearch does not support raw queries — both provider.raw() and

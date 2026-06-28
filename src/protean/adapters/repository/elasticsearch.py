@@ -725,7 +725,9 @@ class ESProvider(BaseProvider):
         # The v8 client validates host URLs eagerly (scheme + host + port), so a
         # malformed host raises here rather than at first use. Surface it as a
         # ConfigurationError so misconfiguration is reported like any other bad
-        # provider config.
+        # provider config. The host configuration is deliberately not echoed in
+        # the message, since it may contain credentials; the underlying
+        # validation error is generic and credential-safe.
         try:
             self._client = Elasticsearch(
                 hosts,
@@ -733,8 +735,7 @@ class ESProvider(BaseProvider):
             )
         except ValueError as exc:
             raise ConfigurationError(
-                f"Could not connect to database at "
-                f"{self.conn_info['database_uri']}: {exc}"
+                f"Invalid Elasticsearch connection configuration: {exc}"
             ) from exc
 
     def namespaced_schema_name(self, schema_name):
