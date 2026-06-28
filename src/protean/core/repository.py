@@ -455,9 +455,14 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
 
     # Enforce that user-defined repositories can only be associated with Aggregates.
     # Auto-constructed repositories (for child entities, projections) are created
-    # internally and bypass this check.
-    if not auto_constructed and not issubclass(
-        element_cls.meta_.part_of, BaseAggregate
+    # internally and bypass this check. When ``part_of`` is a string reference,
+    # the check is deferred: the ElementResolver only resolves it against
+    # registered aggregates, so a non-aggregate target surfaces as an
+    # unresolved reference during validation.
+    if (
+        not auto_constructed
+        and not isinstance(element_cls.meta_.part_of, str)
+        and not issubclass(element_cls.meta_.part_of, BaseAggregate)
     ):
         raise IncorrectUsageError(
             f"Repository `{element_cls.__name__}` can only be associated with an Aggregate"

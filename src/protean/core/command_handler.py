@@ -125,6 +125,18 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
 _T = TypeVar("_T")
 
 
+def derive_command_stream_category(aggregate_cls: Any) -> str:
+    """Derive a command handler's stream category from its aggregate.
+
+    Command handlers subscribe to the aggregate's command stream, named
+    ``<aggregate stream category>:command``. This is the single source of
+    truth for that convention; it is applied eagerly by
+    ``command_handler_factory`` for class references and by the
+    ``ElementResolver`` once a string ``part_of`` reference is resolved.
+    """
+    return f"{aggregate_cls.meta_.stream_category}:command"
+
+
 def command_handler_factory(
     element_cls: type[_T], domain: Any, **opts: Any
 ) -> type[_T]:
@@ -135,9 +147,13 @@ def command_handler_factory(
             f"Command Handler `{element_cls.__name__}` needs to be associated with an Aggregate"
         )
 
-    # Always derive stream_category from the aggregate - cannot be overridden
-    element_cls.meta_.stream_category = (
-        f"{element_cls.meta_.part_of.meta_.stream_category}:command"
-    )
+    # Always derive stream_category from the aggregate - cannot be overridden.
+    # When ``part_of`` is a string reference, the aggregate is not yet
+    # resolved; the ElementResolver derives stream_category once the
+    # reference is resolved.
+    if not isinstance(element_cls.meta_.part_of, str):
+        element_cls.meta_.stream_category = derive_command_stream_category(
+            element_cls.meta_.part_of
+        )
 
     return element_cls

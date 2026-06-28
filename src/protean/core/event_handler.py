@@ -120,10 +120,19 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
             getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
         )
 
+        # When ``part_of`` is a string reference, the aggregate is not yet
+        # resolved, so its stream_category cannot be derived here. The
+        # ElementResolver fills it in once the reference is resolved.
+        stream_category = (
+            part_of.meta_.stream_category
+            if part_of and not isinstance(part_of, str)
+            else None
+        )
+
         return [
             ("part_of", part_of),
             ("source_stream", None),
-            ("stream_category", part_of.meta_.stream_category if part_of else None),
+            ("stream_category", stream_category),
             # Subscription configuration options
             ("subscription_type", None),  # SubscriptionType enum or None for default
             ("subscription_profile", None),  # SubscriptionProfile enum or None
