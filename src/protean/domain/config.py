@@ -124,6 +124,26 @@ def _default_config():
                 "base_delay_seconds": 0.05,  # 50ms initial backoff delay
                 "max_delay_seconds": 1.0,  # Cap backoff at 1 second
             },
+            # Transient-failure auto-retry settings (distinct from version_retry)
+            # Retries handlers that fail with transient infrastructure errors
+            # (dropped connections, timeouts, email-gateway blips) before the
+            # error reaches the subscription retry/DLQ pipeline. Opt-in: disabled
+            # by default so existing behavior is unchanged. Per-handler
+            # `retries`/`backoff`/`retry_exceptions` options override these.
+            "transient_retry": {
+                "enabled": False,  # Off by default — turn on to retry transient errors
+                "max_retries": 3,  # Retries before propagating to subscription
+                "backoff": "exponential",  # exponential | linear | fixed
+                "base_delay_seconds": 0.1,  # Initial backoff delay
+                "max_delay_seconds": 5.0,  # Cap backoff at 5 seconds
+                # Only genuinely transient exceptions belong here — a retry must
+                # have a chance of succeeding. Dotted paths or bare builtin names.
+                "exceptions": [
+                    "builtins.ConnectionError",
+                    "builtins.TimeoutError",
+                    "protean.exceptions.SendError",
+                ],
+            },
             # Handler-specific subscription configurations
             # Keys are handler names (e.g., "OrderEventHandler")
             # Values are dicts with any of: profile, stream_category, subscription_type,

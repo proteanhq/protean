@@ -364,6 +364,25 @@ max_retries = 3              # Fast retries before propagating
 base_delay_seconds = 0.05    # 50ms initial backoff
 max_delay_seconds = 1.0      # Cap backoff at 1 second
 
+# Transient-failure auto-retry (distinct from version_retry)
+# Retries handlers that fail with transient infrastructure errors
+# before the error reaches the subscription retry/DLQ pipeline.
+# Opt-in: disabled by default. Per-handler retries=/backoff=/
+# retry_exceptions= options override these.
+[server.transient_retry]
+enabled = false              # Off by default; turn on to retry transient errors
+max_retries = 3              # Retries before propagating
+backoff = "exponential"      # exponential | linear | fixed
+base_delay_seconds = 0.1     # Initial backoff delay
+max_delay_seconds = 5.0      # Cap backoff at 5 seconds
+# Only genuinely transient exceptions belong here. Dotted paths or
+# bare builtin names.
+exceptions = [
+    "builtins.ConnectionError",
+    "builtins.TimeoutError",
+    "protean.exceptions.SendError",
+]
+
 # DLQ maintenance (retention + alerting)
 # Off by default; opt in by setting enabled = true.
 [server.dlq]

@@ -25,6 +25,9 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 | `part_of` | class or string | *required* | The aggregate this handler processes commands for. |
 | `stream_category` | `str` | derived from `part_of` | Read-only. Always derived from the aggregate's stream category. Cannot be overridden. |
 | `timeout` | `int`/`float` seconds or `timedelta` | `None` | Default validity window for commands routed to this handler. Overrides the domain-level `command_default_timeout`; overridden by an explicit `deadline`/`timeout` on `domain.process()`. See [Deadlines and Timeouts](commands.md#deadlines-and-timeouts). |
+| `retries` | `int` | `None` | Max auto-retry attempts on transient exceptions. Overrides the domain-level `server.transient_retry`; `None` defers to it. See [Retrying transient failures](#retrying-transient-failures). |
+| `backoff` | `str` | `None` | Backoff strategy between retries: `"exponential"`, `"linear"`, or `"fixed"`. `None` defers to config. |
+| `retry_exceptions` | exception types or dotted-path strings | `None` | Which exceptions count as transient. `None` uses the configured default (`ConnectionError`, `TimeoutError`, `SendError`). |
 
 ### The `@handle` decorator
 
@@ -270,7 +273,43 @@ def handle_error(cls, exc: Exception, message):
 1. Make error handlers robust and avoid complex logic that might fail.
 2. Use error handlers for logging, notification, and simple recovery.
 3. Don't throw exceptions from error handlers unless absolutely necessary.
-4. Consider implementing retry logic for transient failures.
+4. Consider enabling [transient-failure retries](#retrying-transient-failures)
+   for recoverable infrastructure errors.
+
+## Retrying transient failures
+
+Handlers can automatically retry when they fail with a *transient*
+infrastructure error, such as a dropped connection or a timeout. Enable it
+per handler with `retries`:
+
+```python
+@domain.command_handler(part_of=Account, retries=3, backoff="exponential")
+class AccountCommandHandler:
+    @handle(DebitAccount)
+    def debit(self, command: DebitAccount):
+        # A ConnectionError here is retried up to 3 times with
+        # exponential backoff before propagating.
+        ...
+```
+
+Each attempt runs in a fresh Unit of Work, so a failed attempt is rolled back
+cleanly before the next one. Only genuinely transient exceptions are retried;
+by default `ConnectionError`, `TimeoutError`, and `SendError`. Narrow or widen
+the set with `retry_exceptions`:
+
+```python
+@domain.command_handler(part_of=Account, retries=2, retry_exceptions=[ConnectionError])
+class AccountCommandHandler:
+    ...
+```
+
+This is distinct from the version-conflict (OCC) retry that handles
+`ExpectedVersionError`; the two compose with independent attempt budgets.
+Transient retry is opt-in and disabled unless `retries` is set or
+`server.transient_retry` is enabled. The same options work on
+`@domain.event_handler`. See
+[`server.transient_retry`](../../reference/configuration/index.md) for the
+domain-wide defaults.
 
 ## Testing Command Handlers
 
