@@ -10,6 +10,7 @@ The policy is opt-in (disabled by default) and configurable domain-wide via
 ``@domain.command_handler(retries=..., backoff=..., retry_exceptions=...)``.
 """
 
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from unittest.mock import patch
 from uuid import uuid4
@@ -24,9 +25,11 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError, ExpectedVersionError, SendError
 from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
+from protean.utils.eventing import Message
+from protean.utils.globals import current_domain, g
 from protean.utils.mixins import (
     _TRANSIENT_RETRY_DEFAULTS,
+    _deadline_exceeded_after,
     _get_transient_retry_config,
     _import_exception_type,
     _record_handler_retry,
@@ -722,3 +725,158 @@ class TestRecordHandlerRetry:
         ):
             # Must not raise — metrics must never break the retry path.
             _record_handler_retry(self._Dummy(), ConnectionError("x"))
+
+
+# ---------------------------------------------------------------------------
+# Interaction with the command deadline (#906 x #907)
+#
+# A retrying handler must never sleep into an attempt that would start past
+# the command's deadline — that would execute the handler after its timeout,
+# defeating the deadline contract. The retry loop reads the deadline from the
+# in-context message and stops (re-raises) instead of sleeping past it.
+# ---------------------------------------------------------------------------
+
+
+def _message_with_deadline(test_domain, deadline):
+    """Build an in-context message carrying a command ``deadline``."""
+    command = RenameUser(user_id=str(uuid4()), name="Jane")
+    enriched = test_domain._command_processor.enrich(
+        command, asynchronous=True, deadline=deadline
+    )
+    return Message.from_domain_object(enriched)
+
+
+class TestDeadlineExceededHelper:
+    """Unit tests for the retry deadline guard."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_context(self):
+        yield
+        g.pop("message_in_context", None)
+
+    def test_no_message_context_is_unconstrained(self, test_domain):
+        g.pop("message_in_context", None)
+        assert _deadline_exceeded_after(10.0) is False
+
+    def test_message_without_deadline_is_unconstrained(self, test_domain):
+        g.message_in_context = _message_with_deadline(test_domain, None)
+        assert _deadline_exceeded_after(10.0) is False
+
+    def test_past_deadline_is_exceeded(self, test_domain):
+        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        g.message_in_context = _message_with_deadline(test_domain, past)
+        assert _deadline_exceeded_after(0.0) is True
+
+    def test_far_future_deadline_not_exceeded(self, test_domain):
+        future = datetime.now(timezone.utc) + timedelta(minutes=5)
+        g.message_in_context = _message_with_deadline(test_domain, future)
+        assert _deadline_exceeded_after(0.1) is False
+
+    def test_deadline_within_backoff_window_is_exceeded(self, test_domain):
+        near = datetime.now(timezone.utc) + timedelta(seconds=1)
+        g.message_in_context = _message_with_deadline(test_domain, near)
+        # Sleeping an hour would start the next attempt well past the deadline.
+        assert _deadline_exceeded_after(3600.0) is True
+
+
+class TestRetryRespectsDeadline:
+    @pytest.fixture(autouse=True)
+    def _clear_context(self):
+        yield
+        g.pop("message_in_context", None)
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_transient_retry_stops_when_deadline_passed(self, mock_sleep, test_domain):
+        """An already-elapsed deadline suppresses the transient retry."""
+        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        attempts = 0
+
+        class H(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempts
+                attempts += 1
+                raise ConnectionError("transient")
+
+        test_domain.register(H, part_of=User, retries=3)
+        test_domain.init(traverse=False)
+
+        g.message_in_context = _message_with_deadline(test_domain, past)
+        with pytest.raises(ConnectionError):
+            H._handle(_enrich(test_domain))
+
+        assert attempts == 1  # first attempt only — no retry past the deadline
+        mock_sleep.assert_not_called()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_transient_retry_stops_when_deadline_within_backoff(
+        self, mock_sleep, test_domain
+    ):
+        """Stops when the backoff would push the next attempt past the deadline."""
+        near = datetime.now(timezone.utc) + timedelta(seconds=1)
+        attempts = 0
+
+        class H(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempts
+                attempts += 1
+                raise ConnectionError("transient")
+
+        test_domain.register(H, part_of=User, retries=3, backoff="fixed")
+        test_domain.init(traverse=False)
+        # Huge backoff so the next attempt would start past the 1s deadline.
+        test_domain.config["server"]["transient_retry"]["base_delay_seconds"] = 3600
+
+        g.message_in_context = _message_with_deadline(test_domain, near)
+        with pytest.raises(ConnectionError):
+            H._handle(_enrich(test_domain))
+
+        assert attempts == 1
+        mock_sleep.assert_not_called()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_retry_proceeds_when_deadline_far_future(self, mock_sleep, test_domain):
+        """A far-future deadline does not interfere with normal retries."""
+        future = datetime.now(timezone.utc) + timedelta(minutes=5)
+        attempts = 0
+
+        class H(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    raise ConnectionError("transient")
+
+        test_domain.register(H, part_of=User, retries=3)
+        test_domain.init(traverse=False)
+
+        g.message_in_context = _message_with_deadline(test_domain, future)
+        H._handle(_enrich(test_domain))
+
+        assert attempts == 2  # retried normally; the guard did not interfere
+        mock_sleep.assert_called_once()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_version_retry_stops_when_deadline_passed(self, mock_sleep, test_domain):
+        """The version (OCC) retry branch also halts at the deadline."""
+        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        attempts = 0
+
+        class H(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempts
+                attempts += 1
+                raise ExpectedVersionError("conflict")
+
+        test_domain.register(H, part_of=User)
+        test_domain.init(traverse=False)
+
+        g.message_in_context = _message_with_deadline(test_domain, past)
+        with pytest.raises(ExpectedVersionError):
+            H._handle(_enrich(test_domain))
+
+        assert attempts == 1
+        mock_sleep.assert_not_called()
