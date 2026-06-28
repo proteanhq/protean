@@ -203,6 +203,7 @@ specific area.
 - [Application Tests](./guides/testing/application-tests.md) -- Validate commands, handlers, and services.
 - [Event Sourcing Tests](./guides/testing/event-sourcing-tests.md) -- Fluent test DSL for event-sourced aggregates using `protean.testing.given`.
 - [Integration Tests](./guides/testing/integration-tests.md) -- Verify behavior with real infrastructure.
+- [Test Query Shape](./guides/testing/query-shape-tests.md) -- Assert query count and shape to catch query-cost regressions.
 - [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md) -- Reusable pytest fixtures and conftest recipes.
 - [Pytest Plugin Reference](./reference/testing/pytest-plugin.md) -- `--protean-env`, `--update-snapshots`, and the registered markers.
 

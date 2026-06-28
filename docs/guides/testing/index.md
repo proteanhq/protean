@@ -104,5 +104,7 @@ may diverge.
   for event-sourced aggregates using `protean.testing.given`.
 - **[Integration Tests](./integration-tests.md)** — end-to-end flows
   with real infrastructure adapters.
+- **[Test Query Shape](./query-shape-tests.md)** — assert query count and shape
+  (round trips, subquery wraps, over-fetch) to catch query-cost regressions.
 - **[Fixtures and Patterns](./fixtures-and-patterns.md)** — reusable pytest
   fixtures, `DomainFixture`, and `conftest.py` recipes for Protean projects.
