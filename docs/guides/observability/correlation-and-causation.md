@@ -215,6 +215,42 @@ root = store.build_causation_tree("ext-123")
 # Returns a CausationNode with .children recursively populated
 ```
 
+For the common case of "give me the whole chain in causal order",
+`domain.correlation_trace()` wraps `build_causation_tree()` and flattens it
+into a depth-first, pre-order list (each parent appears before its effects):
+
+```python
+chain = domain.correlation_trace("ext-123")
+for node in chain:
+    print(f"{node.kind}: {node.message_type}")
+# Returns [] when no messages match the correlation ID.
+```
+
+### Asserting a chain in tests
+
+`protean.testing.assert_chain()` checks that a correlation chain contains an
+exact sequence of message types, in order. Pass type names or the element
+classes themselves (their `__type__` is used):
+
+```python
+from protean.testing import assert_chain
+
+chain = domain.correlation_trace(correlation_id)
+
+# Compare against element classes...
+assert_chain(chain, [PlaceOrder, OrderPlaced, ConfirmOrder, OrderConfirmed])
+
+# ...or against fully-qualified type strings:
+assert_chain(chain, [
+    "Shipping.PlaceOrder.v1",
+    "Shipping.OrderPlaced.v1",
+])
+```
+
+It raises `AssertionError` with the expected and actual sequences when the
+length or any type does not match, making end-to-end causation flows easy to
+pin down in a single assertion.
+
 ### CLI inspection
 
 Follow a causal chain from the terminal:

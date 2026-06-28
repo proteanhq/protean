@@ -240,6 +240,7 @@ OTel counters and histograms. These are created lazily per domain via the
 |-------------|------|-------------|
 | `protean.command.processed` | `{command}` | Commands processed |
 | `protean.handler.invocations` | `{invocation}` | Handler invocations |
+| `protean.handler.retried` | `{retry}` | Handler transient-failure retries |
 | `protean.uow.commits` | `{commit}` | UoW commits |
 | `protean.outbox.published` | `{message}` | Outbox messages published |
 | `protean.outbox.failed` | `{message}` | Outbox publish failures |
@@ -262,6 +263,7 @@ Different metrics carry different label sets:
 | `protean.command.processed` | `command_type`, `status` (`ok`, `error`, `enqueued`) |
 | `protean.command.duration` | `command_type`, `status` |
 | `protean.handler.invocations` | `handler_name`, `handler_type`, `status` (`ok`, `error`) |
+| `protean.handler.retried` | `handler_name`, `handler_type`, `exception` |
 | `protean.handler.duration` | `handler_name`, `handler_type`, `status` |
 | `protean.uow.commits` | *(none)* |
 | `protean.uow.events_per_commit` | *(none)* |

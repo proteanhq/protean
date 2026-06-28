@@ -3,6 +3,7 @@ import importlib
 import logging
 import time
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Union
 
 from protean.core.command import BaseCommand
@@ -268,6 +269,33 @@ def _record_handler_retry(instance: Any, exc: BaseException) -> None:
         pass
 
 
+def _deadline_exceeded_after(delay: float) -> bool:
+    """Return ``True`` when the in-context command's deadline would pass before
+    the next retry attempt (i.e. after sleeping ``delay`` seconds).
+
+    Retrying past the command deadline would execute the handler after its
+    timeout, violating the deadline contract enforced elsewhere (the engine
+    skips expired commands; ``raise_if_expired`` rejects them synchronously).
+    The retry loop therefore stops instead of sleeping into an attempt that
+    would start already-expired. Events and deadline-less commands are never
+    constrained. When no domain context is active (e.g. a handler invoked
+    directly in a script or test), there is no in-context message to read, so
+    the retry path is left unconstrained rather than raising.
+    """
+    try:
+        from protean.utils.globals import g
+
+        msg = g.get("message_in_context")
+    except Exception:
+        # No active domain/message context -> no deadline to honor.
+        return False
+    headers = getattr(getattr(msg, "metadata", None), "headers", None)
+    if headers is None or getattr(headers, "deadline", None) is None:
+        return False
+    next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
+    return headers.is_expired(next_attempt_at)
+
+
 class handle:
     """Class decorator to mark handler methods in EventHandler, CommandHandler,
     and ProcessManager classes.
@@ -350,6 +378,15 @@ class handle:
                         version_cfg["base_delay_seconds"],
                         version_cfg["max_delay_seconds"],
                     )
+                    # Never sleep into an attempt that would start past the
+                    # command deadline — surface the conflict instead.
+                    if _deadline_exceeded_after(delay):
+                        logger.debug(
+                            "Command deadline would elapse before retrying %s; "
+                            "stopping version retry",
+                            fn.__qualname__,
+                        )
+                        raise
                     logger.debug(
                         "Version conflict in %s, retrying (%d/%d) after %.3fs",
                         fn.__qualname__,
@@ -368,6 +405,15 @@ class handle:
                         transient_cfg["base_delay_seconds"],
                         transient_cfg["max_delay_seconds"],
                     )
+                    # Never sleep into an attempt that would start past the
+                    # command deadline — surface the transient failure instead.
+                    if _deadline_exceeded_after(delay):
+                        logger.debug(
+                            "Command deadline would elapse before retrying %s; "
+                            "stopping transient retry",
+                            fn.__qualname__,
+                        )
+                        raise
                     logger.debug(
                         "Transient error %s in %s, retrying (%d/%d) after %.3fs",
                         type(exc).__name__,

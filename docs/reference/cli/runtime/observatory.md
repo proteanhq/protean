@@ -81,14 +81,39 @@ protean observatory --domain identity --domain catalogue --host 127.0.0.1 --port
 
 ## Endpoints
 
-Once running, the Observatory exposes:
+### Pages
 
-| Endpoint       | Description                                |
-|----------------|--------------------------------------------|
-| `GET /`        | Embedded HTML dashboard                    |
-| `GET /stream`  | SSE real-time trace events                 |
-| `GET /api/health`  | Infrastructure health checks           |
-| `GET /api/outbox`  | Outbox status per domain               |
-| `GET /api/streams` | Redis stream information               |
-| `GET /api/stats`   | Throughput and error rate statistics    |
-| `GET /metrics`     | Prometheus text exposition metrics      |
+HTML views rendered by the dashboard. See
+[Explore your domain in the Observatory](../../../guides/observability/exploring-your-domain.md)
+for how to use them.
+
+| Endpoint            | Description                                              |
+|---------------------|---------------------------------------------------------|
+| `GET /`             | Dashboard home                                          |
+| `GET /domain`       | Domain Visualizer (Topology, Event Flows, Process Managers) |
+| `GET /timeline`     | Event timeline browser, correlation chains, Traces tab  |
+| `GET /eventstore`   | Event store streams view                                |
+| `GET /handlers`     | Registered handlers view                                |
+| `GET /processes`    | Process manager instances view                          |
+| `GET /infrastructure` | Infrastructure status view                            |
+| `GET /stream`       | SSE real-time trace events                              |
+
+### API
+
+JSON endpoints, all mounted under `/api`.
+
+| Endpoint                                              | Description                                  |
+|------------------------------------------------------|----------------------------------------------|
+| `GET /api/health`                                    | Infrastructure health checks                 |
+| `GET /api/outbox`                                    | Outbox status per domain                     |
+| `GET /api/streams`                                   | Redis stream information                     |
+| `GET /api/stats`                                     | Throughput and error rate statistics         |
+| `GET /api/domain/ir`                                 | Domain IR transformed into a D3 graph (nodes, links, clusters, flows, stats) |
+| `GET /api/timeline/events`                           | Paginated, filterable event list from `$all` |
+| `GET /api/timeline/events/{message_id}`              | Single event with full payload and metadata  |
+| `GET /api/timeline/stats`                            | Timeline summary statistics                  |
+| `GET /api/timeline/correlation/{correlation_id}`     | All events in a correlation chain, with causation tree |
+| `GET /api/timeline/aggregate/{stream_category}/{aggregate_id}` | Full event history for one aggregate instance |
+| `GET /api/timeline/traces/recent`                    | Most recent correlation chains               |
+| `GET /api/timeline/traces/search`                    | Search chains by aggregate / event / command / stream |
+| `GET /metrics`                                       | Prometheus text exposition metrics           |
