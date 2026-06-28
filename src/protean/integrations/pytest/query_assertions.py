@@ -24,7 +24,7 @@ against a non-default provider.
 
 import re
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple
 
 from protean.utils.globals import current_domain
 
@@ -42,7 +42,13 @@ SUBQUERY_WRAP_PATTERN = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
-LIMIT_PATTERN = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
+# The token following ``LIMIT``: a literal integer, a named bind parameter
+# (``%(name)s`` / ``:name``), or a positional placeholder (``?`` / ``%s``).
+# SQLAlchemy renders LIMIT as a bound parameter on most dialects, so matching
+# literals alone would miss real over-fetch.
+LIMIT_PATTERN = re.compile(r"\bLIMIT\s+(\d+|%\(\w+\)s|:\w+|\?|%s)", re.IGNORECASE)
+_NAMED_PARAM_PATTERN = re.compile(r"%\((\w+)\)s|:(\w+)")
+_PLACEHOLDER_PATTERN = re.compile(r"\?|%s")
 
 # Statements that count as a "query" (a data round trip). Connection setup such
 # as ``PRAGMA``/``SET`` and transaction control (``BEGIN``/``COMMIT``) are
@@ -52,6 +58,34 @@ _QUERY_VERBS = ("SELECT", "INSERT", "UPDATE", "DELETE", "WITH")
 
 def _is_query(statement: str) -> bool:
     return statement.lstrip().upper().startswith(_QUERY_VERBS)
+
+
+def _limit_values(statement: str, parameters: Any) -> Iterator[int]:
+    """Yield the integer LIMIT value(s) in a statement.
+
+    Resolves bound parameters: named (``%(name)s`` / ``:name``) against a dict,
+    positional (``?`` / ``%s``) by index against a sequence. A LIMIT whose value
+    cannot be resolved to an ``int`` is skipped rather than guessed.
+    """
+    for match in LIMIT_PATTERN.finditer(statement):
+        token = match.group(1)
+        if token.isdigit():
+            yield int(token)
+            continue
+
+        named = _NAMED_PARAM_PATTERN.fullmatch(token)
+        if named is not None and isinstance(parameters, dict):
+            value = parameters.get(named.group(1) or named.group(2))
+            if isinstance(value, int):
+                yield value
+            continue
+
+        if isinstance(parameters, (list, tuple)):
+            # Positional: the value sits at the index equal to the number of
+            # placeholders that precede this LIMIT token.
+            index = len(_PLACEHOLDER_PATTERN.findall(statement[: match.start()]))
+            if index < len(parameters) and isinstance(parameters[index], int):
+                yield parameters[index]
 
 
 def _resolve_engine(engine: "Optional[Engine]") -> "Optional[Engine]":
@@ -78,27 +112,27 @@ def _resolve_engine(engine: "Optional[Engine]") -> "Optional[Engine]":
 
 
 @contextmanager
-def _record_statements(engine: "Optional[Engine]") -> Iterator[List[str]]:
-    """Collect SQL statements emitted on ``engine`` within the block.
+def _listen(
+    engine: "Optional[Engine]", callback: Callable[[str, Any], None]
+) -> Iterator[None]:
+    """Invoke ``callback(statement, parameters)`` for each query in the block.
 
-    A ``None`` engine yields an empty list and records nothing, so the callers
-    degrade to no-ops on non-SQLAlchemy backends.
+    A ``None`` engine is a no-op (nothing to observe), so callers degrade
+    cleanly on non-SQLAlchemy backends.
     """
-    statements: List[str] = []
-
     if engine is None:
-        yield statements
+        yield
         return
 
     # Imported here, not at module top, so the no-op path needs no SQLAlchemy.
     from sqlalchemy import event
 
     def _before_cursor_execute(conn, cursor, statement, parameters, context, many):
-        statements.append(statement)
+        callback(statement, parameters)
 
     event.listen(engine, "before_cursor_execute", _before_cursor_execute)
     try:
-        yield statements
+        yield
     finally:
         event.remove(engine, "before_cursor_execute", _before_cursor_execute)
 
@@ -118,7 +152,8 @@ def assert_query_count(
     only the counted queries. No-op when no SQLAlchemy engine is resolved.
     """
     resolved = _resolve_engine(engine)
-    with _record_statements(resolved) as statements:
+    statements: List[str] = []
+    with _listen(resolved, lambda statement, _params: statements.append(statement)):
         yield statements
 
     if resolved is None:
@@ -144,7 +179,8 @@ def assert_no_subquery_wrap(
     No-op when no SQLAlchemy engine is resolved.
     """
     resolved = _resolve_engine(engine)
-    with _record_statements(resolved) as statements:
+    statements: List[str] = []
+    with _listen(resolved, lambda statement, _params: statements.append(statement)):
         yield statements
 
     if resolved is None:
@@ -163,32 +199,36 @@ def assert_no_overfetch(
     expected_returned: int,
     ratio: float = 1.5,
     engine: "Optional[Engine]" = None,
-) -> Iterator[List[str]]:
+) -> Iterator[List[Tuple[str, Any]]]:
     """Fail if any ``LIMIT`` exceeds ``expected_returned * ratio``.
 
     Catches over-fetch patterns such as ``min(limit * 3, 1000)`` that pull far
     more rows than the caller needs. ``ratio`` is the tolerated headroom over
-    the expected row count. No-op when no SQLAlchemy engine is resolved.
+    the expected row count. Resolves LIMIT values whether rendered as literals
+    or bound parameters. No-op when no SQLAlchemy engine is resolved.
     """
     resolved = _resolve_engine(engine)
-    with _record_statements(resolved) as statements:
-        yield statements
+    executions: List[Tuple[str, Any]] = []
+    with _listen(
+        resolved, lambda statement, params: executions.append((statement, params))
+    ):
+        yield executions
 
     if resolved is None:
         return
 
     threshold = expected_returned * ratio
     offenders = []
-    for statement in statements:
+    for statement, parameters in executions:
         # Check every LIMIT in the statement, not just the first: an outer
         # over-fetch can sit behind a smaller inner-subquery limit.
-        for limit in (int(n) for n in LIMIT_PATTERN.findall(statement)):
+        for limit in _limit_values(statement, parameters):
             if limit > threshold:
                 offenders.append((statement, limit))
 
     if offenders:
         raise AssertionError(
-            f"Over-fetch detected (expected <= {int(threshold)} rows):\n"
+            f"Over-fetch detected (expected <= {threshold:g} rows):\n"
             + "\n".join(f"  - LIMIT {limit}: {_trim(s)}" for s, limit in offenders)
         )
 

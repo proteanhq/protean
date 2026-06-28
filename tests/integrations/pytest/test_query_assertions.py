@@ -7,7 +7,6 @@ covered separately.
 """
 
 import pytest
-from sqlalchemy import create_engine, text
 
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
@@ -17,6 +16,15 @@ from protean.integrations.pytest import (
     assert_no_subquery_wrap,
     assert_query_count,
 )
+from protean.integrations.pytest.query_assertions import _limit_values
+
+# SQLAlchemy is an optional dependency; skip the whole module if it's absent so
+# minimal environments can still collect the suite.
+pytest.importorskip("sqlalchemy")
+
+from sqlalchemy import create_engine, select, table  # noqa: E402
+from sqlalchemy import column as sa_column  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 
 @pytest.fixture
@@ -48,6 +56,13 @@ class TestAssertQueryCount:
             with assert_query_count(1, engine=engine) as statements:
                 conn.execute(text("SELECT 42"))
         assert any("SELECT 42" in s for s in statements)
+
+    def test_pragma_and_transaction_statements_are_not_counted(self, engine):
+        # Only data round trips count; PRAGMA/SET and BEGIN/COMMIT do not.
+        with engine.connect() as conn:
+            with assert_query_count(1, engine=engine):
+                conn.execute(text("PRAGMA case_sensitive_like = ON"))
+                conn.execute(text("SELECT 1"))
 
     def test_does_not_swallow_block_exception(self, engine):
         # A failure inside the block propagates; the count is not asserted over it.
@@ -107,6 +122,45 @@ class TestAssertNoOverfetch:
                     conn.execute(
                         text("SELECT id FROM (SELECT id FROM t LIMIT 5) s LIMIT 100")
                     )
+
+    def test_bound_limit_parameter_is_resolved(self, engine):
+        # A SQLAlchemy-built LIMIT renders as a bound parameter (``LIMIT ?`` on
+        # SQLite), not a literal — the over-fetch must still be detected.
+        rows = table("t", sa_column("id"))
+        with engine.connect() as conn:
+            with pytest.raises(AssertionError, match=r"Over-fetch detected"):
+                with assert_no_overfetch(expected_returned=10, engine=engine):
+                    conn.execute(select(rows.c.id).limit(100))
+
+    def test_bound_limit_within_ratio_passes(self, engine):
+        rows = table("t", sa_column("id"))
+        with engine.connect() as conn:
+            with assert_no_overfetch(expected_returned=10, engine=engine):
+                conn.execute(select(rows.c.id).limit(10))
+
+
+class TestLimitValueResolution:
+    """``_limit_values`` resolves LIMIT across paramstyles, deterministically."""
+
+    def test_literal(self):
+        assert list(_limit_values("SELECT id FROM t LIMIT 50", None)) == [50]
+
+    def test_named_pyformat_parameter(self):
+        stmt = "SELECT id FROM t LIMIT %(param_1)s"
+        assert list(_limit_values(stmt, {"param_1": 50})) == [50]
+
+    def test_named_colon_parameter(self):
+        assert list(_limit_values("SELECT id FROM t LIMIT :lim", {"lim": 50})) == [50]
+
+    def test_positional_parameter_uses_placeholder_index(self):
+        # WHERE placeholder precedes LIMIT, so LIMIT resolves to params[1].
+        stmt = "SELECT id FROM t WHERE id > ? LIMIT ? OFFSET ?"
+        assert list(_limit_values(stmt, (0, 50, 0))) == [50]
+
+    def test_unresolvable_parameter_is_skipped(self):
+        # Missing/non-int bound value is skipped rather than guessed.
+        assert list(_limit_values("SELECT id FROM t LIMIT %(p)s", {})) == []
+        assert list(_limit_values("SELECT id FROM t LIMIT ?", ("x",))) == []
 
 
 @pytest.mark.no_test_domain

@@ -87,10 +87,9 @@ multiple of what it returns.
 
 ## Engine resolution
 
-By default the engine is resolved from the active domain: the default
-provider's engine is preferred, falling back to the first SQLAlchemy provider
-found. For tests that manage their own domain or target a non-default provider,
-pass the engine explicitly:
+By default the engine is resolved from the active domain's **default**
+provider. For tests that manage their own domain or target a non-default
+provider, pass the engine explicitly:
 
 ```python
 with assert_query_count(1, engine=my_engine):
