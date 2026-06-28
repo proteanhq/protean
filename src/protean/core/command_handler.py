@@ -110,6 +110,15 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
             # ``command_default_timeout``; overridden by an explicit
             # deadline/timeout on ``domain.process()``. ``None`` = no default.
             ("timeout", None),
+            # Transient-failure retry policy. ``retries`` (int) sets the max
+            # retry attempts on transient exceptions and overrides the
+            # domain-level ``server.transient_retry`` config; ``None`` defers to
+            # it. ``backoff`` selects the delay strategy ("exponential" |
+            # "linear" | "fixed"). ``retry_exceptions`` overrides which
+            # exception types are treated as transient (classes or dotted paths).
+            ("retries", None),
+            ("backoff", None),
+            ("retry_exceptions", None),
             # Subscription configuration options
             ("subscription_type", None),  # SubscriptionType enum or None for default
             ("subscription_profile", None),  # SubscriptionProfile enum or None

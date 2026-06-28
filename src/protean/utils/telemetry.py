@@ -514,6 +514,11 @@ class DomainMetrics:
             description="Handler invocations",
             unit="{invocation}",
         )
+        self.handler_retried = meter.create_counter(
+            "protean.handler.retried",
+            description="Handler retries triggered by transient exceptions",
+            unit="{retry}",
+        )
         self.uow_commits = meter.create_counter(
             "protean.uow.commits",
             description="UoW commits",

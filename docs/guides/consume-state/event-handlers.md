@@ -203,6 +203,10 @@ different contexts and you only want to react to a specific trigger.
             ...
     ```
 
+- **`retries`**, **`backoff`**, **`retry_exceptions`**: Opt-in auto-retry on
+transient infrastructure exceptions, applied inside the handler before any
+subscription-level retry. See [Transient-failure retries](#transient-failure-retries).
+
 !!! note "Required: `part_of`"
     Every event handler must specify `part_of` — the aggregate it belongs to.
     This association determines the default stream category. You can override
@@ -286,6 +290,33 @@ class CriticalOrderHandler:
 
 See [Server → Configuration](../../reference/server/configuration.md) for detailed
 configuration options and the priority hierarchy.
+
+### Transient-failure retries
+
+Independently of subscription-level retry/DLQ, a handler can retry *in place*
+when it fails with a transient infrastructure exception (a dropped connection,
+a timeout). These fast retries happen inside the handler, before the message is
+ever re-delivered or routed to the DLQ:
+
+```python
+@domain.event_handler(part_of=Order, retries=3, backoff="exponential")
+class InventorySync:
+    @handle(OrderPlaced)
+    def reserve_stock(self, event: OrderPlaced):
+        # A ConnectionError here is retried up to 3 times with exponential
+        # backoff before the failure surfaces to the subscription.
+        ...
+```
+
+Each attempt runs in a fresh Unit of Work. Only genuinely transient exceptions
+are retried; by default `ConnectionError`, `TimeoutError`, and `SendError`,
+overridable with `retry_exceptions`. The behaviour is identical to
+[command handlers](../change-state/command-handlers.md#retrying-transient-failures);
+it is opt-in and disabled unless `retries` is set or `server.transient_retry`
+is enabled. This is distinct from the version-conflict (OCC) retry that handles
+`ExpectedVersionError`. See
+[`server.transient_retry`](../../reference/configuration/index.md) for
+domain-wide defaults.
 
 ## Error Handling
 
