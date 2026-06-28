@@ -13,6 +13,7 @@ Verifies that:
   telemetry is enabled, and falls back to hand-rolled text otherwise.
 """
 
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -28,6 +29,7 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.exceptions import CommandExpiredError
 from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
@@ -266,6 +268,31 @@ class TestCommandProcessedCounter:
         ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
         assert len(ok_points) == 1
         assert ok_points[0].value == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests: Command expired counter
+# ---------------------------------------------------------------------------
+
+
+class TestCommandExpiredCounter:
+    """An expired command increments ``protean.command.expired``."""
+
+    def test_sync_expiry_increments_counter(self, test_domain, telemetry):
+        _, metric_reader = telemetry
+
+        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        with pytest.raises(CommandExpiredError):
+            test_domain.process(
+                OpenAccount(account_id=str(uuid4()), name="Acme"),
+                asynchronous=False,
+                deadline=past,
+            )
+
+        points = _get_metric_data_points(metric_reader, "protean.command.expired")
+        assert len(points) == 1
+        assert points[0].value == 1
+        assert "OpenAccount" in dict(points[0].attributes)["command_type"]
 
 
 # ---------------------------------------------------------------------------

@@ -496,6 +496,7 @@ nav:
     - Operations:
       - patterns/running-data-migrations-with-priority-lanes.md
       - patterns/classify-async-processing-errors.md
+      - patterns/expiring-stale-commands.md
       - patterns/designing-for-concurrent-event-processing.md
       - patterns/temporal-queries.md
 

@@ -105,6 +105,11 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         return [
             ("part_of", part_of),
             ("stream_category", None),  # Will be set by command_handler_factory
+            # Default validity window for commands routed to this handler, in
+            # seconds (or a timedelta). Overrides the domain-level
+            # ``command_default_timeout``; overridden by an explicit
+            # deadline/timeout on ``domain.process()``. ``None`` = no default.
+            ("timeout", None),
             # Subscription configuration options
             ("subscription_type", None),  # SubscriptionType enum or None for default
             ("subscription_profile", None),  # SubscriptionProfile enum or None

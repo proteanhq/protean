@@ -23,6 +23,7 @@ from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
     create_observation,
     extract_context_from_traceparent,
+    get_domain_metrics,
     get_meter,
     get_tracer,
     set_span_error,
@@ -721,6 +722,44 @@ class Engine:
                     )
                 else:
                     handler_name = handler_cls.__name__
+
+                # Skip stale commands whose deadline elapsed while queued. The
+                # read position still advances (the message is acknowledged), so
+                # it is never retried — a retry would only expire again. This is
+                # expected operational behavior, not a handler failure, so it
+                # bypasses handle_error and the error/recovery path. Events carry
+                # no deadline, so this is a no-op for them.
+                headers = message.metadata.headers
+                if headers and headers.is_expired():
+                    deadline_iso = headers.deadline.isoformat()
+                    get_domain_metrics(self.domain).command_expired.add(
+                        1, {"command_type": message_type}
+                    )
+                    logger.info(
+                        "engine.command_expired",
+                        extra={
+                            "message_type": message_type,
+                            "message_id": message_id[:8],
+                            "handler": handler_name,
+                            "deadline": deadline_iso,
+                        },
+                    )
+                    self.emitter.emit(
+                        event="handler.skipped",
+                        stream=stream,
+                        message_id=message_id,
+                        message_type=message_type,
+                        status="expired",
+                        handler=handler_name,
+                        metadata={
+                            "reason": "deadline_exceeded",
+                            "deadline": deadline_iso,
+                        },
+                        worker_id=worker_id,
+                        correlation_id=correlation_id,
+                        causation_id=causation_id,
+                    )
+                    return True
 
                 # Emit handler.started trace (includes payload for lifecycle view)
                 self.emitter.emit(

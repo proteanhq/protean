@@ -36,6 +36,11 @@ def _default_config():
         },
         "event_processing": Processing.ASYNC.value,
         "command_processing": Processing.ASYNC.value,
+        # Default validity window (in seconds) applied to every command when no
+        # explicit deadline/timeout is passed to ``domain.process()`` and the
+        # handling command handler declares no ``timeout`` option. ``None``
+        # disables the default (commands never expire unless asked to).
+        "command_default_timeout": None,
         "message_processing": Processing.ASYNC.value,
         "event_store": {
             "provider": "memory",

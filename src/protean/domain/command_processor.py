@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import uuid4
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import (
+    CommandExpiredError,
     DuplicateCommandError,
     IncorrectUsageError,
     ValidationError,
@@ -28,6 +30,7 @@ from protean.utils.eventing import (
     MessageEnvelope,
     MessageHeaders,
     Metadata,
+    ensure_utc,
     new_correlation_id,
 )
 from protean.utils.globals import g
@@ -40,6 +43,62 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def resolve_deadline(
+    deadline: Optional[datetime], timeout: Optional[timedelta]
+) -> Optional[datetime]:
+    """Resolve an absolute UTC deadline from ``deadline`` or ``timeout``.
+
+    ``deadline`` and ``timeout`` are mutually exclusive. A ``timeout`` is
+    converted to an absolute deadline (``now + timeout``) so it survives
+    queue delays. Naive deadlines are assumed to be UTC.
+    """
+    if deadline is not None and timeout is not None:
+        raise IncorrectUsageError("Specify either `deadline` or `timeout`, not both.")
+
+    if timeout is not None:
+        if not isinstance(timeout, timedelta):
+            raise IncorrectUsageError("`timeout` must be a `datetime.timedelta`.")
+        return datetime.now(timezone.utc) + timeout
+
+    if deadline is not None:
+        if not isinstance(deadline, datetime):
+            raise IncorrectUsageError("`deadline` must be a `datetime.datetime`.")
+        return ensure_utc(deadline)
+
+    return None
+
+
+def coerce_timeout(value: Any) -> timedelta:
+    """Coerce a configured timeout (seconds number or timedelta) to a timedelta."""
+    if isinstance(value, timedelta):
+        return value
+    # bool is an int subclass — reject it explicitly to avoid silent surprises.
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return timedelta(seconds=value)
+    raise IncorrectUsageError(
+        f"timeout must be a number of seconds or a `datetime.timedelta`, got {value!r}"
+    )
+
+
+def raise_if_expired(
+    headers: Optional[MessageHeaders], command_type: str, metrics: Any = None
+) -> None:
+    """Raise :class:`CommandExpiredError` when the command deadline has passed.
+
+    When a ``metrics`` registry is supplied, the ``command_expired`` counter is
+    incremented before the error is raised.
+    """
+    if headers is not None and headers.is_expired():
+        if metrics is not None:
+            metrics.command_expired.add(1, {"command_type": command_type})
+        raise CommandExpiredError(
+            f"Command `{command_type}` expired at deadline "
+            f"{headers.deadline.isoformat()}",
+            command_type=command_type,
+            deadline=headers.deadline,
+        )
+
+
 class CommandProcessor:
     """Enrich, deduplicate, and dispatch commands.
 
@@ -50,6 +109,23 @@ class CommandProcessor:
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
 
+    def _default_deadline_for(self, command: BaseCommand) -> Optional[datetime]:
+        """Resolve a default deadline from the handler option or domain config.
+
+        Precedence: the handling command handler's ``timeout`` option wins over
+        the domain-level ``command_default_timeout`` config. Returns ``None``
+        when neither is configured.
+        """
+        timeout = None
+        handler = self.handler_for(command)
+        if handler is not None:
+            timeout = getattr(handler.meta_, "timeout", None)
+        if timeout is None:
+            timeout = self._domain.config.get("command_default_timeout")
+        if timeout is None:
+            return None
+        return resolve_deadline(None, coerce_timeout(timeout))
+
     def enrich(
         self,
         command: BaseCommand,
@@ -57,6 +133,7 @@ class CommandProcessor:
         idempotency_key: Optional[str] = None,
         priority: int = 0,
         correlation_id: Optional[str] = None,
+        deadline: Optional[datetime] = None,
     ) -> BaseCommand:
         """Enrich a command with metadata (stream, type, headers, etc.)."""
         from protean.utils.telemetry import inject_traceparent_from_context
@@ -92,6 +169,15 @@ class CommandProcessor:
                 # Set causation_id = parent message's ID
                 if msg_ctx.metadata.headers:
                     causation_id = msg_ctx.metadata.headers.id
+                    # Propagate the deadline down the chain unless the caller
+                    # set one explicitly for this command.
+                    if deadline is None and msg_ctx.metadata.headers.deadline:
+                        deadline = msg_ctx.metadata.headers.deadline
+
+            # Fall back to a configured default (handler option or domain config)
+            # only when no deadline was provided or inherited.
+            if deadline is None:
+                deadline = self._default_deadline_for(command)
 
             # Fall back to HTTP request header correlation ID (set by middleware)
             if inherited_correlation_id is None and hasattr(
@@ -120,6 +206,7 @@ class CommandProcessor:
                 else None,
                 traceparent=traceparent,
                 idempotency_key=idempotency_key,
+                deadline=deadline,
             )
 
             # Compute envelope with checksum for integrity validation
@@ -183,6 +270,8 @@ class CommandProcessor:
         raise_on_duplicate: bool = False,
         priority: Optional[int] = None,
         correlation_id: Optional[str] = None,
+        deadline: Optional[datetime] = None,
+        timeout: Optional[timedelta] = None,
     ) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
@@ -209,6 +298,16 @@ class CommandProcessor:
                 When provided (e.g. from a frontend or API gateway), this ID is propagated
                 to all commands and events in the causal chain. If not provided, a new
                 UUID is auto-generated.
+            deadline (datetime, optional): Absolute time after which the command must
+                not be executed. Stored in command metadata and propagated to downstream
+                commands in the same causal chain. Mutually exclusive with ``timeout``.
+            timeout (timedelta, optional): Relative deadline (``now + timeout``).
+                Converted to an absolute deadline at submission so it survives queue
+                delays. Mutually exclusive with ``deadline``.
+
+        Raises:
+            CommandExpiredError: If the command's deadline has already passed when a
+                synchronous handler is about to execute.
 
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
@@ -277,12 +376,16 @@ class CommandProcessor:
             # Resolve priority: explicit param > context var > default (0)
             resolved_priority = priority if priority is not None else current_priority()
 
+            # Resolve an absolute deadline from deadline/timeout (mutually exclusive)
+            resolved_deadline = resolve_deadline(deadline, timeout)
+
             command_with_metadata = self.enrich(
                 command,
                 asynchronous,
                 idempotency_key=idempotency_key,
                 priority=resolved_priority,
                 correlation_id=correlation_id,
+                deadline=resolved_deadline,
             )
 
             # Set span attributes from enriched command metadata
@@ -295,12 +398,21 @@ class CommandProcessor:
                     "protean.correlation_id", cmd_meta.domain.correlation_id
                 )
 
-            position = domain.event_store.store.append(command_with_metadata)
-
-            if (
+            will_handle_sync = (
                 not asynchronous
                 or domain.config["command_processing"] == Processing.SYNC.value
-            ):
+            )
+
+            # Reject stale commands before they are written to the store when
+            # they will be handled synchronously (mirrors the pre-append
+            # idempotency check above). Async commands are stored and the engine
+            # rejects them at execution time, after any queue delay.
+            if will_handle_sync:
+                raise_if_expired(cmd_meta.headers, command_type, metrics)
+
+            position = domain.event_store.store.append(command_with_metadata)
+
+            if will_handle_sync:
                 handler_class = self.handler_for(command)
                 if handler_class:
                     # Extract trace metadata from the enriched command

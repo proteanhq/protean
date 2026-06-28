@@ -54,6 +54,7 @@ import logging
 import os
 import sys
 from collections import defaultdict
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import (
@@ -1703,6 +1704,8 @@ class Domain:
         raise_on_duplicate: bool = False,
         priority: Optional[int] = None,
         correlation_id: Optional[str] = None,
+        deadline: Optional[datetime] = None,
+        timeout: Optional[timedelta] = None,
     ) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
@@ -1721,6 +1724,11 @@ class Domain:
                 silently returns the cached result.
             priority (int, optional): Processing priority for events produced by this command.
             correlation_id (str, optional): Correlation ID for distributed tracing.
+            deadline (datetime, optional): Absolute time after which the command must not
+                be executed. Stored in metadata and propagated to downstream commands.
+                Mutually exclusive with ``timeout``.
+            timeout (timedelta, optional): Relative deadline (``now + timeout``), converted
+                to an absolute deadline at submission. Mutually exclusive with ``deadline``.
 
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
@@ -1732,6 +1740,8 @@ class Domain:
             raise_on_duplicate=raise_on_duplicate,
             priority=priority,
             correlation_id=correlation_id,
+            deadline=deadline,
+            timeout=timeout,
         )
 
     def command_handler_for(self, command: Any) -> Optional[BaseCommandHandler]:

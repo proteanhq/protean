@@ -161,6 +161,20 @@ Supported options are `sync` and `async`.
 
 Default: `sync`
 
+### `command_default_timeout`
+
+Default validity window, in seconds, applied to every command when no
+explicit `deadline`/`timeout` is passed to `domain.process()` and the
+handling command handler declares no `timeout` option. When the window
+elapses before a handler runs, the command is rejected (sync) or skipped
+without retry (async). See
+[Deadlines and Timeouts](../../guides/change-state/commands.md#deadlines-and-timeouts).
+
+`None` disables the default — commands never expire unless a deadline is
+requested explicitly or via a handler's `timeout` option.
+
+Default: `None`
+
 ### `event_processing`
 
 Whether to process events synchronously or asynchronously.

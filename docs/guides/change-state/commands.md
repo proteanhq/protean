@@ -64,6 +64,8 @@ In [2]: publishing.process(command)
 | `raise_on_duplicate` | `bool` | `False` | When `True`, raises `DuplicateCommandError` on duplicate idempotency keys instead of silently returning the cached result. |
 | `priority` | `int` or `None` | `None` | Processing priority for events produced by this command. When priority lanes are enabled, events below the threshold are routed to a backfill stream. |
 | `correlation_id` | `str` or `None` | `None` | Correlation ID for distributed tracing. Propagated to all commands and events in the causal chain. Auto-generated if not provided. |
+| `deadline` | `datetime` or `None` | `None` | Absolute time after which the command must not execute. Stored in metadata and propagated to downstream commands. Mutually exclusive with `timeout`. See [Deadlines and Timeouts](#deadlines-and-timeouts). |
+| `timeout` | `timedelta` or `None` | `None` | Relative deadline (`now + timeout`), converted to an absolute deadline at submission. Mutually exclusive with `deadline`. |
 
 Internally, `domain.process()` enriches the command with metadata, writes it
 to the event store, and (for synchronous processing) dispatches it to the
@@ -221,6 +223,115 @@ protean server --domain path/to/domain.py
 See [CLI documentation](../../reference/cli/index.md) for more details about the server command and other available CLI options.
 
 The server continually polls the event store for new commands that have the `asynchronous` flag set to `True` in their metadata. When found, it dispatches them to the appropriate handlers, keeping track of processed commands to avoid duplicate processing.
+
+## Deadlines and Timeouts
+
+A command represents an *intent* that may only be valid for a limited window.
+A "charge this card before the checkout session expires" command should not
+execute an hour later after a queue backlog drains. Protean lets you attach a
+**deadline** to a command; if the deadline has passed by the time a handler is
+about to run, the command is not executed.
+
+### Setting a deadline
+
+Pass either an absolute `deadline` or a relative `timeout` to
+`domain.process()` (they are mutually exclusive):
+
+```python
+from datetime import datetime, timedelta, timezone
+
+# Absolute deadline
+domain.process(
+    ChargeCard(order_id="ord-42"),
+    deadline=datetime.now(timezone.utc) + timedelta(seconds=30),
+)
+
+# Relative timeout — converted to an absolute deadline at submission,
+# so it survives queue delays
+domain.process(ChargeCard(order_id="ord-42"), timeout=timedelta(seconds=30))
+```
+
+The deadline is stored on the command's metadata headers (not the payload),
+and is readable in a handler:
+
+```python
+deadline = command._metadata.headers.deadline
+```
+
+### What happens when a command expires
+
+The behavior differs by processing mode — a deliberate asymmetry:
+
+| | Synchronous (`asynchronous=False`) | Asynchronous (default) |
+|---|---|---|
+| Contract | "Fail fast, caller decides" | "Don't run stale work" |
+| On expiry | `domain.process()` raises `CommandExpiredError` **to the caller**, before the command is written to the event store | The command was already stored and acknowledged; the engine **skips** it (read position advances, so it is **not** retried) and emits a `handler.skipped` trace |
+| Who observes the loss | The caller, immediately | Operators, via logs/traces/metrics |
+
+```python
+from protean.exceptions import CommandExpiredError
+
+try:
+    domain.process(cmd, asynchronous=False, deadline=past_deadline)
+except CommandExpiredError as exc:
+    exc.command_type  # the expired command's type string
+    exc.deadline      # the deadline that was exceeded
+```
+
+An expired command **changes no state** — no aggregate is loaded, no invariant
+is evaluated, no event is raised. Expiry is a delivery-layer policy, not a
+domain-rule violation. The risk it introduces is *lost intent*: in the async
+case the caller has already moved on, so expiries are surfaced via the
+`protean.command.expired` metric (labelled by `command_type`) and the
+`handler.skipped` trace. Alert on that metric if dropped commands matter to
+your business.
+
+### Propagation through the causal chain
+
+When a handler dispatches a downstream command, that command inherits the
+deadline of the message currently being processed — the whole causal chain is
+bound by the original deadline unless a downstream call overrides it:
+
+```python
+@domain.command_handler(part_of=Order)
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def place(self, command: PlaceOrder):
+        # ReserveStock inherits PlaceOrder's deadline automatically
+        current_domain.process(ReserveStock(order_id=command.order_id))
+```
+
+### Default deadlines
+
+For blanket protection you can configure a default validity window instead of
+passing one on every call. Resolution precedence (highest wins):
+
+1. Explicit `deadline`/`timeout` on `domain.process()`
+2. Deadline inherited from the parent message in the causal chain
+3. The handling command handler's `timeout` option
+4. The domain-level `command_default_timeout` config
+5. No deadline (the default — commands never expire)
+
+```python
+# Per-handler default (seconds or a timedelta)
+@domain.command_handler(part_of=Order, timeout=30)
+class OrderCommandHandler:
+    ...
+```
+
+```toml
+# Domain-wide default (seconds); None disables it
+command_default_timeout = 30
+```
+
+Both defaults are **disabled** out of the box, so existing applications are
+unaffected. A default deadline bounds *staleness*, not *failure* — pair it with
+[retry/backoff](command-handlers.md#error-handling) and a dead-letter strategy
+for a complete resilience story.
+
+For the design rationale — why deadlines are opt-in, the sync/async trade-off,
+and how this fits DDD — see the
+[Expiring Stale Commands](../../patterns/expiring-stale-commands.md) pattern.
 
 ## Workflow
 

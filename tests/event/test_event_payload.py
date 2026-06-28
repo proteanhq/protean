@@ -58,6 +58,7 @@ def test_event_payload():
                 "time": str(event._metadata.headers.time),
                 "traceparent": None,
                 "idempotency_key": None,
+                "deadline": None,
             },
             "domain": {
                 "fqn": fqn(UserLoggedIn),

@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, Optional
 from uuid import uuid4
@@ -30,6 +30,13 @@ if TYPE_CHECKING:
     from protean.core.event import BaseEvent
 
 logger = logging.getLogger(__name__)
+
+
+def ensure_utc(value: datetime) -> datetime:
+    """Treat a naive datetime as UTC; leave tz-aware datetimes untouched."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 class MessageType(Enum):
@@ -122,12 +129,29 @@ class MessageHeaders(BaseValueObject):
     # Caller-provided key for command deduplication
     idempotency_key: str | None = None
 
+    # Absolute deadline (UTC) after which a command must not be executed.
+    # Propagated through the message chain so downstream commands inherit it.
+    deadline: datetime | None = None
+
     @classmethod
     def build(cls, **kwargs) -> "MessageHeaders":
         headers = kwargs.copy()
         if "traceparent" in headers and isinstance(headers["traceparent"], str):
             headers["traceparent"] = TraceParent.build(headers["traceparent"])
         return cls(**headers)
+
+    def is_expired(self, now: datetime | None = None) -> bool:
+        """Return ``True`` when a deadline is set and has already passed.
+
+        Args:
+            now: Reference time to compare against. Defaults to the current
+                UTC time. Naive deadlines are treated as UTC.
+        """
+        if self.deadline is None:
+            return False
+
+        reference = ensure_utc(now) if now else datetime.now(timezone.utc)
+        return reference > ensure_utc(self.deadline)
 
 
 def new_correlation_id() -> str:
@@ -589,6 +613,7 @@ class Message(BaseModel, OptionsMixin):
                 "type": headers_data.get("type", message.get("type", None)),
                 "stream": headers_data.get("stream", message.get("stream", None)),
                 "idempotency_key": headers_data.get("idempotency_key", None),
+                "deadline": headers_data.get("deadline", None),
             }
 
             traceparent_data = headers_data.get("traceparent")
