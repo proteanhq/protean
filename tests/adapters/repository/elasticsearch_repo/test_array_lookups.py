@@ -6,6 +6,7 @@ the given values.
 """
 
 import pytest
+from elasticsearch.exceptions import NotFoundError
 
 from protean.adapters.repository import elasticsearch as repo
 from protean.core.aggregate import BaseAggregate
@@ -68,7 +69,10 @@ class TestArrayLookupQueries:
 
         # Drop only this aggregate's index, leaving the shared ones in place.
         model_cls = repository._dao.database_model_cls
-        model_cls._index.delete(using=provider.get_connection(), ignore=[404])
+        try:
+            model_cls._index.delete(using=provider.get_connection())
+        except NotFoundError:
+            pass
 
     def _names(self, items):
         return sorted(item.name for item in items)
