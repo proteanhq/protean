@@ -282,6 +282,38 @@ Because `F` resolution lives in `process_target`, it composes with every
 comparison lookup without per-lookup changes. The outbox poll and claim paths
 use `F` to push `retry_count < max_retries` into the database.
 
+### Lookup support across adapters
+
+Every adapter registers the same core set of lookups (`REQUIRED_LOOKUPS` on
+`BaseProvider`). A provider missing one warns at load, and using it raises
+`NotImplementedError`. Beyond that core set support varies, but the contract is
+the same everywhere: an unsupported lookup fails loudly rather than silently
+returning wrong results.
+
+| Lookup            | Memory | SQLAlchemy        | Elasticsearch |
+|-------------------|:------:|:-----------------:|:-------------:|
+| `exact` / `iexact`| ✅     | ✅                | ✅            |
+| `contains` / `icontains` | ✅ | ✅            | ✅            |
+| `startswith` / `endswith`| ✅ | ✅            | ✅            |
+| `gt` / `gte` / `lt` / `lte` | ✅ | ✅         | ✅            |
+| `in`              | ✅     | ✅                | ✅            |
+| `isnull`          | ✅     | ✅                | ✅            |
+| `any` (array)     | ✅     | ✅ (native array) | ✅            |
+| `overlap` (array) | ✅     | ✅ (native array) | ✅            |
+| `F()` column ref  | ✅     | ✅                | ❌            |
+
+The twelve lookups above `any` are universal and exercised by the cross-adapter
+conformance suites under `tests/adapters/repository/generic/` and
+`tests/repository/`. The array lookups `any` and `overlap` match documents whose
+array field shares an element with the given values: SQLAlchemy maps them to native array operators
+(`= ANY(...)` and `&&`, so they need a backend with array columns such as
+PostgreSQL); Elasticsearch renders both as a `terms` query (its fields are
+natively multivalued); the in-memory store compares elements by equality (not
+hashing, so unhashable items such as dicts are supported).
+`F()` column references work on the memory and SQLAlchemy adapters but not on
+Elasticsearch. Full-text (`search`), geospatial, and vector-similarity lookups
+are backend-specific and are not part of the portable contract.
+
 **Key source files:**
 
 - `src/protean/port/dao.py` -- `BaseLookup` base class.

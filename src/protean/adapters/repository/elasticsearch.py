@@ -1149,6 +1149,39 @@ class In(DefaultLookup):
 
 
 @ESProvider.register_lookup
+class Any(In):
+    """Array membership lookup.
+
+    Matches documents where the (multivalued) field contains any of the given
+    values. Elasticsearch fields are natively multivalued, so this is the same
+    ``terms`` query as :class:`In`; the only difference is that ``any`` also
+    accepts a scalar target, normalised here to a single-element list.
+    """
+
+    lookup_name = "any"
+
+    def process_target(self):
+        if not isinstance(self.target, (list, tuple)):
+            # Apply the base lookup's per-value handling to the scalar (reject
+            # ``F``, stringify ``UUID``) before wrapping it for the terms query.
+            self.target = [DefaultLookup.process_target(self)]
+            return self.target
+        return super().process_target()
+
+
+@ESProvider.register_lookup
+class Overlap(Any):
+    """Array overlap lookup.
+
+    Matches documents whose field shares at least one element with the given
+    list. On Elasticsearch this is identical to :class:`Any` (a ``terms``
+    query) because fields are natively multivalued.
+    """
+
+    lookup_name = "overlap"
+
+
+@ESProvider.register_lookup
 class GreaterThan(DefaultLookup):
     lookup_name = "gt"
 

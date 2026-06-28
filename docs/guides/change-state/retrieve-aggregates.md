@@ -230,7 +230,8 @@ is assumed.
 - **`lte`** -- less than or equal to
 - **`in`** -- value is in a given list
 - **`isnull`** -- field is null (`True`) or not null (`False`)
-- **`any`** -- any of given values matches items in a list field
+- **`any`** -- a list field contains any of the given values
+- **`overlap`** -- a list field shares any element with the given list
 
 ```shell
 In [1]: repository.query.filter(name__contains="Doe").all().total
@@ -278,8 +279,11 @@ discarded in Python. Only a bare field reference is supported: arithmetic
     query.
 
 !!!note
-    These lookups have database-specific implementations. Refer to your chosen
-    adapter's documentation for supported filtering criteria.
+    These lookups have database-specific implementations, and a few (the array
+    lookups `any` / `overlap`, and `F()`) are not supported on every adapter. See
+    the [lookup support matrix](../../concepts/internals/query-system.md#lookup-support-across-adapters)
+    for which adapter supports what; an unsupported lookup raises
+    `NotImplementedError` rather than returning wrong results.
 
 ---
 
