@@ -1162,7 +1162,10 @@ class Any(In):
 
     def process_target(self):
         if not isinstance(self.target, (list, tuple)):
-            self.target = [self.target]
+            # Apply the base lookup's per-value handling to the scalar (reject
+            # ``F``, stringify ``UUID``) before wrapping it for the terms query.
+            self.target = [DefaultLookup.process_target(self)]
+            return self.target
         return super().process_target()
 
 

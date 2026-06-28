@@ -33,6 +33,20 @@ class TestArrayLookupExpressions:
         lookup = repo.Any("tags", "red")
         assert lookup.as_expression().to_dict() == {"terms": {"tags": ["red"]}}
 
+    def test_any_scalar_uuid_target_is_stringified(self, test_domain):
+        from uuid import UUID
+
+        uid = UUID("12345678-1234-5678-1234-567812345678")
+        lookup = repo.Any("tags", uid)
+        assert lookup.as_expression().to_dict() == {"terms": {"tags": [str(uid)]}}
+
+    def test_any_scalar_f_target_raises(self, test_domain):
+        from protean import F
+
+        lookup = repo.Any("tags", F("other"))
+        with pytest.raises(NotImplementedError):
+            lookup.as_expression()
+
 
 @pytest.mark.elasticsearch
 class TestArrayLookupQueries:

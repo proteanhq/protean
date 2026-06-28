@@ -819,9 +819,11 @@ class Overlap(Any):
     """Array overlap query.
 
     Matches when the source list shares at least one element with the target
-    list. For the in-memory store this is the same set-intersection test as
-    :class:`Any`; the distinct name keeps parity with the SQLAlchemy adapter,
-    where ``overlap`` maps to the native array ``&&`` operator.
+    list. For the in-memory store this is the same equality-based membership
+    test as :class:`Any` (which compares elements by equality, not hashing, so
+    unhashable items such as dicts are supported); the distinct name keeps
+    parity with the SQLAlchemy adapter, where ``overlap`` maps to the native
+    array ``&&`` operator.
     """
 
     lookup_name = "overlap"

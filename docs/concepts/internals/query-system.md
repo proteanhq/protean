@@ -308,7 +308,8 @@ conformance suites under `tests/adapters/repository/generic/` and
 array field shares an element with the given values: SQLAlchemy maps them to native array operators
 (`= ANY(...)` and `&&`, so they need a backend with array columns such as
 PostgreSQL); Elasticsearch renders both as a `terms` query (its fields are
-natively multivalued); the in-memory store evaluates a set intersection.
+natively multivalued); the in-memory store compares elements by equality (not
+hashing, so unhashable items such as dicts are supported).
 `F()` column references work on the memory and SQLAlchemy adapters but not on
 Elasticsearch. Full-text (`search`), geospatial, and vector-similarity lookups
 are backend-specific and are not part of the portable contract.
