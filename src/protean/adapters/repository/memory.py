@@ -807,7 +807,24 @@ class Any(MemoryLookup):
         target = (
             self.target if isinstance(self.target, (list, tuple)) else [self.target]
         )
-        return any(self._coerce(x) in [self._coerce(t) for t in target] for x in source)
+        # A list (not a set) is intentional: list elements such as dicts (from
+        # ``List(content_type=dict)`` or serialized value objects) are not
+        # hashable, so membership must use equality, not hashing.
+        coerced_target = [self._coerce(t) for t in target]
+        return any(self._coerce(x) in coerced_target for x in source)
+
+
+@MemoryProvider.register_lookup
+class Overlap(Any):
+    """Array overlap query.
+
+    Matches when the source list shares at least one element with the target
+    list. For the in-memory store this is the same set-intersection test as
+    :class:`Any`; the distinct name keeps parity with the SQLAlchemy adapter,
+    where ``overlap`` maps to the native array ``&&`` operator.
+    """
+
+    lookup_name = "overlap"
 
 
 @MemoryProvider.register_lookup
