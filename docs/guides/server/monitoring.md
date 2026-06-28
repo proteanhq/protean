@@ -46,6 +46,7 @@ Monitor these metrics in production (available at `/metrics`):
 | `protean_subscription_lag` | Per-subscription lag behind stream head |
 | `protean_subscription_pending` | Per-subscription unacknowledged messages |
 | `protean_subscription_dlq_depth` | Per-subscription dead letter queue depth |
+| `protean_projection_staleness_seconds` | Per-projection seconds behind source events |
 
 ## Monitoring subscription lag
 
@@ -80,6 +81,34 @@ groups:
 ```
 
 See [`protean subscriptions`](../../reference/cli/runtime/subscriptions.md)
+for full CLI documentation.
+
+## Monitoring projection staleness
+
+Check whether read models are keeping up with their events, either from the CLI:
+
+```bash
+protean projection status --domain=my_app
+```
+
+or via the `protean_projection_staleness_seconds` metric. Alert when a
+projection stays behind:
+
+```yaml
+# prometheus alert rule
+groups:
+  - name: protean
+    rules:
+      - alert: ProjectionStale
+        expr: protean_projection_staleness_seconds > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Projection {{ $labels.projection }} is stale"
+```
+
+See [`protean projection status`](../../reference/cli/data/projection.md#protean-projection-status)
 for full CLI documentation.
 
 ## Prometheus scrape configuration

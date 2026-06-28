@@ -99,6 +99,7 @@ need by what you're trying to accomplish.
 | Dispatch a named read intent                    | [Query Handlers](./guides/consume-state/query-handlers.md) |
 | Treat projection rebuilds as a deployment operation | [Projection Rebuilds as Deployment](./patterns/projection-rebuilds-as-deployment.md) |
 | Rebuild a projection from historical events     | [`protean projection rebuild`](./reference/cli/data/projection.md) |
+| Check whether a projection is up to date (staleness, lag) | [`protean projection status`](./reference/cli/data/projection.md#protean-projection-status) |
 | Listen to messages from an external broker      | [Subscribers](./guides/consume-state/subscribers.md) |
 | Use fact events for cross-context integration   | [Fact Events as Integration Contracts](./patterns/fact-events-as-integration-contracts.md) |
 | Publish events to external brokers for other bounded contexts | [External Event Dispatch](./guides/server/external-event-dispatch.md) |

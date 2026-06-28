@@ -13,10 +13,12 @@ Usage::
     protean projection rebuild --domain=my_domain
 """
 
+import json as json_mod
 from typing import TYPE_CHECKING
 
 import typer
 from rich import print
+from rich.table import Table
 from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions
@@ -141,3 +143,98 @@ def _rebuild_all(domain: "Domain", batch_size: int) -> None:
     print(
         f"Rebuilt {len(results)} projection(s), {total_events} total events processed."
     )
+
+
+def _status_style(status: str) -> str:
+    """Return a Rich markup colour for a status string."""
+    if status == "ok":
+        return "[green]ok[/green]"
+    if status == "lagging":
+        return "[red]lagging[/red]"
+    return "[yellow]unknown[/yellow]"
+
+
+@app.command()
+@handle_cli_exceptions("projection status")
+def status(
+    domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
+    output_json: Annotated[
+        bool,
+        typer.Option("--json", help="Output raw JSON instead of a table"),
+    ] = False,
+) -> None:
+    """Show staleness, lag, and row count for every projection.
+
+    For each projection (read model) this reports how far behind it is in time
+    (``staleness``) and in events (``lag``) across all the projectors that feed it,
+    plus its current row count. Does not require the server to be running.
+    """
+    from protean.server.projection_status import collect_projection_statuses
+
+    try:
+        derived_domain = derive_domain(domain)
+    except NoDomainException as exc:
+        msg = f"Error loading Protean domain: {exc.args[0]}"
+        print(msg)
+        logger.error(msg)
+        raise typer.Abort()
+
+    assert derived_domain is not None
+    derived_domain.init()
+
+    with derived_domain.domain_context():
+        statuses = collect_projection_statuses(derived_domain)
+
+    if not statuses:
+        if output_json:
+            print(json_mod.dumps([]))
+        else:
+            print("No projections found in domain.")
+        return
+
+    if output_json:
+        print(json_mod.dumps([s.to_dict() for s in statuses], indent=2, default=str))
+        return
+
+    table = Table(title=f"Projections — {derived_domain.name}")
+    table.add_column("Projection", style="bold")
+    table.add_column("Projectors")
+    table.add_column("Last Updated")
+    table.add_column("Staleness (s)", justify="right", style="cyan")
+    table.add_column("Lag", justify="right")
+    table.add_column("Rows", justify="right")
+    table.add_column("Status")
+
+    for s in statuses:
+        staleness_str = (
+            f"{s.staleness_seconds:.0f}" if s.staleness_seconds is not None else "-"
+        )
+        lag_str = str(s.lag) if s.lag is not None else "-"
+        rows_str = str(s.row_count) if s.row_count is not None else "-"
+
+        table.add_row(
+            s.projection_name,
+            ", ".join(s.projectors) if s.projectors else "-",
+            s.last_updated or "-",
+            staleness_str,
+            lag_str,
+            rows_str,
+            _status_style(s.status),
+        )
+
+    print(table)
+
+    total = len(statuses)
+    ok_count = sum(1 for s in statuses if s.status == "ok")
+    lagging_count = sum(1 for s in statuses if s.status == "lagging")
+    unknown_count = sum(1 for s in statuses if s.status == "unknown")
+
+    summary_parts = [f"{total} projection(s)"]
+    if ok_count:
+        summary_parts.append(f"[green]{ok_count} ok[/green]")
+    if lagging_count:
+        summary_parts.append(f"[red]{lagging_count} lagging[/red]")
+    if unknown_count:
+        summary_parts.append(f"[yellow]{unknown_count} unknown[/yellow]")
+
+    print(f"\n{', '.join(summary_parts)}")

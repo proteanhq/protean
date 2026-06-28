@@ -26,6 +26,7 @@ Infrastructure gauges (OTEL instrument name / Prometheus text name):
 - protean.subscription.pending_messages — Unacknowledged messages per subscription
 - protean_subscription_dlq_depth — Dead letter queue depth per subscription
 - protean_subscription_status — Subscription health (1=ok, 0=not ok)
+- protean.projection.staleness_seconds — Seconds a projection is behind its source events
 - protean.db.pool_size — Database connection pool size
 - protean.db.pool_checked_out — Checked out database connections
 - protean.db.pool_overflow — Overflow database connections
@@ -127,6 +128,33 @@ def _collect_subscription_statuses(domains: List[Domain]) -> list:
     return _scrape_cache.get("subscription_statuses", _do_collect)
 
 
+def _collect_projection_statuses(domains: List[Domain]) -> list:
+    """Collect projection statuses from all domains.
+
+    Cached per scrape cycle so the gauge callback and any other consumer reuse
+    the same data. Returns ``(domain, ProjectionStatus)`` tuples.
+    """
+
+    def _do_collect() -> list:
+        from protean.server.projection_status import collect_projection_statuses
+
+        results: list = []
+        for domain in domains:
+            try:
+                # Scrape path only reads staleness; skip the row COUNT queries.
+                for s in collect_projection_statuses(domain, include_row_count=False):
+                    results.append((domain, s))
+            except Exception as exc:
+                logger.debug(
+                    "Shared collection: projection status failed for %s: %s",
+                    domain.name,
+                    exc,
+                )
+        return results
+
+    return _scrape_cache.get("projection_statuses", _do_collect)
+
+
 def _collect_pool_stats(domains: List[Domain]) -> list:
     """Collect connection pool statistics from all providers across domains.
 
@@ -143,9 +171,7 @@ def _collect_pool_stats(domains: List[Domain]) -> list:
                         for name, provider in providers._providers.items():
                             stats = provider.pool_stats()
                             if stats:
-                                db_type = getattr(
-                                    provider, "__database__", "unknown"
-                                )
+                                db_type = getattr(provider, "__database__", "unknown")
                                 results.append((name, db_type, stats))
             except Exception as exc:
                 logger.debug(
@@ -179,9 +205,7 @@ def _collect_broker_pool_stats(domains: List[Domain]) -> list:
                             if pool is None:
                                 continue
                             created = getattr(pool, "_created_connections", 0)
-                            available = len(
-                                getattr(pool, "_available_connections", [])
-                            )
+                            available = len(getattr(pool, "_available_connections", []))
                             max_conn = getattr(pool, "max_connections", 0)
                             active = created - available
                             results.append((name, active, available, max_conn))
@@ -362,10 +386,30 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
         return callback
 
     for metric_name, field, description, transform in [
-        ("protean.subscription.consumer_lag", "lag", "Messages behind stream head", None),
-        ("protean.subscription.pending_messages", "pending", "Unacknowledged messages", None),
-        ("protean_subscription_dlq_depth", "dlq_depth", "Dead letter queue depth", None),
-        ("protean_subscription_status", "status", "Subscription health (1=ok, 0=not ok)", lambda v: 1 if v == "ok" else 0),
+        (
+            "protean.subscription.consumer_lag",
+            "lag",
+            "Messages behind stream head",
+            None,
+        ),
+        (
+            "protean.subscription.pending_messages",
+            "pending",
+            "Unacknowledged messages",
+            None,
+        ),
+        (
+            "protean_subscription_dlq_depth",
+            "dlq_depth",
+            "Dead letter queue depth",
+            None,
+        ),
+        (
+            "protean_subscription_status",
+            "status",
+            "Subscription health (1=ok, 0=not ok)",
+            lambda v: 1 if v == "ok" else 0,
+        ),
     ]:
         meter.create_observable_gauge(
             metric_name,
@@ -379,16 +423,18 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
             observations = []
             for name, db_type, stats in _collect_pool_stats(domains):
                 attrs = {"provider_name": name, "database_type": db_type}
-                observations.append(
-                    create_observation(stats.get(stat_key, 0), attrs)
-                )
+                observations.append(create_observation(stats.get(stat_key, 0), attrs))
             return observations
 
         return callback
 
     for stat_key, metric_name, description in [
         ("size", "protean.db.pool_size", "Database connection pool size"),
-        ("checked_out", "protean.db.pool_checked_out", "Checked out database connections"),
+        (
+            "checked_out",
+            "protean.db.pool_checked_out",
+            "Checked out database connections",
+        ),
         ("overflow", "protean.db.pool_overflow", "Overflow database connections"),
         ("checked_in", "protean.db.pool_checked_in", "Available database connections"),
     ]:
@@ -403,9 +449,7 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     def _broker_pool_active_callback(_options):
         observations = []
         for name, active, _available, _max_conn in _collect_broker_pool_stats(domains):
-            observations.append(
-                create_observation(active, {"broker_name": name})
-            )
+            observations.append(create_observation(active, {"broker_name": name}))
         return observations
 
     meter.create_observable_gauge(
@@ -413,6 +457,27 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
         callbacks=[_broker_pool_active_callback],
         description="Active broker pool connections",
         unit="{connection}",
+    )
+
+    # --- Projection staleness gauge (shared collection) ---
+    def _projection_staleness_callback(_options):
+        observations = []
+        for domain, p in _collect_projection_statuses(domains):
+            if p.staleness_seconds is None:
+                continue
+            observations.append(
+                create_observation(
+                    p.staleness_seconds,
+                    {"domain": domain.name, "projection": p.projection_name},
+                )
+            )
+        return observations
+
+    meter.create_observable_gauge(
+        "protean.projection.staleness_seconds",
+        callbacks=[_projection_staleness_callback],
+        description="Seconds a projection is behind its source events",
+        unit="s",
     )
 
     setattr(target_domain, _GAUGES_REGISTERED_KEY, True)
@@ -574,6 +639,27 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
     except Exception as e:
         logger.debug(f"Metrics: subscription status failed: {e}")
 
+    # --- Projection staleness metrics (shared collection) ---
+    try:
+        projections = _collect_projection_statuses(domains)
+        if projections:
+            lines.append("")
+            lines.append(
+                "# HELP protean_projection_staleness_seconds Seconds a projection "
+                "is behind its source events"
+            )
+            lines.append("# TYPE protean_projection_staleness_seconds gauge")
+            for domain, p in projections:
+                if p.staleness_seconds is None:
+                    continue
+                labels = f'domain="{domain.name}",projection="{p.projection_name}"'
+                lines.append(
+                    f"protean_projection_staleness_seconds{{{labels}}} "
+                    f"{p.staleness_seconds}"
+                )
+    except Exception as e:
+        logger.debug(f"Metrics: projection staleness failed: {e}")
+
     # --- Per-consumer metrics (via XINFO CONSUMERS) ---
     try:
         from protean.server.observatory.api import _discover_streams, _get_redis
@@ -638,9 +724,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
         pool_data = _collect_pool_stats(domains)
         if pool_data:
             lines.append("")
-            lines.append(
-                "# HELP protean_db_pool_size Database connection pool size"
-            )
+            lines.append("# HELP protean_db_pool_size Database connection pool size")
             lines.append("# TYPE protean_db_pool_size gauge")
             lines.append("")
             lines.append(
@@ -660,17 +744,15 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 
             for name, db_type, stats in pool_data:
                 labels = f'provider_name="{name}",database_type="{db_type}"'
+                lines.append(f"protean_db_pool_size{{{labels}}} {stats.get('size', 0)}")
                 lines.append(
-                    f'protean_db_pool_size{{{labels}}} {stats.get("size", 0)}'
+                    f"protean_db_pool_checked_out{{{labels}}} {stats.get('checked_out', 0)}"
                 )
                 lines.append(
-                    f'protean_db_pool_checked_out{{{labels}}} {stats.get("checked_out", 0)}'
+                    f"protean_db_pool_overflow{{{labels}}} {stats.get('overflow', 0)}"
                 )
                 lines.append(
-                    f'protean_db_pool_overflow{{{labels}}} {stats.get("overflow", 0)}'
-                )
-                lines.append(
-                    f'protean_db_pool_checked_in{{{labels}}} {stats.get("checked_in", 0)}'
+                    f"protean_db_pool_checked_in{{{labels}}} {stats.get('checked_in', 0)}"
                 )
     except Exception as e:
         logger.debug(f"Metrics: pool stats failed: {e}")

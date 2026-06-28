@@ -1,8 +1,9 @@
 # `protean projection`
 
 The `protean projection` command group manages projections -- read-optimized
-views built from domain events. Currently it provides a `rebuild` command
-that reconstructs projections by replaying events from the event store.
+views built from domain events. It provides a `rebuild` command that
+reconstructs projections by replaying events from the event store, and a
+`status` command that reports how far behind each projection is.
 
 Projection rebuilding is essential when:
 
@@ -29,6 +30,7 @@ All commands accept a `--domain` option to specify the domain module path
 | Command | Description |
 |---------|-------------|
 | `protean projection rebuild` | Rebuild projections by replaying events |
+| `protean projection status` | Report per-projection staleness, lag, and row count |
 
 ## `protean projection rebuild`
 
@@ -96,6 +98,55 @@ not cause the rebuild to fail.
 | No projectors for projection | Aborts with error message |
 | No projections in domain | Prints "No projections found in domain." |
 | Unresolvable event type | Logs warning, skips event, continues |
+
+## `protean projection status`
+
+Reports, for every projection, how far behind it is and how large it is, by
+reading each feeding projector's last processed position. Useful for spotting
+read models that have stalled. Does not require the server to be running.
+
+```bash
+protean projection status --domain=my_domain
+```
+
+For each projection the report shows:
+
+- **Staleness**: seconds since the projection last advanced. `0` when caught
+  up, blank when the projector has never run or its position is unknown.
+- **Lag**: events behind the stream head, taken from the worst (most behind)
+  of its feeding projectors.
+- **Last updated**: when the projection last advanced.
+- **Rows**: number of records currently in the projection store.
+- **Status**: `ok` (caught up), `lagging` (behind), or `unknown`.
+
+A projection fed by several projectors reports the worst staleness and lag
+across all of them.
+
+!!! note
+
+    Time-based staleness comes from each projector's position-write timestamp,
+    so it is reported for event-store-backed projectors. Stream-backed (Redis)
+    projectors show lag and status, but their staleness is blank.
+
+### JSON output
+
+```bash
+protean projection status --domain=my_domain --json
+```
+
+Emits a JSON array of objects (`projection_name`, `projectors`, `last_updated`,
+`staleness_seconds`, `lag`, `row_count`, `status`), suitable for piping into
+other tooling.
+
+**Options**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--domain` | Domain module path | `.` (current directory) |
+| `--json` | Output raw JSON instead of a table | `false` |
+
+For continuous monitoring, scrape the `protean_projection_staleness_seconds`
+metric instead; see [Server Observability](../../server/observability.md).
 
 ## Domain discovery
 

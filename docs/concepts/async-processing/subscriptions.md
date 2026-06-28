@@ -200,6 +200,22 @@ StreamSubscription uses Redis Streams' built-in consumer group tracking:
 - Pending messages are tracked automatically
 - Failed messages can be retried or moved to DLQ
 
+## Projection staleness
+
+Because each EventStoreSubscription records its position together with the time
+that position was written, Protean can tell how far behind a projection is. A
+projection's **staleness** is the time since the projector feeding it last
+advanced while events remained unprocessed; its **lag** is the number of events
+still behind the stream head. A projection fed by several projectors is as stale
+as its worst feeder.
+
+The position-write timestamp is what makes time-based staleness possible, so it
+is reported for event-store-backed projectors. Stream-backed (Redis) projectors
+report lag but not time-based staleness. Inspect staleness with
+`protean projection status` or the `protean_projection_staleness_seconds`
+metric; see
+[Monitor the System](../../guides/server/monitoring.md#monitoring-projection-staleness).
+
 ## Error Handling
 
 Subscriptions handle errors at multiple levels:

@@ -16,6 +16,7 @@ Usage::
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass
@@ -72,6 +73,9 @@ class SubscriptionStatus:
 
     dlq_depth: int
     """Messages in the dead-letter queue."""
+
+    last_updated: str | None = None
+    """ISO timestamp of the last processed position (event-store subscriptions only)."""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -135,9 +139,10 @@ def _collect_event_store_status(
         with domain.domain_context():
             store = domain.event_store.store
 
-            # Current position from the position stream
+            # Current position (and when it was last written) from the stream
             last_msg = store._read_last_message(position_stream)
             current_position = last_msg["data"]["position"] if last_msg else -1
+            last_updated = _extract_position_time(last_msg)
 
             # Head of the category stream
             head_position = store.stream_head_position(stream_category)
@@ -162,6 +167,7 @@ def _collect_event_store_status(
                 status=status,
                 consumer_count=0,
                 dlq_depth=0,
+                last_updated=last_updated,
             )
     except Exception as exc:
         logger.debug(
@@ -606,6 +612,31 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _as_dict(value: object) -> dict | None:
+    """Return *value* as a dict, JSON-decoding a string first, else ``None``."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, TypeError):
+            return None
+    return value if isinstance(value, dict) else None
+
+
+def _extract_position_time(last_msg: dict | None) -> str | None:
+    """Pull the ISO timestamp of a position write from its stored message.
+
+    ``write_position`` stamps ``metadata.headers.time``; some stores also expose a
+    top-level ``time``. Returns ``None`` when no message or timestamp is present.
+    """
+    if not last_msg:
+        return None
+    if last_msg.get("time"):
+        return last_msg["time"]
+    metadata = _as_dict(last_msg.get("metadata"))
+    headers = _as_dict(metadata.get("headers")) if metadata else None
+    return headers.get("time") if headers else None
 
 
 def _classify_status(lag: int | None, pending: int = 0) -> str:

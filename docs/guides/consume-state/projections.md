@@ -224,6 +224,7 @@ the cache client.
 
     - [Projectors](./projectors.md) — How to define and configure projectors that maintain projections.
     - [Query Handlers](./query-handlers.md) — How to dispatch structured read intents via `domain.dispatch()`.
+    - [Monitor the System](../../guides/server/monitoring.md#monitoring-projection-staleness) — Check projection staleness, lag, and row counts.
 
     **Patterns:**
 

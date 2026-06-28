@@ -500,6 +500,10 @@ protean_stream_messages_total 2139
 # HELP protean_stream_pending Pending (in-flight) messages
 # TYPE protean_stream_pending gauge
 protean_stream_pending 5
+
+# HELP protean_projection_staleness_seconds Seconds a projection is behind its source events
+# TYPE protean_projection_staleness_seconds gauge
+protean_projection_staleness_seconds{domain="identity",projection="UserDirectory"} 0
 ```
 
 Available metrics:
@@ -519,6 +523,7 @@ Available metrics:
 | `protean_subscription_pending` | gauge | Unacknowledged messages (per subscription) |
 | `protean_subscription_dlq_depth` | gauge | Dead letter queue depth (per subscription) |
 | `protean_subscription_status` | gauge | Subscription health: 1=ok, 0=not ok |
+| `protean_projection_staleness_seconds` | gauge | Seconds a projection is behind its source events (per projection) |
 
 ### Prometheus scrape configuration
 
