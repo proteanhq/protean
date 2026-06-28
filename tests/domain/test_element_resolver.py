@@ -196,6 +196,156 @@ class TestResolveAggregateClsStringReference:
 
 
 # ============================================================================
+# resolve_references -- AggregateCls for handlers and repositories (#969)
+#
+# command_handler, event_handler, and repository previously rejected a string
+# ``part_of`` because their factories dereferenced it eagerly at registration.
+# The factory now defers that work and the resolver completes it, so a string
+# ``part_of`` resolves uniformly across every element.
+# ============================================================================
+
+
+class TestResolveHandlerAndRepositoryStringReference:
+    """command_handler, event_handler, and repository accept string part_of."""
+
+    def test_command_handler_part_of_string_resolves_and_derives_stream(
+        self, test_domain
+    ):
+        from protean.core.command_handler import BaseCommandHandler
+        from protean.utils.mixins import handle
+
+        class PublishPostCmd(BaseCommand):
+            post_id: Identifier()
+
+        class PostCommandHandler(BaseCommandHandler):
+            @handle(PublishPostCmd)
+            def publish(self, command: PublishPostCmd) -> None:
+                pass
+
+        test_domain.register(Post)
+        test_domain.register(PublishPostCmd, part_of="Post")
+        test_domain.register(PostCommandHandler, part_of="Post")
+        test_domain.init(traverse=False)
+
+        assert PostCommandHandler.meta_.part_of is Post
+        # stream_category is derived from the aggregate, post-resolution
+        assert (
+            PostCommandHandler.meta_.stream_category
+            == f"{Post.meta_.stream_category}:command"
+        )
+
+    def test_event_handler_part_of_string_resolves_and_derives_stream(
+        self, test_domain
+    ):
+        from protean.core.event_handler import BaseEventHandler
+        from protean.utils.mixins import handle
+
+        class PostWasPublished(BaseEvent):
+            post_id: Identifier()
+
+        class PostEventHandler(BaseEventHandler):
+            @handle(PostWasPublished)
+            def on_published(self, event: PostWasPublished) -> None:
+                pass
+
+        test_domain.register(Post)
+        test_domain.register(PostWasPublished, part_of="Post")
+        test_domain.register(PostEventHandler, part_of="Post")
+        test_domain.init(traverse=False)
+
+        assert PostEventHandler.meta_.part_of is Post
+        assert PostEventHandler.meta_.stream_category == Post.meta_.stream_category
+
+    def test_string_and_class_part_of_yield_identical_stream_category(
+        self, test_domain
+    ):
+        """A string part_of resolves to exactly what a class part_of produces."""
+        from protean.core.command_handler import BaseCommandHandler
+        from protean.utils.mixins import handle
+
+        class PublishPostCmd(BaseCommand):
+            post_id: Identifier()
+
+        class ArchivePostCmd(BaseCommand):
+            post_id: Identifier()
+
+        class StringRefHandler(BaseCommandHandler):
+            @handle(PublishPostCmd)
+            def publish(self, command: PublishPostCmd) -> None:
+                pass
+
+        class ClassRefHandler(BaseCommandHandler):
+            @handle(ArchivePostCmd)
+            def archive(self, command: ArchivePostCmd) -> None:
+                pass
+
+        test_domain.register(Post)
+        test_domain.register(PublishPostCmd, part_of="Post")
+        test_domain.register(ArchivePostCmd, part_of="Post")
+        test_domain.register(StringRefHandler, part_of="Post")
+        test_domain.register(ClassRefHandler, part_of=Post)
+        test_domain.init(traverse=False)
+
+        assert (
+            StringRefHandler.meta_.stream_category
+            == ClassRefHandler.meta_.stream_category
+        )
+
+    def test_event_handler_explicit_stream_category_is_preserved(self, test_domain):
+        """An explicit stream_category wins over the aggregate-derived default."""
+        from protean.core.event_handler import BaseEventHandler
+        from protean.utils.mixins import handle
+
+        class PostWasPublished(BaseEvent):
+            post_id: Identifier()
+
+        class PostEventHandler(BaseEventHandler):
+            @handle(PostWasPublished)
+            def on_published(self, event: PostWasPublished) -> None:
+                pass
+
+        test_domain.register(Post)
+        test_domain.register(PostWasPublished, part_of="Post")
+        test_domain.register(
+            PostEventHandler, part_of="Post", stream_category="custom-stream"
+        )
+        test_domain.init(traverse=False)
+
+        assert PostEventHandler.meta_.part_of is Post
+        assert PostEventHandler.meta_.stream_category == "custom-stream"
+
+    def test_repository_part_of_string_resolves_to_aggregate(self, test_domain):
+        from protean.core.repository import BaseRepository
+
+        class PostRepository(BaseRepository):
+            pass
+
+        test_domain.register(Post)
+        test_domain.register(PostRepository, part_of="Post")
+        test_domain.init(traverse=False)
+
+        assert PostRepository.meta_.part_of is Post
+
+    def test_repository_string_part_of_to_non_aggregate_is_rejected(self, test_domain):
+        """A string part_of that names a non-aggregate stays unresolved and
+        is reported at init, preserving the aggregate-only guarantee."""
+        from protean.exceptions import ConfigurationError
+        from protean.core.repository import BaseRepository
+
+        class PostRepository(BaseRepository):
+            pass
+
+        # Comment is an entity, not an aggregate; the resolver only matches
+        # the string against registered aggregates.
+        test_domain.register(Post)
+        test_domain.register(Comment, part_of=Post)
+        test_domain.register(PostRepository, part_of="Comment")
+
+        with pytest.raises(ConfigurationError):
+            test_domain.init(traverse=False)
+
+
+# ============================================================================
 # resolve_references -- Unresolved references are left pending
 # ============================================================================
 

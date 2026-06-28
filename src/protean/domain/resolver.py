@@ -68,6 +68,7 @@ class ElementResolver:
                                 (DomainObjects.AGGREGATE,),
                             )
                             cls.meta_.part_of = to_cls
+                            self._finalize_aggregate_link(cls, to_cls)
                         case "ProjectionCls":
                             cls = params
                             to_cls = self._domain.fetch_element_cls_from_registry(
@@ -100,6 +101,29 @@ class ElementResolver:
 
             if resolved:
                 del pending[name]
+
+    def _finalize_aggregate_link(self, cls, aggregate_cls) -> None:
+        """Complete element wiring deferred when ``part_of`` was a string.
+
+        Command and event handler factories derive their ``stream_category``
+        from the associated aggregate. When ``part_of`` is given as a string
+        reference, that derivation is skipped at registration (the aggregate
+        is not yet resolved) and completed here, once the reference points at
+        a real aggregate class. Class-reference ``part_of`` is finalized
+        eagerly in the factory and never reaches this path.
+        """
+        element_type = cls.element_type
+        if element_type == DomainObjects.COMMAND_HANDLER:
+            # Imported lazily to avoid a core <-> domain import cycle, matching
+            # the function-local imports used elsewhere in this module.
+            from protean.core.command_handler import derive_command_stream_category
+
+            cls.meta_.stream_category = derive_command_stream_category(aggregate_cls)
+        elif element_type == DomainObjects.EVENT_HANDLER:
+            # Respect an explicitly configured stream_category; only derive
+            # when the handler relied on its aggregate for the value.
+            if cls.meta_.stream_category is None:
+                cls.meta_.stream_category = aggregate_cls.meta_.stream_category
 
     def assign_aggregate_clusters(self) -> None:
         """Assign aggregate clusters to all relevant elements."""
