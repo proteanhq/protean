@@ -56,6 +56,8 @@ class TestSubscriptionStatusDataclass:
         assert d["status"] == "lagging"
         assert d["consumer_count"] == 0
         assert d["dlq_depth"] == 0
+        assert "last_updated" in d
+        assert d["last_updated"] is None
 
     def test_to_dict_with_none_lag(self):
         status = SubscriptionStatus(
