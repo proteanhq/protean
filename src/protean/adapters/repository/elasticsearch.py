@@ -25,6 +25,7 @@ from elasticsearch_dsl import (
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import Record, ResultSet
 from protean.exceptions import (
+    ConfigurationError,
     DatabaseError,
     ExpectedVersionError,
     NotSupportedError,
@@ -344,7 +345,7 @@ class ElasticsearchDAO(BaseDAO):
         s = (
             Search(using=conn, index=self.database_model_cls._index._name)
             .query(q)
-            .params(version=True)
+            .extra(version=True)
         )
 
         if fields is not None:
@@ -392,7 +393,7 @@ class ElasticsearchDAO(BaseDAO):
                     s_no_sort = (
                         Search(using=conn, index=self.database_model_cls._index._name)
                         .query(q)
-                        .params(version=True)
+                        .extra(version=True)
                     )
 
                     if fields is not None:
@@ -685,7 +686,9 @@ class ElasticsearchDAO(BaseDAO):
         Returns True if the index exists, False otherwise.
         """
         conn = self.provider.get_connection()
-        return conn.indices.exists(index=self.database_model_cls._index._name)
+        # The v8 client returns a ``HeadApiResponse`` (truthy/falsy) rather than
+        # a plain ``bool``, so coerce to ``bool`` to honor the return contract.
+        return bool(conn.indices.exists(index=self.database_model_cls._index._name))
 
 
 class ESProvider(BaseProvider):
@@ -710,12 +713,32 @@ class ESProvider(BaseProvider):
         # A temporary cache of already constructed model classes
         self._database_model_classes = {}
 
-        # Create a persistent Elasticsearch client
-        self._client = Elasticsearch(
-            self.conn_info["database_uri"]["hosts"],
-            use_ssl=self.conn_info.get("USE_SSL", False),
-            verify_certs=self.conn_info.get("VERIFY_CERTS", False),
-        )
+        # Create a persistent Elasticsearch client. The v8 client requires each
+        # host to be a full ``scheme://host:port`` URL and no longer accepts a
+        # ``use_ssl`` flag. To keep pre-v8 configuration working, bare hosts are
+        # normalized here, using ``USE_SSL`` to pick the scheme (so a host like
+        # ``localhost:9200`` still connects, and ``USE_SSL`` keeps its meaning).
+        use_ssl = self.conn_info.get("USE_SSL", False)
+        scheme = "https" if use_ssl else "http"
+        hosts = [
+            host if not isinstance(host, str) or "://" in host else f"{scheme}://{host}"
+            for host in self.conn_info["database_uri"]["hosts"]
+        ]
+        # The v8 client validates host URLs eagerly (scheme + host + port), so a
+        # malformed host raises here rather than at first use. Surface it as a
+        # ConfigurationError so misconfiguration is reported like any other bad
+        # provider config. The host configuration is deliberately not echoed in
+        # the message, since it may contain credentials; the underlying
+        # validation error is generic and credential-safe.
+        try:
+            self._client = Elasticsearch(
+                hosts,
+                verify_certs=self.conn_info.get("VERIFY_CERTS", False),
+            )
+        except ValueError as exc:
+            raise ConfigurationError(
+                f"Invalid Elasticsearch connection configuration: {exc}"
+            ) from exc
 
     def namespaced_schema_name(self, schema_name):
         # Prepend Namespace prefix if one has been provided
