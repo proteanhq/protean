@@ -135,6 +135,15 @@ class TestResolveDeadline:
         resolved = resolve_deadline(naive, None)
         assert resolved.tzinfo is timezone.utc
 
+    def test_tz_aware_deadline_is_normalized_to_utc(self):
+        # A non-UTC tz-aware deadline is stored as UTC, preserving the instant.
+        tz = timezone(timedelta(hours=5, minutes=30))  # IST
+        aware = datetime(2030, 1, 1, 17, 30, 0, tzinfo=tz)
+        resolved = resolve_deadline(aware, None)
+        assert resolved.tzinfo is timezone.utc
+        assert resolved == aware  # same instant
+        assert resolved == datetime(2030, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
     def test_both_raises(self):
         with pytest.raises(IncorrectUsageError, match="not both"):
             resolve_deadline(datetime.now(timezone.utc), timedelta(seconds=1))

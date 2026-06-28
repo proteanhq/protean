@@ -33,10 +33,15 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_utc(value: datetime) -> datetime:
-    """Treat a naive datetime as UTC; leave tz-aware datetimes untouched."""
+    """Normalize a datetime to UTC.
+
+    Naive datetimes are assumed to already be UTC; tz-aware datetimes are
+    converted to UTC, preserving the instant. This keeps stored and logged
+    deadlines on a single, unambiguous timezone.
+    """
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
-    return value
+    return value.astimezone(timezone.utc)
 
 
 class MessageType(Enum):
