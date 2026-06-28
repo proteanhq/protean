@@ -79,6 +79,7 @@ class TestDomainEventDefinition:
                         "time": str(raw_event._metadata.headers.time),
                         "traceparent": None,
                         "idempotency_key": None,
+                        "deadline": None,
                     },
                     "domain": {
                         "fqn": fully_qualified_name(UserAdded),
@@ -120,6 +121,7 @@ class TestDomainEventDefinition:
                     "time": str(raised_event._metadata.headers.time),
                     "traceparent": None,
                     "idempotency_key": None,
+                    "deadline": None,
                 },
                 "domain": {
                     "fqn": fully_qualified_name(UserAdded),

@@ -504,6 +504,11 @@ class DomainMetrics:
             description="Commands processed",
             unit="{command}",
         )
+        self.command_expired = meter.create_counter(
+            "protean.command.expired",
+            description="Commands rejected because their deadline had passed",
+            unit="{command}",
+        )
         self.handler_invocations = meter.create_counter(
             "protean.handler.invocations",
             description="Handler invocations",

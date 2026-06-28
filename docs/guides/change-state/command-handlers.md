@@ -24,6 +24,7 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 |--------|------|---------|-------------|
 | `part_of` | class or string | *required* | The aggregate this handler processes commands for. |
 | `stream_category` | `str` | derived from `part_of` | Read-only. Always derived from the aggregate's stream category. Cannot be overridden. |
+| `timeout` | `int`/`float` seconds or `timedelta` | `None` | Default validity window for commands routed to this handler. Overrides the domain-level `command_default_timeout`; overridden by an explicit `deadline`/`timeout` on `domain.process()`. See [Deadlines and Timeouts](commands.md#deadlines-and-timeouts). |
 
 ### The `@handle` decorator
 

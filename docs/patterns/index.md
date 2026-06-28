@@ -57,6 +57,7 @@ If you are new to these patterns, these sequences build on each other:
 
 **Production resilience** -- errors, concurrency, and operational concerns:
 :   [Classify Async Processing Errors](classify-async-processing-errors.md) →
+    [Expiring Stale Commands](expiring-stale-commands.md) →
     [Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-tool.md) →
     [Designing for Concurrent Event Processing](designing-for-concurrent-event-processing.md) →
     [Aggregate State Machines](aggregate-state-machines.md)
@@ -273,6 +274,11 @@ If you are new to these patterns, these sequences build on each other:
   -- Override `handle_error()` in every production handler. Classify failures as
   transient (let outbox retry), data errors (route to DLQ), or logic errors
   (alert immediately). Prevent silent read-model drift.
+
+- **[Expiring Stale Commands](expiring-stale-commands.md)** -- Attach a deadline
+  to commands whose intent has a validity window. Covers why expiry is a
+  delivery concern (not a domain rule), the sync-vs-async asymmetry, making
+  async expiry observable, and why deadlines stay opt-in.
 
 - **[Temporal Queries for Audit, Debugging, and Compliance](temporal-queries.md)**
   -- Use `at_version` and `as_of` on event-sourced repositories as first-class

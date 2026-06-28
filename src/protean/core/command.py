@@ -161,6 +161,7 @@ class BaseCommand(BaseMessageType):
                     stream=headers.stream,
                     traceparent=headers.traceparent,
                     idempotency_key=headers.idempotency_key,
+                    deadline=headers.deadline,
                 )
         else:
             headers = MessageHeaders(

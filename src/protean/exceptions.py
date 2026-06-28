@@ -3,6 +3,7 @@ Custom Protean exception classes
 """
 
 import logging
+from datetime import datetime
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -162,6 +163,25 @@ class DuplicateCommandError(ProteanException):
     def __init__(self, message: str, original_result: Any = None, **kwargs):
         super().__init__(message, **kwargs)
         self.original_result = original_result
+
+
+class CommandExpiredError(ProteanException):
+    """Raised when a command is processed after its deadline has passed.
+
+    Prevents stale commands from executing after long queue delays. Carries
+    the command type and the deadline that was exceeded for diagnostics.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        command_type: str | None = None,
+        deadline: datetime | None = None,
+        **kwargs,
+    ):
+        super().__init__(message, **kwargs)
+        self.command_type = command_type
+        self.deadline = deadline
 
 
 class DeserializationError(ProteanException):
