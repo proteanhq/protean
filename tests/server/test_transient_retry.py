@@ -170,6 +170,18 @@ class TestTransientRetryDefaults:
         assert cfg["max_delay_seconds"] == 9.0
         assert cfg["exceptions"] == (OSError,)
 
+    def test_string_enabled_false_stays_disabled(self, test_domain):
+        """A string `"false"` (e.g. from env substitution) must NOT enable retry."""
+        test_domain.config["server"]["transient_retry"]["enabled"] = "false"
+        cfg = _get_transient_retry_config(None)
+        assert cfg["max_retries"] == 0
+
+    def test_string_enabled_true_enables(self, test_domain):
+        """A string `"true"` enables retry."""
+        test_domain.config["server"]["transient_retry"]["enabled"] = "true"
+        cfg = _get_transient_retry_config(None)
+        assert cfg["max_retries"] == 3
+
     def test_invalid_backoff_raises(self, test_domain):
         test_domain.config["server"]["transient_retry"]["enabled"] = True
         test_domain.config["server"]["transient_retry"]["backoff"] = "quadratic"
@@ -236,6 +248,14 @@ class TestExceptionResolution:
             ConnectionError,
             OSError,
         )
+
+    def test_single_dotted_string_not_iterated_as_chars(self):
+        """A lone dotted-path string resolves, rather than iterating chars."""
+        assert _resolve_exception_types("builtins.OSError") == (OSError,)
+
+    def test_non_iterable_spec_raises_clear_error(self):
+        with pytest.raises(ConfigurationError, match="Invalid transient retry"):
+            _resolve_exception_types(123)
 
     def test_unknown_path_raises(self):
         with pytest.raises(ConfigurationError, match="Cannot resolve"):

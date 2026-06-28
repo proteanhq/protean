@@ -113,17 +113,43 @@ def _import_exception_type(path: str) -> type[BaseException]:
     return obj
 
 
+def _coerce_bool(value: Any) -> bool:
+    """Coerce a config flag to a bool, honoring string forms.
+
+    ``bool("false")`` is ``True``, which would silently enable a feature when
+    config arrives as a string (e.g. via ``${VAR}`` env substitution). Treat the
+    usual falsy strings as ``False`` instead.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "on")
+    return bool(value)
+
+
 def _resolve_exception_types(specs: Any) -> tuple[type[BaseException], ...]:
     """Normalize an exception spec into a tuple of exception classes.
 
-    Accepts a single exception class, or an iterable mixing exception classes
-    and dotted-path strings (the form used in ``domain.toml``).
+    Accepts a single exception class, a single dotted-path string, or an
+    iterable mixing exception classes and dotted-path strings (the form used in
+    ``domain.toml``).
     """
     if isinstance(specs, type) and issubclass(specs, BaseException):
         return (specs,)
 
+    # A lone dotted-path string is a common config shorthand; wrap it so we
+    # don't iterate over its characters.
+    if isinstance(specs, str):
+        specs = [specs]
+
+    try:
+        iterator = iter(specs)
+    except TypeError:
+        raise ConfigurationError(
+            f"Invalid transient retry exceptions `{specs!r}`; expected an "
+            f"exception type, a dotted-path string, or a list of them"
+        )
+
     resolved: list[type[BaseException]] = []
-    for spec in specs:
+    for spec in iterator:
         if isinstance(spec, str):
             resolved.append(_import_exception_type(spec))
         elif isinstance(spec, type) and issubclass(spec, BaseException):
@@ -158,7 +184,7 @@ def _get_transient_retry_config(instance: Any = None) -> dict:
         if current_domain:
             raw = current_domain.config.get("server", {}).get("transient_retry", {})
             if raw:
-                cfg["enabled"] = bool(raw.get("enabled", cfg["enabled"]))
+                cfg["enabled"] = _coerce_bool(raw.get("enabled", cfg["enabled"]))
                 cfg["max_retries"] = int(raw.get("max_retries", cfg["max_retries"]))
                 cfg["backoff"] = raw.get("backoff", cfg["backoff"])
                 cfg["base_delay_seconds"] = float(
