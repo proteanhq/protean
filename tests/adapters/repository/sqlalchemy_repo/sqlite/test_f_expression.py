@@ -18,6 +18,7 @@ class FJob(BaseAggregate):
     name = String(max_length=50)
     retry_count = Integer(default=0)
     max_retries = Integer(default=3)
+    ceiling = Integer()  # optional / nullable, for null-target coverage
 
 
 @pytest.fixture
@@ -65,3 +66,14 @@ class TestSqliteFExpression:
         result = dao.query.filter(retry_count__gte=F("max_retries")).all()
 
         assert sorted(job.name for job in result.items) == ["equal", "over"]
+
+    def test_null_target_never_matches(self, f_domain):
+        # SQL three-valued logic: comparing against a NULL column yields
+        # UNKNOWN, so the row must not match — parity with the in-memory adapter.
+        repo = f_domain.repository_for(FJob)
+        repo.add(FJob(name="null_ceiling", retry_count=0))  # ceiling left NULL
+        dao = f_domain.repository_for(FJob)._dao
+
+        result = dao.query.filter(retry_count__lt=F("ceiling")).all()
+
+        assert [job.name for job in result.items] == []

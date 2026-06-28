@@ -625,6 +625,43 @@ class TestVersionAndTransientInteraction:
         assert attempts == 3
 
 
+class TestFreshUnitOfWorkPerAttempt:
+    @patch("protean.utils.mixins.time.sleep")
+    def test_each_attempt_runs_in_a_fresh_unit_of_work(self, mock_sleep, test_domain):
+        """Every retry attempt runs in its own in-progress UnitOfWork, so a
+        failed attempt rolls back cleanly before the next one begins."""
+        from protean.utils.globals import current_uow
+
+        seen_uows = []
+        in_progress_flags = []
+        attempts = 0
+
+        class H(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempts
+                attempts += 1
+                uow = current_uow._get_current_object()
+                # Hold a reference so object identity can't be recycled.
+                seen_uows.append(uow)
+                in_progress_flags.append(uow.in_progress)
+                if attempts < 3:
+                    raise ConnectionError("transient")
+
+        test_domain.register(H, part_of=User, retries=3)
+        test_domain.init(traverse=False)
+
+        H._handle(_enrich(test_domain))
+
+        assert attempts == 3
+        # Each attempt saw an active UnitOfWork...
+        assert in_progress_flags == [True, True, True]
+        # ...and a distinct instance — a fresh UoW per attempt.
+        assert seen_uows[0] is not seen_uows[1]
+        assert seen_uows[1] is not seen_uows[2]
+        assert seen_uows[0] is not seen_uows[2]
+
+
 # ---------------------------------------------------------------------------
 # Metric
 # ---------------------------------------------------------------------------

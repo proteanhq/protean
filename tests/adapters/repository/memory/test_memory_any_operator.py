@@ -89,3 +89,16 @@ def test_array_lookups_handle_unhashable_elements(test_domain):
 
     matched = record_repo.query.filter(items__any=[{"k": 9}]).all().items
     assert len(matched) == 0
+
+
+def test_empty_array_lookups_match_nothing(test_domain):
+    # An empty target shares no element with any row, so `any`/`overlap`
+    # against `[]` match nothing (match-none semantics).
+    test_domain.register(User)
+
+    user_repo = test_domain.repository_for(User)
+    user_repo.add(User(emails=["foo@example.com"]))
+    user_repo.add(User(emails=["bar@example.com"]))
+
+    assert len(user_repo.query.filter(emails__any=[]).all().items) == 0
+    assert len(user_repo.query.filter(emails__overlap=[]).all().items) == 0

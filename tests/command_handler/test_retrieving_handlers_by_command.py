@@ -106,3 +106,23 @@ def test_error_on_defining_multiple_handlers_for_a_command(test_domain):
         exc.value.args[0]
         == f"Commands cannot be handled by multiple handlers: {Register.__type__}"
     )
+
+
+def test_duplicate_command_handlers_reported_by_check(test_domain):
+    """The collision is also surfaced by `domain.check()` / `protean check`,
+    via `validate_all()`, rather than only the fail-fast `init()` path."""
+    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.register(AdminUserCommandHandlers, part_of=User)
+
+    report = test_domain.check(traverse=False)
+
+    assert report["status"] == "fail"
+    collisions = [
+        e
+        for e in report["errors"]
+        if e["element"] == "_validate_unique_command_handlers"
+    ]
+    assert len(collisions) == 1
+    assert Register.__type__ in collisions[0]["message"]
