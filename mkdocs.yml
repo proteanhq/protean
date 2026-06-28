@@ -272,6 +272,7 @@ nav:
       - guides/server/using-priority-lanes.md
       - guides/server/external-event-dispatch.md
     - Observe Your System:
+      - guides/observability/exploring-your-domain.md
       - guides/observability/correlation-and-causation.md
       - guides/server/logging.md
       - guides/server/monitoring.md

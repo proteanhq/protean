@@ -118,6 +118,7 @@ specific area.
 - [Raising Events](./guides/domain-behavior/raising-events.md) -- Notify other parts of the system through domain events.
 - [Message Tracing](./guides/domain-behavior/message-tracing.md) -- Track the full causal chain of commands and events with correlation and causation IDs, and traverse causation chains programmatically.
 - [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md) -- Complete guide to correlation and causation ID propagation across HTTP headers, OTEL spans, Observatory traces, structured logging, and cross-service boundaries.
+- [Explore Your Domain in the Observatory](./guides/observability/exploring-your-domain.md) -- Use the Observatory's Domain Visualizer (topology, event flows, process managers) and Timeline (event browser, correlation chains, traces) to navigate a running domain.
 - [Domain Services](./guides/domain-behavior/domain-services.md) -- Complex domain logic that spans multiple aggregates.
 - [Error Handling](./guides/domain-behavior/error-handling.md) -- Raise, propagate, and handle domain exceptions.
 
