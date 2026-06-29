@@ -29,6 +29,7 @@ from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
+from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 
@@ -1742,8 +1743,12 @@ class IRBuilder:
 
     @staticmethod
     def _compute_checksum(ir: dict[str, Any]) -> str:
-        """SHA-256 of canonical JSON with volatile keys removed."""
-        ir_copy = {k: v for k, v in ir.items() if k not in ("generated_at", "checksum")}
+        """SHA-256 of canonical JSON with volatile/version keys removed.
+
+        Excludes :data:`protean.ir.constants.VOLATILE_IR_KEYS` so the checksum
+        reflects domain *content* only and stays in lockstep with ``ir diff``.
+        """
+        ir_copy = {k: v for k, v in ir.items() if k not in VOLATILE_IR_KEYS}
         canonical = json.dumps(ir_copy, sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return f"sha256:{digest}"
