@@ -4,6 +4,8 @@ import copy
 import json
 import logging
 import time
+import types
+import typing
 import uuid
 from abc import abstractmethod
 from datetime import date as _date, datetime as _datetime
@@ -54,7 +56,7 @@ from protean.fields.association import Reference, _ReferenceField
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.port.dao import BaseDAO, BaseLookup
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import IdentityType, fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
@@ -273,14 +275,11 @@ def _resolve_python_type(shim: ResolvedField) -> type | None:
     Unwraps Optional/Union, and normalises generic aliases
     (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``).
     """
-    import types as _types_mod
-    import typing
-
     python_type = shim._python_type
 
     # Unwrap Optional/Union: str | None → str
     origin = typing.get_origin(python_type)
-    if origin is _types_mod.UnionType or origin is typing.Union:
+    if origin is types.UnionType or origin is typing.Union:
         args = [a for a in typing.get_args(python_type) if a is not type(None)]
         if args:
             python_type = args[0]
@@ -540,8 +539,6 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     def __init_subclass__(cls, **kwargs):  # noqa: C901
         def field_mapping_for(field_obj):
             """Return SQLAlchemy-equivalent type for Protean's field"""
-            from protean.core.value_object import BaseValueObject
-
             # Handle ResolvedField: resolve Python type → SA type
             if isinstance(field_obj, ResolvedField):
                 if field_obj.increment:
@@ -611,8 +608,6 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                                 #
                                 # `ValueObject` instances are essentially treated as `Dict`. If not pickled,
                                 #   they are persisted as JSON.
-                                from protean.core.value_object import BaseValueObject
-
                                 _is_vo = isinstance(content_type, ValueObject) or (
                                     isinstance(content_type, type)
                                     and issubclass(content_type, BaseValueObject)
@@ -626,18 +621,15 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                                     # FieldSpec from Dict() / String() etc.
                                     # Resolve the underlying python_type
                                     # to pick the right SA column type.
-                                    import types as _types
-                                    import typing as _typing
-
                                     ct_type = content_type.python_type
                                     # Unwrap Union types (e.g. dict | list
                                     # from Dict()) to the first branch.
-                                    origin = _typing.get_origin(ct_type)
+                                    origin = typing.get_origin(ct_type)
                                     if (
-                                        origin is _types.UnionType
-                                        or origin is _typing.Union
+                                        origin is types.UnionType
+                                        or origin is typing.Union
                                     ):
-                                        ct_type = _typing.get_args(ct_type)[0]
+                                        ct_type = typing.get_args(ct_type)[0]
                                     field_mapping_type = _PYTHON_TYPE_TO_SA.get(
                                         ct_type, sa_types.String
                                     )
@@ -1991,8 +1983,6 @@ class MSSQLEndswith(MSSQLStringLookupMixin, DefaultLookup):
 
 def register_postgresql() -> None:
     """Register PostgreSQL provider with Protean if sqlalchemy is available."""
-    from protean.port.provider import registry
-
     try:
         import sqlalchemy  # noqa: F401
 
@@ -2009,8 +1999,6 @@ def register_postgresql() -> None:
 
 def register_sqlite() -> None:
     """Register SQLite provider with Protean if sqlalchemy is available."""
-    from protean.port.provider import registry
-
     try:
         import sqlalchemy  # noqa: F401
 
@@ -2027,8 +2015,6 @@ def register_sqlite() -> None:
 
 def register_mssql() -> None:
     """Register MSSQL provider with Protean if sqlalchemy is available."""
-    from protean.port.provider import registry
-
     try:
         import sqlalchemy  # noqa: F401
 

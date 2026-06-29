@@ -46,6 +46,7 @@ from typing import Any
 
 import pytest
 
+from protean.domain import Domain
 from protean.port.provider import DatabaseCapabilities
 
 # ---------------------------------------------------------------------------
@@ -267,8 +268,6 @@ def test_domain(
     if "no_test_domain" in request.keywords:
         yield
         return
-
-    from protean.domain import Domain
 
     domain = Domain(name="AdapterConformanceTest")
 

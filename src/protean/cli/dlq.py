@@ -27,6 +27,7 @@ Usage::
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import typer
@@ -114,8 +115,6 @@ def _format_time(raw: str | None) -> str:
     if not raw:
         return "-"
     try:
-        from datetime import datetime
-
         return datetime.fromisoformat(raw).strftime("%Y-%m-%d %H:%M:%S")
     except (ValueError, TypeError):
         return raw

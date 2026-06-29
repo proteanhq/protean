@@ -3,6 +3,7 @@
 import warnings
 from typing import List, Optional
 
+import click
 import typer
 from typing_extensions import Annotated
 
@@ -48,8 +49,6 @@ def observatory(
 
     # Check parent context for CLI-level logging configuration.
     # click.get_current_context may fail when called directly (not via CLI).
-    import click
-
     ctx = click.get_current_context(silent=True)
     parent_obj = getattr(ctx, "obj", None) or {} if ctx else {}
     if not parent_obj.get(CTX_LOG_CONFIGURED):

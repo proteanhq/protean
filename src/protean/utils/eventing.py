@@ -20,7 +20,7 @@ from protean.exceptions import (
 from protean.fields.association import Association, Reference
 from protean.fields.base import FieldBase
 from protean.fields.embedded import ValueObject as ValueObjectField
-from protean.fields.spec import FieldSpec
+from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils.container import OptionsMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 from protean.utils.globals import current_domain
@@ -373,8 +373,6 @@ class BaseMessageType(BaseModel, OptionsMixin):
 
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
-        from protean.fields.spec import resolve_fieldspecs
-
         resolve_fieldspecs(cls)
 
     @classmethod

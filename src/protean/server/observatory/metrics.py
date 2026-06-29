@@ -52,6 +52,13 @@ from typing import Any, Callable, List
 from fastapi import Response
 
 from protean.domain import Domain
+from protean.utils.telemetry import (
+    _TELEMETRY_INIT_KEY,
+    create_observation,
+    get_meter,
+    get_meter_provider,
+    get_prometheus_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -235,13 +242,6 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     """
     if not domains:
         return
-
-    from protean.utils.telemetry import (
-        _TELEMETRY_INIT_KEY,
-        create_observation,
-        get_meter,
-        get_meter_provider,
-    )
 
     # Find the first domain that went through init_telemetry() and has a meter provider.
     # The init flag check prevents MagicMock/test doubles from matching.
@@ -812,8 +812,6 @@ def create_metrics_endpoint(domains: List[Domain]):
         if not gauges_attempted:
             _register_infrastructure_gauges(domains)
             gauges_attempted = True
-
-        from protean.utils.telemetry import get_prometheus_text
 
         # Try OTel-powered path first
         for domain in domains:

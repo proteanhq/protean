@@ -51,6 +51,7 @@ from mypy.nodes import (
     ARG_POS,
     MDEF,
     Argument,
+    AssignmentStmt,
     Block,
     CallExpr,
     FuncDef,
@@ -66,12 +67,15 @@ from mypy.plugin import AnalyzeTypeContext, ClassDefContext, FunctionContext, Pl
 from mypy.types import (
     AnyType,
     CallableType,
+    Instance,
     NoneType,
     RawExpressionType,
     Type,
     TypeOfAny,
+    TypeType,
     UnionType,
 )
+from mypy.types import Type as MypyType
 
 # ---------------------------------------------------------------------------
 # Field factory → Python type mapping
@@ -611,8 +615,6 @@ def _extract_field_factory_from_annotation(stmt: object) -> str | None:
     Returns the canonical fully-qualified name (e.g. ``protean.fields.simple.Float``)
     if found, or None.
     """
-    from mypy.nodes import AssignmentStmt
-
     if not isinstance(stmt, AssignmentStmt):
         return None
 
@@ -658,8 +660,6 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
 
     for stmt in ctx.cls.defs.body:
         # Look for assignments like: name = String(required=True)
-        from mypy.nodes import AssignmentStmt
-
         if not isinstance(stmt, AssignmentStmt):
             continue
         if len(stmt.lvalues) != 1:
@@ -707,8 +707,6 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
     # Also check for annotation-style fields: name: String(required=True)
     # These produce a RawExpressionType with the field factory name in the note.
     for stmt in ctx.cls.defs.body:
-        from mypy.nodes import AssignmentStmt
-
         if not isinstance(stmt, AssignmentStmt):
             continue
         if len(stmt.lvalues) != 1:
@@ -914,8 +912,6 @@ def _synthesize_has_many_methods(ctx: ClassDefContext) -> None:
     has_many_fields: list[str] = []
 
     for stmt in ctx.cls.defs.body:
-        from mypy.nodes import AssignmentStmt
-
         if not isinstance(stmt, AssignmentStmt):
             continue
         if len(stmt.lvalues) != 1:
@@ -1034,9 +1030,6 @@ def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
     When the target class cannot be resolved (e.g. a forward-reference
     string), falls back to the default return type.
     """
-    from mypy.types import Instance, TypeType
-    from mypy.types import Type as MypyType
-
     # The target class is always the first positional argument
     if not ctx.args or not ctx.args[0]:
         return ctx.default_return_type

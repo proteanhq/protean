@@ -15,6 +15,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects
+from protean.utils.upcasting import UpcasterChain
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -35,8 +36,6 @@ class TypeManager:
     """
 
     def __init__(self, domain: Domain) -> None:
-        from protean.utils.upcasting import UpcasterChain
-
         self._domain = domain
         self.events_and_commands: Dict[str, Union[BaseCommand, BaseEvent]] = {}
         self.upcasters: list[type] = []

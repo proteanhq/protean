@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from protean.core.index import validate_indexes
+from protean.domain.helpers import get_env
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import HasMany, HasOne
 from protean.utils import DomainObjects, fqn
@@ -496,8 +497,6 @@ class DomainValidator:
         Skipped when ``PROTEAN_ENV`` is ``development`` or ``testing``,
         where small pools are intentional.
         """
-        from protean.domain.helpers import get_env
-
         env = get_env()
         if env in ("development", "testing"):
             return

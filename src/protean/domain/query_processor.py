@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from protean.core.query import BaseQuery
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, fqn
 
@@ -46,8 +47,6 @@ class QueryProcessor:
             IncorrectUsageError: If *query* is not a registered query or
                 no handler is registered.
         """
-        from protean.core.query import BaseQuery
-
         if not isinstance(query, BaseQuery):
             raise IncorrectUsageError(f"`{query.__class__.__name__}` is not a Query")
 

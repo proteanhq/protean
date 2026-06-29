@@ -2,6 +2,9 @@
 
 import json
 import logging
+import types
+import typing
+from datetime import date as _date, datetime as _datetime
 from typing import Any
 from uuid import UUID
 
@@ -32,7 +35,7 @@ from protean.exceptions import (
     ObjectNotFoundError,
 )
 from protean.port.dao import BaseDAO, BaseLookup
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import IdentityStrategy, IdentityType, fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
@@ -58,9 +61,6 @@ _PYTHON_TYPE_TO_ES = {
 
 def _resolve_python_type(field_obj: ResolvedField):
     """Unwrap Optional/Union and generic aliases to get the base Python type."""
-    import types
-    import typing
-
     python_type = field_obj._python_type
     origin = typing.get_origin(python_type)
     if origin is types.UnionType or origin is typing.Union:
@@ -84,9 +84,6 @@ def _es_field_mapping_for(field_obj) -> elasticsearch_dsl.Field | None:
     Elasticsearch's dynamic mapping (List, Dict). For ES-specific tuning
     (analyzers, multi-fields, etc.), users should define a custom @domain.model.
     """
-    from datetime import date as _date
-    from datetime import datetime as _datetime
-
     # ShadowField (flattened ValueObject attribute): delegate to inner field
     if isinstance(field_obj, _ShadowField):
         return _es_field_mapping_for(field_obj.field_obj)
@@ -1342,8 +1339,6 @@ class IsNull(DefaultLookup):
 
 def register() -> None:
     """Register Elasticsearch provider with Protean if elasticsearch is available."""
-    from protean.port.provider import registry
-
     try:
         import elasticsearch  # noqa: F401
 

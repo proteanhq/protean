@@ -6,9 +6,18 @@ It is consumed during class creation and translated into Pydantic-compatible
 Pydantic's native machinery remains — FieldSpec itself is not stored on the class.
 """
 
+import datetime as _dt
 import warnings
 from enum import Enum
-from typing import Any, Callable, Iterable
+from typing import Annotated, Any, Callable, Iterable, Literal, Optional
+from uuid import uuid4
+
+from pydantic import AfterValidator, BeforeValidator
+from pydantic import Field as PydanticField
+
+from protean.exceptions import ValidationError as ProteanValidationError
+from protean.fields.base import normalize_field_deprecated
+from protean.utils import generate_identity
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +109,6 @@ class FieldSpec:
             self._normalize_transitions(transitions) if transitions else None
         )
         self._auto_generated = False
-        from protean.fields.base import normalize_field_deprecated
-
         self.deprecated = normalize_field_deprecated(deprecated)
 
         # Warn if required=True with an explicit default
@@ -120,8 +127,6 @@ class FieldSpec:
 
         Handles choices → Literal, and optional wrapping.
         """
-        from typing import Literal, Optional
-
         resolved = self.python_type
 
         # If choices is set, replace with Literal
@@ -147,8 +152,6 @@ class FieldSpec:
 
     def resolve_field_kwargs(self) -> dict[str, Any]:
         """Return the kwargs dict for ``pydantic.Field(...)``."""
-        from uuid import uuid4
-
         kwargs: dict[str, Any] = {}
         json_extra: dict[str, Any] = {}
 
@@ -181,8 +184,6 @@ class FieldSpec:
                     _id_strategy = getattr(self, "_identity_strategy", None)
                     _id_function = getattr(self, "_identity_function", None)
                     _id_type = getattr(self, "_identity_type", None)
-
-                    from protean.utils import generate_identity
 
                     kwargs["default_factory"] = (
                         lambda s=_id_strategy, f=_id_function, t=_id_type: (
@@ -261,11 +262,6 @@ class FieldSpec:
         corresponding ``AfterValidator`` wrappers are appended to the
         ``Annotated`` metadata.
         """
-        from typing import Annotated
-
-        from pydantic import AfterValidator, BeforeValidator
-        from pydantic import Field as PydanticField
-
         resolved_type = self.resolve_type()
         field_kwargs = self.resolve_field_kwargs()
         pydantic_field = PydanticField(**field_kwargs)
@@ -301,8 +297,6 @@ class FieldSpec:
                 v: Any,
                 validators: list[Callable] = captured_validators,
             ) -> Any:
-                from protean.exceptions import ValidationError as ProteanValidationError
-
                 for validator_fn in validators:
                     try:
                         validator_fn(v)
@@ -345,8 +339,6 @@ class FieldSpec:
         return normalized
 
     def __repr__(self) -> str:
-        import datetime as _dt
-
         # Map (python_type, field_kind) to user-friendly factory name
         _FACTORY_NAMES: dict[tuple[type, str], str] = {
             (str, "standard"): "String",

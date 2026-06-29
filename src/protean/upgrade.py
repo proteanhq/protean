@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
+from protean.utils.outbox import Outbox
+
 if TYPE_CHECKING:
     from protean.domain import Domain
 
@@ -145,8 +147,6 @@ def _outbox_string_bounds() -> dict[str, int]:
     The Outbox bounds are declared with ``Annotated[str, Field(max_length=N)]``,
     so they surface as ``MaxLen`` constraints in the pydantic field metadata.
     """
-    from protean.utils.outbox import Outbox
-
     bounds: dict[str, int] = {}
     for fname, field_info in Outbox.model_fields.items():
         for meta in getattr(field_info, "metadata", []):

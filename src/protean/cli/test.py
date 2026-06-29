@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import time
@@ -10,11 +11,11 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-if TYPE_CHECKING:
-    from protean.port.provider import DatabaseCapabilities
-
 import typer
 from typing_extensions import Annotated
+
+if TYPE_CHECKING:
+    from protean.port.provider import DatabaseCapabilities
 
 # Configuration constants
 REPORT_PATH = Path("diff_coverage_report.html")
@@ -657,8 +658,6 @@ def _run_pytest_for_marker(
         # Match pytest summary lines like "42 passed", "3 failed, 2 passed"
         if "passed" in line or "failed" in line or "error" in line:
             # This is likely the summary line
-            import re
-
             counts = re.findall(r"(\d+) (\w+)", line)
             for count_str, label in counts:
                 count = int(count_str)
@@ -786,6 +785,7 @@ def test_adapter(
 
         protean test test-adapter --provider=postgresql --uri="postgresql://localhost/test" -v
     """
+    from protean.domain import Domain
     from protean.port.provider import ProviderRegistry
 
     # 1. Verify provider is registered
@@ -798,8 +798,6 @@ def test_adapter(
     # 2. Get provider capabilities (instantiate temporarily to access property)
     #    We need a minimal domain to instantiate the provider for capabilities
     try:
-        from protean.domain import Domain
-
         domain = Domain(name="ConformanceTest")
 
         # Configure the provider

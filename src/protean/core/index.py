@@ -19,6 +19,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from protean.exceptions import IncorrectUsageError
+from protean.utils.reflection import attributes, fields
+
 if TYPE_CHECKING:
     from protean.utils.query import Q
 
@@ -144,9 +147,6 @@ def validate_indexes(element_cls: type) -> None:
 
     :class:`RawIndex` entries are opaque verbatim DDL and are not introspected.
     """
-    from protean.exceptions import IncorrectUsageError
-    from protean.utils.reflection import attributes, fields
-
     meta = getattr(element_cls, "meta_", None)
     indexes = getattr(meta, "indexes", ()) or ()
 

@@ -58,8 +58,13 @@ import argparse
 import json
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
+
+from protean.exceptions import NoDomainException
+from protean.ir.diff import classify_changes, diff_ir
+from protean.ir.git import GitError
+from protean.ir.staleness import StalenessStatus, check_staleness
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +102,6 @@ def _resolve_domains(
 
 def _load_live_ir(domain_path: str) -> dict:
     """Load live IR from a domain module without depending on typer."""
-    from protean.exceptions import NoDomainException
     from protean.utils.domain_discovery import derive_domain
 
     try:
@@ -186,9 +190,6 @@ def _check_staleness_single(
     config: Any,
 ) -> bool:
     """Check staleness for a single domain.  Returns ``True`` if OK."""
-    from protean.exceptions import NoDomainException
-    from protean.ir.staleness import StalenessStatus, check_staleness
-
     try:
         result = check_staleness(domain_module, protean_dir, config=config)
     except NoDomainException as exc:
@@ -334,10 +335,7 @@ def _check_compat_single(
     config: Any,
 ) -> bool:
     """Check compat for a single domain.  Returns ``True`` if OK (no block)."""
-    from pathlib import PurePosixPath
-
-    from protean.ir.diff import classify_changes, diff_ir
-    from protean.ir.git import GitError, load_ir_from_commit
+    from protean.ir.git import load_ir_from_commit
 
     ir_path = PurePosixPath(protean_dir, "ir.json").as_posix()
     try:

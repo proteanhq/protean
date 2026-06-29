@@ -27,6 +27,7 @@ Usage::
 """
 
 import json
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import typer
@@ -36,6 +37,11 @@ from rich.table import Table
 from typing_extensions import Annotated
 
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
+from protean.exceptions import NoDomainException
+from protean.ir.config import load_config
+from protean.ir.diff import classify_changes, diff_ir
+from protean.ir.git import GitError
+from protean.ir.staleness import StalenessStatus, check_staleness, load_stored_ir
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -145,9 +151,6 @@ def diff(
       1 — breaking changes found
       2 — non-breaking changes only
     """
-    from protean.ir.config import load_config
-    from protean.ir.diff import classify_changes, diff_ir
-
     # ------------------------------------------------------------------ #
     # Load config                                                          #
     # ------------------------------------------------------------------ #
@@ -250,9 +253,7 @@ def diff(
 
 def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:
     """Load .protean/ir.json from a git commit, or abort on error."""
-    from pathlib import PurePosixPath
-
-    from protean.ir.git import GitError, load_ir_from_commit
+    from protean.ir.git import load_ir_from_commit
 
     ir_path = PurePosixPath(protean_dir, "ir.json").as_posix()
     try:
@@ -264,10 +265,6 @@ def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:
 
 def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
     """Load .protean/ir.json from disk, or abort if not found."""
-    from pathlib import Path
-
-    from protean.ir.staleness import load_stored_ir
-
     try:
         stored = load_stored_ir(Path(protean_dir))
     except ValueError as exc:
@@ -511,12 +508,6 @@ def check(
       1 — IR is stale (domain has changed)
       2 — No materialized IR found in the given directory
     """
-    from pathlib import Path
-
-    from protean.exceptions import NoDomainException
-    from protean.ir.config import load_config
-    from protean.ir.staleness import StalenessStatus, check_staleness
-
     try:
         config = load_config(dir)
     except ValueError as exc:
@@ -533,15 +524,13 @@ def check(
         raise typer.Exit(code=2)
 
     if format == "json":
-        import json as _json
-
         payload = {
             "status": result.status.value,
             "domain_checksum": result.domain_checksum,
             "stored_checksum": result.stored_checksum,
             "ir_file": str(result.ir_file) if result.ir_file else None,
         }
-        typer.echo(_json.dumps(payload, indent=2, sort_keys=True))
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
     else:
         _print_check_text(result, dir)
 
@@ -556,8 +545,6 @@ def check(
 
 def _print_check_text(result: Any, protean_dir: str = ".protean") -> None:
     """Print a human-readable staleness check result."""
-    from protean.ir.staleness import StalenessStatus
-
     if result.status == StalenessStatus.FRESH:
         print("[green]IR is fresh.[/green]")
         if result.domain_checksum:

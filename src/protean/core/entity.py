@@ -1,14 +1,19 @@
 """Entity module providing the base class for entity domain elements."""
 
+import copy
 import functools
 import logging
 import threading
 from collections import defaultdict
+from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, dataclass_transform
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic import Field as PydanticField
 from pydantic import ValidationError as PydanticValidationError
+from pydantic.fields import FieldInfo
 
 from protean.exceptions import (
     ConfigurationError,
@@ -17,7 +22,7 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.fields.resolved import ResolvedField
+from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.integrations.logging import (
     SECURITY_EVENT_INVARIANT_FAILED,
     log_security_event,
@@ -29,7 +34,7 @@ from protean.fields import (
     ValueObject,
 )
 from protean.fields.basic import ValueObjectList
-from protean.fields.spec import FieldSpec
+from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.fields.association import Association, _ReferenceField
 from protean.fields.tempdata import AssociationCache
 from protean.fields.embedded import _ShadowField
@@ -233,8 +238,6 @@ class BaseEntity(BaseModel, OptionsMixin):
 
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
-        from protean.fields.spec import resolve_fieldspecs
-
         # Migrate annotation-style descriptors to the class namespace.
         #
         # Python puts ``field: Descriptor()`` values into ``__annotations__``
@@ -269,9 +272,6 @@ class BaseEntity(BaseModel, OptionsMixin):
           ``__auto_id_handled__``), where id injection is already handled
           and respects the ``auto_add_id_field`` option.
         """
-        from pydantic import Field as PydanticField
-        from pydantic.fields import FieldInfo
-
         # Skip the framework base classes themselves
         if cls.__name__ in ("BaseEntity", "BaseAggregate"):
             return
@@ -311,8 +311,6 @@ class BaseEntity(BaseModel, OptionsMixin):
 
         # No identifier found — inject auto-id
         if "id" not in own_annots:
-            from uuid import UUID
-
             annots = dict(own_annots)
             annots["id"] = str | int | UUID
             cls.__annotations__ = annots
@@ -468,8 +466,6 @@ class BaseEntity(BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            from protean.fields.resolved import convert_pydantic_errors
-
             collected_errors.update(convert_pydantic_errors(e))
 
         # Check required descriptor fields (ValueObject, Reference, etc.)
@@ -754,7 +750,6 @@ class BaseEntity(BaseModel, OptionsMixin):
         Skipped during ``atomic_change`` (deferred to ``__exit__``),
         ``from_events`` replay, and initial construction.
         """
-        from enum import Enum
 
         fields_dict = getattr(self.__class__, _FIELDS, {})
         field_obj = fields_dict.get(field_name)
@@ -815,7 +810,6 @@ class BaseEntity(BaseModel, OptionsMixin):
             if order.can_transition_to("status", OrderStatus.SHIPPED):
                 order.ship(tracking_number="ABC123")
         """
-        from enum import Enum
 
         fields_dict = getattr(self.__class__, _FIELDS, {})
         field_obj = fields_dict.get(field_name)
@@ -867,8 +861,6 @@ class BaseEntity(BaseModel, OptionsMixin):
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
-                from protean.fields.resolved import convert_pydantic_errors
-
                 raise ValidationError(convert_pydantic_errors(e))
 
             # Post-check invariants
@@ -1035,8 +1027,6 @@ class BaseEntity(BaseModel, OptionsMixin):
         __pydantic_private__ contains back-references to the entity
         itself (e.g. _root and _owner on aggregate roots).
         """
-        import copy
-
         if memo is None:
             memo = {}
 

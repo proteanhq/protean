@@ -8,12 +8,14 @@ dashboard and can be consumed by external monitoring tools.
 import json
 import logging
 import time
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from protean.domain import Domain
+from protean.port.broker import BrokerCapabilities
 
 from ..tracing import TRACE_STREAM
 
@@ -864,8 +866,6 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         # Determine time range
         if start and end:
             # Custom range: parse ISO 8601 timestamps
-            from datetime import datetime
-
             try:
                 start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
                 end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
@@ -1022,7 +1022,6 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
         Supports offset-based pagination via offset/limit params.
         """
-        from protean.port.broker import BrokerCapabilities
         from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
 
         domain = domains[0]
@@ -1089,7 +1088,6 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.get("/dlq/{dlq_id}")
     async def dlq_inspect(dlq_id: str):
         """Inspect a single DLQ message with full payload."""
-        from protean.port.broker import BrokerCapabilities
         from protean.utils.dlq import collect_dlq_streams
 
         domain = domains[0]
@@ -1142,7 +1140,6 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.post("/dlq/{dlq_id}/replay")
     async def dlq_replay(dlq_id: str):
         """Replay a single DLQ message back to its original stream."""
-        from protean.port.broker import BrokerCapabilities
         from protean.utils.dlq import collect_dlq_streams
 
         domain = domains[0]
@@ -1191,7 +1188,6 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         subscription: str = Query(..., description="Stream category (required)"),
     ):
         """Replay all DLQ messages for a subscription."""
-        from protean.port.broker import BrokerCapabilities
         from protean.utils.dlq import discover_subscriptions
 
         domain = domains[0]
@@ -1243,7 +1239,6 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         subscription: str = Query(..., description="Stream category (required)"),
     ):
         """Purge all DLQ messages for a subscription."""
-        from protean.port.broker import BrokerCapabilities
         from protean.utils.dlq import discover_subscriptions
 
         domain = domains[0]

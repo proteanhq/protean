@@ -11,6 +11,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from protean.core.aggregate import BaseAggregate
+from protean.core.command_handler import derive_command_stream_category
+from protean.core.process_manager import BaseProcessManager
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils import DomainObjects
 
@@ -114,10 +117,6 @@ class ElementResolver:
         """
         element_type = cls.element_type
         if element_type == DomainObjects.COMMAND_HANDLER:
-            # Imported lazily to avoid a core <-> domain import cycle, matching
-            # the function-local imports used elsewhere in this module.
-            from protean.core.command_handler import derive_command_stream_category
-
             cls.meta_.stream_category = derive_command_stream_category(aggregate_cls)
         elif element_type == DomainObjects.EVENT_HANDLER:
             # Respect an explicitly configured stream_category; only derive
@@ -127,9 +126,6 @@ class ElementResolver:
 
     def assign_aggregate_clusters(self) -> None:
         """Assign aggregate clusters to all relevant elements."""
-        from protean.core.aggregate import BaseAggregate
-        from protean.core.process_manager import BaseProcessManager
-
         registry = self._domain._domain_registry
 
         # Assign Aggregates and Process Managers to their own cluster

@@ -11,8 +11,10 @@ during class creation.
 """
 
 import datetime
+from enum import Enum as _Enum
 from typing import TYPE_CHECKING, Any, Callable
 
+from protean.exceptions import IncorrectUsageError
 from protean.fields.spec import FieldSpec
 
 
@@ -144,10 +146,6 @@ def Status(
             OrderStatus.PLACED: [OrderStatus.CONFIRMED],
         })
     """
-    from enum import Enum as _Enum
-
-    from protean.exceptions import IncorrectUsageError
-
     if not (isinstance(enum_cls, type) and issubclass(enum_cls, _Enum)):
         raise IncorrectUsageError(
             "Status() requires an Enum class as the first argument"

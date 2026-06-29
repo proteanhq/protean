@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
+from protean.core.process_manager import _generate_pm_transition_event
+from protean.core.query import BaseQuery
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects
 
@@ -182,8 +184,6 @@ class HandlerConfigurator:
         """Discover ``@handle``-decorated methods in process managers,
         validate them, generate transition events, and infer stream categories.
         """
-        from protean.core.process_manager import _generate_pm_transition_event
-
         registry = self._domain._domain_registry
         for _, element in registry._elements[
             DomainObjects.PROCESS_MANAGER.value
@@ -325,8 +325,6 @@ class HandlerConfigurator:
         method_name: str, method: object, handler_cls: type
     ) -> None:
         """Validate a single query handler method's target."""
-        from protean.core.query import BaseQuery
-
         if not inspect.isclass(method._target_cls) or not issubclass(
             method._target_cls, BaseQuery
         ):

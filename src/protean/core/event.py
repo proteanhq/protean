@@ -23,6 +23,7 @@ from protean.utils.eventing import (
     Metadata,
 )
 from protean.utils.globals import g
+from protean.utils.telemetry import inject_traceparent_from_context
 
 logger = logging.getLogger(__name__)
 
@@ -162,8 +163,6 @@ class BaseEvent(BaseMessageType):
         else:
             # Inject the current OTEL span context as traceparent so that
             # events raised during handler execution carry the trace forward.
-            from protean.utils.telemetry import inject_traceparent_from_context
-
             traceparent = inject_traceparent_from_context()
             headers = MessageHeaders(
                 type=self.__class__.__type__,

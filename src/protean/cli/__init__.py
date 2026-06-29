@@ -24,6 +24,7 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
+from protean import __version__
 from protean.cli._helpers import CTX_LOG_CONFIGURED  # noqa: F401 — re-exported
 from protean.cli._helpers import cli_exception_handler  # noqa: F401 — re-exported
 from protean.cli._helpers import handle_cli_exceptions  # noqa: F401 — re-exported
@@ -79,8 +80,6 @@ _LOG_FORMATS = ("auto", "console", "json")
 
 def version_callback(value: bool) -> None:
     if value:
-        from protean import __version__
-
         typer.echo(f"Protean {__version__}")
         raise typer.Exit()
 

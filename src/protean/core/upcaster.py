@@ -16,7 +16,9 @@ import logging
 from abc import abstractmethod
 from typing import Any, TypeVar
 
+from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.utils import derive_element_class
 from protean.utils.container import Element, OptionsMixin
 
 logger = logging.getLogger(__name__)
@@ -69,9 +71,6 @@ _T = TypeVar("_T")
 
 def upcaster_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     """Validate and derive an upcaster class from *element_cls*."""
-    from protean.core.event import BaseEvent
-    from protean.utils import derive_element_class
-
     element_cls = derive_element_class(element_cls, BaseUpcaster, **opts)
 
     # --- Validate required options ---

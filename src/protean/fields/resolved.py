@@ -15,11 +15,15 @@ layer all consume ``ResolvedField`` instances via the
 ``__container_fields__`` dict.
 """
 
+import types as _types
+import typing
 from collections import defaultdict
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
+from pydantic_core import PydanticUndefined
 
 from protean.exceptions import ValidationError
 
@@ -53,8 +57,6 @@ class ResolvedField:
     def __init__(
         self, field_name: str, field_info: Any, python_type: type | None
     ) -> None:
-        from pydantic_core import PydanticUndefined
-
         self.field_name = field_name
         self.attribute_name = field_name
         self._python_type = python_type
@@ -150,9 +152,6 @@ class ResolvedField:
         This allows the SQLAlchemy adapter to determine the correct ARRAY
         element type (e.g., list[int] → int → ARRAY(Integer)).
         """
-        import types as _types
-        import typing
-
         python_type = self._python_type
 
         # Unwrap Optional/Union: list[str] | None → list[str]
@@ -174,8 +173,6 @@ class ResolvedField:
 
     def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self."""
-        from enum import Enum
-
         if value is None:
             return None
         # Prefer custom to_dict() over Pydantic model_dump() — our VOs

@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 
 from protean.domain import Domain
+from protean.utils.globals import current_domain
 
 
 class DomainFixture:
@@ -62,8 +63,6 @@ class DomainFixture:
         try:
             yield self.domain
         finally:
-            from protean.utils.globals import current_domain
-
             for _, provider in current_domain.providers.items():
                 provider._data_reset()
 

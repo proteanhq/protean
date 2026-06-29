@@ -3,8 +3,12 @@
 These work alongside the simple field factories in ``simple.py``.
 """
 
+import types as _types
+import typing
 from typing import TYPE_CHECKING, Any
 
+from protean.exceptions import ValidationError
+from protean.fields.embedded import ValueObject as VODescriptor
 from protean.fields.spec import FieldSpec
 
 
@@ -19,9 +23,6 @@ def List(content_type: Any = None, pickled: bool = False, **kwargs: Any) -> Fiel
 
     The ``pickled`` flag is a legacy parameter kept for backward compatibility.
     """
-    from protean.exceptions import ValidationError
-    from protean.fields.embedded import ValueObject as VODescriptor
-
     # If content_type is a FieldSpec factory function (e.g. ``Integer`` rather
     # than ``Integer()``), call it to obtain a FieldSpec instance.
     if callable(content_type) and not isinstance(
@@ -36,9 +37,6 @@ def List(content_type: Any = None, pickled: bool = False, **kwargs: Any) -> Fiel
     if isinstance(content_type, FieldSpec):
         # Use the resolved type to preserve Literal/choices constraints.
         # Strip Optional wrapping since list elements don't need it.
-        import types as _types
-        import typing
-
         resolved = content_type.resolve_type()
         origin = typing.get_origin(resolved)
         if origin is _types.UnionType or origin is typing.Union:
