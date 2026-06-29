@@ -1,12 +1,12 @@
 # Protean
 
-**Protean** is an opinionated and pragmatic framework for building event-driven applications using the CQRS pattern.
+**Protean** is an opinionated Python framework for building event-driven applications with Domain-Driven Design — aggregates, CQRS, and event sourcing are first-class, and your domain logic stays independent of the database, broker, and API you run it on.
 
 [![Python](https://img.shields.io/pypi/pyversions/protean?label=Python)](https://github.com/proteanhq/protean/)
 [![Release](https://img.shields.io/pypi/v/protean?label=Release&style=flat-square)](https://pypi.org/project/protean/)
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
-[![Tests](https://img.shields.io/badge/tests-7%2C674-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-10%2C386-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 ## Installation
@@ -21,27 +21,60 @@ Protean officially supports Python 3.11+.
 
 ## Quick Start
 
+A command flows to its handler, the aggregate raises an event, and an event
+handler reacts — all wired by the domain, independent of infrastructure:
+
 ```python
 from protean import Domain
-from protean.fields import String, Text
+from protean.fields import Boolean, Identifier, String
+from protean.utils.mixins import handle
 
 domain = Domain(name="Publishing")
+domain.config["command_processing"] = "sync"
+domain.config["event_processing"] = "sync"
+
+
+@domain.event(part_of="Post")
+class PostPublished:
+    post_id = Identifier()
+    title = String()
+
 
 @domain.aggregate
 class Post:
-    title: String(required=True, max_length=1000)
-    slug: String(required=True, max_length=1024)
-    content: Text(required=True)
+    title = String(required=True, max_length=200)
+    is_published = Boolean(default=False)
 
-domain.init()
+    def publish(self):
+        self.is_published = True
+        self.raise_(PostPublished(post_id=self.id, title=self.title))
+
+
+@domain.command(part_of="Post")
+class PublishPost:
+    post_id = Identifier(identifier=True)
+    title = String()
+
+
+@domain.command_handler(part_of="Post")
+class PostCommandHandler:
+    @handle(PublishPost)
+    def publish(self, command):
+        post = Post(id=command.post_id, title=command.title)
+        post.publish()
+        domain.repository_for(Post).add(post)
+
+
+@domain.event_handler(part_of="Post")
+class Notifications:
+    @handle(PostPublished)
+    def announce(self, event):
+        print(f"Published: {event.title}")
+
+
+domain.init(traverse=False)
 with domain.domain_context():
-    post = Post(
-        title="Hello World",
-        slug="hello-world",
-        content="Lorem Ipsum ..."
-    )
-
-    domain.repository_for(Post).add(post)
+    domain.process(PublishPost(post_id="1", title="Hello, Protean"))
 ```
 
 ## Documentation
