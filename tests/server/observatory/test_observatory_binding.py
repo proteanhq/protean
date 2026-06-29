@@ -9,6 +9,8 @@ import inspect
 import logging
 from unittest.mock import patch
 
+import pytest
+
 from protean.server.observatory import Observatory
 
 
@@ -43,3 +45,20 @@ class TestObservatoryBinding:
             _run([test_domain], host="127.0.0.1")
 
         assert not any("no authentication" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize(
+        "host,is_loopback",
+        [
+            ("127.0.0.1", True),
+            ("127.0.1.1", True),  # anywhere in 127.0.0.0/8
+            ("::1", True),
+            ("0:0:0:0:0:0:0:1", True),  # long-form IPv6 loopback
+            ("localhost", True),
+            ("0.0.0.0", False),
+            ("::", False),
+            ("10.0.0.5", False),
+            ("example.com", False),  # unresolved hostname: not proven loopback
+        ],
+    )
+    def test_loopback_detection_is_semantic(self, host, is_loopback):
+        assert Observatory._is_loopback_host(host) is is_loopback
