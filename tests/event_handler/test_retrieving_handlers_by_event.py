@@ -72,6 +72,15 @@ class AllEventsHandler(BaseEventHandler):
         pass
 
 
+class UserAuditHandler(BaseEventHandler):
+    """A `$any` handler scoped to a single aggregate via ``part_of`` (NOT the
+    ``$all`` stream). Keyed under ``"$any"`` in ``_handlers``."""
+
+    @handle("$any")
+    def audit(self, _: BaseEvent) -> None:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User, is_event_sourced=True)
@@ -107,3 +116,41 @@ def test_that_all_streams_handler_is_always_returned_with_other_handlers(test_do
         AllEventsHandler,
     }
     assert test_domain.handlers_for(Sent()) == {EmailEventHandler, AllEventsHandler}
+
+
+def test_that_part_of_any_handler_is_returned_for_its_streams_events(test_domain):
+    """Regression for #1023.
+
+    A ``@handle("$any")`` handler scoped to an aggregate via ``part_of`` is keyed
+    under ``"$any"`` in ``_handlers``, not the concrete event ``__type__``. It
+    was filtered out by ``handlers_for``, so it never fired under synchronous
+    dispatch (``event_processing="sync"``), which routes through ``handlers_for``
+    — even though it fired under async (Engine) dispatch, which does not.
+    """
+    test_domain.register(UserAuditHandler, part_of=User)
+    test_domain.init(traverse=False)
+
+    # Returned for every event on its aggregate's stream ...
+    assert UserAuditHandler in test_domain.handlers_for(Registered())
+    assert UserAuditHandler in test_domain.handlers_for(Activated())
+    # ... but stays scoped to its aggregate (not a global handler).
+    assert UserAuditHandler not in test_domain.handlers_for(Sent())
+
+
+def test_that_part_of_any_handler_is_not_returned_for_external_events(test_domain):
+    """A `part_of`-scoped `$any` handler must NOT fire for external events.
+
+    External events (no ``part_of``) take the slow path and are matched by their
+    concrete ``__type__``. An aggregate-scoped `$any` handler belongs to that
+    aggregate's stream, so honouring `$any` on the external path would leak every
+    unrelated event to it. Only `$all`-stream `$any` handlers apply globally.
+    """
+
+    class ExternalEvent(BaseEvent):
+        foo = String()
+
+    test_domain.register(UserAuditHandler, part_of=User)
+    test_domain.register_external_event(ExternalEvent, "Bar.ExternalEvent.v1")
+    test_domain.init(traverse=False)
+
+    assert UserAuditHandler not in test_domain.handlers_for(ExternalEvent(foo="x"))
