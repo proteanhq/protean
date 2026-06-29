@@ -74,22 +74,47 @@ git push origin release/0.16.x
 
 ## Patch release workflow (from release branch)
 
-Bugfixes land on `main` first, then are cherry-picked to the release branch:
+The `release/0.X.x` branch is created when the minor ships (step 3 above) and
+stays around for the life of that line, so a patch never waits on branch
+creation. Bugfixes land on `main` first, then are cherry-picked to the release
+branch:
 
 ```bash
 # Fix the bug on main, merge PR, then:
 git checkout release/0.16.x
 git pull --ff-only
-git cherry-pick <commit-hash>
+git cherry-pick <commit-hash>                 # CI runs on the release branch push
 
 # Update CHANGELOG on the release branch under [0.16.1]
 $EDITOR CHANGELOG.md
 git add CHANGELOG.md
 git commit -m "Mark 0.16.1 release in CHANGELOG"
 
-bump-my-version bump patch                    # 0.16.0 → 0.16.1
-git push origin release/0.16.x --tags
+# Bump version, then commit + tag MANUALLY — same uv-lock gotcha as the minor
+# flow: bump-my-version's own commit is aborted by the `uv-lock` pre-commit
+# hook (the stale uv.lock is regenerated and pre-commit rolls the commit back).
+bump-my-version bump patch --no-commit --no-tag   # 0.16.0 → 0.16.1, files only
+uv lock                                            # bring uv.lock to the new version
+git add -A
+git commit -m "Bump version: 0.16.0 → 0.16.1"      # uv-lock hook now passes
+git tag -a v0.16.1 -m "Bump version: 0.16.0 → 0.16.1"
+git push origin release/0.16.x
+git push origin v0.16.1                             # tag push triggers publish.yml
 ```
+
+## Backporting fixes to the release branch
+
+Two ways to get a `main` fix onto `release/0.X.x`:
+
+- **Automated (preferred):** add the `backport release/0.X.x` label to the PR
+  before merging. The `Backport` workflow (`.github/workflows/backport.yml`)
+  opens a cherry-pick PR against the release branch on merge. Review and merge
+  that PR, then cut the patch.
+- **Manual:** cherry-pick the merge commit as shown in the patch workflow above.
+  Use this when the automated cherry-pick conflicts.
+
+Only the latest minor line is patched (see `SECURITY.md`); don't backport to
+older `release/*` branches.
 
 ## Post-release checklist
 
