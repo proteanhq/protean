@@ -34,18 +34,20 @@ With `tag.gpgsign` on, the `v0.X.Y` tag is signed too. Verify with
 uv sync --group dev
 
 # Minor release (e.g., 0.15.0 → 0.16.0)
-bump-my-version bump minor
+bump-my-version bump minor --no-commit --no-tag
 
 # Patch release (e.g., 0.15.0 → 0.15.1)
-bump-my-version bump patch
+bump-my-version bump patch --no-commit --no-tag
 ```
 
 Version is updated automatically in: `pyproject.toml`, `src/protean/__init__.py`,
 `src/protean/template/domain_template/pyproject.toml.jinja`,
 `docs/guides/getting-started/installation.md`, `.bumpversion.toml`.
 
-`bump-my-version` auto-creates a commit and tag (e.g., `v0.16.0`). Push the tag
-to trigger the publish workflow.
+`bump-my-version`'s own commit/tag is aborted by the `uv-lock` pre-commit hook
+(see the minor and patch workflows below), so both release flows bump files only
+with `--no-commit --no-tag`, then `uv lock` and commit + tag manually. Pushing
+the resulting tag triggers the publish workflow.
 
 The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
 - Building with uv
@@ -57,7 +59,7 @@ The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
 ```
 main:  ──A──B──C──[tag v0.16.0]──D──E──...
                       │
-release/0.16.x:       └── (created on demand for patches)
+release/0.16.x:       └── (cut from the tag when the minor ships; patches land here)
 ```
 
 **Cutting a minor release:**

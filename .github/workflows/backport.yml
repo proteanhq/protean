@@ -17,11 +17,15 @@ jobs:
     name: Backport PR
     runs-on: ubuntu-latest
     # Only act on merged PRs that carry at least one `backport ...` label.
+    # On `closed` (merge): require an existing `backport ` label on the PR.
+    # On `labeled`: require the just-added label to be a `backport ` one.
     if: >
       github.event.pull_request.merged == true &&
       (
-        github.event.action == 'closed' ||
-        startsWith(github.event.label.name, 'backport ')
+        (github.event.action == 'closed' &&
+         contains(join(github.event.pull_request.labels.*.name, '|'), 'backport ')) ||
+        (github.event.action == 'labeled' &&
+         startsWith(github.event.label.name, 'backport '))
       )
     steps:
       - uses: actions/checkout@v4
