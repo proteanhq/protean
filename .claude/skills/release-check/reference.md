@@ -9,6 +9,24 @@ are cut straight from `main` when the changelog has substantive entries. Bugs
 discovered after a release are shipped as **patch releases** from the release
 branch.
 
+## Prerequisite: signed commits and tags
+
+Release commits and tags go to `main`/`release/*` directly (not via a PR), so
+they are only "Verified" on GitHub if your local git is set up to sign. On a
+fresh machine, configure SSH signing **before** bumping:
+
+```bash
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/<your_key>.pub   # a GitHub Signing Key
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+```
+
+The key must be registered on GitHub as a **Signing Key** (a separate list from
+auth keys: Settings → SSH and GPG keys → New SSH key → type *Signing Key*).
+With `tag.gpgsign` on, the `v0.X.Y` tag is signed too. Verify with
+`git log --show-signature -1`.
+
 ## Version bump commands
 
 ```bash
@@ -16,18 +34,20 @@ branch.
 uv sync --group dev
 
 # Minor release (e.g., 0.15.0 → 0.16.0)
-bump-my-version bump minor
+bump-my-version bump minor --no-commit --no-tag
 
 # Patch release (e.g., 0.15.0 → 0.15.1)
-bump-my-version bump patch
+bump-my-version bump patch --no-commit --no-tag
 ```
 
 Version is updated automatically in: `pyproject.toml`, `src/protean/__init__.py`,
 `src/protean/template/domain_template/pyproject.toml.jinja`,
 `docs/guides/getting-started/installation.md`, `.bumpversion.toml`.
 
-`bump-my-version` auto-creates a commit and tag (e.g., `v0.16.0`). Push the tag
-to trigger the publish workflow.
+`bump-my-version`'s own commit/tag is aborted by the `uv-lock` pre-commit hook
+(see the minor and patch workflows below), so both release flows bump files only
+with `--no-commit --no-tag`, then `uv lock` and commit + tag manually. Pushing
+the resulting tag triggers the publish workflow.
 
 The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
 - Building with uv
@@ -39,7 +59,7 @@ The GitHub Actions workflow (`.github/workflows/publish.yml`) handles:
 ```
 main:  ──A──B──C──[tag v0.16.0]──D──E──...
                       │
-release/0.16.x:       └── (created on demand for patches)
+release/0.16.x:       └── (cut from the tag when the minor ships; patches land here)
 ```
 
 **Cutting a minor release:**
@@ -74,22 +94,47 @@ git push origin release/0.16.x
 
 ## Patch release workflow (from release branch)
 
-Bugfixes land on `main` first, then are cherry-picked to the release branch:
+The `release/0.X.x` branch is created when the minor ships (step 3 above) and
+stays around for the life of that line, so a patch never waits on branch
+creation. Bugfixes land on `main` first, then are cherry-picked to the release
+branch:
 
 ```bash
 # Fix the bug on main, merge PR, then:
 git checkout release/0.16.x
 git pull --ff-only
-git cherry-pick <commit-hash>
+git cherry-pick <commit-hash>                 # CI runs on the release branch push
 
 # Update CHANGELOG on the release branch under [0.16.1]
 $EDITOR CHANGELOG.md
 git add CHANGELOG.md
 git commit -m "Mark 0.16.1 release in CHANGELOG"
 
-bump-my-version bump patch                    # 0.16.0 → 0.16.1
-git push origin release/0.16.x --tags
+# Bump version, then commit + tag MANUALLY — same uv-lock gotcha as the minor
+# flow: bump-my-version's own commit is aborted by the `uv-lock` pre-commit
+# hook (the stale uv.lock is regenerated and pre-commit rolls the commit back).
+bump-my-version bump patch --no-commit --no-tag   # 0.16.0 → 0.16.1, files only
+uv lock                                            # bring uv.lock to the new version
+git add -A
+git commit -m "Bump version: 0.16.0 → 0.16.1"      # uv-lock hook now passes
+git tag -a v0.16.1 -m "Bump version: 0.16.0 → 0.16.1"
+git push origin release/0.16.x
+git push origin v0.16.1                             # tag push triggers publish.yml
 ```
+
+## Backporting fixes to the release branch
+
+Two ways to get a `main` fix onto `release/0.X.x`:
+
+- **Automated (preferred):** add the `backport release/0.X.x` label to the PR
+  before merging. The `Backport` workflow (`.github/workflows/backport.yml`)
+  opens a cherry-pick PR against the release branch on merge. Review and merge
+  that PR, then cut the patch.
+- **Manual:** cherry-pick the merge commit as shown in the patch workflow above.
+  Use this when the automated cherry-pick conflicts.
+
+Only the latest minor line is patched (see `SECURITY.md`); don't backport to
+older `release/*` branches.
 
 ## Post-release checklist
 

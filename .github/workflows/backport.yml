@@ -1,0 +1,41 @@
+name: Backport
+
+# When a merged PR carries a `backport release/0.X.x` label, open a PR that
+# cherry-picks it onto that release branch. Keeps the supported patch line
+# (see SECURITY.md) in sync without relying on a maintainer to remember the
+# cherry-pick. The opened PR still goes through CI on the release branch.
+on:
+  pull_request_target:
+    types: [closed, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  backport:
+    name: Backport PR
+    runs-on: ubuntu-latest
+    # Only act on merged PRs that carry at least one `backport ...` label.
+    # On `closed` (merge): require an existing `backport ` label on the PR.
+    # On `labeled`: require the just-added label to be a `backport ` one.
+    if: >
+      github.event.pull_request.merged == true &&
+      (
+        (github.event.action == 'closed' &&
+         contains(join(github.event.pull_request.labels.*.name, '|'), 'backport ')) ||
+        (github.event.action == 'labeled' &&
+         startsWith(github.event.label.name, 'backport '))
+      )
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create backport PR
+        uses: korthout/backport-action@v3
+        with:
+          label_pattern: '^backport (?<target>release/[^ ]+)$'
+          pull_title: '[Backport ${target_branch}] ${pull_title}'
+          pull_description: |-
+            Automated backport of #${pull_number} to `${target_branch}`.
