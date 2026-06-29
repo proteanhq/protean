@@ -568,18 +568,43 @@ class OutboxRepository(BaseRepository):
 
         return self._apply_limit_and_execute(query, limit)
 
-    def find_by_message_id(self, message_id: str) -> Optional[Outbox]:
-        """Find a message by its unique message ID.
+    def find_by_message_id(
+        self, message_id: str, target_broker: str | None = None
+    ) -> Optional[Outbox]:
+        """Find a single outbox message by its message ID.
+
+        In multi-broker mode a published event is dual-written once per target
+        broker, so ``message_id`` is not unique on its own. Pass
+        ``target_broker`` to select the unique ``(message_id, target_broker)``
+        row. Without it the first matching row is returned; use
+        :meth:`find_all_by_message_id` to retrieve every per-broker row.
 
         Args:
-            message_id: The unique message ID
+            message_id: The message ID to look up
+            target_broker: When given, restrict the lookup to this broker's row
 
         Returns:
-            The Outbox message with the given message ID, or None if not found
+            The matching Outbox message, or None if not found
         """
-        query = self._dao.query.filter(message_id=message_id)
-        results = query.all().items
+        criteria = {"message_id": message_id}
+        if target_broker is not None:
+            criteria["target_broker"] = target_broker
+        results = self._dao.query.filter(**criteria).all().items
         return results[0] if results else None
+
+    def find_all_by_message_id(self, message_id: str) -> list[Outbox]:
+        """Find every outbox row sharing a message ID.
+
+        A published event is dual-written once per target broker, so a single
+        ``message_id`` can map to several rows, one per ``target_broker``.
+
+        Args:
+            message_id: The message ID to look up
+
+        Returns:
+            All Outbox messages with the given message ID (possibly empty)
+        """
+        return self._dao.query.filter(message_id=message_id).all().items
 
     def find_by_message_type(
         self, message_type: str, limit: Optional[int] = PAGE_SIZE
