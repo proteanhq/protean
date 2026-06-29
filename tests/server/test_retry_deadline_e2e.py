@@ -13,6 +13,7 @@ error path:
   rather than being marked done.
 """
 
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -77,8 +78,13 @@ def no_retry_sleep(monkeypatch):
 
     The deadline guard must stop the retry loop *before* any backoff sleep. With
     ``base_delay_seconds = 3600`` a real sleep would hang the suite for an hour,
-    so replace the retry sleep with one that raises: a guard regression then
-    fails immediately with a clear message instead of timing out the run.
+    so make the retry's ``time.sleep`` raise: a guard regression then fails
+    immediately with a clear message instead of timing out the run.
+
+    The patch is scoped to the ``time`` symbol *inside* ``protean.utils.mixins``
+    (via a proxy that overrides only ``sleep`` and delegates everything else to
+    the real module), so an unrelated ``time.sleep`` elsewhere in the engine is
+    unaffected and cannot trip this assertion.
     """
 
     def _fail(seconds: float) -> None:
@@ -87,7 +93,13 @@ def no_retry_sleep(monkeypatch):
             "should have stopped the loop before sleeping"
         )
 
-    monkeypatch.setattr("protean.utils.mixins.time.sleep", _fail)
+    class _TimeProxy:
+        sleep = staticmethod(_fail)
+
+        def __getattr__(self, name):
+            return getattr(time, name)
+
+    monkeypatch.setattr("protean.utils.mixins.time", _TimeProxy())
 
 
 def _message_with_deadline(test_domain, deadline):
