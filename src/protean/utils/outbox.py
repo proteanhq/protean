@@ -89,7 +89,10 @@ class Outbox(BaseAggregate):
     # Message priority for processing order
     priority: int = 0  # Higher = more important
 
-    # Target broker for this message (None = legacy/unqualified)
+    # Target broker this message is destined for. The framework always sets it
+    # on write (the internal broker name, or an external broker name); the
+    # composite (message_id, target_broker) unique index depends on it being
+    # non-NULL. Kept nullable only to read rows written before it was populated.
     target_broker: Annotated[str | None, Field(max_length=128)] = None
 
     @classmethod
@@ -120,7 +123,8 @@ class Outbox(BaseAggregate):
             causation_id: Causation identifier (parent message's headers.id)
             max_retries: Maximum retry attempts
             sequence_number: Sequence number for ordering
-            target_broker: Name of the broker this message targets (None = legacy)
+            target_broker: Name of the broker this message targets. The
+                framework always sets it; None only for legacy rows.
 
         Returns:
             New Outbox instance
@@ -320,11 +324,14 @@ class Outbox(BaseAggregate):
 # - The active-set partial index keeps the polling index tiny: only pending and
 #   failed rows are indexed, not the published archive (which dominates volume).
 # - ``(message_id, target_broker)`` is unique for idempotency / find-by-message-id.
-#   The uniqueness is composite because a single event is dual-written to the
-#   outbox once per target broker (the internal broker plus every external
-#   broker), so the same ``message_id`` legitimately appears multiple times,
-#   distinguished by ``target_broker``. A unique index on ``message_id`` alone
-#   would reject the framework's own multi-broker dual-write.
+#   A single event is dual-written to the outbox once per target broker (the
+#   internal broker plus every external broker), all rows sharing one
+#   ``message_id`` and differing only by ``target_broker``, so ``message_id``
+#   alone cannot be unique. The framework always writes a non-NULL
+#   ``target_broker`` (see ``UnitOfWork``), which this composite uniqueness
+#   depends on: a NULL is treated as distinct on PostgreSQL/SQLite and would
+#   defeat idempotency. In single-broker mode the index still enforces one row
+#   per ``message_id`` (under the internal broker name).
 # - ``correlation_id`` supports trace-oriented lookups.
 OUTBOX_INDEXES = [
     Index(
