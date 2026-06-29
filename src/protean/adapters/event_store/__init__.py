@@ -147,6 +147,12 @@ class EventStore:
             stream_handlers = set()
             event_type = getattr(event.__class__, "__type__", None)
             if event_type:
+                # External events match handlers by their concrete __type__.
+                # `$any` is deliberately NOT honoured here: a `$any` handler
+                # scoped to an aggregate (part_of) belongs to that aggregate's
+                # stream and must not fire for unrelated external events. `$any`
+                # handlers on the `$all` stream are already returned below via
+                # `all_stream_handlers`.
                 for handlers_set in self._event_streams.values():
                     for handler in handlers_set:
                         if event_type in handler._handlers:
@@ -155,7 +161,10 @@ class EventStore:
 
         configured_stream_handlers = set()
         for stream_handler in stream_handlers:
-            if event.__class__.__type__ in stream_handler._handlers:
+            if (
+                event.__class__.__type__ in stream_handler._handlers
+                or "$any" in stream_handler._handlers
+            ):
                 configured_stream_handlers.add(stream_handler)
 
         return set.union(configured_stream_handlers, all_stream_handlers)
