@@ -7,6 +7,8 @@ import pytest
 from protean import Domain
 from protean.ir import SCHEMA_VERSION
 from protean.ir.builder import IRBuilder
+from protean.ir.constants import VOLATILE_IR_KEYS
+from protean.ir.diff import diff_ir
 
 
 @pytest.mark.no_test_domain
@@ -133,16 +135,44 @@ class TestChecksum:
         d2.init(traverse=False)
         assert d1.to_ir()["checksum"] != d2.to_ir()["checksum"]
 
-    def test_checksum_ignores_version_and_volatile_keys(self):
-        """Schema/framework-version changes must not affect the checksum.
+    def test_checksum_ignores_every_volatile_key(self):
+        """Mutating *any* volatile/derived key must not change the checksum.
 
         Regression for #1012: ``ir check`` (staleness) reported a domain as
         stale on a framework-version-only difference while ``ir diff`` reported
-        no changes. The checksum must reflect domain *content* only — excluding
-        ``$schema``/``ir_version``/``generated_at``/``elements`` — so the two
-        commands agree across an upgrade.
+        no changes. The checksum must reflect domain *content* only. Drives the
+        full exclusion set from ``VOLATILE_IR_KEYS`` so it can't silently miss a
+        key (e.g. ``elements``/``checksum``).
         """
         domain = Domain(name="Volatile")
+        domain.init(traverse=False)
+        ir = domain.to_ir()
+        baseline = IRBuilder._compute_checksum(ir)
+
+        sentinels = {
+            "$schema": "https://protean.dev/ir/v9.9.9/schema.json",
+            "ir_version": "9.9.9",
+            "generated_at": "2099-01-01T00:00:00Z",
+            "checksum": "sha256:deadbeef",
+            "elements": {"mutated": True},
+        }
+        # Every excluded key has a sentinel value to mutate.
+        assert set(sentinels) == set(VOLATILE_IR_KEYS)
+
+        for key, value in sentinels.items():
+            bumped = dict(ir)
+            bumped[key] = value
+            assert IRBuilder._compute_checksum(bumped) == baseline, (
+                f"checksum changed when only volatile key {key!r} was mutated"
+            )
+
+    def test_checksum_and_diff_agree_on_volatile_only_change(self):
+        """A framework-version-only difference is not a change to either path.
+
+        Enforces the #1012 lockstep across both code paths (``diff_ir`` and the
+        staleness checksum) using the shared exclusion set.
+        """
+        domain = Domain(name="Lockstep")
         domain.init(traverse=False)
         ir = domain.to_ir()
 
@@ -151,6 +181,9 @@ class TestChecksum:
         bumped["$schema"] = "https://protean.dev/ir/v9.9.9/schema.json"
         bumped["generated_at"] = "2099-01-01T00:00:00Z"
 
+        # ir diff sees no change ...
+        assert diff_ir(ir, bumped)["summary"]["has_changes"] is False
+        # ... and the staleness checksum agrees.
         assert IRBuilder._compute_checksum(bumped) == IRBuilder._compute_checksum(ir)
 
 

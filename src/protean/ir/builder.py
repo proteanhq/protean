@@ -29,22 +29,12 @@ from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
+from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-
-
-# Keys excluded from the content checksum: volatile metadata (the generation
-# timestamp and the checksum field itself) plus version/format markers that
-# change on a framework upgrade without the domain having changed. This set
-# MUST match the keys that ``protean.ir.diff.diff_ir`` ignores, so that
-# ``ir check`` (staleness) and ``ir diff`` agree — a framework-version-only
-# difference must not read as a domain change. See #1012.
-_CHECKSUM_EXCLUDED_KEYS = frozenset(
-    {"$schema", "ir_version", "generated_at", "checksum", "elements"}
-)
 
 
 class IRBuilder:
@@ -1755,10 +1745,10 @@ class IRBuilder:
     def _compute_checksum(ir: dict[str, Any]) -> str:
         """SHA-256 of canonical JSON with volatile/version keys removed.
 
-        Excludes :data:`_CHECKSUM_EXCLUDED_KEYS` so the checksum reflects
-        domain *content* only and stays in lockstep with ``ir diff``.
+        Excludes :data:`protean.ir.constants.VOLATILE_IR_KEYS` so the checksum
+        reflects domain *content* only and stays in lockstep with ``ir diff``.
         """
-        ir_copy = {k: v for k, v in ir.items() if k not in _CHECKSUM_EXCLUDED_KEYS}
+        ir_copy = {k: v for k, v in ir.items() if k not in VOLATILE_IR_KEYS}
         canonical = json.dumps(ir_copy, sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return f"sha256:{digest}"
