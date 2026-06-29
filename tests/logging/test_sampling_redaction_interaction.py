@@ -22,6 +22,11 @@ import structlog
 
 from protean import Domain
 
+# These tests build and configure their own Domain, so skip the autouse
+# `test_domain` fixture that would otherwise initialize a second domain and
+# mutate global logging state.
+pytestmark = pytest.mark.no_test_domain
+
 
 @pytest.fixture(autouse=True)
 def _reset_logging():
@@ -40,8 +45,10 @@ def _reset_logging():
     access.filters = []
     yield
     structlog.reset_defaults()
-    root.filters, root.handlers, root.level = saved[0], saved[1], saved[2]
-    access.filters, access.level = saved[3], saved[4]
+    root.filters, root.handlers = saved[0], saved[1]
+    root.setLevel(saved[2])  # setLevel() clears the cached effective levels
+    access.filters = saved[3]
+    access.setLevel(saved[4])
 
 
 def _configure(sampling: dict) -> StringIO:
