@@ -181,7 +181,7 @@ def _check_outbox_schema(domain: "Domain") -> list[UpgradeFinding]:
     try:
         from sqlalchemy import inspect as sa_inspect
         from sqlalchemy.types import String as SAString
-    except ImportError:
+    except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
         return []
 
     from protean.adapters.repository.sqlalchemy import SAProvider
@@ -193,7 +193,7 @@ def _check_outbox_schema(domain: "Domain") -> list[UpgradeFinding]:
         if not isinstance(provider, SAProvider):
             continue
         engine = getattr(provider, "_engine", None)
-        if engine is None:
+        if engine is None:  # pragma: no cover - an initialized SAProvider has one
             continue
         dialect = engine.dialect.name
         # Honor a non-default provider schema so the right outbox table is found.

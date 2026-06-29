@@ -64,7 +64,7 @@ def upgrade_check(
         logger.error(msg)
         raise typer.Exit(code=1)
 
-    if derived_domain is None:
+    if derived_domain is None:  # pragma: no cover - derive_domain raises on failure
         print("[red]Error loading Protean domain: no domain found.[/red]")
         raise typer.Exit(code=1)
 

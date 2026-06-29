@@ -102,6 +102,50 @@ class TestAlterStatement:
         out = _alter_statement("mssql", "type", 255, nullable=False)
         assert out == "ALTER TABLE outbox ALTER COLUMN type varchar(255) NOT NULL;"
 
+    def test_unknown_dialect_falls_back_to_standard_sql(self):
+        assert (
+            _alter_statement("oracle", "status", 32, nullable=False)
+            == "  ALTER COLUMN status TYPE varchar(32)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Outbox schema diff against a live SQLite database (no Docker required)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.sqlite
+class TestOutboxSchemaSqlite:
+    @pytest.fixture
+    def sqlite_domain(self, tmp_path):
+        from protean.domain import Domain
+        from protean.upgrade import _check_outbox_schema  # noqa: F401
+
+        domain = Domain(name="UpgradeSqlite")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'uc.db'}",
+        }
+        domain.init(traverse=False)
+        return domain
+
+    def test_no_outbox_table_yields_no_finding(self, sqlite_domain):
+        from protean.upgrade import _check_outbox_schema
+
+        # has_table('outbox') is False -> nothing to report.
+        assert _check_outbox_schema(sqlite_domain) == []
+
+    def test_sqlite_with_outbox_table_is_a_noop(self, sqlite_domain):
+        from sqlalchemy import text
+
+        from protean.upgrade import _check_outbox_schema
+
+        engine = sqlite_domain.providers["default"]._engine
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE outbox (id varchar(36), message_id text)"))
+        # SQLite does not enforce VARCHAR lengths -> the check skips it.
+        assert _check_outbox_schema(sqlite_domain) == []
+
 
 # ---------------------------------------------------------------------------
 # Orchestration
@@ -225,3 +269,21 @@ class TestOutboxSchemaPostgres:
             )
         # After applying, the check is clean (idempotent).
         assert _check_outbox_schema(pg_domain) == []
+
+    def test_absent_bounded_columns_are_skipped(self, pg_domain):
+        from sqlalchemy import text
+
+        from protean.upgrade import _check_outbox_schema
+
+        engine = pg_domain.providers["default"]._engine
+        # A table missing most bounded columns: only message_id is present.
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE outbox"))
+            conn.execute(text("CREATE TABLE outbox (id varchar(36), message_id text)"))
+
+        findings = _check_outbox_schema(pg_domain)
+        # The present unbounded column is migrated; absent columns are skipped
+        # (no KeyError, no spurious ALTER for status/locked_by/...).
+        assert len(findings) == 1
+        assert "ALTER COLUMN message_id" in findings[0].sql
+        assert "status" not in findings[0].sql
