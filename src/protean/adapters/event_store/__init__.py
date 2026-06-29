@@ -149,13 +149,19 @@ class EventStore:
             if event_type:
                 for handlers_set in self._event_streams.values():
                     for handler in handlers_set:
-                        if event_type in handler._handlers:
+                        if (
+                            event_type in handler._handlers
+                            or "$any" in handler._handlers
+                        ):
                             stream_handlers.add(handler)
                 return set.union(stream_handlers, all_stream_handlers)
 
         configured_stream_handlers = set()
         for stream_handler in stream_handlers:
-            if event.__class__.__type__ in stream_handler._handlers:
+            if (
+                event.__class__.__type__ in stream_handler._handlers
+                or "$any" in stream_handler._handlers
+            ):
                 configured_stream_handlers.add(stream_handler)
 
         return set.union(configured_stream_handlers, all_stream_handlers)
