@@ -89,7 +89,10 @@ class Outbox(BaseAggregate):
     # Message priority for processing order
     priority: int = 0  # Higher = more important
 
-    # Target broker for this message (None = legacy/unqualified)
+    # Target broker this message is destined for. The framework always sets it
+    # on write (the internal broker name, or an external broker name); the
+    # composite (message_id, target_broker) unique index depends on it being
+    # non-NULL. Kept nullable only to read rows written before it was populated.
     target_broker: Annotated[str | None, Field(max_length=128)] = None
 
     @classmethod
@@ -120,7 +123,8 @@ class Outbox(BaseAggregate):
             causation_id: Causation identifier (parent message's headers.id)
             max_retries: Maximum retry attempts
             sequence_number: Sequence number for ordering
-            target_broker: Name of the broker this message targets (None = legacy)
+            target_broker: Name of the broker this message targets. The
+                framework always sets it; None only for legacy rows.
 
         Returns:
             New Outbox instance
@@ -319,7 +323,15 @@ class Outbox(BaseAggregate):
 #
 # - The active-set partial index keeps the polling index tiny: only pending and
 #   failed rows are indexed, not the published archive (which dominates volume).
-# - ``message_id`` is unique for idempotency / find-by-message-id.
+# - ``(message_id, target_broker)`` is unique for idempotency / find-by-message-id.
+#   A single event is dual-written to the outbox once per target broker (the
+#   internal broker plus every external broker), all rows sharing one
+#   ``message_id`` and differing only by ``target_broker``, so ``message_id``
+#   alone cannot be unique. The framework always writes a non-NULL
+#   ``target_broker`` (see ``UnitOfWork``), which this composite uniqueness
+#   depends on: a NULL is treated as distinct on PostgreSQL/SQLite and would
+#   defeat idempotency. In single-broker mode the index still enforces one row
+#   per ``message_id`` (under the internal broker name).
 # - ``correlation_id`` supports trace-oriented lookups.
 OUTBOX_INDEXES = [
     Index(
@@ -329,7 +341,7 @@ OUTBOX_INDEXES = [
         where=Q(status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]),
         name="ix_outbox_active",
     ),
-    Index("message_id", unique=True),
+    Index("message_id", "target_broker", unique=True),
     Index("correlation_id"),
 ]
 
@@ -556,18 +568,43 @@ class OutboxRepository(BaseRepository):
 
         return self._apply_limit_and_execute(query, limit)
 
-    def find_by_message_id(self, message_id: str) -> Optional[Outbox]:
-        """Find a message by its unique message ID.
+    def find_by_message_id(
+        self, message_id: str, target_broker: str | None = None
+    ) -> Optional[Outbox]:
+        """Find a single outbox message by its message ID.
+
+        In multi-broker mode a published event is dual-written once per target
+        broker, so ``message_id`` is not unique on its own. Pass
+        ``target_broker`` to select the unique ``(message_id, target_broker)``
+        row. Without it the first matching row is returned; use
+        :meth:`find_all_by_message_id` to retrieve every per-broker row.
 
         Args:
-            message_id: The unique message ID
+            message_id: The message ID to look up
+            target_broker: When given, restrict the lookup to this broker's row
 
         Returns:
-            The Outbox message with the given message ID, or None if not found
+            The matching Outbox message, or None if not found
         """
-        query = self._dao.query.filter(message_id=message_id)
-        results = query.all().items
+        criteria = {"message_id": message_id}
+        if target_broker is not None:
+            criteria["target_broker"] = target_broker
+        results = self._dao.query.filter(**criteria).all().items
         return results[0] if results else None
+
+    def find_all_by_message_id(self, message_id: str) -> list[Outbox]:
+        """Find every outbox row sharing a message ID.
+
+        A published event is dual-written once per target broker, so a single
+        ``message_id`` can map to several rows, one per ``target_broker``.
+
+        Args:
+            message_id: The message ID to look up
+
+        Returns:
+            All Outbox messages with the given message ID (possibly empty)
+        """
+        return self._dao.query.filter(message_id=message_id).all().items
 
     def find_by_message_type(
         self, message_type: str, limit: Optional[int] = PAGE_SIZE

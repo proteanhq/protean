@@ -208,11 +208,12 @@ class UnitOfWork:
             outbox_config = self.domain.config.get("outbox", {})
             internal_broker = outbox_config.get("broker", "default")
             external_brokers: list[str] = outbox_config.get("external_brokers", [])
-            # When external brokers are configured, tag every row with its
-            # target broker so each OutboxProcessor can filter by its own
-            # broker.  When no external brokers exist, leave target_broker
-            # as None for full backward compatibility.
-            use_target_broker = bool(external_brokers)
+            # Always tag the internal row with the configured internal broker.
+            # The composite (message_id, target_broker) unique index relies on
+            # target_broker never being NULL: PostgreSQL and SQLite treat NULLs
+            # as distinct in a UNIQUE index, so a NULL target_broker would
+            # defeat message_id idempotency. Published events additionally get
+            # one row per external broker below.
 
             for provider_name, events in all_events.items():
                 if not events:
@@ -244,7 +245,7 @@ class UnitOfWork:
                         priority=priority,
                         correlation_id=correlation_id,
                         causation_id=causation_id,
-                        target_broker=(internal_broker if use_target_broker else None),
+                        target_broker=internal_broker,
                     )
                     outbox_repo._dao.save(outbox_message)
 

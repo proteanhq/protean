@@ -67,8 +67,15 @@ provider owns its own outbox table and its own `OutboxProcessor`.
 
 The outbox table ships with the indexes the processor needs, created
 automatically by the commands above: a partial index on the active set
-(`status`, `priority`) for the polling query, a unique index on `message_id`
-for idempotency, and an index on `correlation_id`. These are declared as
+(`status`, `priority`) for the polling query, a composite unique index on
+(`message_id`, `target_broker`) for idempotency, and an index on
+`correlation_id`. The unique index is composite because a single event is
+dual-written once per target broker (the internal broker plus every external
+broker), all rows sharing one `message_id` and differing only by
+`target_broker`, so `message_id` is not unique on its own across those
+per-broker rows. The framework always writes a non-NULL `target_broker`, so the
+composite index still enforces one outbox row per (`message_id`, broker),
+including in single-broker configurations. These are declared as
 [index declarations](../domain-definition/indexes.md) on the framework's
 `Outbox` aggregate, so on a large, long-running outbox the polling and
 cleanup paths stay fast without any manual tuning.
