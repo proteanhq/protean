@@ -9,6 +9,24 @@ are cut straight from `main` when the changelog has substantive entries. Bugs
 discovered after a release are shipped as **patch releases** from the release
 branch.
 
+## Prerequisite: signed commits and tags
+
+Release commits and tags go to `main`/`release/*` directly (not via a PR), so
+they are only "Verified" on GitHub if your local git is set up to sign. On a
+fresh machine, configure SSH signing **before** bumping:
+
+```bash
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/<your_key>.pub   # a GitHub Signing Key
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+```
+
+The key must be registered on GitHub as a **Signing Key** (a separate list from
+auth keys: Settings → SSH and GPG keys → New SSH key → type *Signing Key*).
+With `tag.gpgsign` on, the `v0.X.Y` tag is signed too. Verify with
+`git log --show-signature -1`.
+
 ## Version bump commands
 
 ```bash
