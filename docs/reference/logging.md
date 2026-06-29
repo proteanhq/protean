@@ -32,7 +32,7 @@ redact = ["password", "token", "secret", "api_key", "authorization", "cookie", "
 |-----|------|---------|-------------|
 | `level` | str | `""` (environment default) | Root log level. `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. Empty = use the environment-based default. |
 | `format` | str | `"auto"` | Output format. `"json"` forces JSON; `"console"` forces colored console; `"auto"` picks based on `PROTEAN_ENV`. |
-| `log_dir` | str | `""` | Directory for rotating file handlers. Empty disables file logging (stdout only). |
+| `log_dir` | str | `""` | Directory for rotating file handlers. Empty disables file logging, leaving only the console handler. |
 | `log_file_prefix` | str | `"protean"` | Prefix for log file names. Produces `<prefix>.log` and `<prefix>_error.log`. |
 | `max_bytes` | int | `10485760` (10 MB) | Max size per rotating log file before rotation. |
 | `backup_count` | int | `5` | Number of rotated files to retain. |
@@ -41,6 +41,13 @@ redact = ["password", "token", "secret", "api_key", "authorization", "cookie", "
 | `slow_query_truncate_chars` | int | `500` | Max SQL statement length in the slow-query log event. Trailing characters are replaced with `...`. `0` disables truncation. |
 | `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults — never replaces them. |
 | `per_logger` | table | `{}` | Map of logger name → level. Applied after the global setup so individual loggers can be tuned. |
+
+!!! note "Console logs go to stderr"
+    The console handler writes to **stderr**, not stdout. This keeps stdout
+    clean for the machine-readable output that CLI commands emit there (for
+    example the JSON from `protean ir show` and `protean schema show --raw`), so
+    that output stays safe to pipe. Container runtimes capture stderr alongside
+    stdout, so server log collection is unaffected.
 
 ### `[logging.sampling]`
 

@@ -91,6 +91,9 @@ protean schema show OrderPlaced --domain=my_app.domain --raw
 protean schema show OrderPlaced --ir=domain-ir.json --raw
 ```
 
+With `--raw`, the JSON is written to stdout while logs go to stderr, so the
+output is safe to pipe (`protean schema show ... --raw | jq`).
+
 **Options**
 
 | Option | Description | Default |

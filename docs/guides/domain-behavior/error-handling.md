@@ -199,6 +199,14 @@ def test_order_requires_items():
     assert "must contain at least one item" in str(exc.value)
 ```
 
+!!! warning "Deprecated: `assert_valid` / `assert_invalid`"
+    The `protean.testing.assert_valid` and `assert_invalid` helpers still exist
+    but are deprecated and will be removed in v0.18.0. Prefer
+    `pytest.raises(ValidationError, match=...)` as shown above. Replace
+    `assert_invalid(lambda: op(), message="X")` with
+    `with pytest.raises(ValidationError, match="X"): op()`, and
+    `assert_valid(lambda: op())` with a plain call to `op()`.
+
 ---
 
 !!! tip "See also"
