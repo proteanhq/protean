@@ -84,6 +84,16 @@ uv run bump-my-version bump --dry-run --verbose minor 2>&1 | head -30
 
 If `$ARGUMENTS` specifies a bump type (`minor` or `patch`), use that. The dry-run shows which files change and what the new version string would be.
 
+## Check 7: Release-surface polish
+
+The PyPI project page and README are what new users see first; they drift between releases. Review and refresh before cutting:
+
+- **`pyproject.toml` `[project]`**: is `description` current and informative (not generic)? Is the `Development Status` classifier accurate for the version? Are the Python version classifiers in sync with `requires-python`? Are the `[project.urls]` (Homepage, Documentation, Repository, Changelog) present?
+- **`README.md`**: is the lead sentence current? Are hardcoded badges (especially the test-count badge) refreshed against the real number (`pytest --collect-only -q | tail -1`)? Does the Quick Start still run on the version being shipped (copy it out and execute it)?
+- **`CHANGELOG.md`**: does the `[0.X.0]` date match the actual release day?
+
+Flag anything stale; these ship on the next release (PyPI renders the latest release's metadata, so they can't be fixed retroactively).
+
 ## Report
 
 Produce a pass/fail checklist:
@@ -97,6 +107,7 @@ Produce a pass/fail checklist:
 - [x] Branch: main, up to date with origin
 - [x] CI: all checks passing
 - [x] Dry-run: 0.15.0 → 0.16.0 (5 files updated)
+- [x] Release-surface polish: PyPI metadata, README badges + Quick Start, changelog date reviewed
 
 Blockers: 2 open sub-issues need resolution before release.
 ```
