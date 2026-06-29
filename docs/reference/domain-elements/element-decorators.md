@@ -147,7 +147,9 @@ Guide: [Command Handlers](../../guides/change-state/command-handlers.md)
 ### `Domain.event_handler`
 
 Reacts to domain events and orchestrates side effects. Uses
-`@handle(EventClass)` to route events to handler methods.
+`@handle(EventClass)` to route events to handler methods. `@handle("$any")`
+routes every event on the handler's stream to a single catch-all method, under
+both synchronous and asynchronous processing.
 
 | Option | Default | Description |
 |--------|---------|-------------|

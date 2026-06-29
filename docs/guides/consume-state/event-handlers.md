@@ -155,7 +155,28 @@ If an error occurs, the transaction is rolled back.
 
 !!! note "One event class per method"
     Each `@handle` method accepts exactly one event class. To handle multiple
-    event types, define multiple methods in the same handler class.
+    event types, define multiple methods in the same handler class. The one
+    exception is the `$any` wildcard below, which matches every event.
+
+### Handle every event with `$any`
+
+To process *every* event on the handler's stream with a single method, pass the
+wildcard string `"$any"` to `@handle` instead of a specific event class. This is
+useful for cross-cutting concerns such as an audit trail:
+
+```python
+@domain.event_handler(part_of=Order)
+class OrderAudit:
+    @handle("$any")
+    def record(self, event):
+        current_domain.repository_for(AuditEntry).add(
+            AuditEntry.from_event(event)
+        )
+```
+
+A `$any` handler stays scoped to its aggregate's stream: it receives all events
+for that aggregate, and only those. It fires under both synchronous
+(`event_processing="sync"`) and asynchronous processing.
 
 ## Return Values from Event Handlers
 
