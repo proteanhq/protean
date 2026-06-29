@@ -16,7 +16,7 @@ from pydantic import AfterValidator, BeforeValidator
 from pydantic import Field as PydanticField
 
 from protean.exceptions import ValidationError as ProteanValidationError
-from protean.fields.base import normalize_field_deprecated
+from protean.fields.base import EMPTY_VALUES, normalize_field_deprecated
 from protean.utils import generate_identity
 
 
@@ -297,6 +297,12 @@ class FieldSpec:
                 v: Any,
                 validators: list[Callable] = captured_validators,
             ) -> Any:
+                # Skip validators for empty values, matching the legacy field
+                # system and the documented order (empty -> choices -> cast ->
+                # validators). An optional field left unset arrives here as None
+                # and must not be validated. See #1025.
+                if v in EMPTY_VALUES:
+                    return v
                 for validator_fn in validators:
                     try:
                         validator_fn(v)
