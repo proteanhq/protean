@@ -161,8 +161,24 @@ class Observatory:
         metrics_endpoint = create_metrics_endpoint(self.domains)
         self.app.add_api_route("/metrics", metrics_endpoint, methods=["GET"])
 
-    def run(self, host: str = "0.0.0.0", port: int = 9000) -> None:
-        """Run the observatory server."""
+    # Hosts that keep the Observatory reachable only from the local machine.
+    _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+    def run(self, host: str = "127.0.0.1", port: int = 9000) -> None:
+        """Run the observatory server.
+
+        Defaults to binding loopback only. The Observatory is unauthenticated
+        and exposes domain internals and DLQ management endpoints, so binding it
+        to a non-loopback address emits a warning.
+        """
+        if host not in self._LOOPBACK_HOSTS:
+            logger.warning(
+                "Observatory is binding to %s, reachable beyond this host. It "
+                "has no authentication and exposes domain internals and DLQ "
+                "management endpoints. Restrict it to a trusted network behind "
+                "an authenticating reverse proxy.",
+                host,
+            )
         logger.info(f"Starting Protean Observatory on {host}:{port}")
         uvicorn.run(self.app, host=host, port=port)
 
