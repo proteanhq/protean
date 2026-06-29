@@ -135,3 +135,22 @@ def test_that_part_of_any_handler_is_returned_for_its_streams_events(test_domain
     assert UserAuditHandler in test_domain.handlers_for(Activated())
     # ... but stays scoped to its aggregate (not a global handler).
     assert UserAuditHandler not in test_domain.handlers_for(Sent())
+
+
+def test_that_part_of_any_handler_is_not_returned_for_external_events(test_domain):
+    """A `part_of`-scoped `$any` handler must NOT fire for external events.
+
+    External events (no ``part_of``) take the slow path and are matched by their
+    concrete ``__type__``. An aggregate-scoped `$any` handler belongs to that
+    aggregate's stream, so honouring `$any` on the external path would leak every
+    unrelated event to it. Only `$all`-stream `$any` handlers apply globally.
+    """
+
+    class ExternalEvent(BaseEvent):
+        foo = String()
+
+    test_domain.register(UserAuditHandler, part_of=User)
+    test_domain.register_external_event(ExternalEvent, "Bar.ExternalEvent.v1")
+    test_domain.init(traverse=False)
+
+    assert UserAuditHandler not in test_domain.handlers_for(ExternalEvent(foo="x"))
