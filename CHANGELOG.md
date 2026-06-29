@@ -76,6 +76,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - `--debug` flag on `protean server` and `protean observatory` is deprecated in favor of `--log-level DEBUG`. The flag still works but emits a `DeprecationWarning` and will be removed in v0.17.0.
 
+### Removed
+
+- `assert_valid` and `assert_invalid` were removed from `protean.testing`. They duplicated `pytest.raises(ValidationError)` behind lambda ceremony. **Migration:** replace `assert_invalid(lambda: op(), message="X")` with `with pytest.raises(ValidationError, match="X"): op()`; `assert_valid(lambda: op())` becomes a plain `op()` call.
+
 ### Fixed
 
 - Fix Observatory graph rendering with black overlays caused by DaisyUI 4→5 CSS variable mismatch. Update all `oklch(var(--b1))` references to DaisyUI 5 equivalents (`var(--color-base-100)`, `color-mix()`).
