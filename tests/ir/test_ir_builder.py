@@ -133,6 +133,26 @@ class TestChecksum:
         d2.init(traverse=False)
         assert d1.to_ir()["checksum"] != d2.to_ir()["checksum"]
 
+    def test_checksum_ignores_version_and_volatile_keys(self):
+        """Schema/framework-version changes must not affect the checksum.
+
+        Regression for #1012: ``ir check`` (staleness) reported a domain as
+        stale on a framework-version-only difference while ``ir diff`` reported
+        no changes. The checksum must reflect domain *content* only — excluding
+        ``$schema``/``ir_version``/``generated_at``/``elements`` — so the two
+        commands agree across an upgrade.
+        """
+        domain = Domain(name="Volatile")
+        domain.init(traverse=False)
+        ir = domain.to_ir()
+
+        bumped = dict(ir)
+        bumped["ir_version"] = "9.9.9"
+        bumped["$schema"] = "https://protean.dev/ir/v9.9.9/schema.json"
+        bumped["generated_at"] = "2099-01-01T00:00:00Z"
+
+        assert IRBuilder._compute_checksum(bumped) == IRBuilder._compute_checksum(ir)
+
 
 @pytest.mark.no_test_domain
 class TestIRBuilderDirect:
