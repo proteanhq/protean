@@ -319,7 +319,12 @@ class Outbox(BaseAggregate):
 #
 # - The active-set partial index keeps the polling index tiny: only pending and
 #   failed rows are indexed, not the published archive (which dominates volume).
-# - ``message_id`` is unique for idempotency / find-by-message-id.
+# - ``(message_id, target_broker)`` is unique for idempotency / find-by-message-id.
+#   The uniqueness is composite because a single event is dual-written to the
+#   outbox once per target broker (the internal broker plus every external
+#   broker), so the same ``message_id`` legitimately appears multiple times,
+#   distinguished by ``target_broker``. A unique index on ``message_id`` alone
+#   would reject the framework's own multi-broker dual-write.
 # - ``correlation_id`` supports trace-oriented lookups.
 OUTBOX_INDEXES = [
     Index(
@@ -329,7 +334,7 @@ OUTBOX_INDEXES = [
         where=Q(status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]),
         name="ix_outbox_active",
     ),
-    Index("message_id", unique=True),
+    Index("message_id", "target_broker", unique=True),
     Index("correlation_id"),
 ]
 
