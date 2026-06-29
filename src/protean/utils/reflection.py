@@ -73,8 +73,8 @@ def attributes(class_or_instance: Type["Element"] | "Element") -> dict[str, "Fie
 
     Accepts an element or an instance of one.
     """
-    from protean.fields.association import Association, Reference
-    from protean.fields.embedded import ValueObject
+    from protean.fields.association import Association, Reference  # noqa: PLC0415
+    from protean.fields.embedded import ValueObject  # noqa: PLC0415
 
     attributes_dict = {}
 
@@ -132,7 +132,7 @@ def association_fields(
 
     Accepts an Element or an instance of one.
     """
-    from protean.fields.association import Association
+    from protean.fields.association import Association  # noqa: PLC0415
 
     return {
         field_name: field_obj
@@ -153,7 +153,7 @@ def reference_fields(
 
     Accepts an Element or an instance of one.
     """
-    from protean.fields.association import Reference
+    from protean.fields.association import Reference  # noqa: PLC0415
 
     return {
         field_name: field_obj
@@ -169,7 +169,7 @@ def value_object_fields(
 
     Accepts an Element or an instance of one.
     """
-    from protean.fields.embedded import ValueObject
+    from protean.fields.embedded import ValueObject  # noqa: PLC0415
 
     return {
         field_name: field_obj

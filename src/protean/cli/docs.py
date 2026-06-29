@@ -215,7 +215,7 @@ def _generate_clusters(
     cluster_fqn: str,
 ) -> str:
     """Generate cluster diagrams."""
-    from protean.ir.generators.clusters import generate_cluster_diagram
+    from protean.ir.generators.clusters import generate_cluster_diagram  # noqa: PLC0415
 
     if cluster_fqn:
         raw = generate_cluster_diagram(ir_data, cluster_fqn=cluster_fqn)
@@ -252,7 +252,7 @@ def _generate_events(ir_data: dict[str, Any], output_format: str) -> str:
     plus a separate downstream consumers diagram.  In Mermaid mode,
     emits a single combined diagram for backward compatibility.
     """
-    from protean.ir.generators.events import (
+    from protean.ir.generators.events import (  # noqa: PLC0415
         generate_cluster_event_flow,
         generate_downstream_consumers_diagram,
         generate_event_flow_diagram,
@@ -284,7 +284,7 @@ def _generate_handlers(ir_data: dict[str, Any], output_format: str) -> str:
     In Mermaid mode, emits a single combined diagram for backward
     compatibility.
     """
-    from protean.ir.generators.handlers import (
+    from protean.ir.generators.handlers import (  # noqa: PLC0415
         generate_cluster_command_handler_diagram,
         generate_event_handler_diagram,
         generate_handler_wiring_diagram,
@@ -331,7 +331,7 @@ def _generate_handlers(ir_data: dict[str, Any], output_format: str) -> str:
 
 def _generate_catalog(ir_data: dict[str, Any]) -> str:
     """Generate event/command catalog (always Markdown)."""
-    from protean.ir.generators.catalog import generate_catalog
+    from protean.ir.generators.catalog import generate_catalog  # noqa: PLC0415
 
     return generate_catalog(ir_data)
 

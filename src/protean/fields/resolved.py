@@ -121,7 +121,7 @@ class ResolvedField:
         self.max_value: Any = None
         if field_info is not None:
             try:
-                from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
+                from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen  # noqa: PLC0415
             except ImportError:  # pragma: no cover
                 MaxLen = MinLen = Ge = Gt = Le = Lt = None  # type: ignore[assignment,misc]
 

@@ -196,7 +196,7 @@ def server(
             # Development path: outer Reloader watches source files and
             # restarts the inner Engine process on change.
             try:
-                from protean.server.reloader import Reloader
+                from protean.server.reloader import Reloader  # noqa: PLC0415
             except ModuleNotFoundError as exc:
                 # Only translate the missing-watchfiles case into the
                 # install hint. Any other ModuleNotFoundError almost
@@ -250,7 +250,7 @@ def server(
         else:
             # Multi-worker path: Supervisor spawns N independent Engine processes.
             # Each worker derives and initializes the domain independently.
-            from protean.server.supervisor import Supervisor
+            from protean.server.supervisor import Supervisor  # noqa: PLC0415
 
             supervisor = Supervisor(
                 domain_path=domain,

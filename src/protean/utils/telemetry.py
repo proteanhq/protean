@@ -192,7 +192,7 @@ def _build_span_exporter(config: dict[str, Any]) -> Any:
 
     if exporter_name == "otlp":
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # noqa: PLC0415
                 OTLPSpanExporter,
             )
 
@@ -207,7 +207,7 @@ def _build_span_exporter(config: dict[str, Any]) -> Any:
             )
             return None
     elif exporter_name == "console":
-        from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+        from opentelemetry.sdk.trace.export import ConsoleSpanExporter  # noqa: PLC0415
 
         return ConsoleSpanExporter()
 
@@ -223,7 +223,7 @@ def _build_metric_reader(config: dict[str, Any]) -> Any:
 
     if exporter_name == "otlp":
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (  # noqa: PLC0415
                 OTLPMetricExporter,
             )
 
@@ -239,7 +239,7 @@ def _build_metric_reader(config: dict[str, Any]) -> Any:
             )
             return None
     elif exporter_name == "console":
-        from opentelemetry.sdk.metrics.export import (
+        from opentelemetry.sdk.metrics.export import (  # noqa: PLC0415
             ConsoleMetricExporter,
             PeriodicExportingMetricReader as _PeriodicReader,
         )
@@ -258,7 +258,7 @@ def _build_prometheus_reader() -> Any:
     Returns ``None`` when the package is not available.
     """
     try:
-        from opentelemetry.exporter.prometheus import PrometheusMetricReader
+        from opentelemetry.exporter.prometheus import PrometheusMetricReader  # noqa: PLC0415
 
         return PrometheusMetricReader()
     except ImportError:
@@ -282,7 +282,7 @@ def get_prometheus_text(domain: Domain) -> str | None:
         return None
 
     try:
-        from prometheus_client import generate_latest
+        from prometheus_client import generate_latest  # noqa: PLC0415
 
         return generate_latest().decode("utf-8")
     except ImportError:
@@ -309,7 +309,7 @@ def extract_context_from_traceparent(traceparent: Any) -> Any:
     if not _OTEL_AVAILABLE:
         return None
 
-    from opentelemetry.propagate import extract
+    from opentelemetry.propagate import extract  # noqa: PLC0415
 
     carrier = {"traceparent": traceparent.to_w3c()}
     return extract(carrier)
@@ -326,7 +326,7 @@ def inject_traceparent_from_context() -> Any:
     if not _OTEL_AVAILABLE:
         return None
 
-    from opentelemetry.propagate import inject
+    from opentelemetry.propagate import inject  # noqa: PLC0415
 
     carrier: dict[str, str] = {}
     inject(carrier)
@@ -346,7 +346,7 @@ def create_observation(
     callback code never needs conditional guards.
     """
     if _OTEL_AVAILABLE:
-        from opentelemetry.metrics import Observation
+        from opentelemetry.metrics import Observation  # noqa: PLC0415
 
         return Observation(value, attributes)
 
@@ -364,7 +364,7 @@ def instrument_fastapi_app(app: Any, **kwargs: Any) -> bool:
         return False
 
     try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: PLC0415
     except ImportError:
         logger.warning(
             "FastAPI telemetry instrumentation requires "
@@ -385,7 +385,7 @@ def set_span_error(span: Any, exc: BaseException) -> None:
     """
     span.record_exception(exc)
     if _OTEL_AVAILABLE:
-        from opentelemetry.trace import StatusCode
+        from opentelemetry.trace import StatusCode  # noqa: PLC0415
 
         span.set_status(StatusCode.ERROR, description=str(exc))
     else:

@@ -75,7 +75,7 @@ class ValueObject(Field):
 
     def _validate_value_object_cls(self, value_object_cls):
         """Validate that the value object class is a subclass of BaseValueObject"""
-        from protean.core.value_object import BaseValueObject
+        from protean.core.value_object import BaseValueObject  # noqa: PLC0415
 
         if not issubclass(value_object_cls, BaseValueObject):
             raise IncorrectUsageError(
@@ -223,7 +223,7 @@ class ValueObjectFromEntity(ValueObject):
     """
 
     def __init__(self, entity_cls: type, **kwargs: Any) -> None:
-        from protean.core.value_object import value_object_from_entity
+        from protean.core.value_object import value_object_from_entity  # noqa: PLC0415
 
         vo_cls = value_object_from_entity(entity_cls)
         super().__init__(value_object_cls=vo_cls, **kwargs)

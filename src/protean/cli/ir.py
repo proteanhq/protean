@@ -253,7 +253,7 @@ def diff(
 
 def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:
     """Load .protean/ir.json from a git commit, or abort on error."""
-    from protean.ir.git import load_ir_from_commit
+    from protean.ir.git import load_ir_from_commit  # noqa: PLC0415
 
     ir_path = PurePosixPath(protean_dir, "ir.json").as_posix()
     try:

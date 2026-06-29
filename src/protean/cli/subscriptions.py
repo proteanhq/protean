@@ -69,7 +69,7 @@ def status(
     ] = False,
 ) -> None:
     """Show subscription lag status for all handlers."""
-    from protean.server.subscription_status import collect_subscription_statuses
+    from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
 
     derived_domain = _load_domain(domain)
 

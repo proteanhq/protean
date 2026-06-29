@@ -179,12 +179,12 @@ def _check_outbox_schema(domain: "Domain") -> list[UpgradeFinding]:
     the new ``VARCHAR(N)`` bounds. SQLite enforces no lengths, so it is a no-op.
     """
     try:
-        from sqlalchemy import inspect as sa_inspect
-        from sqlalchemy.types import String as SAString
+        from sqlalchemy import inspect as sa_inspect  # noqa: PLC0415
+        from sqlalchemy.types import String as SAString  # noqa: PLC0415
     except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
         return []
 
-    from protean.adapters.repository.sqlalchemy import SAProvider
+    from protean.adapters.repository.sqlalchemy import SAProvider  # noqa: PLC0415
 
     bounds = _outbox_string_bounds()
     findings: list[UpgradeFinding] = []

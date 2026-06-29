@@ -578,7 +578,7 @@ def _provider_has_capability_for_marker(
     For ``transactional``, the provider needs TRANSACTIONS or SIMULATED_TRANSACTIONS.
     For all other markers, ALL listed capability flags must be present.
     """
-    from protean.port.provider import DatabaseCapabilities
+    from protean.port.provider import DatabaseCapabilities  # noqa: PLC0415
 
     flag_names = CAPABILITY_MARKER_MAP.get(marker_name, [])
     if not flag_names:
@@ -785,8 +785,8 @@ def test_adapter(
 
         protean test test-adapter --provider=postgresql --uri="postgresql://localhost/test" -v
     """
-    from protean.domain import Domain
-    from protean.port.provider import ProviderRegistry
+    from protean.domain import Domain  # noqa: PLC0415
+    from protean.port.provider import ProviderRegistry  # noqa: PLC0415
 
     # 1. Verify provider is registered
     try:

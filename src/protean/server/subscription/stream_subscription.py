@@ -175,7 +175,7 @@ class StreamSubscription(BaseSubscription):
             ... )
         """
         # Import here to avoid circular imports
-        from .profiles import SubscriptionType
+        from .profiles import SubscriptionType  # noqa: PLC0415
 
         # Validate subscription type
         if config.subscription_type != SubscriptionType.STREAM:

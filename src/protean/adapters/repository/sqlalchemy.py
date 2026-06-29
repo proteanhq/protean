@@ -1369,7 +1369,7 @@ class SAProvider(BaseProvider):
             return True
         except DatabaseError:
             # Redact credentials from the URI before logging
-            from sqlalchemy.engine.url import make_url
+            from sqlalchemy.engine.url import make_url  # noqa: PLC0415
 
             try:
                 safe_uri = str(
@@ -1984,7 +1984,7 @@ class MSSQLEndswith(MSSQLStringLookupMixin, DefaultLookup):
 def register_postgresql() -> None:
     """Register PostgreSQL provider with Protean if sqlalchemy is available."""
     try:
-        import sqlalchemy  # noqa: F401
+        import sqlalchemy  # noqa: F401, PLC0415
 
         registry.register(
             "postgresql",
@@ -2000,7 +2000,7 @@ def register_postgresql() -> None:
 def register_sqlite() -> None:
     """Register SQLite provider with Protean if sqlalchemy is available."""
     try:
-        import sqlalchemy  # noqa: F401
+        import sqlalchemy  # noqa: F401, PLC0415
 
         registry.register(
             "sqlite",
@@ -2016,7 +2016,7 @@ def register_sqlite() -> None:
 def register_mssql() -> None:
     """Register MSSQL provider with Protean if sqlalchemy is available."""
     try:
-        import sqlalchemy  # noqa: F401
+        import sqlalchemy  # noqa: F401, PLC0415
 
         registry.register(
             "mssql",

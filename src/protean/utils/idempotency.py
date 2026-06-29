@@ -38,7 +38,7 @@ class IdempotencyStore:
 
         if redis_url:
             try:
-                import redis
+                import redis  # noqa: PLC0415
 
                 self._redis = redis.Redis.from_url(redis_url)
                 self._redis.ping()

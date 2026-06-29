@@ -37,7 +37,7 @@ def pytest_configure(config):
 
     # Propagate --update-snapshots to the testing module
     if config.getoption("--update-snapshots", default=False):
-        import protean.testing as _testing
+        import protean.testing as _testing  # noqa: PLC0415
 
         _testing._update_snapshots = True
 

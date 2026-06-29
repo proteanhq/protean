@@ -231,7 +231,7 @@ class Domain:
     :param identity_function: optional function to generate identities for domain objects
     """
 
-    from protean.utils import IdentityStrategy, IdentityType
+    from protean.utils import IdentityStrategy, IdentityType  # noqa: PLC0415
 
     config_class = Config2
     domain_context_globals_class = _DomainContextGlobals

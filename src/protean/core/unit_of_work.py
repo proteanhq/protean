@@ -151,7 +151,7 @@ class UnitOfWork:
 
     def _do_commit(self, span: Any) -> None:  # noqa: C901
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
-        from protean.utils.outbox import Outbox
+        from protean.utils.outbox import Outbox  # noqa: PLC0415
 
         # Gather all events from identity map using helper method
         all_events = self._gather_events()

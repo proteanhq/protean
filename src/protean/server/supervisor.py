@@ -287,9 +287,9 @@ def _worker_entry(
             (single-worker mode) the worker uses direct handlers from
             ``configure_logging()``.
     """
-    from protean.server.engine import Engine
-    from protean.utils.domain_discovery import derive_domain
-    from protean.utils.logging import configure_logging
+    from protean.server.engine import Engine  # noqa: PLC0415
+    from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
+    from protean.utils.logging import configure_logging  # noqa: PLC0415
 
     # Bootstrap logging so the worker has *some* output for derive/init errors.
     # This is replaced below by the domain's own configuration (which carries

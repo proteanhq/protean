@@ -116,7 +116,7 @@ class RedisBroker(BaseBroker):
 
         except redis.ResponseError as e:
             return self._handle_redis_error(e, stream, consumer_group)
-        except Exception as e:
+        except Exception:
             logger.exception("broker.redis.get_next_failed")
             return None
 
@@ -154,7 +154,7 @@ class RedisBroker(BaseBroker):
         try:
             data_str = self._decode_if_bytes(data_field)
             return json.loads(data_str)
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             logger.exception("broker.redis.deserialize_failed")
             return {}
 
@@ -215,7 +215,7 @@ class RedisBroker(BaseBroker):
                                 if len(messages) >= no_of_messages:
                                     break
 
-        except redis.ResponseError as e:
+        except redis.ResponseError:
             logger.exception("broker.redis.read_failed")
 
         return messages[:no_of_messages]  # Ensure we don't return more than requested
@@ -321,12 +321,12 @@ class RedisBroker(BaseBroker):
                             message = self._deserialize_message(fields)
                             messages.append((redis_id_str, message))
                     return messages
-                except Exception as retry_err:
+                except Exception:
                     logger.exception("broker.redis.nogroup_retry_failed")
                     return []
             logger.exception("broker.redis.read_blocking_failed")
             return []
-        except Exception as e:
+        except Exception:
             logger.exception("broker.redis.read_blocking_failed")
             return []
 
@@ -345,7 +345,7 @@ class RedisBroker(BaseBroker):
         except redis.ResponseError as e:
             logger.warning(f"Failed to ack message {identifier} in {stream}: {e}")
             return False
-        except Exception as e:
+        except Exception:
             logger.exception("broker.redis.ack_failed")
             return False
 
@@ -370,7 +370,7 @@ class RedisBroker(BaseBroker):
             )
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("broker.redis.nack_failed")
             return False
 
@@ -567,7 +567,7 @@ class RedisBroker(BaseBroker):
                 logger.warning(
                     f"Failed to create consumer group {group_name} for stream {stream}: {e}"
                 )
-        except Exception as e:
+        except Exception:
             logger.exception(
                 "broker.redis.ensure_group_failed",
                 extra={"group": group_name, "stream": stream},
@@ -659,7 +659,7 @@ class RedisBroker(BaseBroker):
             # Add nested structure for Redis-specific tests
             info["consumer_groups"].update(stream_info_nested)
 
-        except Exception as e:
+        except Exception:
             logger.exception("broker.redis.info_failed")
 
         return info
@@ -986,10 +986,12 @@ class RedisBroker(BaseBroker):
                     self.redis_instance = redis.Redis.from_url(
                         self.conn_info["URI"], **self._pool_kwargs
                     )
-                except Exception as reconnect_error:
+                except Exception:
                     logger.exception("broker.redis.reconnect_failed")
 
-        logger.error("broker.redis.connection_exhausted", extra={"max_attempts": max_attempts})
+        logger.error(
+            "broker.redis.connection_exhausted", extra={"max_attempts": max_attempts}
+        )
         return False
 
     def close(self) -> None:
@@ -1008,7 +1010,7 @@ class RedisBroker(BaseBroker):
             self.redis_instance.flushall()
             self._created_groups_set.clear()
             self._group_creation_times.clear()
-        except Exception as e:
+        except Exception:
             logger.exception("broker.redis.data_reset_failed")
 
 
@@ -1016,7 +1018,7 @@ class RedisBroker(BaseBroker):
 def register():
     """Register Redis broker with Protean if redis is available."""
     try:
-        import redis  # noqa: F401
+        import redis  # noqa: F401, PLC0415
 
         registry.register("redis", "protean.adapters.broker.redis.RedisBroker")
         logger.debug("Redis broker registered successfully")

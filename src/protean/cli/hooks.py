@@ -102,7 +102,7 @@ def _resolve_domains(
 
 def _load_live_ir(domain_path: str) -> dict:
     """Load live IR from a domain module without depending on typer."""
-    from protean.utils.domain_discovery import derive_domain
+    from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
 
     try:
         domain = derive_domain(domain_path)
@@ -120,8 +120,8 @@ def _load_live_ir(domain_path: str) -> dict:
 
 def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict:
     """Build live IR, write it to *protean_dir*/ir.json, and return the dict."""
-    from protean.ir.builder import IRBuilder
-    from protean.utils.domain_discovery import derive_domain
+    from protean.ir.builder import IRBuilder  # noqa: PLC0415
+    from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
 
     domain = derive_domain(domain_module)
     domain.init()
@@ -263,7 +263,7 @@ def check_staleness_hook() -> None:
       0 --- IR is fresh (or staleness checking disabled, or --fix succeeded)
       1 --- IR is stale or missing (and --fix not used or failed)
     """
-    from protean.ir.config import load_config
+    from protean.ir.config import load_config  # noqa: PLC0415
 
     parser = _build_staleness_parser()
     args = parser.parse_args()
@@ -335,7 +335,7 @@ def _check_compat_single(
     config: Any,
 ) -> bool:
     """Check compat for a single domain.  Returns ``True`` if OK (no block)."""
-    from protean.ir.git import load_ir_from_commit
+    from protean.ir.git import load_ir_from_commit  # noqa: PLC0415
 
     ir_path = PurePosixPath(protean_dir, "ir.json").as_posix()
     try:
@@ -398,7 +398,7 @@ def check_compat_hook() -> None:
           "off" / "warn"
       1 --- breaking changes found (strictness = "strict")
     """
-    from protean.ir.config import load_config
+    from protean.ir.config import load_config  # noqa: PLC0415
 
     parser = _build_compat_parser()
     args = parser.parse_args()

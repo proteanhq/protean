@@ -68,7 +68,7 @@ def _load_otel_helpers() -> None:
     """
     global _get_current_span, _format_trace_id, _format_span_id
     try:
-        from opentelemetry.trace import (
+        from opentelemetry.trace import (  # noqa: PLC0415
             format_span_id,
             format_trace_id,
             get_current_span,
@@ -98,8 +98,8 @@ def _get_correlation_context() -> tuple[str, str]:
     reaching into private stack internals.
     """
     try:
-        from protean.domain.context import has_domain_context
-        from protean.utils.globals import g
+        from protean.domain.context import has_domain_context  # noqa: PLC0415
+        from protean.utils.globals import g  # noqa: PLC0415
     except ImportError:
         return ("", "")
 
