@@ -261,7 +261,7 @@ class TestBackwardCompatibility:
     def no_external_brokers(self, test_domain):
         test_domain.config["outbox"]["external_brokers"] = []
 
-    def test_single_row_with_null_target_broker(self, test_domain):
+    def test_single_row_tagged_with_internal_broker(self, test_domain):
         order = Order.place(customer_id="BC1", total=100.0)
         outbox_repo = test_domain._get_outbox_repo("default")
 
@@ -272,7 +272,10 @@ class TestBackwardCompatibility:
             r for r in outbox_repo.find_unprocessed() if r.type == OrderPlaced.__type__
         ]
         assert len(placed) == 1
-        assert placed[0].target_broker is None  # Legacy behavior
+        # Even with no external brokers, the internal row carries the configured
+        # internal broker name ("default"), so the composite unique index stays
+        # effective and message_id idempotency holds (issue #1009).
+        assert placed[0].target_broker == "default"
 
     def test_find_unprocessed_no_filter_returns_all(self, test_domain):
         order = Order.place(customer_id="BC2", total=60.0)

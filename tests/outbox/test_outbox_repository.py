@@ -359,6 +359,52 @@ class TestOutboxRepositoryFilterQueries:
         assert message is not None
         assert message.message_id == "message-1"
 
+    def test_find_by_message_id_disambiguates_by_target_broker(
+        self, outbox_repo, sample_metadata
+    ):
+        """In multi-broker mode the same message_id maps to one row per broker;
+        target_broker selects the unique row."""
+        for broker in ("default", "external"):
+            outbox_repo.add(
+                Outbox.create_message(
+                    message_id="dup-mid",
+                    stream_name="dup-stream",
+                    message_type="TestEvent",
+                    data={"x": 1},
+                    metadata=sample_metadata,
+                    target_broker=broker,
+                )
+            )
+
+        external = outbox_repo.find_by_message_id("dup-mid", target_broker="external")
+        assert external is not None
+        assert external.target_broker == "external"
+
+        # Without target_broker, a single (arbitrary) matching row comes back.
+        any_row = outbox_repo.find_by_message_id("dup-mid")
+        assert any_row is not None
+        assert any_row.message_id == "dup-mid"
+
+    def test_find_all_by_message_id_returns_every_broker_row(
+        self, outbox_repo, sample_metadata
+    ):
+        """find_all_by_message_id returns one row per target broker."""
+        for broker in ("default", "external"):
+            outbox_repo.add(
+                Outbox.create_message(
+                    message_id="dup-mid",
+                    stream_name="dup-stream",
+                    message_type="TestEvent",
+                    data={"x": 1},
+                    metadata=sample_metadata,
+                    target_broker=broker,
+                )
+            )
+
+        rows = outbox_repo.find_all_by_message_id("dup-mid")
+        assert len(rows) == 2
+        assert {r.target_broker for r in rows} == {"default", "external"}
+
     def test_find_by_message_type_filters_correctly(
         self, outbox_repo, create_sample_messages
     ):
