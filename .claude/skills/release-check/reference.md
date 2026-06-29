@@ -53,9 +53,19 @@ $EDITOR CHANGELOG.md
 git add CHANGELOG.md
 git commit -m "Mark 0.X.0 release in CHANGELOG"
 
-# 2. Bump version, create commit + tag
-bump-my-version bump minor                    # 0.15.0 → 0.16.0
-git push origin main --tags
+# 2. Bump version, then commit + tag MANUALLY.
+#    bump-my-version's own commit is aborted by the `uv-lock` pre-commit hook:
+#    bumping the version in pyproject makes uv.lock stale, the hook regenerates
+#    it, and pre-commit's stash/rollback reverts the commit (seen cutting 0.16.0).
+#    `--no-verify` is blocked by policy, so refresh the lockfile first, then let
+#    the hooks pass on a normal commit.
+bump-my-version bump minor --no-commit --no-tag    # 0.15.0 → 0.16.0, files only
+uv lock                                             # bring uv.lock to the new version
+git add -A
+git commit -m "Bump version: 0.15.0 → 0.16.0"       # uv-lock hook now passes
+git tag -a v0.16.0 -m "Bump version: 0.15.0 → 0.16.0"
+git push origin main
+git push origin v0.16.0                              # tag push triggers publish.yml
 
 # 3. Create release branch from the new tag (for future patches)
 git branch release/0.16.x v0.16.0
