@@ -183,6 +183,7 @@ specific area.
 **CLI**
 
 - [CLI Overview](./reference/cli/index.md) -- The `protean` command-line interface for scaffolding and management.
+- [`protean upgrade-check`](./reference/cli/upgrade-check.md) -- Read-only diagnostic that reports the 0.16 upgrade actions for a domain (elements, config, infra) and generates the outbox migration SQL.
 - [Domain Discovery](./reference/cli/project/discovery.md) -- Use `--domain` to load and initialize domains.
 - [`protean new`](./reference/cli/project/new.md) -- Initialize new projects.
 - [`protean shell`](./reference/cli/project/shell.md) -- Interactive shell with the domain pre-loaded.

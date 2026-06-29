@@ -313,6 +313,7 @@ nav:
     - Logging: reference/logging.md
     - CLI:
       - reference/cli/index.md
+      - reference/cli/upgrade-check.md
       - Project:
         - reference/cli/project/index.md
         - reference/cli/project/new.md
