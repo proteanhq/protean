@@ -71,6 +71,25 @@ def reset():
     yield
 
 
+@pytest.fixture(autouse=True)
+def no_retry_sleep(monkeypatch):
+    """Fail fast instead of hanging if a backoff sleep is ever attempted.
+
+    The deadline guard must stop the retry loop *before* any backoff sleep. With
+    ``base_delay_seconds = 3600`` a real sleep would hang the suite for an hour,
+    so replace the retry sleep with one that raises: a guard regression then
+    fails immediately with a clear message instead of timing out the run.
+    """
+
+    def _fail(seconds: float) -> None:
+        raise AssertionError(
+            f"retry attempted a {seconds}s backoff sleep; the deadline guard "
+            "should have stopped the loop before sleeping"
+        )
+
+    monkeypatch.setattr("protean.utils.mixins.time.sleep", _fail)
+
+
 def _message_with_deadline(test_domain, deadline):
     command = Submit(order_id=str(uuid4()))
     enriched = test_domain._command_processor.enrich(
