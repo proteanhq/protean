@@ -2,6 +2,7 @@ import logging
 from functools import lru_cache
 from typing import Any, TYPE_CHECKING, TypeVar
 
+from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
@@ -15,7 +16,7 @@ from protean.utils import (
     fully_qualified_name,
 )
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.globals import current_uow
+from protean.utils.globals import current_uow, g
 from protean.utils.query import Q
 from protean.utils.reflection import association_fields, has_association_fields
 from protean.utils.telemetry import set_span_error
@@ -198,8 +199,6 @@ class BaseRepository(Element, OptionsMixin):
         """
         # Increment access log repo save counter
         try:
-            from protean.utils.globals import g
-
             g._access_log_repo_saves = getattr(g, "_access_log_repo_saves", 0) + 1
         except Exception:
             pass
@@ -411,8 +410,6 @@ class BaseRepository(Element, OptionsMixin):
         """
         # Increment access log repo load counter
         try:
-            from protean.utils.globals import g
-
             g._access_log_repo_loads = getattr(g, "_access_log_repo_loads", 0) + 1
         except Exception:
             pass
@@ -440,8 +437,6 @@ _T = TypeVar("_T")
 
 
 def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
-    from protean.core.aggregate import BaseAggregate
-
     # Pop internal flag before passing opts to derive_element_class,
     # which validates that all options are known element options.
     auto_constructed = opts.pop("_auto_constructed", False)

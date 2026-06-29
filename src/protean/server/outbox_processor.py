@@ -1,9 +1,11 @@
 import asyncio
+import datetime
 import logging
 from typing import List, Optional
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
+from protean.utils import ensure_utc_aware
 from protean.utils.eventing import Message
 from protean.utils.outbox import Outbox, OutboxRepository
 from protean.utils.telemetry import get_domain_metrics, get_tracer, set_span_error
@@ -412,10 +414,6 @@ class OutboxProcessor(BaseSubscription):
                         metrics.outbox_published.add(1)
                         # Compute outbox latency from created_at to now
                         if hasattr(message, "created_at") and message.created_at:
-                            import datetime
-
-                            from protean.utils import ensure_utc_aware
-
                             now = datetime.datetime.now(datetime.timezone.utc)
                             created = ensure_utc_aware(message.created_at)
                             latency_s = (now - created).total_seconds()

@@ -10,12 +10,27 @@ Usage::
 
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
+import importlib
 import json
+import logging
+import types as _types
+import typing
 from datetime import datetime, timezone
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from protean.core.aggregate import BaseAggregate
+from protean.core.index import Index, RawIndex
+from protean.fields.association import HasMany, HasOne, Reference
+from protean.fields.basic import ValueObjectList
+from protean.fields.embedded import ValueObject
+from protean.fields.resolved import ResolvedField
+from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
+from protean.utils import fqn
+from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -98,13 +113,6 @@ class IRBuilder:
 
         Returns a dict keyed by field name, each value a sparse IR field dict.
         """
-
-        from protean.fields.association import HasMany, HasOne, Reference
-        from protean.fields.basic import ValueObjectList
-        from protean.fields.embedded import ValueObject
-        from protean.fields.resolved import ResolvedField
-        from protean.utils import fqn
-        from protean.utils.reflection import declared_fields
 
         result: dict[str, Any] = {}
         field_meta: dict[str, Any] = getattr(cls, "__protean_field_meta__", {})
@@ -214,8 +222,6 @@ class IRBuilder:
 
         # Choices — from the original FieldSpec
         if spec is not None and getattr(spec, "choices", None) is not None:
-            from enum import Enum
-
             choices = spec.choices
             if isinstance(choices, type) and issubclass(choices, Enum):
                 choices_list = sorted(item.value for item in choices)
@@ -233,8 +239,6 @@ class IRBuilder:
 
         # Default — from FieldSpec for accurate representation
         if spec is not None:
-            from protean.fields.spec import _UNSET
-
             if spec.default is not _UNSET:
                 if callable(spec.default):
                     entry["default"] = "<callable>"
@@ -259,9 +263,6 @@ class IRBuilder:
             ``list[str]``  → ``list[str]``  (unchanged)
             ``Literal['A','B'] | None``  → ``str``  (first Literal arg type)
         """
-        import types as _types
-        import typing
-
         if python_type is None:
             return None
 
@@ -287,8 +288,6 @@ class IRBuilder:
     @staticmethod
     def _is_list_type(python_type: type | None) -> bool:
         """Check if a (possibly unwrapped) type is a list origin."""
-        import typing
-
         if python_type is None:
             return False
         return typing.get_origin(python_type) is list
@@ -299,9 +298,6 @@ class IRBuilder:
 
         Handles both ``dict`` and ``dict | list`` (from Dict() field).
         """
-        import types as _types
-        import typing
-
         if base_type is dict:
             return True
         # Dict() field creates `dict | list` annotation
@@ -315,8 +311,6 @@ class IRBuilder:
     @staticmethod
     def _resolve_type_name(python_type: type | None, kind: str) -> str:
         """Map a Python type + field kind to the IR type name."""
-        import datetime as _dt
-
         _TYPE_MAP: dict[tuple[type, str], str] = {
             (str, "standard"): "String",
             (str, "text"): "Text",
@@ -339,8 +333,6 @@ class IRBuilder:
     @staticmethod
     def _python_type_name(python_type: type | None) -> str:
         """Map a Python type to its IR content_type name."""
-        import datetime as _dt
-
         _CONTENT_TYPE_MAP: dict[type, str] = {
             str: "String",
             int: "Integer",
@@ -373,8 +365,6 @@ class IRBuilder:
         rather than serialized; the rendered DDL (via ``protean schema render
         --indexes``) carries the exact predicate.
         """
-        from protean.core.index import Index, RawIndex
-
         declared = getattr(getattr(cls, "meta_", None), "indexes", ()) or ()
         result: list[dict[str, Any]] = []
         for idx in declared:
@@ -405,9 +395,6 @@ class IRBuilder:
 
     def _extract_aggregate(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract aggregate IR dict."""
-        from protean.utils import fqn
-        from protean.utils.reflection import _ID_FIELD_NAME
-
         entry: dict[str, Any] = {}
 
         # Sparse: only emit deprecated when set
@@ -461,9 +448,6 @@ class IRBuilder:
 
     def _extract_entity(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract entity IR dict."""
-        from protean.utils import fqn
-        from protean.utils.reflection import _ID_FIELD_NAME
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -508,8 +492,6 @@ class IRBuilder:
         self, cls: type, record: Any, aggregate_fqn: str | None = None
     ) -> dict[str, Any]:
         """Extract value object IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -534,8 +516,6 @@ class IRBuilder:
 
     def _extract_command(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract command IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
         entry["__version__"] = getattr(cls, "__version__", 1)
@@ -562,8 +542,6 @@ class IRBuilder:
 
     def _extract_event(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract event IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
         entry["__version__"] = getattr(cls, "__version__", 1)
@@ -618,8 +596,6 @@ class IRBuilder:
 
     def _extract_command_handler(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract command handler IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -647,8 +623,6 @@ class IRBuilder:
 
     def _extract_event_handler(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract event handler IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -677,8 +651,6 @@ class IRBuilder:
 
     def _extract_application_service(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract application service IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -702,8 +674,6 @@ class IRBuilder:
 
     def _extract_repository(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract repository IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -732,8 +702,6 @@ class IRBuilder:
 
     def _extract_database_model(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract database model IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         database = getattr(cls.meta_, "database", None)
@@ -769,9 +737,6 @@ class IRBuilder:
 
     def _extract_projection(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract projection IR dict."""
-        from protean.utils import fqn
-        from protean.utils.reflection import _ID_FIELD_NAME
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -811,8 +776,6 @@ class IRBuilder:
 
     def _extract_projector(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract projector IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         aggregates = getattr(cls.meta_, "aggregates", [])
@@ -843,8 +806,6 @@ class IRBuilder:
 
     def _extract_query(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract query IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
 
@@ -870,8 +831,6 @@ class IRBuilder:
 
     def _extract_query_handler(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract query handler IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -896,8 +855,6 @@ class IRBuilder:
 
     def _build_projections(self) -> dict[str, Any]:
         """Build projections dict keyed by projection FQN."""
-        from protean.utils import fqn
-
         registry = self._domain._domain_registry
         projections: dict[str, Any] = {}
 
@@ -958,8 +915,6 @@ class IRBuilder:
 
     def _extract_domain_service(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract domain service IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -987,9 +942,6 @@ class IRBuilder:
 
     def _extract_process_manager(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract process manager IR dict."""
-        from protean.utils import fqn
-        from protean.utils.reflection import _ID_FIELD_NAME
-
         entry: dict[str, Any] = {}
 
         deprecated = self._extract_deprecated(cls)
@@ -1042,8 +994,6 @@ class IRBuilder:
 
     def _extract_subscriber(self, cls: type, record: Any) -> dict[str, Any]:
         """Extract subscriber IR dict."""
-        from protean.utils import fqn
-
         entry: dict[str, Any] = {}
         entry["broker"] = getattr(cls.meta_, "broker", "default")
 
@@ -1065,8 +1015,6 @@ class IRBuilder:
 
     def _build_flows(self) -> dict[str, Any]:
         """Build flows dict with domain_services, process_managers, subscribers."""
-        from protean.utils import fqn
-
         registry = self._domain._domain_registry
         flows: dict[str, Any] = {
             "domain_services": {},
@@ -1108,7 +1056,6 @@ class IRBuilder:
         commands, events), then falls back to traversing ``part_of``
         (needed for fact events generated after cluster assignment).
         """
-        from protean.core.aggregate import BaseAggregate
 
         agg = getattr(cls.meta_, "aggregate_cluster", None)
         if agg is not None:
@@ -1128,11 +1075,6 @@ class IRBuilder:
         so we derive it from which aggregate/entity embeds them via
         ``ValueObject`` or ``ValueObjectList`` fields.
         """
-        from protean.fields.basic import ValueObjectList
-        from protean.fields.embedded import ValueObject
-        from protean.utils import fqn
-        from protean.utils.reflection import declared_fields
-
         registry = self._domain._domain_registry
         vo_map: dict[str, type] = {}
 
@@ -1168,8 +1110,6 @@ class IRBuilder:
 
     def _build_clusters(self) -> dict[str, Any]:
         """Build cluster dict keyed by aggregate FQN."""
-        from protean.utils import fqn
-
         registry = self._domain._domain_registry
         clusters: dict[str, Any] = {}
 
@@ -1261,8 +1201,6 @@ class IRBuilder:
 
     def _build_elements_index(self) -> dict[str, list[str]]:
         """Build elements index: {element_type: sorted([FQN, ...])}."""
-        from protean.utils import fqn
-
         registry = self._domain._domain_registry
         # Element types to include (skip internal types)
         element_types = [
@@ -1306,8 +1244,6 @@ class IRBuilder:
         consumers (schema generators, contract checkers) have everything
         they need without reaching into element-level IR.
         """
-        from protean.utils import fqn
-
         registry = self._domain._domain_registry
         published_events: list[dict[str, Any]] = []
 
@@ -1735,7 +1671,6 @@ class IRBuilder:
         results are logged and skipped.  Exceptions in rules are caught so
         they never crash ``protean check``.
         """
-        import logging
 
         logger = logging.getLogger(__name__)
 
@@ -1794,7 +1729,6 @@ class IRBuilder:
     @staticmethod
     def _import_callable(dotted_path: str) -> Any:
         """Import a callable from a dotted path like ``'my_app.lint.check_names'``."""
-        import importlib
 
         module_path, _, attr_name = dotted_path.rpartition(".")
         if not module_path:

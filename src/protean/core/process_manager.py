@@ -32,12 +32,13 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic_core import PydanticUndefined
 
 from protean.core.event import BaseEvent
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import (
     ConfigurationError,
     NotSupportedError,
 )
 from protean.fields.resolved import ResolvedField
-from protean.fields.spec import FieldSpec
+from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -193,8 +194,6 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
 
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
-        from protean.fields.spec import resolve_fieldspecs
-
         resolve_fieldspecs(cls)
 
     @classmethod
@@ -306,8 +305,6 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
         the handler method on that instance, then persists the resulting
         state as a transition event in the PM's own event store stream.
         """
-        from protean.core.unit_of_work import UnitOfWork
-
         # Deserialize
         item = item.to_domain_object() if isinstance(item, Message) else item
 

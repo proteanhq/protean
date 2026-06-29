@@ -8,12 +8,12 @@
 import logging
 from typing import TYPE_CHECKING, Any
 
+from protean.core.queryset import ReadOnlyQuerySet
 from protean.exceptions import NotSupportedError, ObjectNotFoundError
 from protean.utils.inflection import underscore
 
 if TYPE_CHECKING:
     from protean.core.projection import BaseProjection
-    from protean.core.queryset import ReadOnlyQuerySet
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -66,8 +66,6 @@ class ReadView:
         Only available for database-backed projections.  Cache-backed
         projections raise ``NotSupportedError``.
         """
-        from protean.core.queryset import ReadOnlyQuerySet
-
         if self._is_cache_backed:
             raise NotSupportedError(
                 f"Querying with filters is not supported for cache-backed "

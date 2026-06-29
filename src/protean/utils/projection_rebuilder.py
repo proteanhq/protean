@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from protean.exceptions import ConfigurationError
 from protean.utils import DomainObjects
+from protean.utils.eventing import Message
 from protean.utils.inflection import underscore
 
 if TYPE_CHECKING:
@@ -185,8 +186,6 @@ def _replay_projector(
     Returns:
         Tuple of (events_dispatched, events_skipped).
     """
-    from protean.utils.eventing import Message
-
     logger.info(
         "Replaying categories %s through `%s`",
         stream_categories,

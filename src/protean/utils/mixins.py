@@ -17,6 +17,9 @@ from protean.exceptions import (
 )
 from protean.utils import DomainObjects
 from protean.utils.eventing import Message
+from protean.utils.globals import current_domain, g
+from protean.utils.logging import access_log_handler
+from protean.utils.telemetry import get_domain_metrics, set_span_error
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +62,6 @@ def _get_version_retry_config() -> dict:
     that call handlers directly without a domain context).
     """
     try:
-        from protean.utils.globals import current_domain
-
         if current_domain:
             server_config = current_domain.config.get("server", {})
             cfg = server_config.get("version_retry", {})
@@ -180,8 +181,6 @@ def _get_transient_retry_config(instance: Any = None) -> dict:
 
     # --- Domain-level configuration ---
     try:
-        from protean.utils.globals import current_domain
-
         if current_domain:
             raw = current_domain.config.get("server", {}).get("transient_retry", {})
             if raw:
@@ -250,11 +249,8 @@ def _transient_backoff_delay(
 def _record_handler_retry(instance: Any, exc: BaseException) -> None:
     """Increment the ``protean.handler.retried`` counter for a transient retry."""
     try:
-        from protean.utils.globals import current_domain
-
         if not current_domain:
             return
-        from protean.utils.telemetry import get_domain_metrics
 
         element_type = getattr(instance, "element_type", None)
         get_domain_metrics(current_domain).handler_retried.add(
@@ -283,8 +279,6 @@ def _deadline_exceeded_after(delay: float) -> bool:
     the retry path is left unconstrained rather than raising.
     """
     try:
-        from protean.utils.globals import g
-
         msg = g.get("message_in_context")
     except Exception:
         # No active domain/message context -> no deadline to honor.
@@ -490,8 +484,6 @@ class HandlerMixin:
         Returns:
             Any: Return value from the handler method (for command and query handlers)
         """
-        from protean.utils.globals import current_domain
-
         # Convert Message to object if necessary
         item = item.to_domain_object() if isinstance(item, Message) else item
 
@@ -507,8 +499,6 @@ class HandlerMixin:
             # No domain context — execute without tracing
             return cls._dispatch_handlers(handlers, item)
 
-        from protean.utils.telemetry import get_domain_metrics
-
         metrics = get_domain_metrics(current_domain)
         handler_start = time.monotonic()
 
@@ -521,8 +511,6 @@ class HandlerMixin:
             span.set_attribute("protean.handler.type", handler_type)
 
             # Propagate correlation/causation IDs from the message being handled
-            from protean.utils.globals import g
-
             msg = g.get("message_in_context")
             if msg is not None and hasattr(msg, "metadata") and msg.metadata:
                 domain_meta = getattr(msg.metadata, "domain", None)
@@ -539,8 +527,6 @@ class HandlerMixin:
             try:
                 result = cls._dispatch_handlers(handlers, item)
             except Exception as exc:
-                from protean.utils.telemetry import set_span_error
-
                 set_span_error(span, exc)
 
                 # Record handler metrics on error
@@ -570,8 +556,6 @@ class HandlerMixin:
         cls, handlers: set, item: Union[BaseCommand, BaseEvent, BaseQuery]
     ) -> Any:
         """Dispatch item to registered handler methods."""
-        from protean.utils.logging import access_log_handler
-
         # Map element_type to access log kind
         _KIND_MAP = {
             DomainObjects.COMMAND_HANDLER: "command",

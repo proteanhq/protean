@@ -83,18 +83,23 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from protean.exceptions import ProteanExceptionWithMessage
+from protean.core.process_manager import (
+    BaseProcessManager,
+    _resolve_correlation_value,
+)
+from protean.exceptions import ObjectNotFoundError, ProteanExceptionWithMessage
 
 if TYPE_CHECKING:
     from protean.core.event import BaseEvent
     from protean.port.event_store import CausationNode
-from protean.utils import fqn
+from protean.utils import Processing, fqn
 from protean.utils.eventing import (
     DomainMeta,
     MessageEnvelope,
     MessageHeaders,
     Metadata,
 )
+from protean.utils.globals import current_domain
 from protean.utils.reflection import _ID_FIELD_NAME
 
 
@@ -127,8 +132,6 @@ def given(
         given(registered_event, transacted_event)
     """
     if isinstance(cls_or_event, type):
-        from protean.core.process_manager import BaseProcessManager
-
         if issubclass(cls_or_event, BaseProcessManager):
             return ProcessManagerResult(cls_or_event, list(events))
         return AggregateResult(cls_or_event, list(events))
@@ -281,8 +284,6 @@ class AggregateResult:
 
         Returns self for chaining.
         """
-        from protean.utils.globals import current_domain
-
         domain = current_domain
         self._processed = True
         self._rejection = None  # Reset for this command
@@ -428,8 +429,6 @@ class AggregateResult:
 
         Returns the aggregate identifier.
         """
-        from protean.utils import Processing
-
         event_store = domain.event_store.store
 
         # Reconstitute aggregate to discover its identity
@@ -533,9 +532,6 @@ class EventSequence:
             ProjectionResult: Result object with ``.has()``, ``.found``,
             and ``.projection`` for assertions.
         """
-        from protean.exceptions import ObjectNotFoundError
-        from protean.utils.globals import current_domain
-
         if not identity:
             raise ValueError(
                 "then() requires at least one keyword argument to identify "
@@ -640,8 +636,6 @@ class ProcessManagerResult:
 
     def _load_pm(self) -> None:
         """Load the PM instance from the event store after processing."""
-        from protean.utils.globals import current_domain
-
         # Determine correlation value from the first event's matching handler
         correlation_value = self._correlation_value
         if correlation_value is None:
@@ -670,8 +664,6 @@ class ProcessManagerResult:
         Inspects the PM's handler methods to find the correlate spec,
         then extracts the correlation value from the first event.
         """
-        from protean.core.process_manager import _resolve_correlation_value
-
         if not self._events:
             return None
 

@@ -45,9 +45,12 @@ from typing import Any, Callable, Iterable, Iterator, Optional, TypeVar, Union
 
 import structlog
 
+from protean.domain.context import has_domain_context
 from protean.integrations.logging import (
     LOG_RECORD_RESERVED_ATTRS as _RESERVED_LOG_RECORD_ATTRS,
+    make_redaction_processor,
 )
+from protean.utils.globals import current_domain, g
 
 _T = TypeVar("_T")
 
@@ -200,8 +203,6 @@ def configure_logging(
     # processors (correlation, OTel, custom enrichment), guaranteeing that
     # sensitive fields added anywhere upstream are masked before the renderer.
     if redact:
-        from protean.integrations.logging import make_redaction_processor
-
         redaction_proc = make_redaction_processor(redact)
         extra_processors = list(extra_processors or []) + [redaction_proc]
 
@@ -344,8 +345,6 @@ def _http_wide_event_extras() -> Optional[dict[str, Any]]:
     same as "no middleware in play".
     """
     try:
-        from protean.utils.globals import g
-
         extras = g.get("_http_wide_event_extras")
     except (AttributeError, RuntimeError):
         return None
@@ -355,8 +354,6 @@ def _http_wide_event_extras() -> Optional[dict[str, Any]]:
 def _reset_access_log_counters() -> None:
     """Reset per-handler access log counters on g."""
     try:
-        from protean.utils.globals import g
-
         g._access_log_repo_loads = 0
         g._access_log_repo_saves = 0
         g._access_log_events_raised = []
@@ -368,8 +365,6 @@ def _reset_access_log_counters() -> None:
 def _get_correlation_context() -> tuple[str, str]:
     """Extract correlation_id and causation_id from the current message context."""
     try:
-        from protean.utils.globals import g
-
         msg = g.get("message_in_context")
         if msg is None:
             return ("", "")
@@ -425,8 +420,6 @@ def _read_access_log_counters() -> tuple[list[str], dict[str, int], str]:
         Tuple of (events_raised, repo_operations, uow_outcome)
     """
     try:
-        from protean.utils.globals import g
-
         events_raised = getattr(g, "_access_log_events_raised", []) or []
         repo_loads = getattr(g, "_access_log_repo_loads", 0) or 0
         repo_saves = getattr(g, "_access_log_repo_saves", 0) or 0
@@ -450,9 +443,6 @@ def get_logging_config_value(key: str, default: _T) -> _T:
     path (e.g. per-query instrumentation) can safely swallow it.
     """
     try:
-        from protean.domain.context import has_domain_context
-        from protean.utils.globals import current_domain
-
         if has_domain_context():
             return current_domain.config.get("logging", {}).get(key, default)
     except Exception:

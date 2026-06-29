@@ -14,7 +14,7 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
 from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
 from protean.port.dao import BaseDAO, BaseLookup
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
@@ -849,6 +849,4 @@ def register() -> None:
 
     MemoryProvider is always available as it has no external dependencies.
     """
-    from protean.port.provider import registry
-
     registry.register("memory", "protean.adapters.repository.memory.MemoryProvider")

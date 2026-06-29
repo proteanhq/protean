@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Any, ClassVar, Optional, Self, TypeVar
+from typing import Annotated, Any, ClassVar, Optional, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import Field as PydanticField
@@ -15,9 +15,11 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.fields.association import HasMany, HasOne, Reference
+from protean.fields.basic import ValueObjectList
+from protean.fields.embedded import ValueObject as ValueObjectDescriptor
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
-from protean.fields.spec import FieldSpec
+from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import OptionsMixin
 from protean.utils.reflection import _FIELDS, fields as get_fields
@@ -92,13 +94,6 @@ class BaseValueObject(BaseModel, OptionsMixin):
 
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
-        from typing import Annotated, Optional
-
-        from pydantic import Field as PydanticField
-
-        from protean.fields.embedded import ValueObject as ValueObjectDescriptor
-        from protean.fields.spec import FieldSpec, resolve_fieldspecs
-
         # Validate VO constraints BEFORE resolving FieldSpecs
         # Check both vars(cls) (assignment style) and __annotations__ (annotation style)
         def _validate_fieldspec(name: str, value: FieldSpec) -> None:
@@ -363,8 +358,6 @@ def value_object_from_entity(
     Returns:
         A new ``BaseValueObject`` subclass.
     """
-    from protean.fields.basic import ValueObjectList
-
     exclude = exclude or set()
     vo_name = name or f"{entity_cls.__name__}ValueObject"
 

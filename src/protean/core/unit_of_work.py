@@ -10,7 +10,8 @@ from protean.exceptions import (
 )
 from protean.port.provider import DatabaseCapabilities
 from protean.utils import Processing
-from protean.utils.globals import _uow_context_stack, current_domain
+from protean.utils.globals import _uow_context_stack, current_domain, g
+from protean.utils.processing import current_priority
 from protean.utils.reflection import id_field
 from protean.utils.telemetry import get_domain_metrics, set_span_error
 
@@ -134,8 +135,6 @@ class UnitOfWork:
             set_status_on_exception=False,
         ) as span:
             # Propagate correlation and causation IDs from the message being processed
-            from protean.utils.globals import g
-
             msg = g.get("message_in_context")
             if msg is not None and hasattr(msg, "metadata") and msg.metadata:
                 domain_meta = getattr(msg.metadata, "domain", None)
@@ -152,9 +151,7 @@ class UnitOfWork:
 
     def _do_commit(self, span: Any) -> None:  # noqa: C901
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
-        from protean.utils.globals import g
         from protean.utils.outbox import Outbox
-        from protean.utils.processing import current_priority
 
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
@@ -377,8 +374,6 @@ class UnitOfWork:
 
         # Record UoW outcome for the access log wide event
         try:
-            from protean.utils.globals import g
-
             g._access_log_uow_outcome = "rolled_back"
         except Exception:
             pass
@@ -391,7 +386,7 @@ class UnitOfWork:
                 session.rollback()
 
             logger.debug("uow.rollback_successful")
-        except Exception as exc:
+        except Exception:
             logger.exception("uow.rollback_failed")
 
         self._reset()

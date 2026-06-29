@@ -5,14 +5,30 @@ to the maximum extent possible.
 """
 
 import importlib
+import keyword
 import logging
 import types
 from datetime import UTC, datetime
 from enum import Enum, StrEnum
-from typing import TYPE_CHECKING, Any, Callable, Optional, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Callable,
+    ClassVar,
+    Optional,
+    Type,
+    TypeVar,
+    get_args,
+    get_origin,
+)
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel, Field as PydanticField
+from pydantic.fields import FieldInfo
+
 from protean.exceptions import ConfigurationError
+from protean.utils.container import Options
 from protean.utils.globals import current_domain
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 
@@ -279,13 +295,6 @@ def _prepare_pydantic_namespace(
        and ``auto_add_id_field`` is not False, inject a Pydantic-compatible
        auto-id annotation + default.
     """
-    from typing import Annotated, ClassVar, get_args, get_origin
-
-    from pydantic import Field as PydanticField
-    from pydantic.fields import FieldInfo
-
-    from protean.utils.container import Options
-
     annots = new_dict.get("__annotations__", {}).copy()
 
     # 1. Annotate meta_ as ClassVar so Pydantic ignores it
@@ -423,10 +432,6 @@ def derive_element_class(
     base_cls: type,
     **opts: dict[str, str | bool],
 ) -> type[_T]:
-    from pydantic import BaseModel
-
-    from protean.utils.container import Options
-
     # Extract and normalize the universal `deprecated` option before
     # checking against element-specific known options.
     raw_deprecated = opts.pop("deprecated", None)
@@ -475,8 +480,6 @@ def derive_element_class(
         # ensure meta_ has a ClassVar annotation so that Pydantic ignores it
         # during clone_class and other dynamic class operations.
         if issubclass(base_cls, BaseModel):
-            from typing import ClassVar
-
             annots = element_cls.__annotations__.copy()
             annots["meta_"] = ClassVar[Options]
             element_cls.__annotations__ = annots
@@ -578,9 +581,6 @@ def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
     if not new_name.isidentifier():
         raise ValueError(f"'{new_name}' is not a valid Python identifier")
 
-    # Import keyword module to check for reserved keywords
-    import keyword
-
     if keyword.iskeyword(new_name):
         raise ValueError(f"'{new_name}' is a reserved Python keyword")
 
@@ -598,8 +598,6 @@ def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
     # re-creating the class from __dict__.  Pydantic internalises field
     # defaults into model_fields during class creation, so a dict-copy
     # clone loses them.  A subclass inherits everything through the MRO.
-    from pydantic import BaseModel
-
     if isinstance(cls, type) and issubclass(cls, BaseModel):
         new_cls = type(type(cls))(new_name, (cls,), {"__annotations__": {}})
         new_cls.__qualname__ = new_name

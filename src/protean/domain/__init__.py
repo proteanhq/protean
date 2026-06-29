@@ -49,9 +49,11 @@ Supporting classes (in the same package):
 * ``DomainContext``     — thread-local context binding (``context.py``)
 """
 
+import importlib.util
 import inspect
 import logging
 import os
+import pathlib
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -73,20 +75,33 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from protean.core.view import ReadView
-    from protean.port.event_store import CausationNode
     from protean.utils.projection_rebuilder import RebuildResult
 
 from inflection import parameterize, titleize, transliterate, underscore
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
-from protean.core.command import BaseCommand
-from protean.core.command_handler import BaseCommandHandler
-from protean.core.database_model import BaseDatabaseModel
-from protean.core.event import BaseEvent
-from protean.core.projection import BaseProjection
-from protean.core.repository import BaseRepository
+from protean.core.aggregate import aggregate_factory
+from protean.core.application_service import application_service_factory
+from protean.core.command import BaseCommand, command_factory
+from protean.core.command_handler import BaseCommandHandler, command_handler_factory
+from protean.core.database_model import BaseDatabaseModel, database_model_factory
+from protean.core.domain_service import domain_service_factory
+from protean.core.email import email_factory
+from protean.core.entity import entity_factory
+from protean.core.event import BaseEvent, domain_event_factory
+from protean.core.event_handler import event_handler_factory
+from protean.core.event_sourced_repository import event_sourced_repository_factory
+from protean.core.process_manager import process_manager_factory
+from protean.core.projection import BaseProjection, projection_factory
+from protean.core.projector import projector_factory
+from protean.core.query import query_factory
+from protean.core.query_handler import query_handler_factory
+from protean.core.repository import BaseRepository, repository_factory
+from protean.core.subscriber import subscriber_factory
+from protean.core.upcaster import upcaster_factory
+from protean.core.value_object import value_object_factory
+from protean.core.view import ReadView
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
     ConfigurationError,
@@ -112,6 +127,15 @@ from protean.fields import (
     ValueObject,
 )
 from protean.fields.basic import ValueObjectList
+from protean.integrations.logging import (
+    OTelTraceContextFilter,
+    ProteanCorrelationFilter,
+    protean_correlation_processor,
+    protean_otel_processor,
+)
+from protean.ir.builder import IRBuilder
+from protean.port.event_store import CausationNode
+from protean.server.tracing import TraceEmitter
 from protean.utils import (
     DomainObjects,
     Processing as Processing,
@@ -119,7 +143,22 @@ from protean.utils import (
 )
 from protean.utils.container import Element
 from protean.utils.idempotency import IdempotencyStore
+from protean.utils.logging import (
+    TailSamplingFilter,
+    TailSamplingProcessor,
+    access_logger,
+    configure_logging,
+)
+from protean.utils.projection_rebuilder import (
+    rebuild_all_projections,
+    rebuild_projection,
+)
 from protean.utils.reflection import declared_fields, has_fields
+from protean.utils.telemetry import (
+    get_meter,
+    get_tracer,
+    init_telemetry,
+)
 
 from .config import Config2, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
@@ -426,8 +465,6 @@ class Domain:
         in the Observatory dashboard.
         """
         if self._trace_emitter is None:
-            from protean.server.tracing import TraceEmitter
-
             observatory_config = self.config.get("observatory", {})
             try:
                 trace_retention_days = int(
@@ -448,8 +485,6 @@ class Domain:
         telemetry is enabled. Returns a no-op tracer when telemetry is
         disabled or the ``opentelemetry`` packages are not installed.
         """
-        from protean.utils.telemetry import get_tracer, init_telemetry
-
         if not self._otel_init_attempted:
             init_telemetry(self)
         return get_tracer(self)
@@ -462,8 +497,6 @@ class Domain:
         telemetry is enabled. Returns a no-op meter when telemetry is
         disabled or the ``opentelemetry`` packages are not installed.
         """
-        from protean.utils.telemetry import get_meter, init_telemetry
-
         if not self._otel_init_attempted:
             init_telemetry(self)
         return get_meter(self)
@@ -696,11 +729,6 @@ class Domain:
         }
 
     def _traverse(self):
-        # Standard Library Imports
-        import importlib.util
-        import os
-        import pathlib
-
         # Ensure root_path is a directory path
         root_path = Path(self.root_path)
         if root_path.is_file():
@@ -903,29 +931,6 @@ class Domain:
         return self._domain_registry
 
     def factory_for(self, domain_object_type):
-        from protean.core.aggregate import aggregate_factory
-        from protean.core.application_service import application_service_factory
-        from protean.core.command import command_factory
-        from protean.core.command_handler import command_handler_factory
-        from protean.core.database_model import database_model_factory
-        from protean.core.domain_service import domain_service_factory
-        from protean.core.email import email_factory
-        from protean.core.entity import entity_factory
-        from protean.core.event import domain_event_factory
-        from protean.core.event_handler import event_handler_factory
-        from protean.core.event_sourced_repository import (
-            event_sourced_repository_factory,
-        )
-        from protean.core.projection import projection_factory
-        from protean.core.projector import projector_factory
-        from protean.core.query import query_factory
-        from protean.core.query_handler import query_handler_factory
-        from protean.core.repository import repository_factory
-        from protean.core.subscriber import subscriber_factory
-        from protean.core.value_object import value_object_factory
-
-        from protean.core.process_manager import process_manager_factory
-
         factories = {
             DomainObjects.AGGREGATE.value: aggregate_factory,
             DomainObjects.APPLICATION_SERVICE.value: application_service_factory,
@@ -1276,8 +1281,6 @@ class Domain:
         The domain must be initialised (``init()`` called) before invoking
         this method.
         """
-        from protean.ir.builder import IRBuilder
-
         return IRBuilder(self).build()
 
     ######################
@@ -1579,7 +1582,6 @@ class Domain:
                     data["currency"] = "USD"
                     return data
         """
-        from protean.core.upcaster import upcaster_factory
 
         def wrap(cls: type) -> type:
             new_cls = upcaster_factory(cls, self, **kwargs)
@@ -1824,8 +1826,6 @@ class Domain:
             order = view.get("order-123")
             results = view.query.filter(status="shipped").all()
         """
-        from protean.core.view import ReadView
-
         if isinstance(projection_cls, str):
             raise IncorrectUsageError(
                 f"Element {projection_cls} is not registered in domain {self.name}"
@@ -2006,8 +2006,6 @@ class Domain:
             return []
 
         # Flatten tree via depth-first pre-order traversal
-        from protean.port.event_store import CausationNode
-
         result: list[CausationNode] = []
 
         def _walk(node: CausationNode) -> None:
@@ -2041,8 +2039,6 @@ class Domain:
         Returns:
             RebuildResult with counts and any errors.
         """
-        from protean.utils.projection_rebuilder import rebuild_projection
-
         return rebuild_projection(self, projection_cls, batch_size)
 
     def rebuild_all_projections(
@@ -2059,8 +2055,6 @@ class Domain:
         Returns:
             Dictionary mapping projection class names to their RebuildResult.
         """
-        from protean.utils.projection_rebuilder import rebuild_all_projections
-
         return rebuild_all_projections(self, batch_size)
 
     #######################
@@ -2154,19 +2148,6 @@ class Domain:
             domain.configure_logging()           # sensible defaults
             domain.configure_logging(level="DEBUG", format="json")
         """
-        from protean.integrations.logging import (
-            OTelTraceContextFilter,
-            ProteanCorrelationFilter,
-            protean_correlation_processor,
-            protean_otel_processor,
-        )
-        from protean.utils.logging import (
-            TailSamplingFilter,
-            TailSamplingProcessor,
-            access_logger,
-            configure_logging,
-        )
-
         # --- Merge domain.toml [logging] with explicit kwargs ---
         logging_config = self.config.get("logging", {})
         telemetry_enabled = bool(self.config.get("telemetry", {}).get("enabled"))

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, fqn
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -57,8 +57,6 @@ def discover_subscriptions(domain: "Domain") -> list[SubscriptionInfo]:
     Inspects event handlers, command handlers, and projectors to derive
     their stream categories and DLQ stream names.
     """
-    from protean.utils import fqn
-
     server_config = domain.config.get("server", {})
     lanes_config = server_config.get("priority_lanes", {})
     lanes_enabled = lanes_config.get("enabled", False)

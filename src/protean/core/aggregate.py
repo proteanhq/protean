@@ -5,11 +5,16 @@ import inspect
 import logging
 import typing
 from collections import defaultdict
+from enum import Enum
+from functools import partial
 from typing import Any, ClassVar, Optional, TypeVar, cast
 
+from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
+from pydantic_core import PydanticUndefined
 
-from protean.core.entity import BaseEntity
+from protean.core.entity import BaseEntity, _EntityState
+from protean.core.value_object import value_object_from_entity
 from protean.fields.tempdata import AssociationCache
 from protean.core.event import BaseEvent
 from protean.fields.resolved import ResolvedField
@@ -17,6 +22,7 @@ from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
+    ValidationError,
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.basic import ValueObjectList
@@ -25,11 +31,20 @@ from protean.utils import (
     Processing,
     derive_element_class,
     fqn,
+    generate_identity,
     inflection,
 )
 from protean.utils.eventing import DomainMeta, MessageEnvelope, MessageHeaders, Metadata
 from protean.utils.globals import current_domain
-from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, fields
+from protean.utils.reflection import (
+    _FIELDS,
+    _ID_FIELD_NAME,
+    association_fields,
+    fields,
+    reference_fields,
+    value_object_fields,
+)
+from protean.utils.telemetry import inject_traceparent_from_context
 
 logger = logging.getLogger(__name__)
 
@@ -188,8 +203,6 @@ class BaseAggregate(BaseEntity):
             else None
         )
         if traceparent is None:
-            from protean.utils.telemetry import inject_traceparent_from_context
-
             traceparent = inject_traceparent_from_context()
 
         headers = MessageHeaders(
@@ -293,14 +306,6 @@ class BaseAggregate(BaseEntity):
 
         Follows the same pattern as ``BaseEntity.__deepcopy__`` (entity.py).
         """
-        from functools import partial
-
-        from protean.core.entity import _EntityState
-        from protean.utils.reflection import (
-            association_fields,
-            reference_fields,
-            value_object_fields,
-        )
 
         aggregate = cls.__new__(cls)
 
@@ -387,8 +392,6 @@ class BaseAggregate(BaseEntity):
             order = Order._create_new()
             order.raise_(OrderCreated(order_id=str(order.id), ...))
         """
-        from protean.utils import generate_identity
-
         aggregate = cls._create_for_reconstitution()
         aggregate._disable_invariant_checks = False  # Enable for live path
 
@@ -448,11 +451,6 @@ def element_to_fact_event(element_cls):
 
 def _pydantic_element_to_fact_event(element_cls):
     """Pydantic path: create fact events using Pydantic annotations and BaseModel."""
-    from pydantic import Field as PydanticField
-    from pydantic_core import PydanticUndefined
-
-    from protean.core.value_object import value_object_from_entity
-
     if element_cls.element_type == DomainObjects.ENTITY:
         # Entity → Value Object: delegate to the shared utility
         vo_cls = value_object_from_entity(element_cls)
@@ -626,10 +624,6 @@ class atomic_change:
 
     def _validate_status_transitions(self) -> None:
         """Validate start-to-end status transitions within the atomic block."""
-        from enum import Enum
-
-        from protean.exceptions import ValidationError
-
         fields_dict = getattr(self.aggregate.__class__, _FIELDS, {})
 
         for fname, start_value in self._status_snapshots.items():

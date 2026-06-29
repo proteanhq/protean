@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from protean.ir.builder import IRBuilder
 from protean.ir.generators.base import (
     build_cmd_type_to_fqn,
     build_evt_type_to_fqn,
@@ -556,8 +557,6 @@ def create_domain_router(domains: list["Domain"]) -> APIRouter:
     topology is immutable at runtime and cannot change without a
     server restart.
     """
-    from protean.ir.builder import IRBuilder
-
     router = APIRouter()
 
     # Pre-compute the D3 graph at startup (topology is static).

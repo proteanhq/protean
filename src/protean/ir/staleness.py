@@ -22,6 +22,10 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from protean.ir.builder import IRBuilder
+from protean.ir.config import load_config
+from protean.utils.domain_discovery import derive_domain
+
 if TYPE_CHECKING:
     from protean.ir.config import CompatConfig
 
@@ -113,10 +117,6 @@ def check_staleness(
         - ``status=STALE`` — checksums differ.
         - ``status=NO_IR`` — no ``ir.json`` found in *protean_dir*.
     """
-    from protean.ir.builder import IRBuilder
-    from protean.ir.config import load_config
-    from protean.utils.domain_discovery import derive_domain
-
     if config is None:
         config = load_config(protean_dir)
 

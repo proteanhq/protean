@@ -7,7 +7,7 @@ import tomllib
 
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import DEFAULT_REDACT_KEYS
-from protean.utils import Processing
+from protean.utils import IdentityStrategy, IdentityType, Processing
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +20,6 @@ def _default_config():
     directly in tests. Housing it within the main `Domain` class can
     potentially lead to issues because the config can be overwritten by accident.
     """
-    from protean.utils import IdentityStrategy, IdentityType
-
     return {
         "env": None,
         "testing": None,

@@ -27,6 +27,7 @@ from protean.integrations.logging import (
 from protean.utils import DomainObjects, Processing, fqn
 from protean.utils.eventing import (
     DomainMeta,
+    Message,
     MessageEnvelope,
     MessageHeaders,
     Metadata,
@@ -34,8 +35,14 @@ from protean.utils.eventing import (
     new_correlation_id,
 )
 from protean.utils.globals import g
+from protean.utils.processing import current_priority, processing_priority
 from protean.utils.reflection import id_field
-from protean.utils.telemetry import get_domain_metrics
+from protean.utils.telemetry import (
+    extract_context_from_traceparent,
+    get_domain_metrics,
+    inject_traceparent_from_context,
+    set_span_error,
+)
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -136,8 +143,6 @@ class CommandProcessor:
         deadline: Optional[datetime] = None,
     ) -> BaseCommand:
         """Enrich a command with metadata (stream, type, headers, etc.)."""
-        from protean.utils.telemetry import inject_traceparent_from_context
-
         tracer = self._domain.tracer
         with tracer.start_as_current_span("protean.command.enrich") as span:
             span.set_attribute("protean.command.type", command.__class__.__type__)
@@ -312,11 +317,6 @@ class CommandProcessor:
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
-        from protean.utils.eventing import Message
-        from protean.utils.processing import current_priority, processing_priority
-
-        from protean.utils.telemetry import extract_context_from_traceparent
-
         domain = self._domain
         tracer = domain.tracer
         metrics = get_domain_metrics(domain)
@@ -462,8 +462,6 @@ class CommandProcessor:
                         duration_s = time.monotonic() - process_start
 
                         # Record exception on the OTEL span
-                        from protean.utils.telemetry import set_span_error
-
                         set_span_error(span, exc)
 
                         # Record OTel metrics for failed command

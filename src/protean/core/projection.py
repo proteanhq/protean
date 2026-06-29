@@ -17,7 +17,7 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.association import Association
-from protean.fields.spec import FieldSpec
+from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -137,8 +137,6 @@ class BaseProjection(BaseModel, OptionsMixin):
 
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
-        from protean.fields.spec import resolve_fieldspecs
-
         # Migrate annotation-style ValueObject descriptors to the class namespace.
         # Python puts ``field: ValueObject(Email)`` values into __annotations__
         # (not vars(cls)).  Pydantic and __pydantic_init_subclass__ scan vars(cls)

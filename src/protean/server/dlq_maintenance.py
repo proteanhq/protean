@@ -22,6 +22,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
+from protean.port.broker import BrokerCapabilities
 from protean.utils.dlq import discover_subscriptions
 from protean.utils.telemetry import get_domain_metrics
 
@@ -206,8 +207,6 @@ class DLQMaintenanceTask:
 
     def _get_broker(self):
         """Return the first broker that supports DLQ, or None."""
-        from protean.port.broker import BrokerCapabilities
-
         for broker in self.domain.brokers.values():
             if broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
                 return broker

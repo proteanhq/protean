@@ -11,6 +11,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
+from protean.port.broker import BrokerCapabilities
 from protean.utils.globals import g
 from protean.utils.eventing import (
     DomainMeta,
@@ -370,8 +371,6 @@ class Engine:
 
     def _has_dlq_capable_broker(self) -> bool:
         """Return True if any configured broker supports DLQ."""
-        from protean.port.broker import BrokerCapabilities
-
         for broker in self.domain.brokers.values():
             if broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
                 return True

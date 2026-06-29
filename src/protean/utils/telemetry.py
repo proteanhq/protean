@@ -13,6 +13,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from protean.utils.eventing import TraceParent
+
 if TYPE_CHECKING:
     from protean.domain import Domain
 
@@ -331,8 +333,6 @@ def inject_traceparent_from_context() -> Any:
     w3c_header = carrier.get("traceparent")
     if not w3c_header:
         return None
-
-    from protean.utils.eventing import TraceParent
 
     return TraceParent.build(w3c_header)
 

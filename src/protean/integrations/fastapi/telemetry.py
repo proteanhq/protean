@@ -20,6 +20,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from protean.utils.telemetry import (
+    get_meter_provider,
+    get_tracer_provider,
+    init_telemetry,
+    instrument_fastapi_app,
+)
+
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
@@ -66,13 +73,6 @@ def instrument_app(
             "FastAPI app is already instrumented with OpenTelemetry, skipping."
         )
         return False
-
-    from protean.utils.telemetry import (
-        get_meter_provider,
-        get_tracer_provider,
-        init_telemetry,
-        instrument_fastapi_app,
-    )
 
     # Ensure domain telemetry providers are initialized
     if not getattr(domain, "_otel_init_attempted", False):

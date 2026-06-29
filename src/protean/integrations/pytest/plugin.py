@@ -7,6 +7,8 @@ at import time.  Also registers standard test-category markers.
 
 import os
 
+import protean.testing as _testing
+
 
 def pytest_addoption(parser):
     """Add ``--protean-env`` and ``--update-snapshots`` CLI options."""
@@ -37,8 +39,6 @@ def pytest_configure(config):
 
     # Propagate --update-snapshots to the testing module
     if config.getoption("--update-snapshots", default=False):
-        import protean.testing as _testing
-
         _testing._update_snapshots = True
 
     # Register standard markers so --strict-markers doesn't complain
