@@ -23,7 +23,7 @@ protean observatory [OPTIONS]
 | Option      | Description                          | Default                |
 |-------------|--------------------------------------|------------------------|
 | `--domain`  | Domain module path(s) to monitor. Repeatable for multi-domain setups. | *(required)* |
-| `--host`    | Host to bind the server to.          | `0.0.0.0`             |
+| `--host`    | Host to bind the server to. Loopback by default; see [Security](#security). | `127.0.0.1`           |
 | `--port`    | Port to bind the server to.          | `9000`                 |
 | `--title`   | Title shown in the dashboard.        | `Protean Observatory`  |
 | `--debug`   | Enable debug logging.                | `False`                |
@@ -39,7 +39,7 @@ To launch the observatory for a single domain:
 protean observatory --domain auth
 ```
 
-This will start the dashboard on `http://0.0.0.0:9000`. Read
+This will start the dashboard on `http://127.0.0.1:9000` (loopback only). Read
 [Domain Discovery](../project/discovery.md) for options to specify the domain.
 
 ### Multiple domains
@@ -55,8 +55,11 @@ shows combined data from all monitored domains.
 
 ### Custom host and port
 
+To reach the Observatory from another machine you must bind a non-loopback
+address explicitly. Do this only on a trusted network; see [Security](#security).
+
 ```shell
-protean observatory --domain auth --host 127.0.0.1 --port 8080
+protean observatory --domain auth --host 0.0.0.0 --port 8080
 ```
 
 ### Custom title
@@ -117,3 +120,18 @@ JSON endpoints, all mounted under `/api`.
 | `GET /api/timeline/traces/recent`                    | Most recent correlation chains               |
 | `GET /api/timeline/traces/search`                    | Search chains by aggregate / event / command / stream |
 | `GET /metrics`                                       | Prometheus text exposition metrics           |
+
+## Security
+
+The Observatory has **no authentication**. It exposes the domain's internal
+structure (aggregates, events, handlers, process managers), the full event
+stream and correlation chains, and Dead Letter Queue management endpoints that
+can **retry or delete messages**. Treat it as a privileged operations console.
+
+- It binds to loopback (`127.0.0.1`) by default, so it is reachable only from
+  the local machine.
+- To reach it from elsewhere, bind a non-loopback address explicitly
+  (`--host 0.0.0.0`). The Observatory logs a warning when it does so.
+- Expose it only on a trusted network, and only behind an authenticating
+  reverse proxy (or an SSH tunnel / `kubectl port-forward`). Never expose it
+  directly to the public internet.

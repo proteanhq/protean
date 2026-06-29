@@ -20,7 +20,16 @@ def observatory(
         List[str],
         typer.Option(help="Domain module path(s) to monitor"),
     ],
-    host: Annotated[str, typer.Option(help="Host to bind to")] = "0.0.0.0",
+    host: Annotated[
+        str,
+        typer.Option(
+            help=(
+                "Host to bind to. Defaults to loopback (127.0.0.1); the "
+                "Observatory is unauthenticated, so pass 0.0.0.0 only on a "
+                "trusted network behind an authenticating proxy."
+            )
+        ),
+    ] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port to bind to")] = 9000,
     title: Annotated[
         str, typer.Option(help="Observatory title")
