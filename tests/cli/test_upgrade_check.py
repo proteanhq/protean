@@ -32,3 +32,10 @@ class TestUpgradeCheckCLI:
     def test_bad_domain_path_exits_1(self):
         result = runner.invoke(app, ["upgrade-check", "-d", "nonexistent.module"])
         assert result.exit_code == 1
+
+    def test_invalid_format_fails_fast(self):
+        result = runner.invoke(
+            app, ["upgrade-check", "-d", _DOMAIN, "--format", "yaml"]
+        )
+        assert result.exit_code == 1
+        assert "Invalid --format" in result.stdout

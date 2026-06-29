@@ -16,8 +16,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
-from protean.utils import DomainObjects
-
 if TYPE_CHECKING:
     from protean.domain import Domain
 
@@ -44,61 +42,6 @@ class UpgradeFinding:
             "element": self.element,
             "sql": self.sql,
         }
-
-
-# ---------------------------------------------------------------------------
-# Element checks
-# ---------------------------------------------------------------------------
-
-
-def _check_status_self_transitions(domain: "Domain") -> list[UpgradeFinding]:
-    """Flag status fields whose transition maps omit self-loops.
-
-    0.16 validates status self-transitions against the transition map: assigning
-    a status to its current value is rejected unless the state lists itself as a
-    target. This is advisory — only the application knows whether it relies on
-    silent self-assignment (e.g. idempotent updates).
-    """
-    findings: list[UpgradeFinding] = []
-    registry = domain.registry
-    for element_type in (DomainObjects.AGGREGATE, DomainObjects.ENTITY):
-        for _, record in registry._elements[element_type.value].items():
-            cls = record.cls
-            field_meta = getattr(cls, "__protean_field_meta__", {})
-            for fname, spec in field_meta.items():
-                if getattr(spec, "field_kind", None) != "status":
-                    continue
-                transitions = getattr(spec, "transitions", None)
-                if not transitions:
-                    continue
-                missing = [
-                    state
-                    for state, targets in transitions.items()
-                    if state not in targets
-                ]
-                if missing:
-                    findings.append(
-                        UpgradeFinding(
-                            code="STATUS_SELF_TRANSITION",
-                            level="info",
-                            title=(
-                                f"Status field `{cls.__name__}.{fname}` may now "
-                                f"reject self-transitions"
-                            ),
-                            detail=(
-                                "0.16 rejects assigning a status to its current value "
-                                "unless the state lists itself as a target. States "
-                                f"without a self-loop: {', '.join(sorted(missing))}."
-                            ),
-                            remediation=(
-                                "If your code ever re-assigns one of these states to "
-                                "itself (idempotent updates), add the state to its own "
-                                "target list, e.g. `{State.X: [State.X, ...]}`."
-                            ),
-                            element=f"{cls.__name__}.{fname}",
-                        )
-                    )
-    return findings
 
 
 # ---------------------------------------------------------------------------
@@ -253,11 +196,15 @@ def _check_outbox_schema(domain: "Domain") -> list[UpgradeFinding]:
         if engine is None:
             continue
         dialect = engine.dialect.name
+        # Honor a non-default provider schema so the right outbox table is found.
+        schema = getattr(getattr(provider, "_metadata", None), "schema", None)
         try:
             inspector = sa_inspect(engine)
-            if not inspector.has_table("outbox"):
+            if not inspector.has_table("outbox", schema=schema):
                 continue
-            columns = {c["name"]: c for c in inspector.get_columns("outbox")}
+            columns = {
+                c["name"]: c for c in inspector.get_columns("outbox", schema=schema)
+            }
         except Exception:
             # Introspection is best-effort; never fail the upgrade check on it.
             continue
@@ -318,7 +265,6 @@ def _check_outbox_schema(domain: "Domain") -> list[UpgradeFinding]:
 
 # All checks, in report order. Each takes the domain and returns findings.
 _CHECKS: tuple[Callable[["Domain"], list[UpgradeFinding]], ...] = (
-    _check_status_self_transitions,
     _check_pool_defaults,
     _check_elasticsearch_server,
     _check_health_port,
@@ -329,13 +275,28 @@ _CHECKS: tuple[Callable[["Domain"], list[UpgradeFinding]], ...] = (
 def run_upgrade_checks(domain: "Domain") -> list[UpgradeFinding]:
     """Run every upgrade-readiness check against an initialized domain.
 
-    Returns a flat, ordered list of findings. Each check is isolated, so a
-    failure in one never suppresses the others.
+    Returns a flat, ordered list of findings. Each check is isolated: if one
+    raises, the others still run and the failure is surfaced as a
+    ``CHECK_FAILED`` warning so the report is never silently incomplete.
     """
     findings: list[UpgradeFinding] = []
     for check in _CHECKS:
         try:
             findings.extend(check(domain))
-        except Exception:  # a check must never break the whole report
-            continue
+        except Exception as exc:
+            findings.append(
+                UpgradeFinding(
+                    code="CHECK_FAILED",
+                    level="warning",
+                    title=f"Upgrade check `{check.__name__}` did not complete",
+                    detail=(
+                        f"The check raised {type(exc).__name__}: {exc}. The report "
+                        "may be incomplete for this area."
+                    ),
+                    remediation=(
+                        "Re-run with the database reachable and the domain fully "
+                        "configured; report the error if it persists."
+                    ),
+                )
+            )
     return findings

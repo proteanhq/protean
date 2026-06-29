@@ -1,96 +1,19 @@
 """Tests for the 0.16 upgrade-readiness checks (``protean upgrade-check``)."""
 
-from enum import Enum
-
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.fields import Identifier, Status, String
 from protean.upgrade import (
     UpgradeFinding,
     _alter_statement,
     _check_elasticsearch_server,
     _check_health_port,
     _check_pool_defaults,
-    _check_status_self_transitions,
     run_upgrade_checks,
 )
 
 
-class OrderStatus(Enum):
-    DRAFT = "DRAFT"
-    PLACED = "PLACED"
-    CANCELLED = "CANCELLED"
-
-
 def _codes(findings: list[UpgradeFinding]) -> set[str]:
     return {f.code for f in findings}
-
-
-# ---------------------------------------------------------------------------
-# STATUS_SELF_TRANSITION
-# ---------------------------------------------------------------------------
-
-
-class TestStatusSelfTransition:
-    def test_flags_states_without_self_loops(self, test_domain):
-        class Order(BaseAggregate):
-            order_id = Identifier(identifier=True)
-            status = Status(
-                OrderStatus,
-                transitions={
-                    OrderStatus.DRAFT: [OrderStatus.PLACED],
-                    OrderStatus.PLACED: [OrderStatus.CANCELLED],
-                },
-            )
-
-        test_domain.register(Order)
-        test_domain.init(traverse=False)
-
-        findings = _check_status_self_transitions(test_domain)
-        assert len(findings) == 1
-        f = findings[0]
-        assert f.code == "STATUS_SELF_TRANSITION"
-        assert f.level == "info"
-        assert f.element == "Order.status"
-        # Both source states lack self-loops
-        assert "DRAFT" in f.detail and "PLACED" in f.detail
-
-    def test_no_finding_when_states_list_themselves(self, test_domain):
-        class Order(BaseAggregate):
-            order_id = Identifier(identifier=True)
-            status = Status(
-                OrderStatus,
-                transitions={
-                    OrderStatus.DRAFT: [OrderStatus.DRAFT, OrderStatus.PLACED],
-                    OrderStatus.PLACED: [OrderStatus.PLACED, OrderStatus.CANCELLED],
-                },
-            )
-
-        test_domain.register(Order)
-        test_domain.init(traverse=False)
-
-        assert _check_status_self_transitions(test_domain) == []
-
-    def test_no_finding_for_status_without_transitions(self, test_domain):
-        class Order(BaseAggregate):
-            order_id = Identifier(identifier=True)
-            status = Status(OrderStatus)  # no transition map
-
-        test_domain.register(Order)
-        test_domain.init(traverse=False)
-
-        assert _check_status_self_transitions(test_domain) == []
-
-    def test_no_finding_without_status_field(self, test_domain):
-        class Plain(BaseAggregate):
-            plain_id = Identifier(identifier=True)
-            name = String(max_length=50)
-
-        test_domain.register(Plain)
-        test_domain.init(traverse=False)
-
-        assert _check_status_self_transitions(test_domain) == []
 
 
 # ---------------------------------------------------------------------------
@@ -209,9 +132,14 @@ class TestRunUpgradeChecks:
 
         findings = run_upgrade_checks(test_domain)
         codes = _codes(findings)
-        # ES + health still reported despite the failing check
+        # ES + health still reported despite the failing check...
         assert "ELASTICSEARCH_SERVER_V8" in codes
         assert "HEALTH_PORT_BIND" in codes
+        # ...and the failure is surfaced (not silently swallowed) as a warning.
+        failed = [f for f in findings if f.code == "CHECK_FAILED"]
+        assert len(failed) == 1
+        assert failed[0].level == "warning"
+        assert "RuntimeError" in failed[0].detail
 
     def test_outbox_check_noop_on_memory_provider(self, test_domain):
         test_domain.init(traverse=False)

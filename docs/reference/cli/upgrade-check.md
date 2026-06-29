@@ -24,11 +24,11 @@ databases. Exit code is `0` when only advisory (info) findings are present and
 
 | Code | Level | Surface | What it reports |
 |------|-------|---------|-----------------|
-| `STATUS_SELF_TRANSITION` | info | Element | Status fields whose transition maps omit self-loops. 0.16 rejects assigning a status to its current value unless the state lists itself as a target. |
 | `POOL_DEFAULTS_CHANGED` | warning | Config | A SQL database with `pool_size` unset. 0.16 raised the SQLAlchemy pool defaults to `pool_size=5`, `max_overflow=10`. |
 | `HEALTH_PORT_BIND` | info | Config | `protean server` now binds a health-check server on port 8080 by default. |
 | `ELASTICSEARCH_SERVER_V8` | warning | Infra | An Elasticsearch provider; installs now default to the v8 client, which requires an Elasticsearch 8.x server. |
 | `OUTBOX_NEEDS_ALTER` | warning | Schema | A live `outbox` table with unbounded string columns; emits the exact backend `ALTER` to apply the new `VARCHAR(N)` bounds. |
+| `CHECK_FAILED` | warning | — | A check could not complete (e.g. the database was unreachable); the report may be incomplete for that area. |
 
 ## Generated SQL
 

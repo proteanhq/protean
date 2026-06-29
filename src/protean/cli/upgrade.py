@@ -52,6 +52,10 @@ def upgrade_check(
     ] = "rich",
 ) -> None:
     """Report changes that need attention when upgrading a domain to 0.16."""
+    if format not in ("rich", "json"):
+        print(f"[red]Invalid --format: {format!r}. Use 'rich' or 'json'.[/red]")
+        raise typer.Exit(code=1)
+
     try:
         derived_domain = derive_domain(domain)
     except NoDomainException as exc:
@@ -60,7 +64,9 @@ def upgrade_check(
         logger.error(msg)
         raise typer.Exit(code=1)
 
-    assert derived_domain is not None
+    if derived_domain is None:
+        print("[red]Error loading Protean domain: no domain found.[/red]")
+        raise typer.Exit(code=1)
 
     # Full init so live-schema checks (e.g. the outbox table diff) can introspect
     # the configured databases. Element/config checks do not require it, but the
