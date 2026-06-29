@@ -26,8 +26,11 @@ def diff_ir(
     contracts, diagnostics, domain) plus a summary with counts and
     breaking-change flags.
 
-    Skips derived/volatile keys: ``$schema``, ``ir_version``,
-    ``generated_at``, ``checksum``, ``elements``.
+    Compares only the content sections below; the derived/volatile keys in
+    :data:`protean.ir.constants.VOLATILE_IR_KEYS` (``$schema``, ``ir_version``,
+    ``generated_at``, ``checksum``, ``elements``) are ignored. The content
+    checksum excludes the same set, keeping ``ir check`` and ``ir diff`` in
+    agreement (see #1012).
 
     Args:
         current_version: When provided, used to classify removals of
