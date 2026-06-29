@@ -13,6 +13,7 @@ error path:
   rather than being marked done.
 """
 
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -69,6 +70,36 @@ def reset():
     attempts = 0
     errors_handled = 0
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_retry_sleep(monkeypatch):
+    """Fail fast instead of hanging if a backoff sleep is ever attempted.
+
+    The deadline guard must stop the retry loop *before* any backoff sleep. With
+    ``base_delay_seconds = 3600`` a real sleep would hang the suite for an hour,
+    so make the retry's ``time.sleep`` raise: a guard regression then fails
+    immediately with a clear message instead of timing out the run.
+
+    The patch is scoped to the ``time`` symbol *inside* ``protean.utils.mixins``
+    (via a proxy that overrides only ``sleep`` and delegates everything else to
+    the real module), so an unrelated ``time.sleep`` elsewhere in the engine is
+    unaffected and cannot trip this assertion.
+    """
+
+    def _fail(seconds: float) -> None:
+        raise AssertionError(
+            f"retry attempted a {seconds}s backoff sleep; the deadline guard "
+            "should have stopped the loop before sleeping"
+        )
+
+    class _TimeProxy:
+        sleep = staticmethod(_fail)
+
+        def __getattr__(self, name):
+            return getattr(time, name)
+
+    monkeypatch.setattr("protean.utils.mixins.time", _TimeProxy())
 
 
 def _message_with_deadline(test_domain, deadline):
