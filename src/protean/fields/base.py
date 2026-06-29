@@ -13,6 +13,11 @@ MISSING_ERROR_MESSAGE = (
     "not exist in the `error_messages` dictionary."
 )
 
+# Values treated as "empty": they trigger the ``required`` check and short-circuit
+# per-field validators (validators must not run on an omitted optional field).
+# Shared with the Pydantic-based field system in ``spec.py`` so both stay aligned.
+EMPTY_VALUES: tuple = (None, "", [], (), {})
+
 
 def normalize_field_deprecated(
     value: str | dict | None,
@@ -96,7 +101,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     default_validators: List[Callable] = []
 
     # These values will trigger the self.required check.
-    empty_values: tuple = (None, "", [], (), {})
+    empty_values: tuple = EMPTY_VALUES
 
     def __init__(
         self,

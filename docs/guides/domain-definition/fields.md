@@ -201,7 +201,9 @@ class Employee:
 ```
 
 Validators run on every assignment and raise `ValidationError` if the
-value is rejected.
+value is rejected. Empty values (`None`, `""`, and empty collections) skip
+validators, so an optional field left unset is never validated and your
+validators do not need to be `None`-aware.
 
 !!! tip "Single field vs. cross-field rules"
     Use `validators` when the rule involves **one field in isolation**.
