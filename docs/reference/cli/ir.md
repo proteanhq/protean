@@ -44,6 +44,9 @@ sections: `domain`, `clusters`, `projections`, `flows`, `elements`, and
 `diagnostics`. See the [IR specification](../../concepts/internals/ir-specification.md)
 for the complete structure reference.
 
+Logs are written to stderr, so the JSON on stdout is safe to pipe (`protean ir
+show ... | jq`) or redirect to a file without log lines corrupting it.
+
 **Summary output**
 
 A compact overview showing:
