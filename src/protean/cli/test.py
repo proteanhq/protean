@@ -9,13 +9,13 @@ from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import typer
 from typing_extensions import Annotated
 
-from protean.domain import Domain
-from protean.port.provider import DatabaseCapabilities, ProviderRegistry
+if TYPE_CHECKING:
+    from protean.port.provider import DatabaseCapabilities
 
 # Configuration constants
 REPORT_PATH = Path("diff_coverage_report.html")
@@ -578,6 +578,8 @@ def _provider_has_capability_for_marker(
     For ``transactional``, the provider needs TRANSACTIONS or SIMULATED_TRANSACTIONS.
     For all other markers, ALL listed capability flags must be present.
     """
+    from protean.port.provider import DatabaseCapabilities
+
     flag_names = CAPABILITY_MARKER_MAP.get(marker_name, [])
     if not flag_names:
         return False
@@ -783,6 +785,9 @@ def test_adapter(
 
         protean test test-adapter --provider=postgresql --uri="postgresql://localhost/test" -v
     """
+    from protean.domain import Domain
+    from protean.port.provider import ProviderRegistry
+
     # 1. Verify provider is registered
     try:
         ProviderRegistry.get(provider)
