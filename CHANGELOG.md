@@ -502,7 +502,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Derive SQLAlchemy field types correctly for embedded value object fields
 - Elasticsearch adapter bugfixes and model enhancements
 
-[Unreleased]: https://github.com/proteanhq/protean/compare/v0.15.0rc1...HEAD
+[Unreleased]: https://github.com/proteanhq/protean/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/proteanhq/protean/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/proteanhq/protean/compare/v0.15.0rc1...v0.15.0
 [0.15.0rc1]: https://github.com/proteanhq/protean/compare/v0.14.2...v0.15.0rc1
 [0.14.2]: https://github.com/proteanhq/protean/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/proteanhq/protean/compare/v0.14.0...v0.14.1
