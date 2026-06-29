@@ -169,7 +169,7 @@ def status(
     (``staleness``) and in events (``lag``) across all the projectors that feed it,
     plus its current row count. Does not require the server to be running.
     """
-    from protean.server.projection_status import collect_projection_statuses
+    from protean.server.projection_status import collect_projection_statuses  # noqa: PLC0415
 
     try:
         derived_domain = derive_domain(domain)

@@ -38,7 +38,7 @@ def observatory(
     debug: Annotated[Optional[bool], typer.Option(help="Enable debug logging")] = False,
 ):
     """Run the Observatory observability dashboard."""
-    from protean.server.observatory import Observatory
+    from protean.server.observatory import Observatory  # noqa: PLC0415
 
     if debug:
         warnings.warn(

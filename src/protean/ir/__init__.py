@@ -44,51 +44,51 @@ def load_schema() -> dict[str, Any]:
 # Deferred imports to avoid circular dependencies
 def __getattr__(name: str) -> Any:
     if name == "IRBuilder":
-        from protean.ir.builder import IRBuilder
+        from protean.ir.builder import IRBuilder  # noqa: PLC0415
 
         return IRBuilder
     if name == "diff_ir":
-        from protean.ir.diff import diff_ir
+        from protean.ir.diff import diff_ir  # noqa: PLC0415
 
         return diff_ir
     if name == "classify_changes":
-        from protean.ir.diff import classify_changes
+        from protean.ir.diff import classify_changes  # noqa: PLC0415
 
         return classify_changes
     if name == "CompatibilityChange":
-        from protean.ir.diff import CompatibilityChange
+        from protean.ir.diff import CompatibilityChange  # noqa: PLC0415
 
         return CompatibilityChange
     if name == "CompatibilityReport":
-        from protean.ir.diff import CompatibilityReport
+        from protean.ir.diff import CompatibilityReport  # noqa: PLC0415
 
         return CompatibilityReport
     if name == "StalenessResult":
-        from protean.ir.staleness import StalenessResult
+        from protean.ir.staleness import StalenessResult  # noqa: PLC0415
 
         return StalenessResult
     if name == "StalenessStatus":
-        from protean.ir.staleness import StalenessStatus
+        from protean.ir.staleness import StalenessStatus  # noqa: PLC0415
 
         return StalenessStatus
     if name == "check_staleness":
-        from protean.ir.staleness import check_staleness
+        from protean.ir.staleness import check_staleness  # noqa: PLC0415
 
         return check_staleness
     if name == "GitError":
-        from protean.ir.git import GitError
+        from protean.ir.git import GitError  # noqa: PLC0415
 
         return GitError
     if name == "load_ir_from_commit":
-        from protean.ir.git import load_ir_from_commit
+        from protean.ir.git import load_ir_from_commit  # noqa: PLC0415
 
         return load_ir_from_commit
     if name == "CompatConfig":
-        from protean.ir.config import CompatConfig
+        from protean.ir.config import CompatConfig  # noqa: PLC0415
 
         return CompatConfig
     if name == "load_config":
-        from protean.ir.config import load_config
+        from protean.ir.config import load_config  # noqa: PLC0415
 
         return load_config
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

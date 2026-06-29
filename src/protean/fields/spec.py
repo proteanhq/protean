@@ -479,7 +479,7 @@ def _sanitize_string(v: str) -> str:
     if not isinstance(v, str):
         return v
     try:
-        import bleach
+        import bleach  # noqa: PLC0415
 
         return bleach.clean(v)
     except ImportError:

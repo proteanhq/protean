@@ -116,7 +116,7 @@ def _collect_subscription_statuses(domains: List[Domain]) -> list:
     """
 
     def _do_collect() -> list:
-        from protean.server.subscription_status import collect_subscription_statuses
+        from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
 
         results: list = []
         for domain in domains:
@@ -143,7 +143,7 @@ def _collect_projection_statuses(domains: List[Domain]) -> list:
     """
 
     def _do_collect() -> list:
-        from protean.server.projection_status import collect_projection_statuses
+        from protean.server.projection_status import collect_projection_statuses  # noqa: PLC0415
 
         results: list = []
         for domain in domains:
@@ -662,7 +662,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 
     # --- Per-consumer metrics (via XINFO CONSUMERS) ---
     try:
-        from protean.server.observatory.api import _discover_streams, _get_redis
+        from protean.server.observatory.api import _discover_streams, _get_redis  # noqa: PLC0415
 
         redis_conn = _get_redis(domains)
         if redis_conn:

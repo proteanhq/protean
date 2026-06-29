@@ -975,7 +975,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         Returns per-subscription lag, pending count, DLQ depth, and
         overall summary for each monitored domain.
         """
-        from protean.server.subscription_status import collect_subscription_statuses
+        from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
 
         result = {}
         for domain in domains:
@@ -1022,7 +1022,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
         Supports offset-based pagination via offset/limit params.
         """
-        from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
+        from protean.utils.dlq import collect_dlq_streams, discover_subscriptions  # noqa: PLC0415
 
         domain = domains[0]
         try:
@@ -1088,7 +1088,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.get("/dlq/{dlq_id}")
     async def dlq_inspect(dlq_id: str):
         """Inspect a single DLQ message with full payload."""
-        from protean.utils.dlq import collect_dlq_streams
+        from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
 
         domain = domains[0]
         try:
@@ -1140,7 +1140,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.post("/dlq/{dlq_id}/replay")
     async def dlq_replay(dlq_id: str):
         """Replay a single DLQ message back to its original stream."""
-        from protean.utils.dlq import collect_dlq_streams
+        from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
 
         domain = domains[0]
         try:
@@ -1188,7 +1188,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         subscription: str = Query(..., description="Stream category (required)"),
     ):
         """Replay all DLQ messages for a subscription."""
-        from protean.utils.dlq import discover_subscriptions
+        from protean.utils.dlq import discover_subscriptions  # noqa: PLC0415
 
         domain = domains[0]
         try:
@@ -1239,7 +1239,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         subscription: str = Query(..., description="Stream category (required)"),
     ):
         """Purge all DLQ messages for a subscription."""
-        from protean.utils.dlq import discover_subscriptions
+        from protean.utils.dlq import discover_subscriptions  # noqa: PLC0415
 
         domain = domains[0]
         try:

@@ -216,7 +216,7 @@ def configure_logging(
         # and causation_id are available in every log record, matching the
         # behavior of Domain.configure_logging().
         try:
-            from protean.integrations.logging import (
+            from protean.integrations.logging import (  # noqa: PLC0415
                 ProteanCorrelationFilter,
                 ProteanRedactionFilter,
             )
@@ -259,7 +259,7 @@ def configure_logging(
 
     # --- redaction filter on root logger (stdlib path) ---
     if redact:
-        from protean.integrations.logging import ProteanRedactionFilter
+        from protean.integrations.logging import ProteanRedactionFilter  # noqa: PLC0415
 
         root = logging.getLogger()
         if not any(isinstance(f, ProteanRedactionFilter) for f in root.filters):

@@ -260,7 +260,7 @@ class RedisPubSubBroker(BaseBroker):
         try:
             self.redis_instance.flushall()
             self._consumer_groups.clear()
-        except Exception as e:
+        except Exception:
             logger.exception("broker.redis_pubsub.data_reset_failed")
 
     # DLQ methods — not supported by PubSub broker (no DEAD_LETTER_QUEUE capability).
@@ -287,7 +287,7 @@ class RedisPubSubBroker(BaseBroker):
 def register():
     """Register Redis PubSub broker with Protean if redis is available."""
     try:
-        import redis  # noqa: F401
+        import redis  # noqa: F401, PLC0415
 
         registry.register(
             "redis_pubsub", "protean.adapters.broker.redis_pubsub.RedisPubSubBroker"

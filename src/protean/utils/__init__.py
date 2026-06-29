@@ -308,7 +308,7 @@ def _prepare_pydantic_namespace(
 
     if needs_identity and auto_add is not False:
         # Check if an identifier is already declared
-        from protean.fields.spec import FieldSpec
+        from protean.fields.spec import FieldSpec  # noqa: PLC0415
 
         has_id = False
 

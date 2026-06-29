@@ -766,7 +766,7 @@ class ESProvider(BaseProvider):
 
         Returns a set of field names that should use the .keyword subfield.
         """
-        from elasticsearch_dsl import Text as ESText
+        from elasticsearch_dsl import Text as ESText  # noqa: PLC0415
 
         keyword_fields: set[str] = set()
 
@@ -1340,7 +1340,7 @@ class IsNull(DefaultLookup):
 def register() -> None:
     """Register Elasticsearch provider with Protean if elasticsearch is available."""
     try:
-        import elasticsearch  # noqa: F401
+        import elasticsearch  # noqa: F401, PLC0415
 
         registry.register(
             "elasticsearch",

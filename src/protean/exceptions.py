@@ -25,9 +25,9 @@ def _emit_security_event(event_type: str, args: tuple) -> None:
     in ``protean.adapters``, which imports back from ``protean.exceptions``.
     Lifting these to module level would break package initialization.
     """
-    from protean.domain.context import has_domain_context
-    from protean.integrations.logging import log_security_event
-    from protean.utils.globals import g
+    from protean.domain.context import has_domain_context  # noqa: PLC0415
+    from protean.integrations.logging import log_security_event  # noqa: PLC0415
+    from protean.utils.globals import g  # noqa: PLC0415
 
     if not has_domain_context() or g.get("message_in_context") is None:
         return

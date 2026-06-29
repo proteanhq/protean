@@ -712,7 +712,7 @@ class BaseEntity(BaseModel, OptionsMixin):
         the top creates a circular import via ``domain/__init__.py`` →
         ``adapters`` → ``core.projection`` → ``core.entity``.
         """
-        from protean.domain.context import has_domain_context
+        from protean.domain.context import has_domain_context  # noqa: PLC0415
 
         if not has_domain_context() or g.get("message_in_context") is None:
             return

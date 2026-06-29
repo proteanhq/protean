@@ -125,7 +125,7 @@ def _listen(
         return
 
     # Imported here, not at module top, so the no-op path needs no SQLAlchemy.
-    from sqlalchemy import event
+    from sqlalchemy import event  # noqa: PLC0415
 
     def _before_cursor_execute(conn, cursor, statement, parameters, context, many):
         callback(statement, parameters)

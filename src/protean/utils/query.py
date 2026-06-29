@@ -33,7 +33,7 @@ class RegisterLookupMixin:
 
     def get_lookup(self, lookup_name):
         """Fetch Lookup by name"""
-        from protean.port.dao import BaseLookup
+        from protean.port.dao import BaseLookup  # noqa: PLC0415
 
         lookup = self._get_lookup(lookup_name)
 

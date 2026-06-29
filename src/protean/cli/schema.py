@@ -91,7 +91,7 @@ def generate(
         ir_data = load_ir_file(ir)
 
     # Write schemas and IR
-    from protean.ir.generators.schema_writer import write_ir, write_schemas
+    from protean.ir.generators.schema_writer import write_ir, write_schemas  # noqa: PLC0415
 
     written = write_schemas(ir_data, output)
     write_ir(ir_data, output)
@@ -117,7 +117,7 @@ def write_index_ddl(
     of written paths. This is the database-agnostic path: it never executes
     DDL, only renders it for review or manual application.
     """
-    from protean.adapters.repository.sqlalchemy import render_index_ddl
+    from protean.adapters.repository.sqlalchemy import render_index_ddl  # noqa: PLC0415
 
     output = Path(output_dir)
     written: list[Path] = []
@@ -278,7 +278,7 @@ def show(
         ir_data = load_ir_file(ir)
 
     # Generate all schemas
-    from protean.ir.generators.schema import generate_schemas
+    from protean.ir.generators.schema import generate_schemas  # noqa: PLC0415
 
     schemas = generate_schemas(ir_data)
 
