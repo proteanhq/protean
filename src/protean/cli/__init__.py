@@ -40,6 +40,7 @@ from protean.cli.observatory import observatory
 from protean.cli.projection import app as projection_app
 from protean.cli.shell import shell
 from protean.cli.snapshot import app as snapshot_app
+from protean.cli.upgrade import upgrade_check
 from protean.cli.subscriptions import app as subscriptions_app
 from protean.cli.test import app as test_app
 from protean.exceptions import NoDomainException
@@ -55,6 +56,7 @@ logger = get_logger(__name__)
 app = typer.Typer(no_args_is_help=True)
 
 app.command()(check)
+app.command()(upgrade_check)
 app.command()(new)
 app.command()(observatory)
 app.command()(shell)
