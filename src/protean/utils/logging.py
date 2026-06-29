@@ -937,8 +937,12 @@ def _setup_stdlib_logging(
     shared_processors = _build_shared_processors(extra_processors)
     formatter = _build_processor_formatter(env, format, shared_processors)
 
-    # Console handler (always present)
-    console = logging.StreamHandler(sys.stdout)
+    # Console handler (always present). Logs go to stderr so they never corrupt
+    # machine-readable output written to stdout by CLI commands (e.g. the JSON
+    # from `protean ir show` / `protean schema generate`). Container runtimes and
+    # orchestrators capture stderr alongside stdout, so server log collection is
+    # unaffected.
+    console = logging.StreamHandler(sys.stderr)
     console.setLevel(numeric_level)
     console.setFormatter(formatter)
     root.addHandler(console)
