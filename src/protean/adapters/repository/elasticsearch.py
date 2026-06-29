@@ -766,15 +766,13 @@ class ESProvider(BaseProvider):
 
         Returns a set of field names that should use the .keyword subfield.
         """
-        from elasticsearch_dsl import Text as ESText  # noqa: PLC0415
-
         keyword_fields: set[str] = set()
 
         # When a custom model provides explicit ES field definitions,
         # detect which are Text-type (those need .keyword for exact match)
         if custom_attrs:
             for attr_name, attr_value in custom_attrs.items():
-                if isinstance(attr_value, ESText):
+                if isinstance(attr_value, elasticsearch_dsl.Text):
                     keyword_fields.add(attr_name)
 
         return keyword_fields

@@ -1369,8 +1369,6 @@ class SAProvider(BaseProvider):
             return True
         except DatabaseError:
             # Redact credentials from the URI before logging
-            from sqlalchemy.engine.url import make_url  # noqa: PLC0415
-
             try:
                 safe_uri = str(
                     make_url(self.conn_info["database_uri"]).set(password="***")
