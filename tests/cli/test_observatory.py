@@ -54,7 +54,7 @@ class TestObservatoryCommand:
 
             assert result.exit_code == 0
             MockObservatory.assert_called_once()
-            mock_obs.run.assert_called_once_with(host="0.0.0.0", port=9000)
+            mock_obs.run.assert_called_once_with(host="127.0.0.1", port=9000)
 
     def test_observatory_initializes_domain(self):
         """Test that the observatory command correctly derives and initializes the domain."""
@@ -146,7 +146,7 @@ class TestObservatoryCommand:
             result = runner.invoke(app, args)
 
             assert result.exit_code == 0
-            mock_obs.run.assert_called_once_with(host="0.0.0.0", port=8080)
+            mock_obs.run.assert_called_once_with(host="127.0.0.1", port=8080)
 
     def test_observatory_custom_title(self):
         """Test that observatory accepts a custom title."""

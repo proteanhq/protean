@@ -17,6 +17,7 @@ Usage:
 """
 
 import asyncio
+import ipaddress
 import logging
 from pathlib import Path
 from typing import List
@@ -161,8 +162,37 @@ class Observatory:
         metrics_endpoint = create_metrics_endpoint(self.domains)
         self.app.add_api_route("/metrics", metrics_endpoint, methods=["GET"])
 
-    def run(self, host: str = "0.0.0.0", port: int = 9000) -> None:
-        """Run the observatory server."""
+    @staticmethod
+    def _is_loopback_host(host: str) -> bool:
+        """Whether ``host`` keeps the server reachable only from this machine.
+
+        Uses a semantic check so every loopback form is recognized (the whole
+        ``127.0.0.0/8`` range, ``::1`` in any spelling), plus the literal
+        ``localhost``. Anything that cannot be proven loopback (other hostnames,
+        ``0.0.0.0``, ``::``) is treated as exposed.
+        """
+        if host == "localhost":
+            return True
+        try:
+            return ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            return False
+
+    def run(self, host: str = "127.0.0.1", port: int = 9000) -> None:
+        """Run the observatory server.
+
+        Defaults to binding loopback only. The Observatory is unauthenticated
+        and exposes domain internals and DLQ management endpoints, so binding it
+        to a non-loopback address emits a warning.
+        """
+        if not self._is_loopback_host(host):
+            logger.warning(
+                "Observatory is binding to %s, reachable beyond this host. It "
+                "has no authentication and exposes domain internals and DLQ "
+                "management endpoints. Restrict it to a trusted network behind "
+                "an authenticating reverse proxy.",
+                host,
+            )
         logger.info(f"Starting Protean Observatory on {host}:{port}")
         uvicorn.run(self.app, host=host, port=port)
 
