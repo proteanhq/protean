@@ -5,11 +5,17 @@ import pytest
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany, String
+from protean.core.projection import BaseProjection
+from protean.fields import HasMany, Identifier, Integer, String
 
 
 class Person(BaseAggregate):
     name: String(required=True)
+
+
+class CacheLeaderboard(BaseProjection):
+    entry_id: Identifier(identifier=True)
+    score: Integer()
 
 
 @pytest.fixture
@@ -128,3 +134,45 @@ def test_create_artifacts_skips_event_sourced_aggregates():
     # Event-sourced aggregate and its entity should be skipped
     assert ESOrder not in called_classes
     assert ESLineItem not in called_classes
+
+
+@pytest.mark.no_test_domain
+def test_create_artifacts_skips_cache_backed_projections():
+    """Cache-backed projections persist to a cache (provider is None), not a SQL
+    table. _create_database_artifacts must skip them; otherwise repository_for
+    raises ConfigurationError ("No provider configured with name 'None'") and the
+    whole database setup fails. See #1034."""
+    from protean import Domain
+
+    domain = Domain(__file__, "Cache-Proj-Test")
+
+    # A regular aggregate (processed) plus a cache-backed projection (skipped).
+    domain.register(Person)
+    domain.register(CacheLeaderboard, cache="default")
+    domain.init(traverse=False)
+
+    provider = PostgresqlProvider(
+        domain=domain, name="default", conn_info={"database_uri": "sqlite://"}
+    )
+
+    called_classes: list[type] = []
+    original_repo_for = domain.repository_for
+
+    def tracking_repo_for(cls):
+        called_classes.append(cls)
+        return original_repo_for(cls)
+
+    domain.repository_for = tracking_repo_for
+
+    mock_engine = Mock()
+    mock_connection = Mock()
+    mock_engine.connect.return_value = mock_connection
+    provider._engine = mock_engine
+    provider._metadata = Mock()
+
+    # Must not raise — before the fix this hit ConfigurationError on the cache
+    # projection's None provider.
+    provider._create_database_artifacts()
+
+    assert Person in called_classes
+    assert CacheLeaderboard not in called_classes
