@@ -1461,6 +1461,11 @@ class SAProvider(BaseProvider):
             part_of = getattr(cls.meta_, "part_of", None)
             if part_of and getattr(part_of.meta_, "is_event_sourced", False):
                 continue
+            # Skip cache-backed projections — they persist to a cache adapter,
+            # not a SQL table (when `cache` is set the provider is None), so
+            # building a DAO for them would raise. See #1034.
+            if getattr(cls.meta_, "cache", None):
+                continue
             self.domain.repository_for(cls)._dao
 
         # Create all tables in a single transaction
