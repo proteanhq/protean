@@ -53,3 +53,8 @@ class TestOutboxColumnDDL:
         for name in UNBOUNDED_FIELDS:
             # JSON / PickleType columns carry no length bound.
             assert getattr(outbox_columns[name].type, "length", None) is None
+
+    def test_target_broker_column_is_not_null(self, outbox_columns):
+        # NOT NULL so a NULL target_broker can't bypass the (message_id,
+        # target_broker) unique index (issue #1041).
+        assert outbox_columns["target_broker"].nullable is False
