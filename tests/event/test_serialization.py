@@ -120,13 +120,13 @@ def test_that_dates_in_message_are_serialized_and_deserialized():
 
     # DateTime should serialize to string in payload
     payload = event.payload
-    assert payload["registered_at"] == str(now)
+    assert payload["registered_at"] == now.isoformat()
 
     # Full dict should be JSON-serializable
     event_dict = event.to_dict()
     json_str = json.dumps(event_dict, default=str)
     parsed = json.loads(json_str)
-    assert parsed["registered_at"] == str(now)
+    assert parsed["registered_at"] == now.isoformat()
 
     # Round-trip through Message should preserve the datetime
     message = Message.from_domain_object(event)

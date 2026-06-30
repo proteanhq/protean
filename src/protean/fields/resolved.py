@@ -187,7 +187,11 @@ class ResolvedField:
         if hasattr(value, "model_dump"):
             return value.model_dump()
         if isinstance(value, datetime):
-            return str(value)
+            # ISO-8601 (T-separated), matching the message-metadata timestamp
+            # path, rather than the space-separated ``str(value)``. The value's
+            # own tzinfo is preserved (naive stays naive, aware keeps its
+            # offset), so it round-trips losslessly. See #1039.
+            return value.isoformat()
         # Decimals are string-encoded so JSON/event payloads never round-trip
         # through a binary float and lose precision.
         if isinstance(value, decimal.Decimal):
