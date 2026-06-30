@@ -110,7 +110,7 @@ $ protean test -c FULL
     to what starts the containers. [OrbStack](https://orbstack.dev),
     [Podman](https://podman.io), [Colima](https://github.com/abiosoft/colima),
     and Rancher Desktop all work with the same `docker-compose.yml`. For Podman,
-    run `podman compose` directly or point `docker compose` at the Podman socket
+    run `podman compose` directly or point `docker-compose` (or `docker compose`) at the Podman socket
     via `DOCKER_HOST`.
 
 Running a full test will also generate a coverage report as part of test
