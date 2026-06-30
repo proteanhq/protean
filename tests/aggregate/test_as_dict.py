@@ -53,7 +53,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             "title": "Test Post",
             "slug": "test-post",
             "content": "Do Re Mi Fa",
-            "posted_at": str(current_time),
+            "posted_at": current_time.isoformat(),
             "_version": -1,
         }
 

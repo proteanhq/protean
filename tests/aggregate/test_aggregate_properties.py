@@ -22,7 +22,7 @@ class TestProperties:
         assert role.to_dict() == {
             "id": 12,
             "name": "ADMIN",
-            "created_on": str(current_time),
+            "created_on": current_time.isoformat(),
             "_version": -1,
         }
 

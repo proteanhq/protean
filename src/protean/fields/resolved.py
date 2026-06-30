@@ -185,7 +185,12 @@ class ResolvedField:
         if hasattr(value, "model_dump"):
             return value.model_dump()
         if isinstance(value, datetime):
-            return str(value)
+            # ISO-8601 (T-separated), matching the message-metadata timestamp
+            # path, rather than the space-separated ``str(value)``. The
+            # naive/aware distinction and the UTC offset are preserved, so the
+            # instant round-trips unchanged (a named zone is serialized as its
+            # fixed offset, not the original tzinfo object). See #1039.
+            return value.isoformat()
         # ``datetime`` subclasses ``date``, so this must come *after* the
         # datetime check. Without it a plain ``date`` flows unserialized into
         # ``json.dumps`` (e.g. checksum computation) and raises. See #1046.

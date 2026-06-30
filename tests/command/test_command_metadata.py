@@ -138,7 +138,7 @@ def test_command_metadata(test_domain):
                 "id": f"{identifier}",
                 "type": "Test.Login.v1",
                 "stream": f"test::user:command-{identifier}",
-                "time": str(command._metadata.headers.time),
+                "time": command._metadata.headers.time.isoformat(),
                 "traceparent": None,
                 "idempotency_key": None,
                 "deadline": None,
