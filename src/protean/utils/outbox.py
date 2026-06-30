@@ -1,9 +1,9 @@
 import traceback
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from typing import Annotated, List, Optional, Tuple
+from typing import Annotated, Any, List, Optional, Tuple
 
-from pydantic import Field
+from pydantic import BeforeValidator, Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
@@ -15,6 +15,21 @@ from protean.utils.query import F, Q
 
 PAGE_SIZE = 50  # Default page size for fetching messages
 DEFAULT_LOCK_DURATION_MINUTES = 5  # How long a claim holds a processing lock
+
+# Fallback broker name for an outbox row whose target broker is unspecified.
+# Matches the UnitOfWork default (``outbox_config.get("broker", "default")``).
+DEFAULT_TARGET_BROKER = "default"
+
+
+def _coerce_target_broker(value: Any) -> Any:
+    """Coerce a NULL ``target_broker`` to the default broker name (#1041).
+
+    The column is NOT NULL, but outbox rows written before the field was
+    populated may hold NULL. Coercing on read lets those legacy rows load
+    while keeping the (message_id, target_broker) unique guarantee intact for
+    new rows.
+    """
+    return DEFAULT_TARGET_BROKER if value is None else value
 
 
 class OutboxStatus(Enum):
@@ -92,8 +107,11 @@ class Outbox(BaseAggregate):
     # Target broker this message is destined for. The framework always sets it
     # on write (the internal broker name, or an external broker name); the
     # composite (message_id, target_broker) unique index depends on it being
-    # non-NULL. Kept nullable only to read rows written before it was populated.
-    target_broker: Annotated[str | None, Field(max_length=128)] = None
+    # non-NULL, so the column is NOT NULL. Legacy rows written before the field
+    # was populated are coerced from NULL to the default broker name on read.
+    target_broker: Annotated[
+        str, BeforeValidator(_coerce_target_broker), Field(max_length=128)
+    ]
 
     @classmethod
     def create_message(
@@ -108,7 +126,7 @@ class Outbox(BaseAggregate):
         causation_id: Optional[str] = None,
         max_retries: int = 3,
         sequence_number: Optional[int] = None,
-        target_broker: str | None = None,
+        target_broker: str = DEFAULT_TARGET_BROKER,
     ) -> "Outbox":
         """Create a new outbox message ready for publishing.
 
@@ -124,7 +142,9 @@ class Outbox(BaseAggregate):
             max_retries: Maximum retry attempts
             sequence_number: Sequence number for ordering
             target_broker: Name of the broker this message targets. The
-                framework always sets it; None only for legacy rows.
+                framework always sets it; defaults to the internal broker name
+                so the row is never NULL (it must satisfy the NOT NULL column
+                and the composite unique guarantee).
 
         Returns:
             New Outbox instance

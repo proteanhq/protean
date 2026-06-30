@@ -5,7 +5,8 @@ from sqlalchemy import inspect
 
 from protean.domain import Domain
 from protean.core.index import Index
-from protean.utils.outbox import OUTBOX_INDEXES
+from protean.utils.outbox import DEFAULT_TARGET_BROKER, OUTBOX_INDEXES, Outbox
+from protean.utils.reflection import declared_fields
 
 
 class TestOutboxIndexDeclarations:
@@ -184,3 +185,42 @@ class TestOutboxDualWriteUniqueness:
             with pytest.raises((TransactionError, IntegrityError, ValidationError)):
                 with UnitOfWork():
                     repo.add(_row())
+
+
+class TestTargetBrokerNotNull:
+    """target_broker is NOT NULL so it can never bypass the composite unique
+    index (issue #1041). It defaults to the internal broker name, and legacy
+    NULL rows are coerced to it on read."""
+
+    def _metadata(self):
+        from datetime import datetime, timezone
+
+        from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
+
+        return Metadata(
+            headers=MessageHeaders(
+                id="identity::customer-abc-0.1",
+                type="CustomerRegistered",
+                stream="identity::customer-abc",
+                time=datetime.now(timezone.utc),
+            ),
+            domain=DomainMeta(fqn="identity.X", kind="event", version="1.0"),
+        )
+
+    def test_legacy_null_target_broker_coerced_to_default(self):
+        """A row loaded with a NULL target_broker (written before the field was
+        populated) coerces to the default broker rather than failing validation."""
+        row = Outbox(
+            message_id="m2",
+            stream_name="s",
+            type="T",
+            data={},
+            metadata_=self._metadata(),
+            status="pending",
+            target_broker=None,
+        )
+        assert row.target_broker == DEFAULT_TARGET_BROKER
+
+    def test_target_broker_field_is_required(self):
+        """A required field maps to a NOT NULL column in the SQL adapter."""
+        assert declared_fields(Outbox)["target_broker"].required is True

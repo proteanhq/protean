@@ -101,6 +101,9 @@ class TestOutboxFieldBoundsValidation:
             "type": "t",
             "data": {"key": "value"},
             "metadata_": sample_metadata,
+            # Required (NOT NULL) — keep it valid so the parameterized field is
+            # the only one that can drive the ValidationError (#1041).
+            "target_broker": "b",
         }
         valid[field_name] = "x" * (bound + 1)
         with pytest.raises(ValidationError):
