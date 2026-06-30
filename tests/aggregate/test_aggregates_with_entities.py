@@ -101,18 +101,18 @@ class TestAggregatesWithEntities:
             "title": "Test Post",
             "slug": "test-post",
             "content": "Do Re Mi Fa",
-            "posted_at": str(persisted_post.posted_at),
+            "posted_at": persisted_post.posted_at.isoformat(),
             "meta": None,
             "comments": [
                 {
                     "id": comment1.id,
                     "content": "So La Ti Do",
-                    "commented_at": str(comment1.commented_at),
+                    "commented_at": comment1.commented_at.isoformat(),
                 },
                 {
                     "id": comment2.id,
                     "content": "Sa Re Ga Ma",
-                    "commented_at": str(comment2.commented_at),
+                    "commented_at": comment2.commented_at.isoformat(),
                 },
             ],
             "_version": -1,

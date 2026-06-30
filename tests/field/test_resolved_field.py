@@ -227,7 +227,7 @@ class TestResolvedFieldAsDict:
     def test_as_dict_with_datetime(self):
         rf = self._make_field()
         dt = datetime.datetime(2024, 1, 1, 12, 0)
-        assert rf.as_dict(dt) == str(dt)
+        assert rf.as_dict(dt) == dt.isoformat()
 
     def test_as_dict_with_enum(self):
         """Enum value extraction."""
