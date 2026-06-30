@@ -765,6 +765,9 @@ class IRBuilder:
             sorted(
                 {
                     "cache": getattr(cls.meta_, "cache", None),
+                    "externally_populated": getattr(
+                        cls.meta_, "externally_populated", False
+                    ),
                     "limit": getattr(cls.meta_, "limit", 100),
                     "order_by": list(order_by) if order_by else [],
                     "provider": getattr(cls.meta_, "provider", "default"),
@@ -1452,8 +1455,13 @@ class IRBuilder:
     def _diagnose_projection_without_projector(self, ir: dict[str, Any]) -> None:
         """PROJECTION_WITHOUT_PROJECTOR: projection with no projector to populate it."""
         for proj_entry in ir["projections"].values():
+            proj = proj_entry["projection"]
+            # Projections populated by a subscriber/event handler (the
+            # anti-corruption-layer / cross-domain pattern) opt out via
+            # @domain.projection(externally_populated=True).
+            if proj.get("options", {}).get("externally_populated"):
+                continue
             if not proj_entry["projectors"]:
-                proj = proj_entry["projection"]
                 self._diagnostics.append(
                     {
                         "code": "PROJECTION_WITHOUT_PROJECTOR",
