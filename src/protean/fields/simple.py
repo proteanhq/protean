@@ -11,6 +11,7 @@ during class creation.
 """
 
 import datetime
+import decimal
 from enum import Enum as _Enum
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -64,6 +65,32 @@ def Float(
 ) -> FieldSpec:
     """A floating-point field with optional min/max constraints."""
     return FieldSpec(float, min_value=min_value, max_value=max_value, **kwargs)
+
+
+def Decimal(
+    min_value: decimal.Decimal | int | float | None = None,
+    max_value: decimal.Decimal | int | float | None = None,
+    precision: int | None = None,
+    scale: int | None = None,
+    **kwargs: Any,
+) -> FieldSpec:
+    """A fixed-precision decimal field backed by ``decimal.Decimal``.
+
+    Use for money and other values where binary floating-point rounding is
+    unacceptable. ``precision`` (total significant digits) and ``scale`` (digits
+    after the decimal point) are optional; when set they map to
+    ``NUMERIC(precision, scale)`` on SQL providers and are validated by Pydantic
+    (``max_digits``/``decimal_places``). Values are string-encoded in
+    JSON/event payloads, so there is no float round-trip.
+    """
+    return FieldSpec(
+        decimal.Decimal,
+        min_value=min_value,
+        max_value=max_value,
+        precision=precision,
+        scale=scale,
+        **kwargs,
+    )
 
 
 def Boolean(**kwargs: Any) -> FieldSpec:
@@ -192,6 +219,14 @@ if TYPE_CHECKING:
         max_value: float | None = None,
         **kwargs: Any,
     ) -> float: ...
+
+    def Decimal(  # type: ignore[misc]
+        min_value: decimal.Decimal | int | float | None = None,
+        max_value: decimal.Decimal | int | float | None = None,
+        precision: int | None = None,
+        scale: int | None = None,
+        **kwargs: Any,
+    ) -> decimal.Decimal: ...
 
     def Boolean(**kwargs: Any) -> bool: ...  # type: ignore[misc]
 
