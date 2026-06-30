@@ -104,6 +104,15 @@ $ protean test -c FULL
 ...
 ```
 
+!!! note "Any OCI container engine works, not just Docker"
+    These services run on any Docker-API-compatible container engine. Protean's
+    test harness connects to the service ports on `localhost`, so it is agnostic
+    to what starts the containers. [OrbStack](https://orbstack.dev),
+    [Podman](https://podman.io), [Colima](https://github.com/abiosoft/colima),
+    and Rancher Desktop all work with the same `docker-compose.yml`. For Podman,
+    run `podman compose` directly or point `docker compose` at the Podman socket
+    via `DOCKER_HOST`.
+
 Running a full test will also generate a coverage report as part of test
 output. Writing tests for lines that do not have coverage is a great way to
 start contributing.

@@ -29,6 +29,14 @@ jobs:
 
     steps:
       - name: Log in to Docker Hub
+        # Repository secrets are not exposed to workflows from forked PRs, so
+        # the login cannot run there. Skip it for forks (the service images
+        # still pull anonymously) and never let an absent/failed login abort
+        # the job — otherwise every fork PR's tests are skipped. The login only
+        # exists to avoid Docker Hub's anonymous pull rate limit on same-repo
+        # runs.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
