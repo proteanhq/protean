@@ -181,7 +181,7 @@ class MemoryEventStore(BaseEventStore):
         for msg in messages:
             stream_name = msg.get("stream_name", "")
             _, sep, ident = stream_name.partition("-")
-            if sep and ident:
+            if sep and ident and not self._is_fact_stream_identifier(ident):
                 identifiers.add(ident)
         return sorted(identifiers)
 

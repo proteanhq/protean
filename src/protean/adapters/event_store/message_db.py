@@ -88,9 +88,16 @@ class MessageDBStore(BaseEventStore):
         """Return unique aggregate identifiers for a stream category.
 
         Delegates to the MessageDB client which uses an efficient SQL
-        DISTINCT query, avoiding loading all messages into memory.
+        DISTINCT query, avoiding loading all messages into memory. Fact-event
+        streams (``{category}-fact-{id}``) share the category prefix, so their
+        ``fact-`` identifiers are filtered out — they are not instances. See
+        #1028.
         """
-        return self.client.stream_identifiers(stream_category)
+        return [
+            identifier
+            for identifier in self.client.stream_identifiers(stream_category)
+            if not self._is_fact_stream_identifier(identifier)
+        ]
 
     def close(self) -> None:
         """Close the event store and release all pooled connections."""
