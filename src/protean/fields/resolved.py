@@ -19,7 +19,7 @@ import decimal
 import types as _types
 import typing
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
@@ -192,6 +192,11 @@ class ResolvedField:
             # naive/aware distinction and the UTC offset are preserved, so the
             # instant round-trips unchanged (a named zone is serialized as its
             # fixed offset, not the original tzinfo object). See #1039.
+            return value.isoformat()
+        # ``datetime`` subclasses ``date``, so this must come *after* the
+        # datetime check. Without it a plain ``date`` flows unserialized into
+        # ``json.dumps`` (e.g. checksum computation) and raises. See #1046.
+        if isinstance(value, date):
             return value.isoformat()
         # Decimals are string-encoded so JSON/event payloads never round-trip
         # through a binary float and lose precision.

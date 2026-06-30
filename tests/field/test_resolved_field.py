@@ -229,6 +229,14 @@ class TestResolvedFieldAsDict:
         dt = datetime.datetime(2024, 1, 1, 12, 0)
         assert rf.as_dict(dt) == dt.isoformat()
 
+    def test_as_dict_with_date(self):
+        # A plain date must serialize to an ISO string (#1046); datetime
+        # subclasses date, so the date branch sits after the datetime one.
+        rf = self._make_field()
+        d = datetime.date(2024, 1, 2)
+        assert rf.as_dict(d) == "2024-01-02"
+        assert isinstance(rf.as_dict(d), str)
+
     def test_as_dict_with_enum(self):
         """Enum value extraction."""
         rf = self._make_field()

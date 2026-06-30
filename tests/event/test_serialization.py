@@ -1,12 +1,12 @@
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.fields import DateTime, Identifier, String
+from protean.fields import Date, DateTime, Identifier, String
 from protean.utils.eventing import Message
 
 from tests.event.elements import Person, PersonAdded
@@ -25,12 +25,20 @@ class PersonRegisteredWithDate(BaseEvent):
     registered_at: DateTime()
 
 
+class PersonScheduled(BaseEvent):
+    id: Identifier(required=True)
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    scheduled_on: Date()
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Person)
     test_domain.register(PersonAdded, part_of=Person)
     test_domain.register(PersonWithDates)
     test_domain.register(PersonRegisteredWithDate, part_of=PersonWithDates)
+    test_domain.register(PersonScheduled, part_of=PersonWithDates)
     test_domain.init(traverse=False)
 
 
@@ -134,3 +142,33 @@ def test_that_dates_in_message_are_serialized_and_deserialized():
 
     assert isinstance(reconstructed, PersonRegisteredWithDate)
     assert reconstructed.registered_at == now
+
+
+def test_that_date_field_in_message_is_serialized_and_deserialized():
+    # Regression for #1046: a Date field used to raise "Object of type date is
+    # not JSON serializable" because as_dict had no branch for plain dates, so
+    # the raw date reached compute_checksum's json.dumps.
+    scheduled_on = date(2024, 1, 2)
+    event = PersonScheduled(
+        id=str(uuid4()),
+        first_name="John",
+        last_name="Doe",
+        scheduled_on=scheduled_on,
+    )
+
+    # Date serializes to an ISO string in the payload (not a raw date object)
+    assert event.payload["scheduled_on"] == scheduled_on.isoformat()
+
+    # The message must be JSON-serializable — the bug raised inside
+    # MessageEnvelope.compute_checksum, which Message.from_domain_object calls.
+    message = Message.from_domain_object(event)
+
+    # to_dict() is JSON-clean too: a json round-trip keeps the date as its
+    # ISO string.
+    parsed = json.loads(json.dumps(event.to_dict()))
+    assert parsed["scheduled_on"] == scheduled_on.isoformat()
+
+    # Round-trip through Message should preserve the date
+    reconstructed = message.to_domain_object()
+    assert isinstance(reconstructed, PersonScheduled)
+    assert reconstructed.scheduled_on == scheduled_on
