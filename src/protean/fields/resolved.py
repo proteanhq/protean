@@ -188,9 +188,10 @@ class ResolvedField:
             return value.model_dump()
         if isinstance(value, datetime):
             # ISO-8601 (T-separated), matching the message-metadata timestamp
-            # path, rather than the space-separated ``str(value)``. The value's
-            # own tzinfo is preserved (naive stays naive, aware keeps its
-            # offset), so it round-trips losslessly. See #1039.
+            # path, rather than the space-separated ``str(value)``. The
+            # naive/aware distinction and the UTC offset are preserved, so the
+            # instant round-trips unchanged (a named zone is serialized as its
+            # fixed offset, not the original tzinfo object). See #1039.
             return value.isoformat()
         # Decimals are string-encoded so JSON/event payloads never round-trip
         # through a binary float and lose precision.
