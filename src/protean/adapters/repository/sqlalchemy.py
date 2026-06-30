@@ -888,6 +888,19 @@ class SADAO(BaseDAO):
 
         return result
 
+    def _flush(self) -> None:
+        """Flush buffered INSERT/UPDATE statements to the database within the
+        current transaction (no commit).
+
+        Protean does not emit SQLAlchemy ``ForeignKey``/``relationship``
+        metadata for ``Reference`` fields, so the ORM's unit-of-work cannot
+        order parent-before-child inserts at commit-time flush on its own.
+        Flushing after a parent is saved materializes its row inside the
+        transaction so that immediate-FK databases (MSSQL, MySQL/InnoDB)
+        accept the dependent child inserts that follow.
+        """
+        self._get_session().flush()
+
     def _create(self, model_obj):
         """Add a new record to the sqlalchemy database"""
         conn = self._get_session()
