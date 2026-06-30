@@ -142,9 +142,12 @@ class Outbox(BaseAggregate):
             max_retries: Maximum retry attempts
             sequence_number: Sequence number for ordering
             target_broker: Name of the broker this message targets. The
-                framework always sets it; defaults to the internal broker name
-                so the row is never NULL (it must satisfy the NOT NULL column
-                and the composite unique guarantee).
+                framework's write path always passes it explicitly (the
+                configured internal broker, or an external broker name). The
+                parameter default is the literal ``DEFAULT_TARGET_BROKER``
+                (``"default"``), not the configured internal broker, and exists
+                only so a direct call is never NULL — the row must satisfy the
+                NOT NULL column and the composite unique guarantee.
 
         Returns:
             New Outbox instance
