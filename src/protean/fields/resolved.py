@@ -16,7 +16,7 @@ layer all consume ``ResolvedField`` instances via the
 """
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
@@ -186,6 +186,11 @@ class ResolvedField:
             return value.model_dump()
         if isinstance(value, datetime):
             return str(value)
+        # ``datetime`` subclasses ``date``, so this must come *after* the
+        # datetime check. Without it a plain ``date`` flows unserialized into
+        # ``json.dumps`` (e.g. checksum computation) and raises. See #1046.
+        if isinstance(value, date):
+            return value.isoformat()
         if isinstance(value, Enum):
             return value.value
         # Handle lists/tuples of VOs or datetime values

@@ -4,10 +4,12 @@ Covers List and Dict field persistence, retrieval, and update operations.
 Uses separate aggregates per field type to isolate List and Dict behavior.
 """
 
+from datetime import date
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import Dict, List, String
+from protean.fields import Date, Dict, List, String
 
 
 class TaggedItem(BaseAggregate):
@@ -26,11 +28,17 @@ class Config(BaseAggregate):
     metadata_field: Dict()
 
 
+class Campaign(BaseAggregate):
+    label: String(max_length=100, required=True)
+    starts_on: Date()
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(TaggedItem)
     test_domain.register(MetadataHolder)
     test_domain.register(Config)
+    test_domain.register(Campaign)
     test_domain.init(traverse=False)
 
 
@@ -154,3 +162,27 @@ class TestComplexFieldUpdate:
         updated = test_domain.repository_for(Config).get(config.id)
         assert updated.tags == ["new"]
         assert updated.metadata_field == {"new_key": "new_value"}
+
+
+@pytest.mark.basic_storage
+class TestDateFieldPersistence:
+    """Persist a Date field and verify it round-trips on every database
+    provider (#1046)."""
+
+    def test_persist_and_retrieve_date(self, test_domain):
+        campaign = Campaign(label="summer", starts_on=date(2024, 6, 1))
+        test_domain.repository_for(Campaign).add(campaign)
+
+        retrieved = test_domain.repository_for(Campaign).get(campaign.id)
+        assert retrieved.starts_on == date(2024, 6, 1)
+
+    def test_update_date(self, test_domain):
+        repo = test_domain.repository_for(Campaign)
+        campaign = Campaign(label="update", starts_on=date(2024, 6, 1))
+        repo.add(campaign)
+
+        retrieved = repo.get(campaign.id)
+        retrieved.starts_on = date(2024, 7, 15)
+        repo.add(retrieved)
+
+        assert repo.get(campaign.id).starts_on == date(2024, 7, 15)
