@@ -450,14 +450,10 @@ class BaseEventStore(metaclass=ABCMeta):
 
         Fact streams are named ``{category}-fact-{identifier}``, so their parsed
         identifier segment starts with ``fact-``. They hold ``...FactEvent``
-        records, not an aggregate instance's events, and must be excluded from
-        instance discovery — they have no ``@apply`` handler and would fail
-        reconstruction. See #1028.
-
-        This prefix check is safe for the default UUID identifiers (``t`` is not
-        a hex character, so no UUID can start with ``fact-``). An aggregate using
-        a custom string identifier that literally begins with ``fact-`` would be
-        wrongly skipped; custom identifiers should avoid that prefix.
+        records, not an aggregate instance's events. This is only consulted for
+        aggregates with ``fact_events=True`` (see :meth:`create_snapshots`), so
+        an ordinary instance whose identifier starts with ``fact-`` is unaffected
+        unless its own aggregate also emits fact events. See #1028.
         """
         return identifier.startswith("fact-")
 
@@ -466,13 +462,8 @@ class BaseEventStore(metaclass=ABCMeta):
         """Return all unique aggregate identifiers for a given stream category.
 
         Stream names follow the pattern ``{category}-{identifier}``.
-
-        Two kinds of non-instance streams must be excluded. Snapshot streams
-        (``{category}:snapshot-{identifier}``) use a colon separator and are
-        excluded naturally by the adapter's category filter (which matches on
-        ``{category}-``). Fact-event streams (``{category}-fact-{identifier}``)
-        share the hyphen separator, so they must be skipped explicitly with
-        :meth:`_is_fact_stream_identifier`.
+        Snapshot streams (``{category}:snapshot-{identifier}``) must be
+        excluded.
 
         Implemented by the concrete event store adapter.
 
@@ -504,6 +495,19 @@ class BaseEventStore(metaclass=ABCMeta):
             )
 
         identifiers = self._stream_identifiers(part_of.meta_.stream_category)
+
+        # With fact_events enabled, persisting also writes a
+        # ``{category}-fact-{id}`` stream that shares the category prefix. Those
+        # are not aggregate instances and have no ``@apply`` handler, so exclude
+        # them. Scoped to fact_events so an ordinary instance whose identifier
+        # happens to start with ``fact-`` is never wrongly skipped. See #1028.
+        if part_of.meta_.fact_events:
+            identifiers = [
+                identifier
+                for identifier in identifiers
+                if not self._is_fact_stream_identifier(identifier)
+            ]
+
         count = 0
         for identifier in identifiers:
             self.create_snapshot(part_of, identifier)
