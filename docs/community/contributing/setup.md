@@ -105,7 +105,7 @@ $ protean test -c FULL
 ```
 
 !!! note "Any OCI container engine works, not just Docker"
-    These services run on any Docker-API-compatible container engine. Protean's
+    These services run on any OCI-compatible container engine. Protean's
     test harness connects to the service ports on `localhost`, so it is agnostic
     to what starts the containers. [OrbStack](https://orbstack.dev),
     [Podman](https://podman.io), [Colima](https://github.com/abiosoft/colima),
