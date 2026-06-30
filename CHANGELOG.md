@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-06-30
+
+### Added
+
+- `OutboxRepository.find_all_by_message_id(message_id)` returns every outbox row sharing a `message_id`, and `OutboxRepository.find_by_message_id` gained an optional `target_broker` argument. A published event is dual-written once per target broker, so a single `message_id` can map to several rows; the new method returns them all, and the new argument selects a specific broker's row. (#1009)
+
+### Deprecated
+
+- Restored `assert_valid` and `assert_invalid` in `protean.testing` as deprecated shims. They were removed in 0.16.0 without a deprecation cycle, breaking downstream test suites at import time; they now emit a `DeprecationWarning` and will be removed in v0.18.0. Prefer `pytest.raises(ValidationError, match=...)` for invariant tests. (#1011)
+
+### Fixed
+
+- CLI commands no longer corrupt their machine-readable stdout output with log lines: the console log handler now writes to stderr, so the JSON from `protean ir show` and `protean schema show --raw` is clean and safe to pipe. (#1010)
+- The recommended unique index on the `Outbox` table is now composite over (`message_id`, `target_broker`) instead of `message_id` alone, and the framework now always writes a non-NULL `target_broker` (the internal broker name) so the composite uniqueness is effective on every dialect. A single published event is dual-written to the outbox once per target broker (the internal broker plus every external broker), so a unique index on `message_id` alone rejected the framework's own multi-broker dual-write with a `UniqueViolation`; leaving `target_broker` NULL would have defeated `message_id` idempotency on PostgreSQL and SQLite, which treat NULLs as distinct in a UNIQUE index. (#1009)
+- Fixed `protean ir check` falsely reporting a domain as stale after a framework upgrade that only changes the IR schema version. The staleness checksum now covers domain content only (excluding `$schema`, `ir_version`, `generated_at`, and `elements`), matching what `ir diff` compares, so the two commands agree. Baselines materialized before this fix report stale once; regenerate them with `protean ir show` to refresh. (#1012)
+- Fixed `@handle("$any")` event handlers not firing under `event_processing="sync"`. Wildcard handlers now run during synchronous dispatch, matching their behaviour under the async engine. (#1023)
+- Fixed per-field `validators=[...]` running against `None` on optional fields. An optional field with a format validator (e.g. `String(validators=[RegexValidator(...)])`) raised a spurious error when simply left unset, because the validator ran on `None`. Empty values now short-circuit per-field validators, matching the legacy field system and the documented execution order (empty → choices → cast → validators). (#1025)
+- Fixed `domain.create_snapshots(Aggregate)` failing for event-sourced aggregates declared with `fact_events=True`. The bulk snapshot API mistook the aggregate's `{category}-fact-{id}` fact-event streams for real instances and raised `IncorrectUsageError` (fact events have no `@apply` handler). `create_snapshots` now skips those fact-event streams for fact-event-enabled aggregates. (#1028)
+- Fixed database setup failing for domains that mix a SQLAlchemy provider with a cache-backed projection. `_create_database_artifacts` tried to build a SQL table for cache-backed projections (whose provider is `None`), raising `ConfigurationError: No provider configured with name 'None'` and aborting setup for the whole domain. Cache-backed projections are now skipped, since they persist to a cache rather than a database table. (#1034)
+
+### Upgrade Notes
+
+- **Outbox unique index (#1009).** If you run the outbox on a SQL store (PostgreSQL, SQLite, MySQL, or SQL Server), migrate the unique index from `message_id` to the composite `(message_id, target_broker)`: drop `uq_outbox_message_id`, backfill any rows where `target_broker IS NULL` to your internal broker name (default `"default"`), then create the composite unique index. Per-dialect SQL is in the [v0.16 migration guide](docs/reference/migration/v0-16.md). In-memory and Redis brokers are unaffected.
+
 ## [0.16.0] - 2026-06-29
 
 ### Added
@@ -506,7 +530,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Derive SQLAlchemy field types correctly for embedded value object fields
 - Elasticsearch adapter bugfixes and model enhancements
 
-[Unreleased]: https://github.com/proteanhq/protean/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/proteanhq/protean/compare/v0.16.1...HEAD
+[0.16.1]: https://github.com/proteanhq/protean/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/proteanhq/protean/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/proteanhq/protean/compare/v0.15.0rc1...v0.15.0
 [0.15.0rc1]: https://github.com/proteanhq/protean/compare/v0.14.2...v0.15.0rc1
