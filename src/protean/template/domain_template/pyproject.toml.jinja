@@ -52,9 +52,9 @@ classifiers = [
 
 dependencies = [
 {%- if extras %}
-    "protean[{{ extras|join(',') }}]==0.16.0",
+    "protean[{{ extras|join(',') }}]==0.16.1",
 {%- else %}
-    "protean==0.16.0",
+    "protean==0.16.1",
 {%- endif %}
     "python-dotenv>=1.0.0",
     "structlog>=24.1.0",

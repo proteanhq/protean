@@ -55,7 +55,7 @@ Use the ``protean`` CLI to verify the installation:
 
 ```shell
 $ protean --version
-Protean 0.16.0
+Protean 0.16.1
 ```
 
 To verify that Protean can be seen by your current installation of Python,
@@ -65,7 +65,7 @@ try importing Protean from a ``python`` shell:
 $ python
 >>> import protean
 >>> protean.get_version()
-'0.16.0'
+'0.16.1'
 ```
 
 ## Upgrading from 0.14?
