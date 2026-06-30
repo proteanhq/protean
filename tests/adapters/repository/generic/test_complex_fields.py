@@ -4,10 +4,12 @@ Covers List and Dict field persistence, retrieval, and update operations.
 Uses separate aggregates per field type to isolate List and Dict behavior.
 """
 
+import decimal
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import Dict, List, String
+from protean.fields import Decimal, Dict, List, String
 
 
 class TaggedItem(BaseAggregate):
@@ -26,11 +28,17 @@ class Config(BaseAggregate):
     metadata_field: Dict()
 
 
+class Money(BaseAggregate):
+    label: String(max_length=100, required=True)
+    amount: Decimal(precision=19, scale=4)
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(TaggedItem)
     test_domain.register(MetadataHolder)
     test_domain.register(Config)
+    test_domain.register(Money)
     test_domain.init(traverse=False)
 
 
@@ -154,3 +162,37 @@ class TestComplexFieldUpdate:
         updated = test_domain.repository_for(Config).get(config.id)
         assert updated.tags == ["new"]
         assert updated.metadata_field == {"new_key": "new_value"}
+
+
+@pytest.mark.basic_storage
+class TestDecimalFieldPersistence:
+    """Persist a Decimal field and verify it round-trips losslessly on every
+    database provider (#1038)."""
+
+    def test_persist_and_retrieve_decimal(self, test_domain):
+        money = Money(label="invoice", amount="10.2500")
+        test_domain.repository_for(Money).add(money)
+
+        retrieved = test_domain.repository_for(Money).get(money.id)
+        assert isinstance(retrieved.amount, decimal.Decimal)
+        assert retrieved.amount == decimal.Decimal("10.2500")
+
+    def test_decimal_is_exact_not_float(self, test_domain):
+        # 0.10 has no exact binary float representation; a Float-backed field
+        # would drift here, a Decimal-backed one must not.
+        money = Money(label="precise", amount="0.10")
+        test_domain.repository_for(Money).add(money)
+
+        retrieved = test_domain.repository_for(Money).get(money.id)
+        assert retrieved.amount + decimal.Decimal("0.20") == decimal.Decimal("0.30")
+
+    def test_update_decimal(self, test_domain):
+        repo = test_domain.repository_for(Money)
+        money = Money(label="update", amount="5.0000")
+        repo.add(money)
+
+        retrieved = repo.get(money.id)
+        retrieved.amount = decimal.Decimal("7.2500")
+        repo.add(retrieved)
+
+        assert repo.get(money.id).amount == decimal.Decimal("7.2500")
