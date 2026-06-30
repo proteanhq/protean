@@ -151,6 +151,7 @@ class TestOutboxCreation:
         str_id = str(uuid.uuid4())
         outbox = Outbox(
             id=str_id,
+            target_broker="default",
             message_id="message-123",
             stream_name="test-stream",
             type="TestEvent",
@@ -170,6 +171,7 @@ class TestOutboxCreation:
         uuid_val = uuid.uuid4()
         outbox = Outbox(
             id=uuid_val,
+            target_broker="default",
             message_id="message-123",
             stream_name="test-stream",
             type="TestEvent",
@@ -184,6 +186,7 @@ class TestOutboxCreation:
         """Test that an integer id is coerced to str."""
         outbox = Outbox(
             id=42,
+            target_broker="default",
             message_id="message-123",
             stream_name="test-stream",
             type="TestEvent",
@@ -199,6 +202,7 @@ class TestOutboxCreation:
         explicit_id = "custom-id-12345"
         outbox = Outbox(
             id=explicit_id,
+            target_broker="default",
             message_id="message-123",
             stream_name="test-stream",
             type="TestEvent",
