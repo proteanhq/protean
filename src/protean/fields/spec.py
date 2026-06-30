@@ -7,6 +7,7 @@ Pydantic's native machinery remains — FieldSpec itself is not stored on the cl
 """
 
 import datetime as _dt
+import decimal
 import warnings
 from enum import Enum
 from typing import Annotated, Any, Callable, Iterable, Literal, Optional
@@ -72,8 +73,11 @@ class FieldSpec:
         # Type-specific constraints
         max_length: int | None = None,
         min_length: int | None = None,
-        max_value: float | int | None = None,
-        min_value: float | int | None = None,
+        max_value: float | int | decimal.Decimal | None = None,
+        min_value: float | int | decimal.Decimal | None = None,
+        # Decimal-specific (NUMERIC(precision, scale))
+        precision: int | None = None,
+        scale: int | None = None,
         # Container-specific
         content_type: Any = None,  # For List fields
         # Sanitization
@@ -101,6 +105,8 @@ class FieldSpec:
         self.min_length = min_length
         self.max_value = max_value
         self.min_value = min_value
+        self.precision = precision
+        self.scale = scale
         self.content_type = content_type
         self.sanitize = sanitize
         self.validators = list(validators)
@@ -170,6 +176,16 @@ class FieldSpec:
             kwargs["le"] = self.max_value
         if self.min_value is not None:
             kwargs["ge"] = self.min_value
+
+        # Decimal precision/scale → Pydantic validation + adapter metadata
+        # (read back by ResolvedField for the SQLAlchemy NUMERIC(p, s) mapping).
+        if self.python_type is decimal.Decimal:
+            if self.precision is not None:
+                kwargs["max_digits"] = self.precision
+                json_extra["precision"] = self.precision
+            if self.scale is not None:
+                kwargs["decimal_places"] = self.scale
+                json_extra["scale"] = self.scale
 
         # Handle identifier
         if self.identifier:
@@ -355,6 +371,7 @@ class FieldSpec:
             (int, "auto"): "Auto",
             (int, "standard"): "Integer",
             (float, "standard"): "Float",
+            (decimal.Decimal, "standard"): "Decimal",
             (bool, "standard"): "Boolean",
         }
 

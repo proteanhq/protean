@@ -1,5 +1,6 @@
 """Module containing repository implementation for Elasticsearch"""
 
+import decimal
 import json
 import logging
 import types
@@ -55,6 +56,9 @@ _PYTHON_TYPE_TO_ES = {
     str: Keyword,
     int: ESInteger,
     float: ESFloat,
+    # Decimals are string-encoded (lossless, exact-match) rather than mapped to
+    # a lossy float; users needing range queries can override with a custom model.
+    decimal.Decimal: Keyword,
     bool: ESBoolean,
 }
 
