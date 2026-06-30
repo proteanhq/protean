@@ -74,14 +74,15 @@ def Decimal(
     scale: int | None = None,
     **kwargs: Any,
 ) -> FieldSpec:
-    """A fixed-precision decimal field backed by ``decimal.Decimal``.
+    """An exact decimal field backed by ``decimal.Decimal``.
 
     Use for money and other values where binary floating-point rounding is
-    unacceptable. ``precision`` (total significant digits) and ``scale`` (digits
+    unacceptable. ``precision`` (total number of digits) and ``scale`` (digits
     after the decimal point) are optional; when set they map to
     ``NUMERIC(precision, scale)`` on SQL providers and are validated by Pydantic
-    (``max_digits``/``decimal_places``). Values are string-encoded in
-    JSON/event payloads, so there is no float round-trip.
+    (``max_digits``/``decimal_places``). When omitted, the value is
+    arbitrary-precision where the backend supports it. Values are string-encoded
+    in JSON/event payloads, so there is no float round-trip.
     """
     return FieldSpec(
         decimal.Decimal,

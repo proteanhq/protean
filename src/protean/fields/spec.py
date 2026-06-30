@@ -73,8 +73,8 @@ class FieldSpec:
         # Type-specific constraints
         max_length: int | None = None,
         min_length: int | None = None,
-        max_value: float | int | None = None,
-        min_value: float | int | None = None,
+        max_value: float | int | decimal.Decimal | None = None,
+        min_value: float | int | decimal.Decimal | None = None,
         # Decimal-specific (NUMERIC(precision, scale))
         precision: int | None = None,
         scale: int | None = None,
