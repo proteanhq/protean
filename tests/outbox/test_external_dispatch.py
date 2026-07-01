@@ -653,7 +653,11 @@ class TestOutboxTargetBrokerField:
         )
         assert msg.target_broker == "kafka"
 
-    def test_create_message_default_target_broker_is_none(self):
+    def test_create_message_default_target_broker(self):
+        # target_broker is NOT NULL and defaults to the internal broker name,
+        # never None, so it can't bypass the composite unique index (#1041).
+        from protean.utils.outbox import DEFAULT_TARGET_BROKER
+
         msg = Outbox.create_message(
             message_id="test-id",
             stream_name="test::order-1",
@@ -661,4 +665,4 @@ class TestOutboxTargetBrokerField:
             data={"x": 1},
             metadata=Metadata(headers=MessageHeaders(id="test-id")),
         )
-        assert msg.target_broker is None
+        assert msg.target_broker == DEFAULT_TARGET_BROKER

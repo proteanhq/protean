@@ -130,6 +130,7 @@ class TestSimpleFields:
             "builtins.str",  # Text(required=True)
             "builtins.int",  # Integer(required=True)
             "builtins.float",  # Float(required=True)
+            "decimal.Decimal",  # Decimal(required=True)
             "builtins.bool",  # Boolean(required=True)
             "datetime.date",  # Date(required=True)
             "datetime.datetime",  # DateTime(required=True)

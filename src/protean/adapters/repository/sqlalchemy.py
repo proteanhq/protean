@@ -1,6 +1,7 @@
 """Module with repository implementation for SQLAlchemy"""
 
 import copy
+import decimal
 import json
 import logging
 import time
@@ -299,6 +300,7 @@ _PYTHON_TYPE_TO_SA: dict[type, type] = {
     bool: sa_types.Boolean,
     int: sa_types.Integer,
     float: sa_types.Float,
+    decimal.Decimal: sa_types.Numeric,
     str: sa_types.String,
     _datetime: sa_types.DateTime,
     _date: sa_types.Date,
@@ -676,6 +678,13 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         type_kwargs["length"] = 255
                     elif resolved_type is str:
                         type_kwargs["length"] = field_obj.max_length
+                    elif resolved_type is decimal.Decimal:
+                        # NUMERIC(precision, scale); without them the column is
+                        # arbitrary-precision (lossless) on backends that support it.
+                        if field_obj.precision is not None:
+                            type_kwargs["precision"] = field_obj.precision
+                        if field_obj.scale is not None:
+                            type_kwargs["scale"] = field_obj.scale
 
                     # MSSQL requires explicit length on VARCHAR columns used
                     # as primary keys or in unique constraints.  Raise early

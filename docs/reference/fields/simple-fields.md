@@ -59,6 +59,35 @@ A floating-point number represented in Python by a float instance.
 - **`max_value`**: The maximum numeric value of the field.
 - **`min_value`**: The minimum numeric value of the field.
 
+## Decimal
+
+An exact decimal number, represented in Python by a `decimal.Decimal` instance.
+Prefer this over `Float` for money and other values where binary floating-point
+rounding is unacceptable. With `precision`/`scale` it is fixed-precision;
+without them it is arbitrary-precision where the backend supports it.
+
+```python
+from protean.fields import Decimal
+
+
+@domain.aggregate
+class Product:
+    price = Decimal(precision=19, scale=4, min_value=0)
+```
+
+On SQL providers the field maps to `NUMERIC(precision, scale)`; values are
+string-encoded in JSON and event payloads, so they never round-trip through a
+binary float and lose precision.
+
+**Optional Arguments**
+
+- **`precision`**: Total number of digits. Maps to `NUMERIC` precision and
+  Pydantic `max_digits`.
+- **`scale`**: Number of digits after the decimal point. Maps to `NUMERIC`
+  scale and Pydantic `decimal_places`.
+- **`max_value`**: The maximum numeric value of the field.
+- **`min_value`**: The minimum numeric value of the field.
+
 ## Date
 
 A date, represented in Python by a `datetime.date` instance.

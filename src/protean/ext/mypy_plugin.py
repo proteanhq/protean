@@ -91,6 +91,7 @@ FIELD_TYPE_MAP: dict[str, str] = {
     "protean.fields.simple.Text": "builtins.str",
     "protean.fields.simple.Integer": "builtins.int",
     "protean.fields.simple.Float": "builtins.float",
+    "protean.fields.simple.Decimal": "decimal.Decimal",
     "protean.fields.simple.Boolean": "builtins.bool",
     "protean.fields.simple.Date": "datetime.date",
     "protean.fields.simple.DateTime": "datetime.datetime",

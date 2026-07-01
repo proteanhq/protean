@@ -15,10 +15,11 @@ layer all consume ``ResolvedField`` instances via the
 ``__container_fields__`` dict.
 """
 
+import decimal
 import types as _types
 import typing
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
@@ -81,6 +82,8 @@ class ResolvedField:
             # FieldSpec-originated metadata
             self.sanitize = extra.get("sanitize", False)
             self.field_kind = extra.get("field_kind", "standard")
+            self.precision: int | None = extra.get("precision")
+            self.scale: int | None = extra.get("scale")
             self._validators = extra.get("_validators", [])
             self._error_messages = extra.get("_error_messages", {})
             self._auto_generated = extra.get("_auto_generated", False)
@@ -94,6 +97,8 @@ class ResolvedField:
             self.increment = False
             self.sanitize = False
             self.field_kind = "standard"
+            self.precision = None
+            self.scale = None
             self._validators = []
             self._error_messages = {}
             self._auto_generated = False
@@ -182,6 +187,20 @@ class ResolvedField:
         if hasattr(value, "model_dump"):
             return value.model_dump()
         if isinstance(value, datetime):
+            # ISO-8601 (T-separated), matching the message-metadata timestamp
+            # path, rather than the space-separated ``str(value)``. The
+            # naive/aware distinction and the UTC offset are preserved, so the
+            # instant round-trips unchanged (a named zone is serialized as its
+            # fixed offset, not the original tzinfo object). See #1039.
+            return value.isoformat()
+        # ``datetime`` subclasses ``date``, so this must come *after* the
+        # datetime check. Without it a plain ``date`` flows unserialized into
+        # ``json.dumps`` (e.g. checksum computation) and raises. See #1046.
+        if isinstance(value, date):
+            return value.isoformat()
+        # Decimals are string-encoded so JSON/event payloads never round-trip
+        # through a binary float and lose precision.
+        if isinstance(value, decimal.Decimal):
             return str(value)
         if isinstance(value, Enum):
             return value.value

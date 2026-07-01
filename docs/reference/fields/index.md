@@ -9,7 +9,8 @@ data properties, enforce validation, manage defaults, and express
 relationships between domain concepts.
 
 Protean provides a set of field functions (`String`, `Integer`, `Float`,
-`HasMany`, etc.) that let you declare fields using domain-friendly vocabulary.
+`Decimal`, `HasMany`, etc.) that let you declare fields using domain-friendly
+vocabulary.
 Under the hood, Protean uses Pydantic v2 as its validation and serialization
 engine, so domain elements benefit from Rust-core validation performance,
 JSON Schema generation, and native serialization — without requiring you to
