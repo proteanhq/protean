@@ -876,3 +876,71 @@ class OutboxRepository(BaseRepository):
             "abandoned": abandoned_count,
             "total": total_count,
         }
+
+
+def reconcile_outbox(
+    domain: Any, provider_name: str = "default", limit: int = 1000
+) -> int:
+    """Create outbox rows for events that are durable in the event store but have
+    no outbox row, and return how many were created.
+
+    This closes the residual crash window from ADR-0015: an event appended to the
+    event store (the durable anchor) whose relational outbox commit did not land.
+    The divergence is at the *tail* of the store (the last unit of work before a
+    crash), so a cheap check on the newest event short-circuits when there is
+    nothing to repair, and only the most recent ``limit`` events are scanned
+    otherwise.
+
+    Only the internal-broker row is reconciled here; external published-broker
+    rows are left to a future extension.
+    """
+    from protean.core.unit_of_work import UnitOfWork  # noqa: PLC0415 - circular
+
+    if not getattr(domain, "has_outbox", False):
+        return 0
+
+    store = domain.event_store.store
+    last = store.read_last_message("$all")
+    if last is None:
+        return 0
+
+    outbox_config = domain.config.get("outbox", {})
+    internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
+    outbox_repo = domain._get_outbox_repo(provider_name)
+
+    def _internal_row_exists(message_id: str) -> bool:
+        return any(
+            row.target_broker == internal_broker
+            for row in outbox_repo.find_all_by_message_id(message_id)
+        )
+
+    # Fast path: if the newest event already has its internal outbox row, the
+    # last unit of work committed fully and there is nothing at the tail to
+    # repair. This keeps the startup sweep cheap in the common (no-crash) case.
+    if _internal_row_exists(last.metadata.headers.id):
+        return 0
+
+    tail = last.metadata.event_store.global_position
+    start = max(0, tail - limit + 1)
+    messages = store.read("$all", position=start, no_of_messages=limit)
+
+    missing = [m for m in messages if not _internal_row_exists(m.metadata.headers.id)]
+    if not missing:
+        return 0
+
+    with UnitOfWork():
+        for message in missing:
+            domain_meta = message.metadata.domain
+            outbox_message = Outbox.create_message(
+                message_id=message.metadata.headers.id,
+                stream_name=message.metadata.headers.stream,
+                message_type=message.metadata.headers.type,
+                data=message.data,
+                metadata=message.metadata,
+                correlation_id=getattr(domain_meta, "correlation_id", None),
+                causation_id=getattr(domain_meta, "causation_id", None),
+                target_broker=internal_broker,
+            )
+            outbox_repo._dao.save(outbox_message)
+
+    return len(missing)

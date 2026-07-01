@@ -90,3 +90,42 @@ def test_persisting_events_on_commit(test_domain):
     events = test_domain.event_store.store._read(f"test::user-{identifier}")
 
     assert len(events) == 1
+
+
+def test_event_store_append_precedes_relational_commit(test_domain, monkeypatch):
+    """ADR-0015 / #1040: the event-store append is the durable anchor of the
+    commit and must run before the relational session commit. A crash between
+    the two then leaves the events durable (recoverable) rather than leaving the
+    store missing an event whose state/outbox already committed.
+    """
+    from protean.adapters.repository.memory import MemorySession
+    from protean.port.event_store import BaseEventStore
+
+    order: list[str] = []
+    orig_append = BaseEventStore.append
+    orig_commit = MemorySession.commit
+
+    def traced_append(self, obj):
+        order.append("append")
+        return orig_append(self, obj)
+
+    def traced_commit(self):
+        order.append("commit")
+        return orig_commit(self)
+
+    monkeypatch.setattr(BaseEventStore, "append", traced_append)
+    monkeypatch.setattr(MemorySession, "commit", traced_commit)
+
+    UserCommandHandler().register_user(
+        Register(
+            id=str(uuid4()),
+            email="john.doe@example.com",
+            name="John Doe",
+            password_hash="hash",
+        )
+    )
+
+    assert "append" in order, order
+    assert "commit" in order, order
+    # The first append must precede the first relational commit.
+    assert order.index("append") < order.index("commit"), order

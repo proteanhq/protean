@@ -151,7 +151,10 @@ class UnitOfWork:
 
     def _do_commit(self, span: Any) -> None:  # noqa: C901
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
-        from protean.utils.outbox import Outbox  # noqa: PLC0415
+        from protean.utils.outbox import (  # noqa: PLC0415
+            DEFAULT_TARGET_BROKER,
+            Outbox,
+        )
 
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
@@ -203,7 +206,7 @@ class UnitOfWork:
         # INSERT, so one is lazily initialised here when missing.
         if self.domain.has_outbox:
             outbox_config = self.domain.config.get("outbox", {})
-            internal_broker = outbox_config.get("broker", "default")
+            internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
             external_brokers: list[str] = outbox_config.get("external_brokers", [])
             # Always tag the internal row with the configured internal broker.
             # The composite (message_id, target_broker) unique index relies on
@@ -269,21 +272,34 @@ class UnitOfWork:
         # Record final session count after all lazy sessions have been initialised
         span.set_attribute("protean.uow.session_count", len(self._sessions))
 
-        # Exit from Unit of Work
-        # This is necessary to ensure that the context stack is cleared
-        #   and any further operations are not considered part of this transaction
-        _uow_context_stack.pop()
-
         # Process each provider session separately
         try:
-            for provider_name, session in self._sessions.items():
-                # Commit the session (includes outbox records)
-                session.commit()
-
-            # Store all events in the event store
+            # Append events to the event store FIRST, while this UnitOfWork is
+            # still the active context, so the event store is the durable anchor
+            # of the commit: a crash before the relational commit leaves the
+            # events durable and the outbox/relational state recoverable (via
+            # reconciliation), rather than leaving the store missing a committed
+            # event. See ADR-0015.
+            #
+            # Appending while the context is active also matters for adapters
+            # that back the event store with the relational provider (the
+            # in-memory adapter): their append joins THIS transaction instead of
+            # opening a colliding nested UnitOfWork, giving true atomicity when
+            # the two stores coincide. A real external store (message-db) writes
+            # directly. A genuine optimistic-concurrency conflict still raises and
+            # is re-driven by the handler-level version retry, which reloads the
+            # aggregate cleanly.
             for provider, events in all_events.items():
                 for event in events:
                     current_domain.event_store.store.append(event)
+
+            # Exit the UnitOfWork context: the relational commit below (and any
+            # further operations) are no longer part of this transaction.
+            _uow_context_stack.pop()
+
+            # Commit the relational session (aggregate state + outbox rows).
+            for provider_name, session in self._sessions.items():
+                session.commit()
 
             # Dispatch messages to their designated broker
             for stream, message, broker_name in self._messages_to_dispatch:
