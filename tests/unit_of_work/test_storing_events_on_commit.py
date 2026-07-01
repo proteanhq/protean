@@ -129,3 +129,32 @@ def test_event_store_append_precedes_relational_commit(test_domain, monkeypatch)
     assert "commit" in order, order
     # The first append must precede the first relational commit.
     assert order.index("append") < order.index("commit"), order
+
+
+def test_uow_rollback_does_not_pop_a_parent_unit_of_work(test_domain):
+    """Guard for the reordered pop (#1057): a UnitOfWork only pops itself off the
+    context stack. After ``_do_commit`` pops this UoW, a failing relational
+    commit triggers ``__exit__`` -> ``rollback()``, which also pops; the identity
+    guard ensures that second pop cannot remove a *parent* UoW in a nested
+    scenario.
+    """
+    from protean.core.unit_of_work import UnitOfWork
+    from protean.utils.globals import _uow_context_stack
+
+    outer = UnitOfWork()
+    inner = UnitOfWork()
+    inner._in_progress = True
+    _uow_context_stack.push(outer)
+    _uow_context_stack.push(inner)
+    try:
+        # _do_commit already popped `inner` (its guarded pop ran).
+        _uow_context_stack.pop()
+        assert _uow_context_stack.top is outer
+
+        # A failing commit then calls inner.rollback(); its guarded pop must be
+        # a no-op because `inner` is no longer on top, leaving `outer` intact.
+        inner.rollback()
+        assert _uow_context_stack.top is outer
+    finally:
+        while _uow_context_stack.top is not None:
+            _uow_context_stack.pop()

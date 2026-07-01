@@ -894,10 +894,19 @@ def reconcile_outbox(
     Only the internal-broker row is reconciled here; external published-broker
     rows are left to a future extension.
     """
-    from protean.core.unit_of_work import UnitOfWork  # noqa: PLC0415 - circular
-
     if not getattr(domain, "has_outbox", False):
         return 0
+
+    # Enter the passed domain's context so the event store, repositories, and
+    # the UnitOfWork below all resolve against THIS domain regardless of what
+    # the caller has active. domain_context is re-entrant, so this is safe when
+    # the caller (the CLI, the engine startup sweep) is already inside it.
+    with domain.domain_context():
+        return _reconcile_outbox(domain, provider_name, limit)
+
+
+def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
+    from protean.core.unit_of_work import UnitOfWork  # noqa: PLC0415 - circular
 
     store = domain.event_store.store
     last = store.read_last_message("$all")

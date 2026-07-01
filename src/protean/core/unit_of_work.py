@@ -294,8 +294,12 @@ class UnitOfWork:
                     current_domain.event_store.store.append(event)
 
             # Exit the UnitOfWork context: the relational commit below (and any
-            # further operations) are no longer part of this transaction.
-            _uow_context_stack.pop()
+            # further operations) are no longer part of this transaction. Guard
+            # on identity so that if the commit below fails and __exit__ then
+            # calls rollback() (which also pops), the two pops together cannot
+            # pop a *parent* UnitOfWork off the stack in a nested scenario.
+            if _uow_context_stack.top is self:
+                _uow_context_stack.pop()
 
             # Commit the relational session (aggregate state + outbox rows).
             for provider_name, session in self._sessions.items():
@@ -395,8 +399,11 @@ class UnitOfWork:
         except Exception:
             pass
 
-        # Exit from Unit of Work
-        _uow_context_stack.pop()
+        # Exit from Unit of Work. Guarded on identity so a double-pop (when the
+        # relational commit failed after _do_commit already popped this UoW)
+        # cannot pop a parent UnitOfWork off the stack.
+        if _uow_context_stack.top is self:
+            _uow_context_stack.pop()
 
         try:
             for session in self._sessions.values():
