@@ -106,6 +106,7 @@ from protean.utils.eventing import (
 )
 from protean.utils.globals import current_domain
 from protean.utils.reflection import _ID_FIELD_NAME
+from protean.utils.sync_dispatch import dispatch_events_sync
 
 
 def given(
@@ -485,12 +486,11 @@ class AggregateResult:
             enriched_events.append(enriched)
 
         # Process event handlers (projectors, etc.) for seeded events,
-        # just like UoW commit does for synchronous processing.
+        # just like UoW commit does for synchronous processing — breadth-first
+        # via the shared drain so a seeded event that starts a multi-step
+        # process manager cascades correctly (ADR-0016).
         if domain.config["event_processing"] == Processing.SYNC.value:
-            for enriched in enriched_events:
-                handler_classes = domain.handlers_for(enriched)
-                for handler_cls in handler_classes:
-                    handler_cls._handle(enriched)
+            dispatch_events_sync(enriched_events, domain.handlers_for)
 
         return aggregate_id
 
@@ -545,11 +545,8 @@ class EventSequence:
 
         domain = current_domain
 
-        # Process each event through its handlers
-        for event in self._events:
-            handler_classes = domain.handlers_for(event)
-            for handler_cls in handler_classes:
-                handler_cls._handle(event)
+        # Process each event through its handlers — breadth-first (ADR-0016).
+        dispatch_events_sync(self._events, domain.handlers_for)
 
         # Retrieve the projection
 
@@ -633,9 +630,10 @@ class ProcessManagerResult:
             self._process_events()
 
     def _process_events(self) -> None:
-        """Feed all events through the PM's _handle() method."""
-        for event in self._events:
-            self._pm_cls._handle(event)
+        """Feed all events through the PM's _handle() method — breadth-first
+        via the shared drain so a multi-step PM cascades to completion under
+        synchronous processing (ADR-0016)."""
+        dispatch_events_sync(self._events, lambda _event: [self._pm_cls])
         self._processed = True
         self._load_pm()
 
