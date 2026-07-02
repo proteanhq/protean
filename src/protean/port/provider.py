@@ -363,6 +363,44 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
         return {}
 
+    def owns(self, element_cls: Type) -> bool:
+        """Return whether this provider materializes a table/index for ``element_cls``.
+
+        A single, positive gate for the "does this registered element get a
+        table or index from *this* provider?" decision, used by the provider
+        artifact/reset loops that iterate registered elements. It returns
+        ``False`` for:
+
+        - **Event-sourced aggregates** — they persist to the event store, not a
+          database table/index.
+        - **Entities of event-sourced aggregates** (at any nesting depth) — they
+          follow their root aggregate into the event store.
+        - **Cache-backed elements** (e.g. ``@domain.projection(cache=...)``) —
+          they persist to a cache adapter and carry ``meta_.provider is None``.
+        - **Elements owned by a different provider** — in multi-provider domains,
+          each provider materializes only the elements configured to it.
+
+        Assumes a fully-initialized domain (``meta_.aggregate_cluster`` is
+        populated during ``domain.init()``). Ownership is resolved by comparing
+        provider *names*, so a ``None`` provider is never used to index the
+        provider registry and cache-backed elements never raise here.
+        """
+        meta = element_cls.meta_
+
+        # Event-sourced aggregates (and entities anywhere in their cluster) live
+        # in the event store, not a database. Entities inherit their root
+        # aggregate via ``aggregate_cluster``; an aggregate is its own cluster.
+        # Projections have no cluster, so fall back to the element itself.
+        cluster = getattr(meta, "aggregate_cluster", None) or element_cls
+        if getattr(cluster.meta_, "is_event_sourced", False):
+            return False
+
+        # Cache-backed elements have no database provider (``provider is None``).
+        # In multi-provider domains, only materialize elements owned by this
+        # provider. Provider names are the unique keys of the provider registry,
+        # so comparing names resolves ownership without indexing on ``None``.
+        return getattr(meta, "provider", None) == self.name
+
     @abstractmethod
     def _data_reset(self) -> None:
         """Flush all data in the provider's persistence store.

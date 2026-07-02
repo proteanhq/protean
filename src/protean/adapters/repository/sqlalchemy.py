@@ -1463,17 +1463,10 @@ class SAProvider(BaseProvider):
 
         for _, element_record in elements.items():
             cls = element_record.cls
-            # Skip event-sourced aggregates — they use the event store, not SQL tables
-            if getattr(cls.meta_, "is_event_sourced", False):
-                continue
-            # Skip entities that belong to event-sourced aggregates
-            part_of = getattr(cls.meta_, "part_of", None)
-            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
-                continue
-            # Skip cache-backed projections — they persist to a cache adapter,
-            # not a SQL table (when `cache` is set the provider is None), so
-            # building a DAO for them would raise. See #1034.
-            if getattr(cls.meta_, "cache", None):
+            # Skip elements this provider does not materialize as a SQL table
+            # (event-sourced aggregates/entities, cache-backed projections, and
+            # elements owned by another provider). See BaseProvider.owns().
+            if not self.owns(cls):
                 continue
             self.domain.repository_for(cls)._dao
 
