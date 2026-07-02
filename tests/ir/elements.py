@@ -205,6 +205,51 @@ def build_handler_test_domain() -> Domain:
     return domain
 
 
+def build_resilient_handler_test_domain() -> Domain:
+    """Build a domain with handlers that declare resilience options."""
+    from datetime import timedelta
+
+    domain = Domain(name="ResilientTest", root_path=".")
+
+    @domain.command(part_of="Order")
+    class PlaceOrder:
+        customer_name = String(max_length=100, required=True)
+
+    @domain.event(part_of="Order")
+    class OrderPlaced:
+        order_id = Identifier(required=True)
+
+    @domain.aggregate
+    class Order:
+        customer_name = String(max_length=100, required=True)
+
+    @domain.command_handler(
+        part_of=Order,
+        timeout=timedelta(minutes=15),
+        retries=3,
+        backoff="exponential",
+        retry_exceptions=[ValueError, "myapp.errors.TransientError"],
+    )
+    class OrderCommandHandler:
+        @handle(PlaceOrder)
+        def handle_place_order(self, command):
+            pass
+
+    @domain.event_handler(
+        part_of=Order,
+        retries=5,
+        backoff="linear",
+        retry_exceptions=[RuntimeError],
+    )
+    class OrderEventHandler:
+        @handle(OrderPlaced)
+        def on_order_placed(self, event):
+            pass
+
+    domain.init(traverse=False)
+    return domain
+
+
 def build_es_aggregate_domain() -> Domain:
     """Build a domain with an event-sourced aggregate and @apply handlers."""
     domain = Domain(name="Banking", root_path=".")

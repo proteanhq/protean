@@ -128,6 +128,32 @@
       "additionalProperties": true
     },
 
+    "resilience": {
+      "type": "object",
+      "description": "Deadline/retry policy for a handler (sparse; only declared options appear)",
+      "properties": {
+        "timeout": {
+          "type": "number",
+          "description": "Default command validity window, in seconds"
+        },
+        "retries": {
+          "type": "integer",
+          "description": "Max retry attempts on transient exceptions"
+        },
+        "backoff": {
+          "type": "string",
+          "enum": ["exponential", "linear", "fixed"]
+        },
+        "retry_exceptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fully-qualified names of exception types treated as transient"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+
     "fields_map": {
       "type": "object",
       "description": "Map of field name to field definition",
@@ -509,6 +535,7 @@
             "element_type": { "const": "COMMAND_HANDLER" },
             "part_of": { "type": "string", "minLength": 1 },
             "stream_category": { "type": "string", "minLength": 1 },
+            "resilience": { "$ref": "#/$defs/resilience" },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": { "$ref": "#/$defs/standard_handler_map" }
           },
@@ -533,6 +560,7 @@
                 { "type": "null" }
               ]
             },
+            "resilience": { "$ref": "#/$defs/resilience" },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": { "$ref": "#/$defs/standard_handler_map" }
           },
