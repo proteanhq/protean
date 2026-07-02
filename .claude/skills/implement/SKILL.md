@@ -1,7 +1,7 @@
 ---
 name: implement
 description: End-to-end implementation of a GitHub Issue — research, implement, test, review, commit, create PR, handle feedback. Use when the user says "implement #N", "work on #N", "start #N", or provides an issue number. This is the workhorse skill for turning an issue into a merged-ready PR.
-argument-hint: "#issue-number [--branch name] [--epic #N]"
+argument-hint: "#issue-number [--branch name] [--epic #N] [--redteam panel|light|skip]"
 ---
 
 # Implement a GitHub Issue
@@ -10,7 +10,7 @@ Execute 5 phases autonomously with tracked progress. The final output is a PR wi
 
 **Progress tracking:** You MUST initialize a TODO checklist at the end of Phase 1 and update it as you complete each step. Before creating the PR (Phase 4), you MUST verify every pre-PR item is done. The TODO list is your memory — if context gets compressed, read it to recover where you are.
 
-Parse `$ARGUMENTS` for: issue number (`#N` or bare number), branch name (`--branch <name>` or derive `work/<N>-<slug>`), epic (`--epic #N` or detect from sub-issues).
+Parse `$ARGUMENTS` for: issue number (`#N` or bare number), branch name (`--branch <name>` or derive `work/<N>-<slug>`), epic (`--epic #N` or detect from sub-issues), red-team mode (`--redteam panel|light|skip`, **default `panel`** — see Phase 3.5).
 
 ## Phase 1: Research
 
@@ -62,6 +62,7 @@ TodoWrite([
   {"id": "quality",     "task": "ruff + mypy pass",                       "status": "pending"},
   {"id": "full_suite",  "task": "make test-full passes (or noted)",       "status": "pending"},
   {"id": "coverage",    "task": "Patch coverage 100%",                    "status": "pending"},
+  {"id": "red_team",    "task": "Adversarial red-team — revert-test + panel/light", "status": "pending"},
   {"id": "commit_pr",   "task": "Commit, push, create PR",               "status": "pending"},
   {"id": "ci_feedback", "task": "Handle Codecov + Copilot feedback",      "status": "pending"},
 ])
@@ -123,15 +124,50 @@ Run in order — each must pass before the next:
 5. **Full suite:** `make test-full` (starts Docker + all adapters) — if Docker unavailable, note it and proceed → Mark `full_suite` done.
 6. **Patch coverage:** run `uv run diff-cover coverage.xml --compare-branch=main --show-uncovered` if coverage.xml exists, otherwise `uv run pytest <tests> --cov=protean --cov-report=term-missing --cov-config=/dev/null -v` — add tests for any uncovered lines you wrote, target 100% → Mark `coverage` done.
 
+## Phase 3.5: Adversarial red-team (before commit)
+
+This is **not** a second pass of pr-reviewer. `/simplify` and pr-reviewer ask *"is this well-made?"* — this step asks *"is it wrong, incomplete, or overclaiming?"* It runs a **falsification** stance against the finished artifact: the code, the tests, the docs, and the claims you are about to make in the PR/changelog. A green suite at 100% coverage is the single most common way "done" lies; this phase is the antidote.
+
+Mode is set by `--redteam` (default **`panel`**):
+- **`panel`** — 4 parallel red-team agents (below). Use for anything non-trivial.
+- **`light`** — 1 agent carrying all four angles in one prompt. Use for small, low-risk changes.
+- **`skip`** — only for trivial mechanical changes (a rename, a comment, a one-line guard). State in the final report that you skipped and why.
+
+### Mandatory in EVERY mode (including `skip`): prove the tests aren't vacuous
+
+Neutralize the fix and confirm each new behavioral test goes **red**, then restore:
+
+1. Revert the behavioral change only — `git stash push -- <changed source files>`, or toggle the fix off at its call site when the fix adds a **new** module (you can't delete a module the test imports). **Never `git checkout -- .`** — it destroys uncommitted work (see reference.md).
+2. Run the new tests. Each behavioral test MUST fail. If one still passes with the fix off, it is vacuous (tautological assertion, asserts an exit code instead of behavior, loops over an empty collection) — **fix the test, not just the code.**
+3. Restore (`git stash pop`) and confirm green again.
+
+### `panel` mode — 4 adversarial agents, launched in one message (parallel)
+
+Give each agent the diff (`git diff HEAD`), the issue text, and your draft PR/changelog claims. Each returns findings as `{file:line, the concrete failure or gap, severity}`. They attack; they do not compliment.
+
+1. **Completeness** — "The issue describes symptom X. Does this fix *every* manifestation, or only the reported path? Which adapter / provider / config flag / entry-point (programmatic `Domain.init()`, `protean server`, `protean shell`, FastAPI) is NOT exercised by the change?" Name the uncovered case. *(This is the class where a fix works on the in-memory adapter but silently no-ops on SQLAlchemy.)*
+2. **Test efficacy** — beyond the revert check: is any assertion tautological or testing implementation detail rather than behavior? Does a test named for behavior X actually assert X? Is there a **negative** test for each new branch/emission (fires when expected, does NOT fire outside its scope — see CLAUDE.md pitfalls)? What input is untested?
+3. **Claim accuracy** — walk every sentence of the PR body, changelog fragment, docstrings, and any ADR against what the code actually does. Flag every overclaim or scope the docs assert but the code doesn't deliver.
+4. **Adversarial inputs & edges** — try to break it: `None`/empty, large N, concurrency / re-entrancy, an error raised mid-operation, ordering assumptions, encoding at boundaries. Name the input and the resulting failure.
+
+### `light` mode
+
+One agent, the same four angles in a single prompt, plus the mandatory revert check above.
+
+### Then: decide, don't admire
+
+For each finding, either **fix it** (fold into the same PR; add tests for any new code path) or **record a one-line justification** for why it is acceptable or out of scope. Silent dismissal is not allowed. → Mark `red_team` done.
+
 ## Preflight gate
 
-**STOP.** Read your TODO list now. Every item from `research` through `coverage` (the first 12 items) must be `done`. If any are still `pending` or `in_progress`, go back and complete them. Do not proceed to Phase 4 until this gate passes.
+**STOP.** Read your TODO list now. Every item from `research` through `red_team` (the first 13 items) must be `done`. If any are still `pending` or `in_progress`, go back and complete them. Do not proceed to Phase 4 until this gate passes.
 
 Items that commonly get skipped — verify you actually did these:
 - `simplify` — must have invoked `/simplify`, not just self-reviewed
 - `pr_review` — must have launched the pr-reviewer agent, not just self-reviewed
 - `full_suite` — must have run `make test-full` or noted Docker unavailable
 - `coverage` — must have measured with diff-cover or pytest --cov, not estimated
+- `red_team` — must have run the mandatory revert-and-rerun check AND the panel/light agents (or explicitly recorded `--redteam skip` with a reason); each finding fixed or justified
 
 ## Phase 4: Commit and PR
 
@@ -184,6 +220,7 @@ Branch: work/branch-name
 PR: #M — PR Title (URL)
 Changes: (1-3 bullets)
 Tests: X added, core Y/0, full Z/0, patch coverage N%
+Red-team: <panel|light|skip> — revert-check <passed: tests went red>; K findings (fixed/justified)
 Review: N comments addressed, PR mergeable, CI passing
 ```
 
