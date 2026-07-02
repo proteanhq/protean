@@ -240,6 +240,46 @@ class TestHandlerTimeoutAsSeconds:
 
 
 @pytest.mark.no_test_domain
+class TestHandlerRetryExceptionInstanceEntry:
+    """A misconfigured non-class retry_exceptions entry must not crash the IR."""
+
+    def test_instance_entry_serialized_as_class_fqn(self):
+        from protean import Domain, handle
+        from protean.fields.simple import Identifier, String
+        from protean.ir.builder import IRBuilder
+
+        domain = Domain(name="RetryInstanceTest", root_path=".")
+
+        @domain.command(part_of="Order")
+        class PlaceOrder:
+            order_id = Identifier(required=True)
+
+        @domain.aggregate
+        class Order:
+            customer_name = String(max_length=100, required=True)
+
+        # An exception *instance* rather than its class — a misconfiguration
+        # that previously raised an opaque AttributeError from fqn().
+        @domain.command_handler(part_of=Order, retry_exceptions=[ValueError("boom")])
+        class OrderCommandHandler:
+            @handle(PlaceOrder)
+            def handle_place_order(self, command):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        for cluster in ir["clusters"].values():
+            for ch in cluster["command_handlers"].values():
+                if ch["name"] == "OrderCommandHandler":
+                    assert ch["resilience"]["retry_exceptions"] == [
+                        "builtins.ValueError"
+                    ]
+                    return
+        pytest.fail("OrderCommandHandler not found")
+
+
+@pytest.mark.no_test_domain
 class TestApplicationServiceExtraction:
     """Verify application service IR dict structure."""
 

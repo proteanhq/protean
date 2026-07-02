@@ -602,8 +602,13 @@ class IRBuilder:
             for exc in retry_exceptions:
                 if isinstance(exc, str):
                     names.append(exc)
-                else:
+                elif isinstance(exc, type):
                     names.append(fqn(exc))
+                else:
+                    # Misconfigured entry (e.g. an exception instance rather
+                    # than its class) — serialize its class instead of
+                    # crashing IR materialization with an opaque AttributeError.
+                    names.append(fqn(type(exc)))
             policy["retry_exceptions"] = sorted(names)
 
         return dict(sorted(policy.items())) if policy else None
