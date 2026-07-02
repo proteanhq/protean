@@ -121,6 +121,18 @@ class BaseDAO(metaclass=ABCMeta):
             finally:
                 conn.close()
 
+    def _flush(self) -> None:
+        """Flush pending writes to the data store within the active
+        transaction, without committing.
+
+        Default is a no-op. Adapters whose unit-of-work batches writes until
+        commit (e.g. SQLAlchemy) override this so callers can force a parent
+        row to materialize before dependent child rows referencing it are
+        written. Providers that persist eagerly (memory, Elasticsearch) need
+        no flush and keep the default.
+        """
+        return None
+
     def _sync_event_position(self, entity: BaseEntity) -> None:
         """Sync the aggregate's event position from the event store.
 
