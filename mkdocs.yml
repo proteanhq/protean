@@ -336,6 +336,7 @@ nav:
         - reference/cli/data/events.md
         - reference/cli/data/snapshot.md
         - reference/cli/data/projection.md
+        - reference/cli/data/outbox.md
     - Server:
       - reference/server/index.md
       - reference/server/subscription-types.md

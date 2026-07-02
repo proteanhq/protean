@@ -9,22 +9,12 @@ Usage::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import typer
 from rich import print
 from typing_extensions import Annotated
 
-from protean.cli._helpers import handle_cli_exceptions
-from protean.exceptions import NoDomainException
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
+from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.utils.outbox import reconcile_outbox
-
-if TYPE_CHECKING:
-    from protean.domain import Domain
-
-logger = get_logger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -32,21 +22,6 @@ app = typer.Typer(no_args_is_help=True)
 @app.callback()
 def callback():
     """Manage the transactional outbox."""
-
-
-def _load_domain(domain_path: str) -> "Domain":
-    """Load and initialize a domain, handling errors consistently."""
-    try:
-        derived_domain = derive_domain(domain_path)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-    derived_domain.init()
-    return derived_domain
 
 
 @app.command()
@@ -66,7 +41,7 @@ def reconcile(
     (the durable anchor) whose relational outbox commit did not land, so the
     event is durable but would never be published.
     """
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         if not derived_domain.has_outbox:
             print("Outbox is not enabled for this domain (set enable_outbox=True).")

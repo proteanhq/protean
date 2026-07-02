@@ -934,7 +934,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     messages = store.read("$all", position=start, no_of_messages=limit)
 
     missing = [m for m in messages if not _internal_row_exists(m.metadata.headers.id)]
-    if not missing:
+    if not missing:  # pragma: no cover - unreachable: the newest event lacks its
+        # row (fast path fell through) and is always inside the scan window, so
+        # `missing` is non-empty here. Kept as a defensive guard.
         return 0
 
     with UnitOfWork():

@@ -86,6 +86,14 @@ class TestOutboxReconciliation:
         domain, _ = domain_and_repo
         assert reconcile_outbox(domain) == 0
 
+    def test_reconcile_noop_when_outbox_disabled(self):
+        """Without the outbox enabled there is nothing to reconcile — and the
+        guard returns before entering a domain context, so no domain is needed.
+        """
+        domain = Domain(name="NoOutbox")
+        domain.init(traverse=False)
+        assert reconcile_outbox(domain) == 0
+
     def test_engine_startup_sweep_repairs_the_crash_window(self, domain_and_repo):
         """The engine's startup sweep recreates a missing outbox row on boot."""
         from protean.server.engine import Engine

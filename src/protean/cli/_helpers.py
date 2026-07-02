@@ -8,11 +8,17 @@ imports every subcommand module, so subcommand modules cannot import from
 import functools
 import sys
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 import typer
+from rich import print
 
+from protean.exceptions import NoDomainException
+from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 logger = get_logger(__name__)
 
@@ -37,6 +43,28 @@ def cli_exception_handler(command: str) -> Iterator[None]:
     except Exception:
         logger.exception("cli.command_failed", command=command, argv=sys.argv)
         raise
+
+
+def load_domain(domain_path: str) -> "Domain":
+    """Load and initialize a domain from ``domain_path``, or abort cleanly.
+
+    Shared by the ``protean`` subcommands that operate on a domain (``outbox``
+    and others). Kept here — rather than copy-pasted into each subcommand
+    module — so the error handling stays identical across commands. On a
+    missing/undiscoverable domain it prints a clear message and raises
+    ``typer.Abort`` so Typer exits non-zero.
+    """
+    try:
+        derived_domain = derive_domain(domain_path)
+    except NoDomainException as exc:
+        msg = f"Error loading Protean domain: {exc.args[0]}"
+        print(msg)
+        logger.error(msg)
+        raise typer.Abort()
+
+    assert derived_domain is not None
+    derived_domain.init()
+    return derived_domain
 
 
 def handle_cli_exceptions(command_name: str) -> Callable:
