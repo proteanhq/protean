@@ -73,7 +73,11 @@ class TestHealthPort:
         findings = _check_health_port(test_domain)
         assert len(findings) == 1
         assert findings[0].code == "HEALTH_PORT_BIND"
+        # Advisory only: it fires for every engine, so it must not trip the
+        # upgrade-check exit code (which reserves that for "warning" findings).
         assert findings[0].level == "info"
+        # The finding flags the changed loopback bind default.
+        assert "127.0.0.1" in findings[0].detail
 
     def test_no_finding_when_disabled(self, test_domain):
         test_domain.config["server"] = {"health": {"enabled": False}}

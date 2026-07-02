@@ -126,8 +126,9 @@ class TestHealthServerConfig:
             engine = Engine(domain, test_mode=True)
             hs = engine._health_server
             assert hs.enabled is True
-            assert hs.host == "0.0.0.0"
+            assert hs.host == "127.0.0.1"
             assert hs.port == 8080
+            assert hs.port_auto_increment is False
 
     @pytest.mark.no_test_domain
     def test_custom_config(self):
@@ -135,15 +136,17 @@ class TestHealthServerConfig:
         domain.init(traverse=False)
         domain.config["server"]["health"] = {
             "enabled": False,
-            "host": "127.0.0.1",
+            "host": "0.0.0.0",
             "port": 9090,
+            "port_auto_increment": True,
         }
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             hs = engine._health_server
             assert hs.enabled is False
-            assert hs.host == "127.0.0.1"
+            assert hs.host == "0.0.0.0"
             assert hs.port == 9090
+            assert hs.port_auto_increment is True
 
     @pytest.mark.no_test_domain
     def test_disabled_server_does_not_start(self):
@@ -355,8 +358,9 @@ class TestHealthServerEdgeCases:
                 engine = Engine(domain, test_mode=True)
                 hs = engine._health_server
                 assert hs.enabled is True
-                assert hs.host == "0.0.0.0"
+                assert hs.host == "127.0.0.1"
                 assert hs.port == 8080
+                assert hs.port_auto_increment is False
 
     def test_start_fails_gracefully_on_port_conflict(self):
         """HealthServer logs a warning and continues if port is in use."""
@@ -381,6 +385,80 @@ class TestHealthServerEdgeCases:
                 assert hs2._server is None
             finally:
                 loop.run_until_complete(hs.stop())
+                loop.close()
+
+    def test_auto_increment_binds_next_free_port(self):
+        """With port_auto_increment, a taken port rolls forward to a free one."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        domain.config["server"]["health"]["port"] = 0
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            hs = engine._health_server  # occupies an ephemeral port
+
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(hs.start())
+                taken = hs.port
+
+                hs2 = HealthServer(engine)
+                hs2.port = taken
+                hs2.port_auto_increment = True
+                loop.run_until_complete(hs2.start())
+                try:
+                    # Rolled forward to a different, serving port.
+                    assert hs2._server is not None
+                    assert hs2._server.is_serving()
+                    assert hs2.port > taken
+                    assert hs2.port == hs2._server.sockets[0].getsockname()[1]
+                finally:
+                    loop.run_until_complete(hs2.stop())
+            finally:
+                loop.run_until_complete(hs.stop())
+                loop.close()
+
+    def test_out_of_range_port_is_handled_gracefully(self):
+        """A port past 0-65535 is caught (ValueError), not propagated."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            hs = engine._health_server
+            hs.port = 70000  # invalid; asyncio raises ValueError, not OSError
+
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(hs.start())  # must not raise
+                assert hs._server is None
+            finally:
+                loop.close()
+
+    def test_auto_increment_gives_up_after_max_attempts(self):
+        """Auto-increment stays bounded: it does not scan forever."""
+        import protean.server.health as health_module
+
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        domain.config["server"]["health"]["port"] = 0
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            occupied = engine._health_server
+
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(occupied.start())
+                taken = occupied.port
+
+                hs = HealthServer(engine)
+                hs.port = taken
+                hs.port_auto_increment = True
+                # Only allow the single taken port to be attempted, so the
+                # scan exhausts and returns without binding.
+                with patch.object(health_module, "_MAX_PORT_ATTEMPTS", 1):
+                    loop.run_until_complete(hs.start())
+                assert hs._server is None
+            finally:
+                loop.run_until_complete(occupied.stop())
                 loop.close()
 
 

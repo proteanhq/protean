@@ -55,7 +55,8 @@ the async engine by default.
 
 - **Async engine:** `HealthServer` in `src/protean/server/health.py`,
   built directly on `asyncio.start_server` with minimal HTTP/1.1
-  parsing. Enabled by default, listening on `0.0.0.0:8080`, disabled
+  parsing. Enabled by default, listening on `127.0.0.1:8080` (loopback;
+  set `[server.health] host = "0.0.0.0"` to expose off-host), disabled
   via `[server.health] enabled = false`.
 - **FastAPI applications:** `create_health_router(domain)` in
   `src/protean/integrations/fastapi/health.py` returns an `APIRouter`
