@@ -380,6 +380,10 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         - **Elements owned by a different provider** — in multi-provider domains,
           each provider materializes only the elements configured to it.
 
+        An element referencing a provider name that is not configured raises
+        ``ConfigurationError`` — a misconfiguration must fail fast at setup, not
+        be silently skipped.
+
         Assumes a fully-initialized domain (``meta_.aggregate_cluster`` is
         populated during ``domain.init()``). Ownership is resolved by comparing
         provider *names*, so a ``None`` provider is never used to index the
@@ -396,10 +400,22 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
             return False
 
         # Cache-backed elements have no database provider (``provider is None``).
+        provider_name = getattr(meta, "provider", None)
+        if provider_name is None:
+            return False
+
+        # A provider name that resolves to nothing is a misconfiguration —
+        # surface it here rather than silently skipping the element.
+        if provider_name not in self.domain.providers:
+            raise ConfigurationError(
+                f"{element_cls.__name__} references provider '{provider_name}', "
+                f"but no provider is configured with that name"
+            )
+
         # In multi-provider domains, only materialize elements owned by this
         # provider. Provider names are the unique keys of the provider registry,
         # so comparing names resolves ownership without indexing on ``None``.
-        return getattr(meta, "provider", None) == self.name
+        return provider_name == self.name
 
     @abstractmethod
     def _data_reset(self) -> None:

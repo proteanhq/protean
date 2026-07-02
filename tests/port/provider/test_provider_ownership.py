@@ -13,6 +13,7 @@ from protean.domain import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.projection import BaseProjection
+from protean.exceptions import ConfigurationError
 from protean.fields import HasMany, Identifier, Integer, String
 
 
@@ -134,6 +135,19 @@ class TestProviderOwns:
             provider = domain.providers["default"]
             assert Leaderboard.meta_.provider == "default"
             assert provider.owns(Leaderboard) is True
+
+    def test_raises_for_unknown_provider_name(self):
+        """An element referencing a provider name that is not configured is a
+        misconfiguration — the gate must fail fast with ``ConfigurationError``
+        instead of silently skipping the element during database setup."""
+        domain = Domain(name="Owns-Unknown-Provider")
+        domain.register(Account, provider="ghost")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            provider = domain.providers["default"]
+            with pytest.raises(ConfigurationError, match="ghost"):
+                provider.owns(Account)
 
     def test_ownership_gate_is_provider_specific(self):
         """In a multi-provider domain, only the owning provider materializes an

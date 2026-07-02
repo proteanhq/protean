@@ -210,7 +210,7 @@ class TestCreateArtifactsCacheBackedProjectionFilter:
 
                 # Cache-backed projection should NOT have an index
                 leaderboard_schema = provider.namespaced_schema_name(
-                    "cache_leaderboard"
+                    CacheLeaderboard.meta_.schema_name
                 )
                 assert not conn.indices.exists(index=leaderboard_schema)
             finally:
