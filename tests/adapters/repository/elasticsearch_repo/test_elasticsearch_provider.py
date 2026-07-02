@@ -213,5 +213,11 @@ class TestCreateArtifactsCacheBackedProjectionFilter:
                     CacheLeaderboard.meta_.schema_name
                 )
                 assert not conn.indices.exists(index=leaderboard_schema)
+
+                # Data reset applies the same ownership gate: it must skip the
+                # cache-backed projection (no index to clear) and complete
+                # without raising for the owned aggregate.
+                provider._data_reset()
+                assert conn.indices.exists(index=person_model._index._name)
             finally:
                 provider._drop_database_artifacts()
