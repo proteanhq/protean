@@ -62,16 +62,20 @@ common failure than under-sizing Protean's pool.
 
 ### Async engine (`protean server`)
 
-The engine embeds a lightweight HTTP server on port `8080` by default.
-No configuration is needed unless you want to move the port, bind to a
-different interface, or turn the server off; to override, add a
-`[server.health]` section to `domain.toml`:
+The engine embeds a lightweight HTTP server on port `8080` by default. It
+binds loopback (`127.0.0.1`), so to reach the probes from a Kubernetes
+liveness/readiness check (which connects over the pod network, not
+loopback) set `host = "0.0.0.0"`:
 
 ```toml
 [server.health]
 host = "0.0.0.0"
 port = 8080
 ```
+
+Running several engines on one host? Set a distinct `port` per domain, or
+`port_auto_increment = true` to let each engine roll forward to the next
+free port.
 
 Wire the probes into your Deployment:
 

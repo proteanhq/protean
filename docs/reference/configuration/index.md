@@ -396,8 +396,9 @@ alert_callback = "myapp.alerts.notify_oncall"  # Optional dotted path, called on
 # Enabled by default on port 8080; disable for tests or embedded use.
 [server.health]
 enabled = true               # Start the built-in health server
-host = "0.0.0.0"             # Bind address
+host = "127.0.0.1"           # Bind address (loopback; use "0.0.0.0" to expose)
 port = 8080                  # Listen port
+port_auto_increment = false  # Try 8081, 8082, ... if the port is taken
 
 # Handler-specific overrides
 [server.subscriptions.OrderEventHandler]
@@ -461,8 +462,9 @@ default** on port `8080`.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | bool | `true` | Start the health HTTP server. Set to `false` for tests or embedded deployments. |
-| `host` | str | `"0.0.0.0"` | Bind address. |
+| `host` | str | `"127.0.0.1"` | Bind address. Defaults to loopback so probes are not exposed off-host; set `"0.0.0.0"` for out-of-pod probes. |
 | `port` | int | `8080` | Listen port. |
+| `port_auto_increment` | bool | `false` | When `true`, if `port` is already bound the server walks up (`8081`, `8082`, ...) until it finds a free one. Lets several engines share a host without colliding. |
 
 The server exposes `GET /healthz`, `GET /livez`, and `GET /readyz`. For
 the probe response bodies, readiness semantics, and FastAPI router

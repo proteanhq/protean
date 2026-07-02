@@ -167,8 +167,13 @@ def _default_config():
             # Health check HTTP server for Kubernetes liveness/readiness probes
             "health": {
                 "enabled": True,
-                "host": "0.0.0.0",
+                # Bind to loopback by default, mirroring the Observatory's
+                # hardening. Set host = "0.0.0.0" to expose probes off-host.
+                "host": "127.0.0.1",
                 "port": 8080,
+                # Opt-in: when the port is taken, try the next one (8081, 8082,
+                # ...) so several engines can share a host without colliding.
+                "port_auto_increment": False,
             },
         },
         "idempotency": {

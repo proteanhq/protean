@@ -83,8 +83,9 @@ enforce `--strict` will fail. Raise `pool_size` or set `PROTEAN_ENV` to
 | Key | Default | Purpose |
 |-----|---------|---------|
 | `enabled` | `true` | Start the health HTTP server |
-| `host` | `"0.0.0.0"` | Bind address |
+| `host` | `"127.0.0.1"` | Bind address (loopback by default; set `"0.0.0.0"` to expose off-host) |
 | `port` | `8080` | Listen port |
+| `port_auto_increment` | `false` | Try `8081`, `8082`, ... when `port` is taken, so engines can share a host |
 
 ### Engine endpoints
 
