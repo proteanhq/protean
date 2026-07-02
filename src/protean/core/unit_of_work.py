@@ -13,6 +13,7 @@ from protean.utils import Processing
 from protean.utils.globals import _uow_context_stack, current_domain, g
 from protean.utils.processing import current_priority
 from protean.utils.reflection import id_field
+from protean.utils.sync_dispatch import dispatch_events_sync
 from protean.utils.telemetry import get_domain_metrics, set_span_error
 
 logger = logging.getLogger(__name__)
@@ -313,13 +314,18 @@ class UnitOfWork:
                     # No specific broker designated; publish to default
                     self.domain.brokers["default"].publish(stream, message)
 
-            # Iteratively consume all events produced in this session
+            # Consume all events produced in this session — breadth-first.
+            # Events are enqueued and drained (not dispatched re-entrantly) so
+            # that each handler's UnitOfWork, including a process manager's
+            # transition, commits fully before the next handler runs. A nested
+            # commit (a handler that raises further events) enqueues onto the
+            # same chain-scoped queue; only the outermost drain runs it. See
+            # ADR-0016.
             if current_domain.config["event_processing"] == Processing.SYNC.value:
-                for provider, events in all_events.items():
-                    for event in events:
-                        handler_classes = current_domain.handlers_for(event)
-                        for handler_cls in handler_classes:
-                            handler_cls._handle(event)
+                dispatch_events_sync(
+                    (event for events in all_events.values() for event in events),
+                    current_domain.handlers_for,
+                )
 
             # Clear events from items in identity map
             self._clear_events_from_items()
