@@ -570,6 +570,26 @@ class BaseDAO(metaclass=ABCMeta):
         # Invokes the __bool__ method on `ResultSet`.
         return bool(results)
 
+    def _reflect_auto_fields(self, entity_obj: Any, model_obj: Any) -> None:
+        """Copy store-generated auto-increment values back onto the entity.
+
+        An ``Auto(increment=True)`` field's value is produced by the
+        persistence store during the create, not by the entity. After the
+        record is created, reflect that value back onto the in-memory instance
+        so the caller holds the same identity that was persisted. Only fields
+        still unset on the entity are updated, so a caller-supplied value is
+        never overwritten.
+        """
+        for field_name, field_obj in declared_fields(entity_obj).items():
+            is_auto = getattr(field_obj, "increment", False)
+            if is_auto and getattr(entity_obj, field_name) is None:
+                if isinstance(model_obj, dict):
+                    field_val = model_obj[field_name]
+                else:
+                    field_val = getattr(model_obj, field_name)
+
+                setattr(entity_obj, field_name, field_val)
+
     def create(self, *args, **kwargs) -> "BaseEntity":
         """Create a new record in the data store.
 
@@ -597,16 +617,8 @@ class BaseDAO(metaclass=ABCMeta):
             # Build the model object and persist into data store
             model_obj = self._create(self.database_model_cls.from_entity(entity_obj))
 
-            # Reverse update auto fields into entity
-            for field_name, field_obj in declared_fields(entity_obj).items():
-                is_auto = getattr(field_obj, "increment", False)
-                if is_auto and not getattr(entity_obj, field_name):
-                    if isinstance(model_obj, dict):
-                        field_val = model_obj[field_name]
-                    else:
-                        field_val = getattr(model_obj, field_name)
-
-                    setattr(entity_obj, field_name, field_val)
+            # Reflect store-generated auto-increment values back onto the entity
+            self._reflect_auto_fields(entity_obj, model_obj)
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
@@ -670,7 +682,17 @@ class BaseDAO(metaclass=ABCMeta):
                 # Perform unique checks. Raises validation errors if unique constraints are violated.
                 self._validate_unique(entity_obj)
 
-                self._create(self.database_model_cls.from_entity(entity_obj))
+                model_obj = self._create(
+                    self.database_model_cls.from_entity(entity_obj)
+                )
+
+                # Reflect store-generated auto-increment values back onto the
+                # entity — save() previously dropped this, so an
+                # Auto(increment=True) field stayed None after repository.add().
+                # Stores that assign the value during _create (e.g. memory) are
+                # reflected here; relational adapters assign it at flush, which
+                # lands after this point — tracked separately (#1059).
+                self._reflect_auto_fields(entity_obj, model_obj)
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
