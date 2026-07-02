@@ -612,7 +612,7 @@ def drain(
     domain: "Domain | None" = None,
     *,
     until: Callable[[], bool] | None = None,
-    max_cycles: int = 10,
+    max_cycles: int = 5,
 ) -> int:
     """Run the engine in test mode until *until* is satisfied or the budget runs out.
 
@@ -625,7 +625,10 @@ def drain(
         until: Optional predicate. Draining stops early once it returns
             truthy. When omitted, a single engine pass is run.
         max_cycles: Upper bound on engine passes so a never-satisfied
-            *until* cannot hang the test. Must be at least 1.
+            *until* cannot hang the test. Must be at least 1. Each test-mode
+            engine pass takes at least ~1 second, so the bound is also a
+            worst-case latency budget — raise it only for flows that
+            genuinely need more passes.
 
     Returns:
         The number of engine passes actually run. If *until* was supplied but
@@ -668,7 +671,7 @@ def process_and_wait(
     domain: "Domain | None" = None,
     *,
     until: Callable[[], bool] | None = None,
-    max_cycles: int = 10,
+    max_cycles: int = 5,
 ) -> ProcessResult:
     """Process a command and wait for its effects to settle.
 
@@ -687,7 +690,8 @@ def process_and_wait(
             ``current_domain``.
         until: Optional predicate forwarded to :func:`drain`; draining
             stops early once it returns truthy (async mode only).
-        max_cycles: Upper bound on engine passes when draining.
+        max_cycles: Upper bound on engine passes when draining (see
+            :func:`drain` — each pass takes at least ~1 second).
 
     Returns:
         A :class:`ProcessResult` exposing the command result, the events
