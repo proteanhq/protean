@@ -23,6 +23,7 @@ a time. See ADR-0016.
 
 from __future__ import annotations
 
+from collections import deque
 from contextlib import contextmanager
 from typing import Any, Callable, Iterable, Iterator
 
@@ -64,7 +65,7 @@ def enqueue_sync_dispatch(event: Any, handler_cls: Any) -> None:
     """
     queue = getattr(g, _QUEUE_KEY, None)
     if queue is None:
-        queue = []
+        queue = deque()
         setattr(g, _QUEUE_KEY, queue)
 
     queue.append((event, handler_cls, g.get("message_in_context")))
@@ -84,9 +85,9 @@ def drain_sync_dispatch() -> None:
 
     setattr(g, _DRAINING_KEY, True)
     try:
-        queue = getattr(g, _QUEUE_KEY, None) or []
+        queue = getattr(g, _QUEUE_KEY, None) or ()
         while queue:
-            event, handler_cls, message_context = queue.pop(0)
+            event, handler_cls, message_context = queue.popleft()
             with _message_in_context(message_context):
                 handler_cls._handle(event)
     finally:
