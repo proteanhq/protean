@@ -94,9 +94,16 @@ jobs:
 
       - name: Start service containers
         run: |
-          # Remove any leaked containers from a previous run on this runner so
-          # the host port bindings below are guaranteed to be free.
-          docker rm -f postgres redis message-db mssql elasticsearch 2>/dev/null || true
+          # Free the host ports below before binding them. Remove ALL containers
+          # left over from a previous run on this (potentially reused) runner:
+          # matching only our own names misses a container leaked under a
+          # different name, or one still shutting down, either of which can keep
+          # a port bound (e.g. the 59300 Elasticsearch transport port) and fail
+          # `docker run` with "address already in use".
+          leaked=$(docker ps -aq)
+          if [ -n "$leaked" ]; then
+            docker rm -f $leaked
+          fi
 
           docker run -d --name postgres \
             -p 55432:5432 \

@@ -1,0 +1,71 @@
+name: Mirror service images to GHCR
+
+# Copies the third-party service images used by CI (and local `make up`) into
+# this org's GitHub Container Registry (GHCR), so CI pulls from GHCR instead of
+# Docker Hub. This removes the Docker Hub login from CI, eliminates anonymous
+# pull rate-limit exposure on GitHub-hosted runners, and lets fork PRs pull the
+# images with zero secrets (public GHCR packages are readable with a fork's
+# GITHUB_TOKEN).
+#
+# One-time manual step after the first successful run: make each mirrored
+# package Public (org -> Packages -> <package> -> Package settings ->
+# visibility -> Public). Public visibility is what lets fork PRs pull anonymously.
+
+on:
+  schedule:
+    # Mondays at 06:00 UTC — refresh floating tags (e.g. :2022-latest) weekly.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-images
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          # The owner of the repo running this workflow (this org for the
+          # canonical repo). Any username works with GITHUB_TOKEN.
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Mirror images
+        env:
+          # GHCR namespace of the repo running this workflow, i.e. the
+          # canonical repo's org (proteanhq) when it runs there.
+          MIRROR: ghcr.io/${{ github.repository_owner }}/mirror
+        run: |
+          set -euo pipefail
+
+          # "<upstream source>|<mirror path>:<tag>" — the mirror path is a flat
+          # basename so refs stay short and registry-agnostic. Keep this list in
+          # sync with the IMAGES array in ci.yml.
+          MAPPINGS=(
+            "postgres:16|postgres:16"
+            "redis:7|redis:7"
+            "elasticsearch:8.7.0|elasticsearch:8.7.0"
+            "ethangarofolo/message-db:1.2.6|message-db:1.2.6"
+            "mcr.microsoft.com/mssql/server:2022-latest|mssql-server:2022-latest"
+          )
+
+          for m in "${MAPPINGS[@]}"; do
+            src="${m%%|*}"
+            dst="${MIRROR}/${m##*|}"
+            echo "Mirroring ${src} -> ${dst}"
+            # crane copy is daemonless and preserves every platform in the
+            # source (multi-arch manifests copied intact).
+            crane copy "${src}" "${dst}"
+          done
