@@ -531,8 +531,11 @@ class BaseEntity(BaseModel, OptionsMixin):
         # Reconstruct ValueObjects from shadow kwargs when the VO itself
         # wasn't explicitly provided (e.g. during repository retrieval).
         for field_name, field_obj in value_object_fields(self).items():
-            if field_name not in descriptor_kwargs and not getattr(
-                self, field_name, None
+            # Identity, not truthiness (#1078): an already-set all-default VO is
+            # falsy but present and must not be clobbered by a shadow rebuild.
+            if (
+                field_name not in descriptor_kwargs
+                and getattr(self, field_name, None) is None
             ):
                 # Gather shadow field values from shadow_kwargs
                 vo_kwargs = {}
@@ -971,9 +974,10 @@ class BaseEntity(BaseModel, OptionsMixin):
             value = getattr(self, fname, None)
 
             if isinstance(field_obj, ValueObject):
-                # Only include non-None value objects
+                # Present, not truthy (#1078): ``as_dict`` returns ``None`` only
+                # when the VO is ``None``, so an all-default VO is still included.
                 dict_value = field_obj.as_dict(value)
-                if dict_value:
+                if dict_value is not None:
                     result[fname] = dict_value
             elif isinstance(field_obj, Association):
                 # HasOne/HasMany: delegate to descriptor's as_dict
