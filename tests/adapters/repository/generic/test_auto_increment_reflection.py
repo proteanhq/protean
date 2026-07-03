@@ -145,18 +145,6 @@ class TestAutoIncrementReflection:
             "standalone create"
         )
 
-    def test_referenced_as_identifier_reflected(self, test_domain):
-        """An auto-increment identifier stored under a ``referenced_as`` column
-        is read back off the model by its attribute name, not the field name.
-        Without that, reflection raises ``AttributeError`` on SQLAlchemy."""
-        ticket = AliasTicket(subject="aliased")
-        assert ticket.ticket_no is None
-
-        with UnitOfWork():
-            test_domain.repository_for(AliasTicket).add(ticket)
-
-        assert ticket.ticket_no is not None
-
     def test_caller_supplied_auto_value_is_not_overwritten(self, test_domain):
         """A caller-supplied value on an ``Auto(increment=True)`` identifier is
         left untouched — reflection only fills fields still unset."""
@@ -189,3 +177,30 @@ class TestAutoIncrementReflection:
             test_domain.repository_for(Memo).add(Memo(body="no auto here"))
 
         assert flush_calls["count"] == 0
+
+
+@pytest.mark.atomic_transactions
+class TestAliasedAutoIncrementReflection:
+    """Reflection of a ``referenced_as`` auto-increment identifier.
+
+    Scoped to real relational backends (``atomic_transactions`` excludes the
+    in-memory provider): the DB assigns the aliased primary key on flush and the
+    SQLAlchemy model exposes it under its ``referenced_as`` attribute name. The
+    in-memory provider stores an aliased identifier differently and is not
+    exercised here.
+    """
+
+    def test_referenced_as_identifier_reflected_and_resolves(self, test_domain):
+        """The generated value is read off the model by its attribute name, not
+        the field name — without that, reflection raises ``AttributeError`` on
+        SQLAlchemy — and the reflected id resolves the persisted record."""
+        ticket = AliasTicket(subject="aliased")
+        assert ticket.ticket_no is None
+
+        with UnitOfWork():
+            test_domain.repository_for(AliasTicket).add(ticket)
+
+        assert ticket.ticket_no is not None
+        assert test_domain.repository_for(AliasTicket).get(
+            ticket.ticket_no
+        ).subject == ("aliased")
