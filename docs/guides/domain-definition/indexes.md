@@ -192,9 +192,14 @@ This writes `<schema_name>.indexes.<dialect>.sql` files under
 `.protean/schemas/`. See
 [`protean schema render`](../../reference/cli/schema.md#protean-schema-render).
 
-The memory provider accepts index declarations but does not enforce them, so
-you can develop against it and move to a SQL backend without changing the
-domain.
+The memory provider does not render DDL, but it does enforce declared unique
+indexes (`Index(..., unique=True)`): a duplicate insert or update that violates
+a single-column or composite unique index raises `ValidationError`, the same
+error Protean raises for a field-level `unique=True`. (A SQL backend rejects the
+same duplicate at the database instead.) NULLs are treated as distinct, following
+PostgreSQL/SQLite semantics. Non-unique indexes remain inert on the memory
+provider, so you can develop against it and move to a SQL backend without
+changing the domain.
 
 !!! note "Validation"
 
