@@ -897,6 +897,18 @@ class SADAO(BaseDAO):
 
         return result
 
+    def _flush(self) -> None:
+        """Flush buffered INSERT/UPDATE statements to the database within the
+        current transaction, without committing.
+
+        SQLAlchemy batches writes until commit, so a DB-assigned
+        ``Auto(increment=True)`` primary key is not materialized until a flush
+        runs. Forcing a flush here lets the repository read the generated value
+        back onto the aggregate inside the transaction — under both a standalone
+        add and an add nested in an outer UnitOfWork.
+        """
+        self._get_session().flush()
+
     def _create(self, model_obj):
         """Add a new record to the sqlalchemy database"""
         conn = self._get_session()
