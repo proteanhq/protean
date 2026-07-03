@@ -119,6 +119,11 @@ Without `--fix`, a stale check prints the mismatch and suggests a manual
 regeneration command. With `--fix`, the hook regenerates the IR, stages the
 file with `git add`, and exits 0 -- allowing the commit to proceed.
 
+`--fix` writes the **canonical** baseline (sorted keys, no volatile
+`generated_at`), byte-identical to `protean ir show --canonical`. So it is safe
+to use alongside a committed canonical baseline: the two never fight, and a
+regeneration produces a diff only when the domain contract actually changes.
+
 ```yaml
 # Auto-fix mode -- never blocks on stale IR
 repos:

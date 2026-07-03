@@ -183,7 +183,11 @@ def _build_staleness_parser() -> argparse.ArgumentParser:
         "-f",
         action="store_true",
         default=False,
-        help="Auto-regenerate stale IR and stage the updated file.",
+        help=(
+            "Auto-regenerate stale IR as a canonical baseline (sorted keys, no "
+            "volatile 'generated_at'; same output as 'ir show --canonical') and "
+            "stage the updated file."
+        ),
     )
     return parser
 

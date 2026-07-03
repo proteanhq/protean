@@ -106,6 +106,14 @@ class TestBuildStalenessParser:
         args = parser.parse_args(["-f"])
         assert args.fix is True
 
+    def test_fix_help_advertises_canonical_output(self):
+        """The --fix help makes the canonical-baseline guarantee discoverable so
+        projects committing canonical baselines know it is safe to enable (#1080).
+        """
+        help_text = _build_staleness_parser().format_help()
+        assert "canonical" in help_text
+        assert "ir show --canonical" in help_text
+
 
 # ---------------------------------------------------------------------------
 # TestBuildCompatParser
