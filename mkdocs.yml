@@ -396,6 +396,7 @@ nav:
       - adr/0014-aggregate-metadata-decorator-params-over-meta-class.md
       - adr/0015-event-store-append-as-durable-anchor.md
       - adr/0016-breadth-first-synchronous-event-dispatch.md
+      - adr/0017-consume-side-idempotency-for-projectors.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

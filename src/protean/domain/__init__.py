@@ -440,6 +440,18 @@ class Domain:
         return subscription_type == "stream" or explicit_outbox is True
 
     @property
+    def has_idempotent_consumers(self) -> bool:
+        """Whether any registered projector opts into consume-side idempotency.
+
+        Gates creation of the per-provider ``ProcessedMessage`` marker table so
+        domains that don't use ``idempotent=True`` projectors pay nothing.
+        """
+        return any(
+            getattr(record.cls.meta_, "idempotent", False)
+            for record in self.registry.projectors.values()
+        )
+
+    @property
     def idempotency_store(self):
         """Lazily initialize and return the idempotency store.
 
@@ -625,6 +637,10 @@ class Domain:
         # Initialize outbox DAOs for all providers
         if self.has_outbox:
             self._initialize_outbox()
+
+        # Initialize consume-side idempotency markers when any projector opts in
+        if self.has_idempotent_consumers:
+            self._initialize_processed_messages()
 
     def _auto_configure_logging(self) -> None:
         """Auto-configure logging during ``Domain.init()``.
@@ -2091,6 +2107,12 @@ class Domain:
 
     def _get_outbox_repo(self, provider_name: str):
         return self._infrastructure.get_outbox_repo(provider_name)
+
+    def _initialize_processed_messages(self) -> None:
+        self._infrastructure.initialize_processed_messages()
+
+    def _get_processed_message_repo(self, provider_name: str):
+        return self._infrastructure.get_processed_message_repo(provider_name)
 
     # ------------------------------------------------------------------
     # Public database lifecycle API
