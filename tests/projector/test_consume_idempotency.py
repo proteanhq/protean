@@ -258,6 +258,12 @@ class TestConsumeIdempotencyRelational:
         only on a provider that materializes the index (relational, not memory)."""
         from protean.core.unit_of_work import UnitOfWork
 
+        # ``--sqlite`` only signals the flag is available; the active provider is
+        # set by ``--db``. Skip when it is the in-memory provider, which does not
+        # enforce unique indexes (so the duplicate insert would not be rejected).
+        if type(test_domain.providers["default"]).__name__ == "MemoryProvider":
+            pytest.skip("unique index is enforced only by relational providers")
+
         _register(test_domain, idempotent=True)
         _create_tables(test_domain)
         repo = current_domain._get_processed_message_repo("default")

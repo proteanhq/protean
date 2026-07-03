@@ -79,6 +79,7 @@ class ProcessedMessageRepository(BaseRepository):
         """Whether ``handler`` has already processed ``message_id``."""
         rows = (
             self._dao.query.filter(message_id=message_id, handler=handler)
+            .limit(1)  # existence check — the pair is unique, one row suffices
             .all(with_total=False)
             .items
         )
@@ -89,7 +90,9 @@ class ProcessedMessageRepository(BaseRepository):
         self._dao.save(ProcessedMessage(message_id=message_id, handler=handler))
 
 
-def resolve_dispatch_context(instance: Any, handler_fn: Any, event: Any):
+def resolve_dispatch_context(
+    instance: Any, handler_fn: Any, event: Any
+) -> tuple[Any, str, str] | None:
     """Resolve consume-side idempotency for a handler invocation, or ``None``.
 
     Returns ``(repo, message_id, handler_id)`` when the handler opts in

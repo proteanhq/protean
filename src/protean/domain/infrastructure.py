@@ -143,14 +143,16 @@ class InfrastructureManager:
         return self.processed_message_repos[provider_name]
 
     def setup_database(self) -> None:
-        """Create all database tables (aggregates, entities, projections, outbox).
+        """Create all database tables (aggregates, entities, projections, outbox,
+        and the consume-side idempotency marker).
 
         Delegates to each managed provider's ``_create_database_artifacts()``
         which is idempotent — existing tables are left untouched.
         Providers with ``managed = false`` are skipped.
 
-        Forces outbox DAO initialization first so the outbox table definition
-        is registered in SQLAlchemy metadata before ``create_all()`` runs.
+        Forces the outbox and idempotency-marker DAOs first so their table
+        definitions are registered in SQLAlchemy metadata before ``create_all()``
+        runs.
         """
         # Force DAO creation for outbox repos so their tables are included
         for _provider_name, outbox_repo in self.outbox_repos.items():
