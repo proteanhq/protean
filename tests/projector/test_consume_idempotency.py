@@ -375,7 +375,9 @@ class TestMarkerCleanup:
         monkeypatch.setattr(repo._dao, "_delete_top", _spy)
 
         assert repo.cleanup_old_markers(retention_hours=168, batch_size=2) == 5
-        # 5 rows in batches of 2 → three passes (2, 2, 1), each capped at limit=2.
+        # 5 rows drained in three passes deleting (2, 2, 1) rows — bounded, not
+        # one big DELETE. ``calls`` records the ``limit`` argument each pass
+        # (always 2), so three calls means three bounded batches.
         assert calls == [2, 2, 2]
 
     def test_cleanup_helper_prunes_across_the_domain(self, test_domain):
