@@ -138,6 +138,28 @@ def _listen(
 
 
 @contextmanager
+def capture_queries(
+    engine: "Optional[Engine]" = None,
+) -> Iterator[List[Tuple[str, Any]]]:
+    """Capture ``(statement, parameters)`` for each query in the block.
+
+    Unlike the ``assert_*`` helpers, this makes no assertion of its own; it just
+    yields the captured statements so a test can make a custom assertion — e.g.
+    that a parent table's ``INSERT`` is emitted before a child table's. The list
+    is empty and nothing is observed when no SQLAlchemy engine is resolved (the
+    in-memory adapter or no domain bound), so callers must guard on it and mark
+    the test ``@pytest.mark.database`` (or a backend marker) to run it where the
+    assertion is meaningful.
+    """
+    resolved = _resolve_engine(engine)
+    captured: List[Tuple[str, Any]] = []
+    with _listen(
+        resolved, lambda statement, params: captured.append((statement, params))
+    ):
+        yield captured
+
+
+@contextmanager
 def assert_query_count(
     expected: int, engine: "Optional[Engine]" = None
 ) -> Iterator[List[str]]:

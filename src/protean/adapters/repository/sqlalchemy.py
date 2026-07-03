@@ -901,11 +901,18 @@ class SADAO(BaseDAO):
         """Flush buffered INSERT/UPDATE statements to the database within the
         current transaction, without committing.
 
-        SQLAlchemy batches writes until commit, so a DB-assigned
-        ``Auto(increment=True)`` primary key is not materialized until a flush
-        runs. Forcing a flush here lets the repository read the generated value
-        back onto the aggregate inside the transaction — under both a standalone
-        add and an add nested in an outer UnitOfWork.
+        SQLAlchemy batches writes until commit, which this method forces to
+        execute inside the current transaction for two reasons:
+
+        - Protean does not emit SQLAlchemy ``ForeignKey``/``relationship``
+          metadata for ``Reference`` fields, so the ORM's unit-of-work cannot
+          order parent-before-child inserts on its own. Flushing after a parent
+          is saved materializes its row so that immediate-FK databases (MSSQL,
+          MySQL/InnoDB) accept the dependent child inserts that follow.
+        - A DB-assigned ``Auto(increment=True)`` primary key is not materialized
+          until a flush runs. Forcing a flush lets the repository read the
+          generated value back onto the aggregate inside the transaction — under
+          both a standalone add and an add nested in an outer UnitOfWork.
         """
         self._get_session().flush()
 
