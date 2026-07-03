@@ -1,8 +1,9 @@
-# Each service image can be overridden to pull from this org's GHCR mirror
-# instead of upstream (see docs/community/contributing/testing.md for the exact
-# mirror refs — the mirror carries CI's tag set, which differs from the defaults
-# below). The defaults keep local `make up` on upstream registries, so no auth
-# or mirror access is required for day-to-day development.
+# The mirrored service images (Elasticsearch, Redis, Postgres, Message-DB,
+# MSSQL) can each be overridden to pull from this org's GHCR mirror instead of
+# upstream (see docs/community/contributing/testing.md for the exact mirror refs
+# — the mirror carries CI's tag set, which differs from the defaults below).
+# The defaults keep local `make up` on upstream registries, so no auth or mirror
+# access is required for day-to-day development. Kibana is not mirrored.
 services:
   elasticsearch:
     image: ${ELASTICSEARCH_IMAGE:-elasticsearch:8.7.0}
