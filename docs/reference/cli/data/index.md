@@ -7,3 +7,4 @@ Commands for managing databases, event stores, and data inspection.
 - [`protean snapshot`](./snapshot.md) — Manage aggregate snapshots
 - [`protean projection`](./projection.md) — Rebuild and manage projections
 - [`protean outbox`](./outbox.md) — Reconcile the outbox with the event store
+- [`protean idempotency`](./idempotency.md) — Prune consume-side idempotency markers

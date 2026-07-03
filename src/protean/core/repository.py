@@ -119,6 +119,30 @@ class BaseRepository(Element, OptionsMixin):
         # Fixate on Model class at the domain level because an explicit model may have been registered
         return self._provider.get_dao(self.meta_.part_of, self._database_model)  # type: ignore[return-value]
 
+    def _delete_in_batches(self, criteria: Q, batch_size: int) -> int:
+        """Delete all rows matching ``criteria`` in bounded batches of ``batch_size``.
+
+        Loops :meth:`BaseDAO._delete_top` until a batch deletes fewer than
+        ``batch_size`` rows (the matched set is drained), returning the total
+        deleted. When called outside a Unit of Work each batch commits before
+        the next begins, so a large backlog is cleared without one long-held
+        lock or an oversized transaction. Shared by the outbox and consume-side
+        idempotency cleanup paths.
+        """
+        # Guard the loop invariant: ``_delete_top(limit<=0)`` returns 0, and
+        # ``0 < batch_size`` is False for a non-positive batch_size, so the loop
+        # would never terminate. A user-facing ``--batch-size`` reaches here.
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+
+        total = 0
+        while True:
+            deleted = self._dao._delete_top(criteria, limit=batch_size)
+            total += deleted
+            if deleted < batch_size:
+                break
+        return total
+
     @property
     def query(self) -> "QuerySet":
         """Return a QuerySet for fluent filtering on the aggregate's data store.

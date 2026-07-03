@@ -363,6 +363,31 @@ version. This happens transparently, before the error reaches the
 subscription retry pipeline. By default, the framework retries up to 3
 times with 50 ms initial backoff (350 ms worst case).
 
+!!! warning "The retry budget scales with contention, not with load"
+    Under optimistic concurrency, only **one** writer can commit per version
+    of an aggregate. When `k` writers race the *same* aggregate at the *same*
+    moment, they serialise: the first commits immediately, the second needs one
+    retry, the third needs two, and the `k`-th may need up to `k-1` retries.
+    The retries a writer needs therefore scale with the number of **simultaneous
+    contenders on one aggregate**, not with overall throughput.
+
+    So the default of 3 is tuned for ordinary contention (a handful of writers
+    touching the same aggregate at once). It is deliberately *not* enough for a
+    **hot aggregate** (a flash-sale SKU, a shared counter, one very popular
+    account) where many writers converge on a single item. There, some writers
+    will exhaust the 3 retries and surface `ExpectedVersionError` even though the
+    operation would eventually have succeeded. Exponential backoff spreads
+    contenders out and usually keeps you well under the worst case, but it cannot
+    remove the fundamental one-winner-per-round limit.
+
+    Raising `max_retries` treats the symptom. The durable fix is to **remove the
+    hotspot**: serialise writes to the aggregate (single-writer / queue), split
+    it into [smaller aggregates](design-small-aggregates.md) so unrelated changes
+    stop colliding, or use an atomic conditional write for pure counters. Reach
+    for a higher retry budget only when a brief, bounded burst on one aggregate
+    is genuinely expected and unavoidable. Bounded retries are a feature: they
+    fail fast instead of livelocking under sustained contention.
+
 This auto-retry is the right behavior for **category 1** (last writer
 wins) conflicts. The handler re-reads the aggregate and reapplies the
 change -- which is safe because either value is acceptable. In many

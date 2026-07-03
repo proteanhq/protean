@@ -31,8 +31,8 @@ See ADR-0017.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Annotated, Any
+from datetime import datetime, timedelta, timezone
+from typing import Annotated, Any, Optional
 
 from pydantic import Field
 
@@ -42,6 +42,7 @@ from protean.core.repository import BaseRepository
 from protean.fields import Auto
 from protean.utils import fqn
 from protean.utils.globals import current_domain
+from protean.utils.query import Q
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,23 @@ class ProcessedMessageRepository(BaseRepository):
         """Record that ``handler`` has processed ``message_id`` (in the active UoW)."""
         self._dao.save(ProcessedMessage(message_id=message_id, handler=handler))
 
+    def cleanup_old_markers(self, retention_hours: int, batch_size: int) -> int:
+        """Delete markers older than ``retention_hours``, in bounded batches.
+
+        A marker is only useful while its event can still be redelivered, so
+        markers older than the redelivery/recovery window are safe to prune.
+        Delegates to :meth:`BaseRepository._delete_in_batches` so a large backlog
+        clears without one long-held lock. Returns the number of markers deleted.
+        """
+        # A negative window puts the threshold in the future, which would delete
+        # every marker (including just-written ones) and reopen the double-apply
+        # window — reject it rather than silently wiping the table.
+        if retention_hours < 0:
+            raise ValueError("retention_hours cannot be negative")
+
+        threshold = datetime.now(timezone.utc) - timedelta(hours=retention_hours)
+        return self._delete_in_batches(Q(processed_at__lt=threshold), batch_size)
+
 
 def resolve_dispatch_context(
     instance: Any, handler_fn: Any, event: Any
@@ -131,3 +149,36 @@ def resolve_dispatch_context(
         return None
 
     return repo, message_id, fqn(handler_fn)
+
+
+def cleanup_processed_messages(
+    domain: Any,
+    retention_hours: Optional[int] = None,
+    batch_size: Optional[int] = None,
+) -> int:
+    """Prune consume-side idempotency markers older than the retention window.
+
+    Deletes markers older than ``retention_hours`` across every managed provider
+    that has a marker table, in bounded batches, and returns the total deleted.
+    Defaults come from ``[consume_idempotency.cleanup]`` (7 days / 5000 rows).
+    Intended to be run periodically (e.g. ``protean idempotency cleanup`` from a
+    cron job). A no-op when no projector opts into idempotency.
+    """
+    if not getattr(domain, "has_idempotent_consumers", False):
+        return 0
+
+    cleanup_config = domain.config.get("consume_idempotency", {}).get("cleanup", {})
+    hours = (
+        retention_hours
+        if retention_hours is not None
+        else cleanup_config.get("retention_hours", 168)
+    )
+    size = (
+        batch_size if batch_size is not None else cleanup_config.get("batch_size", 5000)
+    )
+
+    with domain.domain_context():
+        return sum(
+            repo.cleanup_old_markers(hours, batch_size=size)
+            for repo in domain._infrastructure.processed_message_repos.values()
+        )
