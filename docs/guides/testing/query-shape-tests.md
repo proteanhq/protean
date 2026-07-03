@@ -11,13 +11,15 @@ stalled one.
 
 Protean ships three pytest context managers that assert query *shape* and
 *round-trip count*, so a cost regression fails at PR time instead of in
-production:
+production. A fourth, `capture_queries`, yields the raw statements for custom
+assertions the three do not cover (such as INSERT ordering):
 
 ```python
 from protean.integrations.pytest import (
     assert_query_count,
     assert_no_subquery_wrap,
     assert_no_overfetch,
+    capture_queries,
 )
 ```
 
@@ -84,6 +86,39 @@ def test_poll_does_not_overfetch(outbox_repo, seeded_outbox):
 A `LIMIT 10` passes (`10 <= 10 * 1.5`); a `min(limit * 3, 1000)` over-fetch that
 emits `LIMIT 30` fails. Widen `ratio` when a path legitimately reads a small
 multiple of what it returns.
+
+## `capture_queries`
+
+When the three assertions above do not fit, `capture_queries` yields the raw
+statements a block issues so you can write a custom assertion. It powers, for
+example, an insert-ordering check that a parent row is written before its
+children:
+
+```python
+import re
+import pytest
+from protean.integrations.pytest import capture_queries
+
+
+@pytest.mark.database
+def test_parent_inserted_before_children(order_repo, order):
+    with capture_queries() as captured:
+        order_repo.add(order)
+
+    tables = [
+        re.search(r"INSERT INTO (\w+)", statement, re.IGNORECASE).group(1).lower()
+        for statement, _params in captured
+        if statement.lstrip().upper().startswith("INSERT")
+    ]
+    assert tables, "no INSERTs captured; the hook did not fire"
+    assert tables.index("order") < tables.index("order_item")
+```
+
+`capture_queries` yields a list of `(statement, parameters)` tuples. Like the
+assertions above it is a no-op on the in-memory adapter, where there is no engine
+to observe, so the list is empty. Guard on that: on a real backend an empty
+capture means the hook never fired, so assert the list is non-empty before
+trusting an ordering check.
 
 ## Engine resolution
 

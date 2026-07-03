@@ -124,12 +124,17 @@ def _inserted_tables(captured):
 def _assert_top_down(captured, *expected):
     """Assert each parent table's INSERT precedes its child's.
 
-    A no-op when no INSERTs were captured — ``capture_queries`` observes nothing
-    on the in-memory backend — so the assertion is meaningful only against a real
-    SQL backend (hence ``@pytest.mark.database``).
+    On the in-memory backend there is no engine for ``capture_queries`` to hook,
+    so nothing is captured and the check is skipped. On a real SQL backend an
+    empty capture means the ``before_cursor_execute`` hook never fired: that is a
+    broken test, so fail loudly instead of passing silently.
     """
     tables = _inserted_tables(captured)
     if not tables:
+        engine = getattr(current_domain.providers["default"], "_engine", None)
+        assert engine is None, (
+            "no INSERTs captured on a SQL backend; capture_queries hook did not fire"
+        )
         return
     positions = []
     for table in expected:
