@@ -28,20 +28,9 @@ jobs:
       PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ (matrix.python-version == '3.13' || matrix.python-version == '3.14') && '1' || '' }}
 
     steps:
-      - name: Log in to Docker Hub
-        # Repository secrets are not exposed to workflows from forked PRs, so
-        # the login cannot run there. Skip it for forks (the service images
-        # still pull anonymously) and never let an absent/failed login abort
-        # the job — otherwise every fork PR's tests are skipped. The login only
-        # exists to avoid Docker Hub's anonymous pull rate limit on same-repo
-        # runs.
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        continue-on-error: true
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+      # Service images are pulled from this org's public GHCR mirror (populated
+      # by mirror-images.yml), not Docker Hub. Public GHCR packages need no auth,
+      # so there is no login step and fork PRs pull them with zero secrets.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -51,16 +40,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/docker-images
-          key: docker-images-${{ runner.os }}-v2
+          key: docker-images-${{ runner.os }}-v3
 
       - name: Load or pull Docker images
         run: |
           IMAGES=(
-            "postgres:16"
-            "redis:7"
-            "elasticsearch:8.7.0"
-            "ethangarofolo/message-db:1.2.6"
-            "mcr.microsoft.com/mssql/server:2022-latest"
+            "ghcr.io/proteanhq/mirror/postgres:16"
+            "ghcr.io/proteanhq/mirror/redis:7"
+            "ghcr.io/proteanhq/mirror/elasticsearch:8.7.0"
+            "ghcr.io/proteanhq/mirror/message-db:1.2.6"
+            "ghcr.io/proteanhq/mirror/mssql-server:2022-latest"
           )
 
           if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ]; then
@@ -108,21 +97,21 @@ jobs:
           docker run -d --name postgres \
             -p 55432:5432 \
             -e POSTGRES_PASSWORD=postgres \
-            postgres:16
+            ghcr.io/proteanhq/mirror/postgres:16
 
           docker run -d --name redis \
             -p 56379:6379 \
-            redis:7
+            ghcr.io/proteanhq/mirror/redis:7
 
           docker run -d --name message-db \
             -p 55433:5432 \
-            ethangarofolo/message-db:1.2.6
+            ghcr.io/proteanhq/mirror/message-db:1.2.6
 
           docker run -d --name mssql \
             -p 51433:1433 \
             -e ACCEPT_EULA=Y \
             -e "SA_PASSWORD=Protean123!" \
-            mcr.microsoft.com/mssql/server:2022-latest
+            ghcr.io/proteanhq/mirror/mssql-server:2022-latest
 
           docker run -d --name elasticsearch \
             -p 59200:9200 \
@@ -130,7 +119,7 @@ jobs:
             -e "discovery.type=single-node" \
             -e "xpack.security.enabled=false" \
             -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
-            elasticsearch:8.7.0
+            ghcr.io/proteanhq/mirror/elasticsearch:8.7.0
 
       - name: Wait for services
         run: |

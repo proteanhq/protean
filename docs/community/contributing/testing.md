@@ -76,19 +76,19 @@ Protean uses Docker Compose to provide a consistent development and testing envi
 ```yaml
 services:
   elasticsearch:
-    image: elasticsearch:8.7.0
+    image: ${ELASTICSEARCH_IMAGE:-elasticsearch:8.7.0}
     # configuration...
 
   redis:
-    image: redis:7.0.11
+    image: ${REDIS_IMAGE:-redis:7.0.11}
     # configuration...
 
   postgres:
-    image: postgres:15.2
+    image: ${POSTGRES_IMAGE:-postgres:15.2}
     # configuration...
 
   message-db:
-    image: ethangarofolo/message-db:1.2.6
+    image: ${MESSAGE_DB_IMAGE:-ethangarofolo/message-db:1.3.1}
     # configuration...
 
   ...
@@ -110,6 +110,35 @@ make up
 Refer to `Makefile` for a full list of supported `make` commands.
 
 These containers are also used in CI pipelines to ensure consistent testing across environments.
+
+### Service image mirror (GHCR)
+
+CI does not pull these images from Docker Hub. Instead it pulls them from a
+public mirror in this org's GitHub Container Registry (GHCR), at
+`ghcr.io/proteanhq/mirror/<image>`. This avoids Docker Hub's anonymous pull
+rate limit on shared CI runners and lets pull requests from forks run the full
+suite with no secrets, since public GHCR packages are readable with a fork's
+`GITHUB_TOKEN`. The `.github/workflows/mirror-images.yml` workflow refreshes the
+mirror weekly (and on demand via **Run workflow**).
+
+Local `make up` still pulls from upstream registries by default, so no mirror
+access is needed for day-to-day development. To point a service at the mirror
+instead, override its image via an environment variable before `make up`:
+
+```shell
+POSTGRES_IMAGE=ghcr.io/proteanhq/mirror/postgres:16 make up
+```
+
+The mirror carries the tags CI uses (which differ from the compose defaults), so
+use these exact refs when overriding:
+
+| Override variable | Mirror ref |
+|-------------------|------------|
+| `ELASTICSEARCH_IMAGE` | `ghcr.io/proteanhq/mirror/elasticsearch:8.7.0` |
+| `REDIS_IMAGE` | `ghcr.io/proteanhq/mirror/redis:7` |
+| `POSTGRES_IMAGE` | `ghcr.io/proteanhq/mirror/postgres:16` |
+| `MESSAGE_DB_IMAGE` | `ghcr.io/proteanhq/mirror/message-db:1.2.6` |
+| `MSSQL_IMAGE` | `ghcr.io/proteanhq/mirror/mssql-server:2022-latest` |
 
 ## Tests Organization
 
