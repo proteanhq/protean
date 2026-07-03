@@ -360,13 +360,24 @@ class DictDAO(BaseDAO):
         and ``_claim``/``update_all``, which delegate to it) are not covered,
         matching their role as low-level escape hatches.
 
-        NULLs are treated as distinct, matching PostgreSQL/SQLite semantics: a
-        unique index over an indexed value that is ``None`` never collides. The
+        Partial unique indexes (``Index(..., unique=True, where=...)``) are
+        advisory here and left unenforced, mirroring how the memory provider
+        treats ``where`` elsewhere. NULLs are treated as distinct, matching
+        PostgreSQL/SQLite semantics: a unique index over an indexed value that
+        is ``None`` never collides. The
         record being written (``identifier``) is excluded so re-saving an
         unchanged row does not conflict with itself.
         """
         for index in getattr(self.entity_cls.meta_, "indexes", ()) or ():
             if not isinstance(index, Index) or not index.unique:
+                continue
+
+            # Partial (predicate) indexes are advisory in memory. Enforcing a
+            # partial unique index globally would reject rows that are valid on
+            # PostgreSQL/SQLite, where the `where` predicate excludes them from
+            # the constraint. `where` is documented as advisory for the memory
+            # provider, so skip enforcement rather than over-enforce.
+            if index.where is not None:
                 continue
 
             keys = [self._storage_key(f) for f in index.fields]

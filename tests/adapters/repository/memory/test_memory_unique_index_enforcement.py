@@ -115,6 +115,30 @@ def test_non_unique_index_is_not_enforced(test_domain):
     assert dao.query.all().total == 2
 
 
+def test_partial_unique_index_is_not_enforced(test_domain):
+    """A partial (`where=`) unique index is advisory on the memory provider.
+
+    Enforcing it globally would reject rows that a SQL backend accepts because
+    the predicate excludes them from the constraint.
+    """
+
+    @test_domain.aggregate(
+        indexes=[Index("email", unique=True, where=Q(("status", "active")))]
+    )
+    class Account(BaseAggregate):
+        email = String(max_length=100)
+        status = String(max_length=10)
+
+    test_domain.init(traverse=False)
+    dao = test_domain.repository_for(Account)._dao
+
+    dao.save(Account(email="a@example.com", status="active"))
+    # A global duplicate is accepted: the partial index is not enforced.
+    dao.save(Account(email="a@example.com", status="inactive"))
+
+    assert dao.query.all().total == 2
+
+
 def test_update_to_colliding_value_is_rejected(test_domain):
     @test_domain.aggregate(indexes=[Index("email", unique=True)])
     class Account(BaseAggregate):
