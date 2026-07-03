@@ -172,6 +172,46 @@ class UserProfileProjector:
         repository.add(profile)
 ```
 
+## Transient-failure retries
+
+A projector can retry a handler method *in place* when it fails with a
+transient exception, before the message is ever re-delivered or routed to the
+DLQ. Set `retries` (and optionally `backoff` / `retry_exceptions`) on the
+projector, exactly as on [event handlers](event-handlers.md#transient-failure-retries):
+
+```python
+@domain.projector(
+    projector_for=LowStockReport,
+    aggregates=[InventoryItem],
+    retries=8,
+    backoff="exponential",
+    retry_exceptions=["protean.exceptions.TransactionError"],
+)
+class LowStockReportProjector:
+    @on(StockDepleted)
+    def on_stock_depleted(self, event: StockDepleted):
+        ...
+```
+
+Each attempt runs in a fresh Unit of Work, so a partial read-model write from a
+failed attempt is rolled back before the next one begins. This is the natural
+fix for a concurrency race where a level-triggered event is delivered twice and
+both runs take the create path for the same read-model key: the loser hits a
+primary-key conflict (a `TransactionError`, which the version/OCC retry does
+*not* cover). Adding `TransactionError` to `retry_exceptions` lets the losing
+run retry instead of aborting the command under `event_processing=sync`.
+
+The retry re-runs the *same* handler, so convergence is only automatic if the
+handler re-checks existence each time — write it as an idempotent upsert
+(get-or-create, as under [Idempotency](#idempotency) above) rather than an
+unconditional `repo.add(...)`. On the retry the winning run's record is now
+visible, so the handler takes the update path and commits cleanly.
+
+The behaviour is identical to event and command handlers: it is opt-in and
+disabled unless `retries` is set or `server.transient_retry` is enabled. See
+[`server.transient_retry`](../../reference/configuration/index.md) for
+domain-wide defaults.
+
 ## Event Ordering
 
 Be aware that events may not always arrive in the expected order. Design
