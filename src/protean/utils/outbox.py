@@ -777,25 +777,6 @@ class OutboxRepository(BaseRepository):
             .get("batch_size", 5000)
         )
 
-    def _delete_in_batches(self, criteria: Q, batch_size: Optional[int]) -> int:
-        """Delete all rows matching ``criteria`` in bounded batches.
-
-        Loops :meth:`BaseDAO._delete_top` until a batch deletes fewer than
-        ``batch_size`` rows (the table is drained). When called outside a Unit
-        of Work each batch commits before the next begins, so a large backlog
-        is cleared without one long-held lock or an oversized transaction.
-        """
-        if batch_size is None:
-            batch_size = self._cleanup_batch_size()
-
-        total = 0
-        while True:
-            deleted = self._dao._delete_top(criteria, limit=batch_size)
-            total += deleted
-            if deleted < batch_size:
-                break
-        return total
-
     def cleanup_old_published(
         self, older_than_hours: int = 168, batch_size: Optional[int] = None
     ) -> int:
@@ -813,7 +794,7 @@ class OutboxRepository(BaseRepository):
 
         return self._delete_in_batches(
             Q(status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time),
-            batch_size,
+            batch_size if batch_size is not None else self._cleanup_batch_size(),
         )
 
     def cleanup_old_abandoned(
@@ -839,7 +820,7 @@ class OutboxRepository(BaseRepository):
                 status=OutboxStatus.ABANDONED.value,
                 last_processed_at__lt=threshold_time,
             ),
-            batch_size,
+            batch_size if batch_size is not None else self._cleanup_batch_size(),
         )
 
     def cleanup_old_messages(

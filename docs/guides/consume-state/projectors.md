@@ -220,10 +220,12 @@ Keep three boundaries in mind:
   marker table appears only once a projector sets `idempotent=True`; run
   `protean db setup` (or your migration tool) before deploying, or the first
   delivery fails querying a missing table.
-- **Markers accumulate.** One row is written per `(message_id, handler)` with no
-  automatic cleanup today; prune markers older than your redelivery/recovery
-  window. Renaming a projector method changes its `handler` identity, orphaning
-  its old markers.
+- **Markers accumulate.** One row is written per `(message_id, handler)`. Prune
+  markers older than your redelivery/recovery window by running `protean
+  idempotency cleanup` periodically (from cron); the retention window and batch
+  size come from `[consume_idempotency.cleanup]` (default 7 days / 5000 rows).
+  Renaming a projector method changes its `handler` identity, orphaning its old
+  markers, which the same cleanup eventually removes.
 
 ## Event Ordering
 

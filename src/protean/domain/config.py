@@ -181,6 +181,14 @@ def _default_config():
             "ttl": 86400,  # Default TTL for success entries: 24 hours (in seconds)
             "error_ttl": 60,  # TTL for error entries: 60 seconds
         },
+        # Consume-side idempotency for projectors (the ProcessedMessage marker,
+        # distinct from the command idempotency store above). See ADR-0017.
+        "consume_idempotency": {
+            "cleanup": {
+                "retention_hours": 168,  # 7 days — prune markers older than this
+                "batch_size": 5000,  # Rows deleted per bounded cleanup batch
+            },
+        },
         "logging": {
             "level": "",  # empty = use environment-based default (_ENV_LEVEL_MAP)
             "format": "auto",  # auto | console | json

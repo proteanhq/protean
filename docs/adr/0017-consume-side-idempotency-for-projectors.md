@@ -87,13 +87,18 @@ Negative / boundaries (documented, not hidden):
   at-least-once contract, but one delivery reports an error.
 - **Throughput cost** on opt-in projectors: one extra indexed read + write per
   processed message.
-- **Unbounded marker growth.** The marker table gains one row per
-  ``(message_id, handler)`` forever; unlike the outbox it has no cleanup/TTL
-  today, and `is_processed` reads it on every delivery. Operators should prune
-  markers older than their redelivery/recovery window (retention is tracked as a
-  follow-up). Note also that `handler` is `module.Class.method`: renaming a
-  projector method orphans its old markers and opens a brief double-apply window
-  for in-flight redeliveries across that deploy.
+- **Marker growth is bounded by retention, not automatic.** The marker table
+  gains one row per ``(message_id, handler)``, and `is_processed` reads it on
+  every delivery. `protean idempotency cleanup` prunes markers older than
+  ``[consume_idempotency.cleanup].retention_hours`` (default 7 days) in bounded
+  batches; operators run it periodically (e.g. cron). It is not auto-scheduled
+  today; wiring it into an Engine maintenance tick (as ``DLQMaintenanceTask``
+  does for the DLQ) is a possible future enhancement. A marker is only useful
+  while its event can still be redelivered, so pruning past that window is safe.
+  Note also that
+  `handler` is `module.Class.method`: renaming a projector method orphans its old
+  markers (the cleanup eventually removes them) and opens a brief double-apply
+  window for in-flight redeliveries across that deploy.
 - This does not make Protean exactly-once across stores; it is exactly-once only
   *within one transactional provider*.
 

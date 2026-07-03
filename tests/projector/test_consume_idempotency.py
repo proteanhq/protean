@@ -6,6 +6,7 @@ Event delivery is at-least-once. A non-idempotent accumulating projector
 UnitOfWork as its read-model write, so a redelivery is skipped.
 """
 
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -17,6 +18,10 @@ from protean.core.projector import BaseProjector, on
 from protean.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.fields import Identifier, Integer, String
 from protean.utils import fqn
+from protean.utils.consume_idempotency import (
+    ProcessedMessage,
+    cleanup_processed_messages,
+)
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -251,6 +256,17 @@ class TestConsumeIdempotencyRelational:
         stats = current_domain.repository_for(ProductStats).get(product_id)
         assert stats.total_reviews == 1
 
+    def test_cleanup_prunes_old_markers_on_a_relational_provider(self, test_domain):
+        _register(test_domain, idempotent=True)
+        _create_tables(test_domain)
+        repo = current_domain._get_processed_message_repo("default")
+        _old_marker(repo, "old", hours_ago=200)
+        repo.mark("recent", "h")
+
+        assert repo.cleanup_old_markers(retention_hours=168, batch_size=5000) == 1
+        assert not repo.is_processed("old", "h")
+        assert repo.is_processed("recent", "h")
+
     @pytest.mark.sqlite
     def test_duplicate_marker_is_rejected_by_unique_index(self, test_domain):
         """The composite (message_id, handler) unique index is the concurrency
@@ -313,3 +329,89 @@ class TestConsumeIdempotencyRelational:
 
         stats = current_domain.repository_for(ProductStats).get(product_id)
         assert stats.total_reviews == 1
+
+
+def _old_marker(repo, message_id, handler="h", hours_ago=200):
+    """Write a marker with a backdated processed_at."""
+    repo._dao.save(
+        ProcessedMessage(
+            message_id=message_id,
+            handler=handler,
+            processed_at=datetime.now(timezone.utc) - timedelta(hours=hours_ago),
+        )
+    )
+
+
+class TestMarkerCleanup:
+    """Retention/cleanup for the ProcessedMessage marker (issue #1068)."""
+
+    def test_cleanup_deletes_markers_older_than_retention(self, test_domain):
+        _register(test_domain, idempotent=True)
+        repo = current_domain._get_processed_message_repo("default")
+        _old_marker(repo, "old", hours_ago=200)  # > 7 days
+        repo.mark("recent", "h")  # processed_at = now
+
+        deleted = repo.cleanup_old_markers(retention_hours=168, batch_size=5000)
+
+        assert deleted == 1
+        assert not repo.is_processed("old", "h")  # pruned
+        assert repo.is_processed("recent", "h")  # within window, kept
+
+    def test_cleanup_deletes_in_bounded_batches(self, test_domain, monkeypatch):
+        _register(test_domain, idempotent=True)
+        repo = current_domain._get_processed_message_repo("default")
+        for i in range(5):
+            _old_marker(repo, f"m{i}", hours_ago=200)
+
+        # Spy on the batched delete so we can prove batching, not just totals:
+        # an unbatched single DELETE would also delete all 5.
+        calls: list[int] = []
+        original = repo._dao._delete_top
+
+        def _spy(criteria, limit):
+            calls.append(limit)
+            return original(criteria, limit)
+
+        monkeypatch.setattr(repo._dao, "_delete_top", _spy)
+
+        assert repo.cleanup_old_markers(retention_hours=168, batch_size=2) == 5
+        # 5 rows in batches of 2 → three passes (2, 2, 1), each capped at limit=2.
+        assert calls == [2, 2, 2]
+
+    def test_cleanup_helper_prunes_across_the_domain(self, test_domain):
+        _register(test_domain, idempotent=True)
+        repo = current_domain._get_processed_message_repo("default")
+        _old_marker(repo, "old", hours_ago=200)
+        repo.mark("recent", "h")
+
+        assert cleanup_processed_messages(test_domain, retention_hours=168) == 1
+        assert repo.is_processed("recent", "h")
+
+    def test_cleanup_helper_uses_config_retention_default(self, test_domain):
+        """With no explicit retention, the helper reads
+        ``[consume_idempotency.cleanup].retention_hours`` (168h) and prunes."""
+        _register(test_domain, idempotent=True)
+        repo = current_domain._get_processed_message_repo("default")
+        _old_marker(repo, "old", hours_ago=200)  # older than the 168h default
+        repo.mark("recent", "h")
+
+        assert cleanup_processed_messages(test_domain) == 1  # no retention_hours arg
+        assert not repo.is_processed("old", "h")
+        assert repo.is_processed("recent", "h")
+
+    def test_cleanup_rejects_non_positive_batch_size(self, test_domain):
+        _register(test_domain, idempotent=True)
+        repo = current_domain._get_processed_message_repo("default")
+        with pytest.raises(ValueError, match="batch_size"):
+            repo.cleanup_old_markers(retention_hours=168, batch_size=0)
+
+    def test_cleanup_rejects_negative_retention(self, test_domain):
+        _register(test_domain, idempotent=True)
+        repo = current_domain._get_processed_message_repo("default")
+        with pytest.raises(ValueError, match="retention_hours"):
+            repo.cleanup_old_markers(retention_hours=-1, batch_size=5000)
+
+    def test_cleanup_helper_is_noop_without_idempotent_consumers(self, test_domain):
+        # No projector opted in → no marker table, nothing to clean.
+        assert current_domain.has_idempotent_consumers is False
+        assert cleanup_processed_messages(test_domain) == 0
