@@ -8,6 +8,7 @@ from protean.core.event import BaseEvent
 from protean.domain import Domain
 from protean.fields import Identifier, Integer
 from protean.utils.outbox import reconcile_outbox
+from tests.shared import MESSAGE_DB_URI
 
 
 class Account(BaseAggregate):
@@ -19,13 +20,15 @@ class Deposited(BaseEvent):
     amount = Integer(required=True)
 
 
-def _make_domain(tmp_path):
+def _make_domain(tmp_path, event_store=None):
     db_path = tmp_path / "reconcile.db"
     domain = Domain(name="Reconcile")
     domain.config["databases"]["default"] = {
         "provider": "sqlite",
         "database_uri": f"sqlite:///{db_path}",
     }
+    if event_store is not None:
+        domain.config["event_store"] = event_store
     domain.config["enable_outbox"] = True
     domain.config["server"] = {"default_subscription_type": "stream"}
     domain.register(Account)
@@ -108,4 +111,45 @@ class TestOutboxReconciliation:
 
         engine = Engine(domain, test_mode=True)
         assert engine._reconcile_outbox_on_startup() == 1
+        assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
+
+
+@pytest.mark.message_db
+@pytest.mark.no_test_domain
+class TestOutboxReconciliationOnMessageDB:
+    """#1073: reconcile_outbox was a permanent no-op on Message-DB because
+    ``read_last_message("$all")`` returned None. It must now recover the crash
+    window end-to-end against a real Message-DB event store."""
+
+    @pytest.fixture
+    def domain_and_repo(self, tmp_path):
+        domain = _make_domain(
+            tmp_path,
+            event_store={"provider": "message_db", "database_uri": MESSAGE_DB_URI},
+        )
+        with domain.domain_context():
+            # Isolate from other Message-DB tests sharing this database: reconcile
+            # reads the global "$all" tail, so stray messages would skew it.
+            domain.event_store.store._data_reset()
+            provider = domain.providers["default"]
+            domain.repository_for(Account)._dao
+            domain._get_outbox_repo("default")._dao
+            provider._metadata.create_all(provider._engine)
+            yield domain, domain._get_outbox_repo("default")
+            # Leave the shared Message-DB clean for the next test: the "$all"
+            # tail read makes this class ordering-sensitive.
+            domain.event_store.store._data_reset()
+
+    def test_reconcile_recreates_missing_row_from_message_db(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        _deposit(domain)
+        # _newest_message_id reads read_last_message("$all") — the fixed path.
+        message_id = _newest_message_id(domain)
+        assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
+
+        outbox_repo._dao._delete_all()  # simulate the crash window
+        assert outbox_repo.find_all_by_message_id(message_id) == []
+
+        # Before the fix this returned 0 (read_last_message("$all") was None).
+        assert reconcile_outbox(domain) == 1
         assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
