@@ -11,8 +11,9 @@ import pytest
 
 from protean import Index
 from protean.core.aggregate import BaseAggregate
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import Integer, String
+from protean.fields import Integer, String, ValueObject
 from protean.utils.query import Q
 
 
@@ -163,6 +164,36 @@ def test_unique_index_resolves_referenced_as_attribute(test_domain):
     # collision when the index declares the field name "email".
     with pytest.raises(ValidationError):
         dao.save(Account(email="a@example.com"))
+
+
+def test_composite_unique_index_over_value_object_attributes(test_domain):
+    """Index fields that are value-object shadow attributes resolve correctly.
+
+    The declared index names the stored attributes (`balance_currency`,
+    `balance_amount`), which are not in `fields()` — exercising the
+    `_storage_key` attribute-name fallback.
+    """
+
+    @test_domain.value_object
+    class Balance(BaseValueObject):
+        currency = String(max_length=3)
+        amount = Integer()
+
+    @test_domain.aggregate(
+        indexes=[Index("balance_currency", "balance_amount", unique=True)]
+    )
+    class Account(BaseAggregate):
+        balance = ValueObject(Balance)
+
+    test_domain.init(traverse=False)
+    dao = test_domain.repository_for(Account)._dao
+
+    dao.save(Account(balance=Balance(currency="USD", amount=100)))
+    # A different amount is a distinct composite tuple.
+    dao.save(Account(balance=Balance(currency="USD", amount=200)))
+
+    with pytest.raises(ValidationError):
+        dao.save(Account(balance=Balance(currency="USD", amount=100)))
 
 
 def test_raw_index_is_skipped(test_domain):
