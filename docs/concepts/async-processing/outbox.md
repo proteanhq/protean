@@ -86,6 +86,26 @@ See the [Outbox Guide](../../guides/server/outbox.md) for enabling the
 outbox, creating the table, configuring retries and cleanup, and
 investigating abandoned messages.
 
+### The event store is the durable anchor
+
+Step 1 hides one more ordering detail. A unit of work makes two durable
+writes to two independent datastores — the event store and the relational
+database — and no transaction spans both. Protean appends events to the
+**event store first**, and only then commits the relational transaction that
+carries aggregate state and the outbox rows. The event store, the source of
+truth for event-sourced replay, is the durable anchor.
+
+This ordering trades an unrecoverable failure for a recoverable one. If the
+process dies between the two writes, the events are durable in the store while
+their outbox rows never committed — the events exist but would never publish.
+That gap is closed by **reconciliation**, which re-derives the missing outbox
+rows from the event store, and runs both automatically on server startup and
+on demand via `protean outbox reconcile`. The full rationale — and why this was
+chosen over two-phase commit — is in
+[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md); the
+operational walkthrough is in
+[Recover from a crash](../../guides/server/outbox.md#recover-from-a-crash-reconciliation).
+
 ## External Dispatch for Published Events
 
 Events marked with `published=True` can be delivered to external brokers —

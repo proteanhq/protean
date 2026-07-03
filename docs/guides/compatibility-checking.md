@@ -17,14 +17,19 @@ baseline that changes are compared against. The easiest way to create it
 is with the pre-commit hook's `--fix` flag (see [Step 3](#step-3-add-pre-commit-hooks)),
 which auto-creates the directory and generates the IR on every commit.
 
-To generate the baseline manually:
+To generate the baseline manually, use `--canonical` so the snapshot omits
+the volatile `generated_at` timestamp:
 
 ```bash
-protean ir show --domain myapp.domain > .protean/ir.json
+protean ir show --domain myapp.domain --canonical > .protean/ir.json
 ```
 
 Commit `.protean/ir.json` to version control. It serves as the baseline for
-detecting changes between releases.
+detecting changes between releases. Because a canonical baseline excludes the
+materialization timestamp, regenerating it produces a git diff **only** when
+the domain contract actually changes -- keeping baseline diffs reviewable
+instead of drowning in per-file timestamp churn. The `--fix` staleness hook
+writes the same canonical output.
 
 ### Multi-domain projects
 

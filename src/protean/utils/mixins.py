@@ -16,6 +16,7 @@ from protean.exceptions import (
     SendError,
 )
 from protean.utils import DomainObjects
+from protean.utils.consume_idempotency import resolve_dispatch_context
 from protean.utils.eventing import Message
 from protean.utils.globals import current_domain, g
 from protean.utils.logging import access_log_handler
@@ -351,17 +352,33 @@ class handle:
                 transient_cfg["exceptions"] if transient_max > 0 else ()
             )
 
+            # Consume-side idempotency (opt-in). When active, each attempt checks
+            # a (message_id, handler) marker before running and writes it after,
+            # inside the SAME UnitOfWork as the handler's read-model write — so a
+            # redelivered event is applied exactly once on a transactional
+            # provider. Resolved once; the marker read/write happen per attempt.
+            idempotency = resolve_dispatch_context(instance, fn, target_obj)
+
+            def _invoke():
+                with UnitOfWork():
+                    if idempotency is not None:
+                        repo, message_id, handler_id = idempotency
+                        if repo.is_processed(message_id, handler_id):
+                            return None  # redelivery — already applied, skip
+                        result = fn(instance, target_obj)
+                        repo.mark(message_id, handler_id)
+                        return result
+                    return fn(instance, target_obj)
+
             # Fast path: neither policy active — run once without a retry loop.
             if version_max == 0 and transient_max == 0:
-                with UnitOfWork():
-                    return fn(instance, target_obj)
+                return _invoke()
 
             version_attempt = 0
             transient_attempt = 0
             while True:
                 try:
-                    with UnitOfWork():
-                        return fn(instance, target_obj)
+                    return _invoke()
                 except ExpectedVersionError:
                     if version_attempt >= version_max:
                         raise

@@ -1084,6 +1084,32 @@ class Engine:
         finally:
             self.loop.stop()
 
+    def _reconcile_outbox_on_startup(self) -> int:
+        """Recover the ADR-0015 crash window on startup: create outbox rows for
+        events that are durable in the event store but whose relational outbox
+        commit did not land, so a crash cannot leave events permanently
+        unpublished. Returns the number of rows repaired.
+
+        Cheap when there is nothing to repair (a single lookup on the newest
+        event). A failure here must never block the engine from starting. With
+        ``server --workers N`` it runs once per worker; the reconcile is
+        idempotent (the ``(message_id, target_broker)`` unique index rejects
+        duplicate rows), so a race between workers is safe. A single-flight guard
+        is a possible future refinement.
+        """
+        if not self.domain.has_outbox:
+            return 0
+        try:
+            from protean.utils.outbox import reconcile_outbox  # noqa: PLC0415
+
+            repaired = reconcile_outbox(self.domain)
+            if repaired:
+                logger.info("engine.outbox_reconciled", extra={"rows": repaired})
+            return repaired
+        except Exception:  # pragma: no cover - never block startup
+            logger.warning("engine.outbox_reconcile_failed", exc_info=True)
+            return 0
+
     def run(self) -> None:
         """
         Start the Protean Engine and run all registered subscriptions.
@@ -1136,6 +1162,9 @@ class Engine:
                 )
 
         self.loop.set_exception_handler(handle_exception)
+
+        # One-time outbox reconciliation sweep on startup (ADR-0015).
+        self._reconcile_outbox_on_startup()
 
         if (
             len(self._subscriptions) == 0

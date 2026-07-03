@@ -13,6 +13,7 @@ from protean.utils import Processing
 from protean.utils.globals import _uow_context_stack, current_domain, g
 from protean.utils.processing import current_priority
 from protean.utils.reflection import id_field
+from protean.utils.sync_dispatch import dispatch_events_sync
 from protean.utils.telemetry import get_domain_metrics, set_span_error
 
 logger = logging.getLogger(__name__)
@@ -151,7 +152,10 @@ class UnitOfWork:
 
     def _do_commit(self, span: Any) -> None:  # noqa: C901
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
-        from protean.utils.outbox import Outbox  # noqa: PLC0415
+        from protean.utils.outbox import (  # noqa: PLC0415
+            DEFAULT_TARGET_BROKER,
+            Outbox,
+        )
 
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
@@ -203,7 +207,7 @@ class UnitOfWork:
         # INSERT, so one is lazily initialised here when missing.
         if self.domain.has_outbox:
             outbox_config = self.domain.config.get("outbox", {})
-            internal_broker = outbox_config.get("broker", "default")
+            internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
             external_brokers: list[str] = outbox_config.get("external_brokers", [])
             # Always tag the internal row with the configured internal broker.
             # The composite (message_id, target_broker) unique index relies on
@@ -269,21 +273,38 @@ class UnitOfWork:
         # Record final session count after all lazy sessions have been initialised
         span.set_attribute("protean.uow.session_count", len(self._sessions))
 
-        # Exit from Unit of Work
-        # This is necessary to ensure that the context stack is cleared
-        #   and any further operations are not considered part of this transaction
-        _uow_context_stack.pop()
-
         # Process each provider session separately
         try:
-            for provider_name, session in self._sessions.items():
-                # Commit the session (includes outbox records)
-                session.commit()
-
-            # Store all events in the event store
+            # Append events to the event store FIRST, while this UnitOfWork is
+            # still the active context, so the event store is the durable anchor
+            # of the commit: a crash before the relational commit leaves the
+            # events durable and the outbox/relational state recoverable (via
+            # reconciliation), rather than leaving the store missing a committed
+            # event. See ADR-0015.
+            #
+            # Appending while the context is active also matters for adapters
+            # that back the event store with the relational provider (the
+            # in-memory adapter): their append joins THIS transaction instead of
+            # opening a colliding nested UnitOfWork, giving true atomicity when
+            # the two stores coincide. A real external store (message-db) writes
+            # directly. A genuine optimistic-concurrency conflict still raises and
+            # is re-driven by the handler-level version retry, which reloads the
+            # aggregate cleanly.
             for provider, events in all_events.items():
                 for event in events:
                     current_domain.event_store.store.append(event)
+
+            # Exit the UnitOfWork context: the relational commit below (and any
+            # further operations) are no longer part of this transaction. Guard
+            # on identity so that if the commit below fails and __exit__ then
+            # calls rollback() (which also pops), the two pops together cannot
+            # pop a *parent* UnitOfWork off the stack in a nested scenario.
+            if _uow_context_stack.top is self:
+                _uow_context_stack.pop()
+
+            # Commit the relational session (aggregate state + outbox rows).
+            for provider_name, session in self._sessions.items():
+                session.commit()
 
             # Dispatch messages to their designated broker
             for stream, message, broker_name in self._messages_to_dispatch:
@@ -293,13 +314,18 @@ class UnitOfWork:
                     # No specific broker designated; publish to default
                     self.domain.brokers["default"].publish(stream, message)
 
-            # Iteratively consume all events produced in this session
+            # Consume all events produced in this session — breadth-first.
+            # Events are enqueued and drained (not dispatched re-entrantly) so
+            # that each handler's UnitOfWork, including a process manager's
+            # transition, commits fully before the next handler runs. A nested
+            # commit (a handler that raises further events) enqueues onto the
+            # same chain-scoped queue; only the outermost drain runs it. See
+            # ADR-0016.
             if current_domain.config["event_processing"] == Processing.SYNC.value:
-                for provider, events in all_events.items():
-                    for event in events:
-                        handler_classes = current_domain.handlers_for(event)
-                        for handler_cls in handler_classes:
-                            handler_cls._handle(event)
+                dispatch_events_sync(
+                    (event for events in all_events.values() for event in events),
+                    current_domain.handlers_for,
+                )
 
             # Clear events from items in identity map
             self._clear_events_from_items()
@@ -379,8 +405,11 @@ class UnitOfWork:
         except Exception:
             pass
 
-        # Exit from Unit of Work
-        _uow_context_stack.pop()
+        # Exit from Unit of Work. Guarded on identity so a double-pop (when the
+        # relational commit failed after _do_commit already popped this UoW)
+        # cannot pop a parent UnitOfWork off the stack.
+        if _uow_context_stack.top is self:
+            _uow_context_stack.pop()
 
         try:
             for session in self._sessions.values():

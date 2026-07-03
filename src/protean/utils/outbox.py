@@ -777,25 +777,6 @@ class OutboxRepository(BaseRepository):
             .get("batch_size", 5000)
         )
 
-    def _delete_in_batches(self, criteria: Q, batch_size: Optional[int]) -> int:
-        """Delete all rows matching ``criteria`` in bounded batches.
-
-        Loops :meth:`BaseDAO._delete_top` until a batch deletes fewer than
-        ``batch_size`` rows (the table is drained). When called outside a Unit
-        of Work each batch commits before the next begins, so a large backlog
-        is cleared without one long-held lock or an oversized transaction.
-        """
-        if batch_size is None:
-            batch_size = self._cleanup_batch_size()
-
-        total = 0
-        while True:
-            deleted = self._dao._delete_top(criteria, limit=batch_size)
-            total += deleted
-            if deleted < batch_size:
-                break
-        return total
-
     def cleanup_old_published(
         self, older_than_hours: int = 168, batch_size: Optional[int] = None
     ) -> int:
@@ -813,7 +794,7 @@ class OutboxRepository(BaseRepository):
 
         return self._delete_in_batches(
             Q(status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time),
-            batch_size,
+            batch_size if batch_size is not None else self._cleanup_batch_size(),
         )
 
     def cleanup_old_abandoned(
@@ -839,7 +820,7 @@ class OutboxRepository(BaseRepository):
                 status=OutboxStatus.ABANDONED.value,
                 last_processed_at__lt=threshold_time,
             ),
-            batch_size,
+            batch_size if batch_size is not None else self._cleanup_batch_size(),
         )
 
     def cleanup_old_messages(
@@ -876,3 +857,82 @@ class OutboxRepository(BaseRepository):
             "abandoned": abandoned_count,
             "total": total_count,
         }
+
+
+def reconcile_outbox(
+    domain: Any, provider_name: str = "default", limit: int = 1000
+) -> int:
+    """Create outbox rows for events that are durable in the event store but have
+    no outbox row, and return how many were created.
+
+    This closes the residual crash window from ADR-0015: an event appended to the
+    event store (the durable anchor) whose relational outbox commit did not land.
+    The divergence is at the *tail* of the store (the last unit of work before a
+    crash), so a cheap check on the newest event short-circuits when there is
+    nothing to repair, and only the most recent ``limit`` events are scanned
+    otherwise.
+
+    Only the internal-broker row is reconciled here; external published-broker
+    rows are left to a future extension.
+    """
+    if not getattr(domain, "has_outbox", False):
+        return 0
+
+    # Enter the passed domain's context so the event store, repositories, and
+    # the UnitOfWork below all resolve against THIS domain regardless of what
+    # the caller has active. domain_context is re-entrant, so this is safe when
+    # the caller (the CLI, the engine startup sweep) is already inside it.
+    with domain.domain_context():
+        return _reconcile_outbox(domain, provider_name, limit)
+
+
+def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
+    from protean.core.unit_of_work import UnitOfWork  # noqa: PLC0415 - circular
+
+    store = domain.event_store.store
+    last = store.read_last_message("$all")
+    if last is None:
+        return 0
+
+    outbox_config = domain.config.get("outbox", {})
+    internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
+    outbox_repo = domain._get_outbox_repo(provider_name)
+
+    def _internal_row_exists(message_id: str) -> bool:
+        return any(
+            row.target_broker == internal_broker
+            for row in outbox_repo.find_all_by_message_id(message_id)
+        )
+
+    # Fast path: if the newest event already has its internal outbox row, the
+    # last unit of work committed fully and there is nothing at the tail to
+    # repair. This keeps the startup sweep cheap in the common (no-crash) case.
+    if _internal_row_exists(last.metadata.headers.id):
+        return 0
+
+    tail = last.metadata.event_store.global_position
+    start = max(0, tail - limit + 1)
+    messages = store.read("$all", position=start, no_of_messages=limit)
+
+    missing = [m for m in messages if not _internal_row_exists(m.metadata.headers.id)]
+    if not missing:  # pragma: no cover - unreachable: the newest event lacks its
+        # row (fast path fell through) and is always inside the scan window, so
+        # `missing` is non-empty here. Kept as a defensive guard.
+        return 0
+
+    with UnitOfWork():
+        for message in missing:
+            domain_meta = message.metadata.domain
+            outbox_message = Outbox.create_message(
+                message_id=message.metadata.headers.id,
+                stream_name=message.metadata.headers.stream,
+                message_type=message.metadata.headers.type,
+                data=message.data,
+                metadata=message.metadata,
+                correlation_id=getattr(domain_meta, "correlation_id", None),
+                causation_id=getattr(domain_meta, "causation_id", None),
+                target_broker=internal_broker,
+            )
+            outbox_repo._dao.save(outbox_message)
+
+    return len(missing)

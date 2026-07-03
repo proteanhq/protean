@@ -11,8 +11,13 @@ from typing import Any  # type: ignore[reportAssignmentType]
 from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
+from protean.core.index import Index
 from protean.core.queryset import ResultSet
-from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
+from protean.exceptions import (
+    ExpectedVersionError,
+    ObjectNotFoundError,
+    ValidationError,
+)
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import fully_qualified_name
@@ -330,6 +335,73 @@ class DictDAO(BaseDAO):
 
         return model_obj
 
+    def _storage_key(self, field_name: str) -> str:
+        """Map an index field name to the key it is stored under.
+
+        Records are keyed by attribute name (``attribute_name`` already folds
+        in ``referenced_as``), while an :class:`~protean.core.index.Index`
+        declares field names. For scalar fields the two coincide; this resolves
+        the difference for value-object and association attributes.
+        """
+        field_obj = fields(self.entity_cls).get(field_name)
+        if field_obj is not None:
+            return field_obj.attribute_name
+        # Already an attribute name (e.g. a value-object shadow attribute).
+        return field_name
+
+    def _check_unique_indexes(self, model_obj, records, identifier) -> None:
+        """Enforce declared ``Index(unique=True)`` constraints in memory.
+
+        Relational adapters get this for free from the DDL they render; the
+        in-memory store renders no DDL, so the check is replicated here to keep
+        memory mode a faithful stand-in for uniqueness invariants (issue #1071).
+        It guards the row-at-a-time write paths (``_create`` and ``_update``,
+        which back ``repository.add``/``save``); the bulk paths (``_update_all``
+        and ``_claim``/``update_all``, which delegate to it) are not covered,
+        matching their role as low-level escape hatches.
+
+        Partial unique indexes (``Index(..., unique=True, where=...)``) are
+        advisory here and left unenforced, mirroring how the memory provider
+        treats ``where`` elsewhere. NULLs are treated as distinct, matching
+        PostgreSQL/SQLite semantics: a unique index over an indexed value that
+        is ``None`` never collides. The
+        record being written (``identifier``) is excluded so re-saving an
+        unchanged row does not conflict with itself.
+        """
+        for index in getattr(self.entity_cls.meta_, "indexes", ()) or ():
+            if not isinstance(index, Index) or not index.unique:
+                continue
+
+            # Partial (predicate) indexes are advisory in memory. Enforcing a
+            # partial unique index globally would reject rows that are valid on
+            # PostgreSQL/SQLite, where the `where` predicate excludes them from
+            # the constraint. `where` is documented as advisory for the memory
+            # provider, so skip enforcement rather than over-enforce.
+            if index.where is not None:
+                continue
+
+            keys = [self._storage_key(f) for f in index.fields]
+            values = [model_obj.get(k) for k in keys]
+
+            # NULLs are distinct: skip enforcement when any indexed value is NULL.
+            if any(v is None for v in values):
+                continue
+
+            for record_id, record in records.items():
+                if record_id == identifier:
+                    continue
+                if all(record.get(k) == v for k, v in zip(keys, values)):
+                    fields_desc = ", ".join(index.fields)
+                    values_desc = ", ".join(repr(v) for v in values)
+                    raise ValidationError(
+                        {
+                            "_".join(index.fields): [
+                                f"{self.entity_cls.__name__} with "
+                                f"({fields_desc}) ({values_desc}) is already present."
+                            ]
+                        }
+                    )
+
     def _create(self, model_obj):
         """Write a record to the dict repository"""
         conn = self._get_session()
@@ -343,6 +415,9 @@ class DictDAO(BaseDAO):
         assert id_fld is not None
         identifier = model_obj[id_fld.field_name]
         with conn._db["lock"]:
+            self._check_unique_indexes(
+                model_obj, conn._db["data"][self.schema_name], identifier
+            )
             conn._db["data"][self.schema_name][identifier] = model_obj
 
         self._commit_if_standalone(conn)
@@ -493,6 +568,12 @@ class DictDAO(BaseDAO):
                         f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
                         f"Version: {stored_version})"
                     )
+
+            # Reject updates that would collide with another row on a declared
+            # unique index, mirroring the relational adapters' DDL enforcement.
+            self._check_unique_indexes(
+                model_obj, conn._db["data"][self.schema_name], identifier
+            )
 
             conn._db["data"][self.schema_name][identifier] = model_obj
 

@@ -20,6 +20,7 @@ from .elements import (
     build_handler_test_domain,
     build_integration_domain,
     build_process_manager_domain,
+    build_resilient_handler_test_domain,
     build_status_field_domain,
     build_via_and_min_length_domain,
 )
@@ -42,6 +43,7 @@ _DOMAIN_BUILDERS = [
     pytest.param(build_cluster_test_domain, id="cluster_test"),
     pytest.param(build_command_event_test_domain, id="command_event_test"),
     pytest.param(build_handler_test_domain, id="handler_test"),
+    pytest.param(build_resilient_handler_test_domain, id="resilient_handler_test"),
     pytest.param(build_es_aggregate_domain, id="es_aggregate"),
     pytest.param(build_domain_service_domain, id="domain_service"),
     pytest.param(build_process_manager_domain, id="process_manager"),

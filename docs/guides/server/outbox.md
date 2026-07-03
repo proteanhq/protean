@@ -255,6 +255,56 @@ for the locking details.
 
 ---
 
+## Recover from a crash: reconciliation
+
+The commit sequence appends events to the event store *before* it commits the
+relational transaction that carries aggregate state and the outbox rows — the
+event store is the durable anchor (see
+[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). This closes
+the corrupting failure where the event store could be left missing a committed
+event, but it leaves a narrow, **recoverable** window: if the process dies
+between the append and the relational commit, the event is durable in the store
+while its outbox row never landed — so the event would never be published.
+
+Reconciliation repairs that window by re-deriving the missing outbox rows
+directly from the event store. It runs two ways:
+
+**Automatically on server startup.** Every `protean server` boot runs a one-time
+sweep before subscriptions start, so a crash self-heals on restart with no
+operator action:
+
+```bash
+$ protean server --domain=my_domain
+```
+
+The sweep is cheap when there is nothing to repair (it checks only the newest
+stored event unless that one is itself missing its row), never blocks boot (a
+failure is logged and startup continues), and is safe under `--workers N` — the
+composite unique index on (`message_id`, `target_broker`) makes concurrent
+sweeps idempotent.
+
+**On demand with the CLI.** Run the same reconciliation yourself after a
+suspected crash, or from a cron job as a periodic safety net:
+
+```bash
+# Repair the default provider's outbox now
+$ protean outbox reconcile --domain=my_domain
+
+# Widen the scan window on a busy provider
+$ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
+```
+
+```
+Reconciled 2 outbox row(s) from the event store.
+```
+
+Only the internal-broker row is reconciled; external published-broker rows are
+re-derived by the processor once the internal row publishes. See the
+[`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for
+options and output.
+
+---
+
 ## Dispatch to external brokers
 
 When events marked `published=True` need to reach partner systems or
@@ -287,3 +337,5 @@ consumers — is covered in
 - [Subscription Types Reference](../../reference/server/subscription-types.md) — How StreamSubscription consumes outbox-published messages.
 - [Dead Letter Queues](./dead-letter-queues.md) — Recovery for consumer-side failures (outbox is publisher-side).
 - [`protean db setup-outbox` Reference](../../reference/cli/data/database.md#protean-db-setup-outbox) — CLI details.
+- [`protean outbox reconcile` Reference](../../reference/cli/data/outbox.md) — Crash-window recovery from the event store.
+- [ADR-0015: Event-Store Append as the Durable Anchor](../../adr/0015-event-store-append-as-durable-anchor.md) — Why the append precedes the relational commit, and the reconciliation contract.

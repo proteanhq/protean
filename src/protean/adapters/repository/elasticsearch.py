@@ -979,15 +979,10 @@ class ESProvider(BaseProvider):
 
         for _, element_record in elements.items():
             cls = element_record.cls
-            # Skip event-sourced aggregates — they have no database model
-            if getattr(cls.meta_, "is_event_sourced", False):
-                continue
-            part_of = getattr(cls.meta_, "part_of", None)
-            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
-                continue
-
-            provider = current_domain.providers[cls.meta_.provider]
-            if provider != self:
+            # Skip elements this provider does not materialize as an index
+            # (event-sourced aggregates/entities, cache-backed projections, and
+            # elements owned by another provider). See BaseProvider.owns().
+            if not self.owns(cls):
                 continue
 
             repo = self.domain.repository_for(cls)
@@ -1028,16 +1023,10 @@ class ESProvider(BaseProvider):
 
         for _, element_record in elements.items():
             cls = element_record.cls
-            # Skip event-sourced aggregates — they use the event store, not ES indices
-            if getattr(cls.meta_, "is_event_sourced", False):
-                continue
-            # Skip entities that belong to event-sourced aggregates
-            part_of = getattr(cls.meta_, "part_of", None)
-            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
-                continue
-
-            provider = current_domain.providers[cls.meta_.provider]
-            if provider != self:
+            # Skip elements this provider does not materialize as an index
+            # (event-sourced aggregates/entities, cache-backed projections, and
+            # elements owned by another provider). See BaseProvider.owns().
+            if not self.owns(cls):
                 continue
 
             database_model_cls = current_domain.repository_for(cls)._database_model
@@ -1055,15 +1044,10 @@ class ESProvider(BaseProvider):
         }
         for _, element_record in elements.items():
             cls = element_record.cls
-            # Skip event-sourced aggregates — they have no database model
-            if getattr(cls.meta_, "is_event_sourced", False):
-                continue
-            part_of = getattr(cls.meta_, "part_of", None)
-            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
-                continue
-
-            provider = self.domain.providers[cls.meta_.provider]
-            if provider != self:
+            # Skip elements this provider does not materialize as an index
+            # (event-sourced aggregates/entities, cache-backed projections, and
+            # elements owned by another provider). See BaseProvider.owns().
+            if not self.owns(cls):
                 continue
 
             database_model_cls = self.domain.repository_for(cls)._database_model

@@ -260,6 +260,7 @@ need by what you're trying to accomplish.
 | Test application workflows (BDD-style)          | [Application Tests](./guides/testing/application-tests.md) |
 | Test event-sourced aggregates with a fluent DSL | [Event Sourcing Tests](./guides/testing/event-sourcing-tests.md) |
 | Test with real databases and brokers             | [Integration Tests](./guides/testing/integration-tests.md) |
+| Process a command and wait for effects (sync + async) | [`process_and_wait`](./guides/testing/integration-tests.md#driving-flows-with-process_and_wait) |
 | Catch query-cost regressions (count, over-fetch) | [Test Query Shape](./guides/testing/query-shape-tests.md) |
 | Set up test fixtures and patterns               | [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md) |
 | Set up databases for integration tests          | [Database Setup/Teardown](./patterns/setting-up-and-tearing-down-database-for-tests.md) |

@@ -262,6 +262,26 @@ class TestRegenerateIr:
         _regenerate_ir("publishing7.py", protean_dir)
         assert (protean_dir / "ir.json").exists()
 
+    def test_written_baseline_is_canonical(self, tmp_path):
+        """The staleness --fix hook writes a no-timestamp baseline (#1064)."""
+        protean_dir = tmp_path / ".protean"
+        ir = _regenerate_ir("publishing7.py", protean_dir)
+        stored = json.loads((protean_dir / "ir.json").read_text(encoding="utf-8"))
+        # File on disk omits the volatile timestamp ...
+        assert "generated_at" not in stored
+        # ... but the returned live IR still carries it for inspection.
+        assert "generated_at" in ir
+
+    def test_regenerated_baseline_stable_across_runs(self, tmp_path):
+        """Regenerating an unchanged domain produces identical baseline bytes."""
+        dir_a = tmp_path / "a" / ".protean"
+        dir_b = tmp_path / "b" / ".protean"
+        _regenerate_ir("publishing7.py", dir_a)
+        _regenerate_ir("publishing7.py", dir_b)
+        assert (dir_a / "ir.json").read_text(encoding="utf-8") == (
+            dir_b / "ir.json"
+        ).read_text(encoding="utf-8")
+
 
 # ---------------------------------------------------------------------------
 # TestGitAdd
@@ -328,6 +348,31 @@ class TestCheckStalenessHookFresh:
     def test_exits_0_when_fresh(self):
         live_ir = _live_ir_for_test7()
         _write_ir(self._protean_dir, live_ir)
+
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                check_staleness_hook()
+            assert exc_info.value.code == 0
+
+    def test_canonical_baseline_reads_as_fresh(self):
+        """A canonical baseline (no generated_at) is still detected as fresh.
+
+        Regression for #1064: the baseline written by --fix omits
+        ``generated_at``; staleness must still match it against the live
+        domain (both sides ignore the timestamp).
+        """
+        _regenerate_ir("publishing7.py", self._protean_dir)
+        stored = json.loads((self._protean_dir / "ir.json").read_text(encoding="utf-8"))
+        assert "generated_at" not in stored
 
         with patch(
             "sys.argv",

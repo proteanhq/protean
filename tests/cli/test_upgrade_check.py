@@ -20,7 +20,7 @@ class TestUpgradeCheckCLI:
         # The health-port note always fires (info), so an in-memory domain is a
         # clean, info-only run -> exit 0.
         assert result.exit_code == 0
-        assert "health-check port" in result.stdout
+        assert "health-check" in result.stdout
 
     def test_json_output_is_a_list_of_findings(self):
         result = runner.invoke(

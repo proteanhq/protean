@@ -192,6 +192,21 @@ If an event handler needs to communicate information as part of its processing, 
 - Update relevant aggregates that can be queried later
 - Log information for monitoring purposes
 
+## Idempotency and at-least-once delivery
+
+Event delivery is at-least-once: a handler can receive the same event more than
+once (after a crash-and-republish, or a redelivery when a handler committed but
+was not yet acknowledged). **Write event handlers to be idempotent** so a
+duplicate delivery is harmless: guard on state, upsert rather than accumulate,
+and treat "already applied" as a no-op. See
+[Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md).
+
+Unlike projectors, event handlers have no built-in `idempotent=True` option: a
+handler may write to arbitrary aggregates across providers, so no single atomic
+dedup marker applies. The framework-managed deduplication described in
+[Projectors](./projectors.md#opting-into-built-in-deduplication) is projector-only
+because a projector has one known projection provider.
+
 ## Configuration Options
 
 ### Handler Options

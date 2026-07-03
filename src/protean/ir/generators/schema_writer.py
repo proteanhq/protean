@@ -150,20 +150,28 @@ def write_ir(
     ir: dict[str, Any],
     output_dir: str | Path,
 ) -> Path:
-    """Write the full IR dict to ``ir.json`` inside *output_dir*.
+    """Write the canonical IR baseline to ``ir.json`` inside *output_dir*.
+
+    The written baseline omits the volatile ``generated_at`` timestamp (via
+    :func:`protean.ir.constants.canonical_ir_json`) so a committed
+    ``.protean/ir.json`` only churns when the domain contract changes. This is
+    the same canonical form ``protean ir show --canonical`` and the ``--fix``
+    staleness hook emit, keeping every baseline writer byte-identical.
 
     Args:
-        ir: The full IR dict.
+        ir: The full IR dict (from ``IRBuilder.build()``).
         output_dir: Root output directory (e.g. ``.protean``).
 
     Returns:
         The absolute ``Path`` of the written file.
     """
+    from protean.ir.constants import canonical_ir_json  # noqa: PLC0415
+
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     file_path = output / "ir.json"
     file_path.write_text(
-        json.dumps(ir, indent=2, sort_keys=True) + "\n",
+        canonical_ir_json(ir) + "\n",
         encoding="utf-8",
     )
     return file_path.resolve()

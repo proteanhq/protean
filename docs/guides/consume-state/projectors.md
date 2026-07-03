@@ -172,6 +172,61 @@ class UserProfileProjector:
         repository.add(profile)
 ```
 
+### At-least-once delivery
+
+Event delivery to projectors is at-least-once: after a publish-then-crash the
+outbox republishes the message, and a broker can redeliver a message whose
+read-model write already committed but was not yet acknowledged. The same event
+therefore reaches a projector more than once, carrying the same
+`_metadata.headers.id` each time. A projector that accumulates
+(`total_reviews += 1`) will double-count unless it is made idempotent.
+
+The safest design is an idempotent upsert, as above: recompute or set the value
+rather than increment it, so re-applying the same event is harmless.
+
+### Opting into built-in deduplication
+
+When a projector genuinely cannot be expressed as an upsert, opt into
+framework-managed deduplication with `idempotent=True`:
+
+```python
+@domain.projector(projector_for=ProductStats, aggregates=[Product], idempotent=True)
+class RatingProjector:
+    @on(ReviewApproved)
+    def on_review_approved(self, event: ReviewApproved):
+        repository = current_domain.repository_for(ProductStats)
+        stats = repository.get(event.product_id)
+        stats.total_reviews += 1        # applied exactly once per event
+        repository.add(stats)
+```
+
+Each handler method records a `(message_id, handler)` marker in the same
+transaction as its read-model write, so a redelivered event is skipped. This is
+atomic (exactly-once) only when the projection is backed by a transactional
+provider, since the marker and the read model then share one transaction. For a
+cache-backed projection the option has no effect and you must write an
+idempotent upsert instead. The marker table is created only for domains that use
+the option; run `protean db setup` to create it. See
+[ADR-0017](../../adr/0017-consume-side-idempotency-for-projectors.md) for the
+design and its boundaries.
+
+Keep three boundaries in mind:
+
+- **Use a relational projection in production.** The exactly-once and
+  concurrency guarantees rely on a transactional provider that materializes the
+  marker's unique index. The in-memory provider enforces neither, so there the
+  option only skips ordinary sequential redeliveries.
+- **Adding the option to an existing deployment needs a schema change.** The
+  marker table appears only once a projector sets `idempotent=True`; run
+  `protean db setup` (or your migration tool) before deploying, or the first
+  delivery fails querying a missing table.
+- **Markers accumulate.** One row is written per `(message_id, handler)`. Prune
+  markers older than your redelivery/recovery window by running `protean
+  idempotency cleanup` periodically (from cron); the retention window and batch
+  size come from `[consume_idempotency.cleanup]` (default 7 days / 5000 rows).
+  Renaming a projector method changes its `handler` identity, orphaning its old
+  markers, which the same cleanup eventually removes.
+
 ## Event Ordering
 
 Be aware that events may not always arrive in the expected order. Design

@@ -39,6 +39,7 @@ from typing_extensions import Annotated
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.exceptions import NoDomainException
 from protean.ir.config import load_config
+from protean.ir.constants import canonical_ir_json
 from protean.ir.diff import classify_changes, diff_ir
 from protean.ir.git import GitError
 from protean.ir.staleness import StalenessStatus, check_staleness, load_stored_ir
@@ -69,12 +70,25 @@ def show(
             help="Output format: 'json' (default) or 'summary'",
         ),
     ] = "json",
+    canonical: Annotated[
+        bool,
+        typer.Option(
+            "--canonical",
+            help=(
+                "Omit the volatile 'generated_at' timestamp for a stable "
+                "baseline (json format only). Ideal for committed "
+                ".protean/ir.json snapshots."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Show the domain's IR."""
     ir = load_domain_ir(domain)
 
     if format == "summary":
         _print_summary(ir)
+    elif canonical:
+        typer.echo(canonical_ir_json(ir))
     else:
         typer.echo(json.dumps(ir, indent=2, sort_keys=True))
 
@@ -274,7 +288,7 @@ def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
     if stored is None:
         print(
             f"[red]Error:[/red] No materialized IR found in '{protean_dir}/ir.json'.\n"
-            "  Run [bold]protean ir show --domain <module> > "
+            "  Run [bold]protean ir show --domain <module> --canonical > "
             f"{protean_dir}/ir.json[/bold] to generate one,\n"
             "  or use --left/--right to specify files explicitly."
         )
@@ -560,15 +574,15 @@ def _print_check_text(result: Any, protean_dir: str = ".protean") -> None:
         if result.ir_file:
             print(f"  file:    {result.ir_file}")
         print(
-            "\n  Run [bold]protean ir show --domain <module> > .protean/ir.json[/bold]"
-            " to update."
+            "\n  Run [bold]protean ir show --domain <module> --canonical > "
+            ".protean/ir.json[/bold] to update."
         )
     else:  # NO_IR
         location = str(result.ir_file) if result.ir_file else protean_dir
         print(f"[red]No materialized IR found in '{location}'.[/red]")
         print(
-            "\n  Run [bold]protean ir show --domain <module> > .protean/ir.json[/bold]"
-            " to generate one."
+            "\n  Run [bold]protean ir show --domain <module> --canonical > "
+            ".protean/ir.json[/bold] to generate one."
         )
 
 

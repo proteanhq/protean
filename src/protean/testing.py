@@ -96,16 +96,20 @@ from protean.exceptions import (
 
 if TYPE_CHECKING:
     from protean.core.event import BaseEvent
+    from protean.domain import Domain
     from protean.port.event_store import CausationNode
 from protean.utils import Processing, fqn
 from protean.utils.eventing import (
     DomainMeta,
+    Message,
     MessageEnvelope,
     MessageHeaders,
     Metadata,
+    new_correlation_id,
 )
 from protean.utils.globals import current_domain
 from protean.utils.reflection import _ID_FIELD_NAME
+from protean.utils.sync_dispatch import dispatch_events_sync
 
 
 def given(
@@ -485,14 +489,243 @@ class AggregateResult:
             enriched_events.append(enriched)
 
         # Process event handlers (projectors, etc.) for seeded events,
-        # just like UoW commit does for synchronous processing.
+        # just like UoW commit does for synchronous processing — breadth-first
+        # via the shared drain so a seeded event that starts a multi-step
+        # process manager cascades correctly (ADR-0016).
         if domain.config["event_processing"] == Processing.SYNC.value:
-            for enriched in enriched_events:
-                handler_classes = domain.handlers_for(enriched)
-                for handler_cls in handler_classes:
-                    handler_cls._handle(enriched)
+            dispatch_events_sync(enriched_events, domain.handlers_for)
 
         return aggregate_id
+
+
+# ---------------------------------------------------------------------------
+# Integration-test helpers: process_and_wait / drain
+# ---------------------------------------------------------------------------
+
+
+class ProcessResult:
+    """The outcome of :func:`process_and_wait`.
+
+    Surfaces the three things an integration test cares about without
+    reaching into framework internals (outbox rows, event store streams):
+
+    - ``result`` — the command handler's return value (synchronous
+      processing) or the store position of the enqueued command
+      (asynchronous processing).
+    - ``events`` — an :class:`EventLog` of every event raised in the
+      command's correlation chain, ordered chronologically.
+    - ``error`` — the exception raised by :meth:`Domain.process`, or
+      ``None``. This covers a synchronous handler error and any
+      submission-time rejection (unregistered command, expired deadline,
+      duplicate key, enrichment ``ValidationError``) in either mode.
+      Asynchronous *handler* failures happen after the command is enqueued,
+      are absorbed by the engine (retries / DLQ), and are not surfaced here.
+
+    Created by :func:`process_and_wait`, not directly.
+
+    Example::
+
+        outcome = process_and_wait(PlaceOrder(order_id="o1", ...), domain)
+
+        assert outcome.succeeded
+        assert OrderPlaced in outcome.events
+        assert outcome.events[OrderPlaced].order_id == "o1"
+    """
+
+    def __init__(
+        self,
+        *,
+        result: Any,
+        events: list[Any],
+        error: Exception | None,
+    ) -> None:
+        self._result = result
+        self._events = EventLog(events)
+        self._error = error
+
+    @property
+    def result(self) -> Any:
+        """The command handler's return value, or the enqueue position."""
+        return self._result
+
+    @property
+    def events(self) -> EventLog:
+        """Events raised in the command's correlation chain (``EventLog``)."""
+        return self._events
+
+    @property
+    def error(self) -> Exception | None:
+        """The exception raised by :meth:`Domain.process`, or ``None``.
+
+        A synchronous handler error, or a submission-time rejection in either
+        mode. Asynchronous handler failures (after enqueue) are not captured.
+        """
+        return self._error
+
+    @property
+    def succeeded(self) -> bool:
+        """``True`` if :meth:`Domain.process` raised no exception.
+
+        In asynchronous mode this reflects *submission* success, not the
+        eventual async handler outcome — engine failures are absorbed and
+        never flip this to ``False``.
+        """
+        return self._error is None
+
+    @property
+    def failed(self) -> bool:
+        """``True`` if :meth:`Domain.process` raised an exception.
+
+        Mirrors :attr:`succeeded` (submission-level in async mode).
+        """
+        return not self.succeeded
+
+    def __repr__(self) -> str:
+        status = "failed" if self.failed else "succeeded"
+        return f"<ProcessResult {status} events={len(self._events)}>"
+
+
+def _events_for_correlation(domain: "Domain", correlation_id: str) -> list[Any]:
+    """Load every event in a correlation chain as domain objects.
+
+    Reads the correlation group from the event store and returns the
+    ``EVENT`` messages (commands excluded) as reconstituted domain
+    objects, ordered by ``global_position``.
+    """
+    store = domain.event_store.store
+    group = store._load_correlation_group(correlation_id)
+    group.sort(key=lambda raw: raw.get("global_position", 0))
+
+    events: list[Any] = []
+    for raw in group:
+        message = Message.deserialize(raw)
+        if (
+            message.metadata
+            and message.metadata.domain
+            and message.metadata.domain.kind == "EVENT"
+        ):
+            events.append(message.to_domain_object())
+    return events
+
+
+def drain(
+    domain: "Domain | None" = None,
+    *,
+    until: Callable[[], bool] | None = None,
+    max_cycles: int = 5,
+) -> int:
+    """Run the engine in test mode until *until* is satisfied or the budget runs out.
+
+    Replaces the hand-rolled ``for _ in range(N): Engine(...).run()`` loop
+    that integration tests copy-paste. Each cycle runs one full test-mode
+    engine pass (draining outbox → broker → subscriptions → handlers).
+
+    Args:
+        domain: The domain to drain. Defaults to ``current_domain``.
+        until: Optional predicate. Draining stops early once it returns
+            truthy. When omitted, a single engine pass is run.
+        max_cycles: Upper bound on engine passes so a never-satisfied
+            *until* cannot hang the test. Must be at least 1. Each test-mode
+            engine pass takes at least ~1 second, so the bound is also a
+            worst-case latency budget — raise it only for flows that
+            genuinely need more passes.
+
+    Returns:
+        The number of engine passes actually run. If *until* was supplied but
+        never became truthy, this equals ``max_cycles`` and a ``UserWarning``
+        is emitted so the exhausted bound is not silently swallowed.
+
+    Example::
+
+        drain(domain, until=lambda: repo.get("o1").status == "shipped")
+    """
+    if max_cycles < 1:
+        raise ValueError("max_cycles must be at least 1")
+
+    domain = domain if domain is not None else current_domain
+
+    # Local import: the server engine is a heavy subsystem, kept out of the
+    # module top so importing `protean.testing` stays cheap (CLAUDE.md #3).
+    from protean.server.engine import Engine  # noqa: PLC0415
+
+    for cycle in range(max_cycles):
+        Engine(domain=domain, test_mode=True).run()
+        if until is None or until():
+            return cycle + 1
+
+    # Reaching here means `until` was supplied (a `None` predicate returns on
+    # the first cycle above) but stayed falsey for every pass. Surface the
+    # exhausted bound rather than swallowing it (CLAUDE.md: no silent caps).
+    warnings.warn(
+        f"drain() exhausted max_cycles={max_cycles} before `until` became "
+        "truthy; the awaited effect may not have settled. Raise max_cycles "
+        "if the flow needs more engine passes.",
+        UserWarning,
+        stacklevel=2,
+    )
+    return max_cycles
+
+
+def process_and_wait(
+    command: Any,
+    domain: "Domain | None" = None,
+    *,
+    until: Callable[[], bool] | None = None,
+    max_cycles: int = 5,
+) -> ProcessResult:
+    """Process a command and wait for its effects to settle.
+
+    Makes the *same test body work in both processing modes*:
+
+    - **Synchronous** (``event_processing``/``command_processing`` set to
+      ``"sync"``): the whole chain runs inline during the call; the result
+      is returned immediately.
+    - **Asynchronous** (the default): the command is enqueued and a
+      bounded test-mode engine drains the outbox, broker, and handlers
+      before returning.
+
+    Args:
+        command: The command instance to process.
+        domain: The domain to process against. Defaults to
+            ``current_domain``.
+        until: Optional predicate forwarded to :func:`drain`; draining
+            stops early once it returns truthy (async mode only).
+        max_cycles: Upper bound on engine passes when draining (see
+            :func:`drain` — each pass takes at least ~1 second).
+
+    Returns:
+        A :class:`ProcessResult` exposing the command result, the events
+        that fired, and any synchronous/submission-time error (see
+        :class:`ProcessResult` for what is and isn't captured).
+
+    Example::
+
+        outcome = process_and_wait(PlaceOrder(order_id="o1", ...), domain)
+        assert outcome.succeeded
+        assert OrderPlaced in outcome.events
+    """
+    domain = domain if domain is not None else current_domain
+    correlation_id = new_correlation_id()
+
+    result: Any = None
+    error: Exception | None = None
+    try:
+        result = domain.process(command, correlation_id=correlation_id)
+    except Exception as exc:  # noqa: BLE001 — captured for the caller to assert on
+        error = exc
+
+    # Drain only when something is left to process asynchronously. A
+    # synchronous failure already ran (and rolled back) inline, so there is
+    # nothing for the engine to do.
+    needs_drain = error is None and Processing.ASYNC.value in (
+        domain.config["command_processing"],
+        domain.config["event_processing"],
+    )
+    if needs_drain:
+        drain(domain, until=until, max_cycles=max_cycles)
+
+    events = _events_for_correlation(domain, correlation_id)
+    return ProcessResult(result=result, events=events, error=error)
 
 
 # ---------------------------------------------------------------------------
@@ -545,11 +778,8 @@ class EventSequence:
 
         domain = current_domain
 
-        # Process each event through its handlers
-        for event in self._events:
-            handler_classes = domain.handlers_for(event)
-            for handler_cls in handler_classes:
-                handler_cls._handle(event)
+        # Process each event through its handlers — breadth-first (ADR-0016).
+        dispatch_events_sync(self._events, domain.handlers_for)
 
         # Retrieve the projection
 
@@ -633,9 +863,10 @@ class ProcessManagerResult:
             self._process_events()
 
     def _process_events(self) -> None:
-        """Feed all events through the PM's _handle() method."""
-        for event in self._events:
-            self._pm_cls._handle(event)
+        """Feed all events through the PM's _handle() method — breadth-first
+        via the shared drain so a multi-step PM cascades to completion under
+        synchronous processing (ADR-0016)."""
+        dispatch_events_sync(self._events, lambda _event: [self._pm_cls])
         self._processed = True
         self._load_pm()
 

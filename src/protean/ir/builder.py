@@ -575,6 +575,44 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
+    @staticmethod
+    def _extract_resilience_policy(cls: type) -> dict[str, Any] | None:
+        """Extract the handler's deadline/retry policy as a sparse IR dict.
+
+        Returns ``None`` when no resilience options are set (sparse IR).
+        """
+        meta = getattr(cls, "meta_", None)
+        policy: dict[str, Any] = {}
+
+        timeout = getattr(meta, "timeout", None)
+        if timeout is not None:
+            if isinstance(timeout, _dt.timedelta):
+                policy["timeout"] = timeout.total_seconds()
+            else:
+                policy["timeout"] = float(timeout)
+
+        for key in ("backoff", "retries"):
+            value = getattr(meta, key, None)
+            if value is not None:
+                policy[key] = value
+
+        retry_exceptions = getattr(meta, "retry_exceptions", None)
+        if retry_exceptions is not None:
+            names: list[str] = []
+            for exc in retry_exceptions:
+                if isinstance(exc, str):
+                    names.append(exc)
+                elif isinstance(exc, type):
+                    names.append(fqn(exc))
+                else:
+                    # Misconfigured entry (e.g. an exception instance rather
+                    # than its class) — serialize its class instead of
+                    # crashing IR materialization with an opaque AttributeError.
+                    names.append(fqn(type(exc)))
+            policy["retry_exceptions"] = sorted(names)
+
+        return dict(sorted(policy.items())) if policy else None
+
     def _extract_handler_map(self, cls: type) -> dict[str, list[str]]:
         """Extract handler map as {__type__: sorted([method_names])}."""
         handlers = getattr(cls, "_handlers", {})
@@ -617,6 +655,10 @@ class IRBuilder:
         if agg_cls is not None:
             entry["part_of"] = fqn(agg_cls)
 
+        resilience = self._extract_resilience_policy(cls)
+        if resilience is not None:
+            entry["resilience"] = resilience
+
         entry["stream_category"] = getattr(cls.meta_, "stream_category", None)
         entry["subscription"] = self._extract_subscription(cls)
 
@@ -643,6 +685,10 @@ class IRBuilder:
         agg_cls = self._resolve_aggregate_cls(cls)
         if agg_cls is not None:
             entry["part_of"] = fqn(agg_cls)
+
+        resilience = self._extract_resilience_policy(cls)
+        if resilience is not None:
+            entry["resilience"] = resilience
 
         entry["source_stream"] = getattr(cls.meta_, "source_stream", None)
         entry["stream_category"] = getattr(cls.meta_, "stream_category", None)

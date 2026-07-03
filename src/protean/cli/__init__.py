@@ -36,6 +36,8 @@ from protean.cli.events import app as events_app
 from protean.cli.generate import app as generate_app
 from protean.cli.ir import app as ir_app
 from protean.cli.schema import app as schema_app
+from protean.cli.idempotency import app as idempotency_app
+from protean.cli.outbox import app as outbox_app
 from protean.cli.new import new
 from protean.cli.observatory import observatory
 from protean.cli.projection import app as projection_app
@@ -63,6 +65,8 @@ app.command()(observatory)
 app.command()(shell)
 app.add_typer(db_app, name="db")
 app.add_typer(dlq_app, name="dlq")
+app.add_typer(idempotency_app, name="idempotency")
+app.add_typer(outbox_app, name="outbox")
 app.add_typer(events_app, name="events")
 app.add_typer(generate_app, name="generate")
 app.add_typer(ir_app, name="ir")

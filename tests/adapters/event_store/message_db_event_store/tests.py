@@ -121,6 +121,50 @@ class TestMessageDBEventStore:
         message = test_domain.event_store.store._read_last_message("foo-bar")
         assert message is None
 
+    def test_read_last_message_category_stream(self, test_domain):
+        """read_last_message resolves a category stream (not just category-id).
+
+        ``get_last_stream_message()`` returns None for category streams; the
+        adapter must fall back to reading the category. Regression for #1073.
+        """
+        for i in range(5):
+            test_domain.event_store.store._write(
+                "testStream-123", "Event1", {"foo": f"bar{i}"}
+            )
+
+        message = test_domain.event_store.store._read_last_message("testStream")
+        assert message is not None
+        assert message["data"]["foo"] == "bar4"  # the newest, not None
+
+    def test_read_last_message_all_stream(self, test_domain):
+        """read_last_message('$all') returns the newest global message.
+
+        The exact #1073 failure: this returned None on Message-DB, making
+        reconcile_outbox a permanent no-op (ADR-0015 crash-window recovery).
+        """
+        test_domain.event_store.store._write("streamA-1", "EventA", {"n": 1})
+        test_domain.event_store.store._write("streamB-2", "EventB", {"n": 2})
+
+        message = test_domain.event_store.store._read_last_message("$all")
+        assert message is not None  # was None before the fix
+        # The newest global message is the *last one written* — asserted on
+        # content, not by mirroring the fallback's own query. The client's
+        # "$all" read has no ORDER BY, so the adapter must pick by global_position.
+        assert message["type"] == "EventB"
+        assert message["data"]["n"] == 2
+        all_msgs = test_domain.event_store.store._read("$all", no_of_messages=1_000_000)
+        assert message["global_position"] == max(m["global_position"] for m in all_msgs)
+
+    def test_read_last_message_empty_category_and_all(self, test_domain):
+        """The category fallback returns None (not IndexError) on an empty store.
+
+        Guards the ``else None`` branch for the category/`$all` path that #1073
+        added — the existing None test only covers a *specific* stream.
+        """
+        store = test_domain.event_store.store
+        assert store._read_last_message("$all") is None
+        assert store._read_last_message("neverWritten") is None
+
     def test_stream_head_position_empty_stream(self, test_domain):
         """stream_head_position returns -1 for a stream with no messages."""
         result = test_domain.event_store.store.stream_head_position("nonexistent")

@@ -15,9 +15,10 @@ Configuration (``domain.toml``):
 .. code-block:: toml
 
     [server.health]
-    enabled = true   # default
-    host = "0.0.0.0" # default
-    port = 8080       # default
+    enabled = true              # default
+    host = "127.0.0.1"          # default (loopback); set "0.0.0.0" to expose
+    port = 8080                 # default
+    port_auto_increment = false # default; try 8081, 8082, ... if 8080 is taken
 """
 
 from __future__ import annotations
@@ -41,6 +42,10 @@ if TYPE_CHECKING:
     from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
+
+# When ``port_auto_increment`` is enabled, how many consecutive ports to try
+# starting from the configured one before giving up (8080..8179 by default).
+_MAX_PORT_ATTEMPTS = 100
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +168,9 @@ class HealthServer:
         except (AttributeError, TypeError):
             health_config = {}
         self.enabled: bool = health_config.get("enabled", True)
-        self.host: str = health_config.get("host", "0.0.0.0")
+        self.host: str = health_config.get("host", "127.0.0.1")
         self.port: int = health_config.get("port", 8080)
+        self.port_auto_increment: bool = health_config.get("port_auto_increment", False)
 
     async def _handle_connection(
         self,
@@ -204,25 +210,55 @@ class HealthServer:
                 pass
 
     async def start(self) -> None:
-        """Start the health check HTTP server."""
+        """Start the health check HTTP server.
+
+        Binds ``self.port`` directly unless ``port_auto_increment`` is enabled,
+        in which case it walks up to :data:`_MAX_PORT_ATTEMPTS` consecutive
+        ports until one is free, updating ``self.port`` to the bound port. This
+        lets several engines share a host without colliding on 8080. If no port
+        can be bound, the engine logs a warning and continues without probes.
+        """
         if not self.enabled:
             logger.debug("Health check server disabled by configuration")
             return
 
-        try:
-            self._server = await asyncio.start_server(
-                self._handle_connection,
-                host=self.host,
-                port=self.port,
-            )
+        start_port = self.port
+        max_attempts = _MAX_PORT_ATTEMPTS if self.port_auto_increment else 1
+        last_error: Exception | None = None
+
+        for candidate in range(start_port, start_port + max_attempts):
+            try:
+                self._server = await asyncio.start_server(
+                    self._handle_connection,
+                    host=self.host,
+                    port=candidate,
+                )
+            # OSError: port taken / permission; ValueError/OverflowError: the
+            # candidate walked past the valid 0-65535 range. Treat all as
+            # "cannot bind here" and keep the engine running without probes.
+            except (OSError, ValueError, OverflowError) as e:
+                last_error = e
+                continue
+
+            # Reflect the port actually bound (candidate, or an OS-assigned one
+            # when the configured port is 0).
+            self.port = self._server.sockets[0].getsockname()[1]
             logger.info(
                 f"Health check server listening on http://{self.host}:{self.port}"
             )
-        except OSError as e:
-            logger.warning(
-                f"Failed to start health check server on {self.host}:{self.port}: {e}. "
-                f"Engine will continue without health probes."
-            )
+            return
+
+        # For a single attempt this renders as "8080"; for an auto-increment
+        # scan, the full "8080-8179" span that was tried.
+        attempted = (
+            f"{start_port}-{start_port + max_attempts - 1}"
+            if self.port_auto_increment
+            else str(start_port)
+        )
+        logger.warning(
+            f"Failed to start health check server on {self.host} (port {attempted}): "
+            f"{last_error}. Engine will continue without health probes."
+        )
 
     async def stop(self) -> None:
         """Stop the health check HTTP server."""

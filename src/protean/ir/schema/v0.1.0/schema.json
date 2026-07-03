@@ -18,7 +18,7 @@
     "generated_at": {
       "type": "string",
       "format": "date-time",
-      "description": "ISO 8601 UTC timestamp of generation"
+      "description": "ISO 8601 UTC timestamp of generation (optional; omitted from canonical baselines)"
     },
     "checksum": {
       "type": "string",
@@ -62,7 +62,6 @@
   "required": [
     "$schema",
     "ir_version",
-    "generated_at",
     "checksum",
     "domain",
     "clusters",
@@ -126,6 +125,32 @@
       },
       "required": ["type", "profile", "config"],
       "additionalProperties": true
+    },
+
+    "resilience": {
+      "type": "object",
+      "description": "Deadline/retry policy for a handler (sparse; only declared options appear)",
+      "properties": {
+        "timeout": {
+          "type": "number",
+          "description": "Default command validity window, in seconds"
+        },
+        "retries": {
+          "type": "integer",
+          "description": "Max retry attempts on transient exceptions"
+        },
+        "backoff": {
+          "type": "string",
+          "enum": ["exponential", "linear", "fixed"]
+        },
+        "retry_exceptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fully-qualified names of exception types treated as transient"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
     },
 
     "fields_map": {
@@ -509,6 +534,7 @@
             "element_type": { "const": "COMMAND_HANDLER" },
             "part_of": { "type": "string", "minLength": 1 },
             "stream_category": { "type": "string", "minLength": 1 },
+            "resilience": { "$ref": "#/$defs/resilience" },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": { "$ref": "#/$defs/standard_handler_map" }
           },
@@ -533,6 +559,7 @@
                 { "type": "null" }
               ]
             },
+            "resilience": { "$ref": "#/$defs/resilience" },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": { "$ref": "#/$defs/standard_handler_map" }
           },

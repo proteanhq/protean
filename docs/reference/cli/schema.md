@@ -70,6 +70,11 @@ Filenames include the element version for events and commands. Other elements
 default to `v1`. The `schemas/` directory is cleared on each run to remove
 stale files.
 
+The `ir.json` written alongside the schemas is a canonical baseline (the
+volatile `generated_at` timestamp is omitted), byte-identical to
+`protean ir show --canonical`, so a committed `.protean/ir.json` only changes
+when the domain contract changes.
+
 ---
 
 ## `protean schema show`

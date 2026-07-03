@@ -26,8 +26,8 @@ protean ir show --domain=my_app.domain
 # Human-readable summary with element counts and cluster details
 protean ir show --domain=my_app.domain --format=summary
 
-# Save to a file for version control
-protean ir show --domain=my_app.domain > domain-ir.json
+# Save a canonical baseline for version control (no volatile timestamp)
+protean ir show --domain=my_app.domain --canonical > .protean/ir.json
 ```
 
 **Options**
@@ -36,6 +36,23 @@ protean ir show --domain=my_app.domain > domain-ir.json
 |--------|-------------|---------|
 | `--domain`, `-d` | Path to the domain module (e.g. `my_app.domain`) | Required |
 | `--format`, `-f` | Output format: `json` or `summary` | `json` |
+| `--canonical` | Omit the volatile `generated_at` timestamp (json format only) | `false` |
+
+**Canonical baseline output**
+
+By default the JSON output includes a `generated_at` materialization
+timestamp, which changes on every regeneration. When committing
+`.protean/ir.json` as a baseline for `protean ir diff`, that timestamp is
+pure noise: it produces a one-line diff on every `protean ir show` even when
+nothing about the domain changed.
+
+Pass `--canonical` to omit `generated_at`. The `$schema`, `ir_version`,
+`checksum`, and `elements` keys are retained (they are content-derived or
+version markers, and are ignored by `ir diff`/`ir check` alike). A canonical
+baseline therefore changes **only** when the domain contract changes.
+
+`--canonical` has no effect with `--format=summary`, which never prints the
+timestamp.
 
 **JSON output**
 

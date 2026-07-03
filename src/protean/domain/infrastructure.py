@@ -13,6 +13,11 @@ from inflection import camelize
 
 from protean.exceptions import ConfigurationError
 from protean.utils import clone_class
+from protean.utils.consume_idempotency import (
+    PROCESSED_MESSAGE_INDEXES,
+    ProcessedMessage,
+    ProcessedMessageRepository,
+)
 from protean.utils.outbox import OUTBOX_INDEXES, Outbox, OutboxRepository
 
 if TYPE_CHECKING:
@@ -31,60 +36,80 @@ class InfrastructureManager:
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
         self.outbox_repos: dict = {}
+        self.processed_message_repos: dict = {}
 
-    def initialize_outbox(self) -> None:
-        """Initialize outbox repositories for all configured providers.
+    def _initialize_per_provider(
+        self,
+        base_cls: type,
+        repo_cls: type,
+        schema_name: str,
+        indexes: list,
+        target: dict,
+        label: str,
+    ) -> None:
+        """Synthesize a per-provider aggregate + repository for a framework table.
 
-        Constructs and stores outbox repositories for each provider,
-        verifying that the outbox table exists in the database.
+        Shared by the outbox and the consume-side idempotency marker: both
+        clone a base aggregate/repository per managed provider, register them,
+        and store the repository in ``target`` keyed by provider name.
         """
         domain = self._domain
 
-        if (
+        if not (
             hasattr(domain.providers, "_providers")
             and domain.providers._providers is not None
         ):
-            for provider_name, provider in domain.providers._providers.items():
-                if not provider.managed:
-                    continue
-                try:
-                    # Synthesize new outbox class specific to this provider
-                    new_name = f"{camelize(provider_name)}Outbox"
-                    new_cls = clone_class(Outbox, new_name)
-
-                    domain.register(
-                        new_cls,
-                        internal=True,
-                        auto_generated=True,
-                        schema_name="outbox",
-                        provider=provider_name,
-                        indexes=OUTBOX_INDEXES,
-                    )
-
-                    # Synthesize new repository class specific to this provider
-                    new_repo_name = f"{camelize(provider_name)}OutboxRepository"
-                    new_repo_cls = clone_class(OutboxRepository, new_repo_name)
-
-                    domain.register(
-                        new_repo_cls,
-                        internal=True,
-                        auto_generated=True,
-                        part_of=new_cls,
-                    )
-                    domain.providers._register_repository(new_cls, new_repo_cls)
-
-                    outbox_repo = domain.repository_for(new_cls)
-                    self.outbox_repos[provider_name] = outbox_repo
-
-                except Exception as e:
-                    raise ConfigurationError(
-                        f"Failed to initialize outbox for provider '{provider_name}': {str(e)}"
-                    )
-        else:
             logger.debug(
                 "No providers configured during domain initialization. "
-                "Outbox repositories will be created lazily."
+                "%s repositories will be created lazily.",
+                label,
             )
+            return
+
+        for provider_name, provider in domain.providers._providers.items():
+            if not provider.managed:
+                continue
+            try:
+                new_cls = clone_class(
+                    base_cls, f"{camelize(provider_name)}{base_cls.__name__}"
+                )
+                domain.register(
+                    new_cls,
+                    internal=True,
+                    auto_generated=True,
+                    schema_name=schema_name,
+                    provider=provider_name,
+                    indexes=indexes,
+                )
+
+                new_repo_cls = clone_class(
+                    repo_cls, f"{camelize(provider_name)}{repo_cls.__name__}"
+                )
+                domain.register(
+                    new_repo_cls,
+                    internal=True,
+                    auto_generated=True,
+                    part_of=new_cls,
+                )
+                domain.providers._register_repository(new_cls, new_repo_cls)
+
+                target[provider_name] = domain.repository_for(new_cls)
+            except Exception as e:
+                raise ConfigurationError(
+                    f"Failed to initialize {label} for provider "
+                    f"'{provider_name}': {str(e)}"
+                )
+
+    def initialize_outbox(self) -> None:
+        """Initialize outbox repositories for all managed providers."""
+        self._initialize_per_provider(
+            Outbox,
+            OutboxRepository,
+            "outbox",
+            OUTBOX_INDEXES,
+            self.outbox_repos,
+            "outbox",
+        )
 
     def get_outbox_repo(self, provider_name: str):
         """Get outbox repository for a specific provider."""
@@ -93,19 +118,49 @@ class InfrastructureManager:
 
         return self.outbox_repos[provider_name]
 
+    def initialize_processed_messages(self) -> None:
+        """Initialize a consume-side idempotency marker per managed provider.
+
+        Synthesizes a per-provider ``ProcessedMessage`` aggregate + repository
+        so an ``idempotent=True`` projector can record a ``(message_id,
+        handler)`` marker in the same transaction as its read-model write.
+        See ADR-0017.
+        """
+        self._initialize_per_provider(
+            ProcessedMessage,
+            ProcessedMessageRepository,
+            "processed_message",
+            PROCESSED_MESSAGE_INDEXES,
+            self.processed_message_repos,
+            "consume-side idempotency",
+        )
+
+    def get_processed_message_repo(self, provider_name: str):
+        """Get the consume-side idempotency repository for a provider."""
+        if not self.processed_message_repos:
+            self.initialize_processed_messages()
+
+        return self.processed_message_repos[provider_name]
+
     def setup_database(self) -> None:
-        """Create all database tables (aggregates, entities, projections, outbox).
+        """Create all database tables (aggregates, entities, projections, outbox,
+        and the consume-side idempotency marker).
 
         Delegates to each managed provider's ``_create_database_artifacts()``
         which is idempotent — existing tables are left untouched.
         Providers with ``managed = false`` are skipped.
 
-        Forces outbox DAO initialization first so the outbox table definition
-        is registered in SQLAlchemy metadata before ``create_all()`` runs.
+        Forces the outbox and idempotency-marker DAOs first so their table
+        definitions are registered in SQLAlchemy metadata before ``create_all()``
+        runs.
         """
         # Force DAO creation for outbox repos so their tables are included
         for _provider_name, outbox_repo in self.outbox_repos.items():
             outbox_repo._dao  # noqa: B018
+
+        # Same for the consume-side idempotency marker tables.
+        for _provider_name, pm_repo in self.processed_message_repos.items():
+            pm_repo._dao  # noqa: B018
 
         for _, provider in self._domain.providers.items():
             if not provider.managed:

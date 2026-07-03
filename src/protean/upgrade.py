@@ -120,16 +120,22 @@ def _check_health_port(domain: "Domain") -> list[UpgradeFinding]:
     return [
         UpgradeFinding(
             code="HEALTH_PORT_BIND",
+            # Advisory: fires for every engine (host is always present in the
+            # merged config defaults, so affected users cannot be isolated), so
+            # keep it at "info" rather than tripping upgrade-check's exit code 2.
             level="info",
-            title="`protean server` now binds a health-check port (8080)",
+            title="`protean server` health-check server now binds loopback by default",
             detail=(
                 "0.16 starts a health-check HTTP server on port 8080 by default "
-                "(/healthz, /livez, /readyz)."
+                "(/healthz, /livez, /readyz). 0.17 changes its default bind host "
+                "from 0.0.0.0 to 127.0.0.1, so probes are no longer reachable "
+                "off-host unless you opt back in."
             ),
             remediation=(
-                "Ensure port 8080 is free, or set [server.health] port = ... / "
-                "enabled = false. The engine logs a warning and continues if the "
-                "port is already in use."
+                "For off-host probes (a load balancer or out-of-pod checker), set "
+                '[server.health] host = "0.0.0.0". To run several engines on one '
+                "host, give each a distinct port or set port_auto_increment = true. "
+                "Set enabled = false to turn the server off."
             ),
             element="server.health",
         )

@@ -899,14 +899,20 @@ class SADAO(BaseDAO):
 
     def _flush(self) -> None:
         """Flush buffered INSERT/UPDATE statements to the database within the
-        current transaction (no commit).
+        current transaction, without committing.
 
-        Protean does not emit SQLAlchemy ``ForeignKey``/``relationship``
-        metadata for ``Reference`` fields, so the ORM's unit-of-work cannot
-        order parent-before-child inserts at commit-time flush on its own.
-        Flushing after a parent is saved materializes its row inside the
-        transaction so that immediate-FK databases (MSSQL, MySQL/InnoDB)
-        accept the dependent child inserts that follow.
+        SQLAlchemy batches writes until commit, which this method forces to
+        execute inside the current transaction for two reasons:
+
+        - Protean does not emit SQLAlchemy ``ForeignKey``/``relationship``
+          metadata for ``Reference`` fields, so the ORM's unit-of-work cannot
+          order parent-before-child inserts on its own. Flushing after a parent
+          is saved materializes its row so that immediate-FK databases (MSSQL,
+          MySQL/InnoDB) accept the dependent child inserts that follow.
+        - A DB-assigned ``Auto(increment=True)`` primary key is not materialized
+          until a flush runs. Forcing a flush lets the repository read the
+          generated value back onto the aggregate inside the transaction — under
+          both a standalone add and an add nested in an outer UnitOfWork.
         """
         self._get_session().flush()
 
@@ -1476,17 +1482,10 @@ class SAProvider(BaseProvider):
 
         for _, element_record in elements.items():
             cls = element_record.cls
-            # Skip event-sourced aggregates — they use the event store, not SQL tables
-            if getattr(cls.meta_, "is_event_sourced", False):
-                continue
-            # Skip entities that belong to event-sourced aggregates
-            part_of = getattr(cls.meta_, "part_of", None)
-            if part_of and getattr(part_of.meta_, "is_event_sourced", False):
-                continue
-            # Skip cache-backed projections — they persist to a cache adapter,
-            # not a SQL table (when `cache` is set the provider is None), so
-            # building a DAO for them would raise. See #1034.
-            if getattr(cls.meta_, "cache", None):
+            # Skip elements this provider does not materialize as a SQL table
+            # (event-sourced aggregates/entities, cache-backed projections, and
+            # elements owned by another provider). See BaseProvider.owns().
+            if not self.owns(cls):
                 continue
             self.domain.repository_for(cls)._dao
 
