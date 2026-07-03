@@ -339,6 +339,29 @@ class TestWriteIR:
         assert "clusters" in parsed
         assert "domain" in parsed
 
+    def test_writes_canonical_baseline(self, tmp_path: Path):
+        """`protean schema generate` writes a no-timestamp baseline (#1064)."""
+        output = tmp_path / ".protean"
+        ir = _ir_for(build_cluster_test_domain)
+        assert "generated_at" in ir  # the source IR carries it ...
+
+        write_ir(ir, output)
+        parsed = json.loads((output / "ir.json").read_text())
+        assert "generated_at" not in parsed  # ... the baseline drops it
+        # Content-derived keys are retained.
+        assert "checksum" in parsed
+
+    def test_matches_canonical_serializer(self, tmp_path: Path):
+        """write_ir output is byte-identical to the shared canonical form."""
+        from protean.ir.constants import canonical_ir_json
+
+        output = tmp_path / ".protean"
+        ir = _ir_for(build_cluster_test_domain)
+        write_ir(ir, output)
+
+        content = (output / "ir.json").read_text()
+        assert content == canonical_ir_json(ir) + "\n"
+
     def test_ir_json_has_trailing_newline(self, tmp_path: Path):
         output = tmp_path / ".protean"
         ir = _ir_for(build_cluster_test_domain)

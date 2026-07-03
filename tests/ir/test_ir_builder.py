@@ -7,7 +7,12 @@ import pytest
 from protean import Domain
 from protean.ir import SCHEMA_VERSION
 from protean.ir.builder import IRBuilder
-from protean.ir.constants import VOLATILE_IR_KEYS
+from protean.ir.constants import (
+    CANONICAL_EXCLUDED_KEYS,
+    VOLATILE_IR_KEYS,
+    canonical_ir,
+    canonical_ir_json,
+)
 from protean.ir.diff import diff_ir
 
 
@@ -185,6 +190,59 @@ class TestChecksum:
         assert diff_ir(ir, bumped)["summary"]["has_changes"] is False
         # ... and the staleness checksum agrees.
         assert IRBuilder._compute_checksum(bumped) == IRBuilder._compute_checksum(ir)
+
+
+@pytest.mark.no_test_domain
+class TestCanonicalIR:
+    """Tests for ``canonical_ir`` — the no-timestamp baseline output (#1064)."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.domain = Domain(name="Canonical")
+        self.domain.init(traverse=False)
+        self.ir = self.domain.to_ir()
+
+    def test_strips_only_generated_at(self):
+        assert CANONICAL_EXCLUDED_KEYS == frozenset({"generated_at"})
+        canonical = canonical_ir(self.ir)
+        assert "generated_at" not in canonical
+        # Readable/content-derived keys are retained.
+        for key in ("$schema", "ir_version", "checksum", "elements"):
+            assert key in canonical, f"canonical output dropped {key!r}"
+
+    def test_does_not_mutate_input(self):
+        canonical_ir(self.ir)
+        assert "generated_at" in self.ir
+
+    def test_stable_across_regenerations(self):
+        """A canonical baseline only changes when the contract changes.
+
+        Two builds of the same domain differ only in ``generated_at``; their
+        canonical forms must be byte-for-byte identical.
+        """
+        ir2 = self.domain.to_ir()
+        ir2["generated_at"] = "2099-01-01T00:00:00Z"
+        assert ir2 != self.ir  # timestamps differ
+        assert canonical_ir(ir2) == canonical_ir(self.ir)
+
+    def test_checksum_survives_canonicalization(self):
+        """Staleness reads ``checksum`` from the baseline — it must persist."""
+        assert canonical_ir(self.ir)["checksum"] == self.ir["checksum"]
+
+    def test_diff_sees_no_change_between_canonical_and_full(self):
+        """A canonical baseline (no timestamp) vs live IR (with one): no diff."""
+        assert (
+            diff_ir(canonical_ir(self.ir), self.ir)["summary"]["has_changes"] is False
+        )
+
+    def test_json_is_sorted_and_deterministic(self):
+        """The serializer sorts keys and omits generated_at, stable across builds."""
+        text = canonical_ir_json(self.ir)
+        assert "generated_at" not in json.loads(text)
+        # Keys are sorted (deterministic byte layout, no ordering churn).
+        assert json.dumps(json.loads(text), indent=2, sort_keys=True) == text
+        # Two builds of the same domain serialize identically.
+        assert canonical_ir_json(self.domain.to_ir()) == text
 
 
 @pytest.mark.no_test_domain

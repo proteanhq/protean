@@ -7,7 +7,7 @@ Usage::
 
     result = check_staleness("my_app.domain", Path(".protean"))
     if result.status == StalenessStatus.STALE:
-        print("Domain has changed; re-run `protean ir show` to update.")
+        print("Domain has changed; re-run `protean ir show --canonical` to update.")
     elif result.status == StalenessStatus.NO_IR:
         print("No materialized IR found in .protean/")
     else:

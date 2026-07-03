@@ -55,7 +55,6 @@ Multi-domain support (config-driven)::
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
@@ -119,8 +118,15 @@ def _load_live_ir(domain_path: str) -> dict:
 
 
 def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict:
-    """Build live IR, write it to *protean_dir*/ir.json, and return the dict."""
+    """Build live IR, write a canonical baseline to *protean_dir*/ir.json.
+
+    The written baseline omits the volatile ``generated_at`` timestamp (see
+    :func:`protean.ir.constants.canonical_ir_json`) so regeneration produces a
+    diff only when the domain contract actually changes. Returns the full live
+    IR dict (with ``generated_at``) for the caller's inspection.
+    """
     from protean.ir.builder import IRBuilder  # noqa: PLC0415
+    from protean.ir.constants import canonical_ir_json  # noqa: PLC0415
     from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
 
     domain = derive_domain(domain_module)
@@ -129,7 +135,7 @@ def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict:
 
     protean_dir.mkdir(parents=True, exist_ok=True)
     ir_path = protean_dir / "ir.json"
-    ir_path.write_text(json.dumps(live_ir, indent=2) + "\n", encoding="utf-8")
+    ir_path.write_text(canonical_ir_json(live_ir) + "\n", encoding="utf-8")
     return live_ir
 
 
@@ -239,8 +245,8 @@ def _check_staleness_single(
         )
 
     print(
-        f"\nRun `protean ir show --domain {domain_module} > {target_path}` "
-        "to update, or use --fix to auto-regenerate.",
+        f"\nRun `protean ir show --domain {domain_module} --canonical > "
+        f"{target_path}` to update, or use --fix to auto-regenerate.",
         file=sys.stderr,
     )
     return False

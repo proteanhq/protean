@@ -41,6 +41,21 @@ class TestSchemaValidation:
                 f"  Message: {exc.message}"
             )
 
+    def test_canonical_ir_validates_against_schema(self, ir, schema):
+        """A canonical baseline (no generated_at) is still schema-conformant (#1064)."""
+        from protean.ir.constants import canonical_ir
+
+        canonical = canonical_ir(ir)
+        assert "generated_at" not in canonical
+        try:
+            validate(instance=canonical, schema=schema)
+        except ValidationError as exc:
+            pytest.fail(
+                f"Canonical IR failed schema validation:\n"
+                f"  Path: {'.'.join(str(p) for p in exc.absolute_path)}\n"
+                f"  Message: {exc.message}"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Top-level structure

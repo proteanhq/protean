@@ -51,6 +51,83 @@ class TestIRShowJSON:
         assert ir["domain"]["name"] == "TEST7"
 
 
+class TestIRShowCanonical:
+    """Tests for `protean ir show --canonical` (#1064)."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_canonical_omits_generated_at(self):
+        change_working_directory_to("test7")
+        result = runner.invoke(
+            app, ["ir", "show", "-d", "publishing7.py", "--canonical"]
+        )
+        assert result.exit_code == 0
+        ir = json.loads(result.output)
+        assert "generated_at" not in ir
+
+    def test_canonical_retains_content_keys(self):
+        change_working_directory_to("test7")
+        result = runner.invoke(
+            app, ["ir", "show", "-d", "publishing7.py", "--canonical"]
+        )
+        ir = json.loads(result.output)
+        for key in ("$schema", "ir_version", "checksum", "elements", "domain"):
+            assert key in ir, f"canonical output dropped {key!r}"
+
+    def test_default_includes_generated_at(self):
+        """Negative control: without --canonical, the timestamp is present."""
+        change_working_directory_to("test7")
+        result = runner.invoke(app, ["ir", "show", "-d", "publishing7.py"])
+        ir = json.loads(result.output)
+        assert "generated_at" in ir
+
+    def test_canonical_is_stable_across_runs(self):
+        """Two canonical runs of an unchanged domain produce identical output."""
+        change_working_directory_to("test7")
+        first = runner.invoke(
+            app, ["ir", "show", "-d", "publishing7.py", "--canonical"]
+        )
+        second = runner.invoke(
+            app, ["ir", "show", "-d", "publishing7.py", "--canonical"]
+        )
+        assert first.exit_code == 0
+        assert second.exit_code == 0
+        assert first.output == second.output
+
+    def test_canonical_is_noop_with_summary_format(self):
+        """--canonical has no effect on summary output (documented behavior)."""
+        change_working_directory_to("test7")
+        result = runner.invoke(
+            app,
+            ["ir", "show", "-d", "publishing7.py", "-f", "summary", "--canonical"],
+        )
+        assert result.exit_code == 0
+        assert "Domain:" in result.output
+
+    def test_canonical_matches_fix_hook_output(self, tmp_path):
+        """`ir show --canonical` and the --fix hook write byte-identical baselines.
+
+        Guards against key-ordering drift between the two baseline writers: a
+        user who follows the hook's `ir show` hint and one who lets `--fix`
+        regenerate must get the same `.protean/ir.json` bytes.
+        """
+        from protean.cli.hooks import _regenerate_ir
+
+        change_working_directory_to("test7")
+        show_result = runner.invoke(
+            app, ["ir", "show", "-d", "publishing7.py", "--canonical"]
+        )
+        _regenerate_ir("publishing7.py", tmp_path / ".protean")
+        hook_bytes = (tmp_path / ".protean" / "ir.json").read_text(encoding="utf-8")
+        assert show_result.output == hook_bytes
+
+
 class TestIRShowSummary:
     """Tests for `protean ir show --format summary`."""
 

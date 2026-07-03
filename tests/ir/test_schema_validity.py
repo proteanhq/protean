@@ -110,7 +110,6 @@ class TestSchemaCompleteness:
         expected = [
             "$schema",
             "ir_version",
-            "generated_at",
             "checksum",
             "domain",
             "clusters",
@@ -121,3 +120,14 @@ class TestSchemaCompleteness:
         ]
         for prop in expected:
             assert prop in required, f"Missing required property: {prop}"
+
+    def test_generated_at_is_optional(self):
+        """`generated_at` is a documented property but NOT required.
+
+        Canonical baselines (`protean ir show --canonical`) omit it (#1064);
+        keeping it out of ``required`` lets those files stay schema-conformant
+        while still carrying a ``$schema`` pointer.
+        """
+        schema = load_schema()
+        assert "generated_at" in schema["properties"]
+        assert "generated_at" not in schema["required"]
