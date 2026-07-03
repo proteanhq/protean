@@ -39,7 +39,7 @@ jobs:
           # canonical repo's org (proteanhq) when it runs there.
           MIRROR: ghcr.io/${{ github.repository_owner }}/mirror
           GHCR_USER: ${{ github.repository_owner }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
