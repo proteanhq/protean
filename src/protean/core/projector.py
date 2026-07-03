@@ -86,6 +86,11 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
             ("subscription_type", None),
             ("subscription_profile", None),
             ("subscription_config", {}),
+            # Consume-side idempotency: when True, each handler method records a
+            # (message_id, handler) marker in the same UnitOfWork as its
+            # read-model write, so a redelivered event is applied exactly once
+            # on a transactional provider. See ADR-0017.
+            ("idempotent", False),
         ]
 
     def __new__(cls, *args, **kwargs):
