@@ -106,7 +106,7 @@ opt-in.
 
 | Feature | PostgreSQL | SQLite | SQL Server | Memory | Elasticsearch |
 |---------|:----------:|:------:|:----------:|:------:|:-------------:|
-| Composite, `unique`, `desc`, naming | ✅ | ✅ | ✅ | advisory | — |
+| Composite, `unique`, `desc`, naming | ✅ | ✅ | ✅ | `unique` enforced; rest advisory | — |
 | `where` (partial index) | ✅ | ✅ | ⚠️ falls back | advisory | — |
 | `include` (covering columns) | ✅ | ⚠️ falls back | ✅ | advisory | — |
 | `Index.from_sql` | matched dialect only | matched dialect only | matched dialect only | — | — |
@@ -115,17 +115,21 @@ opt-in.
   declarations into SQLAlchemy `Index` constructs at table-build time, emitted
   by `create_all()` / `protean db setup`. Unsupported `where`/`include` log a
   warning and fall back to a full index.
-- **Memory** treats declarations as advisory: they are validated for shape but
-  not enforced, so you can develop against the memory provider and switch to a
-  SQL backend without code changes.
+- **Memory** validates declarations for shape and enforces **unique** indexes:
+  a duplicate insert or update that violates a single-column or composite
+  `Index(..., unique=True)` raises `ValidationError` (NULLs treated as distinct,
+  matching PostgreSQL/SQLite). Non-unique indexes are advisory, so you can
+  develop against the memory provider and switch to a SQL backend without code
+  changes.
 - **Elasticsearch** does not map relational indexes; use ES field mappings or
   `Index.from_sql` where applicable.
 - **Non-SQL backends** (memory, Elasticsearch, and cache stores such as Redis
-  for cache-backed projections) **silently ignore** index declarations — no
-  warning is emitted. Declarations stay valid (field references are still
-  checked at `Domain.init()`) and take effect if the element is later persisted
-  to a SQL backend. Warnings are emitted **only** by SQL providers, and only
-  for an opt-in (`where=`/`include=`) a specific dialect cannot honor.
+  for cache-backed projections) **silently ignore** non-unique index
+  declarations — no warning is emitted (memory being the exception that enforces
+  `unique`). Declarations stay valid (field references are still checked at
+  `Domain.init()`) and take effect if the element is later persisted to a SQL
+  backend. Warnings are emitted **only** by SQL providers, and only for an
+  opt-in (`where=`/`include=`) a specific dialect cannot honor.
 
 See the per-adapter pages under
 [Database Providers](../adapters/database/index.md) for specifics.

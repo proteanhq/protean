@@ -65,19 +65,26 @@ def outbox_test_domain(test_domain):
     return test_domain
 
 
-def persist_outbox_messages(outbox_test_domain):
-    """Create test outbox messages"""
+def persist_outbox_messages(outbox_test_domain, prefix="msg"):
+    """Create test outbox messages.
+
+    ``prefix`` disambiguates message IDs across multiple calls in a single
+    test: ``(message_id, target_broker)`` is a unique index, so reusing the
+    default prefix for a second batch would collide on it.
+    """
     outbox_repo = outbox_test_domain._get_outbox_repo("default")
 
     messages = []
     for i in range(3):
         # Create metadata with headers containing the message ID
-        headers = MessageHeaders(id=f"msg-{i}", type="DummyEvent", stream="test-stream")
+        headers = MessageHeaders(
+            id=f"{prefix}-{i}", type="DummyEvent", stream="test-stream"
+        )
         domain_meta = DomainMeta(stream_category="test-stream")
         metadata = Metadata(headers=headers, domain=domain_meta)
 
         message = Outbox.create_message(
-            message_id=f"msg-{i}",
+            message_id=f"{prefix}-{i}",
             stream_name="test-stream",
             message_type="DummyEvent",
             data={"name": f"Test {i}", "count": i},
@@ -1549,13 +1556,13 @@ class TestOutboxCleanup:
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
 
         # Create an abandoned message from 31 days ago
-        old_message = persist_outbox_messages(outbox_test_domain)[0]
+        old_message = persist_outbox_messages(outbox_test_domain, prefix="old")[0]
         old_message.status = OutboxStatus.ABANDONED.value
         old_message.last_processed_at = datetime.now(timezone.utc) - timedelta(days=31)
         outbox_repo.add(old_message)
 
         # Create a recent abandoned message
-        recent_message = persist_outbox_messages(outbox_test_domain)[0]
+        recent_message = persist_outbox_messages(outbox_test_domain, prefix="recent")[0]
         recent_message.message_id = "recent-msg"
         recent_message.status = OutboxStatus.ABANDONED.value
         recent_message.last_processed_at = datetime.now(timezone.utc) - timedelta(
@@ -1583,21 +1590,25 @@ class TestOutboxCleanup:
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
 
         # Create old published message (8 days ago)
-        old_published = persist_outbox_messages(outbox_test_domain)[0]
+        old_published = persist_outbox_messages(outbox_test_domain, prefix="oldpub")[0]
         old_published.message_id = "old-published"
         old_published.status = OutboxStatus.PUBLISHED.value
         old_published.published_at = datetime.now(timezone.utc) - timedelta(days=8)
         outbox_repo.add(old_published)
 
         # Create recent published message (1 day ago)
-        recent_published = persist_outbox_messages(outbox_test_domain)[0]
+        recent_published = persist_outbox_messages(
+            outbox_test_domain, prefix="recentpub"
+        )[0]
         recent_published.message_id = "recent-published"
         recent_published.status = OutboxStatus.PUBLISHED.value
         recent_published.published_at = datetime.now(timezone.utc) - timedelta(days=1)
         outbox_repo.add(recent_published)
 
         # Create old abandoned message (31 days ago)
-        old_abandoned = persist_outbox_messages(outbox_test_domain)[0]
+        old_abandoned = persist_outbox_messages(outbox_test_domain, prefix="oldaband")[
+            0
+        ]
         old_abandoned.message_id = "old-abandoned"
         old_abandoned.status = OutboxStatus.ABANDONED.value
         old_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(
@@ -1606,7 +1617,9 @@ class TestOutboxCleanup:
         outbox_repo.add(old_abandoned)
 
         # Create recent abandoned message (1 day ago)
-        recent_abandoned = persist_outbox_messages(outbox_test_domain)[0]
+        recent_abandoned = persist_outbox_messages(
+            outbox_test_domain, prefix="recentaband"
+        )[0]
         recent_abandoned.message_id = "recent-abandoned"
         recent_abandoned.status = OutboxStatus.ABANDONED.value
         recent_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(
@@ -1721,20 +1734,24 @@ class TestOutboxPeriodicCleanup:
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
 
         # Create old messages
-        old_published = persist_outbox_messages(outbox_test_domain)[0]
+        old_published = persist_outbox_messages(outbox_test_domain, prefix="oldpub")[0]
         old_published.message_id = "old-pub"
         old_published.status = OutboxStatus.PUBLISHED.value
         old_published.published_at = datetime.now(timezone.utc) - timedelta(days=2)
         outbox_repo.add(old_published)
 
-        old_abandoned = persist_outbox_messages(outbox_test_domain)[0]
+        old_abandoned = persist_outbox_messages(outbox_test_domain, prefix="oldaband")[
+            0
+        ]
         old_abandoned.message_id = "old-aband"
         old_abandoned.status = OutboxStatus.ABANDONED.value
         old_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(days=3)
         outbox_repo.add(old_abandoned)
 
         # Create recent messages
-        recent_published = persist_outbox_messages(outbox_test_domain)[0]
+        recent_published = persist_outbox_messages(
+            outbox_test_domain, prefix="recentpub"
+        )[0]
         recent_published.message_id = "recent-pub"
         recent_published.status = OutboxStatus.PUBLISHED.value
         recent_published.published_at = datetime.now(timezone.utc) - timedelta(hours=12)

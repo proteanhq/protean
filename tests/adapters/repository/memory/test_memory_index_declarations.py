@@ -1,8 +1,10 @@
-"""The in-memory adapter accepts index declarations and ignores them.
+"""The in-memory adapter accepts index declarations.
 
-Indexes are a persistence optimization that only SQL adapters render as DDL.
-Non-DDL stores (memory, Elasticsearch) must accept ``indexes=`` declarations
-without error and persist/query exactly as if they were absent.
+Indexes are a persistence optimization that only SQL adapters render as DDL, so
+non-DDL stores accept ``indexes=`` declarations without error and persist/query
+as if the (non-unique) indexes were absent. Unique indexes are the exception:
+the memory store enforces them for fidelity — see
+``test_memory_unique_index_enforcement.py``.
 """
 
 from protean import Index
