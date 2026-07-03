@@ -54,6 +54,7 @@ TodoWrite([
   {"id": "branch",      "task": "Create branch",                          "status": "pending"},
   {"id": "code",        "task": "Implement changes",                      "status": "pending"},
   {"id": "changelog",   "task": "Create changelog fragment",              "status": "pending"},
+  {"id": "docs",        "task": "Update user-facing docs (Diataxis) or record N/A", "status": "pending"},
   {"id": "self_check",  "task": "Self-check diff",                        "status": "pending"},
   {"id": "simplify",    "task": "Run /simplify — fix issues found",       "status": "pending"},
   {"id": "pr_review",   "task": "Run pr-reviewer agent — fix blockers",   "status": "pending"},
@@ -83,6 +84,18 @@ git switch -c <branch-name>
 **2b-ii. Changelog fragment** — create a file in `changes/<issue-number>.<category>.md` (e.g., `changes/752.added.md`). One or two lines, user's perspective. Category is one of: `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`. A single issue may need multiple fragments if it spans categories. Do NOT edit `CHANGELOG.md` directly — fragments are assembled per-epic.
 
 → Mark `code` and `changelog` done.
+
+**2b-iii. Documentation** — a changelog fragment is a release note, **not** documentation. Ask: does this change add or alter **user-facing surface** — a new public API/helper (including test helpers like `protean.testing.*`), a decorator option, a config key, a CLI command, a behavior, or a deprecation? If yes, update the docs; a green suite with undocumented public surface is an incomplete change.
+
+Walk the Diataxis quadrants (see `docs/CLAUDE.md`) and update every one that applies:
+- **Guide** (`docs/guides/`) — how to use it, with a code example. *Almost always needed for new public surface.*
+- **Reference** (`docs/reference/`) — decorator options, config keys, CLI flags, in a table.
+- **Explanation** (`docs/concepts/` or an **ADR** in `docs/adr/`) — why it works this way; an architectural or behavioral decision warrants an ADR in the same PR.
+- **Pattern** (`docs/patterns/`) — design guidance, if applicable.
+
+When adding a **new page**, also update `mkdocs.yml` nav, `docs/contents.md`, the section `index.md`, and `docs/how-do-i.md` (see `docs/CLAUDE.md`). Then `uv run mkdocs build --strict` must pass. Prefer extending an existing page over a new one to avoid the nav cascade. If the change is purely internal (refactor, a fix with no observable surface change), record "docs: N/A — no user-facing surface" and move on.
+
+→ Mark `docs` done.
 
 **2c. Self-check** — run `git diff` and walk through every item below against your actual changes. Do not mark this done until you have verified each one:
 
@@ -160,9 +173,10 @@ For each finding, either **fix it** (fold into the same PR; add tests for any ne
 
 ## Preflight gate
 
-**STOP.** Read your TODO list now. Every item from `research` through `red_team` (the first 13 items) must be `done`. If any are still `pending` or `in_progress`, go back and complete them. Do not proceed to Phase 4 until this gate passes.
+**STOP.** Read your TODO list now. Every item from `research` through `red_team` (the first 14 items) must be `done`. If any are still `pending` or `in_progress`, go back and complete them. Do not proceed to Phase 4 until this gate passes.
 
 Items that commonly get skipped — verify you actually did these:
+- `docs` — for any new/changed public API, option, CLI command, or behavior, must have updated the docs (or explicitly recorded "N/A — no user-facing surface"); new public *test helpers* count
 - `simplify` — must have invoked `/simplify`, not just self-reviewed
 - `pr_review` — must have launched the pr-reviewer agent, not just self-reviewed
 - `full_suite` — must have run `make test-full` or noted Docker unavailable
@@ -220,6 +234,7 @@ Branch: work/branch-name
 PR: #M — PR Title (URL)
 Changes: (1-3 bullets)
 Tests: X added, core Y/0, full Z/0, patch coverage N%
+Docs: <quadrants updated: guide/reference/ADR/…> or "N/A — no user-facing surface"
 Red-team: <panel|light|skip> — revert-check <passed: tests went red>; K findings (fixed/justified)
 Review: N comments addressed, PR mergeable, CI passing
 ```
