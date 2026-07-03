@@ -128,10 +128,12 @@ class BaseDAO(metaclass=ABCMeta):
         Default is a no-op. Adapters whose unit-of-work batches writes until
         commit (e.g. SQLAlchemy) override this so callers can force buffered
         INSERT/UPDATE statements to execute inside the current transaction —
-        for example to materialize a store-generated ``Auto(increment=True)``
-        primary key before it is reflected back onto the aggregate. Providers
-        that assign auto-increment values during ``_create`` (memory,
-        Elasticsearch) need no flush and keep the default.
+        for example to materialize a parent row before dependent child rows
+        referencing it are written, or to materialize a store-generated
+        ``Auto(increment=True)`` primary key before it is reflected back onto
+        the aggregate. Providers that persist eagerly and assign auto-increment
+        values during ``_create`` (memory, Elasticsearch) need no flush and keep
+        the default.
         """
         return None
 

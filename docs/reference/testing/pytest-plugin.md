@@ -54,9 +54,11 @@ User application tests should construct their domain lifecycle with
 
 ## Query-shape assertions
 
-Three context managers assert query count and shape against a SQLAlchemy
-backend, to catch query-cost regressions in tests. They are no-ops when no
-SQLAlchemy engine is resolved (e.g. the in-memory adapter). See
+Four context managers observe the SQL a block issues against a SQLAlchemy
+backend, to catch query-cost regressions in tests. Three assert query count and
+shape; `capture_queries` yields the raw statements for custom assertions such as
+insert ordering. They are no-ops when no SQLAlchemy engine is resolved (e.g. the
+in-memory adapter). See
 [Test Query Shape](../../guides/testing/query-shape-tests.md) for usage.
 
 ::: protean.integrations.pytest.assert_query_count
@@ -70,6 +72,11 @@ SQLAlchemy engine is resolved (e.g. the in-memory adapter). See
       show_source: false
 
 ::: protean.integrations.pytest.assert_no_overfetch
+    options:
+      show_root_heading: true
+      show_source: false
+
+::: protean.integrations.pytest.capture_queries
     options:
       show_root_heading: true
       show_source: false
