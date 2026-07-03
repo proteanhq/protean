@@ -631,3 +631,70 @@ def test_read_blocking_connection_error_with_successful_retry(test_domain, caplo
         # Restore original methods
         broker._read_blocking = original_read_blocking
         broker._ensure_connection = original_ensure_connection
+
+
+@pytest.mark.redis
+class TestRedisReconnectAfterClose:
+    """Reviving a closed Redis connection against a live server (#1055).
+
+    Engine shutdown closes the broker (``redis_instance`` becomes ``None``).
+    Reusing the broker afterwards — a straggler poll read, a publish, or a
+    test-teardown ``_data_reset`` — must reconnect transparently instead of
+    raising ``AttributeError: 'NoneType' object has no attribute ...``.
+    """
+
+    def test_publish_and_read_revive_after_close(self, test_domain):
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
+        stream = "revive-stream"
+
+        broker.publish(stream, {"first": "message"})
+
+        # Simulate engine shutdown tearing down the connection.
+        broker.close()
+        assert broker.redis_instance is None
+
+        # Reusing the broker must reconnect, not crash.
+        broker.publish(stream, {"second": "message"})
+        assert broker.redis_instance is not None
+
+        messages = broker.read(stream, "revive-group", no_of_messages=10)
+        assert len(messages) >= 1
+
+    def test_data_reset_revives_after_close(self, test_domain):
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
+        broker.publish("some-stream", {"payload": "x"})
+
+        broker.close()
+        assert broker.redis_instance is None
+
+        # Teardown reset after the connection was closed must not raise.
+        broker._data_reset()
+        assert broker.redis_instance is not None
+
+    def test_poll_loop_survives_midrun_close(self, test_domain):
+        """Repeated reads keep working after the connection is closed mid-run.
+
+        Mirrors the engine's poll loop: it reads in a loop; if the connection is
+        torn down (as engine shutdown does) a subsequent read must reconnect and
+        keep draining messages rather than dying with AttributeError.
+        """
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
+        stream, group = "survive-stream", "survive-group"
+        broker._ensure_group(group, stream)
+
+        for i in range(3):
+            broker.publish(stream, {"n": i})
+
+        broker.close()
+        assert broker.redis_instance is None
+
+        # Poll loop continues after the mid-run close: read and ACK each message.
+        collected = []
+        for _ in range(5):
+            batch = broker.read(stream, group, no_of_messages=10)
+            for identifier, payload in batch:
+                collected.append(payload)
+                broker.ack(stream, identifier, group)
+
+        assert broker.redis_instance is not None
+        assert sorted(m["n"] for m in collected) == [0, 1, 2]
