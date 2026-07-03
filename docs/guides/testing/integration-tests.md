@@ -128,6 +128,79 @@ protean server --domain=my_domain --test-mode
 
 See [Run the Server](../server/index.md#test-mode) for CLI details.
 
+## Driving flows with `process_and_wait`
+
+The `Engine(domain, test_mode=True).run()` calls above are the low-level
+primitive. For most tests `protean.testing` provides higher-level helpers that
+make the **same test body work in both synchronous and asynchronous processing
+modes**, and hand you the events and errors without reaching into outbox rows or
+event-store streams.
+
+`process_and_wait(command, domain)` processes a command through its full runtime
+path (`handler → aggregate → UoW commit → outbox → engine → subscription →
+projector`) and waits for the effects to settle. In sync mode the chain runs
+inline; in async mode it drains a bounded test-mode engine before returning. It
+returns a `ProcessResult`:
+
+```python
+from protean.testing import process_and_wait
+
+def test_placing_an_order_reserves_inventory():
+    outcome = process_and_wait(
+        PlaceOrder(order_id="o1", product_id="ABC", qty=5), domain
+    )
+
+    assert outcome.succeeded
+    assert OrderPlaced in outcome.events
+    assert outcome.events[OrderPlaced].order_id == "o1"
+
+    with domain.domain_context():
+        reservation = domain.repository_for(Reservation).get("o1")
+        assert reservation.quantity == 5
+```
+
+A `ProcessResult` exposes exactly what an integration test asserts on:
+
+- `result`: the handler's return value (sync) or the enqueued command's store position (async).
+- `events`: an `EventLog` of every event raised in the command's correlation chain.
+- `error` / `succeeded` / `failed`: the synchronous or submission-time error (an unregistered command, an expired deadline, a duplicate key, an enrichment `ValidationError`). Asynchronous *handler* failures happen after the command is enqueued, are absorbed by the engine (retries or DLQ), and are not surfaced here.
+
+### Asserting on events with `EventLog`
+
+`outcome.events` is an `EventLog` with Pythonic access by type or index:
+
+```python
+assert OrderPlaced in outcome.events                 # membership by type
+assert outcome.events[OrderPlaced].order_id == "o1"  # first event of a type
+assert outcome.events.get(OrderCancelled) is None    # safe access, no KeyError
+assert outcome.events.types == [OrderPlaced, InventoryReserved]
+assert len(outcome.events) == 2
+```
+
+### Waiting for a condition with `drain`
+
+When you drive the flow yourself, or need to wait for a later cascade to settle,
+`drain` runs the test-mode engine until a predicate is satisfied. It replaces
+the copy-pasted `for _ in range(N): Engine(...).run()` loop:
+
+```python
+from protean.testing import drain
+
+def test_order_ships_after_payment():
+    process_and_wait(PlaceOrder(order_id="o1", ...), domain)
+    process_and_wait(ConfirmPayment(order_id="o1", ...), domain)
+
+    drain(domain, until=lambda: get_order("o1").status == "shipped")
+
+    assert get_order("o1").status == "shipped"
+```
+
+`drain` is bounded by `max_cycles` (default 5) so a never-satisfied `until`
+cannot hang the test. If the budget is exhausted before the condition settles,
+`drain` returns and emits a `UserWarning`, so an unmet expectation is never
+silently swallowed. Each engine pass takes at least ~1 second, so raise
+`max_cycles` only for flows that genuinely need more passes.
+
 ## Full-Flow Feature Files
 
 Integration tests exercise complete flows from command to projection,
