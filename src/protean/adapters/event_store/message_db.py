@@ -71,18 +71,32 @@ class MessageDBStore(BaseEventStore):
             stream_name, position=position, no_of_messages=no_of_messages
         )
 
-    def _read_last_message(self, stream_name) -> Optional[Dict[str, Any]]:
-        """Read the last message from the event store."""
-        return self.client.read_last_message(stream_name)
+    def _read_last_message(self, stream_name: str) -> Optional[Dict[str, Any]]:
+        """Read the last message from ``stream_name``.
+
+        The client's ``get_last_stream_message()`` resolves only *specific*
+        streams (``category-id``); it returns ``None`` for category streams
+        (``$all`` or a bare ``category``). Fall back to reading the stream and
+        taking the last message so callers reading a category stream — notably
+        ``reconcile_outbox``, which reads ``$all`` (ADR-0015) — get the newest
+        message instead of a spurious ``None``.
+        """
+        message = self.client.read_last_message(stream_name)
+        if message is not None:
+            return message
+
+        # TODO: page-in the whole stream only because the message-db client has
+        # no category tail-read; replace with a bounded reverse read when it does.
+        # The client's ``$all`` query has no ``ORDER BY``, so pick the newest by
+        # ``global_position`` rather than trusting row order (``messages[-1]``).
+        messages = self._read(stream_name, no_of_messages=1_000_000)
+        if not messages:
+            return None
+        return max(messages, key=lambda m: m["global_position"])
 
     def _stream_head_position(self, stream_category: str) -> int:
-        # _read_last_message uses get_last_stream_message() which only works
-        # for specific streams (with entity ID), not category streams.
-        # Use _read to get category messages and take the last one.
-        messages = self._read(stream_category, no_of_messages=1_000_000)
-        if messages:
-            return messages[-1].get("global_position", -1)
-        return -1
+        message = self._read_last_message(stream_category)
+        return message.get("global_position", -1) if message else -1
 
     def _stream_identifiers(self, stream_category: str) -> List[str]:
         """Return unique aggregate identifiers for a stream category.
