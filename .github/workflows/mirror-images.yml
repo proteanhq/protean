@@ -30,15 +30,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          # The owner of the repo running this workflow (this org for the
-          # canonical repo). Any username works with GITHUB_TOKEN.
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set up crane
         uses: imjasonh/setup-crane@v0.4
 
@@ -47,8 +38,17 @@ jobs:
           # GHCR namespace of the repo running this workflow, i.e. the
           # canonical repo's org (proteanhq) when it runs there.
           MIRROR: ghcr.io/${{ github.repository_owner }}/mirror
+          GHCR_USER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+
+          # Authenticate crane to GHCR here rather than via a separate login
+          # step: setup-crane's install writes a placeholder ghcr.io entry to
+          # the Docker config, which would otherwise shadow the real token and
+          # make `crane copy` fail its blob upload with "permission_denied:
+          # write_package".
+          echo "${GHCR_TOKEN}" | crane auth login ghcr.io -u "${GHCR_USER}" --password-stdin
 
           # "<upstream source>|<mirror path>:<tag>" — the mirror path is a flat
           # basename so refs stay short and registry-agnostic. Keep this list in
