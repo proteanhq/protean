@@ -244,9 +244,12 @@ This only works when:
   or equivalent — Protean does not create the sequence for you.
 
 Because the id isn't available until the aggregate is saved, this mode
-trades away the "identity at creation" guarantee. Prefer `uuid` or a
-custom function unless you have a strong reason to defer identity
-generation to the database.
+trades away the "identity at creation" guarantee. Once you persist the
+aggregate with `repository.add()`, the generated id is reflected back
+onto the same instance, so you can reference or re-fetch it afterwards.
+This holds whether the add runs on its own or inside a `UnitOfWork`.
+Prefer `uuid` or a custom function unless you have a strong reason to
+defer identity generation to the database.
 
 ---
 
