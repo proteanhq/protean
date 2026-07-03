@@ -7,8 +7,9 @@ from protean import Domain
 from protean.adapters.repository.elasticsearch import ESProvider
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
+from protean.core.projection import BaseProjection
 from protean.exceptions import ConfigurationError, NotSupportedError
-from protean.fields import HasMany, String
+from protean.fields import HasMany, Identifier, Integer, String
 
 from .elements import Alien, Person
 
@@ -134,6 +135,11 @@ class ESLineItem(BaseEntity):
     sku: String(required=True)
 
 
+class CacheLeaderboard(BaseProjection):
+    entry_id: Identifier(identifier=True)
+    score: Integer()
+
+
 @pytest.mark.elasticsearch
 @pytest.mark.no_test_domain
 class TestCreateArtifactsEventSourcedFilter:
@@ -168,5 +174,50 @@ class TestCreateArtifactsEventSourcedFilter:
                 # Entity of event-sourced aggregate should NOT have an index
                 es_line_item_schema = provider.namespaced_schema_name("es_line_item")
                 assert not conn.indices.exists(index=es_line_item_schema)
+            finally:
+                provider._drop_database_artifacts()
+
+
+@pytest.mark.elasticsearch
+@pytest.mark.no_test_domain
+class TestCreateArtifactsCacheBackedProjectionFilter:
+    """Test that _create_database_artifacts skips cache-backed projections."""
+
+    def test_create_artifacts_skips_cache_backed_projection(self):
+        """A cache-backed projection carries ``meta_.provider is None``. Before the
+        consolidation onto ``BaseProvider.owns()``, the Elasticsearch index loops
+        resolved ``providers[None]`` unconditionally and raised ``KeyError``,
+        breaking index setup for the whole domain (an analogue of the break #1034
+        fixed for SQLAlchemy). Index setup must skip it and succeed for the real
+        aggregate."""
+        domain = initialize_domain(name="ES-Cache-Projection-Test", root_path=__file__)
+
+        domain.register(Person)
+        domain.register(CacheLeaderboard, cache="default")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            provider = domain.providers["default"]
+            conn = provider.get_connection()
+
+            try:
+                # Must not raise on the cache projection's ``None`` provider.
+                provider._create_database_artifacts()
+
+                # Person (regular aggregate) should have its index created
+                person_model = domain.repository_for(Person)._database_model
+                assert conn.indices.exists(index=person_model._index._name)
+
+                # Cache-backed projection should NOT have an index
+                leaderboard_schema = provider.namespaced_schema_name(
+                    CacheLeaderboard.meta_.schema_name
+                )
+                assert not conn.indices.exists(index=leaderboard_schema)
+
+                # Data reset applies the same ownership gate: it must skip the
+                # cache-backed projection (no index to clear) and complete
+                # without raising for the owned aggregate.
+                provider._data_reset()
+                assert conn.indices.exists(index=person_model._index._name)
             finally:
                 provider._drop_database_artifacts()
