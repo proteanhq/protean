@@ -50,7 +50,7 @@ def find_domain_in_module(module: ModuleType) -> Domain:
     )
 
 
-def find_domain_by_string(module, domain_name):
+def find_domain_by_string(module: ModuleType, domain_name: str) -> Domain:
     """Check if the given string is a variable name or a function. Call
     a function to get the app instance, or return the variable directly.
     """
@@ -107,7 +107,7 @@ def find_domain_by_string(module, domain_name):
     return domain
 
 
-def prepare_import(path):
+def prepare_import(path: str) -> str:
     """Given a filename this will try to calculate the python path, add it
     to the search path and return the actual module name that is expected.
     """
@@ -143,7 +143,9 @@ def prepare_import(path):
     return ".".join(module_name[::-1])
 
 
-def locate_domain(module_name, domain_name, raise_if_not_found=True):
+def locate_domain(
+    module_name: str, domain_name: str | None, raise_if_not_found: bool = True
+) -> Domain | None:
     __traceback_hide__ = True  # noqa: F841
 
     try:
@@ -160,7 +162,7 @@ def locate_domain(module_name, domain_name, raise_if_not_found=True):
         elif raise_if_not_found:
             raise NoDomainException(f"Could not import {module_name!r}.") from exc
         else:
-            return
+            return None
 
     module = sys.modules[module_name]
 
@@ -170,7 +172,7 @@ def locate_domain(module_name, domain_name, raise_if_not_found=True):
         return find_domain_by_string(module, domain_name)
 
 
-def derive_domain(domain_path: str = None):
+def derive_domain(domain_path: str | None = None) -> Domain | None:
     """Derive domain from supplied domain path.
 
     Domain is derived from sources in this order:
