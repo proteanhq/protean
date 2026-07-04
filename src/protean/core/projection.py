@@ -298,7 +298,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
 
         # Restore shadow field values directly into __dict__ (they bypass Pydantic)
         for name, value in shadow_kwargs.items():
-            self.__dict__[name] = value  # type: ignore[reportIndexIssue]
+            self.__dict__[name] = value  # pyright: ignore[reportIndexIssue]
 
         # Reconstruct ValueObjects from shadow kwargs when the VO itself
         # was not explicitly provided (e.g. during repository retrieval).
@@ -330,7 +330,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
             for _, shadow_field in field_obj.get_shadow_fields():
                 attr_name = shadow_field.attribute_name
                 if attr_name not in self.__dict__:
-                    self.__dict__[attr_name] = None  # type: ignore[reportIndexIssue]
+                    self.__dict__[attr_name] = None  # pyright: ignore[reportIndexIssue]
 
         self.defaults()
         self._initialized = True
@@ -384,7 +384,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         if id_field_name is None:
             return False
 
-        return getattr(self, id_field_name) == getattr(other, id_field_name)
+        return bool(getattr(self, id_field_name) == getattr(other, id_field_name))
 
     def __hash__(self) -> int:
         id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
