@@ -41,7 +41,7 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Optional, TypeVar, Union
+from typing import Any, Callable, Iterable, Iterator, Optional, TypeVar, Union, cast
 
 import structlog
 
@@ -154,7 +154,7 @@ def configure_logging(
     log_file_prefix: Optional[str] = None,
     max_bytes: int = 10 * 1024 * 1024,
     backup_count: int = 5,
-    extra_processors: Optional[list] = None,
+    extra_processors: Optional[list[Any]] = None,
     per_logger: Optional[dict[str, str]] = None,
     dict_config: Optional[dict[str, Any]] = None,
     redact: Optional[list[str]] = None,
@@ -282,7 +282,7 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     Returns:
         A structlog ``BoundLogger`` wrapping the stdlib logger.
     """
-    return structlog.get_logger(name)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
 
 
 def add_context(**kwargs: Any) -> None:
@@ -444,7 +444,7 @@ def get_logging_config_value(key: str, default: _T) -> _T:
     """
     try:
         if has_domain_context():
-            return current_domain.config.get("logging", {}).get(key, default)
+            return cast(_T, current_domain.config.get("logging", {}).get(key, default))
     except Exception:
         pass
     return default
@@ -625,9 +625,9 @@ class TailSamplingFilter(logging.Filter):
 
 def _annotate_record(record: logging.LogRecord, rule: str, rate: float) -> None:
     """Set sampling metadata attributes on a stdlib ``LogRecord``."""
-    record.sampling_decision = "kept"  # type: ignore[attr-defined]
-    record.sampling_rule = rule  # type: ignore[attr-defined]
-    record.sampling_rate = rate  # type: ignore[attr-defined]
+    record.sampling_decision = "kept"
+    record.sampling_rule = rule
+    record.sampling_rate = rate
 
 
 @contextmanager
@@ -777,7 +777,7 @@ def _emit_wide_event(
         access_logger.info("access.handler_completed", extra=wide_event)
 
 
-def log_method_call(func: Callable) -> Callable:
+def log_method_call(func: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator that logs method entry, exit, and exceptions.
 
     Useful for tracing command and event handler execution::
@@ -790,7 +790,7 @@ def log_method_call(func: Callable) -> Callable:
     """
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         logger = get_logger(func.__module__)
 
         logger.debug(
@@ -841,14 +841,16 @@ def configure_for_testing() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _build_shared_processors(extra_processors: Optional[list] = None) -> list:
+def _build_shared_processors(
+    extra_processors: Optional[list[Any]] = None,
+) -> list[Any]:
     """Build the shared processor chain used by both stdlib and structlog paths.
 
     This chain runs on every log event — whether it originated from a stdlib
     ``logging.getLogger()`` call or a structlog ``get_logger()`` call — before
     the final renderer produces output.
     """
-    processors: list = [
+    processors: list[Any] = [
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
@@ -864,7 +866,7 @@ def _build_shared_processors(extra_processors: Optional[list] = None) -> list:
     return processors
 
 
-def _build_renderer(env: str, format: str):
+def _build_renderer(env: str, format: str) -> Any:
     """Build the final renderer (JSON or console) based on environment."""
     use_json = format == "json" or (
         format == "auto" and env in ("production", "staging")
@@ -883,7 +885,7 @@ def _build_renderer(env: str, format: str):
 def _build_processor_formatter(
     env: str,
     format: str,
-    shared_processors: list,
+    shared_processors: list[Any],
 ) -> structlog.stdlib.ProcessorFormatter:
     """Build a ``ProcessorFormatter`` that handles final rendering.
 
@@ -908,7 +910,7 @@ def _setup_stdlib_logging(
     backup_count: int,
     env: str = "development",
     format: str = "auto",
-    extra_processors: Optional[list] = None,
+    extra_processors: Optional[list[Any]] = None,
 ) -> None:
     """Configure stdlib logging with ``ProcessorFormatter`` bridge.
 
@@ -976,7 +978,7 @@ def _setup_stdlib_logging(
 def _setup_structlog(
     env: str,
     format: str,
-    extra_processors: Optional[list] = None,
+    extra_processors: Optional[list[Any]] = None,
 ) -> None:
     """Configure structlog processors and renderer.
 
@@ -988,7 +990,7 @@ def _setup_structlog(
     Stdlib loggers (``logging.getLogger()``) take a separate path through
     the ``ProcessorFormatter`` on each handler — see ``_setup_stdlib_logging``.
     """
-    processors: list = [
+    processors: list[Any] = [
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
