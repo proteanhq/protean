@@ -29,6 +29,8 @@ from protean.utils.eventing import Message
 from protean.utils.inflection import underscore
 
 if TYPE_CHECKING:
+    from protean.core.projection import BaseProjection
+    from protean.core.projector import BaseProjector
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -64,7 +66,7 @@ class RebuildResult:
 
 def rebuild_projection(
     domain: "Domain",
-    projection_cls: type,
+    projection_cls: "type[BaseProjection]",
     batch_size: int = 500,
 ) -> RebuildResult:
     """Rebuild a projection by replaying events through its projectors.
@@ -148,7 +150,9 @@ def rebuild_all_projections(
     return results
 
 
-def _truncate_projection(domain: "Domain", projection_cls: type) -> None:
+def _truncate_projection(
+    domain: "Domain", projection_cls: "type[BaseProjection]"
+) -> None:
     """Truncate all data for a projection.
 
     Handles both database-backed and cache-backed projections.
@@ -164,7 +168,7 @@ def _truncate_projection(domain: "Domain", projection_cls: type) -> None:
 
 def _replay_projector(
     domain: "Domain",
-    projector_cls: type,
+    projector_cls: "type[BaseProjector]",
     stream_categories: list[str],
     batch_size: int,
 ) -> tuple[int, int]:
@@ -209,7 +213,12 @@ def _replay_projector(
         all_messages.extend(messages)
 
     # Sort by global_position for correct cross-category ordering
-    all_messages.sort(key=lambda m: m.metadata.event_store.global_position or 0)
+    def _global_position(message: Message) -> int:
+        if message.metadata is None or message.metadata.event_store is None:
+            return 0
+        return message.metadata.event_store.global_position or 0
+
+    all_messages.sort(key=_global_position)
 
     dispatched = 0
     skipped = 0
@@ -223,10 +232,10 @@ def _replay_projector(
             logger.warning(
                 "Skipping unresolvable message type `%s` at position %s: %s",
                 message.metadata.headers.type
-                if message.metadata.headers
+                if message.metadata and message.metadata.headers
                 else "unknown",
                 message.metadata.event_store.global_position
-                if message.metadata.event_store
+                if message.metadata and message.metadata.event_store
                 else "unknown",
                 exc,
             )
@@ -235,7 +244,7 @@ def _replay_projector(
             logger.warning(
                 "Error processing message at position %s: %s",
                 message.metadata.event_store.global_position
-                if message.metadata.event_store
+                if message.metadata and message.metadata.event_store
                 else "unknown",
                 exc,
             )
