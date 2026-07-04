@@ -3,7 +3,7 @@ import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 from protean.port.broker import (
     BaseBroker,
@@ -54,39 +54,50 @@ class InlineBroker(BaseBroker):
         )  # At least 1 minute
 
         # Initialize storage for messages
-        self._messages = defaultdict(list)
+        # Structure: {stream: [(identifier, message)]}
+        self._messages: defaultdict[str, list[tuple[str, dict[str, Any]]]] = (
+            defaultdict(list)
+        )
 
         # Initialize storage for consumer groups
         # Structure: {stream:group_name: {consumers: set(), created_at: timestamp}}
-        self._consumer_groups = {}
+        self._consumer_groups: dict[str, dict[str, Any]] = {}
 
         # Initialize storage for in-flight messages per consumer group
         # Structure: {stream:consumer_group: {identifier: (identifier, message, timestamp)}}
-        self._in_flight = defaultdict(dict)
+        self._in_flight: defaultdict[
+            str, dict[str, tuple[str, dict[str, Any], float]]
+        ] = defaultdict(dict)
 
         # Initialize storage for failed messages (nacked messages waiting for retry)
         # Structure: {stream:consumer_group: [(identifier, message, retry_count, next_retry_time)]}
-        self._failed_messages = defaultdict(list)
+        self._failed_messages: defaultdict[
+            str, list[tuple[str, dict[str, Any], int, float]]
+        ] = defaultdict(list)
 
         # Track retry counts per message per consumer group
         # Structure: {stream:consumer_group: {identifier: retry_count}}
-        self._retry_counts = defaultdict(dict)
+        self._retry_counts: defaultdict[str, dict[str, int]] = defaultdict(dict)
 
         # Track read positions per consumer group to support multiple consumer groups
         # Structure: {stream:consumer_group: position}
-        self._consumer_positions = defaultdict(int)
+        self._consumer_positions: defaultdict[str, int] = defaultdict(int)
 
         # Track message ownership per consumer group
         # Structure: {identifier: {consumer_group: bool}}
-        self._message_ownership = defaultdict(dict)
+        self._message_ownership: defaultdict[str, dict[str, bool]] = defaultdict(dict)
 
         # Dead Letter Queue for permanently failed messages
         # Structure: {stream:consumer_group: [(identifier, message, failure_reason, timestamp)]}
-        self._dead_letter_queue = defaultdict(list)
+        self._dead_letter_queue: defaultdict[
+            str, list[tuple[str, dict[str, Any], str, float]]
+        ] = defaultdict(list)
 
         # Track operation states for idempotency
         # Structure: {consumer_group: {identifier: (state, timestamp)}}
-        self._operation_states = defaultdict(dict)
+        self._operation_states: defaultdict[
+            str, dict[str, tuple[OperationState, float]]
+        ] = defaultdict(dict)
 
     @property
     def capabilities(self) -> BrokerCapabilities:
@@ -238,7 +249,7 @@ class InlineBroker(BaseBroker):
                 logger.debug(
                     f"Message '{identifier}' acknowledged by consumer group '{consumer_group}'"
                 )
-            except Exception as log_error:
+            except Exception:
                 # Logging failure shouldn't cause ACK to fail
                 logger.exception(
                     "broker.inline.ack_log_failed", extra={"identifier": identifier}
@@ -249,8 +260,10 @@ class InlineBroker(BaseBroker):
 
             return True
 
-        except Exception as e:
-            logger.exception("broker.inline.ack_failed", extra={"identifier": identifier})
+        except Exception:
+            logger.exception(
+                "broker.inline.ack_failed", extra={"identifier": identifier}
+            )
             # Clean up operation state on failure
             self._clear_operation_state(consumer_group, identifier)
             return False
@@ -316,8 +329,10 @@ class InlineBroker(BaseBroker):
                     stream, identifier, consumer_group, message, new_retry_count
                 )
 
-        except Exception as e:
-            logger.exception("broker.inline.nack_failed", extra={"identifier": identifier})
+        except Exception:
+            logger.exception(
+                "broker.inline.nack_failed", extra={"identifier": identifier}
+            )
             # Clean up operation state on failure
             self._clear_operation_state(consumer_group, identifier)
             return False
@@ -327,7 +342,7 @@ class InlineBroker(BaseBroker):
         stream: str,
         identifier: str,
         consumer_group: str,
-        message: dict,
+        message: dict[str, Any],
         retry_count: int,
         new_retry_count: int,
     ) -> bool:
@@ -366,7 +381,7 @@ class InlineBroker(BaseBroker):
                 logger.debug(
                     f"Message '{identifier}' nacked, retry {new_retry_count}/{self._max_retries} in {delay:.2f}s"
                 )
-            except Exception as log_error:
+            except Exception:
                 # Logging failure shouldn't cause NACK to fail
                 logger.exception(
                     "broker.inline.nack_log_failed", extra={"identifier": identifier}
@@ -374,7 +389,7 @@ class InlineBroker(BaseBroker):
 
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception(
                 "broker.inline.nack_retry_failed", extra={"identifier": identifier}
             )
@@ -386,7 +401,7 @@ class InlineBroker(BaseBroker):
         stream: str,
         identifier: str,
         consumer_group: str,
-        message: dict,
+        message: dict[str, Any],
         new_retry_count: int,
     ) -> bool:
         """Handle nack when max retries exceeded"""
@@ -419,7 +434,7 @@ class InlineBroker(BaseBroker):
 
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception(
                 "broker.inline.max_retries_failed", extra={"identifier": identifier}
             )
@@ -432,7 +447,7 @@ class InlineBroker(BaseBroker):
             ready_messages = self._get_retry_ready_messages(stream, consumer_group)
             if ready_messages:
                 self._requeue_messages(stream, consumer_group, ready_messages)
-        except Exception as e:
+        except Exception:
             logger.exception(
                 "broker.inline.requeue_failed",
                 extra={"consumer_group": consumer_group, "stream": stream},
@@ -450,7 +465,7 @@ class InlineBroker(BaseBroker):
 
     # Manual broker implementation methods
     def _store_in_flight_message(
-        self, stream: str, consumer_group: str, identifier: str, message: dict
+        self, stream: str, consumer_group: str, identifier: str, message: dict[str, Any]
     ) -> None:
         """Store a message in in-flight status"""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
@@ -477,7 +492,7 @@ class InlineBroker(BaseBroker):
 
     def _get_in_flight_message(
         self, stream: str, consumer_group: str, identifier: str
-    ) -> tuple[str, dict] | None:
+    ) -> tuple[str, dict[str, Any]] | None:
         """Get in-flight message data"""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         if identifier in self._in_flight[group_key]:
@@ -515,7 +530,7 @@ class InlineBroker(BaseBroker):
         stream: str,
         consumer_group: str,
         identifier: str,
-        message: dict,
+        message: dict[str, Any],
         retry_count: int,
         next_retry_time: float,
     ) -> None:
@@ -539,7 +554,7 @@ class InlineBroker(BaseBroker):
 
     def _get_retry_ready_messages(
         self, stream: str, consumer_group: str
-    ) -> list[tuple[str, dict]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Get messages ready for retry and remove them from failed queue"""
         current_time = time.time()
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
@@ -567,7 +582,7 @@ class InlineBroker(BaseBroker):
         stream: str,
         consumer_group: str,
         identifier: str,
-        message: dict,
+        message: dict[str, Any],
         failure_reason: str,
     ) -> None:
         """Store a message in Dead Letter Queue"""
@@ -654,7 +669,10 @@ class InlineBroker(BaseBroker):
             del self._retry_counts[group_key][identifier]
 
     def _requeue_messages(
-        self, stream: str, consumer_group: str, messages: list[tuple[str, dict]]
+        self,
+        stream: str,
+        consumer_group: str,
+        messages: list[tuple[str, dict[str, Any]]],
     ) -> None:
         """Requeue messages back to the main queue"""
         if messages:
@@ -709,8 +727,10 @@ class InlineBroker(BaseBroker):
                     return True
 
             return False
-        except Exception as e:
-            logger.exception("broker.inline.nack_handle_failed", extra={"identifier": identifier})
+        except Exception:
+            logger.exception(
+                "broker.inline.nack_handle_failed", extra={"identifier": identifier}
+            )
             return False
 
     def _cleanup_expired_operation_states(self) -> None:
@@ -728,14 +748,16 @@ class InlineBroker(BaseBroker):
             if not self._operation_states[consumer_group]:
                 del self._operation_states[consumer_group]
 
-    def _get_dlq_messages(self, consumer_group: str, stream: str = None) -> dict:
+    def _get_dlq_messages(
+        self, consumer_group: str, stream: str | None = None
+    ) -> dict[str, list[tuple[str, dict[str, Any], str, float]]]:
         """Get messages from Dead Letter Queue for inspection"""
         if stream:
             group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
             return {stream: list(self._dead_letter_queue[group_key])}
         else:
             # Get all DLQ messages for this consumer group across all streams
-            result = {}
+            result: dict[str, list[tuple[str, dict[str, Any], str, float]]] = {}
             for group_key in self._dead_letter_queue:
                 if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"):
                     stream_name = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
@@ -780,8 +802,10 @@ class InlineBroker(BaseBroker):
                     logger.info(f"Message '{identifier}' reprocessed from DLQ")
                     return True
             return False
-        except Exception as e:
-            logger.exception("broker.inline.dlq_reprocess_failed", extra={"identifier": identifier})
+        except Exception:
+            logger.exception(
+                "broker.inline.dlq_reprocess_failed", extra={"identifier": identifier}
+            )
             return False
 
     # ------------------------------------------------------------------
@@ -1028,7 +1052,7 @@ class InlineBroker(BaseBroker):
 
 
 # Self-registration function for entry point
-def register():
+def register() -> None:
     """Register InlineBroker with Protean.
 
     InlineBroker is always available as it has no external dependencies.
