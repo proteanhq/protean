@@ -14,7 +14,9 @@ from protean.utils.inflection import underscore
 
 if TYPE_CHECKING:
     from protean.core.projection import BaseProjection
+    from protean.core.repository import BaseRepository
     from protean.domain import Domain
+    from protean.port.cache import BaseCache
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +50,11 @@ class ReadView:
 
     # ── Internal helpers ─────────────────────────────────────
 
-    def _repo(self):
+    def _repo(self) -> "BaseRepository":
         """Return the repository for a database-backed projection."""
         return self._domain.providers.repository_for(self._projection_cls)
 
-    def _cache(self):
+    def _cache(self) -> "BaseCache":
         """Return the cache adapter for a cache-backed projection."""
         return self._domain.caches.cache_for(self._projection_cls)
 
