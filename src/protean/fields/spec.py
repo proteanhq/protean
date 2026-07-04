@@ -27,9 +27,9 @@ from protean.utils import generate_identity
 class _UNSET_TYPE:
     """Sentinel indicating no default was provided."""
 
-    _instance = None
+    _instance: "_UNSET_TYPE | None" = None
 
-    def __new__(cls):
+    def __new__(cls) -> "_UNSET_TYPE":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -141,7 +141,7 @@ class FieldSpec:
 
         Handles choices → Literal, and optional wrapping.
         """
-        resolved = self.python_type
+        resolved: Any = self.python_type
 
         # If choices is set, replace with Literal
         if self.choices is not None:
@@ -149,7 +149,7 @@ class FieldSpec:
                 choices_values = tuple(item.value for item in self.choices)
             else:
                 choices_values = tuple(self.choices)
-            resolved = Literal[choices_values]  # type: ignore[valid-type]
+            resolved = Literal[choices_values]
 
         # Wrap in Optional when not required, no explicit default, and not identifier.
         # Auto-increment identifiers are also Optional since the DAO assigns
@@ -319,7 +319,7 @@ class FieldSpec:
 
             def _run_protean_validators(
                 v: Any,
-                validators: list[Callable] = captured_validators,
+                validators: list[Callable[..., Any]] = captured_validators,
             ) -> Any:
                 # Skip validators for empty values, matching the legacy field
                 # system and the documented order (empty -> choices -> cast ->
@@ -335,8 +335,7 @@ class FieldSpec:
                         # maps it to the correct field name.
                         msg = str(e.messages) if hasattr(e, "messages") else str(e)
                         # If the validator set an error string on itself, use that
-                        if hasattr(validator_fn, "error"):
-                            msg = validator_fn.error
+                        msg = getattr(validator_fn, "error", msg)
                         raise ValueError(msg) from e
                 return v
 
@@ -351,7 +350,9 @@ class FieldSpec:
         return Annotated[resolved_type, pydantic_field]
 
     @staticmethod
-    def _normalize_transitions(transitions: dict) -> dict[str, list[str]]:
+    def _normalize_transitions(
+        transitions: dict[Any, Any],
+    ) -> dict[str, list[str]]:
         """Normalize Enum members in a transition map to string values.
 
         Accepts both Enum members and raw strings as keys/values::
@@ -486,8 +487,8 @@ def resolve_fieldspecs(cls: type) -> None:
 
     # Store FieldSpec metadata for downstream access (adapters, reflection)
     if field_meta:
-        existing = getattr(cls, "__protean_field_meta__", {})
-        cls.__protean_field_meta__ = {**existing, **field_meta}
+        existing: dict[str, FieldSpec] = getattr(cls, "__protean_field_meta__", {})
+        setattr(cls, "__protean_field_meta__", {**existing, **field_meta})
 
 
 # ---------------------------------------------------------------------------
@@ -510,8 +511,9 @@ def _sanitize_string(v: str) -> str:
     if not isinstance(v, str):
         return v
     try:
-        import bleach  # noqa: PLC0415
+        import bleach  # type: ignore[import-untyped]  # noqa: PLC0415
 
-        return bleach.clean(v)
+        cleaned: str = bleach.clean(v)
+        return cleaned
     except ImportError:
         return v
