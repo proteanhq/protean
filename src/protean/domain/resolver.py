@@ -9,7 +9,7 @@ which aggregate root they belong to.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command_handler import derive_command_stream_category
@@ -105,7 +105,7 @@ class ElementResolver:
             if resolved:
                 del pending[name]
 
-    def _finalize_aggregate_link(self, cls, aggregate_cls) -> None:
+    def _finalize_aggregate_link(self, cls: Any, aggregate_cls: Any) -> None:
         """Complete element wiring deferred when ``part_of`` was a string.
 
         Command and event handler factories derive their ``stream_category``
