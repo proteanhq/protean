@@ -7,7 +7,15 @@ import threading
 from collections import defaultdict
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, dataclass_transform
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Self,
+    TypeVar,
+    dataclass_transform,
+)
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -166,6 +174,13 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     """
 
     element_type: ClassVar[str] = DomainObjects.ENTITY
+
+    if TYPE_CHECKING:
+        # Assigned per-subclass in ``__init_subclass__`` via
+        # ``setattr(cls, "_invariants", defaultdict(dict))``; declared here only
+        # so static checkers see the attribute. Keyed by invariant stage
+        # ("pre"/"post") → {method_name: method}.
+        _invariants: ClassVar[defaultdict[str, dict[str, Callable[..., Any]]]]
 
     model_config = ConfigDict(
         validate_assignment=True,

@@ -257,6 +257,9 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         # Assigned dynamically in ``__init_subclass__`` (never on the base
         # itself); declared here only so static checkers see the attribute.
         __version__: ClassVar[int]
+        # Assigned at registration via ``setattr(cls, "__type__", ...)`` in
+        # protean.domain.type_manager / handler_setup — a str type string.
+        __type__: ClassVar[str]
 
     model_config = ConfigDict(
         extra="forbid",
@@ -939,7 +942,7 @@ class Message(Element, BaseModel, OptionsMixin):
         """Ensure metadata has headers set correctly."""
         if not message_object._metadata.headers:
             headers = MessageHeaders(
-                type=message_object.__class__.__type__,  # type: ignore[union-attr]
+                type=message_object.__class__.__type__,
                 time=None,  # Don't set time for converted messages
             )
             metadata_dict = message_object._metadata.to_dict()

@@ -6,7 +6,7 @@ projections -- the read-side counterpart of commands.
 
 import json
 from collections import defaultdict
-from typing import Any, ClassVar, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -49,6 +49,12 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
     """
 
     element_type: ClassVar[str] = DomainObjects.QUERY
+
+    if TYPE_CHECKING:
+        # Assigned at registration via ``setattr(cls, "__type__", ...)`` in
+        # protean.domain (set_query_type) — a str type string; declared here
+        # only so static checkers see the attribute.
+        __type__: ClassVar[str]
 
     model_config = ConfigDict(
         extra="forbid",
