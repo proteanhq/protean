@@ -5,7 +5,7 @@ import time
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from enum import Enum, Flag, auto
-from typing import TYPE_CHECKING, Dict, Optional, Type
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError, ValidationError
@@ -108,6 +108,20 @@ class BaseBroker(metaclass=ABCMeta):
     checks, subscriber registration) via the Template Method pattern. Subclasses
     implement the abstract ``_underscore`` methods for broker-specific logic."""
 
+    if TYPE_CHECKING:
+        # Optional broker-specific method implemented by adapters that advertise
+        # the BLOCKING_READ capability (e.g. the Redis Streams adapter). Declared
+        # here for type-checkers so callers in this base class resolve; there is
+        # no runtime attribute on BaseBroker itself.
+        def _read_blocking(
+            self,
+            stream: str,
+            consumer_group: str,
+            consumer_name: str,
+            timeout_ms: int = 5000,
+            count: int = 1,
+        ) -> list[tuple[str, dict[str, Any]]]: ...
+
     def __init__(
         self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
     ) -> None:
@@ -115,9 +129,11 @@ class BaseBroker(metaclass=ABCMeta):
         self.domain = domain
         self.conn_info = conn_info
 
-        self._subscribers = defaultdict(set)
-        self._last_ping_time = None
-        self._last_ping_success = None
+        self._subscribers: defaultdict[str, set[type[BaseSubscriber]]] = defaultdict(
+            set
+        )
+        self._last_ping_time: float | None = None
+        self._last_ping_success: bool | None = None
         self._start_time = time.time()
 
     @property
@@ -832,7 +848,7 @@ class BrokerRegistry:
         try:
             module_path, class_name = broker_path.rsplit(".", maxsplit=1)
             module = import_module(module_path)
-            broker_cls = getattr(module, class_name)
+            broker_cls: type[BaseBroker] = getattr(module, class_name)
             return broker_cls
         except (ImportError, AttributeError) as e:
             raise ConfigurationError(
