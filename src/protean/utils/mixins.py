@@ -56,7 +56,7 @@ _TRANSIENT_RETRY_DEFAULTS = {
 _VALID_BACKOFF_STRATEGIES = ("exponential", "linear", "fixed")
 
 
-def _get_version_retry_config() -> dict:
+def _get_version_retry_config() -> dict[str, Any]:
     """Read version retry configuration from the active domain.
 
     Falls back to defaults if no domain is active (e.g. during tests
@@ -165,7 +165,7 @@ def _resolve_exception_types(specs: Any) -> tuple[type[BaseException], ...]:
     return tuple(resolved)
 
 
-def _get_transient_retry_config(instance: Any = None) -> dict:
+def _get_transient_retry_config(instance: Any = None) -> dict[str, Any]:
     """Resolve the effective transient-retry policy for a handler.
 
     Precedence (highest first): per-handler ``retries`` / ``backoff`` /
@@ -288,7 +288,7 @@ def _deadline_exceeded_after(delay: float) -> bool:
     if headers is None or getattr(headers, "deadline", None) is None:
         return False
     next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
-    return headers.is_expired(next_attempt_at)
+    return bool(headers.is_expired(next_attempt_at))
 
 
 class handle:
@@ -319,7 +319,7 @@ class handle:
         self._correlate = correlate
         self._end = end
 
-    def __call__(self, fn: Callable) -> Callable:
+    def __call__(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Marks the method with special attributes to construct a handler map later.
 
         Args:
@@ -330,7 +330,7 @@ class handle:
         """
 
         @functools.wraps(fn)
-        def wrapper(instance, target_obj):
+        def wrapper(instance: Any, target_obj: Any) -> Any:
             # Two independent, composable auto-retry policies wrap every handler
             # invocation. Version (OCC) retry resolves `ExpectedVersionError`
             # from concurrent writes; transient retry (opt-in) re-runs handlers
@@ -359,7 +359,7 @@ class handle:
             # provider. Resolved once; the marker read/write happen per attempt.
             idempotency = resolve_dispatch_context(instance, fn, target_obj)
 
-            def _invoke():
+            def _invoke() -> Any:
                 with UnitOfWork():
                     if idempotency is not None:
                         repo, message_id, handler_id = idempotency
@@ -460,7 +460,7 @@ class read:
     def __init__(self, target_cls: type) -> None:
         self._target_cls = target_cls
 
-    def __call__(self, fn: Callable) -> Callable:
+    def __call__(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Marks the method with ``_target_cls`` metadata for handler map construction.
 
         Args:
@@ -481,6 +481,12 @@ class read:
 
 class HandlerMixin:
     """Mixin to add common handler behavior to Event Handlers and Command Handlers"""
+
+    # Provided by subclasses / ``__init_subclass__``. ``element_type`` is set as a
+    # class attribute on each concrete handler base (CommandHandler, EventHandler,
+    # QueryHandler); ``_handlers`` is populated per-subclass in ``__init_subclass__``.
+    element_type: DomainObjects
+    _handlers: defaultdict[Any, set[Callable[..., Any]]]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -570,7 +576,9 @@ class HandlerMixin:
 
     @classmethod
     def _dispatch_handlers(
-        cls, handlers: set, item: Union[BaseCommand, BaseEvent, BaseQuery]
+        cls,
+        handlers: set[Callable[..., Any]],
+        item: Union[BaseCommand, BaseEvent, BaseQuery],
     ) -> Any:
         """Dispatch item to registered handler methods."""
         # Map element_type to access log kind
