@@ -140,11 +140,10 @@ def _resolve_exception_types(specs: Any) -> tuple[type[BaseException], ...]:
 
     # A lone dotted-path string is a common config shorthand; wrap it so we
     # don't iterate over its characters.
-    if isinstance(specs, str):
-        specs = [specs]
+    iterable: Any = [specs] if isinstance(specs, str) else specs
 
     try:
-        iterator = iter(specs)
+        iterator = iter(iterable)
     except TypeError:
         raise ConfigurationError(
             f"Invalid transient retry exceptions `{specs!r}`; expected an "
