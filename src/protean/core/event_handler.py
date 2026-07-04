@@ -115,7 +115,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         return super().__new__(cls)
 
     @classmethod
-    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict]]]]:
+    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict[str, Any]]]]]:
         part_of = (
             getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
         )
@@ -149,7 +149,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         ]
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=OptionsMixin)
 
 
 def event_handler_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
