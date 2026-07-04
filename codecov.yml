@@ -1,3 +1,13 @@
+# Patch coverage is enforced: every PR must cover at least 96% of the lines it
+# changes. The repo's recent baseline is ~99% average patch coverage, so 96%
+# leaves a small margin for genuinely hard-to-cover lines (mark those with
+# `# pragma: no cover`) while blocking under-tested changes.
+#
+# NOTE: for this to *block* a merge (not just report red), `codecov/patch` must
+# also be listed as a required status check on the `main` branch protection.
+#
+# Project (overall) coverage stays informational so a large PR that dips the
+# aggregate slightly does not fail even when its own patch is well covered.
 coverage:
   status:
     project:
@@ -5,4 +15,5 @@ coverage:
         informational: true
     patch:
       default:
-        informational: true
+        target: 96%
+        informational: false
