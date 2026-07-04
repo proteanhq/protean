@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -14,6 +14,9 @@ from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
 from protean.utils.telemetry import set_span_error
 
+if TYPE_CHECKING:
+    from protean.domain import Domain
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,16 +24,16 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
     element_type = DomainObjects.EVENT_SOURCED_REPOSITORY
 
     @classmethod
-    def _default_options(cls):
+    def _default_options(cls) -> list[tuple[str, Any]]:
         return [("part_of", None)]
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEventSourcedRepository":
         # Prevent instantiation of `BaseEventSourcedRepository itself`
         if cls is BaseEventSourcedRepository:
             raise NotSupportedError("BaseEventSourcedRepository cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, domain) -> None:
+    def __init__(self, domain: "Domain") -> None:
         self._domain = domain
 
     def add(self, aggregate: BaseAggregate) -> None:
@@ -67,12 +70,15 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             #   enclosed in a UoW automatically. Therefore, if there is a UoW in progress, we can assume
             #   that it is the active session. If not, we will start a new UoW and commit it after the operation
             #   is complete.
-            own_current_uow = None
+            own_current_uow: UnitOfWork | None = None
             if not (current_uow and current_uow.in_progress):
                 own_current_uow = UnitOfWork()
                 own_current_uow.start()
 
+            # Either the in-progress ``current_uow`` is used, or a fresh one was
+            # started just above; ``uow`` is therefore never ``None`` here.
             uow = current_uow or own_current_uow
+            assert uow is not None
 
             # If Aggregate has signed up Fact Events, raise them now
             if aggregate.meta_.fact_events:

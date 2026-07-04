@@ -7,7 +7,7 @@ import typing
 from collections import defaultdict
 from enum import Enum
 from functools import partial
-from typing import Any, ClassVar, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
 
 from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
@@ -85,6 +85,13 @@ class BaseAggregate(BaseEntity):
     # Event sourcing maps (ClassVar — populated by factory)
     _projections: ClassVar[defaultdict[str, set[Any]]] = defaultdict(set)
     _events_cls_map: ClassVar[dict[str, Any]] = {}
+
+    if TYPE_CHECKING:
+        # Assigned per-subclass by the fact-event factory via
+        # ``setattr(element_cls, "_fact_event_cls", event_cls)`` when the
+        # aggregate opts into fact events; declared here only so static
+        # checkers see the attribute.
+        _fact_event_cls: ClassVar[type[BaseEvent]]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseAggregate":
         if cls is BaseAggregate:
