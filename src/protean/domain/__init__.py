@@ -410,7 +410,9 @@ class Domain:
     # ------------------------------------------------------------------
 
     @property
-    def _events_and_commands(self) -> Dict[str, Union[BaseCommand, BaseEvent]]:
+    def _events_and_commands(
+        self,
+    ) -> Dict[str, Union[Type[BaseCommand], Type[BaseEvent]]]:
         return self._type_manager.events_and_commands
 
     @property
