@@ -112,7 +112,11 @@ class Outbox(BaseAggregate):
     # composite (message_id, target_broker) unique index depends on it being
     # non-NULL, so the column is NOT NULL. Legacy rows written before the field
     # was populated are coerced from NULL to the default broker name on read.
-    target_broker: Annotated[
+    # mypy [misc] "attributes without a default cannot follow attributes with one"
+    # is a false positive here: Protean fields are metaclass-managed, not Python
+    # dataclass fields, so positional-default ordering does not apply. This field
+    # is intentionally required (NOT NULL) and must not be given a default.
+    target_broker: Annotated[  # type: ignore[misc]
         str, BeforeValidator(_coerce_target_broker), Field(max_length=128)
     ]
 
