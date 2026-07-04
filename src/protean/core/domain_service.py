@@ -2,7 +2,7 @@ import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import Any, Callable, List, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, List, TypeVar, Union, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
@@ -46,13 +46,20 @@ class BaseDomainService(Element, OptionsMixin):
 
     element_type = DomainObjects.DOMAIN_SERVICE
 
-    def __new__(cls, *args, **kwargs):
+    if TYPE_CHECKING:
+        # Assigned per-subclass in ``__init_subclass__`` via
+        # ``setattr(cls, "_invariants", defaultdict(dict))``; declared here only
+        # so static checkers see the attribute. Keyed by invariant stage
+        # ("pre"/"post") → {method_name: method}.
+        _invariants: ClassVar[defaultdict[str, dict[str, Callable[..., Any]]]]
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseDomainService":
         if cls is BaseDomainService:
             raise NotSupportedError("BaseDomainService cannot be instantiated")
         return super().__new__(cls)
 
     @classmethod
-    def _default_options(cls):
+    def _default_options(cls) -> list[tuple[str, Any]]:
         return [
             ("part_of", None),
         ]
@@ -72,7 +79,9 @@ class BaseDomainService(Element, OptionsMixin):
         self._aggregates = aggregates
 
 
-def _make_invariant_wrapper(original_method: Callable) -> Callable:
+def _make_invariant_wrapper(
+    original_method: Callable[..., Any],
+) -> Callable[..., Any]:
     """Create an invariant-checking wrapper for a single domain service method.
 
     Extracted as a function so that ``original_method`` is captured by value
@@ -81,7 +90,7 @@ def _make_invariant_wrapper(original_method: Callable) -> Callable:
 
     @wraps(original_method)
     def wrapped_call(self: "BaseDomainService", *args: Any, **kwargs: Any) -> Any:
-        errors = {}
+        errors: dict[str, list[str]] = {}
 
         for invariant_method in self._invariants["pre"].values():
             try:
@@ -114,7 +123,10 @@ def _make_invariant_wrapper(original_method: Callable) -> Callable:
     return wrapped_call
 
 
-def wrap_methods_with_invariant_calls(cls):
+_T = TypeVar("_T")
+
+
+def wrap_methods_with_invariant_calls(cls: type[_T]) -> type[_T]:
     """
     Case: When Domain Service is defined as a regular instantiable class.
 
@@ -135,24 +147,26 @@ def wrap_methods_with_invariant_calls(cls):
     return cls
 
 
-_T = TypeVar("_T")
-
-
 def domain_service_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseDomainService, **opts)
 
-    if not element_cls.meta_.part_of or len(element_cls.meta_.part_of) < 2:
+    # The derived class is always a ``BaseDomainService`` subclass at runtime;
+    # narrow the unbound ``type[_T]`` typevar so the injected class attributes
+    # (``meta_``, ``_invariants``) are visible to both type checkers.
+    service_cls = cast("type[BaseDomainService]", element_cls)
+
+    if not service_cls.meta_.part_of or len(service_cls.meta_.part_of) < 2:
         raise IncorrectUsageError(
-            f"Domain Service `{element_cls.__name__}` needs to be associated with two or more Aggregates"
+            f"Domain Service `{service_cls.__name__}` needs to be associated with two or more Aggregates"
         )
 
     # Iterate through methods marked as `@invariant` and record them for later use
-    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+    methods = inspect.getmembers(service_cls, predicate=inspect.isroutine)
     for method_name, method in methods:
         if not (
             method_name.startswith("__") and method_name.endswith("__")
         ) and hasattr(method, "_invariant"):
-            element_cls._invariants[method._invariant][method_name] = method
+            service_cls._invariants[getattr(method, "_invariant")][method_name] = method
 
     element_cls = wrap_methods_with_invariant_calls(element_cls)
 
