@@ -2,7 +2,17 @@
 
 import logging
 from collections import defaultdict
-from typing import Annotated, Any, ClassVar, Optional, Self, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Callable,
+    ClassVar,
+    Optional,
+    Self,
+    TypeVar,
+    cast,
+)
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import Field as PydanticField
@@ -48,6 +58,13 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
     """
 
     element_type: ClassVar[str] = DomainObjects.VALUE_OBJECT
+
+    if TYPE_CHECKING:
+        # Assigned per-subclass in ``__init_subclass__`` via
+        # ``setattr(cls, "_invariants", defaultdict(dict))``; declared here only
+        # so static checkers see the attribute. Keyed by invariant stage
+        # ("post") -> {method_name: method}.
+        _invariants: ClassVar[defaultdict[str, dict[str, Callable[..., Any]]]]
 
     model_config = ConfigDict(
         extra="forbid",
@@ -218,7 +235,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         for klass in type(self).__mro__:
             for name, attr in vars(klass).items():
                 if callable(attr) and hasattr(attr, "_invariant"):
-                    self._invariants[attr._invariant][name] = attr
+                    self._invariants[getattr(attr, "_invariant")][name] = attr
 
     def __setattr__(self, name: str, value: Any) -> None:
         if not getattr(self, "_initialized", False):
@@ -291,7 +308,9 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return False
-        return self.to_dict() == other.to_dict()
+        # The exact-type guard above guarantees ``other`` is the same
+        # ``BaseValueObject`` subclass; narrow for static checkers.
+        return self.to_dict() == cast("BaseValueObject", other).to_dict()
 
     def __hash__(self) -> int:
         return hash(frozenset(self.to_dict().items()))
@@ -324,15 +343,19 @@ def value_object_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
 
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 
+    # ``derive_element_class`` returns a ``BaseValueObject`` subclass; narrow so the
+    # ``_invariants`` registry is visible to static checkers.
+    vo_cls = cast(type[BaseValueObject], element_cls)
+
     # Discover invariant methods using MRO scan (avoids inspect.getmembers deprecation warnings)
-    for klass in element_cls.__mro__:
+    for klass in vo_cls.__mro__:
         for method_name, method in vars(klass).items():
             if (
                 not (method_name.startswith("__") and method_name.endswith("__"))
                 and callable(method)
                 and hasattr(method, "_invariant")
             ):
-                element_cls._invariants[method._invariant][method_name] = method
+                vo_cls._invariants[getattr(method, "_invariant")][method_name] = method
 
     return element_cls
 
@@ -389,7 +412,10 @@ def value_object_from_entity(
             child_vo_cls = value_object_from_entity(value.to_cls)
             vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
             list_descriptor = ValueObjectList(content_type=vo_descriptor)
-            annotations[key] = list[child_vo_cls]
+            # ``child_vo_cls`` is a runtime-built VO class; mypy cannot model a
+            # generic subscripted by a local variable (treats it as a type-alias
+            # attempt). The runtime construction is valid.
+            annotations[key] = list[child_vo_cls]  # type: ignore[valid-type]
             namespace[key] = PydanticField(default_factory=list)
             association_descriptors[key] = list_descriptor
 
