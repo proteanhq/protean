@@ -31,10 +31,24 @@ from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
 from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+
+    class _ElementCls(Element, OptionsMixin):
+        """Static-only view of a registered domain element class.
+
+        Every element base (``BaseEntity``, ``BaseValueObject``,
+        ``BaseCommandHandler``, ...) inherits both :class:`Element` (nominal
+        base expected by :func:`declared_fields`/:func:`fqn`) and
+        :class:`OptionsMixin` (which carries the injected ``meta_`` metadata).
+        No single runtime class combines the two, so this TYPE_CHECKING-only
+        class gives the extractor methods a param type that both checkers can
+        follow to ``cls.meta_`` and the reflection helpers at once. It has no
+        runtime effect.
+        """
 
 
 class IRBuilder:
@@ -98,7 +112,7 @@ class IRBuilder:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_deprecated(cls: type) -> dict[str, str] | None:
+    def _extract_deprecated(cls: type[_ElementCls]) -> dict[str, str] | None:
         """Return the normalized ``deprecated`` metadata from an element's meta_.
 
         Returns ``None`` when the element is not deprecated (sparse IR).
@@ -109,7 +123,7 @@ class IRBuilder:
     # Field extraction
     # ------------------------------------------------------------------
 
-    def _extract_fields(self, cls: type) -> dict[str, Any]:
+    def _extract_fields(self, cls: type[_ElementCls]) -> dict[str, Any]:
         """Extract field definitions from a domain element class.
 
         Returns a dict keyed by field name, each value a sparse IR field dict.
@@ -223,11 +237,12 @@ class IRBuilder:
 
         # Choices — from the original FieldSpec
         if spec is not None and getattr(spec, "choices", None) is not None:
-            choices = spec.choices
+            choices: Any = spec.choices
             if isinstance(choices, type) and issubclass(choices, Enum):
                 choices_list = sorted(item.value for item in choices)
             else:
-                choices_list = sorted(str(c) for c in choices)
+                choices_iter: Any = choices
+                choices_list = sorted(str(c) for c in choices_iter)
             entry["choices"] = choices_list
 
         # Transitions — from ResolvedField
@@ -351,7 +366,7 @@ class IRBuilder:
     # Element extractors
     # ------------------------------------------------------------------
 
-    def _extract_invariants(self, cls: type) -> dict[str, list[str]]:
+    def _extract_invariants(self, cls: type[_ElementCls]) -> dict[str, list[str]]:
         """Extract pre/post invariant method names as sorted lists."""
         invariants = getattr(cls, "_invariants", {})
         return {
@@ -359,7 +374,7 @@ class IRBuilder:
             "pre": sorted(invariants.get("pre", {}).keys()),
         }
 
-    def _extract_indexes(self, cls: type) -> list[dict[str, Any]]:
+    def _extract_indexes(self, cls: type[_ElementCls]) -> list[dict[str, Any]]:
         """Extract a JSON-safe summary of an element's index declarations.
 
         The ``where`` partial predicate is summarized as ``partial: true``
@@ -394,7 +409,7 @@ class IRBuilder:
                 result.append(entry)
         return result
 
-    def _extract_aggregate(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_aggregate(self, cls: type[_ElementCls], record: Any) -> dict[str, Any]:
         """Extract aggregate IR dict."""
         entry: dict[str, Any] = {}
 
@@ -447,7 +462,7 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_entity(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_entity(self, cls: type[_ElementCls], record: Any) -> dict[str, Any]:
         """Extract entity IR dict."""
         entry: dict[str, Any] = {}
 
@@ -490,7 +505,7 @@ class IRBuilder:
         return dict(sorted(entry.items()))
 
     def _extract_value_object(
-        self, cls: type, record: Any, aggregate_fqn: str | None = None
+        self, cls: type[_ElementCls], record: Any, aggregate_fqn: str | None = None
     ) -> dict[str, Any]:
         """Extract value object IR dict."""
         entry: dict[str, Any] = {}
@@ -515,7 +530,7 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_command(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_command(self, cls: type[_ElementCls], record: Any) -> dict[str, Any]:
         """Extract command IR dict."""
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
@@ -541,7 +556,7 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_event(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_event(self, cls: type[_ElementCls], record: Any) -> dict[str, Any]:
         """Extract event IR dict."""
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
@@ -576,7 +591,7 @@ class IRBuilder:
         return dict(sorted(entry.items()))
 
     @staticmethod
-    def _extract_resilience_policy(cls: type) -> dict[str, Any] | None:
+    def _extract_resilience_policy(cls: type[_ElementCls]) -> dict[str, Any] | None:
         """Extract the handler's deadline/retry policy as a sparse IR dict.
 
         Returns ``None`` when no resilience options are set (sparse IR).
@@ -613,7 +628,7 @@ class IRBuilder:
 
         return dict(sorted(policy.items())) if policy else None
 
-    def _extract_handler_map(self, cls: type) -> dict[str, list[str]]:
+    def _extract_handler_map(self, cls: type[_ElementCls]) -> dict[str, list[str]]:
         """Extract handler map as {__type__: sorted([method_names])}."""
         handlers = getattr(cls, "_handlers", {})
         result: dict[str, list[str]] = {}
@@ -622,7 +637,7 @@ class IRBuilder:
                 result[type_key] = sorted(m.__name__ for m in methods)
         return result
 
-    def _extract_subscription(self, cls: type) -> dict[str, Any]:
+    def _extract_subscription(self, cls: type[_ElementCls]) -> dict[str, Any]:
         """Extract subscription config as {type, profile, config}."""
         sub_type = getattr(cls.meta_, "subscription_type", None)
         sub_profile = getattr(cls.meta_, "subscription_profile", None)
@@ -633,7 +648,9 @@ class IRBuilder:
             "type": sub_type.value if sub_type else None,
         }
 
-    def _extract_command_handler(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_command_handler(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract command handler IR dict."""
         entry: dict[str, Any] = {}
 
@@ -664,7 +681,9 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_event_handler(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_event_handler(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract event handler IR dict."""
         entry: dict[str, Any] = {}
 
@@ -696,7 +715,9 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_application_service(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_application_service(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract application service IR dict."""
         entry: dict[str, Any] = {}
 
@@ -719,7 +740,9 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_repository(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_repository(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract repository IR dict."""
         entry: dict[str, Any] = {}
 
@@ -747,7 +770,9 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_database_model(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_database_model(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract database model IR dict."""
         entry: dict[str, Any] = {}
 
@@ -782,7 +807,9 @@ class IRBuilder:
     # Projection extractors
     # ------------------------------------------------------------------
 
-    def _extract_projection(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_projection(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract projection IR dict."""
         entry: dict[str, Any] = {}
 
@@ -824,7 +851,7 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_projector(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_projector(self, cls: type[_ElementCls], record: Any) -> dict[str, Any]:
         """Extract projector IR dict."""
         entry: dict[str, Any] = {}
 
@@ -854,7 +881,7 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_query(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_query(self, cls: type[_ElementCls], record: Any) -> dict[str, Any]:
         """Extract query IR dict."""
         entry: dict[str, Any] = {}
         entry["__type__"] = getattr(cls, "__type__", "")
@@ -879,7 +906,9 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_query_handler(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_query_handler(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract query handler IR dict."""
         entry: dict[str, Any] = {}
 
@@ -963,7 +992,9 @@ class IRBuilder:
     # Flow extractors
     # ------------------------------------------------------------------
 
-    def _extract_domain_service(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_domain_service(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract domain service IR dict."""
         entry: dict[str, Any] = {}
 
@@ -990,7 +1021,9 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_process_manager(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_process_manager(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract process manager IR dict."""
         entry: dict[str, Any] = {}
 
@@ -1042,7 +1075,9 @@ class IRBuilder:
 
         return dict(sorted(entry.items()))
 
-    def _extract_subscriber(self, cls: type, record: Any) -> dict[str, Any]:
+    def _extract_subscriber(
+        self, cls: type[_ElementCls], record: Any
+    ) -> dict[str, Any]:
         """Extract subscriber IR dict."""
         entry: dict[str, Any] = {}
         entry["broker"] = getattr(cls.meta_, "broker", "default")
@@ -1099,7 +1134,7 @@ class IRBuilder:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_aggregate_cls(cls: type) -> type | None:
+    def _resolve_aggregate_cls(cls: type[_ElementCls]) -> type | None:
         """Resolve the root aggregate class for an element.
 
         Tries ``aggregate_cluster`` first (set by resolver for entities,
@@ -1107,7 +1142,7 @@ class IRBuilder:
         (needed for fact events generated after cluster assignment).
         """
 
-        agg = getattr(cls.meta_, "aggregate_cluster", None)
+        agg: type | None = getattr(cls.meta_, "aggregate_cluster", None)
         if agg is not None:
             return agg
 
