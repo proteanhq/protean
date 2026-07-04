@@ -2,7 +2,7 @@ import logging
 import traceback
 import warnings
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from werkzeug.local import LocalProxy, LocalStack
 
@@ -20,7 +20,7 @@ documentation for more information.\
 """
 
 
-def _lookup_domain_object(name) -> Any | None:
+def _lookup_domain_object(name: str) -> Any | None:
     top = _domain_context_stack.top
     if top is None:
         warnings.warn(
@@ -42,11 +42,11 @@ def _find_domain() -> "Domain | None":
             stacklevel=3,
         )
         return None
-    return top.domain
+    return cast("Domain", top.domain)
 
 
 def _find_uow() -> "UnitOfWork":
-    return _uow_context_stack.top
+    return cast("UnitOfWork", _uow_context_stack.top)
 
 
 # context locals
