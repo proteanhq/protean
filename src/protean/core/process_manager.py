@@ -45,7 +45,7 @@ from protean.utils import (
     fqn,
     inflection,
 )
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -114,7 +114,7 @@ def _generate_pm_transition_event(pm_cls: type) -> type:
     return event_cls
 
 
-class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
+class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
     """Base class for Process Managers.
 
     A Process Manager combines handler-like event dispatch (from multiple

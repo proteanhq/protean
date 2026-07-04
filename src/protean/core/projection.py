@@ -23,7 +23,7 @@ from protean.utils import (
     derive_element_class,
     inflection,
 )
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, value_object_fields
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ _projection_init_context: threading.local = threading.local()
 # ---------------------------------------------------------------------------
 # BaseProjection
 # ---------------------------------------------------------------------------
-class BaseProjection(BaseModel, OptionsMixin):
+class BaseProjection(Element, BaseModel, OptionsMixin):
     """Base class for projections -- read-optimized, denormalized views
     maintained by projectors in response to domain events.
 

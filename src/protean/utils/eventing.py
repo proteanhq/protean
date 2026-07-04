@@ -22,7 +22,7 @@ from protean.fields.association import Association, Reference
 from protean.fields.base import FieldBase
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 from protean.utils.globals import current_domain
 
@@ -244,7 +244,7 @@ class Metadata(BaseValueObject):
 # ---------------------------------------------------------------------------
 # BaseMessageType
 # ---------------------------------------------------------------------------
-class BaseMessageType(BaseModel, OptionsMixin):
+class BaseMessageType(Element, BaseModel, OptionsMixin):
     """Base class for Command and Event element classes.
 
     Fields are declared using standard Python type annotations with optional
@@ -467,7 +467,7 @@ class BaseMessageType(BaseModel, OptionsMixin):
         return result
 
 
-class Message(BaseModel, OptionsMixin):
+class Message(Element, BaseModel, OptionsMixin):
     """Generic message class
     It provides concrete implementations for:
     - ID generation

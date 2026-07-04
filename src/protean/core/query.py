@@ -22,14 +22,14 @@ from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
 
 
 # ---------------------------------------------------------------------------
 # BaseQuery
 # ---------------------------------------------------------------------------
-class BaseQuery(BaseModel, OptionsMixin):
+class BaseQuery(Element, BaseModel, OptionsMixin):
     """Base class for domain queries -- immutable DTOs representing a
     read intent against a projection.
 

@@ -21,7 +21,7 @@ from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS, fields as get_fields
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # BaseValueObject
 # ---------------------------------------------------------------------------
-class BaseValueObject(BaseModel, OptionsMixin):
+class BaseValueObject(Element, BaseModel, OptionsMixin):
     """Base class for value objects -- immutable domain elements without identity,
     defined entirely by their attributes.
 

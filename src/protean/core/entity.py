@@ -44,7 +44,7 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import g
 from protean.utils.reflection import (
     _FIELDS,
@@ -138,7 +138,7 @@ class _EntityState:
 @dataclass_transform(
     field_specifiers=(FieldSpec, HasMany, HasOne, Reference, ValueObject)
 )
-class BaseEntity(BaseModel, OptionsMixin):
+class BaseEntity(Element, BaseModel, OptionsMixin):
     """Base class for entities -- domain objects with unique identity that live
     within an aggregate.
 
