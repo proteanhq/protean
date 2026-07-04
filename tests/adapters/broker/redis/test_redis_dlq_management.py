@@ -2,7 +2,8 @@
 
 Backfills coverage for the DLQ methods (`dlq_list`, `dlq_inspect`, `dlq_replay`,
 `dlq_replay_all`, `dlq_purge`, `dlq_trim`, `dlq_depth`), which had no Redis-side
-tests. Mirrors the inline broker's ``test_dlq_management.py``.
+tests. Covers the core DLQ operations also tested in the inline broker's
+``test_dlq_management.py``, though not all edge cases are replicated here.
 """
 
 import pytest
@@ -13,7 +14,9 @@ from tests.shared import REDIS_URI
 
 def _broker(test_domain) -> RedisBroker:
     broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
-    broker._data_reset()  # clean slate for deterministic counts
+    broker._client.flushdb()  # clean slate — flush only DB 0, not all Redis databases
+    broker._created_groups_set.clear()
+    broker._group_creation_times.clear()
     return broker
 
 
@@ -66,6 +69,27 @@ class TestRedisDLQManagement:
     def test_dlq_list_empty_returns_empty(self, test_domain):
         broker = _broker(test_domain)
         assert broker.dlq_list(["nonexistent:dlq"]) == []
+
+    def test_dlq_list_filters_by_stream(self, test_domain):
+        broker = _broker(test_domain)
+        _seed(
+            broker,
+            "orders:dlq",
+            {"data": "one"},
+            original_stream="orders",
+            original_id="o1",
+        )
+        _seed(
+            broker,
+            "payments:dlq",
+            {"data": "two"},
+            original_stream="payments",
+            original_id="p1",
+        )
+
+        entries = broker.dlq_list(["orders:dlq"])
+        assert len(entries) == 1
+        assert entries[0].stream == "orders"
 
     def test_dlq_list_respects_limit(self, test_domain):
         broker = _broker(test_domain)
