@@ -21,7 +21,7 @@ import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import SubscriptionType
@@ -78,7 +78,7 @@ class SubscriptionStatus:
     last_updated: str | None = None
     """ISO timestamp of the last processed position (event-store subscriptions only)."""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -101,7 +101,7 @@ def _infer_stream_category(handler_cls: type) -> str:
         )
 
     # Priority 1: Explicit stream_category on handler
-    stream_category = getattr(meta, "stream_category", None)
+    stream_category: str | None = getattr(meta, "stream_category", None)
     if stream_category:
         return stream_category
 
@@ -110,7 +110,9 @@ def _infer_stream_category(handler_cls: type) -> str:
     if part_of:
         aggregate_meta = getattr(part_of, "meta_", None)
         if aggregate_meta:
-            aggregate_stream = getattr(aggregate_meta, "stream_category", None)
+            aggregate_stream: str | None = getattr(
+                aggregate_meta, "stream_category", None
+            )
             if aggregate_stream:
                 return aggregate_stream
 
@@ -615,7 +617,7 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
 # ---------------------------------------------------------------------------
 
 
-def _as_dict(value: object) -> dict | None:
+def _as_dict(value: object) -> dict[str, Any] | None:
     """Return *value* as a dict, JSON-decoding a string first, else ``None``."""
     if isinstance(value, str):
         try:
@@ -625,7 +627,7 @@ def _as_dict(value: object) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
-def _extract_position_time(last_msg: dict | None) -> str | None:
+def _extract_position_time(last_msg: dict[str, Any] | None) -> str | None:
     """Pull the ISO timestamp of a position write from its stored message.
 
     ``write_position`` stamps ``metadata.headers.time``; some stores also expose a
