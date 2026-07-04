@@ -18,7 +18,7 @@ def fields(class_or_instance: Type["Element"] | "Element") -> dict[str, "Field"]
 
     # Might it be worth caching this, per class?
     try:
-        fields_dict = getattr(class_or_instance, _FIELDS)
+        fields_dict: dict[str, "Field"] = getattr(class_or_instance, _FIELDS)
     except AttributeError:
         raise IncorrectUsageError(f"{class_or_instance} does not have fields")
 

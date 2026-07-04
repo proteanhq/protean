@@ -38,7 +38,7 @@ def _infer_stream_category(handler_cls: type) -> str | None:
     if meta is None:
         return None
 
-    stream_category = getattr(meta, "stream_category", None)
+    stream_category: str | None = getattr(meta, "stream_category", None)
     if stream_category:
         return stream_category
 
