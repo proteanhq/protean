@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -68,7 +68,7 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
     html: str | None = None
 
     # JSON data with template
-    data: dict | None = None
+    data: dict[str, Any] | None = None
     template: str | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -143,7 +143,10 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return False
-        return self.to_dict() == other.to_dict()
+        # `other` is the exact same type as `self` after the guard above;
+        # narrow for the type checker without changing `==` semantics
+        # (an `isinstance` guard would wrongly accept subclasses).
+        return self.to_dict() == cast("BaseEmail", other).to_dict()
 
     def __hash__(self) -> int:
         return id(self)
