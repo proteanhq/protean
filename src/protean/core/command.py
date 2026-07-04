@@ -213,7 +213,7 @@ class BaseCommand(BaseMessageType):
         if existing_stream:
             headers = MessageHeaders(**{**headers.to_dict(), "stream": existing_stream})
 
-        metadata_kwargs = {"headers": headers, "domain": domain_meta}
+        metadata_kwargs: dict[str, Any] = {"headers": headers, "domain": domain_meta}
         if existing_envelope is not None:
             metadata_kwargs["envelope"] = existing_envelope
         # Preserve extensions from incoming metadata (set by command enrichers)
