@@ -172,8 +172,8 @@ class ProteanCorrelationFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         correlation_id, causation_id = _get_correlation_context()
-        record.correlation_id = correlation_id  # type: ignore[attr-defined]
-        record.causation_id = causation_id  # type: ignore[attr-defined]
+        record.correlation_id = correlation_id
+        record.causation_id = causation_id
         return True
 
 
@@ -198,9 +198,9 @@ class OTelTraceContextFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         trace_id, span_id, trace_flags = _get_otel_trace_context()
-        record.trace_id = trace_id  # type: ignore[attr-defined]
-        record.span_id = span_id  # type: ignore[attr-defined]
-        record.trace_flags = trace_flags  # type: ignore[attr-defined]
+        record.trace_id = trace_id
+        record.span_id = span_id
+        record.trace_flags = trace_flags
         return True
 
 
