@@ -16,7 +16,7 @@ class BaseCache(metaclass=ABCMeta):
         self.ttl = conn_info.get("TTL", 300)
 
         # Temporary cache of projections
-        self._projections = {}
+        self._projections: dict[str, type[BaseProjection]] = {}
 
     def register_projection(self, projection_cls):
         """Registers a projection object for data serialization and de-serialization"""
