@@ -345,7 +345,7 @@ class Domain:
         #: The configuration dictionary as ``Config``.  This behaves
         #: exactly like a regular dictionary but supports additional methods
         #: to load a config from files.
-        self.config = self.load_config(config)
+        self.config: Config2 = self.load_config(config)
 
         # The function to invoke to generate identity
         self._identity_function = identity_function
@@ -872,7 +872,7 @@ class Domain:
 
         logger.info("Domain infrastructure closed")
 
-    def load_config(self, config=None):
+    def load_config(self, config: Optional[Dict] = None) -> Config2:
         """Load configuration from a dict or a .toml file."""
         if config is not None:
             config_obj = Config2.load_from_dict(config)
