@@ -42,7 +42,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from collections.abc import Iterator
+from typing import Any, cast
 
 import pytest
 
@@ -61,7 +62,7 @@ try:
     from tests.shared import ELASTICSEARCH_URI, MSSQL_URI, POSTGRES_URI
 except ModuleNotFoundError:
     POSTGRES_URI = "postgresql://postgres:postgres@localhost:5432/postgres"
-    ELASTICSEARCH_URI: dict = {"hosts": ["localhost"]}  # type: ignore[no-redef]
+    ELASTICSEARCH_URI: dict[str, list[str]] = {"hosts": ["localhost"]}  # type: ignore[no-redef]
     MSSQL_URI = (
         "mssql+pyodbc://sa:Protean123!@localhost:1433/master"
         "?driver=ODBC+Driver+18+for+SQL+Server"
@@ -181,13 +182,20 @@ def pytest_collection_modifyitems(
                     needs_db = True
                     break
 
-        if needs_db and "db" not in item.fixturenames:
-            item.fixturenames.append("db")
+        # ``fixturenames`` is present on collected function items at runtime but
+        # is not declared on the ``Item`` base in pytest's type stubs.
+        fixturenames: list[str] = getattr(item, "fixturenames")
+        if needs_db and "db" not in fixturenames:
+            fixturenames.append("db")
 
         # Annotate each item with its required capability
         for marker_name, required_caps in MARKER_TO_CAPABILITY.items():
             if item.get_closest_marker(marker_name) is not None:
-                item._database_required_capability = (marker_name, required_caps)
+                # ``_database_required_capability`` is a dynamic attribute read
+                # back in ``_skip_if_provider_lacks_capability`` via ``getattr``.
+                setattr(
+                    item, "_database_required_capability", (marker_name, required_caps)
+                )
                 break
 
 
@@ -234,8 +242,10 @@ def db_config(request: pytest.FixtureRequest) -> dict[str, Any]:
     See :func:`resolve_db_config` for resolution priority.
     Override this fixture in your conftest for full control.
     """
+    # ``getoption`` is typed as returning ``Any`` (untyped source); coerce the
+    # required ``--db`` key to ``str`` for the typed ``resolve_db_config`` call.
     return resolve_db_config(
-        db_key=request.config.getoption("--db", default="MEMORY"),
+        db_key=cast(str, request.config.getoption("--db", default="MEMORY")),
         db_provider=request.config.getoption("--db-provider", default=None),
         db_uri=request.config.getoption("--db-uri", default=None),
         db_extra=request.config.getoption("--db-extra", default=None),
@@ -260,13 +270,13 @@ def test_domain(
     store_config: dict[str, Any],
     broker_config: dict[str, Any],
     request: pytest.FixtureRequest,
-):
+) -> Iterator[Domain | None]:
     """Create a Domain configured with the adapter under test.
 
     Skipped for tests marked ``no_test_domain``.
     """
     if "no_test_domain" in request.keywords:
-        yield
+        yield None
         return
 
     domain = Domain(name="AdapterConformanceTest")
@@ -286,7 +296,7 @@ def test_domain(
 
 
 @pytest.fixture
-def db(test_domain):
+def db(test_domain: Domain) -> Iterator[None]:
     """Create and drop database artifacts around each test.
 
     Auto-injected for tests marked with ``database`` or any
@@ -301,7 +311,7 @@ def db(test_domain):
 
 
 @pytest.fixture(autouse=True)
-def run_around_tests(test_domain):
+def run_around_tests(test_domain: Domain | None) -> Iterator[None]:
     """Reset all data stores after each test."""
     yield
 
@@ -329,7 +339,7 @@ def run_around_tests(test_domain):
 
 
 @pytest.fixture(autouse=True)
-def auto_set_and_close_loop():
+def auto_set_and_close_loop() -> Iterator[None]:
     """Create a fresh asyncio event loop for each test."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -344,8 +354,8 @@ def auto_set_and_close_loop():
 @pytest.fixture(autouse=True)
 def _skip_if_provider_lacks_capability(
     request: pytest.FixtureRequest,
-    test_domain,
-):
+    test_domain: Domain,
+) -> None:
     """Skip the test if the provider lacks the required capability."""
     cap_info = getattr(request.node, "_database_required_capability", None)
     if cap_info is None:
@@ -369,7 +379,7 @@ def _skip_if_provider_lacks_capability(
 
 
 @pytest.fixture(scope="session", autouse=True)
-def cleanup_logging_handlers():
+def cleanup_logging_handlers() -> Iterator[None]:
     """Avoid closed-resource errors from logging after async tests."""
     try:
         yield
