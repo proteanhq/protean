@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
@@ -11,6 +11,9 @@ from protean.utils.outbox import Outbox, OutboxRepository
 from protean.utils.telemetry import get_domain_metrics, get_tracer, set_span_error
 
 from .subscription import BaseSubscription
+
+if TYPE_CHECKING:
+    from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,7 @@ class OutboxProcessor(BaseSubscription):
 
     def __init__(
         self,
-        engine,
+        engine: "Engine",
         database_provider_name: str,
         broker_provider_name: str,
         messages_per_tick: int = 10,
@@ -275,7 +278,7 @@ class OutboxProcessor(BaseSubscription):
                 )
             return successful_count
 
-    async def tick(self):
+    async def tick(self) -> None:
         """
         Override base tick method to add periodic cleanup and adaptive backoff.
 
