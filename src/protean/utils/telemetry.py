@@ -16,6 +16,18 @@ from typing import TYPE_CHECKING, Any
 from protean.utils.eventing import TraceParent
 
 if TYPE_CHECKING:
+    # Import the OTEL SDK names for static analysis so both mypy and pyright
+    # resolve them at every (``_OTEL_AVAILABLE``-gated) call site. At runtime
+    # they are provided by the ``try``/``except ImportError`` block below, which
+    # binds them only when the optional ``opentelemetry`` packages are present.
+    from opentelemetry import metrics as otel_metrics
+    from opentelemetry import trace as otel_trace
+    from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
