@@ -56,6 +56,14 @@ class FieldSpec:
     ``__set__`` — and is discarded after the class is built.
     """
 
+    # Auto()-specific metadata, set on the instance by the ``Auto`` factory
+    # (see ``protean.fields.simple``) and read back here via ``getattr`` with
+    # a default.  Declared for static checkers; not initialized in ``__init__``.
+    _increment: bool
+    _identity_strategy: str | None
+    _identity_function: Callable[..., Any] | str | None
+    _identity_type: str | None
+
     def __init__(
         self,
         python_type: type,

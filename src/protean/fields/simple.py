@@ -22,7 +22,7 @@ from protean.fields.spec import FieldSpec
 # ---------------------------------------------------------------------------
 # Simple field factories
 # ---------------------------------------------------------------------------
-def String(
+def String(  # pyright: ignore[reportRedeclaration]
     max_length: int = 255,
     min_length: int | None = None,
     sanitize: bool = True,
@@ -41,7 +41,9 @@ def String(
     )
 
 
-def Text(sanitize: bool = True, **kwargs: Any) -> FieldSpec:
+def Text(  # pyright: ignore[reportRedeclaration]
+    sanitize: bool = True, **kwargs: Any
+) -> FieldSpec:
     """An unbounded text field (maps to ``sa.Text`` in SQLAlchemy).
 
     Like ``String`` but without a ``max_length`` constraint.
@@ -49,7 +51,7 @@ def Text(sanitize: bool = True, **kwargs: Any) -> FieldSpec:
     return FieldSpec(str, field_kind="text", sanitize=sanitize, **kwargs)
 
 
-def Integer(
+def Integer(  # pyright: ignore[reportRedeclaration]
     min_value: int | None = None,
     max_value: int | None = None,
     **kwargs: Any,
@@ -58,7 +60,7 @@ def Integer(
     return FieldSpec(int, min_value=min_value, max_value=max_value, **kwargs)
 
 
-def Float(
+def Float(  # pyright: ignore[reportRedeclaration]
     min_value: float | None = None,
     max_value: float | None = None,
     **kwargs: Any,
@@ -67,7 +69,7 @@ def Float(
     return FieldSpec(float, min_value=min_value, max_value=max_value, **kwargs)
 
 
-def Decimal(
+def Decimal(  # pyright: ignore[reportRedeclaration]
     min_value: decimal.Decimal | int | float | None = None,
     max_value: decimal.Decimal | int | float | None = None,
     precision: int | None = None,
@@ -94,22 +96,24 @@ def Decimal(
     )
 
 
-def Boolean(**kwargs: Any) -> FieldSpec:
+def Boolean(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
     """A boolean field."""
     return FieldSpec(bool, **kwargs)
 
 
-def Date(**kwargs: Any) -> FieldSpec:
+def Date(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
     """A date field (``datetime.date``)."""
     return FieldSpec(datetime.date, **kwargs)
 
 
-def DateTime(**kwargs: Any) -> FieldSpec:
+def DateTime(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
     """A datetime field (``datetime.datetime``)."""
     return FieldSpec(datetime.datetime, **kwargs)
 
 
-def Identifier(identifier: bool = False, **kwargs: Any) -> FieldSpec:
+def Identifier(  # pyright: ignore[reportRedeclaration]
+    identifier: bool = False, **kwargs: Any
+) -> FieldSpec:
     """A UUID-like string field.
 
     When ``identifier=True``, marks this field as the entity's identity
@@ -119,11 +123,11 @@ def Identifier(identifier: bool = False, **kwargs: Any) -> FieldSpec:
     return FieldSpec(str, field_kind="identifier", **kwargs)
 
 
-def Auto(
+def Auto(  # pyright: ignore[reportRedeclaration]
     increment: bool = False,
     identifier: bool = False,
     identity_strategy: str | None = None,
-    identity_function: str | Callable | None = None,
+    identity_function: str | Callable[..., Any] | None = None,
     identity_type: str | None = None,
     **kwargs: Any,
 ) -> FieldSpec:
@@ -147,10 +151,10 @@ def Auto(
     return spec
 
 
-def Status(
+def Status(  # pyright: ignore[reportRedeclaration]
     enum_cls: type,
     *,
-    transitions: dict | None = None,
+    transitions: dict[Any, Any] | None = None,
     **kwargs: Any,
 ) -> FieldSpec:
     """A status field constrained to an Enum's values with optional transition enforcement.
@@ -241,7 +245,7 @@ if TYPE_CHECKING:
         increment: bool = False,
         identifier: bool = False,
         identity_strategy: str | None = None,
-        identity_function: str | Callable | None = None,
+        identity_function: str | Callable[..., Any] | None = None,
         identity_type: str | None = None,
         **kwargs: Any,
     ) -> str: ...
@@ -249,6 +253,6 @@ if TYPE_CHECKING:
     def Status(  # type: ignore[misc]
         enum_cls: type,
         *,
-        transitions: dict | None = None,
+        transitions: dict[Any, Any] | None = None,
         **kwargs: Any,
     ) -> str: ...
