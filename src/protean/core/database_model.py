@@ -5,7 +5,7 @@ from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import attributes, declared_fields
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
@@ -38,13 +38,13 @@ class BaseDatabaseModel(Element, OptionsMixin):
 
     element_type = DomainObjects.DATABASE_MODEL
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseDatabaseModel":
         if cls is BaseDatabaseModel:
             raise NotSupportedError("BaseDatabaseModel cannot be instantiated")
         return super().__new__(cls)
 
     @classmethod
-    def _default_options(cls):
+    def _default_options(cls) -> list[tuple[str, Any]]:
         return [
             ("database", None),
             ("part_of", None),
@@ -62,9 +62,9 @@ class BaseDatabaseModel(Element, OptionsMixin):
             str: The resolved schema name.
         """
         if hasattr(cls.meta_, "schema_name") and cls.meta_.schema_name:
-            return cls.meta_.schema_name
+            return cast(str, cls.meta_.schema_name)
         else:
-            return cls.meta_.part_of.meta_.schema_name
+            return cast(str, cls.meta_.part_of.meta_.schema_name)
 
     @classmethod
     def _entity_to_dict(cls, entity: Any) -> dict[str, Any]:
@@ -118,10 +118,10 @@ class BaseDatabaseModel(Element, OptionsMixin):
                 )
             else:
                 item_dict[attr_name] = cls._get_value(item, attr_name)
-        return cls.meta_.part_of(**item_dict)
+        return cast("BaseEntity", cls.meta_.part_of(**item_dict))
 
     @classmethod
-    def to_records(cls, items: list, fields: list) -> list:
+    def to_records(cls, items: list[Any], fields: list[str]) -> list[Record]:
         """Build read-only ``Record`` objects from storage records for ``fields``.
 
         Unlike :meth:`to_entity`, this does **not** materialize domain
@@ -157,7 +157,9 @@ class BaseDatabaseModel(Element, OptionsMixin):
         ]
 
 
-def _entity_to_dict(model_cls: type, entity: Any) -> dict[str, Any]:
+def _entity_to_dict(
+    model_cls: type["BaseDatabaseModel"], entity: Any
+) -> dict[str, Any]:
     """Extract attribute values from an entity into a plain dict.
 
     Handles ``referenced_as`` remapping and flattened value-object shadow
@@ -194,13 +196,18 @@ _T = TypeVar("_T")
 def database_model_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseDatabaseModel, **opts)
 
-    if not element_cls.meta_.part_of:
+    # The derived class is always a ``BaseDatabaseModel`` subclass at runtime;
+    # narrow the unbound ``type[_T]`` typevar so the injected class attribute
+    # (``meta_``) is visible to both type checkers.
+    model_cls = cast("type[BaseDatabaseModel]", element_cls)
+
+    if not model_cls.meta_.part_of:
         raise IncorrectUsageError(
-            f"Database Model `{element_cls.__name__}` should be associated with an Entity or Aggregate"
+            f"Database Model `{model_cls.__name__}` should be associated with an Entity or Aggregate"
         )
 
     # Validate that model fields exist in the associated aggregate/entity
-    part_of_cls = element_cls.meta_.part_of
+    part_of_cls = model_cls.meta_.part_of
     entity_field_names = set(declared_fields(part_of_cls).keys())
 
     _SKIP = {"Meta", "meta_", "element_type"}
