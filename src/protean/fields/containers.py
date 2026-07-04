@@ -81,8 +81,8 @@ def Dict(**kwargs: Any) -> FieldSpec:
 # ---------------------------------------------------------------------------
 if TYPE_CHECKING:
 
-    def List(
+    def List(  # type: ignore[misc]
         content_type: Any = None, pickled: bool = False, **kwargs: Any
-    ) -> list: ...  # type: ignore[misc]
+    ) -> list[Any]: ...
 
-    def Dict(**kwargs: Any) -> dict: ...  # type: ignore[misc]
+    def Dict(**kwargs: Any) -> dict[str, Any]: ...  # type: ignore[misc]
