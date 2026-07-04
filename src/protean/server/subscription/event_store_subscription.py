@@ -7,7 +7,7 @@ import time
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 from uuid import uuid4
 
 from protean.core.command_handler import BaseCommandHandler
@@ -188,7 +188,7 @@ class EventStoreSubscription(BaseSubscription):
         )
         # In-memory cache of failed position info (populated from event store on init)
         # Maps global_position -> {"retry_count": int, "stream_name": str|None, "stream_position": int|None}
-        self._failed_positions: Dict[int, dict] = {}
+        self._failed_positions: Dict[int, dict[str, Any]] = {}
         self._last_recovery_time: float = 0.0
 
     @classmethod
@@ -290,7 +290,8 @@ class EventStoreSubscription(BaseSubscription):
             self.store._read_last_message, self.subscriber_stream_name
         )
         if message:
-            return message["data"]["position"]
+            position: int = message["data"]["position"]
+            return position
 
         return -1
 
@@ -309,7 +310,7 @@ class EventStoreSubscription(BaseSubscription):
 
         return last_written_position
 
-    async def update_read_position(self, position) -> int:
+    async def update_read_position(self, position: int) -> int:
         """
         Update the current read position.
 
@@ -393,7 +394,7 @@ class EventStoreSubscription(BaseSubscription):
         logger.debug(f"Filtered {len(filtered_messages)} out of {len(messages)}")
         return filtered_messages
 
-    async def get_next_batch_of_messages(self):
+    async def get_next_batch_of_messages(self) -> List[Message]:
         """
         Get the next batch of messages to process.
 
@@ -749,7 +750,7 @@ class EventStoreSubscription(BaseSubscription):
             },
         )
 
-    def _get_unresolved_positions(self) -> Dict[int, dict]:
+    def _get_unresolved_positions(self) -> Dict[int, dict[str, Any]]:
         """Get positions that need recovery (still in Failed state).
 
         Returns:
