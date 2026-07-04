@@ -68,7 +68,7 @@ class BaseQueryHandler(Element, HandlerMixin, OptionsMixin):
     element_type = DomainObjects.QUERY_HANDLER
 
     @classmethod
-    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict]]]]:
+    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict[str, Any]]]]]:
         part_of = (
             getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
         )
@@ -83,7 +83,7 @@ class BaseQueryHandler(Element, HandlerMixin, OptionsMixin):
         return super().__new__(cls)
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=BaseQueryHandler)
 
 
 def query_handler_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
