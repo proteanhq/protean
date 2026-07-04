@@ -238,7 +238,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
         }
 
     def __eq__(self, other: object) -> bool:
-        if type(other) is not type(self):
+        if not isinstance(other, BaseQuery) or type(other) is not type(self):
             return False
         return self.payload == other.payload
 
