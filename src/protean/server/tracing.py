@@ -44,8 +44,8 @@ class MessageTrace:
     handler: Optional[str] = None  # "CustomerProjector"
     duration_ms: Optional[float] = None  # Processing time (handler stages)
     error: Optional[str] = None  # Error message for failures
-    metadata: Optional[dict] = field(default_factory=dict)  # Extra context
-    payload: Optional[dict] = None  # Message payload (event/command data)
+    metadata: Optional[dict[str, Any]] = field(default_factory=dict)  # Extra context
+    payload: Optional[dict[str, Any]] = None  # Message payload (event/command data)
     worker_id: Optional[str] = None  # Subscription instance that processed this message
     correlation_id: Optional[str] = None  # Correlation chain identifier
     causation_id: Optional[str] = None  # Parent message identifier
@@ -80,7 +80,9 @@ class TraceEmitter:
     ) -> None:
         self._domain = domain
         self._domain_name = domain.name
-        self._redis = None
+        # Redis client from the domain's broker; genuinely untyped (optional,
+        # un-stubbed adapter dependency reached via a dynamic ``domain`` object).
+        self._redis: Any = None
         self._has_subscribers = False
         self._last_subscriber_check = 0.0
         self._initialized = False
