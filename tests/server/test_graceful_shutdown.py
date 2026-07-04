@@ -171,10 +171,7 @@ class TestEngineShutdownOrder:
                 with caplog.at_level(logging.ERROR):
                     engine.loop.run_until_complete(engine.shutdown())
 
-            assert any(
-                "engine.cleanup_failed" in r.message
-                for r in caplog.records
-            )
+            assert any("engine.cleanup_failed" in r.message for r in caplog.records)
 
 
 @pytest.mark.no_test_domain
@@ -500,6 +497,141 @@ class TestRedisBrokerCloseEdgeCases:
             broker.close()  # Should not raise
 
         assert any("Error closing Redis broker" in r.message for r in caplog.records)
+
+
+@pytest.mark.no_test_domain
+class TestRedisBrokerReconnectAfterClose:
+    """Reviving a closed Redis connection (#1055).
+
+    Engine shutdown calls ``close()``, which sets ``redis_instance`` to ``None``.
+    Under CI timing a straggler poll read or a test-teardown ``_data_reset`` can
+    still run afterwards; these must reconnect transparently instead of raising
+    ``AttributeError: 'NoneType' object has no attribute ...`` and killing the
+    subscription poll loop. These tests use mocks and need no live Redis.
+    """
+
+    def _make_broker(self):
+        from protean.adapters.broker.redis import RedisBroker
+
+        broker = object.__new__(RedisBroker)
+        broker.name = "test"
+        broker.conn_info = {"URI": "redis://localhost:6379/0"}
+        broker._pool_kwargs = {}
+        broker.redis_instance = None
+        broker._consumer_name = "consumer-test"
+        broker._created_groups_set = set()
+        broker._group_creation_times = {}
+        return broker
+
+    def test_client_revives_when_instance_is_none(self):
+        """The _client accessor reconnects when redis_instance is None."""
+        broker = self._make_broker()
+        mock_client = MagicMock()
+
+        with patch("redis.Redis.from_url", return_value=mock_client) as from_url:
+            result = broker._client
+
+        assert result is mock_client
+        assert broker.redis_instance is mock_client
+        from_url.assert_called_once()
+
+    def test_client_reuses_live_instance_without_reconnecting(self):
+        """The _client accessor does not reconnect when already connected."""
+        broker = self._make_broker()
+        broker.redis_instance = MagicMock()
+
+        with patch("redis.Redis.from_url") as from_url:
+            result = broker._client
+
+        assert result is broker.redis_instance
+        from_url.assert_not_called()
+
+    def test_read_revives_closed_connection(self):
+        """_read reconnects after close() instead of raising AttributeError."""
+        broker = self._make_broker()
+        # Pre-populate the group cache so _ensure_group does not hit Redis.
+        broker._created_groups_set = {"stream:group"}
+        mock_client = MagicMock()
+        mock_client.xreadgroup.return_value = []
+
+        with patch("redis.Redis.from_url", return_value=mock_client):
+            result = broker._read("stream", "group", 1)
+
+        assert result == []
+        assert broker.redis_instance is mock_client
+        assert mock_client.xreadgroup.called
+
+    def test_data_reset_revives_closed_connection(self):
+        """_data_reset reconnects after close() and flushes without raising."""
+        broker = self._make_broker()
+        broker._created_groups_set = {"stream:group"}
+        broker._group_creation_times = {"group": 1.0}
+        mock_client = MagicMock()
+
+        with patch("redis.Redis.from_url", return_value=mock_client):
+            broker._data_reset()
+
+        mock_client.flushall.assert_called_once()
+        assert broker.redis_instance is mock_client
+        assert broker._created_groups_set == set()
+        assert broker._group_creation_times == {}
+
+    def test_publish_revives_closed_connection(self):
+        """_publish reconnects after close() instead of raising AttributeError."""
+        broker = self._make_broker()
+        mock_client = MagicMock()
+        mock_client.xadd.return_value = b"1-0"
+
+        with patch("redis.Redis.from_url", return_value=mock_client):
+            identifier = broker._publish("stream", {"k": "v"})
+
+        assert identifier == "1-0"
+        assert broker.redis_instance is mock_client
+        mock_client.xadd.assert_called_once()
+
+    def test_read_blocking_reconnects_on_connection_error(self):
+        """_read_blocking re-establishes the connection on a dropped socket.
+
+        A "Connection closed by server" error on the blocking XREADGROUP is
+        swallowed inside _read_blocking (returns []), so the base read_blocking
+        wrapper's recovery never fires. _read_blocking must trigger the
+        reconnect itself so the next poll tick reads from a healthy socket.
+        """
+        import redis
+
+        broker = self._make_broker()
+        broker._created_groups_set = {"stream:group"}
+        mock_client = MagicMock()
+        mock_client.xreadgroup.side_effect = redis.ConnectionError(
+            "Connection closed by server."
+        )
+        broker.redis_instance = mock_client
+
+        with patch.object(
+            broker, "_ensure_connection", return_value=True
+        ) as ensure_connection:
+            result = broker._read_blocking(
+                "stream", "group", "consumer", timeout_ms=100, count=1
+            )
+
+        assert result == []
+        ensure_connection.assert_called_once()
+
+    def test_read_blocking_does_not_reconnect_on_non_connection_error(self):
+        """_read_blocking does not reconnect for unrelated errors (scope guard)."""
+        broker = self._make_broker()
+        broker._created_groups_set = {"stream:group"}
+        mock_client = MagicMock()
+        mock_client.xreadgroup.side_effect = ValueError("bad payload")
+        broker.redis_instance = mock_client
+
+        with patch.object(broker, "_ensure_connection") as ensure_connection:
+            result = broker._read_blocking(
+                "stream", "group", "consumer", timeout_ms=100, count=1
+            )
+
+        assert result == []
+        ensure_connection.assert_not_called()
 
 
 @pytest.mark.no_test_domain

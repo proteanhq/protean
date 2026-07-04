@@ -50,9 +50,8 @@ class RedisBroker(BaseBroker):
         self._pool_kwargs = {
             key: value for key, value in conn_info.items() if key in self._POOL_KEYS
         }
-        self.redis_instance = redis.Redis.from_url(
-            conn_info["URI"], **self._pool_kwargs
-        )
+        self.redis_instance: Optional["redis.Redis"] = None
+        self._connect()
         self._consumer_name = f"consumer-{int(time.time() * 1000)}"
         self._created_groups_set = set()
         self._group_creation_times = {}  # Track creation times for consistency
@@ -63,6 +62,28 @@ class RedisBroker(BaseBroker):
         self._retry_delay = 1.0
         self._message_timeout = 300.0
         self._enable_dlq = False
+
+    def _connect(self) -> "redis.Redis":
+        """Create (or recreate) the underlying synchronous Redis client."""
+        self.redis_instance = redis.Redis.from_url(
+            self.conn_info["URI"], **self._pool_kwargs
+        )
+        return self.redis_instance
+
+    @property
+    def _client(self) -> "redis.Redis":
+        """Return a live Redis client, reconnecting if the connection was closed.
+
+        ``close()`` sets ``redis_instance`` to ``None``; a straggler poll read or
+        a test-teardown ``_data_reset`` running afterwards would otherwise raise
+        ``AttributeError: 'NoneType' object has no attribute ...`` (#1055). Every
+        Redis call inside this broker goes through here so those paths revive
+        instead of crashing the subscription's poll loop.
+        """
+        if self.redis_instance is None:
+            logger.debug("broker.redis.reviving_closed_connection")
+            return self._connect()
+        return self.redis_instance
 
     @property
     def capabilities(self) -> BrokerCapabilities:
@@ -81,7 +102,7 @@ class RedisBroker(BaseBroker):
     def _publish(self, stream: str, message: dict) -> str:
         """Publish a message to Redis Stream using XADD"""
         serialized_message = {DATA_FIELD: json.dumps(message or {})}
-        redis_stream_id = self.redis_instance.xadd(stream, serialized_message)
+        redis_stream_id = self._client.xadd(stream, serialized_message)
         return self._decode_if_bytes(redis_stream_id)
 
     def _get_next(self, stream: str, consumer_group: str) -> Optional[Tuple[str, dict]]:
@@ -96,7 +117,7 @@ class RedisBroker(BaseBroker):
         try:
             # Always try to read new messages first
             # Redis guarantees that each consumer in a group gets different messages
-            response = self.redis_instance.xreadgroup(
+            response = self._client.xreadgroup(
                 consumer_group,
                 self._consumer_name,
                 {stream: NEW_MESSAGES_MARK},
@@ -182,7 +203,7 @@ class RedisBroker(BaseBroker):
         try:
             # Read all requested messages at once to maintain order
             # First try to read new messages
-            response = self.redis_instance.xreadgroup(
+            response = self._client.xreadgroup(
                 consumer_group,
                 self._consumer_name,
                 {stream: NEW_MESSAGES_MARK},
@@ -199,7 +220,7 @@ class RedisBroker(BaseBroker):
             # If we didn't get enough messages, try reading pending messages
             if len(messages) < no_of_messages:
                 remaining = no_of_messages - len(messages)
-                response = self.redis_instance.xreadgroup(
+                response = self._client.xreadgroup(
                     consumer_group, self._consumer_name, {stream: "0"}, count=remaining
                 )
 
@@ -249,7 +270,7 @@ class RedisBroker(BaseBroker):
         try:
             # First, try to read pending messages (messages that were delivered but not ACKed)
             # Use "0" to read pending messages for this consumer
-            response = self.redis_instance.xreadgroup(
+            response = self._client.xreadgroup(
                 consumer_group,
                 consumer_name,
                 {stream: "0"},  # "0" means read pending messages
@@ -274,7 +295,7 @@ class RedisBroker(BaseBroker):
             # This allows the event loop to process signals more frequently
             effective_timeout = min(timeout_ms, 1000)
 
-            response = self.redis_instance.xreadgroup(
+            response = self._client.xreadgroup(
                 consumer_group,
                 consumer_name,
                 {stream: NEW_MESSAGES_MARK},
@@ -305,7 +326,7 @@ class RedisBroker(BaseBroker):
                 self._created_groups_set.discard(group_key)
                 self._ensure_group(consumer_group, stream)
                 try:
-                    response = self.redis_instance.xreadgroup(
+                    response = self._client.xreadgroup(
                         consumer_group,
                         consumer_name,
                         {stream: NEW_MESSAGES_MARK},
@@ -326,7 +347,14 @@ class RedisBroker(BaseBroker):
                     return []
             logger.exception("broker.redis.read_blocking_failed")
             return []
-        except Exception:
+        except Exception as e:
+            # A dropped/closed connection (e.g. "Connection closed by server"
+            # under CI load) surfaces here rather than via the base read_blocking
+            # wrapper, which only sees exceptions this method re-raises. Proactively
+            # re-establish the connection so the next poll tick reads from a healthy
+            # socket instead of relying solely on pool internals to self-heal.
+            if self._is_connection_error(e):
+                self._ensure_connection()
             logger.exception("broker.redis.read_blocking_failed")
             return []
 
@@ -337,7 +365,7 @@ class RedisBroker(BaseBroker):
         the pending list and cannot be ACKed again.
         """
         try:
-            result = self.redis_instance.xack(stream, consumer_group, identifier)
+            result = self._client.xack(stream, consumer_group, identifier)
             # result is the number of messages successfully acknowledged
             # 0 means the message was not pending (already ACKed or doesn't exist)
             # 1 means the message was successfully acknowledged
@@ -379,7 +407,7 @@ class RedisBroker(BaseBroker):
     ) -> bool:
         """Check if message is in pending list for the consumer group"""
         try:
-            pending_info = self.redis_instance.xpending_range(
+            pending_info = self._client.xpending_range(
                 stream, consumer_group, min=identifier, max=identifier, count=1
             )
         except redis.ResponseError as e:
@@ -413,7 +441,7 @@ class RedisBroker(BaseBroker):
         entries: list[DLQEntry] = []
         for dlq_stream in dlq_streams:
             try:
-                raw_messages = self.redis_instance.xrange(dlq_stream)
+                raw_messages = self._client.xrange(dlq_stream)
             except redis.ResponseError:
                 # Stream doesn't exist
                 continue
@@ -430,7 +458,7 @@ class RedisBroker(BaseBroker):
     def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
         """Inspect a specific DLQ message by ID."""
         try:
-            raw_messages = self.redis_instance.xrange(
+            raw_messages = self._client.xrange(
                 dlq_stream, min=dlq_id, max=dlq_id, count=1
             )
         except redis.ResponseError:
@@ -445,7 +473,7 @@ class RedisBroker(BaseBroker):
     def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
         """Replay a single DLQ message back to its original stream."""
         try:
-            raw_messages = self.redis_instance.xrange(
+            raw_messages = self._client.xrange(
                 dlq_stream, min=dlq_id, max=dlq_id, count=1
             )
         except redis.ResponseError:
@@ -459,14 +487,14 @@ class RedisBroker(BaseBroker):
         # Strip DLQ metadata before republishing
         message.pop("_dlq_metadata", None)
         self._publish(target_stream, message)
-        self.redis_instance.xdel(dlq_stream, self._decode_if_bytes(redis_id))
+        self._client.xdel(dlq_stream, self._decode_if_bytes(redis_id))
         logger.info(f"Replayed DLQ message '{dlq_id}' to stream '{target_stream}'")
         return True
 
     def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
         """Replay all DLQ messages from a stream."""
         try:
-            raw_messages = self.redis_instance.xrange(dlq_stream)
+            raw_messages = self._client.xrange(dlq_stream)
         except redis.ResponseError:
             return 0
 
@@ -475,18 +503,18 @@ class RedisBroker(BaseBroker):
             message = self._deserialize_message(fields)
             message.pop("_dlq_metadata", None)
             self._publish(target_stream, message)
-            self.redis_instance.xdel(dlq_stream, self._decode_if_bytes(redis_id))
+            self._client.xdel(dlq_stream, self._decode_if_bytes(redis_id))
             replayed += 1
         return replayed
 
     def _dlq_purge(self, dlq_stream: str) -> int:
         """Purge all messages from a DLQ stream."""
         try:
-            count = self.redis_instance.xlen(dlq_stream)
+            count = self._client.xlen(dlq_stream)
         except redis.ResponseError:
             return 0
         if count > 0:
-            self.redis_instance.delete(dlq_stream)
+            self._client.delete(dlq_stream)
         return count
 
     def _parse_dlq_entry(
@@ -523,7 +551,7 @@ class RedisBroker(BaseBroker):
             Number of messages trimmed.
         """
         try:
-            trimmed = self.redis_instance.xtrim(dlq_stream, minid=min_id) or 0
+            trimmed = self._client.xtrim(dlq_stream, minid=min_id) or 0
             if trimmed > 0:
                 logger.info(
                     "broker.redis.dlq_trimmed",
@@ -537,7 +565,7 @@ class RedisBroker(BaseBroker):
     def dlq_depth(self, dlq_stream: str) -> int:
         """Return the number of messages in a DLQ stream."""
         try:
-            return self.redis_instance.xlen(dlq_stream)
+            return self._client.xlen(dlq_stream)
         except redis.ResponseError:
             return 0
 
@@ -549,7 +577,7 @@ class RedisBroker(BaseBroker):
             return
 
         try:
-            self.redis_instance.xgroup_create(
+            self._client.xgroup_create(
                 stream, group_name, id=STREAM_ID_START, mkstream=True
             )
             logger.debug(f"Created consumer group {group_name} for stream {stream}")
@@ -597,7 +625,7 @@ class RedisBroker(BaseBroker):
 
         removed = 0
         try:
-            consumers_info = self.redis_instance.xinfo_consumers(stream, group_name)
+            consumers_info = self._client.xinfo_consumers(stream, group_name)
             for c in consumers_info:
                 if not isinstance(c, dict):
                     continue
@@ -619,7 +647,7 @@ class RedisBroker(BaseBroker):
                     continue
 
                 try:
-                    self.redis_instance.xgroup_delconsumer(stream, group_name, name)
+                    self._client.xgroup_delconsumer(stream, group_name, name)
                     removed += 1
                     logger.debug(f"Removed stale consumer {name} from {group_name}")
                 except Exception as e:
@@ -679,7 +707,7 @@ class RedisBroker(BaseBroker):
     def _get_stream_info(self, stream: str) -> Optional[dict]:
         """Get info for a specific stream"""
         try:
-            groups_info = self.redis_instance.xinfo_groups(stream)
+            groups_info = self._client.xinfo_groups(stream)
             stream_info = {}
 
             for group_info in groups_info:
@@ -712,7 +740,7 @@ class RedisBroker(BaseBroker):
             if group_name is None:
                 return None
 
-            consumers_info = self.redis_instance.xinfo_consumers(stream, group_name)
+            consumers_info = self._client.xinfo_consumers(stream, group_name)
             consumers = self._extract_consumers_data(consumers_info)
 
             return (
@@ -769,7 +797,7 @@ class RedisBroker(BaseBroker):
     def _ping(self) -> bool:
         """Test basic connectivity to Redis broker"""
         try:
-            return self.redis_instance.ping()
+            return self._client.ping()
         except Exception as e:
             logger.debug(f"Redis ping failed: {e}")
             return False
@@ -784,12 +812,12 @@ class RedisBroker(BaseBroker):
             for stream in streams_to_check:
                 try:
                     # Get stream length (total messages)
-                    stream_length = self.redis_instance.xlen(stream)
+                    stream_length = self._client.xlen(stream)
                     total_messages += stream_length
 
                     # Get pending messages for all consumer groups in this stream
                     try:
-                        groups_info = self.redis_instance.xinfo_groups(stream)
+                        groups_info = self._client.xinfo_groups(stream)
                         for group_info in groups_info:
                             if isinstance(group_info, dict):
                                 pending_count = self._get_field_value(
@@ -831,7 +859,7 @@ class RedisBroker(BaseBroker):
             existing_streams = []
             for stream in streams_to_check:
                 try:
-                    if self.redis_instance.xlen(stream) >= 0:  # Stream exists
+                    if self._client.xlen(stream) >= 0:  # Stream exists
                         existing_streams.append(stream)
                 except redis.ResponseError:
                     # Stream doesn't exist, skip it
@@ -864,7 +892,7 @@ class RedisBroker(BaseBroker):
     def _health_stats(self) -> dict:
         """Get Redis-specific health and performance statistics"""
         try:
-            redis_info = self.redis_instance.info()
+            redis_info = self._client.info()
 
             # Calculate message counts across all streams
             message_counts = self._calculate_message_counts()
@@ -966,7 +994,7 @@ class RedisBroker(BaseBroker):
         for attempt in range(max_attempts):
             try:
                 # Test current connection
-                if self.redis_instance.ping():
+                if self._client.ping():
                     if attempt > 0:
                         logger.info(
                             f"Redis connection restored on attempt {attempt + 1}"
@@ -983,9 +1011,7 @@ class RedisBroker(BaseBroker):
                         f"Redis connection failed, attempting to reconnect (attempt {attempt + 1}/{max_attempts})..."
                     )
                     # Create a new Redis instance with the same connection info
-                    self.redis_instance = redis.Redis.from_url(
-                        self.conn_info["URI"], **self._pool_kwargs
-                    )
+                    self._connect()
                 except Exception:
                     logger.exception("broker.redis.reconnect_failed")
 
@@ -1007,7 +1033,7 @@ class RedisBroker(BaseBroker):
     def _data_reset(self) -> None:
         """Flush all data in Redis instance for testing"""
         try:
-            self.redis_instance.flushall()
+            self._client.flushall()
             self._created_groups_set.clear()
             self._group_creation_times.clear()
         except Exception:
