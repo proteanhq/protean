@@ -92,7 +92,7 @@ def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
         return schema
 
     if kind == "list":
-        schema: dict[str, Any] = {"type": "array"}
+        schema = {"type": "array"}
         content_type = field.get("content_type")
         if content_type and content_type in _TYPE_MAP:
             schema["items"] = dict(sorted(_TYPE_MAP[content_type].items()))
