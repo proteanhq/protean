@@ -1,6 +1,6 @@
 import threading
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 from uuid import uuid4
 
 from pydantic import Field
@@ -10,6 +10,9 @@ from protean.core.repository import BaseRepository
 from protean.port.event_store import BaseEventStore
 from protean.utils.globals import current_domain
 from protean.utils.eventing import Metadata
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 
 class MemoryMessage(BaseAggregate):
@@ -37,7 +40,7 @@ class MemoryMessage(BaseAggregate):
     type: str | None = None
 
     # JSON representation of the message body
-    data: dict | None = None
+    data: dict[str, Any] | None = None
 
     # JSON representation of the message metadata
     metadata: Metadata | None = None
@@ -54,7 +57,7 @@ class MemoryMessageRepository(BaseRepository):
 
         return "-" not in stream_name
 
-    def stream_version(self, stream_name: str):
+    def stream_version(self, stream_name: str) -> int:
         repo = current_domain.repository_for(MemoryMessage)
         results = (
             repo._dao.query.filter(stream_name=stream_name).order_by("-position").all()
@@ -62,16 +65,17 @@ class MemoryMessageRepository(BaseRepository):
 
         if results.items:
             assert results.first is not None
-            return results.first.position
+            position: int = results.first.position
+            return position
         return -1
 
     def write(
         self,
         stream_name: str,
         message_type: str,
-        data: Dict,
-        metadata: Dict = None,
-        expected_version: int = None,
+        data: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        expected_version: int | None = None,
     ) -> int:
         with self._write_lock:
             # Version check + write are now atomic under the lock
@@ -101,10 +105,10 @@ class MemoryMessageRepository(BaseRepository):
     def read(
         self,
         stream_name: str,
-        sql: str = None,
+        sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
-    ):
+    ) -> list[dict[str, Any]]:
         repo = current_domain.repository_for(MemoryMessage)
         q = (
             repo._dao.query.filter(position__gte=position)
@@ -128,7 +132,7 @@ class MemoryMessageRepository(BaseRepository):
 
 
 class MemoryEventStore(BaseEventStore):
-    def __init__(self, domain, conn_info) -> None:
+    def __init__(self, domain: "Domain", conn_info: dict[str, Any]) -> None:
         super().__init__("Memory", domain, conn_info)
 
         self.domain = domain
@@ -144,38 +148,39 @@ class MemoryEventStore(BaseEventStore):
 
     def _write(
         self,
-        stream_name: str,
+        stream: str,
         message_type: str,
-        data: Dict,
-        metadata: Dict = None,
-        expected_version: int = None,
+        data: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        expected_version: int | None = None,
     ) -> int:
-        repo = self.domain.repository_for(MemoryMessage)
-        return repo.write(stream_name, message_type, data, metadata, expected_version)
+        repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
+        return repo.write(stream, message_type, data, metadata, expected_version)
 
     def _read(
         self,
         stream_name: str,
-        sql: str = None,
+        sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
-    ) -> List[Dict[str, Any]]:
-        repo = self.domain.repository_for(MemoryMessage)
+    ) -> list[dict[str, Any]]:
+        repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
         return repo.read(stream_name, sql, position, no_of_messages)
 
-    def _read_last_message(self, stream_name) -> Optional[Dict[str, Any]]:
-        repo = self.domain.repository_for(MemoryMessage)
+    def _read_last_message(self, stream: str) -> Optional[dict[str, Any]]:
+        repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
 
-        messages = repo.read(stream_name)
+        messages = repo.read(stream)
         return messages[-1] if messages else None
 
     def _stream_head_position(self, stream_category: str) -> int:
         messages = self._read(stream_category, no_of_messages=1_000_000)
         if messages:
-            return messages[-1].get("global_position", -1)
+            global_position: int = messages[-1].get("global_position", -1)
+            return global_position
         return -1
 
-    def _stream_identifiers(self, stream_category: str) -> List[str]:
+    def _stream_identifiers(self, stream_category: str) -> list[str]:
         messages = self._read(stream_category, no_of_messages=1_000_000)
         identifiers: set[str] = set()
         for msg in messages:
