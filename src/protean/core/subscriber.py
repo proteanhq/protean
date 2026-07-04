@@ -30,21 +30,21 @@ class BaseSubscriber(Element, OptionsMixin):
 
     element_type = DomainObjects.SUBSCRIBER
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseSubscriber":
         if cls is BaseSubscriber:
             raise NotSupportedError("BaseSubscriber cannot be instantiated")
         return super().__new__(cls)
 
     @classmethod
-    def _default_options(cls):
+    def _default_options(cls) -> list[tuple[str, Any]]:
         return [("broker", "default"), ("stream", None)]
 
     @abstractmethod
-    def __call__(self, payload: dict) -> None:
+    def __call__(self, payload: dict[str, Any]) -> None:
         """Placeholder method for receiving notifications on event"""
 
     @classmethod
-    def handle_error(cls, exc: Exception, message: dict) -> None:
+    def handle_error(cls, exc: Exception, message: dict[str, Any]) -> None:
         """Error handler method called when exceptions occur during broker message handling.
 
         This method can be overridden in subclasses to provide custom error handling
@@ -74,7 +74,7 @@ class BaseSubscriber(Element, OptionsMixin):
         """
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=OptionsMixin)
 
 
 def subscriber_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
