@@ -75,7 +75,7 @@ def _load_domain(domain_path: str) -> "Domain":
     return derived_domain
 
 
-def _resolve_aggregate(domain: "Domain", aggregate_name: str):  # type: ignore[name-defined]
+def _resolve_aggregate(domain: "Domain", aggregate_name: str):
     """Resolve an aggregate class by name from the domain registry."""
     for _, record in domain.registry._elements[DomainObjects.AGGREGATE.value].items():
         if record.cls.__name__ == aggregate_name:

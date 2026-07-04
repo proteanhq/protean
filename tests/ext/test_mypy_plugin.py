@@ -23,6 +23,11 @@ _MYPY_FLAGS = [
     "--show-error-codes",
     "--no-error-summary",
     "--hide-error-context",
+    # These tests check plugin behavior (reveal_type, base injection) on fixtures,
+    # not ignore hygiene. The project's warn_unused_ignores (pyproject [tool.mypy])
+    # is auto-discovered by mypy_api and would otherwise flag the fixtures'
+    # intentional `# type: ignore`s. Disable it for the fixture runs.
+    "--no-warn-unused-ignores",
 ]
 
 # Field fixture files (original tests)

@@ -398,6 +398,7 @@ nav:
       - adr/0015-event-store-append-as-durable-anchor.md
       - adr/0016-breadth-first-synchronous-event-dispatch.md
       - adr/0017-consume-side-idempotency-for-projectors.md
+      - adr/0018-type-safety-strategy.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
