@@ -87,7 +87,9 @@ _DESCRIPTOR_TYPES = (
 
 
 class _FieldsCacheDescriptor:
-    def __get__(self, instance, cls=None):
+    def __get__(
+        self, instance: Any, cls: type | None = None
+    ) -> "_FieldsCacheDescriptor | dict[str, Any]":
         if instance is None:
             return self
         res = instance.fields_cache = {}
@@ -97,31 +99,31 @@ class _FieldsCacheDescriptor:
 class _EntityState:
     """Store entity instance state."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._new = True
         self._changed = False
         self._destroyed = False
 
     @property
-    def is_new(self):
+    def is_new(self) -> bool:
         return self._new
 
     @property
-    def is_persisted(self):
+    def is_persisted(self) -> bool:
         return not self._new
 
     @property
-    def is_changed(self):
+    def is_changed(self) -> bool:
         return self._changed
 
     @property
-    def is_destroyed(self):
+    def is_destroyed(self) -> bool:
         return self._destroyed
 
-    def mark_new(self):
+    def mark_new(self) -> None:
         self._new = True
 
-    def mark_saved(self):
+    def mark_saved(self) -> None:
         self._new = False
         self._changed = False
 
@@ -129,11 +131,11 @@ class _EntityState:
         mark_saved  # Alias as placeholder so that future change wont affect interface
     )
 
-    def mark_changed(self):
+    def mark_changed(self) -> None:
         if not (self._new or self._destroyed):
             self._changed = True
 
-    def mark_destroyed(self):
+    def mark_destroyed(self) -> None:
         self._destroyed = True
         self._changed = False
 
@@ -212,7 +214,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     _root: Any = PrivateAttr(default=None)
     _owner: Any = PrivateAttr(default=None)
     _temp_cache: AssociationCache = PrivateAttr(default_factory=AssociationCache)
-    _events: list = PrivateAttr(default_factory=list)
+    _events: list[Any] = PrivateAttr(default_factory=list)
     _disable_invariant_checks: bool = PrivateAttr(default=False)
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEntity":
@@ -260,7 +262,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # scan ``vars(cls)`` for descriptors, so they must live there.
         # We also explicitly trigger ``__set_name__`` because ``setattr``
         # does NOT invoke it (only class-body execution does).
-        own_annots = getattr(cls, "__annotations__", {})
+        own_annots: dict[str, Any] = getattr(cls, "__annotations__", {})
         to_remove: list[str] = []
         for name, value in list(own_annots.items()):
             if isinstance(value, _DESCRIPTOR_TYPES):
@@ -295,7 +297,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         if vars(cls).get("__auto_id_handled__"):
             return
 
-        own_annots = getattr(cls, "__annotations__", {})
+        own_annots: dict[str, Any] = getattr(cls, "__annotations__", {})
 
         # Check if any class-level FieldInfo already declares an identifier
         for value in vars(cls).values():
@@ -311,8 +313,9 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             if isinstance(annot_value, str) and "'identifier': True" in annot_value:
                 return
             # Handle resolved Annotated types (no from __future__)
-            if hasattr(annot_value, "__metadata__"):
-                for meta in annot_value.__metadata__:
+            metadata = getattr(annot_value, "__metadata__", None)
+            if metadata is not None:
+                for meta in metadata:
                     if isinstance(meta, FieldInfo):
                         extra = meta.json_schema_extra
                         if isinstance(extra, dict) and extra.get("identifier"):
@@ -541,7 +544,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
         # Restore shadow field values directly into __dict__ (they bypass Pydantic)
         for name, value in shadow_kwargs.items():
-            self.__dict__[name] = value  # type: ignore[reportIndexIssue]
+            self.__dict__[name] = value  # pyright: ignore[reportIndexIssue]
 
         # Reconstruct ValueObjects from shadow kwargs when the VO itself
         # wasn't explicitly provided (e.g. during repository retrieval).
@@ -581,13 +584,13 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             for _, shadow_field in field_obj.get_shadow_fields():
                 attr_name = shadow_field.attribute_name
                 if attr_name not in self.__dict__:
-                    self.__dict__[attr_name] = None  # type: ignore[reportIndexIssue]
+                    self.__dict__[attr_name] = None  # pyright: ignore[reportIndexIssue]
 
         # Initialize Reference shadow fields to None when not already set
         for field_obj in reference_fields(self).values():
             shadow_name, shadow = field_obj.get_shadow_field()
             if shadow_name not in self.__dict__:
-                self.__dict__[shadow_name] = None  # type: ignore[reportIndexIssue]
+                self.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
         # Setup association pseudo-methods (add_*, remove_*, get_one_from_*, filter_*)
         for field_name, field_obj in association_fields(self).items():
@@ -613,7 +616,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         for klass in type(self).__mro__:
             for name, attr in vars(klass).items():
                 if callable(attr) and hasattr(attr, "_invariant"):
-                    self._invariants[attr._invariant][name] = attr
+                    self._invariants[getattr(attr, "_invariant")][name] = attr
 
     def defaults(self) -> None:
         """Placeholder for defaults.
@@ -750,11 +753,11 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 stage=stage,
             )
 
-    def _precheck(self, return_errors: bool = False):
+    def _precheck(self, return_errors: bool = False) -> dict[str, list[str]] | None:
         """Invariant checks performed before entity changes."""
         return self._run_invariants("pre", return_errors=return_errors)
 
-    def _postcheck(self, return_errors: bool = False):
+    def _postcheck(self, return_errors: bool = False) -> dict[str, list[str]] | None:
         """Invariant checks performed after initialization and attribute changes."""
         return self._run_invariants("post", return_errors=return_errors)
 
@@ -773,7 +776,8 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         field_obj = fields_dict.get(field_name)
         if field_obj is None or not isinstance(field_obj, ResolvedField):
             return
-        if not getattr(field_obj, "transitions", None):
+        transitions = field_obj.transitions
+        if not transitions:
             return
 
         current_value = getattr(self, field_name, None)
@@ -787,8 +791,6 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # None -> any value is allowed (initial assignment / reconstitution)
         if current is None:
             return
-
-        transitions = field_obj.transitions
 
         if current not in transitions:
             raise ValidationError(
@@ -833,7 +835,8 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         field_obj = fields_dict.get(field_name)
         if field_obj is None or not isinstance(field_obj, ResolvedField):
             return True
-        if not getattr(field_obj, "transitions", None):
+        transitions = field_obj.transitions
+        if not transitions:
             return True
 
         current_value = getattr(self, field_name, None)
@@ -845,7 +848,6 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         if current is None:
             return True
 
-        transitions = field_obj.transitions
         if current not in transitions:
             return False
 
@@ -906,7 +908,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             # Shadow field (e.g., post_id for Reference descriptors) that was
             # previously initialised in model_post_init.  Write directly to
             # __dict__ to bypass Pydantic's validate_assignment.
-            self.__dict__[name] = value  # type: ignore[reportIndexIssue]
+            self.__dict__[name] = value  # pyright: ignore[reportIndexIssue]
             if hasattr(self, "_state"):
                 self._state.mark_changed()
         else:
@@ -964,7 +966,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         if id_field_name is None:
             return False
 
-        return getattr(self, id_field_name) == getattr(other, id_field_name)
+        return bool(getattr(self, id_field_name) == getattr(other, id_field_name))
 
     def __hash__(self) -> int:
         id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
@@ -1050,7 +1052,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             memo = {}
 
         # Short-circuit if we've already been copied (prevents infinite loop)
-        existing = memo.get(id(self))
+        existing: BaseEntity | None = memo.get(id(self))
         if existing is not None:
             return existing
 
@@ -1175,18 +1177,18 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
 
 class invariant:
     @staticmethod
-    def pre(func):
+    def pre(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             return func(*args, **kwargs)
 
         setattr(wrapper, "_invariant", "pre")
         return wrapper
 
     @staticmethod
-    def post(func):
+    def post(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             return func(*args, **kwargs)
 
         setattr(wrapper, "_invariant", "post")
