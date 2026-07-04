@@ -48,17 +48,17 @@ class BaseApplicationService(Element, OptionsMixin):
 
     element_type = DomainObjects.APPLICATION_SERVICE
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseApplicationService":
         if cls is BaseApplicationService:
             raise NotSupportedError("BaseApplicationService cannot be instantiated")
         return object.__new__(cls, *args, **kwargs)
 
     @classmethod
-    def _default_options(cls):
+    def _default_options(cls) -> list[tuple[str, Any]]:
         return [("part_of", None)]
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=BaseApplicationService)
 
 
 def application_service_factory(
@@ -85,7 +85,7 @@ def use_case(func: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         logger.info(f"Executing use case: {func.__name__}")
 
         # Wrap in a Unit of Work context
