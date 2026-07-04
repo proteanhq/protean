@@ -200,7 +200,7 @@ def test_event_metadata():
                 "id": f"test::user-{user.id}-0",
                 "type": "Test.UserLoggedIn.v1",
                 "stream": f"test::user-{user.id}",
-                "time": str(event._metadata.headers.time),
+                "time": event._metadata.headers.time.isoformat(),
                 "traceparent": None,
                 "idempotency_key": None,
                 "deadline": None,

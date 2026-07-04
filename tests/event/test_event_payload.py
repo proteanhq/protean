@@ -55,7 +55,7 @@ def test_event_payload():
                 "id": f"test::user-{user_id}-0",
                 "type": "Test.UserLoggedIn.v1",
                 "stream": f"test::user-{user_id}",
-                "time": str(event._metadata.headers.time),
+                "time": event._metadata.headers.time.isoformat(),
                 "traceparent": None,
                 "idempotency_key": None,
                 "deadline": None,

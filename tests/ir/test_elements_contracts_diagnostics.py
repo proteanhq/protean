@@ -638,6 +638,56 @@ class TestProjectionWithoutProjector:
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "PROJECTION_WITHOUT_PROJECTOR" not in codes
 
+    def test_no_warning_when_externally_populated(self):
+        """A projection marked externally_populated (subscriber/handler-written,
+        the ACL pattern) must not be flagged even with no co-located projector."""
+        domain = Domain(name="AclProjTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.projection(externally_populated=True)
+        class VerifiedPurchases:
+            order_id = Identifier(identifier=True)
+            name = String(max_length=100)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        proj_warnings = [
+            d
+            for d in ir["diagnostics"]
+            if d["code"] == "PROJECTION_WITHOUT_PROJECTOR"
+            and "VerifiedPurchases" in d["element"]
+        ]
+        assert proj_warnings == []
+
+    def test_externally_populated_false_still_warns(self):
+        """The opt-out is explicit: a plain projection with no projector still
+        warns (guards against the flag defaulting on)."""
+        domain = Domain(name="PlainProjTest", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100)
+
+        @domain.projection
+        class PlainView:
+            order_id = Identifier(identifier=True)
+            name = String(max_length=100)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        proj_warnings = [
+            d
+            for d in ir["diagnostics"]
+            if d["code"] == "PROJECTION_WITHOUT_PROJECTOR"
+            and "PlainView" in d["element"]
+        ]
+        assert len(proj_warnings) == 1
+
 
 # ── AGGREGATE_TOO_LARGE ─────────────────────────────────────────────
 

@@ -121,6 +121,20 @@ class BaseDAO(metaclass=ABCMeta):
             finally:
                 conn.close()
 
+    def _flush(self) -> None:
+        """Flush pending writes to the data store within the active
+        transaction, without committing.
+
+        Default is a no-op. Adapters whose unit-of-work batches writes until
+        commit (e.g. SQLAlchemy) override this so callers can force buffered
+        INSERT/UPDATE statements to execute inside the current transaction —
+        for example to materialize a store-generated ``Auto(increment=True)``
+        primary key before it is reflected back onto the aggregate. Providers
+        that assign auto-increment values during ``_create`` (memory,
+        Elasticsearch) need no flush and keep the default.
+        """
+        return None
+
     def _sync_event_position(self, entity: BaseEntity) -> None:
         """Sync the aggregate's event position from the event store.
 
@@ -570,6 +584,57 @@ class BaseDAO(metaclass=ABCMeta):
         # Invokes the __bool__ method on `ResultSet`.
         return bool(results)
 
+    @staticmethod
+    def _is_pending_auto_field(
+        entity_obj: Any, field_name: str, field_obj: Any
+    ) -> bool:
+        """True if ``field_obj`` is an ``Auto(increment=True)`` field whose value
+        on ``entity_obj`` has not been generated yet (still ``None``).
+
+        A caller-supplied value is thus never treated as pending, so it is
+        neither flushed-for nor overwritten during reflection.
+        """
+        return getattr(field_obj, "increment", False) and (
+            getattr(entity_obj, field_name) is None
+        )
+
+    def _has_pending_auto_field(self, entity_obj: Any) -> bool:
+        """Return True if the entity has any ``Auto(increment=True)`` field still
+        awaiting a store-generated value.
+
+        Used to decide whether a pre-reflection flush is worth its cost: a
+        relational adapter assigns such a value only when the INSERT is flushed.
+        Entities identified by a client-supplied value (e.g. the common
+        UUID/string identifier) have no pending auto field and skip the flush.
+        """
+        return any(
+            self._is_pending_auto_field(entity_obj, field_name, field_obj)
+            for field_name, field_obj in declared_fields(entity_obj).items()
+        )
+
+    def _reflect_auto_fields(self, entity_obj: Any, model_obj: Any) -> None:
+        """Copy store-generated auto-increment values back onto the entity.
+
+        An ``Auto(increment=True)`` field's value is produced by the
+        persistence store during the create, not by the entity. After the
+        record is created, reflect that value back onto the in-memory instance
+        so the caller holds the same identity that was persisted. Only fields
+        still unset on the entity are updated, so a caller-supplied value is
+        never overwritten.
+        """
+        for field_name, field_obj in declared_fields(entity_obj).items():
+            if self._is_pending_auto_field(entity_obj, field_name, field_obj):
+                if isinstance(model_obj, dict):
+                    # The memory model dict is keyed by field name.
+                    field_val = model_obj[field_name]
+                else:
+                    # An object model (SQLAlchemy) exposes the generated column
+                    # under its attribute name, which differs from the field
+                    # name when ``referenced_as`` is set.
+                    field_val = getattr(model_obj, field_obj.attribute_name)
+
+                setattr(entity_obj, field_name, field_val)
+
     def create(self, *args, **kwargs) -> "BaseEntity":
         """Create a new record in the data store.
 
@@ -597,16 +662,13 @@ class BaseDAO(metaclass=ABCMeta):
             # Build the model object and persist into data store
             model_obj = self._create(self.database_model_cls.from_entity(entity_obj))
 
-            # Reverse update auto fields into entity
-            for field_name, field_obj in declared_fields(entity_obj).items():
-                is_auto = getattr(field_obj, "increment", False)
-                if is_auto and not getattr(entity_obj, field_name):
-                    if isinstance(model_obj, dict):
-                        field_val = model_obj[field_name]
-                    else:
-                        field_val = getattr(model_obj, field_name)
+            # Flush before reflecting so a DB-assigned Auto(increment=True) key
+            # materializes under a UoW, mirroring save(). See the note there.
+            if not self._is_standalone and self._has_pending_auto_field(entity_obj):
+                self._flush()
 
-                    setattr(entity_obj, field_name, field_val)
+            # Reflect store-generated auto-increment values back onto the entity
+            self._reflect_auto_fields(entity_obj, model_obj)
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
@@ -670,7 +732,23 @@ class BaseDAO(metaclass=ABCMeta):
                 # Perform unique checks. Raises validation errors if unique constraints are violated.
                 self._validate_unique(entity_obj)
 
-                self._create(self.database_model_cls.from_entity(entity_obj))
+                model_obj = self._create(
+                    self.database_model_cls.from_entity(entity_obj)
+                )
+
+                # A relational adapter assigns an Auto(increment=True) key only
+                # when the INSERT is flushed; under a UoW that flush is deferred
+                # to commit, after add() has returned. Force it here so the value
+                # materializes before we reflect it. Standalone _create has
+                # already committed (and flushed), so this is UoW-only, and it is
+                # skipped entirely when no auto field is pending (the common
+                # client-supplied identifier).
+                if not self._is_standalone and self._has_pending_auto_field(entity_obj):
+                    self._flush()
+
+                # Reflect store-generated auto-increment values back onto the
+                # entity so an Auto(increment=True) field is populated after add().
+                self._reflect_auto_fields(entity_obj, model_obj)
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()

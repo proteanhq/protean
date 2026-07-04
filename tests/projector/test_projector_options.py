@@ -92,6 +92,50 @@ class TestAggregatesOption:
         assert DummyProjector.meta_.aggregates == [DummyAggregate1, DummyAggregate2]
 
 
+class TestTransientRetryOptions:
+    """Projectors accept the same transient-retry options as event and command
+    handlers; the shared handler wrapper (``protean.utils.mixins``) consumes
+    them. See issue #1076."""
+
+    def test_retry_options_default_to_none(self, test_domain):
+        test_domain.register(
+            DummyProjector,
+            projector_for=DummyProjection,
+            stream_categories=["dummy_stream_1"],
+        )
+        assert DummyProjector.meta_.retries is None
+        assert DummyProjector.meta_.backoff is None
+        assert DummyProjector.meta_.retry_exceptions is None
+
+    def test_retry_options_are_accepted_and_stored(self, test_domain):
+        test_domain.register(
+            DummyProjector,
+            projector_for=DummyProjection,
+            stream_categories=["dummy_stream_1"],
+            retries=8,
+            backoff="exponential",
+            retry_exceptions=["protean.exceptions.TransactionError"],
+        )
+        assert DummyProjector.meta_.retries == 8
+        assert DummyProjector.meta_.backoff == "exponential"
+        assert DummyProjector.meta_.retry_exceptions == [
+            "protean.exceptions.TransactionError"
+        ]
+
+    def test_retry_options_via_annotation(self, test_domain):
+        @test_domain.projector(
+            projector_for=DummyProjection,
+            stream_categories=["dummy_stream_1"],
+            retries=3,
+            backoff="linear",
+        )
+        class DummyProjectorWithRetry(BaseProjector):
+            pass
+
+        assert DummyProjectorWithRetry.meta_.retries == 3
+        assert DummyProjectorWithRetry.meta_.backoff == "linear"
+
+
 class TestStreamCategoriesOption:
     def test_stream_categories_as_option(self, test_domain):
         test_domain.register(

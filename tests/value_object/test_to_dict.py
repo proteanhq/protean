@@ -45,7 +45,7 @@ class TestAsDict:
     def test_datetime_vo_dict(self):
         now = datetime.now(UTC)
         vo = VOWithDateTime(foo="foo", now=now)
-        assert vo.to_dict() == {"foo": "foo", "now": str(now)}
+        assert vo.to_dict() == {"foo": "foo", "now": now.isoformat()}
 
     def test_embedded_datetime_vo(self):
         now = datetime.now(UTC)
@@ -54,5 +54,5 @@ class TestAsDict:
         assert simple.to_dict() == {
             "_version": -1,
             "id": 12,
-            "vo": {"foo": "foo", "now": str(now)},
+            "vo": {"foo": "foo", "now": now.isoformat()},
         }

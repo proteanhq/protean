@@ -25,6 +25,9 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
     | ``projector_for`` | ``type`` | The projection class this projector maintains. Required. |
     | ``aggregates`` | ``list`` | Aggregate classes whose events this projector listens to. |
     | ``stream_categories`` | ``list`` | Explicit stream categories to subscribe to. Overrides ``aggregates``. |
+    | ``retries`` | ``int`` | Max retry attempts on transient exceptions. Overrides ``server.transient_retry``; ``None`` defers to it. |
+    | ``backoff`` | ``str`` | Retry delay strategy: ``"exponential"``, ``"linear"``, or ``"fixed"``. |
+    | ``retry_exceptions`` | ``list`` | Exception types (classes or dotted paths) treated as transient for retry. |
 
     Example::
 
@@ -50,7 +53,7 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
     element_type = DomainObjects.PROJECTOR
 
     @classmethod
-    def _default_options(cls):
+    def _default_options(cls) -> list[tuple[str, Any]]:
         projector_for = (
             getattr(cls.meta_, "projector_for")
             if hasattr(cls.meta_, "projector_for")
@@ -82,6 +85,17 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
             ("projector_for", projector_for),
             ("aggregates", aggregates),
             ("stream_categories", stream_categories),
+            # Transient-failure retry policy (parity with event handlers and
+            # command handlers). ``retries`` (int) sets the max retry attempts
+            # on transient exceptions and overrides the domain-level
+            # ``server.transient_retry`` config; ``None`` defers to it.
+            # ``backoff`` selects the delay strategy ("exponential" | "linear"
+            # | "fixed"). ``retry_exceptions`` overrides which exception types
+            # are treated as transient (classes or dotted paths). The shared
+            # handler wrapper (``protean.utils.mixins``) already consumes these.
+            ("retries", None),
+            ("backoff", None),
+            ("retry_exceptions", None),
             # Subscription configuration options (parity with event handlers and PMs)
             ("subscription_type", None),
             ("subscription_profile", None),

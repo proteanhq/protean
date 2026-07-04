@@ -117,6 +117,10 @@ class BaseProjection(BaseModel, OptionsMixin):
             ("abstract", False),
             ("cache", None),
             ("database_model", None),
+            # When True, the projection is populated by a subscriber or event
+            # handler (the anti-corruption-layer / cross-domain pattern) rather
+            # than a co-located @projector. Suppresses PROJECTION_WITHOUT_PROJECTOR.
+            ("externally_populated", False),
             ("indexes", ()),
             ("order_by", ()),
             ("provider", "default"),
@@ -301,8 +305,11 @@ class BaseProjection(BaseModel, OptionsMixin):
         # Reconstruct ValueObjects from shadow kwargs when the VO itself
         # was not explicitly provided (e.g. during repository retrieval).
         for field_name, field_obj in value_object_fields(self).items():
-            if field_name not in descriptor_kwargs and not getattr(
-                self, field_name, None
+            # Identity, not truthiness (#1078): an already-set all-default VO is
+            # falsy but present and must not be clobbered by a shadow rebuild.
+            if (
+                field_name not in descriptor_kwargs
+                and getattr(self, field_name, None) is None
             ):
                 vo_kwargs: dict[str, Any] = {}
                 for embedded_field in field_obj.embedded_fields.values():

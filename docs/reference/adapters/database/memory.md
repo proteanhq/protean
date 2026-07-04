@@ -65,10 +65,15 @@ The Memory provider supports the following capabilities:
 ## Indexes
 
 The memory provider accepts [`Index`](../../domain-elements/indexes.md)
-declarations but treats them as **advisory**: they are validated for shape at
-`Domain.init()` but not enforced, since the in-memory store does not use
-indexes. This lets you declare the indexes your aggregates need, develop against
-the memory provider, and switch to a SQL backend without changing the domain.
+declarations and validates them for shape at `Domain.init()`. Non-unique indexes
+are **advisory** (the in-memory store performs no index-backed lookups), but
+**unique** indexes (`Index(..., unique=True)`) are **enforced**: a duplicate
+insert or update that violates a single-column or composite unique index raises
+`ValidationError` (the same error Protean raises for a field-level
+`unique=True`; a SQL backend rejects the duplicate at the database instead).
+NULLs are treated as distinct (PostgreSQL/SQLite semantics). This lets you declare the indexes your
+aggregates need, develop against the memory provider, and switch to a SQL backend
+without changing the domain.
 
 ## Raw Queries
 

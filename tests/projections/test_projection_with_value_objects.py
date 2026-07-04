@@ -336,6 +336,19 @@ class TestVOPersistence:
         refreshed = test_domain.repository_for(CustomerView).get("C2")
         assert refreshed.billing_address is None
 
+    def test_persist_and_retrieve_all_default_vo(self, test_domain):
+        """An all-default (all empty-string, hence falsy) VO on a projection
+        round-trips rather than collapsing to None. Projection hydration already
+        handled this, but the all-default case was previously untested; pinned
+        alongside the aggregate fix and the aligned identity guard (#1078)."""
+        addr = Address(street="", city="", zip_code="")
+        view = CustomerView(customer_id="C3", name="Carol", billing_address=addr)
+        test_domain.repository_for(CustomerView).add(view)
+
+        refreshed = test_domain.repository_for(CustomerView).get("C3")
+        assert refreshed.billing_address is not None
+        assert refreshed.billing_address == Address(street="", city="", zip_code="")
+
     def test_update_vo_and_retrieve(self, test_domain):
         addr = Address(street="123 Main St", city="Springfield", zip_code="62704")
         view = CustomerView(customer_id="C1", name="Alice", billing_address=addr)
