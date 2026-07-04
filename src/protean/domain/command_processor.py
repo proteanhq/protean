@@ -95,7 +95,7 @@ def raise_if_expired(
     When a ``metrics`` registry is supplied, the ``command_expired`` counter is
     incremented before the error is raised.
     """
-    if headers is not None and headers.is_expired():
+    if headers is not None and headers.deadline is not None and headers.is_expired():
         if metrics is not None:
             metrics.command_expired.add(1, {"command_type": command_type})
         raise CommandExpiredError(
