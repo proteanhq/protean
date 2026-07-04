@@ -4,11 +4,15 @@ import copy
 import functools
 import inspect
 import logging
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, cast
+
+if TYPE_CHECKING:
+    from protean.port.dao import BaseLookup
 
 logger = logging.getLogger(__name__)
 
 
-def subclasses(cls):
+def subclasses(cls: type) -> Iterator[type]:
     """Iterator utility to loop and clear registered Lookups against a class"""
     yield cls
     for subclass in cls.__subclasses__():
@@ -18,20 +22,22 @@ def subclasses(cls):
 class RegisterLookupMixin:
     """Helper Mixin to register Lookups to an Adapter"""
 
+    class_lookups: ClassVar[dict[str, type["BaseLookup"]]]
+
     @classmethod
-    def _get_lookup(cls, lookup_name):
+    def _get_lookup(cls, lookup_name: str) -> type["BaseLookup"] | None:
         return cls.get_lookups().get(lookup_name, None)
 
     @classmethod
     @functools.lru_cache(maxsize=None)
-    def get_lookups(cls):
+    def get_lookups(cls) -> dict[str, type["BaseLookup"]]:
         """Fetch all Lookups"""
         class_lookups = [
             parent.__dict__.get("class_lookups", {}) for parent in inspect.getmro(cls)
         ]
         return cls.merge_dicts(class_lookups)
 
-    def get_lookup(self, lookup_name):
+    def get_lookup(self, lookup_name: str) -> type["BaseLookup"]:
         """Fetch Lookup by name"""
         from protean.port.dao import BaseLookup  # noqa: PLC0415
 
@@ -46,43 +52,55 @@ class RegisterLookupMixin:
         return lookup
 
     @staticmethod
-    def merge_dicts(dicts):
+    def merge_dicts(
+        dicts: list[dict[str, type["BaseLookup"]]],
+    ) -> dict[str, type["BaseLookup"]]:
         """
         Merge dicts in reverse to preference the order of the original list. e.g.,
         merge_dicts([a, b]) will preference the keys in 'a' over those in 'b'.
         """
-        merged = {}
+        merged: dict[str, type["BaseLookup"]] = {}
         for d in reversed(dicts):
             merged.update(d)
         return merged
 
     @classmethod
-    def _clear_cached_lookups(cls):
+    def _clear_cached_lookups(cls) -> None:
         for subclass in subclasses(cls):
-            subclass.get_lookups.cache_clear()
+            cast("type[RegisterLookupMixin]", subclass).get_lookups.cache_clear()
 
     @classmethod
-    def register_lookup(cls, lookup, lookup_name=None):
+    def register_lookup(
+        cls,
+        lookup: type["BaseLookup"],
+        lookup_name: str | None = None,
+    ) -> type["BaseLookup"]:
         """Register a Lookup to a class"""
-        if lookup_name is None:
-            lookup_name = lookup.lookup_name
+        name: str = (
+            cast(str, lookup.lookup_name) if lookup_name is None else lookup_name
+        )
         if "class_lookups" not in cls.__dict__:
             cls.class_lookups = {}
 
-        cls.class_lookups[lookup_name] = lookup
+        cls.class_lookups[name] = lookup
         cls._clear_cached_lookups()
 
         return lookup
 
     @classmethod
-    def _delist_lookup(cls, lookup, lookup_name=None):
+    def _delist_lookup(
+        cls,
+        lookup: type["BaseLookup"],
+        lookup_name: str | None = None,
+    ) -> None:
         """
         Remove given lookup from cls lookups. For use in tests only as it's
         not thread-safe.
         """
-        if lookup_name is None:
-            lookup_name = lookup.lookup_name
-        del cls.class_lookups[lookup_name]
+        name: str = (
+            cast(str, lookup.lookup_name) if lookup_name is None else lookup_name
+        )
+        del cls.class_lookups[name]
 
 
 class F:
@@ -136,16 +154,26 @@ class Node:
     # subclasses will usually override the value.
     default = "DEFAULT"
 
-    def __init__(self, children=None, connector=None, negated=False):
+    def __init__(
+        self,
+        children: list[Any] | None = None,
+        connector: str | None = None,
+        negated: bool = False,
+    ) -> None:
         """Construct a new Node. If no connector is given, use the default."""
-        self.children = children[:] if children else []
+        self.children: list[Any] = children[:] if children else []
         self.connector = connector or self.default
         self.negated = negated
 
     # Required because django.db.models.query_utils.Q. Q. __init__() is
     # problematic, but it is a natural Node subclass in all other respects.
     @classmethod
-    def _new_instance(cls, children=None, connector=None, negated=False):
+    def _new_instance(
+        cls,
+        children: list[Any] | None = None,
+        connector: str | None = None,
+        negated: bool = False,
+    ) -> "Node":
         """
         Create a new instance of this class when new Nodes (or subclasses) are
         needed in the internal code in this class. Normally, it just shadows
@@ -158,39 +186,41 @@ class Node:
         obj.__class__ = cls
         return obj
 
-    def __str__(self):
+    def __str__(self) -> str:
         template = "(NOT (%s: %s))" if self.negated else "(%s: %s)"
         return template % (self.connector, ", ".join(str(c) for c in self.children))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<%s: %s>" % (self.__class__.__name__, self)
 
-    def __deepcopy__(self, memodict):
+    def __deepcopy__(self, memodict: dict[int, Any]) -> "Node":
         obj = Node(connector=self.connector, negated=self.negated)
         obj.__class__ = self.__class__
         obj.children = copy.deepcopy(self.children, memodict)
         return obj
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the number of children this node has."""
         return len(self.children)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Return whether or not this node has children."""
         return bool(self.children)
 
-    def __contains__(self, other):
+    def __contains__(self, other: Any) -> bool:
         """Return True if 'other' is a direct child of this instance."""
         return other in self.children
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        other_node = cast("Node", other)
         return (
-            self.__class__ == other.__class__
-            and (self.connector, self.negated) == (other.connector, other.negated)
-            and self.children == other.children
+            self.__class__ == other_node.__class__
+            and (self.connector, self.negated)
+            == (other_node.connector, other_node.negated)
+            and self.children == other_node.children
         )
 
-    def add(self, data, conn_type, squash=True):
+    def add(self, data: Any, conn_type: str, squash: bool = True) -> Any:
         """
         Combine this tree and the data represented by data using the
         connector conn_type. The combine is done by squashing the node other
@@ -236,7 +266,7 @@ class Node:
             self.children = [obj, data]
             return data
 
-    def negate(self):
+    def negate(self) -> None:
         """Negate the sense of the root connector."""
         self.negated = not self.negated
 
@@ -253,14 +283,20 @@ class Q(Node):
     default = AND
     conditional = True
 
-    def __init__(self, *args, _connector=None, _negated=False, **kwargs):
+    def __init__(
+        self,
+        *args: Any,
+        _connector: str | None = None,
+        _negated: bool = False,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(
             children=[*args, *sorted(kwargs.items())],
             connector=_connector,
             negated=_negated,
         )
 
-    def _combine(self, other, conn):
+    def _combine(self, other: "Q", conn: str) -> "Q":
         if not isinstance(other, Q):
             raise TypeError(other)
 
@@ -277,22 +313,23 @@ class Q(Node):
         obj.add(other, conn)
         return obj
 
-    def __or__(self, other):
+    def __or__(self, other: "Q") -> "Q":
         return self._combine(other, self.OR)
 
-    def __and__(self, other):
+    def __and__(self, other: "Q") -> "Q":
         return self._combine(other, self.AND)
 
-    def __invert__(self):
+    def __invert__(self) -> "Q":
         obj = type(self)()
         obj.add(self, self.AND)
         obj.negate()
         return obj
 
-    def deconstruct(self):
+    def deconstruct(self) -> tuple[str, tuple[Any, ...], dict[str, Any]]:
         """Deconstruct a Q Object"""
         path = "%s.%s" % (self.__class__.__module__, self.__class__.__name__)
-        args, kwargs = (), {}
+        args: tuple[Any, ...] = ()
+        kwargs: dict[str, Any] = {}
 
         if len(self.children) == 1 and not isinstance(self.children[0], Q):
             child = self.children[0]
