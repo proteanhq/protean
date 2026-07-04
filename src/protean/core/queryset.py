@@ -3,7 +3,7 @@
 import copy
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Iterator, KeysView, Union
 
 from protean.exceptions import NotSupportedError
 from protean.port.provider import DatabaseCapabilities
@@ -47,11 +47,11 @@ class QuerySet:
         owner_dao: "BaseDAO",
         domain: "Domain",
         entity_cls: "BaseEntity",
-        criteria: Q = None,
+        criteria: Q | None = None,
         offset: int = 0,
-        limit: int = None,  # No limit by default
-        order_by: list = None,
-        only_fields: list = None,
+        limit: int | None = None,  # No limit by default
+        order_by: list[str] | str | None = None,
+        only_fields: list[str] | None = None,
     ):
         """Initialize either with empty preferences (when invoked on an Entity)
         or carry forward filters and preferences when chained
@@ -60,14 +60,14 @@ class QuerySet:
         self._domain = domain
         self._entity_cls = entity_cls
         self._criteria = criteria or Q()
-        self._result_cache = None
+        self._result_cache: "ResultSet | None" = None
         self._offset = offset or 0
 
         # Field selection set via ``only()``. ``None`` means "fetch full
         # rows and materialize entities"; a list means "fetch only these
         # attributes and return read-only ``Record`` objects". Stored as
         # attribute (column) names so adapters can consume it directly.
-        self._only_fields = only_fields
+        self._only_fields: list[str] | None = only_fields
 
         # If an explicit limit is not provided, use the limit from the entity class
         self._limit = limit or entity_cls.meta_.limit
@@ -76,6 +76,7 @@ class QuerySet:
         #   Initialize empty list if `order_by` is None
         #   Convert string to list if `order_by` is a String
         #   Safe-cast list to a list if `order_by` is already a list
+        self._order_by: list[str]
         if order_by:
             self._order_by = [order_by] if isinstance(order_by, str) else order_by
         else:
@@ -176,7 +177,7 @@ class QuerySet:
 
         return clone
 
-    def order_by(self, order_by: Union[list, str]):
+    def order_by(self, order_by: Union[list[str], str]) -> "QuerySet":
         """Update order_by setting for filter set"""
         clone = self._clone()
 
@@ -536,7 +537,7 @@ class QuerySet:
         return self._data.total
 
     @property
-    def items(self) -> list:
+    def items(self) -> list[Any]:
         """Return result values"""
         return self._data.items
 
@@ -606,7 +607,9 @@ class ResultSet:
     basic pagination support.
     """
 
-    def __init__(self, offset: int, limit: int | None, total: int, items: list) -> None:
+    def __init__(
+        self, offset: int, limit: int | None, total: int, items: list[Any]
+    ) -> None:
         # the current offset (zero indexed)
         self.offset = offset
         # the number of items to be fetched (None means unlimited)
@@ -676,7 +679,7 @@ class ResultSet:
         """Returns ``True`` when the resultset is not empty."""
         return bool(self.items)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         """Returns an iterable on items, to support traversal."""
         return iter(self.items)
 
@@ -687,7 +690,7 @@ class ResultSet:
     def __repr__(self) -> str:
         return f"<ResultSet: {len(self.items)} items>"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Return the resultset as a dictionary."""
         return {
             "offset": self.offset,
@@ -722,11 +725,17 @@ class Record:
     # Records compare by value but are deliberately unhashable: they are
     # mutable-shaped data carriers, not identities, and should not be used as
     # dict keys or set members (use the entity for that).
-    __hash__ = None
+    # ``__hash__ = None`` is the documented Python idiom for making a class
+    # unhashable, but the type system models ``object.__hash__`` as
+    # non-Optional, so both checkers flag the assignment. Genuine false-positive.
+    __hash__ = None  # type: ignore[assignment]
 
     __slots__ = ("_entity_name", "_data")
 
-    def __init__(self, entity_name: str, data: dict) -> None:
+    _entity_name: str
+    _data: dict[str, Any]
+
+    def __init__(self, entity_name: str, data: dict[str, Any]) -> None:
         object.__setattr__(self, "_entity_name", entity_name)
         object.__setattr__(self, "_data", dict(data))
 
@@ -751,20 +760,20 @@ class Record:
     def __contains__(self, key: str) -> bool:
         return key in self._data
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         """Return the projected field names."""
         return self._data.keys()
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Return the projected values as a plain dict."""
         return dict(self._data)
 
     # Explicit pickle/copy hooks so that read-only ``__setattr__`` does not
     # break ``copy.deepcopy`` (used when a QuerySet hands out cached results).
-    def __getstate__(self) -> dict:
+    def __getstate__(self) -> dict[str, Any]:
         return {"_entity_name": self._entity_name, "_data": self._data}
 
-    def __setstate__(self, state: dict) -> None:
+    def __setstate__(self, state: dict[str, Any]) -> None:
         object.__setattr__(self, "_entity_name", state["_entity_name"])
         object.__setattr__(self, "_data", state["_data"])
 
