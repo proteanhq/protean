@@ -4,7 +4,8 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, Optional, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field as PydanticField, PrivateAttr
@@ -57,11 +58,11 @@ class MessageEnvelope(BaseValueObject):
     checksum: str | None = None
 
     @classmethod
-    def build(cls, payload: dict) -> "MessageEnvelope":
+    def build(cls, payload: dict[str, Any]) -> "MessageEnvelope":
         return cls(checksum=cls.compute_checksum(payload))
 
     @classmethod
-    def compute_checksum(cls, payload: dict) -> str:
+    def compute_checksum(cls, payload: dict[str, Any]) -> str:
         """Compute checksum for message integrity validation."""
         json_data = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(json_data.encode("utf-8")).hexdigest()
@@ -139,7 +140,7 @@ class MessageHeaders(BaseValueObject):
     deadline: datetime | None = None
 
     @classmethod
-    def build(cls, **kwargs) -> "MessageHeaders":
+    def build(cls, **kwargs: Any) -> "MessageHeaders":
         headers = kwargs.copy()
         if "traceparent" in headers and isinstance(headers["traceparent"], str):
             headers["traceparent"] = TraceParent.build(headers["traceparent"])
@@ -251,6 +252,11 @@ class BaseMessageType(BaseModel, OptionsMixin):
     """
 
     element_type: ClassVar[str] = ""
+
+    if TYPE_CHECKING:
+        # Assigned dynamically in ``__init_subclass__`` (never on the base
+        # itself); declared here only so static checkers see the attribute.
+        __version__: ClassVar[int]
 
     model_config = ConfigDict(
         extra="forbid",
@@ -436,6 +442,7 @@ class BaseMessageType(BaseModel, OptionsMixin):
         """Equivalence check based only on identifier."""
         if type(other) is not type(self):
             return False
+        other = cast("BaseMessageType", other)
         self_id = (
             self._metadata.headers.id
             if self._metadata and self._metadata.headers
@@ -472,7 +479,7 @@ class Message(BaseModel, OptionsMixin):
     model_config = ConfigDict(extra="forbid")
 
     # JSON representation of the message body
-    data: dict = {}
+    data: dict[str, Any] = {}
 
     # JSON representation of the message metadata
     metadata: Metadata | None = None
@@ -481,7 +488,7 @@ class Message(BaseModel, OptionsMixin):
     def _default_options(cls) -> list[tuple[str, Any]]:
         return []
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Return data as a dictionary."""
         result: dict[str, Any] = {"data": self.data}
         result["metadata"] = self.metadata.to_dict() if self.metadata else None
@@ -527,7 +534,7 @@ class Message(BaseModel, OptionsMixin):
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return False
-        return self.to_dict() == other.to_dict()
+        return self.to_dict() == cast("Message", other).to_dict()
 
     def __hash__(self) -> int:
         return hash(json.dumps(self.to_dict(), sort_keys=True))
@@ -545,7 +552,7 @@ class Message(BaseModel, OptionsMixin):
         return bool(self.data) or bool(self.metadata)
 
     @classmethod
-    def _migrate_legacy_metadata(cls, metadata_dict: dict) -> None:
+    def _migrate_legacy_metadata(cls, metadata_dict: dict[str, Any]) -> None:
         """Migrate legacy flat metadata format to nested structure.
 
         Old Protean versions stored metadata as flat keys (id, fqn, kind,
@@ -582,7 +589,7 @@ class Message(BaseModel, OptionsMixin):
         }
 
     @classmethod
-    def _normalize_version(cls, metadata_dict: dict) -> None:
+    def _normalize_version(cls, metadata_dict: dict[str, Any]) -> None:
         """Normalize legacy string versions (e.g. "v1") to integers.
 
         Old Protean versions stored version as a string like "v1".
@@ -595,7 +602,9 @@ class Message(BaseModel, OptionsMixin):
                 domain["version"] = int(v.lstrip("vV"))
 
     @classmethod
-    def _build_envelope(cls, metadata_dict: dict, message: dict) -> None:
+    def _build_envelope(
+        cls, metadata_dict: dict[str, Any], message: dict[str, Any]
+    ) -> None:
         """Build envelope within metadata if not present."""
         if "envelope" not in metadata_dict:
             envelope_data = message.get("envelope", {})
@@ -606,7 +615,9 @@ class Message(BaseModel, OptionsMixin):
             )
 
     @classmethod
-    def _build_headers(cls, metadata_dict: dict, message: dict) -> None:
+    def _build_headers(
+        cls, metadata_dict: dict[str, Any], message: dict[str, Any]
+    ) -> None:
         """Build headers within metadata if not present."""
         if "headers" not in metadata_dict:
             headers_data = message.get("headers", {})
@@ -626,7 +637,9 @@ class Message(BaseModel, OptionsMixin):
             metadata_dict["headers"] = MessageHeaders(**headers_kwargs)
 
     @classmethod
-    def _build_event_store_meta(cls, metadata_dict: dict, message: dict) -> None:
+    def _build_event_store_meta(
+        cls, metadata_dict: dict[str, Any], message: dict[str, Any]
+    ) -> None:
         """Add EventStoreMeta if position and global_position are present."""
         if "position" in message or "global_position" in message:
             metadata_dict["event_store"] = EventStoreMeta(
@@ -635,7 +648,7 @@ class Message(BaseModel, OptionsMixin):
             )
 
     @classmethod
-    def _validate_and_raise(cls, msg: "Message", message: dict) -> None:
+    def _validate_and_raise(cls, msg: "Message", message: dict[str, Any]) -> None:
         """Validate message integrity and raise error if validation fails."""
         assert msg.metadata is not None
         assert msg.metadata.envelope is not None
@@ -656,28 +669,28 @@ class Message(BaseModel, OptionsMixin):
             )
 
     @classmethod
-    def _extract_message_id(cls, msg: "Message", message: dict) -> str:
+    def _extract_message_id(cls, msg: "Message", message: dict[str, Any]) -> str:
         """Extract message ID from message or return 'unknown'."""
         assert msg.metadata is not None
         if msg.metadata.headers and msg.metadata.headers.id:
             return msg.metadata.headers.id
-        return message.get("id", "unknown")
+        return str(message.get("id", "unknown"))
 
     @classmethod
-    def _extract_message_type(cls, msg: "Message", message: dict) -> str:
+    def _extract_message_type(cls, msg: "Message", message: dict[str, Any]) -> str:
         """Extract message type from message or return 'unknown'."""
         assert msg.metadata is not None
         if msg.metadata.headers and msg.metadata.headers.type:
             return msg.metadata.headers.type
-        return message.get("type", "unknown")
+        return str(message.get("type", "unknown"))
 
     @classmethod
-    def _extract_stream_name(cls, metadata_dict: dict) -> str:
+    def _extract_stream_name(cls, metadata_dict: dict[str, Any]) -> str:
         """Extract stream name from metadata or return 'unknown'."""
-        return metadata_dict.get("headers", {}).get("stream", "unknown")
+        return str(metadata_dict.get("headers", {}).get("stream", "unknown"))
 
     @classmethod
-    def _handle_key_error(cls, e: KeyError, message: dict) -> NoReturn:
+    def _handle_key_error(cls, e: KeyError, message: dict[str, Any]) -> NoReturn:
         """Handle KeyError by converting to DeserializationError with context."""
         headers_data = message.get("headers", {})
         message_id = headers_data.get("id") or message.get("id", "unknown")
@@ -703,7 +716,7 @@ class Message(BaseModel, OptionsMixin):
         ) from e
 
     @classmethod
-    def deserialize(cls, message: dict, validate: bool = True) -> "Message":
+    def deserialize(cls, message: dict[str, Any], validate: bool = True) -> "Message":
         """Deserialize a message from its dictionary representation."""
         try:
             metadata_dict = message["metadata"]
@@ -766,13 +779,14 @@ class Message(BaseModel, OptionsMixin):
                 {"kind": ["Message type is not supported for deserialization"]}
             )
 
-    def _get_element_class(self) -> type:
+    def _get_element_class(self) -> "BaseCommand | BaseEvent":
         """Get the element class for the message type."""
         assert self.metadata is not None
         message_type = self.metadata.headers.type
-        element_cls = current_domain._events_and_commands.get(
-            message_type,
-            None,  # type: ignore[arg-type]
+        element_cls = (
+            current_domain._events_and_commands.get(message_type)
+            if message_type is not None
+            else None
         )
 
         if element_cls is None:
@@ -782,7 +796,7 @@ class Message(BaseModel, OptionsMixin):
 
         return element_cls
 
-    def _build_error_context(self, exception: Exception) -> dict:
+    def _build_error_context(self, exception: Exception) -> dict[str, Any]:
         """Build detailed error context for debugging."""
         assert self.metadata is not None
         envelope = getattr(self.metadata, "envelope", None)
@@ -820,7 +834,7 @@ class Message(BaseModel, OptionsMixin):
 
         return context
 
-    def _safe_get_attr(self, obj, attr_path: str, default: str = "unknown") -> str:
+    def _safe_get_attr(self, obj: Any, attr_path: str, default: str = "unknown") -> str:
         """Safely get nested attribute from object."""
         try:
             attrs = attr_path.split(".")
@@ -829,7 +843,7 @@ class Message(BaseModel, OptionsMixin):
                 result = getattr(result, attr, None)
                 if result is None:
                     return default
-            return result if result is not None else default
+            return cast(str, result) if result is not None else default
         except (AttributeError, TypeError):
             return default
 
@@ -845,16 +859,21 @@ class Message(BaseModel, OptionsMixin):
             self._validate_message_kind()
 
             type_string = self.metadata.headers.type
-            element_cls = current_domain._events_and_commands.get(
-                type_string,
-                None,  # type: ignore[arg-type]
+            element_cls = (
+                current_domain._events_and_commands.get(type_string)
+                if type_string is not None
+                else None
             )
             data = self.data
 
             if element_cls is None:
                 # Direct lookup failed — try upcasting from an older version.
                 upcaster_chain = current_domain._upcaster_chain
-                element_cls = upcaster_chain.resolve_event_class(type_string)
+                element_cls = (
+                    upcaster_chain.resolve_event_class(type_string)
+                    if type_string is not None
+                    else None
+                )
 
                 if element_cls is None:
                     raise ConfigurationError(
@@ -862,11 +881,15 @@ class Message(BaseModel, OptionsMixin):
                     )
 
                 # Parse "DomainName.EventName.v1" → base + int version
+                assert type_string is not None
                 base_type, _, version_str = type_string.rpartition(".")
                 from_version = int(version_str.lstrip("v"))
                 data = upcaster_chain.upcast(base_type, from_version, data)
 
-            return element_cls(_metadata=self.metadata, **data)
+            element_factory = cast(
+                "Callable[..., BaseEvent | BaseCommand]", element_cls
+            )
+            return element_factory(_metadata=self.metadata, **data)
 
         except Exception as e:
             context = self._build_error_context(e)
@@ -906,7 +929,7 @@ class Message(BaseModel, OptionsMixin):
             and message_object._metadata.domain.kind == MessageType.EVENT.value
             and not message_object.__class__.meta_.is_fact_event
         ):
-            return message_object._expected_version  # type: ignore[union-attr]
+            return cast("int | None", message_object._expected_version)  # type: ignore[union-attr]
         return None
 
     @classmethod
@@ -916,13 +939,13 @@ class Message(BaseModel, OptionsMixin):
         """Ensure metadata has headers set correctly."""
         if not message_object._metadata.headers:
             headers = MessageHeaders(
-                type=message_object.__class__.__type__,  # type: ignore[attr-defined]
+                type=message_object.__class__.__type__,  # type: ignore[union-attr]
                 time=None,  # Don't set time for converted messages
             )
             metadata_dict = message_object._metadata.to_dict()
             metadata_dict["headers"] = headers
             return Metadata(**metadata_dict)
-        return message_object._metadata
+        return cast(Metadata, message_object._metadata)
 
     @classmethod
     def _build_final_metadata(
@@ -975,7 +998,7 @@ class Message(BaseModel, OptionsMixin):
         try:
             source_uri = current_domain.config.get("source_uri")
             if source_uri:
-                return source_uri
+                return cast(str, source_uri)
             # Fall back to domain name
             return f"urn:protean:{current_domain.normalized_name}"
         except Exception:
@@ -1274,7 +1297,7 @@ class Message(BaseModel, OptionsMixin):
         ce_type: str = cloudevent["type"]
         ce_source: str = cloudevent["source"]
         ce_time_raw = cloudevent.get("time")
-        ce_data: dict = cloudevent.get("data", {})
+        ce_data: dict[str, Any] = cloudevent.get("data", {})
         ce_subject = cloudevent.get("subject")
         ce_datacontenttype = cloudevent.get("datacontenttype")
         ce_dataschema = cloudevent.get("dataschema")
