@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -214,7 +214,7 @@ class BaseEvent(BaseMessageType):
         if existing_stream:
             headers = MessageHeaders(**{**headers.to_dict(), "stream": existing_stream})
 
-        metadata_kwargs = {"headers": headers, "domain": domain_meta}
+        metadata_kwargs: dict[str, Any] = {"headers": headers, "domain": domain_meta}
         if existing_envelope is not None:
             metadata_kwargs["envelope"] = existing_envelope
         # Preserve extensions from incoming metadata (set by event enrichers)
@@ -235,15 +235,20 @@ def domain_event_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
 
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 
-    if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
+    # `derive_element_class` returns a subclass of ``base_cls`` (here
+    # ``BaseEvent``); narrow to expose ``meta_`` to the type checkers. The
+    # unbounded ``_T`` return contract is preserved via ``element_cls`` below.
+    event_cls = cast("type[BaseEvent]", element_cls)
+
+    if not event_cls.meta_.part_of and not event_cls.meta_.abstract:
         raise IncorrectUsageError(
-            f"Event `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
+            f"Event `{event_cls.__name__}` needs to be associated with an aggregate or a stream"
         )
 
-    if not isinstance(element_cls.meta_.published, bool):
+    if not isinstance(event_cls.meta_.published, bool):
         raise IncorrectUsageError(
-            f"Event `{element_cls.__name__}` has invalid `published` option "
-            f"`{element_cls.meta_.published}`. Must be True or False."
+            f"Event `{event_cls.__name__}` has invalid `published` option "
+            f"`{event_cls.meta_.published}`. Must be True or False."
         )
 
     return element_cls
