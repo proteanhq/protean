@@ -350,11 +350,11 @@ class Domain:
         # The function to invoke to generate identity
         self._identity_function = identity_function
 
-        self.providers = Providers(self)
-        self.event_store = EventStore(self)
-        self.brokers = Brokers(self)
-        self.caches = Caches(self)
-        self.email_providers = EmailProviders(self)
+        self.providers: Providers = Providers(self)
+        self.event_store: EventStore = EventStore(self)
+        self.brokers: Brokers = Brokers(self)
+        self.caches: Caches = Caches(self)
+        self.email_providers: EmailProviders = EmailProviders(self)
 
         # Cache for holding Model to Entity/Aggregate associations
         # Structure mirrors Providers._repositories:
