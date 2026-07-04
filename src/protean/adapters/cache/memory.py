@@ -1,8 +1,8 @@
-import collections
+import collections.abc
 import re
 import time
 from threading import RLock
-from typing import Optional, Union
+from typing import Any, Iterator, Optional, Union
 
 from protean.core.projection import BaseProjection
 from protean.port.cache import BaseCache
@@ -10,21 +10,25 @@ from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
 
 
-class TTLDict(collections.abc.MutableMapping):
-    def __init__(self, default_ttl, *args, **kwargs):
+class TTLDict(collections.abc.MutableMapping[str, Any]):
+    def __init__(
+        self, default_ttl: Optional[Union[int, float]], *args: Any, **kwargs: Any
+    ) -> None:
         self._default_ttl = default_ttl
-        self._values = {}
+        self._values: dict[str, tuple[Optional[float], Any]] = {}
         self._lock = RLock()
         self.update(*args, **kwargs)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<TTLDict@%#08x; ttl=%r, v=%r;>" % (
             id(self),
             self._default_ttl,
             self._values,
         )
 
-    def set_ttl(self, key, ttl, now=None):
+    def set_ttl(
+        self, key: str, ttl: Union[int, float], now: Optional[float] = None
+    ) -> None:
         """Set TTL for the given key"""
         if now is None:
             now = time.time()
@@ -32,21 +36,24 @@ class TTLDict(collections.abc.MutableMapping):
             _expire, value = self._values[key]
             self._values[key] = (now + ttl, value)
 
-    def get_ttl(self, key, now=None):
+    def get_ttl(self, key: str, now: Optional[float] = None) -> float:
         """Return remaining TTL for a key"""
         if now is None:
             now = time.time()
         with self._lock:
             expire, _value = self._values[key]
+            assert expire is not None
             return expire - now
 
-    def expire_at(self, key, timestamp):
+    def expire_at(self, key: str, timestamp: float) -> None:
         """Set the key expire timestamp"""
         with self._lock:
             _expire, value = self._values[key]
             self._values[key] = (timestamp, value)
 
-    def is_expired(self, key, now=None, remove=False):
+    def is_expired(
+        self, key: str, now: Optional[float] = None, remove: bool = False
+    ) -> bool:
         """Check if key has expired"""
         with self._lock:
             if now is None:
@@ -59,38 +66,39 @@ class TTLDict(collections.abc.MutableMapping):
                 self.__delitem__(key)
             return expired
 
-    def __len__(self):
+    def __len__(self) -> int:
         with self._lock:
-            for key in self._values.keys():
+            for key in list(self._values.keys()):
                 self.is_expired(key, remove=True)
             return len(self._values)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         with self._lock:
             for key in self._values.keys():
                 if not self.is_expired(key):
                     yield key
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any) -> None:
         with self._lock:
+            expire: Optional[float]
             if self._default_ttl is None:
                 expire = None
             else:
                 expire = time.time() + self._default_ttl
             self._values[key] = (expire, value)
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         with self._lock:
             del self._values[key]
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Any:
         with self._lock:
             self.is_expired(key, remove=True)
             return self._values[key][1]
 
 
 class MemoryCache(BaseCache):
-    def __init__(self, name, domain, conn_info: dict):
+    def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
         """Initialize Cache with Connection/Adapter details"""
 
         # In case of `MemoryCache`, the `cache` value will always be `memory`.
@@ -102,11 +110,11 @@ class MemoryCache(BaseCache):
 
         self._lock = RLock()
 
-    def ping(self):
+    def ping(self) -> bool:
         """Always returns True for memory cache"""
         return True
 
-    def get_connection(self):
+    def get_connection(self) -> object:
         """Get the connection object for the repository"""
         return self._db._values
 
@@ -134,14 +142,16 @@ class MemoryCache(BaseCache):
         if ttl:
             self._db.set_ttl(key, ttl)
 
-    def get(self, key):
+    def get(self, key: str) -> Optional[BaseProjection]:
         projection_name = key.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
         value = self._db.get(key)
         return projection_cls(value) if value else None
 
-    def get_all(self, key_pattern, last_position=0, size=25):
+    def get_all(
+        self, key_pattern: str, last_position: int = 0, size: int = 25
+    ) -> list[BaseProjection]:
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
@@ -154,33 +164,33 @@ class MemoryCache(BaseCache):
 
         return [projection_cls(self._db.get(key)) for key in page]
 
-    def count(self, key_pattern):
+    def count(self, key_pattern: str) -> int:
         key_list = self._db.keys()
         regex = re.compile(key_pattern)
         return len(list(filter(regex.match, key_list)))
 
-    def remove(self, projection):
+    def remove(self, projection: BaseProjection) -> None:
         id_f = id_field(projection)
         assert id_f is not None
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
         del self._db[key]
 
-    def remove_by_key(self, key):
+    def remove_by_key(self, key: str) -> None:
         del self._db[key]
 
-    def remove_by_key_pattern(self, key_pattern):
+    def remove_by_key_pattern(self, key_pattern: str) -> None:
         full_key_list = self._db.keys()
         regex = re.compile(key_pattern)
         keys_to_delete = list(filter(regex.match, full_key_list))
         for key in keys_to_delete:
             del self._db[key]
 
-    def flush_all(self):
+    def flush_all(self) -> None:
         self._db = {}
 
-    def set_ttl(self, key, ttl):
+    def set_ttl(self, key: str, ttl: Union[int, float]) -> None:
         self._db.set_ttl(key, ttl)
 
-    def get_ttl(self, key):
+    def get_ttl(self, key: str) -> float:
         return self._db.get_ttl(key)
