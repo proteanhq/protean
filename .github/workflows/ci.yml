@@ -192,6 +192,34 @@ jobs:
           files: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  mypy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Mypy (src/protean)
+    # Static type gate. src/protean must pass mypy with the quarantine config in
+    # pyproject.toml — a clean run is green and NEW errors outside the quarantine
+    # fail CI. The quarantine shrinks per type-safety sub-issue (see ADR-0018).
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --all-groups
+
+      - name: Mypy
+        run: uv run mypy src/protean
+
   docs-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
