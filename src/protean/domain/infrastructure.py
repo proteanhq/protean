@@ -21,6 +21,8 @@ from protean.utils.consume_idempotency import (
 from protean.utils.outbox import OUTBOX_INDEXES, Outbox, OutboxRepository
 
 if TYPE_CHECKING:
+    from protean.core.index import Index
+    from protean.core.repository import BaseRepository
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -35,16 +37,16 @@ class InfrastructureManager:
 
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
-        self.outbox_repos: dict = {}
-        self.processed_message_repos: dict = {}
+        self.outbox_repos: dict[str, BaseRepository] = {}
+        self.processed_message_repos: dict[str, BaseRepository] = {}
 
     def _initialize_per_provider(
         self,
         base_cls: type,
         repo_cls: type,
         schema_name: str,
-        indexes: list,
-        target: dict,
+        indexes: list[Index],
+        target: dict[str, BaseRepository],
         label: str,
     ) -> None:
         """Synthesize a per-provider aggregate + repository for a framework table.
@@ -111,7 +113,7 @@ class InfrastructureManager:
             "outbox",
         )
 
-    def get_outbox_repo(self, provider_name: str):
+    def get_outbox_repo(self, provider_name: str) -> BaseRepository:
         """Get outbox repository for a specific provider."""
         if not self.outbox_repos:
             self.initialize_outbox()
@@ -135,7 +137,7 @@ class InfrastructureManager:
             "consume-side idempotency",
         )
 
-    def get_processed_message_repo(self, provider_name: str):
+    def get_processed_message_repo(self, provider_name: str) -> BaseRepository:
         """Get the consume-side idempotency repository for a provider."""
         if not self.processed_message_repos:
             self.initialize_processed_messages()
