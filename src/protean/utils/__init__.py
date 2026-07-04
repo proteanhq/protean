@@ -19,6 +19,7 @@ from typing import (
     Optional,
     Type,
     TypeVar,
+    cast,
     get_args,
     get_origin,
 )
@@ -100,7 +101,7 @@ def get_version() -> str:
     return importlib.metadata.version("protean")
 
 
-def fully_qualified_name(cls) -> str:
+def fully_qualified_name(cls: type) -> str:
     """Return Fully Qualified name along with module"""
     return ".".join([cls.__module__, cls.__qualname__])
 
@@ -108,7 +109,7 @@ def fully_qualified_name(cls) -> str:
 fqn = fully_qualified_name
 
 
-def convert_str_values_to_list(value) -> list:
+def convert_str_values_to_list(value: Any) -> list[Any]:
     if not value:
         return []
     elif isinstance(value, str):
@@ -140,7 +141,7 @@ class DomainObjects(StrEnum):
 
 
 def _rebuild_function_with_new_class_cell(
-    func: types.FunctionType | None,
+    func: Callable[..., Any] | None,
     new_cls: type,
     original_cls: type,
 ) -> types.FunctionType | None:
@@ -280,9 +281,9 @@ def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
 
 
 def _prepare_pydantic_namespace(
-    new_dict: dict,
+    new_dict: dict[str, Any],
     base_cls: type,
-    opts: dict,
+    opts: dict[str, Any],
 ) -> None:
     """Prepare a class namespace dict for dynamic Pydantic class creation.
 
@@ -430,7 +431,7 @@ def _normalize_deprecated(value: Any) -> dict[str, str] | None:
 def derive_element_class(
     element_cls: type[_T],
     base_cls: type,
-    **opts: dict[str, str | bool],
+    **opts: Any,
 ) -> type[_T]:
     # Extract and normalize the universal `deprecated` option before
     # checking against element-specific known options.
@@ -498,7 +499,7 @@ def derive_element_class(
     if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
         _track_id_field(element_cls)
 
-    return element_cls  # type: ignore[reportReturnType]
+    return element_cls  # pyright: ignore[reportReturnType]
 
 
 def generate_identity(
@@ -599,9 +600,10 @@ def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
     # defaults into model_fields during class creation, so a dict-copy
     # clone loses them.  A subclass inherits everything through the MRO.
     if isinstance(cls, type) and issubclass(cls, BaseModel):
-        new_cls = type(type(cls))(new_name, (cls,), {"__annotations__": {}})
+        pydantic_metaclass = cast(type, type(cls))
+        new_cls = pydantic_metaclass(new_name, (cls,), {"__annotations__": {}})
         new_cls.__qualname__ = new_name
-        return new_cls
+        return cast('Type["Element"]', new_cls)
 
     # Create a shallow copy of class attributes, excluding the unwanted ones
     attrs = {}
@@ -625,7 +627,7 @@ def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
 
     # Create the new class using type(), preserving the metaclass
     # Pass the metaclass explicitly to preserve metaclass behavior
-    metaclass = type(cls)
+    metaclass = cast(type, type(cls))
     if metaclass is not type:
         # Custom metaclass - preserve it
         new_cls = metaclass(new_name, cls.__bases__, attrs)
@@ -641,7 +643,7 @@ def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
     # from the original cls to new_cls (PEP 3135).
     _rebind_class_cells(new_cls, cls)
 
-    return new_cls  # type: ignore[reportReturnType]
+    return cast('Type["Element"]', new_cls)
 
 
 __all__ = [
