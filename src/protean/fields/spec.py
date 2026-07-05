@@ -75,9 +75,9 @@ class FieldSpec:
         default: Any = _UNSET,
         identifier: bool = False,
         unique: bool = False,
-        choices: tuple[Any, ...]
+        choices: type[Enum]
         | list[Any]
-        | type[Any]
+        | tuple[Any, ...]
         | None = None,  # supports Enum classes too
         description: str = "",
         referenced_as: str | None = None,
