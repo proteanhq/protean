@@ -14,6 +14,7 @@ from typing import (
     ClassVar,
     Self,
     TypeVar,
+    cast,
     dataclass_transform,
 )
 from uuid import UUID
@@ -548,7 +549,11 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
         # Reconstruct ValueObjects from shadow kwargs when the VO itself
         # wasn't explicitly provided (e.g. during repository retrieval).
-        for field_name, field_obj in value_object_fields(self).items():
+        for field_name, base_field_obj in value_object_fields(self).items():
+            # ``value_object_fields`` filters on ``isinstance(_, ValueObject)``,
+            # so every entry is a ``ValueObject`` at runtime; narrow the
+            # base-typed reflection return so the VO-only attributes resolve.
+            field_obj = cast(ValueObject, base_field_obj)
             # Identity, not truthiness (#1078): an already-set all-default VO is
             # falsy but present and must not be clobbered by a shadow rebuild.
             if (
@@ -563,7 +568,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                     )
                 # Only reconstruct if at least one value is not None
                 if any(v is not None for v in vo_kwargs.values()):
-                    descriptor_kwargs[field_name] = field_obj.value_object_cls(
+                    # ``value_object_cls`` is a resolved class at this point; the
+                    # untyped property in ``fields/embedded.py`` widens it to
+                    # ``str | type``, so pyright flags the call.
+                    descriptor_kwargs[field_name] = field_obj.value_object_cls(  # pyright: ignore[reportCallIssue]
                         **vo_kwargs
                     )
 
@@ -580,29 +588,31 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         self.defaults()
 
         # Initialize VO shadow fields to None when the VO itself is not set
-        for field_obj in value_object_fields(self).values():
+        for base_field_obj in value_object_fields(self).values():
+            field_obj = cast(ValueObject, base_field_obj)
             for _, shadow_field in field_obj.get_shadow_fields():
                 attr_name = shadow_field.attribute_name
                 if attr_name not in self.__dict__:
                     self.__dict__[attr_name] = None  # pyright: ignore[reportIndexIssue]
 
         # Initialize Reference shadow fields to None when not already set
-        for field_obj in reference_fields(self).values():
-            shadow_name, shadow = field_obj.get_shadow_field()
+        for base_ref_obj in reference_fields(self).values():
+            ref_obj = cast(Reference, base_ref_obj)
+            shadow_name, shadow = ref_obj.get_shadow_field()
             if shadow_name not in self.__dict__:
                 self.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
         # Setup association pseudo-methods (add_*, remove_*, get_one_from_*, filter_*)
-        for field_name, field_obj in association_fields(self).items():
+        for field_name, assoc_obj in association_fields(self).items():
             getattr(self, field_name)  # Initialize/refresh associations
 
-            if isinstance(field_obj, HasMany):
-                setattr(self, f"add_{field_name}", partial(field_obj.add, self))
-                setattr(self, f"remove_{field_name}", partial(field_obj.remove, self))
+            if isinstance(assoc_obj, HasMany):
+                setattr(self, f"add_{field_name}", partial(assoc_obj.add, self))
+                setattr(self, f"remove_{field_name}", partial(assoc_obj.remove, self))
                 setattr(
-                    self, f"get_one_from_{field_name}", partial(field_obj.get, self)
+                    self, f"get_one_from_{field_name}", partial(assoc_obj.get, self)
                 )
-                setattr(self, f"filter_{field_name}", partial(field_obj.filter, self))
+                setattr(self, f"filter_{field_name}", partial(assoc_obj.filter, self))
 
         # Run post-invariants after init
         errors = self._run_invariants("post", return_errors=True) or {}
@@ -1121,15 +1131,20 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     # Derive the entity class from the base entity class
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 
-    if not element_cls.meta_.part_of:
+    # ``derive_element_class`` returns a ``BaseEntity`` subclass; narrow so the
+    # entity-only surface (``meta_``, ``_invariants``, ``declared_fields``) is
+    # visible to static checkers. Mirrors ``value_object_factory``.
+    entity_cls = cast(type[BaseEntity], element_cls)
+
+    if not entity_cls.meta_.part_of:
         raise IncorrectUsageError(
-            f"Entity `{element_cls.__name__}` needs to be associated with an Aggregate"
+            f"Entity `{entity_cls.__name__}` needs to be associated with an Aggregate"
         )
 
     # Set up reference fields for entities with part_of
-    if not element_cls.meta_.abstract:
+    if not entity_cls.meta_.abstract:
         reference_field = None
-        for field_obj in declared_fields(element_cls).values():
+        for field_obj in declared_fields(entity_cls).values():
             if isinstance(field_obj, Reference):
                 # An explicit `Reference` field is already present
                 reference_field = field_obj
@@ -1137,40 +1152,42 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
 
         if reference_field is None:
             # If no explicit Reference field is present, create one
-            reference_field = Reference(element_cls.meta_.part_of)
+            reference_field = Reference(entity_cls.meta_.part_of)
             reference_field._auto_generated = True
 
             # If part_of is a string, set field name to inflection.underscore(part_of)
             #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)
-            if isinstance(element_cls.meta_.part_of, str):
-                field_name = inflection.underscore(element_cls.meta_.part_of)
+            if isinstance(entity_cls.meta_.part_of, str):
+                field_name = inflection.underscore(entity_cls.meta_.part_of)
             else:
-                field_name = inflection.underscore(element_cls.meta_.part_of.__name__)
+                field_name = inflection.underscore(entity_cls.meta_.part_of.__name__)
 
-            setattr(element_cls, field_name, reference_field)
+            setattr(entity_cls, field_name, reference_field)
 
             # Set the name of the field on itself
-            reference_field.__set_name__(element_cls, field_name)
+            reference_field.__set_name__(entity_cls, field_name)
 
-            field_objects = getattr(element_cls, _FIELDS)
+            field_objects = getattr(entity_cls, _FIELDS)
             field_objects[field_name] = reference_field
-            setattr(element_cls, _FIELDS, field_objects)
+            setattr(entity_cls, _FIELDS, field_objects)
 
         # Set up shadow fields for Reference fields
-        for _, field_obj in getattr(element_cls, _FIELDS, {}).items():
+        for _, field_obj in getattr(entity_cls, _FIELDS, {}).items():
             if isinstance(field_obj, Reference):
                 shadow_field_name, shadow_field = field_obj.get_shadow_field()
-                shadow_field.__set_name__(element_cls, shadow_field_name)
+                shadow_field.__set_name__(entity_cls, shadow_field_name)
 
     # Iterate through methods marked as `@invariant` and record them for later use
-    for klass in element_cls.__mro__:
+    for klass in entity_cls.__mro__:
         for method_name, method in vars(klass).items():
             if (
                 not (method_name.startswith("__") and method_name.endswith("__"))
                 and callable(method)
                 and hasattr(method, "_invariant")
             ):
-                element_cls._invariants[method._invariant][method_name] = method
+                entity_cls._invariants[getattr(method, "_invariant")][method_name] = (
+                    method
+                )
 
     return element_cls
 
