@@ -9,6 +9,7 @@ from itertools import count
 
 import typing
 from threading import Lock
+from typing import cast
 from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
@@ -82,6 +83,10 @@ class MemoryModel(BaseDatabaseModel):
 
 
 class MemorySession:
+    # Heterogeneous session store: ``data`` (the copied databases), ``lock``
+    # (a ``threading.Lock``) and ``counters`` (auto-increment counters).
+    _db: dict[str, typing.Any]
+
     def __init__(
         self, provider: "MemoryProvider", new_connection: bool = False
     ) -> None:
@@ -91,7 +96,9 @@ class MemorySession:
         if (
             current_uow and self._provider.name in current_uow._sessions
         ) and not new_connection:
-            self._db = current_uow._sessions[self._provider.name]._db
+            self._db = cast(
+                MemorySession, current_uow._sessions[self._provider.name]
+            )._db
         else:
             self._db = {
                 "data": copy.deepcopy(self._provider._databases),
@@ -101,7 +108,9 @@ class MemorySession:
 
     def commit(self) -> None:
         if current_uow and self._provider.name in current_uow._sessions:
-            current_uow._sessions[self._provider.name]._db["data"] = self._db["data"]
+            cast(MemorySession, current_uow._sessions[self._provider.name])._db[
+                "data"
+            ] = self._db["data"]
         else:
             self._provider._databases = self._db["data"]
 
@@ -259,7 +268,11 @@ class MemoryProvider(BaseProvider):
         column-to-column comparisons (e.g. ``retry_count < max_retries``).
         """
         results = {}
-        stripped_key, lookup_class = self._extract_lookup(key)
+        stripped_key, base_lookup_class = self._extract_lookup(key)
+        # Every lookup registered on ``MemoryProvider`` is a ``MemoryLookup``
+        # (they implement ``evaluate()``); the ABC return type is the wider
+        # ``type[BaseLookup]``, so narrow to the concrete memory lookup here.
+        lookup_class = cast("type[MemoryLookup]", base_lookup_class)
         null_safe = getattr(lookup_class, "null_safe", False)
         target_is_column = isinstance(value, F)
         target_name = value.name if target_is_column else None
@@ -363,7 +376,10 @@ class DictDAO(BaseDAO):
         the difference for value-object and association attributes.
         """
         field_obj = fields(self.entity_cls).get(field_name)
-        if field_obj is not None:
+        # A field bound to an entity class always has ``attribute_name``
+        # populated (via ``__set_name__``); guard for the unbound ``None`` case
+        # by falling back to the passed-in name.
+        if field_obj is not None and field_obj.attribute_name is not None:
             return field_obj.attribute_name
         # Already an attribute name (e.g. a value-object shadow attribute).
         return field_name
@@ -453,6 +469,10 @@ class DictDAO(BaseDAO):
     ) -> dict[typing.Any, typing.Any]:
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
+        # ``_evaluate_lookup`` is defined on ``MemoryProvider``; ``self.provider``
+        # is typed as the wider ``BaseProvider`` on the DAO, and a ``DictDAO`` is
+        # only ever wired to a ``MemoryProvider``, so narrow here.
+        provider = cast(MemoryProvider, self.provider)
         negated = criteria.negated
         input_db = None
 
@@ -464,7 +484,7 @@ class DictDAO(BaseDAO):
                 if isinstance(child, Q):
                     input_db = self._filter_items(child, input_db)
                 else:
-                    input_db = self.provider._evaluate_lookup(
+                    input_db = provider._evaluate_lookup(
                         child[0], child[1], negated, input_db
                     )
         else:
@@ -475,9 +495,7 @@ class DictDAO(BaseDAO):
                 if isinstance(child, Q):
                     results = self._filter_items(child, db)
                 else:
-                    results = self.provider._evaluate_lookup(
-                        child[0], child[1], negated, db
-                    )
+                    results = provider._evaluate_lookup(child[0], child[1], negated, db)
 
                 input_db = {**input_db, **results}
 
