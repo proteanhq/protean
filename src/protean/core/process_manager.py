@@ -409,7 +409,10 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
             not a start event.
         """
         stream_name = f"{cls.meta_.stream_category}-{correlation_value}"
-        messages = current_domain.event_store.store.read(stream_name)
+        store = current_domain.event_store.store
+        if store is None:
+            raise ConfigurationError("Event store is not configured")
+        messages = store.read(stream_name)
 
         if messages:
             return cls._from_transitions(messages, correlation_value)
@@ -581,7 +584,10 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         )
 
         # Write directly to event store
-        current_domain.event_store.store.append(transition_event)
+        store = current_domain.event_store.store
+        if store is None:
+            raise ConfigurationError("Event store is not configured")
+        store.append(transition_event)
 
 
 _T = TypeVar("_T", bound=OptionsMixin)
