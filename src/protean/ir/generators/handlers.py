@@ -21,7 +21,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from protean.ir.generators.base import (
     build_cmd_type_to_fqn,
@@ -407,13 +407,14 @@ def generate_handler_wiring_diagram(ir: dict[str, Any]) -> str:
     all_edges: list[str] = []
 
     # Render each handler group
-    for renderer in (
+    renderers: tuple[Callable[[], tuple[list[str], list[str]]], ...] = (
         lambda: _render_command_handlers(ir, cmd_type_to_fqn),
         lambda: _render_event_handlers(ir, evt_type_to_fqn),
         lambda: _render_process_managers(ir, evt_type_to_fqn),
         lambda: _render_projectors(ir, evt_type_to_fqn),
         lambda: _render_subscribers(ir),
-    ):
+    )
+    for renderer in renderers:
         subgraph, edges = renderer()
         if subgraph:
             lines.extend(subgraph)
