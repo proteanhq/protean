@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from types import TracebackType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from protean.exceptions import (
     ConfigurationError,
@@ -19,6 +19,29 @@ from protean.utils.telemetry import get_domain_metrics, set_span_error
 
 if TYPE_CHECKING:
     from protean.port.provider import SessionProtocol
+
+
+class _UoWStack(Protocol):
+    """Typed view of the ``LocalStack`` methods this module relies on.
+
+    The installed werkzeug ships ``LocalStack`` without usable annotations
+    (its ``push``/``pop`` resolve to ``Any``), which trips mypy ``--strict``'s
+    ``no-untyped-call`` on every stack access. Casting the shared stack to this
+    Protocol restores precise types at the call sites without suppressing the
+    diagnostic. Mirrors the ``cast`` precedent at the construction site in
+    ``protean.utils.globals``.
+    """
+
+    @property
+    def top(self) -> "UnitOfWork | None": ...
+
+    def push(self, obj: "UnitOfWork") -> list["UnitOfWork"]: ...
+
+    def pop(self) -> "UnitOfWork | None": ...
+
+
+# Typed handle onto the process-wide UnitOfWork context stack.
+_uow_stack = cast(_UoWStack, _uow_context_stack)
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +148,7 @@ class UnitOfWork:
                     )
 
         self._in_progress = True
-        _uow_context_stack.push(self)
+        _uow_stack.push(self)
 
     def commit(self) -> None:  # noqa: C901
         """Commit all changes, persist outbox messages, and dispatch events.
@@ -313,8 +336,8 @@ class UnitOfWork:
             # on identity so that if the commit below fails and __exit__ then
             # calls rollback() (which also pops), the two pops together cannot
             # pop a *parent* UnitOfWork off the stack in a nested scenario.
-            if _uow_context_stack.top is self:
-                _uow_context_stack.pop()
+            if _uow_stack.top is self:
+                _uow_stack.pop()
 
             # Commit the relational session (aggregate state + outbox rows).
             for provider_name, session in self._sessions.items():
@@ -426,8 +449,8 @@ class UnitOfWork:
         # Exit from Unit of Work. Guarded on identity so a double-pop (when the
         # relational commit failed after _do_commit already popped this UoW)
         # cannot pop a parent UnitOfWork off the stack.
-        if _uow_context_stack.top is self:
-            _uow_context_stack.pop()
+        if _uow_stack.top is self:
+            _uow_stack.pop()
 
         try:
             for session in self._sessions.values():
