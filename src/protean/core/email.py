@@ -23,7 +23,14 @@ class BaseEmailProvider:
     ```
     """
 
-    def __init__(self, name, domain, conn_info, fail_silently=False, **kwargs):
+    def __init__(
+        self,
+        name: str,
+        domain: Any,
+        conn_info: dict[str, Any],
+        fail_silently: bool = False,
+        **kwargs: Any,
+    ) -> None:
         self.name = name
         self.domain = domain
         self.conn_info = conn_info
