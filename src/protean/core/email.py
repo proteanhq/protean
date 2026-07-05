@@ -30,7 +30,7 @@ class BaseEmailProvider:
         self.fail_silently = fail_silently
 
     @abstractmethod
-    def send_email(self, email_message):
+    def send_email(self, email_message: "BaseEmail") -> bool:
         """Send EmailMessage object via registered email provider."""
 
 

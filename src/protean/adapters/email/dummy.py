@@ -15,8 +15,8 @@ class DummyEmailProvider(BaseEmailProvider):
     def __init__(self, name, domain, conn_info):
         super().__init__(name, domain, conn_info)
 
-    def send_email(self, message):
+    def send_email(self, email_message):
         """Output message into log"""
 
-        logger.debug("Email message dispatched: %s" % message)
+        logger.debug("Email message dispatched: %s" % email_message)
         return True
