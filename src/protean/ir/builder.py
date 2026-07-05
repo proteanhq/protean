@@ -123,6 +123,22 @@ class IRBuilder:
     # Field extraction
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _resolved_fqn(target: type | str) -> str:
+        """Return the FQN of an association/VO target class.
+
+        Association (``HasOne``/``HasMany``/``Reference``) and embedded
+        (``ValueObject``) fields carry their target as either a concrete class
+        or, before resolution, a string name. IRBuilder runs against an
+        initialised domain (its documented precondition), so every target has
+        been resolved to a class by this point; the ``str`` branch is a
+        defensive guard, not an expected path.
+        """
+        assert not isinstance(target, str), (
+            f"unresolved target {target!r}; IRBuilder requires an initialised domain"
+        )
+        return fqn(target)
+
     def _extract_fields(self, cls: type[_ElementCls]) -> dict[str, Any]:
         """Extract field definitions from a domain element class.
 
@@ -137,32 +153,34 @@ class IRBuilder:
 
             if isinstance(field_obj, ValueObject):
                 entry["kind"] = "value_object"
-                entry["target"] = fqn(field_obj.value_object_cls)
+                entry["target"] = self._resolved_fqn(field_obj.value_object_cls)
                 if field_obj.required:
                     entry["required"] = True
 
             elif isinstance(field_obj, ValueObjectList):
                 entry["kind"] = "value_object_list"
                 if isinstance(field_obj.content_type, ValueObject):
-                    entry["target"] = fqn(field_obj.content_type.value_object_cls)
+                    entry["target"] = self._resolved_fqn(
+                        field_obj.content_type.value_object_cls
+                    )
                 else:
                     entry["target"] = fqn(field_obj.content_type)
 
             elif isinstance(field_obj, HasOne):
                 entry["kind"] = "has_one"
-                entry["target"] = fqn(field_obj.to_cls)
+                entry["target"] = self._resolved_fqn(field_obj.to_cls)
                 if field_obj.via is not None:
                     entry["via"] = field_obj.via
 
             elif isinstance(field_obj, HasMany):
                 entry["kind"] = "has_many"
-                entry["target"] = fqn(field_obj.to_cls)
+                entry["target"] = self._resolved_fqn(field_obj.to_cls)
                 if field_obj.via is not None:
                     entry["via"] = field_obj.via
 
             elif isinstance(field_obj, Reference):
                 entry["kind"] = "reference"
-                entry["target"] = fqn(field_obj.to_cls)
+                entry["target"] = self._resolved_fqn(field_obj.to_cls)
                 entry["linked_attribute"] = field_obj.linked_attribute
                 if field_obj._auto_generated:
                     entry["auto_generated"] = True
@@ -1172,12 +1190,14 @@ class IRBuilder:
 
                 for _name, field_obj in declared_fields(owner_cls).items():
                     if isinstance(field_obj, ValueObject):
-                        vo_fqn = fqn(field_obj.value_object_cls)
+                        vo_fqn = self._resolved_fqn(field_obj.value_object_cls)
                         if vo_fqn not in vo_map:
                             vo_map[vo_fqn] = agg_cls
                     elif isinstance(field_obj, ValueObjectList):
                         if isinstance(field_obj.content_type, ValueObject):
-                            vo_fqn = fqn(field_obj.content_type.value_object_cls)
+                            vo_fqn = self._resolved_fqn(
+                                field_obj.content_type.value_object_cls
+                            )
                         else:
                             vo_fqn = fqn(field_obj.content_type)
                         if vo_fqn not in vo_map:
