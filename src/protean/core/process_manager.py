@@ -96,7 +96,7 @@ def _resolve_correlation_value(
         raise ConfigurationError(f"Invalid correlate spec: {correlate_spec}")
 
 
-def _generate_pm_transition_event(pm_cls: type) -> type[BaseEvent]:
+def _generate_pm_transition_event(pm_cls: type[Any]) -> type[BaseEvent]:
     """Auto-generate a transition event class for a process manager.
 
     The transition event captures the PM's full field state after each handler
