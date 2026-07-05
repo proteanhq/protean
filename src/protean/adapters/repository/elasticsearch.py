@@ -672,7 +672,7 @@ class ElasticsearchDAO(BaseDAO):
 
         return response.deleted
 
-    def _raw(self, query: _Any, data: _Any = None) -> _Any:
+    def _raw(self, query: _Any, data: _Any = None) -> ResultSet:
         """Not supported — Elasticsearch does not support raw queries.
 
         This method is never reached because ``QuerySet.raw()`` gates access

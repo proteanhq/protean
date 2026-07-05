@@ -30,6 +30,11 @@ class FieldCacheMixin:
 class FieldDescriptorMixin:
     """Provide basic implementation to treat the Field as a descriptor"""
 
+    # ``None`` on an unbound Field; populated with the owning entity's field /
+    # attribute names by ``__set_name__`` once the class assigns the descriptor.
+    field_name: str | None
+    attribute_name: str | None
+
     def __init__(self, *args, **kwargs):
         """Initialize common Field Attributes"""
         # These are set up when the owner (Entity class) adds the field to itself

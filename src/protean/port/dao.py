@@ -312,7 +312,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _raw(self, query: Any, data: Any = None) -> Any:
+    def _raw(self, query: Any, data: Any = None) -> ResultSet:
         """Run raw query on Data source. Concrete implementation will be provided by
         the database DAO class.
 

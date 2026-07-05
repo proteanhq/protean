@@ -136,16 +136,7 @@ class QuerySet:
             #   so we look for the key name in both fields and attributes.
             #
             # If we don't find it in either, we raise an error.
-            if extracted_key_name in fields(self._entity_cls):
-                attr_name = fields(self._entity_cls)[extracted_key_name].attribute_name
-            elif extracted_key_name in attributes(self._entity_cls):
-                attr_name = attributes(self._entity_cls)[
-                    extracted_key_name
-                ].attribute_name
-            else:
-                raise KeyError(
-                    f"Key '{extracted_key_name}' not found in either fields or attributes of {self._entity_cls}"
-                )
+            attr_name = self._resolve_attribute_name(extracted_key_name)
 
             # Replace the field name in the composite key with the attribute name
             new_key_name = key.replace(extracted_key_name, attr_name)
@@ -200,14 +191,7 @@ class QuerySet:
             else:
                 cleaned_key = key
 
-            if cleaned_key in fields(self._entity_cls):
-                attr_name = fields(self._entity_cls)[cleaned_key].attribute_name
-            elif cleaned_key in attributes(self._entity_cls):
-                attr_name = attributes(self._entity_cls)[cleaned_key].attribute_name
-            else:
-                raise KeyError(
-                    f"Key '{cleaned_key}' not found in either fields or attributes of {self._entity_cls}"
-                )
+            attr_name = self._resolve_attribute_name(cleaned_key)
 
             if reverse:
                 new_order_by.append(f"-{attr_name}")
@@ -273,6 +257,9 @@ class QuerySet:
         # The identifier is always included so every Record is addressable.
         id_field_obj = id_field(self._entity_cls)
         if id_field_obj is not None:
+            # A registered identity field always has its ``field_name`` populated
+            # (set during ``__set_name__``); ``None`` only occurs on an unbound Field.
+            assert id_field_obj.field_name is not None
             _add(id_field_obj.field_name)
 
         for name in field_names:
@@ -291,16 +278,22 @@ class QuerySet:
         """
         entity_fields = fields(self._entity_cls)
         if name in entity_fields:
-            return entity_fields[name].attribute_name
+            attr_name = entity_fields[name].attribute_name
+        else:
+            entity_attributes = attributes(self._entity_cls)
+            if name in entity_attributes:
+                attr_name = entity_attributes[name].attribute_name
+            else:
+                raise KeyError(
+                    f"Key '{name}' not found in either fields or attributes "
+                    f"of {self._entity_cls}"
+                )
 
-        entity_attributes = attributes(self._entity_cls)
-        if name in entity_attributes:
-            return entity_attributes[name].attribute_name
-
-        raise KeyError(
-            f"Key '{name}' not found in either fields or attributes "
-            f"of {self._entity_cls}"
-        )
+        # A field returned from a registered entity's ``fields()``/``attributes()``
+        # always has its ``attribute_name`` populated (set during ``__set_name__``);
+        # it is only ``None`` on an unbound Field instance, which cannot occur here.
+        assert attr_name is not None
+        return attr_name
 
     def _reject_if_projected(self, action: str) -> None:
         """Guard mutating operations against a projected query.
