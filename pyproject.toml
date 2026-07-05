@@ -297,7 +297,6 @@ module = [
   "protean.domain.handler_setup",
   "protean.domain.infrastructure",
   "protean.domain.query_processor",
-  "protean.domain.registry",
   "protean.domain.resolver",
   "protean.domain.type_manager",
   "protean.domain.validation",

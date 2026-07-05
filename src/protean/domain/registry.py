@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Protocol, cast
 
 import inflection
 
@@ -10,6 +10,21 @@ from protean.utils import DomainObjects, fully_qualified_name
 from protean.utils.container import Element
 
 logger = logging.getLogger(__name__)
+
+
+class _ElementClass(Protocol):
+    """Structural type for a registered element class.
+
+    Every concrete Protean element subclass carries an ``element_type``
+    class attribute (a :class:`DomainObjects` member) declared on the
+    subclass rather than on the shared ``Element`` base. This Protocol
+    exposes that attribute to static checkers after
+    :meth:`_DomainRegistry._is_invalid_element_cls` has verified it is
+    present at runtime.
+    """
+
+    element_type: ClassVar[DomainObjects]
+    __name__: str
 
 
 # Define property names for each element type
@@ -124,10 +139,11 @@ class _DomainRegistry:
         * `element_type` is an Enum value
         * The value of `element_type` enum is among recognized `DomainObjects` values
         """
+        element_type = getattr(element_cls, "element_type", None)
         return (
-            not hasattr(element_cls, "element_type")
-            or not isinstance(element_cls.element_type, Enum)
-            or element_cls.element_type.name not in DomainObjects.__members__
+            element_type is None
+            or not isinstance(element_type, Enum)
+            or element_type.name not in DomainObjects.__members__
         )
 
     def register_element(
@@ -151,10 +167,15 @@ class _DomainRegistry:
                 f"Element `{element_cls.__name__}` is not a valid element class"
             )
 
+        # ``_is_invalid_element_cls`` has verified that ``element_type`` is
+        # present and valid; narrow to the structural type so checkers can
+        # see the attribute (declared on subclasses, not the ``Element`` base).
+        element = cast(_ElementClass, element_cls)
+
         # Element name is always the fully qualified name of the class
         element_name = fully_qualified_name(element_cls)
 
-        element_dict = self._elements[element_cls.element_type.value]
+        element_dict = self._elements[element.element_type.value]
         if element_name in element_dict:
             if element_dict[element_name].cls is not element_cls:
                 logger.warning(
@@ -168,7 +189,7 @@ class _DomainRegistry:
             element_record = DomainRecord(
                 name=element_cls.__name__,
                 qualname=element_name,
-                class_type=element_cls.element_type.value,
+                class_type=element.element_type.value,
                 cls=element_cls,
                 internal=internal,
                 auto_generated=auto_generated,
@@ -183,7 +204,7 @@ class _DomainRegistry:
                 self._elements_by_name[element_cls.__name__] = [element_record]
 
             logger.debug(
-                f"Registered Element {element_name} with Domain as a {element_cls.element_type.value}"
+                f"Registered Element {element_name} with Domain as a {element.element_type.value}"
             )
 
     @property
