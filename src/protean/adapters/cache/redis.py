@@ -42,9 +42,16 @@ class RedisCache(BaseCache):
         pool_kwargs = {
             key: value for key, value in conn_info.items() if key in self._POOL_KEYS
         }
-        self.r: "redis.Redis[Any]" = redis.Redis.from_url(
+        self.r: "redis.Redis[Any] | None" = redis.Redis.from_url(
             conn_info["URI"], **pool_kwargs
         )
+
+    @property
+    def _client(self) -> "redis.Redis[Any]":
+        """Return the live Redis client, raising if the cache has been closed."""
+        if self.r is None:
+            raise RuntimeError(f"Redis cache {self.name} connection is closed")
+        return self.r
 
     def close(self) -> None:
         """Close the Redis connection and release resources."""
@@ -57,10 +64,10 @@ class RedisCache(BaseCache):
             logger.exception("Error closing Redis cache %s", self.name)
 
     def ping(self) -> bool:
-        return bool(self.r.ping())
+        return bool(self._client.ping())
 
     def get_connection(self) -> "redis.Redis[Any]":
-        return self.r
+        return self._client
 
     def add(
         self, projection: BaseProjection, ttl: Optional[Union[int, float]] = None
@@ -80,18 +87,23 @@ class RedisCache(BaseCache):
         """
         id_f = id_field(projection)
         assert id_f is not None
+        assert id_f.field_name is not None
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
-        ttl = ttl or self.conn_info.get("TTL") or 300
+        resolved_ttl: int | float = ttl or self.conn_info.get("TTL") or 300
 
-        self.r.psetex(key, int(ttl * 1000), json.dumps(projection.to_dict()))
+        # redis-py ships `py.typed` but leaves `psetex` without a return
+        # annotation, so mypy --strict flags the call as untyped. Not our bug.
+        self._client.psetex(  # type: ignore[no-untyped-call]
+            key, int(resolved_ttl * 1000), json.dumps(projection.to_dict())
+        )
 
     def get(self, key: str) -> Optional[BaseProjection]:
         projection_name = key.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
-        value = self.r.get(key)
+        value = self._client.get(key)
         return projection_cls(json.loads(value)) if value else None
 
     def get_all(
@@ -100,34 +112,40 @@ class RedisCache(BaseCache):
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
-        cursor, values = self.r.scan(
+        cursor, values = self._client.scan(
             cursor=last_position, match=key_pattern, count=size
         )
-        return [projection_cls(json.loads(self.r.get(value))) for value in values]
+        results: list[BaseProjection] = []
+        for value in values:
+            raw = self._client.get(value)
+            if raw is not None:
+                results.append(projection_cls(json.loads(raw)))
+        return results
 
     def count(self, key_pattern: str) -> int:
-        values = self.r.scan_iter(match=key_pattern)
+        values = self._client.scan_iter(match=key_pattern)
         return len(list(values))
 
     def remove(self, projection: BaseProjection) -> None:
         id_f = id_field(projection)
         assert id_f is not None
+        assert id_f.field_name is not None
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
-        self.r.delete(key)
+        self._client.delete(key)
 
     def remove_by_key(self, key: str) -> None:
-        self.r.delete(key)
+        self._client.delete(key)
 
     def remove_by_key_pattern(self, key_pattern: str) -> None:
-        values = self.r.scan_iter(match=key_pattern)
-        self.r.delete(*values)
+        values = self._client.scan_iter(match=key_pattern)
+        self._client.delete(*values)
 
     def flush_all(self) -> None:
-        self.r.flushall()
+        self._client.flushall()
 
     def set_ttl(self, key: str, ttl: Union[int, float]) -> None:
-        self.r.pexpire(key, ttl * 1000)
+        self._client.pexpire(key, int(ttl * 1000))
 
     def get_ttl(self, key: str) -> float:
-        return self.r.pttl(key)
+        return float(self._client.pttl(key))
