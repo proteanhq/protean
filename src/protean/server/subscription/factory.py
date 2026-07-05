@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from protean.server import Engine
     from protean.utils.container import Options
     from protean.utils.eventing import Message
+    from protean.utils.mixins import HandlerMixin
 
     from . import BaseSubscription
 
@@ -45,6 +46,8 @@ class CommandDispatcherProtocol(Protocol):
     """
 
     __name__: str
+    __module__: str
+    __qualname__: str
     meta_: "Options"
 
     def resolve_handler(
@@ -60,13 +63,12 @@ class CommandDispatcherProtocol(Protocol):
 
 logger = logging.getLogger(__name__)
 
-# The kinds of handler the factory can build a subscription for: a handler
-# *class* (event or command handler — also covers projectors and process
-# managers, which are ``HandlerMixin`` subclasses), or a duck-typed
-# ``CommandDispatcher`` instance routing several command handlers on one stream.
+# The kinds of handler the factory can build a subscription for: any handler
+# *class* — event/command handlers, projectors, and process managers are all
+# ``HandlerMixin`` subclasses — or a duck-typed ``CommandDispatcher`` instance
+# routing several command handlers on one stream.
 HandlerArg = Union[
-    "type[BaseEventHandler]",
-    "type[BaseCommandHandler]",
+    "type[HandlerMixin]",
     "CommandDispatcherProtocol",
 ]
 
