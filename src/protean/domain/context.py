@@ -4,12 +4,36 @@ import logging
 import sys
 
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Iterator, Optional, cast
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Protocol, cast
 
 from protean.utils.globals import _domain_context_stack
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+
+
+class _DomainContextStack(Protocol):
+    """Typed view of the ``LocalStack`` methods this module relies on.
+
+    The installed werkzeug ships ``LocalStack`` without usable annotations
+    (its ``push``/``pop`` resolve to ``Any``), which trips mypy ``--strict``'s
+    ``no-untyped-call`` on every stack access. Casting the shared stack to this
+    Protocol restores precise types at the call sites without suppressing the
+    diagnostic. Mirrors the ``_UoWStack`` precedent in
+    ``protean.core.unit_of_work`` and the ``cast`` at the construction site in
+    ``protean.utils.globals``.
+    """
+
+    @property
+    def top(self) -> "DomainContext | None": ...
+
+    def push(self, obj: "DomainContext") -> list["DomainContext"]: ...
+
+    def pop(self) -> "DomainContext | None": ...
+
+
+# Typed handle onto the process-wide domain context stack.
+_domain_ctx_stack = cast(_DomainContextStack, _domain_context_stack)
 
 # a singleton sentinel value for parameter defaults
 _sentinel: Any = object()
@@ -63,7 +87,7 @@ class _DomainContextGlobals:
         return iter(self.__dict__)
 
     def __repr__(self) -> str:
-        top = _domain_context_stack.top
+        top = _domain_ctx_stack.top
         if top is not None:
             return "<protean.g of %r>" % top.domain.name
         return object.__repr__(self)
@@ -74,7 +98,7 @@ def has_domain_context() -> bool:
     not this function can be used.  You can also just do a boolean check on the
     :data:`current_domain` object instead.
     """
-    return _domain_context_stack.top is not None
+    return _domain_ctx_stack.top is not None
 
 
 class DomainContext(object):
@@ -104,7 +128,7 @@ class DomainContext(object):
         exc_clear = getattr(sys, "exc_clear", None)
         if exc_clear is not None:
             exc_clear()
-        _domain_context_stack.push(self)
+        _domain_ctx_stack.push(self)
 
     def pop(self, exc: Any = _sentinel) -> None:
         """Pops the domain context."""
@@ -115,7 +139,7 @@ class DomainContext(object):
                     exc = sys.exc_info()[1]
                 self.domain.do_teardown_domain_context(exc)
         finally:
-            rv = _domain_context_stack.pop()
+            rv = _domain_ctx_stack.pop()
         assert rv is self, "Popped wrong domain context.  (%r instead of %r)" % (
             rv,
             self,
