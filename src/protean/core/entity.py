@@ -88,7 +88,7 @@ _DESCRIPTOR_TYPES = (
 
 class _FieldsCacheDescriptor:
     def __get__(
-        self, instance: Any, cls: type | None = None
+        self, instance: Any, cls: type[Any] | None = None
     ) -> "_FieldsCacheDescriptor | dict[str, Any]":
         if instance is None:
             return self
@@ -393,7 +393,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             setattr(cls, _ID_FIELD_NAME, id_fields[0].field_name)
 
     @staticmethod
-    def _get_class_descriptor(klass: type, name: str) -> Any:
+    def _get_class_descriptor(klass: type[Any], name: str) -> Any:
         """Look up a descriptor on the class MRO without triggering __get__.
 
         ``getattr(cls, name)`` invokes the data descriptor protocol, which
