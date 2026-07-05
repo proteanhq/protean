@@ -101,7 +101,7 @@ class EventStoreSubscription(BaseSubscription):
         self,
         engine,
         stream_category: str,
-        handler: Union[BaseEventHandler, BaseCommandHandler],
+        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
         messages_per_tick: int = 10,
         position_update_interval: int = 10,
         origin_stream: str | None = None,
@@ -196,7 +196,7 @@ class EventStoreSubscription(BaseSubscription):
         cls,
         engine,
         stream_category: str,
-        handler: Union[BaseEventHandler, BaseCommandHandler],
+        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
         config: "SubscriptionConfig",
     ) -> "EventStoreSubscription":
         """Create an EventStoreSubscription instance from a SubscriptionConfig.

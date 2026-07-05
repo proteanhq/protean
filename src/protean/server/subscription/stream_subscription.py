@@ -44,7 +44,7 @@ class StreamSubscription(BaseSubscription):
         self,
         engine: "Engine",
         stream_category: str,
-        handler: Union[BaseEventHandler, BaseCommandHandler],
+        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
         messages_per_tick: Optional[int] = None,
         blocking_timeout_ms: Optional[int] = None,
         max_retries: Optional[int] = None,
@@ -149,7 +149,7 @@ class StreamSubscription(BaseSubscription):
         cls,
         engine: "Engine",
         stream_category: str,
-        handler: Union[BaseEventHandler, BaseCommandHandler],
+        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
         config: "SubscriptionConfig",
     ) -> "StreamSubscription":
         """Create a StreamSubscription instance from a SubscriptionConfig.
