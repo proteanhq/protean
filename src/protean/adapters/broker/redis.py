@@ -590,7 +590,7 @@ class RedisBroker(BaseBroker):
         except redis.ResponseError:
             return 0
 
-    def _ensure_group(self, group_name: str, stream: str) -> None:
+    def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
         """Create consumer group if it doesn't exist"""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
 
