@@ -44,7 +44,7 @@ Example:
             pass
 """
 
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, ClassVar, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
@@ -96,34 +96,32 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
 
     element_type = DomainObjects.COMMAND_HANDLER
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict[str, Any]]]]]:
-        part_of = (
-            getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
-        )
-
-        return [
-            ("part_of", part_of),
-            ("stream_category", None),  # Will be set by command_handler_factory
-            # Default validity window for commands routed to this handler, in
-            # seconds (or a timedelta). Overrides the domain-level
-            # ``command_default_timeout``; overridden by an explicit
-            # deadline/timeout on ``domain.process()``. ``None`` = no default.
-            ("timeout", None),
-            # Transient-failure retry policy. ``retries`` (int) sets the max
-            # retry attempts on transient exceptions and overrides the
-            # domain-level ``server.transient_retry`` config; ``None`` defers to
-            # it. ``backoff`` selects the delay strategy ("exponential" |
-            # "linear" | "fixed"). ``retry_exceptions`` overrides which
-            # exception types are treated as transient (classes or dotted paths).
-            ("retries", None),
-            ("backoff", None),
-            ("retry_exceptions", None),
-            # Subscription configuration options
-            ("subscription_type", None),  # SubscriptionType enum or None for default
-            ("subscription_profile", None),  # SubscriptionProfile enum or None
-            ("subscription_config", {}),  # Dict of custom config overrides
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        # ``part_of`` is only consulted by ``_set_defaults`` when unset on the
+        # class, at which point it resolves to ``None`` (mirrors the derivation
+        # ``getattr(cls.meta_, "part_of", None)``). A concrete value, when
+        # supplied, is already on ``meta_`` and takes precedence.
+        ("part_of", None),
+        ("stream_category", None),  # Will be set by command_handler_factory
+        # Default validity window for commands routed to this handler, in
+        # seconds (or a timedelta). Overrides the domain-level
+        # ``command_default_timeout``; overridden by an explicit
+        # deadline/timeout on ``domain.process()``. ``None`` = no default.
+        ("timeout", None),
+        # Transient-failure retry policy. ``retries`` (int) sets the max
+        # retry attempts on transient exceptions and overrides the
+        # domain-level ``server.transient_retry`` config; ``None`` defers to
+        # it. ``backoff`` selects the delay strategy ("exponential" |
+        # "linear" | "fixed"). ``retry_exceptions`` overrides which
+        # exception types are treated as transient (classes or dotted paths).
+        ("retries", None),
+        ("backoff", None),
+        ("retry_exceptions", None),
+        # Subscription configuration options
+        ("subscription_type", None),  # SubscriptionType enum or None for default
+        ("subscription_profile", None),  # SubscriptionProfile enum or None
+        ("subscription_config", {}),  # Dict of custom config overrides
+    ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseCommandHandler":
         if cls is BaseCommandHandler:

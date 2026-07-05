@@ -1,8 +1,29 @@
+import copy
 import logging
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar
 
 
 logger = logging.getLogger(__name__)
+
+
+class DerivedDefault:
+    """Marker for a default option value that must be computed from the element
+    class rather than being a static literal (e.g. a ``schema_name`` derived
+    from the class name).
+
+    ``_default_options`` is declarative *data* (a class attribute), so any
+    per-class value is expressed as ``DerivedDefault(lambda cls: ...)`` and
+    resolved by :meth:`OptionsMixin._set_defaults`. This keeps option defaults
+    out of a class-definition-time method call.
+    """
+
+    __slots__ = ("fn",)
+
+    def __init__(self, fn: Callable[[type], Any]) -> None:
+        self.fn = fn
+
+    def __call__(self, cls: type) -> Any:
+        return self.fn(cls)
 
 
 class Element:
@@ -68,20 +89,31 @@ class OptionsMixin:
 
         super().__init_subclass__()
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return []
+    # Declarative default options, keyed by option name. Element Roots
+    # (``Aggregate``, ``Repository``, ``Subscriber``, ...) override this with
+    # their own defaults. Per-class values (e.g. a schema name derived from the
+    # class name) are wrapped in :class:`DerivedDefault` and resolved in
+    # :meth:`_set_defaults`. This is data, not a method, so nothing element-
+    # specific runs at class-definition time.
+    _default_options: ClassVar[list[tuple[str, Any]]] = []
 
     @classmethod
     def _set_defaults(cls) -> None:
-        # Assign default options for remaining items
-        #   with the help of `_default_options()` method defined in the Element's Root.
-        #   Element Roots are `Event`, `Subscriber`, `Repository`, and so on.
+        # Assign default options for remaining items from the declarative
+        #   `_default_options` defined in the Element's Root.
         #
         # Explicit `None` is a valid value set for an option, so we don't discard it.
-        for key, default in cls._default_options():
+        for key, default in cls._default_options:
             if not hasattr(cls.meta_, key):
-                setattr(cls.meta_, key, default)
+                value = default(cls) if isinstance(default, DerivedDefault) else default
+                # `_default_options` is now shared class data, so a mutable
+                # literal default (e.g. `[]`, `{}`) is a single object across
+                # every element class. Copy it before assigning so one class's
+                # `meta_` can never alias another's (the old classmethod form
+                # returned a fresh literal on each call).
+                if isinstance(value, (list, dict, set)):
+                    value = copy.copy(value)
+                setattr(cls.meta_, key, value)
 
         # Universal option: `deprecated` defaults to None for all elements
         if not hasattr(cls.meta_, "deprecated"):

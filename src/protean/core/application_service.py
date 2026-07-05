@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
@@ -53,9 +53,7 @@ class BaseApplicationService(Element, OptionsMixin):
             raise NotSupportedError("BaseApplicationService cannot be instantiated")
         return object.__new__(cls, *args, **kwargs)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [("part_of", None)]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [("part_of", None)]
 
 
 _T = TypeVar("_T", bound=BaseApplicationService)

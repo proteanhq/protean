@@ -29,7 +29,7 @@ Example:
         )
 """
 
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, ClassVar, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
@@ -67,15 +67,12 @@ class BaseQueryHandler(Element, HandlerMixin, OptionsMixin):
 
     element_type = DomainObjects.QUERY_HANDLER
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict[str, Any]]]]]:
-        part_of = (
-            getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
-        )
-
-        return [
-            ("part_of", part_of),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        # ``part_of`` resolves to ``None`` whenever this default is consulted
+        # (``_set_defaults`` skips it when a concrete value is already on
+        # ``meta_``), mirroring ``getattr(cls.meta_, "part_of", None)``.
+        ("part_of", None),
+    ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseQueryHandler":
         if cls is BaseQueryHandler:

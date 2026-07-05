@@ -73,12 +73,10 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
         ),
     )
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("abstract", False),
-            ("part_of", None),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("abstract", False),
+        ("part_of", None),
+    ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseQuery":
         if cls is BaseQuery:

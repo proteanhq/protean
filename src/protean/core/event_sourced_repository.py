@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import Any, cast, ClassVar, TYPE_CHECKING, TypeVar
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 class BaseEventSourcedRepository(Element, OptionsMixin):
     element_type = DomainObjects.EVENT_SOURCED_REPOSITORY
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [("part_of", None)]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [("part_of", None)]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEventSourcedRepository":
         # Prevent instantiation of `BaseEventSourcedRepository itself`

@@ -1,6 +1,6 @@
 import logging
 from abc import abstractmethod
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, ClassVar, TYPE_CHECKING, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
@@ -35,9 +35,10 @@ class BaseSubscriber(Element, OptionsMixin):
             raise NotSupportedError("BaseSubscriber cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [("broker", "default"), ("stream", None)]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("broker", "default"),
+        ("stream", None),
+    ]
 
     @abstractmethod
     def __call__(self, payload: dict[str, Any]) -> None:

@@ -53,7 +53,7 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
-from protean.utils.container import Element, OptionsMixin
+from protean.utils.container import DerivedDefault, Element, OptionsMixin
 from protean.utils.globals import g
 from protean.utils.reflection import (
     _FIELDS,
@@ -223,18 +223,19 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             raise NotSupportedError("BaseEntity cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("aggregate_cluster", None),
-            ("auto_add_id_field", True),
-            ("database_model", None),
-            ("indexes", ()),
-            ("part_of", None),
-            ("provider", "default"),
-            ("schema_name", inflection.underscore(cls.__name__)),
-            ("limit", 100),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("aggregate_cluster", None),
+        ("auto_add_id_field", True),
+        ("database_model", None),
+        ("indexes", ()),
+        ("part_of", None),
+        ("provider", "default"),
+        (
+            "schema_name",
+            DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
+        ),
+        ("limit", 100),
+    ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
