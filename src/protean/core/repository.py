@@ -1,6 +1,6 @@
 import logging
 from functools import lru_cache
-from typing import Any, TYPE_CHECKING, TypeVar, cast
+from typing import Any, cast, ClassVar, TYPE_CHECKING, TypeVar
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -48,9 +48,10 @@ class BaseRepository(Element, OptionsMixin):
 
     element_type = DomainObjects.REPOSITORY
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [("database", "ALL"), ("part_of", None)]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("database", "ALL"),
+        ("part_of", None),
+    ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseRepository":
         # Prevent instantiation of `BaseRepository itself`

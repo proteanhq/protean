@@ -12,7 +12,7 @@ from protean.adapters.cache import Caches
 from protean.adapters.email import EmailProviders
 from protean.adapters.repository import Providers
 from protean.exceptions import ConfigurationError, DeserializationError
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Options, OptionsMixin
 
 
 class TestCachesGuards:
@@ -94,11 +94,11 @@ class TestEmailProvidersGuards:
 
 
 class TestOptionsMixinDefaultOptions:
-    """Tests for OptionsMixin._default_options() base method."""
+    """Tests for the OptionsMixin._default_options base attribute."""
 
     def test_default_options_returns_empty_list(self):
-        """Base _default_options() returns an empty list."""
-        assert OptionsMixin._default_options() == []
+        """Base _default_options is an empty list."""
+        assert OptionsMixin._default_options == []
 
     def test_subclass_inherits_default_options(self):
         """A subclass without override gets the base empty list."""
@@ -106,7 +106,33 @@ class TestOptionsMixinDefaultOptions:
         class MyElement(OptionsMixin):
             pass
 
-        assert MyElement._default_options() == []
+        assert MyElement._default_options == []
+
+    def test_mutable_defaults_are_not_shared_across_classes(self):
+        """A mutable default in `_default_options` must be copied per class.
+
+        `_default_options` is now shared class data, so a bare `[]`/`{}` literal
+        is a single object. `_set_defaults` must copy it so one element class's
+        `meta_` never aliases another's (each class here forces its own `meta_`).
+        """
+
+        class Root(OptionsMixin):
+            _default_options = [("tags", []), ("cfg", {})]
+
+        class A(Root):
+            meta_ = Options()
+
+        class B(Root):
+            meta_ = Options()
+
+        assert A.meta_.tags == [] and B.meta_.tags == []
+        assert A.meta_.tags is not B.meta_.tags
+        assert A.meta_.cfg is not B.meta_.cfg
+
+        A.meta_.tags.append("x")
+        A.meta_.cfg["k"] = "v"
+        assert B.meta_.tags == []  # in-place mutation must not leak
+        assert B.meta_.cfg == {}
 
 
 class TestResolvePythonType:

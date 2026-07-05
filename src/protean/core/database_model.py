@@ -5,7 +5,7 @@ from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import attributes, declared_fields
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import Any, cast, ClassVar, TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
@@ -43,13 +43,11 @@ class BaseDatabaseModel(Element, OptionsMixin):
             raise NotSupportedError("BaseDatabaseModel cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("database", None),
-            ("part_of", None),
-            ("schema_name", None),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("database", None),
+        ("part_of", None),
+        ("schema_name", None),
+    ]
 
     @classmethod
     def derive_schema_name(cls) -> str:

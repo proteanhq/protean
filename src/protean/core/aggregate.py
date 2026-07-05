@@ -34,6 +34,7 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
+from protean.utils.container import DerivedDefault
 from protean.utils.eventing import DomainMeta, MessageEnvelope, MessageHeaders, Metadata
 from protean.utils.globals import current_domain
 from protean.utils.reflection import (
@@ -98,21 +99,25 @@ class BaseAggregate(BaseEntity):
             raise NotSupportedError("BaseAggregate cannot be instantiated")
         return cast("BaseAggregate", super().__new__(cls, *args, **kwargs))
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("abstract", False),
-            ("aggregate_cluster", None),
-            ("auto_add_id_field", True),
-            ("fact_events", False),
-            ("indexes", ()),
-            ("is_event_sourced", False),
-            ("database_model", None),
-            ("provider", "default"),
-            ("schema_name", inflection.underscore(cls.__name__)),
-            ("stream_category", inflection.underscore(cls.__name__)),
-            ("limit", 100),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("abstract", False),
+        ("aggregate_cluster", None),
+        ("auto_add_id_field", True),
+        ("fact_events", False),
+        ("indexes", ()),
+        ("is_event_sourced", False),
+        ("database_model", None),
+        ("provider", "default"),
+        (
+            "schema_name",
+            DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
+        ),
+        (
+            "stream_category",
+            DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
+        ),
+        ("limit", 100),
+    ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

@@ -58,11 +58,11 @@ Example:
 """
 
 import logging
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, ClassVar, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import Element, OptionsMixin
+from protean.utils.container import DerivedDefault, Element, OptionsMixin
 from protean.utils.mixins import HandlerMixin
 
 logger = logging.getLogger(__name__)
@@ -114,39 +114,40 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
             raise NotSupportedError("BaseEventHandler cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict[str, Any]]]]]:
-        part_of = (
-            getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
-        )
-
-        # When ``part_of`` is a string reference, the aggregate is not yet
-        # resolved, so its stream_category cannot be derived here. The
-        # ElementResolver fills it in once the reference is resolved.
-        stream_category = (
-            part_of.meta_.stream_category
-            if part_of and not isinstance(part_of, str)
-            else None
-        )
-
-        return [
-            ("part_of", part_of),
-            ("source_stream", None),
-            ("stream_category", stream_category),
-            # Transient-failure retry policy. ``retries`` (int) sets the max
-            # retry attempts on transient exceptions and overrides the
-            # domain-level ``server.transient_retry`` config; ``None`` defers to
-            # it. ``backoff`` selects the delay strategy ("exponential" |
-            # "linear" | "fixed"). ``retry_exceptions`` overrides which
-            # exception types are treated as transient (classes or dotted paths).
-            ("retries", None),
-            ("backoff", None),
-            ("retry_exceptions", None),
-            # Subscription configuration options
-            ("subscription_type", None),  # SubscriptionType enum or None for default
-            ("subscription_profile", None),  # SubscriptionProfile enum or None
-            ("subscription_config", {}),  # Dict of custom config overrides
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("part_of", None),
+        ("source_stream", None),
+        # ``stream_category`` is derived from ``part_of``. When ``part_of`` is a
+        # string reference, the aggregate is not yet resolved, so its
+        # stream_category cannot be derived here; the ElementResolver fills it
+        # in once the reference is resolved. This default is only consulted when
+        # ``stream_category`` is unset, by which point ``part_of`` has already
+        # been resolved onto ``meta_``.
+        (
+            "stream_category",
+            DerivedDefault(
+                lambda cls: (
+                    cls.meta_.part_of.meta_.stream_category
+                    if getattr(cls.meta_, "part_of", None)
+                    and not isinstance(cls.meta_.part_of, str)
+                    else None
+                )
+            ),
+        ),
+        # Transient-failure retry policy. ``retries`` (int) sets the max
+        # retry attempts on transient exceptions and overrides the
+        # domain-level ``server.transient_retry`` config; ``None`` defers to
+        # it. ``backoff`` selects the delay strategy ("exponential" |
+        # "linear" | "fixed"). ``retry_exceptions`` overrides which
+        # exception types are treated as transient (classes or dotted paths).
+        ("retries", None),
+        ("backoff", None),
+        ("retry_exceptions", None),
+        # Subscription configuration options
+        ("subscription_type", None),  # SubscriptionType enum or None for default
+        ("subscription_profile", None),  # SubscriptionProfile enum or None
+        ("subscription_config", {}),  # Dict of custom config overrides
+    ]
 
 
 _T = TypeVar("_T", bound=OptionsMixin)

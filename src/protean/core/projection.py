@@ -23,7 +23,7 @@ from protean.utils import (
     derive_element_class,
     inflection,
 )
-from protean.utils.container import Element, OptionsMixin
+from protean.utils.container import DerivedDefault, Element, OptionsMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, value_object_fields
 
 logger = logging.getLogger(__name__)
@@ -111,22 +111,23 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
             raise NotSupportedError("BaseProjection cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("abstract", False),
-            ("cache", None),
-            ("database_model", None),
-            # When True, the projection is populated by a subscriber or event
-            # handler (the anti-corruption-layer / cross-domain pattern) rather
-            # than a co-located @projector. Suppresses PROJECTION_WITHOUT_PROJECTOR.
-            ("externally_populated", False),
-            ("indexes", ()),
-            ("order_by", ()),
-            ("provider", "default"),
-            ("schema_name", inflection.underscore(cls.__name__)),
-            ("limit", 100),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("abstract", False),
+        ("cache", None),
+        ("database_model", None),
+        # When True, the projection is populated by a subscriber or event
+        # handler (the anti-corruption-layer / cross-domain pattern) rather
+        # than a co-located @projector. Suppresses PROJECTION_WITHOUT_PROJECTOR.
+        ("externally_populated", False),
+        ("indexes", ()),
+        ("order_by", ()),
+        ("provider", "default"),
+        (
+            "schema_name",
+            DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
+        ),
+        ("limit", 100),
+    ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

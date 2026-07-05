@@ -1,8 +1,8 @@
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import Element, OptionsMixin
+from protean.utils.container import DerivedDefault, Element, OptionsMixin
 from protean.utils.mixins import HandlerMixin, handle
-from typing import Any, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 
 class BaseProjector(Element, HandlerMixin, OptionsMixin):
@@ -52,60 +52,46 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
 
     element_type = DomainObjects.PROJECTOR
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        projector_for = (
-            getattr(cls.meta_, "projector_for")
-            if hasattr(cls.meta_, "projector_for")
-            else None
-        )
-
-        # Use aggregates if specified, otherwise default to empty list
-        aggregates = (
-            getattr(cls.meta_, "aggregates") if hasattr(cls.meta_, "aggregates") else []
-        )
-
-        # Use stream categories if specified. Otherwise,
-        #   If aggregates are specified, gather stream categories from each aggregate
-        #   If no stream categories nor aggregates are specified, default to empty list
-        #   If both are specified, use stream categories
-        stream_categories = (
-            getattr(cls.meta_, "stream_categories")
-            if hasattr(cls.meta_, "stream_categories")
-            else []
-        )
-
-        # If aggregates are specified and stream categories are not, gather stream categories from each aggregate
-        if aggregates and not stream_categories:
-            stream_categories = [
-                aggregate.meta_.stream_category for aggregate in aggregates
-            ]
-
-        return [
-            ("projector_for", projector_for),
-            ("aggregates", aggregates),
-            ("stream_categories", stream_categories),
-            # Transient-failure retry policy (parity with event handlers and
-            # command handlers). ``retries`` (int) sets the max retry attempts
-            # on transient exceptions and overrides the domain-level
-            # ``server.transient_retry`` config; ``None`` defers to it.
-            # ``backoff`` selects the delay strategy ("exponential" | "linear"
-            # | "fixed"). ``retry_exceptions`` overrides which exception types
-            # are treated as transient (classes or dotted paths). The shared
-            # handler wrapper (``protean.utils.mixins``) already consumes these.
-            ("retries", None),
-            ("backoff", None),
-            ("retry_exceptions", None),
-            # Subscription configuration options (parity with event handlers and PMs)
-            ("subscription_type", None),
-            ("subscription_profile", None),
-            ("subscription_config", {}),
-            # Consume-side idempotency: when True, each handler method records a
-            # (message_id, handler) marker in the same UnitOfWork as its
-            # read-model write, so a redelivered event is applied exactly once
-            # on a transactional provider. See ADR-0017.
-            ("idempotent", False),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        # ``projector_for`` resolves to ``None`` whenever this default is
+        # consulted (a concrete value is already on ``meta_`` and skips it).
+        ("projector_for", None),
+        # Use aggregates if specified, otherwise default to empty list.
+        ("aggregates", []),
+        # Use stream categories if specified. Otherwise, if aggregates are
+        # specified, gather stream categories from each aggregate; if neither
+        # is specified, default to an empty list. This default is only
+        # consulted when ``stream_categories`` is unset.
+        (
+            "stream_categories",
+            DerivedDefault(
+                lambda cls: [
+                    aggregate.meta_.stream_category
+                    for aggregate in getattr(cls.meta_, "aggregates", [])
+                ]
+            ),
+        ),
+        # Transient-failure retry policy (parity with event handlers and
+        # command handlers). ``retries`` (int) sets the max retry attempts
+        # on transient exceptions and overrides the domain-level
+        # ``server.transient_retry`` config; ``None`` defers to it.
+        # ``backoff`` selects the delay strategy ("exponential" | "linear"
+        # | "fixed"). ``retry_exceptions`` overrides which exception types
+        # are treated as transient (classes or dotted paths). The shared
+        # handler wrapper (``protean.utils.mixins``) already consumes these.
+        ("retries", None),
+        ("backoff", None),
+        ("retry_exceptions", None),
+        # Subscription configuration options (parity with event handlers and PMs)
+        ("subscription_type", None),
+        ("subscription_profile", None),
+        ("subscription_config", {}),
+        # Consume-side idempotency: when True, each handler method records a
+        # (message_id, handler) marker in the same UnitOfWork as its
+        # read-model write, so a redelivered event is applied exactly once
+        # on a transactional provider. See ADR-0017.
+        ("idempotent", False),
+    ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseProjector":
         if cls is BaseProjector:
