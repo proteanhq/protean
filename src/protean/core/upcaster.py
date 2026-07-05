@@ -14,7 +14,7 @@ Example::
 
 import logging
 from abc import abstractmethod
-from typing import Any, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
@@ -45,13 +45,11 @@ class BaseUpcaster(Element, OptionsMixin):
             raise NotSupportedError("BaseUpcaster cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("event_type", None),
-            ("from_version", None),
-            ("to_version", None),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("event_type", None),
+        ("from_version", None),
+        ("to_version", None),
+    ]
 
     @abstractmethod
     def upcast(self, data: dict[str, Any]) -> dict[str, Any]:

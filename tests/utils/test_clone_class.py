@@ -438,12 +438,11 @@ class TestCloneClass:
         assert hasattr(cloned_aggregate, "_version")
         assert hasattr(cloned_aggregate, "_next_version")
 
-        # Test that aggregate methods from BaseAggregate are inherited
+        # Test that the option defaults from BaseAggregate are inherited
         assert hasattr(cloned_aggregate, "_default_options")
-        assert callable(cloned_aggregate._default_options)
 
         # Test that metadata behavior is preserved
-        default_options = cloned_aggregate._default_options()
+        default_options = cloned_aggregate._default_options
         assert isinstance(default_options, list)
         assert len(default_options) > 0
 

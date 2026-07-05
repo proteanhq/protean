@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import Any, cast, ClassVar, TYPE_CHECKING, TypeVar
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 class BaseEventSourcedRepository(Element, OptionsMixin):
     element_type = DomainObjects.EVENT_SOURCED_REPOSITORY
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [("part_of", None)]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [("part_of", None)]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEventSourcedRepository":
         # Prevent instantiation of `BaseEventSourcedRepository itself`
@@ -170,9 +168,12 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         is_temporal = at_version is not None or as_of is not None
 
         # Temporal queries always bypass the identity map.
-        if not is_temporal:
-            if current_uow and identifier in current_uow._identity_map:
-                return cast(BaseAggregate, current_uow._identity_map[identifier])
+        if not is_temporal and current_uow:
+            identity_map = current_uow._identity_map.get(
+                self.meta_.part_of.meta_.provider, {}
+            )
+            if identifier in identity_map:
+                return cast(BaseAggregate, identity_map[identifier])
 
         store = self._domain.event_store.store
         if store is None:

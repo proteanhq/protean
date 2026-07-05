@@ -54,7 +54,7 @@ from protean.utils import (
     fqn,
     inflection,
 )
-from protean.utils.container import Element, OptionsMixin
+from protean.utils.container import DerivedDefault, Element, OptionsMixin
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -172,36 +172,33 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
             raise NotSupportedError("BaseProcessManager cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        # Use aggregates if specified, otherwise default to empty list
-        aggregates = (
-            getattr(cls.meta_, "aggregates") if hasattr(cls.meta_, "aggregates") else []
-        )
-
-        # Use stream categories if specified; otherwise derive from aggregates
-        stream_categories = (
-            getattr(cls.meta_, "stream_categories")
-            if hasattr(cls.meta_, "stream_categories")
-            else []
-        )
-
-        if aggregates and not stream_categories:
-            stream_categories = [
-                aggregate.meta_.stream_category for aggregate in aggregates
-            ]
-
-        return [
-            ("abstract", False),
-            ("auto_add_id_field", True),
-            ("stream_category", inflection.underscore(cls.__name__)),
-            ("stream_categories", stream_categories),
-            ("aggregates", aggregates),
-            # Subscription configuration options
-            ("subscription_type", None),
-            ("subscription_profile", None),
-            ("subscription_config", {}),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("abstract", False),
+        ("auto_add_id_field", True),
+        (
+            "stream_category",
+            DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
+        ),
+        # Use stream categories if specified; otherwise derive from aggregates.
+        # This default is only consulted when ``stream_categories`` is unset;
+        # ``aggregates`` is read via ``getattr`` so ordering within this list
+        # does not matter.
+        (
+            "stream_categories",
+            DerivedDefault(
+                lambda cls: [
+                    aggregate.meta_.stream_category
+                    for aggregate in getattr(cls.meta_, "aggregates", [])
+                ]
+            ),
+        ),
+        # Use aggregates if specified, otherwise default to empty list.
+        ("aggregates", []),
+        # Subscription configuration options
+        ("subscription_type", None),
+        ("subscription_profile", None),
+        ("subscription_config", {}),
+    ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

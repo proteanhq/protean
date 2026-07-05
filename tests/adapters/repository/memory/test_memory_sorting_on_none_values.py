@@ -20,8 +20,13 @@ def test_for_sorting_without_nulls(test_domain):
     user_repo.add(User(name="Baby1", seq=3))
     user_repo.add(User(name="Baby2", seq=4))
 
-    user_repo.query.order_by("seq").all().first.name == "John"
-    user_repo.query.order_by("-seq").all().first.name == "Baby2"
+    # Assert the full ordered sequence, ascending and descending, so a broken
+    # ``-`` (descending) prefix cannot slip through by matching only ``.first``.
+    ascending = [u.name for u in user_repo.query.order_by("seq").all().items]
+    assert ascending == ["John", "Jane", "Baby1", "Baby2"]
+
+    descending = [u.name for u in user_repo.query.order_by("-seq").all().items]
+    assert descending == ["Baby2", "Baby1", "Jane", "John"]
 
 
 def test_for_sorting_with_dates(test_domain):

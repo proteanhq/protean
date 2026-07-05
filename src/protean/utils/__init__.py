@@ -303,7 +303,7 @@ def _prepare_pydantic_namespace(
 
     # 2. Auto-id injection for entity/aggregate types
     needs_identity = any(
-        name == "auto_add_id_field" for name, _ in base_cls._default_options()
+        name == "auto_add_id_field" for name, _ in base_cls._default_options
     )
     auto_add = opts.get("auto_add_id_field", True)
 
@@ -439,7 +439,7 @@ def derive_element_class(
     normalized_deprecated = _normalize_deprecated(raw_deprecated)
 
     # Ensure options being passed in are known
-    known_options = [name for (name, _) in base_cls._default_options()]
+    known_options = [name for (name, _) in base_cls._default_options]
     if not all(opt in known_options for opt in opts):
         raise ConfigurationError(f"Unknown option(s) {set(opts) - set(known_options)}")
 

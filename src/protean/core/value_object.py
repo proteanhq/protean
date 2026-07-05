@@ -91,12 +91,10 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
             raise NotSupportedError("BaseValueObject cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("abstract", False),
-            ("part_of", None),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("abstract", False),
+        ("part_of", None),
+    ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

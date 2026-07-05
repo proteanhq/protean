@@ -280,16 +280,14 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
 
     _metadata: Any = PrivateAttr(default=None)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("abstract", False),
-            ("aggregate_cluster", None),
-            ("part_of", None),
-            ("is_fact_event", False),
-            ("published", False),
-            ("version", None),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("abstract", False),
+        ("aggregate_cluster", None),
+        ("part_of", None),
+        ("is_fact_event", False),
+        ("published", False),
+        ("version", None),
+    ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -487,9 +485,7 @@ class Message(Element, BaseModel, OptionsMixin):
     # JSON representation of the message metadata
     metadata: Metadata | None = None
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return []
+    _default_options: ClassVar[list[tuple[str, Any]]] = []
 
     def to_dict(self) -> dict[str, Any]:
         """Return data as a dictionary."""

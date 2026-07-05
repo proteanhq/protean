@@ -2,7 +2,7 @@ import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, List, TypeVar, Union, cast
+from typing import Any, Callable, cast, ClassVar, List, TYPE_CHECKING, TypeVar, Union
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
@@ -58,11 +58,9 @@ class BaseDomainService(Element, OptionsMixin):
             raise NotSupportedError("BaseDomainService cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
-    def _default_options(cls) -> list[tuple[str, Any]]:
-        return [
-            ("part_of", None),
-        ]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("part_of", None),
+    ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
