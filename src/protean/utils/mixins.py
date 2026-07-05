@@ -4,7 +4,7 @@ import logging
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Union
+from typing import Any, Callable, ClassVar, Union
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -484,7 +484,7 @@ class HandlerMixin:
     # Provided by subclasses / ``__init_subclass__``. ``element_type`` is set as a
     # class attribute on each concrete handler base (CommandHandler, EventHandler,
     # QueryHandler); ``_handlers`` is populated per-subclass in ``__init_subclass__``.
-    element_type: DomainObjects
+    element_type: ClassVar[DomainObjects]
     _handlers: defaultdict[Any, set[Callable[..., Any]]]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
