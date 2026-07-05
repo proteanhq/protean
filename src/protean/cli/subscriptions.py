@@ -14,6 +14,7 @@ Usage::
 """
 
 import json as json_mod
+from typing import TYPE_CHECKING
 
 import typer
 from rich import print
@@ -25,17 +26,20 @@ from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from protean.domain import Domain
+
 logger = get_logger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Monitor subscription lag and health."""
 
 
-def _load_domain(domain_path: str):
+def _load_domain(domain_path: str) -> "Domain":
     """Load and initialize a domain, handling errors consistently."""
     try:
         derived_domain = derive_domain(domain_path)
