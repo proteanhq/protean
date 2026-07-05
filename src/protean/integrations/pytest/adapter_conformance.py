@@ -60,7 +60,7 @@ from protean.port.provider import DatabaseCapabilities
 # ---------------------------------------------------------------------------
 try:
     from tests.shared import ELASTICSEARCH_URI, MSSQL_URI, POSTGRES_URI
-except ModuleNotFoundError:
+except ModuleNotFoundError:  # pragma: no cover — tests.shared is always importable in-repo; this fallback is only for downstream installs without the test tree
     POSTGRES_URI = "postgresql://postgres:postgres@localhost:5432/postgres"
     ELASTICSEARCH_URI: dict[str, list[str]] = {"hosts": ["localhost"]}  # type: ignore[no-redef]
     MSSQL_URI = (
