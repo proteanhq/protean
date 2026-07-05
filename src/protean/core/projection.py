@@ -2,7 +2,7 @@
 
 import logging
 import threading
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
@@ -302,7 +302,11 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
 
         # Reconstruct ValueObjects from shadow kwargs when the VO itself
         # was not explicitly provided (e.g. during repository retrieval).
-        for field_name, field_obj in value_object_fields(self).items():
+        for field_name, base_field_obj in value_object_fields(self).items():
+            # ``value_object_fields`` filters on ``isinstance(_, ValueObject)``,
+            # so every entry is a ``ValueObject`` at runtime; narrow the
+            # base-typed reflection return so the VO-only attributes resolve.
+            field_obj = cast(ValueObject, base_field_obj)
             # Identity, not truthiness (#1078): an already-set all-default VO is
             # falsy but present and must not be clobbered by a shadow rebuild.
             if (
@@ -316,7 +320,10 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
                     )
                 # Only reconstruct if at least one value is not None
                 if any(v is not None for v in vo_kwargs.values()):
-                    descriptor_kwargs[field_name] = field_obj.value_object_cls(
+                    # ``value_object_cls`` is a resolved class at this point; the
+                    # untyped property in ``fields/embedded.py`` widens it to
+                    # ``str | type``, so pyright flags the call.
+                    descriptor_kwargs[field_name] = field_obj.value_object_cls(  # pyright: ignore[reportCallIssue]
                         **vo_kwargs
                     )
 
@@ -326,7 +333,8 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
             object.__setattr__(self, name, value)
 
         # Initialize VO shadow fields to None when the VO itself is not set
-        for field_obj in value_object_fields(self).values():
+        for base_field_obj in value_object_fields(self).values():
+            field_obj = cast(ValueObject, base_field_obj)
             for _, shadow_field in field_obj.get_shadow_fields():
                 attr_name = shadow_field.attribute_name
                 if attr_name not in self.__dict__:
@@ -448,19 +456,25 @@ def projection_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
     # Derive the projection class from the base projection class
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 
-    if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
+    # ``derive_element_class`` returns a ``BaseProjection`` subclass; narrow so
+    # the projection-only surface (``meta_``) is visible to the type checker.
+    projection_cls = cast(type[BaseProjection], element_cls)
+
+    if not projection_cls.meta_.abstract and not hasattr(
+        projection_cls, _ID_FIELD_NAME
+    ):
         raise IncorrectUsageError(
-            f"Projection `{element_cls.__name__}` needs to have at least one identifier"
+            f"Projection `{projection_cls.__name__}` needs to have at least one identifier"
         )
 
     # If the projection has neither database nor cache provider, raise an error
-    if not (element_cls.meta_.provider or element_cls.meta_.cache):
+    if not (projection_cls.meta_.provider or projection_cls.meta_.cache):
         raise NotSupportedError(
-            f"{element_cls.__name__} projection needs to have either a database or a cache provider"
+            f"{projection_cls.__name__} projection needs to have either a database or a cache provider"
         )
 
     # A cache, when specified, overrides the provider
-    if element_cls.meta_.cache:
-        element_cls.meta_.provider = None
+    if projection_cls.meta_.cache:
+        projection_cls.meta_.provider = None
 
     return element_cls
