@@ -36,7 +36,10 @@ from sqlalchemy import (
 )
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import sqlite as sqlite_dialect
+from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
+from sqlalchemy.pool import QueuePool
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy import inspect
 from sqlalchemy.schema import CreateIndex
@@ -447,7 +450,8 @@ def _make_sa_indexes(
 def _attribute_map(entity_cls: typing.Any) -> dict[str, str]:
     """Map declared field names to their persisted column attribute names."""
     return {
-        name: field_obj.attribute_name for name, field_obj in fields(entity_cls).items()
+        name: field_obj.attribute_name or name
+        for name, field_obj in fields(entity_cls).items()
     }
 
 
@@ -592,7 +596,10 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         if "meta_" in cls.__dict__:
             entity_cls = cls.__dict__["meta_"].part_of
             for _, field_obj in attributes(entity_cls).items():
-                attribute_name = field_obj.attribute_name
+                # ``attribute_name`` is ``None`` only on an unbound Field; the
+                # fields returned by ``attributes()`` are always bound.
+                attribute_name = field_obj.attribute_name or field_obj.field_name
+                assert attribute_name is not None
 
                 # Map the field if not in attributes
                 if attribute_name not in cls.__dict__:
@@ -601,7 +608,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         field_obj = field_obj.field_obj
 
                     # Resolve the Python type for Pydantic shims (used in dialect checks)
-                    resolved_type: type | None
+                    resolved_type: type[typing.Any] | None
                     if isinstance(field_obj, ResolvedField):
                         resolved_type = _resolve_python_type(field_obj)
                     elif isinstance(field_obj, ValueObjectList):
@@ -688,7 +695,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         sa_type_cls = sa_types.String
 
                     # Build the column arguments
-                    col_args = {
+                    col_args: dict[str, typing.Any] = {
                         "primary_key": field_obj.identifier,
                         "nullable": not field_obj.required,
                         "unique": field_obj.unique,
@@ -699,9 +706,11 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     #   will not work for MSSQL.
                     if field_obj.identifier and sa_type_cls == sa_types.String:
                         type_kwargs["length"] = 255
-                    elif resolved_type is str:
+                    elif resolved_type is str and isinstance(field_obj, ResolvedField):
                         type_kwargs["length"] = field_obj.max_length
-                    elif resolved_type is decimal.Decimal:
+                    elif resolved_type is decimal.Decimal and isinstance(
+                        field_obj, ResolvedField
+                    ):
                         # NUMERIC(precision, scale); without them the column is
                         # arbitrary-precision (lossless) on backends that support it.
                         if field_obj.precision is not None:
@@ -755,7 +764,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             if raw.dialect == raw_dialect:
                 event.listen(cls.__table__, "after_create", DDL(raw.ddl))
 
-    @orm.declared_attr
+    @orm.declared_attr.directive
     def __tablename__(cls) -> str:
         return cls.derive_schema_name()
 
@@ -770,6 +779,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             if isinstance(attr_obj, Reference):
                 continue
             key = attr_obj.referenced_as or attr_obj.attribute_name
+            assert key is not None
             value = item_dict.get(key)
             if isinstance(attr_obj, ValueObjectList) and value:
                 item_dict[key] = attr_obj.as_dict(value)
@@ -781,6 +791,13 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 
 class SADAO(BaseDAO):
     """DAO implementation for Databases compliant with SQLAlchemy"""
+
+    # An ``SADAO`` is always constructed with an ``SAProvider`` (see
+    # ``SAProvider.get_dao``) and a ``SqlalchemyModel`` subclass; narrow the base
+    # annotations so the SQLAlchemy-specific engine/session/table attributes
+    # resolve.
+    provider: "SAProvider"
+    database_model_cls: type[SqlalchemyModel]
 
     def __repr__(self) -> str:
         return f"SQLAlchemyDAO <{self.entity_cls.__name__}>"
@@ -889,6 +906,7 @@ class SADAO(BaseDAO):
         if not order_cols:
             entity_id_field = id_field(self.entity_cls)
             assert entity_id_field is not None
+            assert entity_id_field.attribute_name is not None
             order_cols.append(
                 getattr(self.database_model_cls, entity_id_field.attribute_name).asc()
             )
@@ -965,6 +983,7 @@ class SADAO(BaseDAO):
 
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
 
         # Fetch the record from database
         identifier = getattr(model_obj, entity_id_field.attribute_name)
@@ -1048,6 +1067,7 @@ class SADAO(BaseDAO):
         """
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
         id_attr = entity_id_field.attribute_name
 
         table = self.database_model_cls.__table__
@@ -1148,6 +1168,7 @@ class SADAO(BaseDAO):
 
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
 
         # Fetch the record from database
         identifier = getattr(model_obj, entity_id_field.attribute_name)
@@ -1188,7 +1209,7 @@ class SADAO(BaseDAO):
         conn = self._get_session()
         assert conn is not None
 
-        del_count = 0
+        del_count: int = 0
         if criteria:
             qs = conn.query(self.database_model_cls).filter(
                 self._build_filters(criteria)
@@ -1237,7 +1258,8 @@ class SADAO(BaseDAO):
         assert conn is not None
         try:
             result = conn.execute(stmt)
-            return result.rowcount or 0
+            rowcount: int = result.rowcount or 0
+            return rowcount
         except DatabaseError:
             logger.exception("repository.sqlalchemy.delete_top_failed")
             raise
@@ -1294,6 +1316,15 @@ class SAProvider(BaseProvider):
     # database name here; declared for the type checkers since it is read on
     # the abstract base.
     __database__: ClassVar[str]
+
+    # Populated in ``__init__``; declared here so the type checkers see the
+    # SQLAlchemy-specific engine/session state that the DAO reads back off the
+    # provider.
+    _engine: Engine
+    _metadata: MetaData
+    _session_factory: sessionmaker[Session]
+    _scoped_session_cls: scoped_session[Session]
+    _database_model_classes: dict[str, type]
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
@@ -1483,6 +1514,10 @@ class SAProvider(BaseProvider):
             return {}
 
         pool = self._engine.pool
+        # Only ``QueuePool`` exposes these counters; SingletonThreadPool
+        # (SQLite) does not, so it falls through to the empty dict.
+        if not isinstance(pool, QueuePool):
+            return {}
         try:
             return {
                 "size": pool.size(),
@@ -1491,7 +1526,7 @@ class SAProvider(BaseProvider):
                 "checked_in": pool.checkedin(),
             }
         except AttributeError:
-            # SingletonThreadPool (SQLite) lacks these methods
+            # Defensive: any pool implementation lacking these methods.
             return {}
 
     def close(self) -> None:
@@ -1561,7 +1596,9 @@ class SAProvider(BaseProvider):
         # If `database_model_cls` is already subclassed from SqlAlchemyModel,
         #   this method call is a no-op
         if issubclass(database_model_cls, SqlalchemyModel):
-            return database_model_cls
+            # ``database_model_cls`` is an untyped (``Any``) parameter; the
+            # ``issubclass`` guard establishes it is a class at runtime.
+            return typing.cast(type, database_model_cls)
         else:
             # Strip out `Column` attributes from the model class
             # Create a deep copy to make this work
@@ -1659,7 +1696,7 @@ class SAProvider(BaseProvider):
         if data is None:
             data = {}
         assert isinstance(query, str)
-        assert isinstance(data, (dict, None))
+        assert isinstance(data, dict)
 
         conn = self.get_connection()
         try:
@@ -1853,6 +1890,7 @@ class DefaultLookup(BaseLookup):
         return self.target
 
     def as_expression(self) -> typing.Any:
+        assert self.lookup_name is not None
         lookup_func = getattr(self.process_source(), operators[self.lookup_name])
         return lookup_func(self.process_target())
 
@@ -1975,6 +2013,13 @@ class IsNull(DefaultLookup):
 
 class MSSQLStringLookupMixin:
     """Mixin to add MSSQL case-sensitive collation support to string lookups"""
+
+    if TYPE_CHECKING:
+        # This mixin is only ever combined with ``BaseLookup`` subclasses (see
+        # the ``MSSQL*`` lookups below), which supply these attributes at
+        # runtime. Declared here so the mixin's own methods type-check.
+        source: typing.Any
+        database_model_cls: type[BaseDatabaseModel] | None
 
     def _is_string_type(self, column: typing.Any) -> bool:
         """Check if the column type is a string-based type"""
