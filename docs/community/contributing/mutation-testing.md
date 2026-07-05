@@ -16,7 +16,7 @@ by module, not to chase a global percentage.
 ```shell
 make mutation                       # default target: the outbox module
 make mutation TARGET=entity         # a different module
-MUT_LINES="645-690,749-802" make mutation TARGET=entity   # filter the report
+MUT_FILTER="_run_invariants|_validate_status_transition" make mutation TARGET=entity
 ```
 
 `make mutation` delegates to [`scripts/mutation.sh`](https://github.com/proteanhq/protean/blob/main/scripts/mutation.sh),
@@ -27,31 +27,35 @@ which:
 2. Mutates the target module and runs a **fast subset** of its unit tests
    against each mutant, not the whole suite. A per-module subset keeps a run to
    a few minutes.
-3. Prints a mutation score and the list of surviving mutants, read straight from
-   the `.mutmut-cache` SQLite database.
+3. Prints a mutation score and the list of surviving mutants.
 
-A run mutates the source file in place and restores it afterwards; the script
-keeps a backup and restores unconditionally, so an interrupted run still leaves
-the working tree clean.
+It uses [mutmut](https://github.com/boxed/mutmut) 3.x, which copies the source
+tree into a `./mutants/` directory and runs the tests against the copy — so the
+real source is never edited in place. The script cleans up `mutants/` (and the
+temporary `setup.cfg` it writes for mutmut's config) when it finishes.
 
 ### Adding a target
 
 Targets live in a `case` block in `scripts/mutation.sh`. Each maps a name to a
-source module and the fast test subset that exercises it. Pick the smallest set
-of tests that covers the module's behaviour; a broad subset only slows the run
-without finding more survivors.
+module and the fast test subset that exercises it. Pick the smallest set of tests
+that covers the module's behaviour; a broad subset only slows the run without
+finding more survivors.
 
 ## Reading the report
 
 The report ends with a score and a list of survivors:
 
 ```
-MUTATION SCORE: 94.9%  (278/293 mutants killed)
+MUTATION SCORE: 83.6%  (422/505 killed; 34 lines had no covering test)
 
-SURVIVORS: 3
-  src/protean/utils/outbox.py:203:  if current_time < ensure_utc_aware(self.next_retry_at):
+SURVIVORS: 83 (inspect one with: ... -m mutmut show <name>)
+  protean.utils.outbox.xǁOutboxǁstart_processing__mutmut_1: survived
   ...
 ```
+
+Mutant names are function-scoped (`…ǁClassǁmethod__mutmut_N`), so you can focus a
+run on one area with `MUT_FILTER` (a grep pattern on the names) and inspect any
+single mutant with `mutmut show <name>` to see the exact change.
 
 For each survivor, decide which of three buckets it falls into:
 
@@ -79,23 +83,14 @@ Treat this as a **quarterly pass**: pick one or two core modules, drive their
 score up by adding the missing tests, and land the tests (never a lowered
 threshold). Modules already hardened this way include `utils/outbox.py`.
 
-## Environment caveats
+## Why a separate Python 3.12 environment
 
-Two quirks are handled by the script so you do not have to, but they are worth
-knowing if you invoke `mutmut` directly:
-
-- **Python version.** `mutmut` 2.x crashes on Python 3.14 (a
-  `cannot pickle 'itertools.count'` error) and records nothing. The script
-  therefore builds `.venv-mutation` at Python 3.12, which is within Protean's
-  supported range. The mutation results are representative of every supported
-  version because the mutated logic is version independent.
-- **Reading results.** `mutmut results` and `mutmut show` crash on the resolved
-  `pony-orm` ("QueryResultIterator not iterable"). The script reads survivors
-  directly from the `.mutmut-cache` SQLite file instead:
-
-    ```sql
-    select L.line_number, L.line
-    from Mutant M join Line L on M.line = L.id
-    where M.status = 'bad_survived'
-    order by L.line_number;
-    ```
+The tool runs in a dedicated `.venv-mutation` at **Python 3.12**, not the
+project's Python 3.14, and this is deliberate. Python 3.14 is currently too
+bleeding-edge for reliable mutation testing of Protean's compiled dependencies
+(SQLAlchemy's C extensions, greenlet, and friends): under 3.14, mutmut's forked
+workers segfault on roughly a fifth of mutants, so the results are incomplete.
+Python 3.12 runs the whole set cleanly, and because the mutated logic is
+version-independent the results are representative of every supported version.
+Keeping the tool in its own environment also means `import protean` never pulls
+in the mutation-only dependency for normal development.

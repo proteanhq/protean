@@ -93,7 +93,7 @@ venv.bak/
 
 # Mutation testing (mutmut) — see scripts/mutation.sh
 .mutmut-cache
-*.mutbak
+mutants/
 
 # Spyder project settings
 .spyderproject

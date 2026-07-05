@@ -156,14 +156,14 @@ types = [
     "types-redis>=3.5.4",
     "types-Werkzeug>=1.0.5",
 ]
-# Mutation testing. mutmut 2.x is pinned (<3) because 3.x changed its CLI/config
-# model. It is only ever installed into the dedicated .venv-mutation environment
-# built by `make mutation` / scripts/mutation.sh — never the project .venv.
-# mutmut 2.5.1 crashes on Python 3.14 (an itertools.count pickle bug), so that
-# env is created at Python 3.12. See scripts/mutation.sh and
+# Mutation testing. Installed only into the dedicated .venv-mutation environment
+# built by `make mutation` / scripts/mutation.sh — never the project .venv. That
+# env is Python 3.12: Python 3.14 is too bleeding-edge for reliable mutation
+# testing of Protean's C-extension deps (mutmut 2.x pickle-crashes on 3.14;
+# mutmut 3.x segfaults ~20% of mutants there). See scripts/mutation.sh and
 # docs/community/contributing/mutation-testing.md for the full rationale.
 mutation = [
-    "mutmut<3",
+    "mutmut>=3",
 ]
 
 ##################

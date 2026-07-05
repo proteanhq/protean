@@ -38,11 +38,11 @@ typecheck:
 	uv run mypy src/protean --config-file pyproject.toml
 
 # Mutation testing: find untested / under-asserted code paths by mutating a
-# target module and checking whether its fast unit-test subset notices. Runs in
-# a dedicated Python 3.12 env (.venv-mutation) because mutmut 2.x is broken on
-# 3.14; the project .venv is left untouched. Override the module with
-# TARGET=... (outbox | entity | status-field) and optionally filter the report
-# with MUT_LINES="645-690,755-800". See
+# target module and checking whether its fast unit-test subset notices. Uses
+# mutmut 3.x in a dedicated Python 3.12 env (.venv-mutation) — 3.14 is unreliable
+# for this; the project .venv is left untouched. Override the module with
+# TARGET=... (outbox | entity | status-field) and optionally focus the survivor
+# report with MUT_FILTER="<grep on mutant names>" (e.g. a method name). See
 # docs/community/contributing/mutation-testing.md.
 TARGET ?= outbox
 mutation:
