@@ -1,5 +1,6 @@
 """DomainFixture — test lifecycle manager for Protean domains."""
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 
 from protean.domain import Domain
@@ -50,7 +51,7 @@ class DomainFixture:
             self.domain.drop_database()
 
     @contextmanager
-    def domain_context(self):
+    def domain_context(self) -> Iterator[Domain]:
         """Per-test context manager: push domain, yield, reset stores, pop.
 
         Activates the domain context so ``current_domain`` resolves to this
@@ -69,6 +70,6 @@ class DomainFixture:
             for _, broker in current_domain.brokers.items():
                 broker._data_reset()
 
-            current_domain.event_store.store._data_reset()
+            current_domain._require_event_store()._data_reset()
 
             ctx.pop()
