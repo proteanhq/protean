@@ -434,7 +434,8 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                     _shadow_field_names.add(attr_name)
             elif isinstance(fobj, ValueObject):
                 for sf in fobj.embedded_fields.values():
-                    _shadow_field_names.add(sf.attribute_name)
+                    if sf.attribute_name is not None:
+                        _shadow_field_names.add(sf.attribute_name)
 
         for name in list(kwargs):
             if name in _shadow_field_names:
@@ -561,19 +562,24 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 and getattr(self, field_name, None) is None
             ):
                 # Gather shadow field values from shadow_kwargs
-                vo_kwargs = {}
+                vo_kwargs: dict[str, Any] = {}
                 for embedded_field in field_obj.embedded_fields.values():
+                    if (
+                        embedded_field.attribute_name is None
+                        or embedded_field.field_name is None
+                    ):
+                        continue
                     vo_kwargs[embedded_field.field_name] = shadow_kwargs.get(
                         embedded_field.attribute_name
                     )
                 # Only reconstruct if at least one value is not None
                 if any(v is not None for v in vo_kwargs.values()):
                     # ``value_object_cls`` is a resolved class at this point; the
-                    # untyped property in ``fields/embedded.py`` widens it to
-                    # ``str | type``, so pyright flags the call.
-                    descriptor_kwargs[field_name] = field_obj.value_object_cls(  # pyright: ignore[reportCallIssue]
-                        **vo_kwargs
-                    )
+                    # property in ``fields/embedded.py`` widens it to
+                    # ``type[BaseValueObject] | str``, so narrow before calling.
+                    vo_cls = field_obj.value_object_cls
+                    assert not isinstance(vo_cls, str)
+                    descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
 
         # Set association/VO values via descriptors (triggers __set__).
         # Use object.__setattr__ to invoke the descriptor protocol directly,
@@ -592,14 +598,16 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             field_obj = cast(ValueObject, base_field_obj)
             for _, shadow_field in field_obj.get_shadow_fields():
                 attr_name = shadow_field.attribute_name
-                if attr_name not in self.__dict__:
+                if attr_name is not None and attr_name not in self.__dict__:
+                    # pyright models pydantic ``__dict__`` as a read-only
+                    # MappingProxyType; writing to it is valid at runtime.
                     self.__dict__[attr_name] = None  # pyright: ignore[reportIndexIssue]
 
         # Initialize Reference shadow fields to None when not already set
         for base_ref_obj in reference_fields(self).values():
             ref_obj = cast(Reference, base_ref_obj)
             shadow_name, shadow = ref_obj.get_shadow_field()
-            if shadow_name not in self.__dict__:
+            if shadow_name is not None and shadow_name not in self.__dict__:
                 self.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
         # Setup association pseudo-methods (add_*, remove_*, get_one_from_*, filter_*)
@@ -656,15 +664,19 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 try:
                     setattr(self, field_name, val)
                 except ValidationError as err:
-                    for fname in err.messages:
-                        errors.setdefault(fname, []).extend(err.messages[fname])
+                    # Field/setattr validation always raises the dict form of
+                    # ``messages`` (field name -> list of error strings).
+                    err_messages = cast("dict[str, list[str]]", err.messages)
+                    for fname in err_messages:
+                        errors.setdefault(fname, []).extend(err_messages[fname])
 
         for field_name, val in kwargs.items():
             try:
                 setattr(self, field_name, val)
             except ValidationError as err:
-                for fname in err.messages:
-                    errors.setdefault(fname, []).extend(err.messages[fname])
+                err_messages = cast("dict[str, list[str]]", err.messages)
+                for fname in err_messages:
+                    errors.setdefault(fname, []).extend(err_messages[fname])
 
         if errors:
             logger.error(f"Errors on Update: {errors}")
@@ -692,8 +704,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 invariant_method(self)
             except ValidationError as err:
                 failed_invariants.append(method_name)
-                for field_name in err.messages:
-                    errors[field_name].extend(err.messages[field_name])
+                # Invariant failures always raise the dict form of ``messages``.
+                err_messages = cast("dict[str, list[str]]", err.messages)
+                for field_name in err_messages:
+                    errors[field_name].extend(err_messages[field_name])
 
         # Recursively run invariants on associated entities
         for field_name, field_obj in declared_fields(self).items():
@@ -1175,7 +1189,8 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
         for _, field_obj in getattr(entity_cls, _FIELDS, {}).items():
             if isinstance(field_obj, Reference):
                 shadow_field_name, shadow_field = field_obj.get_shadow_field()
-                shadow_field.__set_name__(entity_cls, shadow_field_name)
+                if shadow_field_name is not None:
+                    shadow_field.__set_name__(entity_cls, shadow_field_name)
 
     # Iterate through methods marked as `@invariant` and record them for later use
     for klass in entity_cls.__mro__:
