@@ -127,8 +127,11 @@ class OutboxProcessor(BaseSubscription):
 
         self.tick_count = 0
 
-        # Will be initialized in initialize() method
-        self.subscriber_name: Optional[str] = None
+        # ``subscriber_name`` is refined to the Outbox aggregate name in
+        # ``initialize()``; until then the base subscription lifecycle (which
+        # logs it before ``initialize()`` runs) reads this stable identifier,
+        # keeping the attribute a ``str`` as the base class declares.
+        self.subscriber_name: str = self.subscription_id
         self.broker: Optional[BaseBroker] = None
         self.outbox_repo: Optional[OutboxRepository] = None
 
@@ -358,14 +361,18 @@ class OutboxProcessor(BaseSubscription):
         # Start processing single message
         assert self.outbox_repo is not None, "Outbox repository not initialized"
 
-        stream_category = (
+        stream_category: str = (
             message.metadata_.domain.stream_category
-            if message.metadata_ and message.metadata_.domain
+            if message.metadata_
+            and message.metadata_.domain
+            and message.metadata_.domain.stream_category
             else "unknown"
         )
-        message_type = (
+        message_type: str = (
             message.metadata_.headers.type
-            if message.metadata_ and message.metadata_.headers
+            if message.metadata_
+            and message.metadata_.headers
+            and message.metadata_.headers.type
             else "unknown"
         )
 
@@ -592,14 +599,18 @@ class OutboxProcessor(BaseSubscription):
         )
 
         # Emit trace event — distinguish internal from external
-        stream_category = (
+        stream_category: str = (
             message.metadata_.domain.stream_category
-            if message.metadata_ and message.metadata_.domain
+            if message.metadata_
+            and message.metadata_.domain
+            and message.metadata_.domain.stream_category
             else "unknown"
         )
-        message_type = (
+        message_type: str = (
             message.metadata_.headers.type
-            if message.metadata_ and message.metadata_.headers
+            if message.metadata_
+            and message.metadata_.headers
+            and message.metadata_.headers.type
             else "unknown"
         )
         trace_event = "outbox.external_failed" if self.is_external else "outbox.failed"
