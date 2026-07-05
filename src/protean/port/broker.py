@@ -606,6 +606,21 @@ class BaseBroker(metaclass=ABCMeta):
             stream (str, optional): The stream name for brokers that require it (e.g., Redis Streams)
         """
 
+    def _cleanup_stale_consumers(
+        self, stream: str, group_name: str, current_consumer_name: str
+    ) -> int:
+        """Remove stale consumers from a consumer group.
+
+        Optional maintenance hook. Brokers that track per-consumer state
+        (e.g. Redis Streams) override this to drop consumer entries left
+        behind by previous engine runs. Brokers without such state leave the
+        default implementation, which is a no-op.
+
+        Returns:
+            int: The number of stale consumers removed (0 by default).
+        """
+        return 0
+
     def info(self) -> dict[str, Any]:
         """Get information about consumer groups and consumers in each group.
 
