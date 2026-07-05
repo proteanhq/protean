@@ -138,11 +138,11 @@ Not sure? Start with DDD -- you can evolve later. See
 
 <div class="grid cards" markdown>
 
--   __:material-test-tube: 7,674 Tests__
+-   __:material-test-tube: 10,000+ Tests__
 
     ---
 
-    3.0:1 test-to-code ratio. Every commit validated against PostgreSQL,
+    ~3:1 test-to-code ratio. Every commit validated against PostgreSQL,
     Redis, Elasticsearch, MessageDB, and MSSQL.
 
 -   __:material-check-decagram: Zero Lint Violations__

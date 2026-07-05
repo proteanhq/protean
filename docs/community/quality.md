@@ -10,7 +10,7 @@ practices and metrics behind the framework.
 
 | Metric | Value |
 |---|---|
-| **Tests** | 7,674 |
+| **Tests** | 10,640 |
 | **Test-to-Code Ratio** | 3.0:1 |
 | **Linting Violations** | 0 (Ruff) |
 | **Avg Cyclomatic Complexity** | 3.38 (A grade) |
@@ -25,26 +25,27 @@ practices and metrics behind the framework.
 
 ## Test Suite
 
-Protean has a comprehensive test suite of **7,674 tests** covering domain
-logic, application services, infrastructure adapters, and integration
-scenarios.
+Protean has a comprehensive test suite covering domain logic, application
+services, infrastructure adapters, and integration scenarios. The current
+counts are in the breakdown below — this page is the single source of truth
+for these numbers; other pages quote round figures and link here.
 
 ### Test Breakdown
 
 | Metric | Count |
 |---|---|
-| Total Tests | 7,674 |
-| Test Functions | 7,594 |
-| Test Classes | 1,712 |
-| Pytest Fixtures | 701 |
-| Parametrized Tests | 50 |
+| Total Tests | 10,640 |
+| Test Functions | 10,527 |
+| Test Classes | 2,427 |
+| Pytest Fixtures | 1,021 |
+| Parametrized Tests | 56 |
 
 ### Core vs. Integration
 
 | Category | Tests | Share |
 |---|---|---|
-| Core tests (in-memory, no infrastructure) | 6,586 | 86% |
-| Adapter/integration tests | ~1,088 | 14% |
+| Core tests (in-memory, no infrastructure) | 9,246 | 87% |
+| Adapter/integration tests | 1,394 | 13% |
 
 Core tests run entirely in-memory with no external dependencies, making
 them fast and reliable for local development. Integration tests exercise
@@ -56,12 +57,12 @@ Every commit is tested against real backing services:
 
 | Technology | Marked Tests |
 |---|---|
-| Event Store | 238 |
-| Redis | 157 |
-| Database (generic) | 78 |
-| PostgreSQL | 36 |
-| Elasticsearch | 33 |
-| SQLite | 20 |
+| Database (generic) | 416 |
+| Redis | 339 |
+| Event Store | 280 |
+| Elasticsearch | 168 |
+| PostgreSQL | 85 |
+| SQLite | 77 |
 
 Branch coverage is enabled, and results are reported to
 [Codecov](https://codecov.io/gh/proteanhq/protean) on every CI run.
