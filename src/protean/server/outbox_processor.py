@@ -529,6 +529,12 @@ class OutboxProcessor(BaseSubscription):
             ):
                 stream_category = f"{stream_category}:{self._backfill_suffix}"
 
+            # ``stream_category`` may legitimately be ``None`` here (message
+            # without domain metadata); publishing to a ``None`` stream is
+            # intended, tested behavior. ``BaseBroker.publish`` is a public ABC
+            # typed ``stream: str``; widening it to accept ``None`` is a public
+            # signature change left queued for maintainer review, so the
+            # narrowing mismatch below is a known cross-file remainder.
             broker_message_id = self.broker.publish(stream_category, message_dict)
 
             logger.debug(
@@ -563,14 +569,21 @@ class OutboxProcessor(BaseSubscription):
         # Any cleanup specific to outbox processor can be added here
         pass
 
-    def _mark_message_failed(self, message: Outbox, error: Exception) -> None:
+    def _mark_message_failed(self, message: Outbox, error: Exception | None) -> None:
         """
         Mark message as failed using configured retry parameters.
 
         Args:
             message (Outbox): The message to mark as failed.
-            error (Exception): The error that occurred during processing.
+            error (Exception | None): The error that occurred during processing.
+                A missing error is normalized to a generic ``Exception`` so the
+                failure is still recorded.
         """
+        # ``mark_failed`` requires a concrete exception to record. Callers may
+        # pass ``None`` when the publish failed without surfacing an exception,
+        # so normalize it to a generic error rather than crashing.
+        if error is None:
+            error = Exception("Unknown publish error")
         # Use configured retry parameters
         message.mark_failed(
             error,
