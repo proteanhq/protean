@@ -13,6 +13,7 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from protean.ir.generators.base import (
@@ -429,11 +430,12 @@ def generate_downstream_consumers_diagram(ir: dict[str, Any]) -> str:
     all_subgraphs: list[str] = []
     all_edges: list[str] = []
 
-    for renderer in (
+    renderers: tuple[Callable[[], tuple[list[str], list[str]]], ...] = (
         lambda: _render_event_handler_subgraph(ir, evt_type_to_fqn),
         lambda: _render_process_manager_subgraph(ir, evt_type_to_fqn),
         lambda: _render_projector_subgraph(ir, evt_type_to_fqn),
-    ):
+    )
+    for renderer in renderers:
         subgraph, edges = renderer()
         all_subgraphs.extend(subgraph)
         all_edges.extend(edges)
