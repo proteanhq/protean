@@ -74,7 +74,7 @@ class BaseEventStore(metaclass=ABCMeta):
     @abstractmethod
     def _read(
         self,
-        stream_nae: str,
+        stream_name: str,
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
@@ -133,17 +133,18 @@ class BaseEventStore(metaclass=ABCMeta):
             message = Message.from_domain_object(object)
             assert message.metadata is not None, "Message metadata cannot be None"
 
-            span.set_attribute(
-                "protean.event_store.stream", message.metadata.headers.stream
-            )
-            span.set_attribute(
-                "protean.event_store.message_type", message.metadata.headers.type
-            )
+            stream = message.metadata.headers.stream
+            message_type = message.metadata.headers.type
+            assert stream is not None, "Message stream cannot be None"
+            assert message_type is not None, "Message type cannot be None"
+
+            span.set_attribute("protean.event_store.stream", stream)
+            span.set_attribute("protean.event_store.message_type", message_type)
 
             try:
                 position = self._write(
-                    message.metadata.headers.stream,
-                    message.metadata.headers.type,
+                    stream,
+                    message_type,
                     message.data,
                     metadata=message.metadata.to_dict(),
                     expected_version=message.metadata.domain.expected_version
