@@ -10,10 +10,9 @@ from collections.abc import Sequence
 from typing import Any as _Any
 from uuid import UUID
 
-import elasticsearch_dsl
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, dsl as elasticsearch_dsl
 from elasticsearch.exceptions import ConflictError, NotFoundError
-from elasticsearch_dsl import (
+from elasticsearch.dsl import (
     Boolean as ESBoolean,
     Date as ESDate,
     Document,
@@ -53,7 +52,7 @@ logger = logging.getLogger(__name__)
 # Python type → elasticsearch_dsl field type mapping for auto-generated models.
 # These are sensible defaults; users override via custom @domain.model classes
 # for ES-specific tuning (analyzers, multi-fields, etc.).
-_PYTHON_TYPE_TO_ES = {
+_PYTHON_TYPE_TO_ES: dict[type, type[elasticsearch_dsl.Field]] = {
     str: Keyword,
     int: ESInteger,
     float: ESFloat,
@@ -125,6 +124,16 @@ def _es_field_mapping_for(field_obj: _Any) -> "elasticsearch_dsl.Field | None":
     return Keyword()
 
 
+def _hits_total(response: _Any) -> int:
+    """Return the total hit count from an Elasticsearch DSL response.
+
+    ``response.hits`` is typed as ``List[Hit]`` by the elasticsearch stubs, but
+    Elasticsearch attaches a dynamic ``total`` (an ``AttrDict`` with a ``value``)
+    to it. This helper reads that untyped attribute in one place.
+    """
+    return int(response.hits.total.value)
+
+
 operators = {
     "exact": "__eq__",
     "iexact": "ilike",
@@ -144,6 +153,11 @@ operators = {
 
 class ElasticsearchModel(Document, BaseDatabaseModel):
     """A database model for the Elasticsearch index"""
+
+    # Precomputed set of field names needing a ``.keyword`` subfield for exact
+    # matching. Assigned dynamically on the decorated/constructed model class
+    # (see ``decorate_database_model_class`` / ``construct_database_model_class``).
+    _keyword_fields: typing.ClassVar[set[str]]
 
     @classmethod
     def from_entity(cls, entity: _Any) -> "ElasticsearchModel":
@@ -186,6 +200,7 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
         id_field_obj = id_field(cls.meta_.part_of)
         assert id_field_obj is not None
         id_field_name = id_field_obj.field_name
+        assert id_field_name is not None
         item_dict[id_field_name] = identifier
 
         # Set version from document fields, only if `_version` attr is present
@@ -272,6 +287,14 @@ class ESSession:
 
 
 class ElasticsearchDAO(BaseDAO):
+    # Narrow the base ``type[BaseDatabaseModel]`` to the concrete ES model class.
+    # ``ElasticsearchModel`` subclasses ``elasticsearch_dsl.Document``, which
+    # provides ``_index``, ``meta``, ``get`` and (dynamically) ``_keyword_fields``.
+    database_model_cls: type["ElasticsearchModel"]
+    # ``ESProvider.get_connection()`` returns a live ``Elasticsearch`` client;
+    # narrow from ``BaseProvider`` so connection call sites resolve precisely.
+    provider: "ESProvider"
+
     def __repr__(self) -> str:
         return f"ElasticsearchDAO <{self.entity_cls.__name__}>"
 
@@ -372,7 +395,7 @@ class ElasticsearchDAO(BaseDAO):
             model_items = []
             for hit in response.hits:
                 # Create a model object from the hit data
-                model_obj = self.database_model_cls(**hit.to_dict())  # type: ignore[operator]  # pyright: ignore[reportCallIssue]
+                model_obj = self.database_model_cls(**hit.to_dict())
                 model_obj.meta.id = hit.meta.id
                 if hasattr(hit.meta, "version"):
                     model_obj.meta.version = hit.meta.version
@@ -381,7 +404,7 @@ class ElasticsearchDAO(BaseDAO):
             result = ResultSet(
                 offset=offset,
                 limit=limit,
-                total=response.hits.total.value,
+                total=_hits_total(response),
                 items=model_items,
             )
         except Exception as exc:
@@ -411,7 +434,7 @@ class ElasticsearchDAO(BaseDAO):
                     # Convert hits to ElasticsearchModel objects with proper metadata
                     model_items = []
                     for hit in response.hits:
-                        model_obj = self.database_model_cls(**hit.to_dict())  # type: ignore[operator]  # pyright: ignore[reportCallIssue]
+                        model_obj = self.database_model_cls(**hit.to_dict())
                         model_obj.meta.id = hit.meta.id
                         if hasattr(hit.meta, "version"):
                             model_obj.meta.version = hit.meta.version
@@ -420,7 +443,7 @@ class ElasticsearchDAO(BaseDAO):
                     result = ResultSet(
                         offset=offset,
                         limit=limit,
-                        total=response.hits.total.value,
+                        total=_hits_total(response),
                         items=model_items,
                     )
                 except Exception as retry_exc:
@@ -473,6 +496,15 @@ class ElasticsearchDAO(BaseDAO):
             )
         except NotFoundError:
             logger.exception("repository.elasticsearch.record_not_found")
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
+
+        # ``Document.get`` returns ``None`` (rather than raising) when
+        # Elasticsearch responds without ``found``. Treat it the same as a
+        # missing record so the OCC guard below never dereferences ``None``.
+        if existing is None:
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
@@ -579,6 +611,7 @@ class ElasticsearchDAO(BaseDAO):
             logger.exception("repository.elasticsearch.record_not_found")
             id_field_obj = id_field(self.entity_cls)
             assert id_field_obj is not None
+            assert id_field_obj.attribute_name is not None
             identifier = getattr(model_obj, id_field_obj.attribute_name)
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
@@ -868,10 +901,16 @@ class ESProvider(BaseProvider):
             # metaclass mutates the dict, removing field entries.
             custom_attrs_snapshot = dict(custom_attrs)
 
-            decorated_database_database_model_cls = type(
-                database_model_cls.__name__,
-                (ElasticsearchModel, database_model_cls),
-                custom_attrs,
+            # ``type()`` produces an ``ElasticsearchModel`` subclass, but the
+            # type checker only sees a bare ``type``; narrow it so the ES
+            # ``_index`` / ``_keyword_fields`` attributes resolve below.
+            decorated_database_database_model_cls = typing.cast(
+                "type[ElasticsearchModel]",
+                type(
+                    database_model_cls.__name__,
+                    (ElasticsearchModel, database_model_cls),
+                    custom_attrs,
+                ),
             )
 
             # Auto-map entity attributes not explicitly defined in the custom model.
@@ -929,8 +968,12 @@ class ESProvider(BaseProvider):
 
             attrs = {"meta_": meta_, "Index": index_cls}
 
-            database_model_cls = type(
-                entity_cls.__name__ + "Model", (ElasticsearchModel,), attrs
+            # ``type()`` produces an ``ElasticsearchModel`` subclass, but the
+            # type checker only sees a bare ``type``; narrow it so the ES
+            # ``_index`` / ``_keyword_fields`` attributes resolve below.
+            database_model_cls = typing.cast(
+                "type[ElasticsearchModel]",
+                type(entity_cls.__name__ + "Model", (ElasticsearchModel,), attrs),
             )
 
             # Build explicit mapping from entity attributes
@@ -1066,6 +1109,10 @@ class ESProvider(BaseProvider):
 class DefaultLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
 
+    # ES lookups receive the concrete ES model class, which carries the
+    # precomputed ``_keyword_fields`` set.
+    database_model_cls: type["ElasticsearchModel"] | None
+
     def process_target(self) -> _Any:
         """Return target with transformations, if any.
 
@@ -1177,8 +1224,13 @@ class Any(In):
     def process_target(self) -> _Any:
         if not isinstance(self.target, (list, tuple)):
             # Apply the base lookup's per-value handling to the scalar (reject
-            # ``F``, stringify ``UUID``) before wrapping it for the terms query.
-            self.target = [DefaultLookup.process_target(self)]
+            # ``F``, stringify ``UUID``) before wrapping it for the terms query,
+            # bypassing ``In``'s list/tuple assertion. ``self`` is provably a
+            # ``DefaultLookup`` (MRO: Any -> In -> DefaultLookup); pyright cannot
+            # verify ``Self`` here because this class shadows ``typing.Any``.
+            self.target = [
+                DefaultLookup.process_target(self)  # pyright: ignore[reportArgumentType]
+            ]
             return self.target
         return super().process_target()
 
