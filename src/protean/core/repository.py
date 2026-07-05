@@ -235,10 +235,12 @@ class BaseRepository(Element, OptionsMixin):
         # store before any child entities that hold a foreign-key reference to
         # it.  This is required for databases that enforce FK constraints
         # immediately (MSSQL, MySQL/InnoDB, SQLite with PRAGMA foreign_keys).
+        root_persisted = False
         if (not item.state_.is_persisted) or (
             item.state_.is_persisted and item.state_.is_changed
         ):
             self._dao.save(item)
+            root_persisted = True
 
             # If Aggregate has signed up Fact Events, raise them now
             if item.element_type == DomainObjects.AGGREGATE and item.meta_.fact_events:
@@ -257,10 +259,17 @@ class BaseRepository(Element, OptionsMixin):
             # that _version is incremented, and track it in the identity map so that
             # _gather_events picks up these events on commit.
             self._dao.save(item)
+            root_persisted = True
 
         # Now sync child entities (HasMany/HasOne) — the parent row exists, so
         # child inserts referencing it will satisfy FK constraints.
         if has_association_fields(item):
+            # Under an active UoW the save above is only buffered (no flush),
+            # so force the root row to materialize in the transaction before
+            # child inserts. Without FK metadata on the generated models, the
+            # ORM cannot order parent-before-child at commit-time flush itself.
+            if root_persisted:
+                self._dao._flush()
             self._sync_children(item)
 
         # If we started a UnitOfWork, commit it now
@@ -369,6 +378,9 @@ class BaseRepository(Element, OptionsMixin):
             # row exists before any grandchild insert that holds an FK to it.
             # This gives top-down insert ordering: parent → child → grandchild.
             if has_association_fields(field.to_cls):
+                # Flush this level's child inserts so their rows exist in the
+                # transaction before grandchild inserts reference them.
+                self._dao._flush()
                 if isinstance(field, HasMany):
                     for item in getattr(entity, field_name):
                         self._sync_children(item)

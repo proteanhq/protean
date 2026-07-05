@@ -22,6 +22,7 @@ from .query_assertions import (
     assert_no_overfetch,
     assert_no_subquery_wrap,
     assert_query_count,
+    capture_queries,
 )
 from .testbed import DomainFixture
 
@@ -30,4 +31,5 @@ __all__ = [
     "assert_no_overfetch",
     "assert_no_subquery_wrap",
     "assert_query_count",
+    "capture_queries",
 ]
