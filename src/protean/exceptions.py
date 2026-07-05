@@ -63,7 +63,9 @@ class ProteanExceptionWithMessage(ProteanException):
         super().__init__(**kwargs)
 
     def __str__(self) -> str:
-        return f"{dict(self.messages)}"
+        if isinstance(self.messages, dict):
+            return f"{dict(self.messages)}"
+        return f"{self.messages}"
 
     def __reduce__(self) -> tuple[Any, tuple[Any]]:
         return (ProteanExceptionWithMessage, (self.messages,))
