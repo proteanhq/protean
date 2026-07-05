@@ -144,8 +144,19 @@ class EventStoreSubscription(BaseSubscription):
             f"{self.subscriber_class_name}-{hostname}-{pid}-{random_hex}"
         )
 
-        # Event store specific attributes
-        self.store: BaseEventStore = engine.domain.event_store.store
+        # Event store specific attributes. The store is Optional on the domain
+        # wrapper (None until initialized), but a subscription is only ever
+        # constructed after the engine has initialized its event store, so
+        # narrow to the non-None type here and fail loudly otherwise.
+        store = engine.domain.event_store.store
+        if (
+            store is None
+        ):  # pragma: no cover — defensive; store is initialized by engine startup
+            raise ConfigurationError(
+                "Event store is not initialized. Cannot create an "
+                "EventStoreSubscription before the domain's event store is set up."
+            )
+        self.store: BaseEventStore = store
         self.stream_category = stream_category
         self.position_update_interval = position_update_interval
         self.origin_stream = origin_stream
