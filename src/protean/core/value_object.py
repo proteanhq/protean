@@ -411,7 +411,11 @@ def value_object_from_entity(
             # Recursively convert to list of VOs
             child_vo_cls = value_object_from_entity(value.to_cls)
             vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
-            list_descriptor = ValueObjectList(content_type=vo_descriptor)
+            # ``ValueObjectList.__init__`` has an untyped ``content_type``
+            # parameter that defaults to ``str``, so pyright infers ``type[str]``.
+            # A ValueObject descriptor is a documented, runtime-accepted value
+            # for lists of value objects; the constructor validates it explicitly.
+            list_descriptor = ValueObjectList(content_type=vo_descriptor)  # pyright: ignore[reportArgumentType]
             # ``child_vo_cls`` is a runtime-built VO class; mypy cannot model a
             # generic subscripted by a local variable (treats it as a type-alias
             # attempt). The runtime construction is valid.
