@@ -178,6 +178,20 @@ class TestCheckStalenessFresh:
 
         assert result.status == StalenessStatus.FRESH
 
+    def test_raises_when_derive_domain_returns_none(self, monkeypatch):
+        """A stored IR present but no derivable domain must raise, not crash.
+
+        Guards against calling .init() on a None domain (derive_domain is
+        typed Domain | None).
+        """
+        from protean.exceptions import NoDomainException
+
+        _write_ir(self._protean_dir, _live_ir_for_test7())
+        monkeypatch.setattr("protean.ir.staleness.derive_domain", lambda _: None)
+
+        with pytest.raises(NoDomainException):
+            check_staleness("publishing7.py", self._protean_dir)
+
     def test_fresh_result_has_matching_checksums(self):
         live_ir = _live_ir_for_test7()
         _write_ir(self._protean_dir, live_ir)
