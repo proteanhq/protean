@@ -95,7 +95,14 @@ class MemoryMessageRepository(BaseRepository):
                     position=next_position,
                     type=message_type,
                     data=data,
-                    metadata=metadata,
+                    # ``metadata`` arrives as a plain dict (see
+                    # ``BaseEventStore.append`` -> ``metadata.to_dict()``); build
+                    # the ``Metadata`` value object explicitly via the typed
+                    # pydantic API. This is identical to pydantic's implicit
+                    # dict->model coercion but visible to static checkers.
+                    metadata=Metadata.model_validate(metadata)
+                    if metadata is not None
+                    else None,
                     time=datetime.now(UTC),
                 )
             )
