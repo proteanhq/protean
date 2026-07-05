@@ -5,9 +5,9 @@ initial context data. JavaScript handles live updates via SSE and polling.
 """
 
 import logging
-from typing import List
+from typing import Any, List
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.templating import Jinja2Templates
 
 from protean.domain import Domain
@@ -28,7 +28,7 @@ def create_page_router(
     router = APIRouter()
     domain_names = _get_domain_names(domains)
 
-    def _ctx(active_page: str, **extra) -> dict:
+    def _ctx(active_page: str, **extra: Any) -> dict[str, Any]:
         """Build the base template context (without request)."""
         return {
             "domains": domain_names,
@@ -37,46 +37,46 @@ def create_page_router(
         }
 
     @router.get("/")
-    async def overview(request: Request):
+    async def overview(request: Request) -> Response:
         """Overview — Landing page. Answers 'is everything okay?' at a glance."""
         return templates.TemplateResponse(request, "overview.html", _ctx("overview"))
 
     @router.get("/handlers")
-    async def handlers(request: Request):
+    async def handlers(request: Request) -> Response:
         """Handlers — Detailed operational view of every message handler."""
         return templates.TemplateResponse(request, "handlers.html", _ctx("handlers"))
 
     @router.get("/processes")
-    async def processes(request: Request):
+    async def processes(request: Request) -> Response:
         """Processes — Monitor long-running process managers and sagas."""
         return templates.TemplateResponse(request, "processes.html", _ctx("processes"))
 
     @router.get("/eventstore")
-    async def eventstore(request: Request):
+    async def eventstore(request: Request) -> Response:
         """Event Store — Monitor event store health and stream statistics."""
         return templates.TemplateResponse(
             request, "eventstore.html", _ctx("eventstore")
         )
 
     @router.get("/timeline")
-    async def timeline(request: Request):
+    async def timeline(request: Request) -> Response:
         """Timeline — Browse domain events and commands chronologically."""
         return templates.TemplateResponse(request, "timeline.html", _ctx("timeline"))
 
     @router.get("/infrastructure")
-    async def infrastructure(request: Request):
+    async def infrastructure(request: Request) -> Response:
         """Infrastructure — Monitor infrastructure dependencies."""
         return templates.TemplateResponse(
             request, "infrastructure.html", _ctx("infrastructure")
         )
 
     @router.get("/messages")
-    async def messages(request: Request):
+    async def messages(request: Request) -> Response:
         """Messages — Inspect failed and dead-letter queue messages."""
         return templates.TemplateResponse(request, "messages.html", _ctx("messages"))
 
     @router.get("/domain")
-    async def domain(request: Request):
+    async def domain(request: Request) -> Response:
         """Domain — Visualize domain topology, event flows, and process managers."""
         return templates.TemplateResponse(request, "domain.html", _ctx("domain"))
 
