@@ -67,7 +67,9 @@ def load_domain(domain_path: str) -> "Domain":
     return derived_domain
 
 
-def handle_cli_exceptions(command_name: str) -> Callable:
+def handle_cli_exceptions(
+    command_name: str,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator that wraps a CLI command with structured exception logging.
 
     Usage::
@@ -78,7 +80,7 @@ def handle_cli_exceptions(command_name: str) -> Callable:
             ...
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             with cli_exception_handler(command_name):
