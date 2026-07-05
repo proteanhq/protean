@@ -187,7 +187,9 @@ class MemoryCache(BaseCache):
             del self._db[key]
 
     def flush_all(self) -> None:
-        self._db = {}
+        # Clear in place so the TTLDict (and its configured default TTL) is
+        # preserved — reassigning a plain {} broke set_ttl/get_ttl afterwards.
+        self._db.clear()
 
     def set_ttl(self, key: str, ttl: Union[int, float]) -> None:
         self._db.set_ttl(key, ttl)

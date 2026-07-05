@@ -212,12 +212,14 @@ class Node:
         return other in self.children
 
     def __eq__(self, other: object) -> bool:
-        other_node = cast("Node", other)
+        # Return NotImplemented (not AttributeError) for unrelated objects so
+        # ``==`` falls back to identity and defensive equality checks stay safe.
+        if not isinstance(other, Node):
+            return NotImplemented
         return (
-            self.__class__ == other_node.__class__
-            and (self.connector, self.negated)
-            == (other_node.connector, other_node.negated)
-            and self.children == other_node.children
+            self.__class__ == other.__class__
+            and (self.connector, self.negated) == (other.connector, other.negated)
+            and self.children == other.children
         )
 
     def add(self, data: Any, conn_type: str, squash: bool = True) -> Any:
