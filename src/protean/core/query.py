@@ -6,7 +6,7 @@ projections -- the read-side counterpart of commands.
 
 import json
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -261,9 +261,14 @@ def query_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
 
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 
-    if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
+    # `derive_element_class` returns a subclass of ``base_cls`` (here
+    # ``BaseQuery``); narrow to expose ``meta_`` to the type checkers. The
+    # unbounded ``_T`` return contract is preserved via ``element_cls`` below.
+    query_cls = cast("type[BaseQuery]", element_cls)
+
+    if not query_cls.meta_.part_of and not query_cls.meta_.abstract:
         raise IncorrectUsageError(
-            f"Query `{element_cls.__name__}` needs to be associated with a projection"
+            f"Query `{query_cls.__name__}` needs to be associated with a projection"
         )
 
     return element_cls
