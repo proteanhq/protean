@@ -656,3 +656,55 @@ class TestParseEventTimeEdgeCases:
 
         assert user._version == 0
         assert user.name == "John Doe"
+
+
+class TestAddGuardAndIdentityMap:
+    """The ``_do_add`` event guard and the ``_do_get`` UnitOfWork identity map."""
+
+    @pytest.mark.eventstore
+    def test_add_with_no_events_is_a_noop(self):
+        """Adding an aggregate that raised no events persists nothing.
+
+        Guards the ``len(aggregate._events) > 0`` boundary in ``_do_add``: if it
+        were weakened to ``>= 0`` an event-less aggregate would be cached in the
+        UnitOfWork identity map (and an empty UnitOfWork committed), so a get()
+        would wrongly find it.
+        """
+        identifier = str(uuid4())
+        repo = current_domain.repository_for(User)
+
+        with UnitOfWork():
+            # Constructed directly (no factory) so no events are raised.
+            empty_user = User(user_id=identifier, email="x@example.com", name="X")
+            assert empty_user._events == []
+
+            repo.add(empty_user)  # no events -> no-op, not added to identity map
+
+            # Falls through to the store, where no stream for this id exists.
+            with pytest.raises(ObjectNotFoundError):
+                repo.get(identifier)
+
+    @pytest.mark.eventstore
+    def test_get_within_uow_returns_identity_mapped_instance(self):
+        """A non-temporal get() inside the adding UnitOfWork returns the cached
+        (identity-mapped) instance rather than re-loading from the store.
+
+        Guards the ``if not is_temporal`` gate in ``_do_get``: inverting it would
+        make a plain get() skip the identity map and, conversely, make temporal
+        queries wrongly consult it.
+        """
+        identifier = str(uuid4())
+        repo = current_domain.repository_for(User)
+
+        with UnitOfWork():
+            user = User.register(
+                Register(
+                    user_id=identifier,
+                    email="john@example.com",
+                    name="John Doe",
+                    password_hash="hash",
+                )
+            )
+            repo.add(user)  # caches `user` in the UnitOfWork identity map
+
+            assert repo.get(identifier) is user
