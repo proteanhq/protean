@@ -302,7 +302,7 @@ class BaseRepository(Element, OptionsMixin):
 
         return item
 
-    def _persist_child(self, child_cls: type, item: Any) -> None:
+    def _persist_child(self, child_cls: type[Any], item: Any) -> None:
         """Persist a child entity through its repository's DAO.
 
         This is an internal helper used by ``_sync_children`` to keep the
@@ -311,7 +311,7 @@ class BaseRepository(Element, OptionsMixin):
         """
         self._domain.repository_for(child_cls)._dao.save(item)
 
-    def _remove_child(self, child_cls: type, item: Any) -> None:
+    def _remove_child(self, child_cls: type[Any], item: Any) -> None:
         """Delete a child entity through its repository's DAO.
 
         Internal counterpart to ``_persist_child`` for removals.
