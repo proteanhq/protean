@@ -346,13 +346,17 @@ class BaseAggregate(BaseEntity):
             aggregate.__dict__[fname] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Initialize VO shadow fields ---
-        for field_obj in value_object_fields(cls).values():
-            for _, shadow_field in field_obj.get_shadow_fields():
+        # ``value_object_fields`` filters on ``ValueObject`` at runtime, so each
+        # field carries ``get_shadow_fields``; narrow the generic ``Field`` type.
+        for vo_field in value_object_fields(cls).values():
+            for _, shadow_field in cast(ValueObject, vo_field).get_shadow_fields():
                 aggregate.__dict__[shadow_field.attribute_name] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Initialize Reference shadow fields ---
-        for field_obj in reference_fields(cls).values():
-            shadow_name, _ = field_obj.get_shadow_field()
+        # ``reference_fields`` filters on ``Reference`` at runtime, so each field
+        # carries ``get_shadow_field``; narrow the generic ``Field`` type.
+        for ref_field in reference_fields(cls).values():
+            shadow_name, _ = cast(Reference, ref_field).get_shadow_field()
             aggregate.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Setup association pseudo-methods (add_*, remove_*, etc.) ---
