@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import (
     ConfigurationError,
@@ -18,7 +18,7 @@ from protean.utils.sync_dispatch import dispatch_events_sync
 from protean.utils.telemetry import get_domain_metrics, set_span_error
 
 if TYPE_CHECKING:
-    from protean.port.provider import BaseProvider, SessionProtocol
+    from protean.port.provider import SessionProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -302,9 +302,11 @@ class UnitOfWork:
             # directly. A genuine optimistic-concurrency conflict still raises and
             # is re-driven by the handler-level version retry, which reloads the
             # aggregate cleanly.
+            event_store = current_domain.event_store.store
+            assert event_store is not None
             for provider, events in all_events.items():
                 for event in events:
-                    current_domain.event_store.store.append(event)
+                    event_store.append(event)
 
             # Exit the UnitOfWork context: the relational commit below (and any
             # further operations) are no longer part of this transaction. Guard
@@ -390,8 +392,12 @@ class UnitOfWork:
         # session (releasing connections back to the pool) AND discards the
         # session from the scoped registry, preventing stale session reuse.
         for session in self._sessions.values():
-            if hasattr(session, "remove"):
-                session.remove()
+            # ``remove()`` is an optional part of the session contract: scoped
+            # registries (SQLAlchemy) expose it to discard the session, plain
+            # sessions only expose ``close()``.
+            remove = getattr(session, "remove", None)
+            if remove is not None:
+                remove()
             else:
                 session.close()
 
@@ -434,17 +440,20 @@ class UnitOfWork:
         self._reset()
 
     def _get_session(self, provider_name: str) -> "SessionProtocol":
-        # ``Providers.__getitem__`` is not yet typed (returns ``Any``); cast to
-        # the port type so the declared ``SessionProtocol`` return holds.
-        provider = cast("BaseProvider", self.domain.providers[provider_name])
-        assert provider is not None
+        provider = self.domain.providers[provider_name]
         return provider.get_session()
 
     def _initialize_session(self, provider_name: str) -> "SessionProtocol":
         new_session = self._get_session(provider_name)
         self._sessions[provider_name] = new_session
         if not new_session.is_active:
-            new_session.begin()
+            # ``begin()`` is an optional part of the session contract (see
+            # ``SessionProtocol``); adapters with deferred transaction start
+            # (e.g. SQLAlchemy) implement it, others (e.g. the in-memory
+            # session) do not.
+            begin = getattr(new_session, "begin", None)
+            if begin is not None:
+                begin()
         return new_session
 
     def get_session(self, provider_name: str) -> "SessionProtocol":
