@@ -81,7 +81,7 @@ from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from collections.abc import Callable, Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from protean.core.process_manager import (
@@ -95,6 +95,7 @@ from protean.exceptions import (
 )
 
 if TYPE_CHECKING:
+    from protean.core.aggregate import BaseAggregate
     from protean.core.event import BaseEvent
     from protean.domain import Domain
     from protean.port.event_store import CausationNode
@@ -143,7 +144,7 @@ def given(
     if isinstance(cls_or_event, type):
         if issubclass(cls_or_event, BaseProcessManager):
             return ProcessManagerResult(cls_or_event, list(events))
-        return AggregateResult(cls_or_event, list(events))
+        return AggregateResult(cast("type[BaseAggregate]", cls_or_event), list(events))
     # All arguments are event instances → projection / PM testing path
     return EventSequence([cls_or_event, *events])
 
@@ -245,11 +246,13 @@ class AggregateResult:
     """
 
     def __init__(
-        self, aggregate_cls: type, given_events: list[Any] | None = None
+        self,
+        aggregate_cls: "type[BaseAggregate]",
+        given_events: list[Any] | None = None,
     ) -> None:
         self._aggregate_cls = aggregate_cls
         self._given_events = list(given_events or [])
-        self._aggregate = None
+        self._aggregate: BaseAggregate | None = None
         self._new_events: EventLog = EventLog([])
         self._all_events: list[Any] = []
         self._rejection: Exception | None = None
@@ -817,7 +820,9 @@ class EventSequence:
         """
         identifier_value = next(iter(identity.values()), None) if identity else None
         return ProcessManagerResult(
-            pm_cls, self._events, correlation_value=identifier_value
+            cast("type[BaseProcessManager]", pm_cls),
+            self._events,
+            correlation_value=identifier_value,
         )
 
     def __repr__(self) -> str:
@@ -848,14 +853,14 @@ class ProcessManagerResult:
 
     def __init__(
         self,
-        pm_cls: type,
+        pm_cls: "type[BaseProcessManager]",
         events: list[Any] | None = None,
         *,
         correlation_value: str | None = None,
     ) -> None:
         self._pm_cls = pm_cls
         self._events = list(events or [])
-        self._pm_instance: Any = None
+        self._pm_instance: BaseProcessManager | None = None
         self._transition_count: int = 0
         self._correlation_value = correlation_value
         self._processed: bool = False
