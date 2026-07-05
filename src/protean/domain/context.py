@@ -3,10 +3,16 @@
 import logging
 import sys
 
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Iterator, Optional, cast
+
 from protean.utils.globals import _domain_context_stack
 
+if TYPE_CHECKING:
+    from protean.domain import Domain
+
 # a singleton sentinel value for parameter defaults
-_sentinel = object()
+_sentinel: Any = object()
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +25,7 @@ class _DomainContextGlobals:
     made available as the :data:`g` proxy.
     """
 
-    def get(self, name, default=None):
+    def get(self, name: str, default: Any = None) -> Any:
         """Get an attribute by name, or a default value. Like
         :meth:`dict.get`.
 
@@ -28,7 +34,7 @@ class _DomainContextGlobals:
         """
         return self.__dict__.get(name, default)
 
-    def pop(self, name, default=_sentinel):
+    def pop(self, name: str, default: Any = _sentinel) -> Any:
         """Get and remove an attribute by name. Like :meth:`dict.pop`.
 
         :param name: Name of attribute to pop.
@@ -40,7 +46,7 @@ class _DomainContextGlobals:
         else:
             return self.__dict__.pop(name, default)
 
-    def setdefault(self, name, default=None):
+    def setdefault(self, name: str, default: Any = None) -> Any:
         """Get the value of an attribute if it is present, otherwise
         set and return a default value. Like :meth:`dict.setdefault`.
 
@@ -50,20 +56,20 @@ class _DomainContextGlobals:
         """
         return self.__dict__.setdefault(name, default)
 
-    def __contains__(self, item):
+    def __contains__(self, item: str) -> bool:
         return item in self.__dict__
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self.__dict__)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         top = _domain_context_stack.top
         if top is not None:
             return "<protean.g of %r>" % top.domain.name
         return object.__repr__(self)
 
 
-def has_domain_context():
+def has_domain_context() -> bool:
     """If you have code that wants to test if a domain context is there or
     not this function can be used.  You can also just do a boolean check on the
     :data:`current_domain` object instead.
@@ -76,7 +82,7 @@ class DomainContext(object):
     to the current thread or greenlet.
     """
 
-    def __init__(self, domain, **kwargs):
+    def __init__(self, domain: "Domain", **kwargs: Any) -> None:
         self.domain = domain
         self.g: _DomainContextGlobals = domain.domain_context_globals_class()
 
@@ -90,14 +96,17 @@ class DomainContext(object):
     def __repr__(self) -> str:
         return f"Domain Context (id={id(self)}, domain={self.domain.name})"
 
-    def push(self):
+    def push(self) -> None:
         """Binds the domain context to the current context."""
         self._ref_count += 1
-        if hasattr(sys, "exc_clear"):
-            sys.exc_clear()
+        # ``sys.exc_clear`` only existed in Python 2; guard preserved for
+        # historical parity but never fires on supported (3.11+) runtimes.
+        exc_clear = getattr(sys, "exc_clear", None)
+        if exc_clear is not None:
+            exc_clear()
         _domain_context_stack.push(self)
 
-    def pop(self, exc=_sentinel):
+    def pop(self, exc: Any = _sentinel) -> None:
         """Pops the domain context."""
         try:
             self._ref_count -= 1
@@ -112,13 +121,18 @@ class DomainContext(object):
             self,
         )
 
-    def __enter__(self):
+    def __enter__(self) -> "DomainContext":
         self.push()
 
         return self
 
-    def __exit__(self, exc_type, exc_value, tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[BaseException],
+        tb: Optional[TracebackType],
+    ) -> None:
         self.pop(exc_value)
 
         if exc_type is not None:
-            raise exc_value.with_traceback(tb)
+            raise cast(BaseException, exc_value).with_traceback(tb)
