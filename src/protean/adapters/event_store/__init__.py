@@ -14,6 +14,7 @@ from protean.exceptions import ConfigurationError
 from protean.utils import fqn
 
 if TYPE_CHECKING:
+    from protean.core.projection import BaseProjection
     from protean.domain import Domain
     from protean.port.event_store import BaseEventStore
 
@@ -169,11 +170,11 @@ class EventStore:
 
         return set.union(configured_stream_handlers, all_stream_handlers)
 
-    def projectors_for(self, projection_cls) -> set:
+    def projectors_for(self, projection_cls: "type[BaseProjection]") -> set[Any]:
         """Return Projectors listening to a specific projection
 
         Args:
-            projection_cls (BaseProjection): Projection to be consumed
+            projection_cls (type[BaseProjection]): Projection to be consumed
 
         Returns:
             List[BaseProjector]: Projectors that have registered to consume the projection

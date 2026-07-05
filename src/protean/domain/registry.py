@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import inflection
 
@@ -75,6 +75,32 @@ class _DomainRegistry:
     """
 
     __slots__ = ("_elements", "_elements_by_name")
+
+    if TYPE_CHECKING:
+        # Element-type accessors installed dynamically at import time via
+        # ``_create_element_property`` + ``setattr`` (see bottom of module).
+        # Declared here so static checkers (mypy, pyright) see them as real
+        # attributes. Each returns the ``{qualname: DomainRecord}`` mapping of
+        # non-internal elements for that element type.
+        aggregates: Dict[str, DomainRecord]
+        application_services: Dict[str, DomainRecord]
+        commands: Dict[str, DomainRecord]
+        command_handlers: Dict[str, DomainRecord]
+        database_models: Dict[str, DomainRecord]
+        domain_services: Dict[str, DomainRecord]
+        emails: Dict[str, DomainRecord]
+        entities: Dict[str, DomainRecord]
+        events: Dict[str, DomainRecord]
+        event_handlers: Dict[str, DomainRecord]
+        event_sourced_repositories: Dict[str, DomainRecord]
+        process_managers: Dict[str, DomainRecord]
+        projections: Dict[str, DomainRecord]
+        projectors: Dict[str, DomainRecord]
+        queries: Dict[str, DomainRecord]
+        query_handlers: Dict[str, DomainRecord]
+        repositories: Dict[str, DomainRecord]
+        subscribers: Dict[str, DomainRecord]
+        value_objects: Dict[str, DomainRecord]
 
     def __init__(self) -> None:
         self._elements: Dict[str, Dict[str, DomainRecord]] = {}

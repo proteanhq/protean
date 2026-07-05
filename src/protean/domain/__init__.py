@@ -66,16 +66,22 @@ from typing import (
     Dict,
     List,
     Optional,
+    Protocol,
     Tuple,
     Type,
     TypeVar,
     Union,
+    cast,
     dataclass_transform,
     overload,
 )
 
 if TYPE_CHECKING:
+    from types import FrameType
+
+    from protean.port.cache import BaseCache
     from protean.utils.projection_rebuilder import RebuildResult
+    from protean.utils.upcasting import UpcasterChain
 
 from inflection import parameterize, titleize, transliterate, underscore
 
@@ -102,7 +108,7 @@ from protean.core.subscriber import subscriber_factory
 from protean.core.upcaster import upcaster_factory
 from protean.core.value_object import value_object_factory
 from protean.core.view import ReadView
-from protean.domain.registry import _DomainRegistry
+from protean.domain.registry import DomainRecord, _DomainRegistry
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -172,31 +178,23 @@ from .validation import DomainValidator
 
 logger = logging.getLogger(__name__)
 
-# Field specifiers for @dataclass_transform() — tells mypy which callables
-# represent field declarations in class bodies using annotation syntax.
-_FIELD_SPECIFIERS = (
-    Auto,
-    Boolean,
-    Date,
-    DateTime,
-    DictField,
-    Float,
-    HasMany,
-    HasOne,
-    Identifier,
-    Integer,
-    ListField,
-    Reference,
-    Status,
-    String,
-    Text,
-    ValueObject,
-)
+# Field specifiers for ``@dataclass_transform()`` tell type-checkers which
+# callables represent field declarations in class bodies using annotation
+# syntax. mypy requires the ``field_specifiers`` argument to be a tuple
+# literal at each decorator call site (it cannot be a shared module-level
+# name), so the tuple is inlined on every element decorator below rather
+# than referenced through a constant.
 
 _T = TypeVar("_T")
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
+
+
+class _Closeable(Protocol):
+    """Structural type for infrastructure adapters that can be closed."""
+
+    def close(self) -> None: ...
 
 
 class Domain:
@@ -264,7 +262,7 @@ class Domain:
     #: :data:`secret_key` configuration key. Defaults to ``None``.
     secret_key = ConfigAttribute("secret_key")
 
-    def _is_interactive_context(self, filename):
+    def _is_interactive_context(self, filename: str | None) -> bool:
         """Check if the given filename indicates an interactive context like shell or notebook.
 
         Args:
@@ -302,7 +300,7 @@ class Domain:
             # Handle frozen applications (PyInstaller, etc.)
             if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
                 # PyInstaller creates a temp folder and stores path in _MEIPASS
-                return getattr(sys, "_MEIPASS")
+                return str(getattr(sys, "_MEIPASS"))
 
             # Regular Python script
             try:
@@ -316,11 +314,12 @@ class Domain:
 
     def __init__(
         self,
-        root_path: str = None,
+        root_path: str | None = None,
         name: str = "",
-        config: Optional[Dict] = None,
-        identity_function: Optional[Callable] = None,
-    ):
+        config: Optional[dict[str, Any]] = None,
+        identity_function: Optional[Callable[..., Any]] = None,
+    ) -> None:
+        self.root_path: str
         # Determine root_path based on resolution priority
         if root_path is None:
             # Try to get from environment variable
@@ -374,8 +373,8 @@ class Domain:
         # Event enrichers receive (event, aggregate) and return dict[str, Any].
         # Command enrichers receive (command,) and return dict[str, Any].
         # Results are merged into metadata.extensions.
-        self._event_enrichers: List[Callable] = []
-        self._command_enrichers: List[Callable] = []
+        self._event_enrichers: List[Callable[..., Any]] = []
+        self._command_enrichers: List[Callable[..., Any]] = []
 
         # Composed helpers — see handler_setup.py, validation.py, etc.
         self._command_processor = CommandProcessor(self)
@@ -389,20 +388,20 @@ class Domain:
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
-        self.teardown_domain_context_functions: List[Callable] = []
+        self.teardown_domain_context_functions: List[Callable[..., Any]] = []
 
         # Placeholder array for resolving classes referenced by domain elements
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
         # Lazy-initialized idempotency store
-        self._idempotency_store = None
+        self._idempotency_store: IdempotencyStore | None = None
 
         # Lazy-initialized trace emitter for command processing observability
-        self._trace_emitter = None
+        self._trace_emitter: TraceEmitter | None = None
 
         # Lazy-initialized OpenTelemetry providers (set by init_telemetry)
-        self._otel_tracer_provider = None
-        self._otel_meter_provider = None
+        self._otel_tracer_provider: Any = None
+        self._otel_meter_provider: Any = None
         self._otel_init_attempted = False
 
     # ------------------------------------------------------------------
@@ -420,11 +419,11 @@ class Domain:
         return self._type_manager.upcasters
 
     @property
-    def _upcaster_chain(self):
+    def _upcaster_chain(self) -> "UpcasterChain":
         return self._type_manager.upcaster_chain
 
     @property
-    def _outbox_repos(self) -> dict:
+    def _outbox_repos(self) -> dict[str, BaseRepository]:
         return self._infrastructure.outbox_repos
 
     @property
@@ -454,7 +453,7 @@ class Domain:
         )
 
     @property
-    def idempotency_store(self):
+    def idempotency_store(self) -> IdempotencyStore:
         """Lazily initialize and return the idempotency store.
 
         The store is created on first access using the ``idempotency``
@@ -471,7 +470,7 @@ class Domain:
         return self._idempotency_store
 
     @property
-    def trace_emitter(self):
+    def trace_emitter(self) -> TraceEmitter:
         """Lazily initialize and return a TraceEmitter for command tracing.
 
         Used by CommandProcessor to emit handler.started/completed/failed
@@ -492,7 +491,7 @@ class Domain:
         return self._trace_emitter
 
     @property
-    def tracer(self):
+    def tracer(self) -> Any:
         """Return an OpenTelemetry ``Tracer`` for this domain.
 
         Lazy-initializes the telemetry providers on first access when
@@ -504,7 +503,7 @@ class Domain:
         return get_tracer(self)
 
     @property
-    def meter(self):
+    def meter(self) -> Any:
         """Return an OpenTelemetry ``Meter`` for this domain.
 
         Lazy-initializes the telemetry providers on first access when
@@ -607,7 +606,7 @@ class Domain:
         if validate:
             self._validate_domain()
 
-    def init(self, traverse=True):  # noqa: C901
+    def init(self, traverse: bool = True) -> None:  # noqa: C901
         """Parse the domain folder, and attach elements dynamically to the domain.
 
         Protean parses all files in the domain file's folder, as well as under it,
@@ -746,7 +745,7 @@ class Domain:
             },
         }
 
-    def _traverse(self):
+    def _traverse(self) -> None:
         # Ensure root_path is a directory path
         root_path = Path(self.root_path)
         if root_path.is_file():
@@ -814,6 +813,7 @@ class Domain:
                     spec = importlib.util.spec_from_file_location(
                         file_module_name, os.path.join(directory, filename)
                     )
+                    assert spec is not None and spec.loader is not None
                     module = importlib.util.module_from_spec(spec)
 
                     # Register in sys.modules before execution to prevent
@@ -821,12 +821,11 @@ class Domain:
                     # during execution (e.g., circular or relative imports).
                     if module.__name__ not in sys.modules:
                         sys.modules[module.__name__] = module
-                        assert spec is not None and spec.loader is not None
                         spec.loader.exec_module(module)
 
                     logger.debug(f"Loaded {filename}")
 
-    def _is_domain_file(self, file_path):
+    def _is_domain_file(self, file_path: str) -> bool:
         """Check if this is the domain file itself, to avoid self-import.
 
         This replaces the direct path comparison that was used before.
@@ -835,7 +834,7 @@ class Domain:
             return False
 
         # Get the frame where the Domain was instantiated
-        frame = sys._getframe(0)
+        frame: FrameType | None = sys._getframe(0)
         while frame:
             if frame.f_code.co_filename == file_path:
                 return True
@@ -843,7 +842,7 @@ class Domain:
 
         return False
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """Initialize domain dependencies and adapters."""
         self.providers._initialize()
         self.caches._initialize()
@@ -861,12 +860,13 @@ class Domain:
         """
         logger.info("Closing domain infrastructure...")
 
-        for name, closeable in [
+        closeables: list[tuple[str, _Closeable]] = [
             ("event store", self.event_store),
             ("brokers", self.brokers),
             ("caches", self.caches),
             ("providers", self.providers),
-        ]:
+        ]
+        for name, closeable in closeables:
             try:
                 closeable.close()
             except Exception:
@@ -874,8 +874,9 @@ class Domain:
 
         logger.info("Domain infrastructure closed")
 
-    def load_config(self, config: Optional[Dict] = None) -> Config2:
+    def load_config(self, config: Optional[dict[str, Any]] = None) -> Config2:
         """Load configuration from a dict or a .toml file."""
+        config_obj: Config2
         if config is not None:
             config_obj = Config2.load_from_dict(config)
         else:
@@ -888,7 +889,7 @@ class Domain:
 
         return config_obj
 
-    def domain_context(self, **kwargs):
+    def domain_context(self, **kwargs: Any) -> DomainContext:
         """Create a ``DomainContext``. Use as a ``with``
         block to push the context, which will make ``current_domain``
         point at this domain.
@@ -900,7 +901,7 @@ class Domain:
         """
         return DomainContext(self, **kwargs)
 
-    def teardown_domain_context(self, f):
+    def teardown_domain_context(self, f: Callable[..., Any]) -> Callable[..., Any]:
         """Registers a function to be called when the domain context
         ends.
 
@@ -926,7 +927,7 @@ class Domain:
         self.teardown_domain_context_functions.append(f)
         return f
 
-    def do_teardown_domain_context(self, exc=_sentinel):
+    def do_teardown_domain_context(self, exc: Any = _sentinel) -> None:
         """Called right before the domain context is popped.
 
         This calls all functions decorated with
@@ -945,11 +946,11 @@ class Domain:
 
     @property
     @lru_cache()
-    def registry(self):
+    def registry(self) -> _DomainRegistry:
         return self._domain_registry
 
-    def factory_for(self, domain_object_type):
-        factories = {
+    def factory_for(self, domain_object_type: DomainObjects) -> Callable[..., Any]:
+        factories: dict[str, Callable[..., Any]] = {
             DomainObjects.AGGREGATE.value: aggregate_factory,
             DomainObjects.APPLICATION_SERVICE.value: application_service_factory,
             DomainObjects.COMMAND.value: command_factory,
@@ -999,7 +1000,12 @@ class Domain:
         #  ```
 
         factory = self.factory_for(element_type)
-        new_cls = factory(element_cls, self, **opts)
+        # The factory returns the enriched, registered element class. It is
+        # genuinely untyped (Any) — the concrete class carries framework
+        # attributes (``meta_``, ``element_type``) injected at registration
+        # that are not visible on the bare ``type[_T]`` type parameter, so we
+        # treat it as Any internally and re-narrow to ``type[_T]`` at return.
+        new_cls: Any = factory(element_cls, self, **opts)
 
         if element_type == DomainObjects.DATABASE_MODEL:
             # Remember model association with aggregate/entity class, for easy fetching
@@ -1090,7 +1096,7 @@ class Domain:
                     ("QueryHandlerProjectionCls", (new_cls))
                 )
 
-        return new_cls
+        return cast("type[_T]", new_cls)
 
     def _resolve_references(self) -> None:
         """Resolve pending class references in association fields."""
@@ -1102,13 +1108,13 @@ class Domain:
     def _domain_element(
         self,
         element_type: DomainObjects,
-        _cls: type | None = None,
+        _cls: type[_T] | None = None,
         internal: bool = False,
         **kwargs: Any,
-    ) -> Any:
+    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         """Returns the registered class after decorating it and recording its presence in the domain"""
 
-        def wrap(cls: type) -> type:
+        def wrap(cls: type[_T]) -> type[_T]:
             return self._register_element(element_type, cls, internal, **kwargs)
 
         # See if we're being called as @Entity or @Entity().
@@ -1120,8 +1126,8 @@ class Domain:
         return wrap(_cls)
 
     def register_database_model(
-        self, database_model_cls, internal: bool = False, **kwargs
-    ):
+        self, database_model_cls: type[_T], internal: bool = False, **kwargs: Any
+    ) -> type[_T]:
         """Register a model class"""
         return self._register_element(
             DomainObjects.DATABASE_MODEL, database_model_cls, internal, **kwargs
@@ -1132,7 +1138,7 @@ class Domain:
         element_cls: Any,
         internal: bool = False,
         auto_generated: bool = False,
-        **kwargs: dict,
+        **kwargs: Any,
     ) -> Any:
         """Register an element with the domain.
 
@@ -1158,18 +1164,22 @@ class Domain:
         """Util Method to fetch an Element's class from its name"""
         try:
             # Try fetching by class name
-            return self._get_element_by_name(element_types, element).cls
+            element_cls: Element = self._get_element_by_name(element_types, element).cls
+            return element_cls
         except ConfigurationError:
             try:
                 # Try fetching by fully qualified class name
-                return self._get_element_by_fully_qualified_name(
+                fq_element_cls: Element = self._get_element_by_fully_qualified_name(
                     element_types, element
                 ).cls
+                return fq_element_cls
             except ConfigurationError:
                 # Element has not been registered
                 raise
 
-    def _get_element_by_name(self, element_types, element_name):
+    def _get_element_by_name(
+        self, element_types: Tuple[DomainObjects, ...], element_name: str
+    ) -> DomainRecord:
         """Fetch Domain record with the provided Element name"""
         try:
             elements = self._domain_registry._elements_by_name[element_name]
@@ -1204,7 +1214,9 @@ class Domain:
                 }
             )
 
-    def _get_element_by_fully_qualified_name(self, element_types, element_fq_name):
+    def _get_element_by_fully_qualified_name(
+        self, element_types: Tuple[DomainObjects, ...], element_fq_name: str
+    ) -> DomainRecord:
         """Fetch Domain record with the Fully Qualified Element name"""
         for element_type in element_types:
             if element_fq_name in self._domain_registry._elements[element_type.value]:
@@ -1218,14 +1230,16 @@ class Domain:
                 }
             )
 
-    def _get_element_by_class(self, element_types, element_cls):
+    def _get_element_by_class(
+        self, element_types: Tuple[DomainObjects, ...], element_cls: type
+    ) -> DomainRecord:
         """Fetch Domain record with Element class details"""
         element_qualname = fqn(element_cls)
         return self._get_element_by_fully_qualified_name(
             element_types, element_qualname
         )
 
-    def _replace_element_by_class(self, new_element_cls):
+    def _replace_element_by_class(self, new_element_cls: type) -> None:
         aggregate_record = self._get_element_by_class(
             (DomainObjects.AGGREGATE, DomainObjects.ENTITY), new_element_cls
         )
@@ -1311,7 +1325,26 @@ class Domain:
     def aggregate(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def aggregate(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1327,7 +1360,26 @@ class Domain:
     def application_service(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def application_service(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1343,7 +1395,26 @@ class Domain:
     def command(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def command(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1359,7 +1430,26 @@ class Domain:
     def command_handler(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def command_handler(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1371,7 +1461,26 @@ class Domain:
     def event(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def event(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1387,7 +1496,26 @@ class Domain:
     def event_handler(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def event_handler(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1403,7 +1531,26 @@ class Domain:
     def domain_service(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def domain_service(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1419,7 +1566,26 @@ class Domain:
     def entity(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def entity(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1431,7 +1597,26 @@ class Domain:
     def email(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def email(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1443,7 +1628,26 @@ class Domain:
     def database_model(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def database_model(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1455,7 +1659,26 @@ class Domain:
     def repository(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def repository(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1467,7 +1690,26 @@ class Domain:
     def subscriber(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def subscriber(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1483,7 +1725,26 @@ class Domain:
     def value_object(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def value_object(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1499,7 +1760,26 @@ class Domain:
     def projection(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def projection(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1515,7 +1795,26 @@ class Domain:
     def projector(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def projector(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1531,7 +1830,26 @@ class Domain:
     def query(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def query(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1547,7 +1865,26 @@ class Domain:
     def query_handler(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def query_handler(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1563,7 +1900,26 @@ class Domain:
     def process_manager(
         self, _cls: None = ..., **kwargs: Any
     ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(field_specifiers=_FIELD_SPECIFIERS)
+    @dataclass_transform(
+        field_specifiers=(
+            Auto,
+            Boolean,
+            Date,
+            DateTime,
+            DictField,
+            Float,
+            HasMany,
+            HasOne,
+            Identifier,
+            Integer,
+            ListField,
+            Reference,
+            Status,
+            String,
+            Text,
+            ValueObject,
+        )
+    )
     def process_manager(
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
@@ -1602,7 +1958,7 @@ class Domain:
         """
 
         def wrap(cls: type) -> type:
-            new_cls = upcaster_factory(cls, self, **kwargs)
+            new_cls: type = upcaster_factory(cls, self, **kwargs)
             self._upcasters.append(new_cls)
             return new_cls
 
@@ -1613,7 +1969,7 @@ class Domain:
     ########################
     # Message Enrichment  #
     ########################
-    def register_event_enricher(self, fn: Callable) -> None:
+    def register_event_enricher(self, fn: Callable[..., Any]) -> None:
         """Register a callable that enriches every event's metadata.
 
         The enricher is called during :meth:`~protean.core.aggregate.raise_`
@@ -1639,7 +1995,7 @@ class Domain:
         self._event_enrichers.append(fn)
 
     @property
-    def event_enricher(self) -> Callable:
+    def event_enricher(self) -> Callable[..., Any]:
         """Decorator form of :meth:`register_event_enricher`.
 
         Example::
@@ -1649,13 +2005,13 @@ class Domain:
                 return {"tenant_id": get_current_tenant_id()}
         """
 
-        def decorator(fn: Callable) -> Callable:
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             self.register_event_enricher(fn)
             return fn
 
         return decorator
 
-    def register_command_enricher(self, fn: Callable) -> None:
+    def register_command_enricher(self, fn: Callable[..., Any]) -> None:
         """Register a callable that enriches every command's metadata.
 
         The enricher is called during :meth:`process` with ``(command,)``
@@ -1681,7 +2037,7 @@ class Domain:
         self._command_enrichers.append(fn)
 
     @property
-    def command_enricher(self) -> Callable:
+    def command_enricher(self) -> Callable[..., Any]:
         """Decorator form of :meth:`register_command_enricher`.
 
         Example::
@@ -1691,7 +2047,7 @@ class Domain:
                 return {"request_id": get_request_id()}
         """
 
-        def decorator(fn: Callable) -> Callable:
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             self.register_command_enricher(fn)
             return fn
 
@@ -1771,7 +2127,7 @@ class Domain:
     ###################
     # Handling Events #
     ###################
-    def handlers_for(self, event: Any) -> set:
+    def handlers_for(self, event: Any) -> set[Any]:
         """Return Event Handlers listening to a specific event
 
         Args:
@@ -1785,11 +2141,11 @@ class Domain:
     ############################
     # Projector Functionality  #
     ############################
-    def projectors_for(self, projection_cls: BaseProjection) -> set:
+    def projectors_for(self, projection_cls: type[BaseProjection]) -> set[Any]:
         """Return Projectors listening to a specific projection
 
         Args:
-            projection_cls (BaseProjection): Projection to be consumed
+            projection_cls (type[BaseProjection]): Projection to be consumed
 
         Returns:
             List[BaseProjector]: Projectors that have registered to consume the projection
@@ -1800,21 +2156,23 @@ class Domain:
     # Repository Functionality #
     ############################
 
-    def repository_for(self, element_cls) -> BaseRepository:
+    def repository_for(self, element_cls: Any) -> BaseRepository:
         if isinstance(element_cls, str):
             raise IncorrectUsageError(
                 f"Element {element_cls} is not registered in domain {self.name}"
             )
 
+        repository: BaseRepository
         if (
             element_cls.element_type == DomainObjects.AGGREGATE
             and element_cls.meta_.is_event_sourced
         ):
             # Return an Event Sourced repository
-            return self.event_store.repository_for(element_cls)
+            repository = self.event_store.repository_for(element_cls)
         else:
             # This is a regular aggregate or a projection
-            return self.providers.repository_for(element_cls)
+            repository = self.providers.repository_for(element_cls)
+        return repository
 
     ###########################
     # ReadView Functionality #
@@ -1849,11 +2207,14 @@ class Domain:
                 f"Element {projection_cls} is not registered in domain {self.name}"
             )
 
-        if projection_cls.element_type != DomainObjects.PROJECTION:
+        # ``element_type`` is a class var injected onto element classes at
+        # registration; it is not visible on the bare ``type`` annotation.
+        projection: Any = projection_cls
+        if projection.element_type != DomainObjects.PROJECTION:
             raise IncorrectUsageError(
                 f"`view_for` is only available for projections. "
-                f"Received {projection_cls.__name__} "
-                f"({projection_cls.element_type})."
+                f"Received {projection.__name__} "
+                f"({projection.element_type})."
             )
 
         return ReadView(self, projection_cls)
@@ -1869,7 +2230,7 @@ class Domain:
     # Cache Functionality #
     #######################
 
-    def cache_for(self, projection_cls):
+    def cache_for(self, projection_cls: type[BaseProjection]) -> "BaseCache":
         return self.caches.cache_for(projection_cls)
 
     ################################
@@ -1909,17 +2270,20 @@ class Domain:
                 f"Element {projection_cls} is not registered in domain {self.name}"
             )
 
-        if projection_cls.element_type != DomainObjects.PROJECTION:
+        # ``element_type`` / ``meta_`` are injected onto element classes at
+        # registration; they are not visible on the bare ``type`` annotation.
+        projection: Any = projection_cls
+        if projection.element_type != DomainObjects.PROJECTION:
             raise IncorrectUsageError(
                 f"`connection_for` is only available for projections. "
-                f"Received {projection_cls.__name__} "
-                f"({projection_cls.element_type})."
+                f"Received {projection.__name__} "
+                f"({projection.element_type})."
             )
 
-        if projection_cls.meta_.cache:
-            return self.caches.get_connection(projection_cls.meta_.cache)
+        if projection.meta_.cache:
+            return self.caches.get_connection(projection.meta_.cache)
         else:
-            return self.providers.get_connection(projection_cls.meta_.provider)
+            return self.providers.get_connection(projection.meta_.provider)
 
     ##########################
     # Snapshot Functionality #
@@ -1949,7 +2313,10 @@ class Domain:
                 f"`{aggregate_cls.__name__}` is not registered in domain {self.name}"
             )
 
-        return self.event_store.store.create_snapshot(aggregate_cls, identifier)
+        created: bool = self.event_store.store.create_snapshot(
+            aggregate_cls, identifier
+        )
+        return created
 
     def create_snapshots(self, aggregate_cls: type) -> int:
         """Create snapshots for all instances of an event-sourced aggregate.
@@ -1973,7 +2340,8 @@ class Domain:
                 f"`{aggregate_cls.__name__}` is not registered in domain {self.name}"
             )
 
-        return self.event_store.store.create_snapshots(aggregate_cls)
+        count: int = self.event_store.store.create_snapshots(aggregate_cls)
+        return count
 
     def create_all_snapshots(self) -> dict[str, int]:
         """Create snapshots for all event-sourced aggregates in the domain.
@@ -2079,15 +2447,15 @@ class Domain:
     # Email Functionality #
     #######################
 
-    def get_email_provider(self, provider_name):
+    def get_email_provider(self, provider_name: str) -> Any:
         return self.email_providers.get_email_provider(provider_name)
 
-    def send_email(self, email):
+    def send_email(self, email: Any) -> Any:
         return self.email_providers.send_email(email)
 
-    def make_shell_context(self):
+    def make_shell_context(self) -> dict[str, Any]:
         """Return a dictionary of context variables for a shell session."""
-        values = {"domain": self}
+        values: dict[str, Any] = {"domain": self}
 
         # For each domain element type in Domain Objects,
         #   Cycle through all values in self.registry._elements[element_type]
@@ -2107,13 +2475,13 @@ class Domain:
     def _initialize_outbox(self) -> None:
         self._infrastructure.initialize_outbox()
 
-    def _get_outbox_repo(self, provider_name: str):
+    def _get_outbox_repo(self, provider_name: str) -> BaseRepository:
         return self._infrastructure.get_outbox_repo(provider_name)
 
     def _initialize_processed_messages(self) -> None:
         self._infrastructure.initialize_processed_messages()
 
-    def _get_processed_message_repo(self, provider_name: str):
+    def _get_processed_message_repo(self, provider_name: str) -> BaseRepository:
         return self._infrastructure.get_processed_message_repo(provider_name)
 
     # ------------------------------------------------------------------
@@ -2215,7 +2583,7 @@ class Domain:
         # Skip OTel injection when telemetry is disabled so the structlog
         # chain does not pay the cost of a no-op processor on every log call.
         extra_processors = config_kwargs.pop("extra_processors", None)
-        extra: list = [protean_correlation_processor]
+        extra: list[Any] = [protean_correlation_processor]
         if telemetry_enabled:
             extra.append(protean_otel_processor)
         extra.extend(list(extra_processors or []))

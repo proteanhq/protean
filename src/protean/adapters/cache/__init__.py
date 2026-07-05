@@ -11,6 +11,7 @@ from protean.port.cache import BaseCache
 from protean.utils.inflection import underscore
 
 if TYPE_CHECKING:
+    from protean.core.projection import BaseProjection
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ class Caches(collections.abc.MutableMapping[str, BaseCache]):
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
 
-    def cache_for(self, projection_cls):
+    def cache_for(self, projection_cls: "type[BaseProjection]") -> BaseCache:
         """Retrieve cache associated with the Projection"""
         if self._caches is None:
             self._initialize()
@@ -107,7 +108,7 @@ class Caches(collections.abc.MutableMapping[str, BaseCache]):
         # with projections that call cache_for() without formal registration.
         cache_name = projection_cls.meta_.cache or projection_cls.meta_.provider
 
-        cache = self.get(cache_name)
+        cache = self[cache_name]
 
         projection_name = underscore(projection_cls.__name__)
         if projection_name not in cache._projections:
