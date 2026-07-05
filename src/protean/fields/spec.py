@@ -75,7 +75,10 @@ class FieldSpec:
         default: Any = _UNSET,
         identifier: bool = False,
         unique: bool = False,
-        choices: tuple | list | type | None = None,  # supports Enum classes too
+        choices: tuple[Any, ...]
+        | list[Any]
+        | type[Any]
+        | None = None,  # supports Enum classes too
         description: str = "",
         referenced_as: str | None = None,
         # Type-specific constraints
@@ -91,14 +94,14 @@ class FieldSpec:
         # Sanitization
         sanitize: bool = False,  # For String/Text — runs bleach.clean()
         # Validators
-        validators: Iterable[Callable] = (),  # Per-field validator callables
+        validators: Iterable[Callable[..., Any]] = (),  # Per-field validator callables
         # Error messages
         error_messages: dict[str, str] | None = None,
         # Status transitions
-        transitions: dict
+        transitions: dict[Any, Any]
         | None = None,  # For Status fields — {state: [allowed_targets]}
         # Deprecation metadata
-        deprecated: str | dict | None = None,
+        deprecated: str | dict[str, Any] | None = None,
     ) -> None:
         self.python_type = python_type
         self.field_kind = field_kind
