@@ -3,11 +3,15 @@
 import collections
 import logging
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
 from protean.port.provider import registry
 from protean.utils import fully_qualified_name
+
+if TYPE_CHECKING:
+    from protean.utils.container import Element
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +61,9 @@ class Providers(collections.abc.MutableMapping):
         )
         return repository_cls
 
-    def _register_repository(self, part_of, repository_cls):
+    def _register_repository(
+        self, part_of: type["Element"], repository_cls: type[BaseRepository]
+    ) -> None:
         # When explicitly provided, the value of `database` will be the actual database in use
         # and will lock the repository to that type of database.
         # For example, with the following PostgreSQL configuration:

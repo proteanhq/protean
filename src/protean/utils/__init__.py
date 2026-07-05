@@ -552,7 +552,10 @@ def generate_identity(
     return id_value
 
 
-def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
+_ElementT = TypeVar("_ElementT", bound="Element")
+
+
+def clone_class(cls: Type[_ElementT], new_name: str) -> Type[_ElementT]:
     """Clone a class with a new name.
 
     Creates a new class with the same attributes and behavior as the original,
@@ -603,7 +606,7 @@ def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
         pydantic_metaclass = cast(type, type(cls))
         new_cls = pydantic_metaclass(new_name, (cls,), {"__annotations__": {}})
         new_cls.__qualname__ = new_name
-        return cast('Type["Element"]', new_cls)
+        return cast("Type[_ElementT]", new_cls)
 
     # Create a shallow copy of class attributes, excluding the unwanted ones
     attrs = {}
@@ -643,7 +646,7 @@ def clone_class(cls: "Element", new_name: str) -> Type["Element"]:
     # from the original cls to new_cls (PEP 3135).
     _rebind_class_cells(new_cls, cls)
 
-    return cast('Type["Element"]', new_cls)
+    return cast("Type[_ElementT]", new_cls)
 
 
 __all__ = [

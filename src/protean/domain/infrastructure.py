@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from protean.core.index import Index
     from protean.core.repository import BaseRepository
     from protean.domain import Domain
+    from protean.utils.container import Element
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,8 @@ class InfrastructureManager:
 
     def _initialize_per_provider(
         self,
-        base_cls: type,
-        repo_cls: type,
+        base_cls: type[Element],
+        repo_cls: type[BaseRepository],
         schema_name: str,
         indexes: list[Index],
         target: dict[str, BaseRepository],
