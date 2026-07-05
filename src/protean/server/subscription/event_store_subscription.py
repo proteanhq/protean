@@ -450,7 +450,7 @@ class EventStoreSubscription(BaseSubscription):
                 message.metadata is None
                 or message.metadata.event_store is None
                 or message.metadata.event_store.global_position is None
-            ):
+            ):  # pragma: no cover — corruption guard; real store messages always carry these
                 logger.warning(
                     f"[{self.subscriber_class_name}] "
                     f"Skipping message with missing metadata/position"
