@@ -51,7 +51,7 @@ class ProteanException(Exception):
 class ProteanExceptionWithMessage(ProteanException):
     def __init__(
         self,
-        messages: dict[str, list[str]],
+        messages: "dict[str, list[str]] | list[str] | str",
         traceback: Optional[str] = None,
         **kwargs: Any,
     ) -> None:

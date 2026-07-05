@@ -80,6 +80,7 @@ if TYPE_CHECKING:
     from types import FrameType
 
     from protean.port.cache import BaseCache
+    from protean.port.event_store import BaseEventStore
     from protean.utils.outbox import OutboxRepository
     from protean.utils.projection_rebuilder import RebuildResult
     from protean.utils.upcasting import UpcasterChain
@@ -1161,18 +1162,22 @@ class Domain:
 
     def fetch_element_cls_from_registry(
         self, element: str, element_types: Tuple[DomainObjects, ...]
-    ) -> Element:
+    ) -> "type[Element]":
         """Util Method to fetch an Element's class from its name"""
         try:
             # Try fetching by class name
-            element_cls: Element = self._get_element_by_name(element_types, element).cls
+            element_cls: "type[Element]" = self._get_element_by_name(
+                element_types, element
+            ).cls
             return element_cls
         except ConfigurationError:
             try:
                 # Try fetching by fully qualified class name
-                fq_element_cls: Element = self._get_element_by_fully_qualified_name(
-                    element_types, element
-                ).cls
+                fq_element_cls: "type[Element]" = (
+                    self._get_element_by_fully_qualified_name(
+                        element_types, element
+                    ).cls
+                )
                 return fq_element_cls
             except ConfigurationError:
                 # Element has not been registered
@@ -2168,8 +2173,12 @@ class Domain:
             element_cls.element_type == DomainObjects.AGGREGATE
             and element_cls.meta_.is_event_sourced
         ):
-            # Return an Event Sourced repository
-            repository = self.event_store.repository_for(element_cls)
+            # Return an Event Sourced repository. It is not a BaseRepository
+            # subclass but is consumed repository-like (add/get/find_by) by
+            # callers; cast to keep this method's public contract stable.
+            repository = cast(
+                BaseRepository, self.event_store.repository_for(element_cls)
+            )
         else:
             # This is a regular aggregate or a projection
             repository = self.providers.repository_for(element_cls)
@@ -2290,6 +2299,19 @@ class Domain:
     # Snapshot Functionality #
     ##########################
 
+    def _require_event_store(self) -> "BaseEventStore":
+        """Return the initialized event store, or raise a clear error.
+
+        The wrapper's ``store`` is ``None`` until ``domain.init()`` runs; these
+        event-store operations are only valid afterwards.
+        """
+        store = self.event_store.store
+        if store is None:
+            raise ConfigurationError(
+                "Event store is not initialized. Call `domain.init()` first."
+            )
+        return store
+
     def create_snapshot(self, aggregate_cls: type, identifier: str) -> bool:
         """Create a snapshot for a specific event-sourced aggregate instance.
 
@@ -2314,7 +2336,7 @@ class Domain:
                 f"`{aggregate_cls.__name__}` is not registered in domain {self.name}"
             )
 
-        created: bool = self.event_store.store.create_snapshot(
+        created: bool = self._require_event_store().create_snapshot(
             aggregate_cls, identifier
         )
         return created
@@ -2341,7 +2363,7 @@ class Domain:
                 f"`{aggregate_cls.__name__}` is not registered in domain {self.name}"
             )
 
-        count: int = self.event_store.store.create_snapshots(aggregate_cls)
+        count: int = self._require_event_store().create_snapshots(aggregate_cls)
         return count
 
     def create_all_snapshots(self) -> dict[str, int]:
@@ -2356,7 +2378,7 @@ class Domain:
         results: dict[str, int] = {}
         for _, record in self.registry._elements[DomainObjects.AGGREGATE.value].items():
             if record.cls.meta_.is_event_sourced and not record.internal:
-                count = self.event_store.store.create_snapshots(record.cls)
+                count = self._require_event_store().create_snapshots(record.cls)
                 results[record.cls.__name__] = count
 
         return results
@@ -2388,7 +2410,7 @@ class Domain:
             for node in chain:
                 print(f"{node.kind}: {node.message_type}")
         """
-        root = self.event_store.store.build_causation_tree(correlation_id)
+        root = self._require_event_store().build_causation_tree(correlation_id)
         if root is None:
             return []
 

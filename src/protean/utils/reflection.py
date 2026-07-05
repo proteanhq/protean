@@ -76,18 +76,21 @@ def attributes(class_or_instance: Type["Element"] | "Element") -> dict[str, "Fie
     from protean.fields.association import Association, Reference  # noqa: PLC0415
     from protean.fields.embedded import ValueObject  # noqa: PLC0415
 
-    attributes_dict = {}
+    attributes_dict: dict[str, "Field"] = {}
 
     for _, field_obj in fields(class_or_instance).items():
         if isinstance(field_obj, ValueObject):
             for _, shadow_field in field_obj.get_shadow_fields():
-                attributes_dict[shadow_field.attribute_name] = shadow_field
+                if shadow_field.attribute_name is not None:
+                    attributes_dict[shadow_field.attribute_name] = shadow_field
         elif isinstance(field_obj, Reference):
             attributes_dict[field_obj.get_attribute_name()] = field_obj.relation
         elif isinstance(field_obj, Association):
             pass  # HasOne/HasMany are not direct attributes
         else:
-            attributes_dict[field_obj.get_attribute_name()] = field_obj
+            attr_name = field_obj.get_attribute_name()
+            if attr_name is not None:
+                attributes_dict[attr_name] = field_obj
 
     return attributes_dict
 
