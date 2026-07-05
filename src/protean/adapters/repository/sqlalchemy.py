@@ -501,7 +501,7 @@ def _build_sa_indexes(
     )
 
 
-def render_index_ddl(entity_cls, dialect_name):
+def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     """Render an entity's index declarations to ``CREATE INDEX`` DDL strings.
 
     Builds the indexes against a throwaway table (column names only; types are
@@ -532,7 +532,7 @@ def render_index_ddl(entity_cls, dialect_name):
     }
     table = Table(table_name, metadata, *columns.values())
 
-    def column_for(field_name):
+    def column_for(field_name: str) -> typing.Any:
         return table.c[attr_for.get(field_name, field_name)]
 
     sa_indexes, raw_indexes = _make_sa_indexes(
