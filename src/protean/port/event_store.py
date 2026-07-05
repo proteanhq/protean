@@ -58,7 +58,7 @@ class BaseEventStore(metaclass=ABCMeta):
     @abstractmethod
     def _write(
         self,
-        stream: str,
+        stream_name: str,
         message_type: str,
         data: dict[str, Any],
         metadata: dict[str, Any] | None = None,
@@ -85,7 +85,7 @@ class BaseEventStore(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _read_last_message(self, stream: str) -> Optional[Dict[str, Any]]:
+    def _read_last_message(self, stream_name: str) -> Optional[Dict[str, Any]]:
         """Read the last message from the event store.
 
         Implemented by the concrete event store adapter.

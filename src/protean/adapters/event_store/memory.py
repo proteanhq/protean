@@ -148,14 +148,14 @@ class MemoryEventStore(BaseEventStore):
 
     def _write(
         self,
-        stream: str,
+        stream_name: str,
         message_type: str,
         data: dict[str, Any],
         metadata: dict[str, Any] | None = None,
         expected_version: int | None = None,
     ) -> int:
         repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
-        return repo.write(stream, message_type, data, metadata, expected_version)
+        return repo.write(stream_name, message_type, data, metadata, expected_version)
 
     def _read(
         self,
@@ -167,10 +167,10 @@ class MemoryEventStore(BaseEventStore):
         repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
         return repo.read(stream_name, sql, position, no_of_messages)
 
-    def _read_last_message(self, stream: str) -> Optional[dict[str, Any]]:
+    def _read_last_message(self, stream_name: str) -> Optional[dict[str, Any]]:
         repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
 
-        messages = repo.read(stream)
+        messages = repo.read(stream_name)
         return messages[-1] if messages else None
 
     def _stream_head_position(self, stream_category: str) -> int:
