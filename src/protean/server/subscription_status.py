@@ -171,6 +171,10 @@ def _collect_event_store_status(
     try:
         with domain.domain_context():
             store = domain.event_store.store
+            if store is None:
+                return _unknown_status(
+                    name, handler_cls.__name__, "event_store", stream_category
+                )
 
             # Current position (and when it was last written) from the stream
             last_msg = store._read_last_message(position_stream)
