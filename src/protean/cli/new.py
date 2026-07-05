@@ -138,8 +138,8 @@ def new(
     force: Annotated[Optional[bool], typer.Option("--force", "-f")] = False,
     defaults: Annotated[Optional[bool], typer.Option("--defaults")] = False,
     skip_setup: Annotated[Optional[bool], typer.Option("--skip-setup")] = False,
-):
-    def is_valid_project_name(project_name):
+) -> None:
+    def is_valid_project_name(project_name: str) -> bool:
         """
         Validates the project name against criteria that ensure compatibility across
         Mac, Linux, and Windows systems, and also disallows spaces.
@@ -153,7 +153,7 @@ def new(
 
         return True
 
-    def clear_directory_contents(dir_path):
+    def clear_directory_contents(dir_path: str) -> None:
         """
         Removes all contents of a specified directory without deleting the directory itself.
 
