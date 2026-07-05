@@ -544,9 +544,14 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     )
 
     dialect_impls = {
-        "postgresql": psql.dialect(),
+        # SQLAlchemy's ``psql.dialect`` / ``mssql.dialect`` factories are
+        # declared without full annotations, so mypy flags the calls as
+        # untyped even though the package ships ``py.typed``. The sqlite
+        # equivalent is annotated, hence no ignore there. See the redis
+        # adapter for the same scoped-ignore precedent.
+        "postgresql": psql.dialect(),  # type: ignore[no-untyped-call]
         "sqlite": sqlite_dialect.dialect(),
-        "mssql": mssql.dialect(),
+        "mssql": mssql.dialect(),  # type: ignore[no-untyped-call]
     }
     dialect = dialect_impls.get(dialect_name, sqlite_dialect.dialect())
 
@@ -762,7 +767,14 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         # dialect matches the configured engine, on table creation.
         for raw in raw_indexes:
             if raw.dialect == raw_dialect:
-                event.listen(cls.__table__, "after_create", DDL(raw.ddl))
+                # ``DDL`` is declared without full annotations in SQLAlchemy,
+                # so mypy reports the call as untyped. Scoped-ignore per the
+                # external-lib precedent in the redis adapter.
+                event.listen(
+                    cls.__table__,
+                    "after_create",
+                    DDL(raw.ddl),  # type: ignore[no-untyped-call]
+                )
 
     @orm.declared_attr.directive
     def __tablename__(cls) -> str:
