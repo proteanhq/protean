@@ -3,7 +3,7 @@
 import re
 
 
-def camelize(string, uppercase_first_letter=True):
+def camelize(string: str, uppercase_first_letter: bool = True) -> str:
     """
     Convert strings to CamelCase.
 
@@ -30,7 +30,7 @@ def camelize(string, uppercase_first_letter=True):
         return string[0].lower() + camelize(string)[1:]
 
 
-def dasherize(word):
+def dasherize(word: str) -> str:
     """Replace underscores with dashes in the string.
 
     Example::
@@ -42,7 +42,7 @@ def dasherize(word):
     return word.replace("_", "-")
 
 
-def humanize(word):
+def humanize(word: str) -> str:
     """
     Capitalize the first word and turn underscores into spaces and strip a
     trailing ``"_id"``, if any. Like :func:`titleize`, this is meant for
@@ -63,7 +63,7 @@ def humanize(word):
     return word
 
 
-def titleize(word):
+def titleize(word: str) -> str:
     """
     Capitalize all the words and replace some characters in the string to
     create a nicer looking title. :func:`titleize` is meant for creating pretty
@@ -88,7 +88,7 @@ def titleize(word):
     )
 
 
-def underscore(word):
+def underscore(word: str) -> str:
     """
     Make an underscored, lowercase form from the expression in the string.
 
