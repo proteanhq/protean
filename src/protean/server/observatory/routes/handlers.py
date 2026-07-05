@@ -16,12 +16,16 @@ import json
 import logging
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, List, cast
 
 from fastapi import APIRouter, Path, Query
 from fastapi.responses import JSONResponse
 
-from protean.server.subscription_status import collect_subscription_statuses
+from protean.server.subscription_status import (
+    SubscriptionStatus,
+    _RedisStyleBroker,
+    collect_subscription_statuses,
+)
 from protean.server.tracing import TRACE_STREAM
 
 if TYPE_CHECKING:
@@ -50,14 +54,19 @@ _THROUGHPUT_BUCKET_S = 10
 # ---------------------------------------------------------------------------
 
 
-def _get_redis(domains: List[Domain]):
-    """Get a Redis connection from the first domain's broker."""
+def _get_redis(domains: List[Domain]) -> Any:
+    """Get a Redis connection from the first domain's broker.
+
+    Returns the live ``redis.Redis`` client (typed ``Any`` — the ``redis``
+    package is an optional dependency not importable at module scope here) or
+    ``None`` when no Redis-backed broker is available.
+    """
     for d in domains:
         try:
             with d.domain_context():
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
-                    return broker.redis_instance
+                    return cast(_RedisStyleBroker, broker).redis_instance
         except Exception:
             continue
     return None
@@ -114,12 +123,12 @@ def _infer_aggregate(handler_cls: type) -> str | None:
         return None
 
     # Projectors use projector_for
-    projector_for = getattr(meta, "projector_for", None)
+    projector_for: type[Any] | None = getattr(meta, "projector_for", None)
     if projector_for:
         return projector_for.__name__
 
     # Event/command handlers use part_of
-    part_of = getattr(meta, "part_of", None)
+    part_of: type[Any] | None = getattr(meta, "part_of", None)
     if part_of:
         return part_of.__name__
 
@@ -217,7 +226,7 @@ def merge_subscription_status(
     CommandDispatcher subscription status.
     """
     # Collect all subscription statuses across domains
-    all_statuses = []
+    all_statuses: list[SubscriptionStatus] = []
     for domain in domains:
         try:
             statuses = collect_subscription_statuses(domain)
@@ -227,10 +236,10 @@ def merge_subscription_status(
             continue
 
     # Build lookup: handler_name → list of SubscriptionStatus
-    status_by_handler: dict[str, list] = defaultdict(list)
+    status_by_handler: dict[str, list[SubscriptionStatus]] = defaultdict(list)
 
     # Also build command stream lookup: stream_category → SubscriptionStatus
-    command_stream_status: dict[str, Any] = {}
+    command_stream_status: dict[str, SubscriptionStatus] = {}
 
     for s in all_statuses:
         # Command dispatcher subscriptions have name like "commands:{stream}"
