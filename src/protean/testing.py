@@ -80,7 +80,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -113,7 +113,7 @@ from protean.utils.sync_dispatch import dispatch_events_sync
 
 
 def given(
-    cls_or_event: type | "BaseEvent", *events: "BaseEvent"
+    cls_or_event: "type | BaseEvent", *events: "BaseEvent"
 ) -> AggregateResult | ProcessManagerResult | EventSequence:
     """Start a test sentence.
 
@@ -217,7 +217,7 @@ class EventLog:
     def __bool__(self) -> bool:
         return len(self._events) > 0
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         return iter(self._events)
 
     def __repr__(self) -> str:
@@ -258,7 +258,7 @@ class AggregateResult:
         self._event_count: int = 0
         self._seeded: bool = False
 
-    def after(self, *events) -> AggregateResult:
+    def after(self, *events: Any) -> AggregateResult:
         """Accumulate more history events (for BDD "And given" steps).
 
         Returns self for chaining::
@@ -270,7 +270,9 @@ class AggregateResult:
         self._given_events.extend(events)
         return self
 
-    def process(self, command, *, correlation_id: str | None = None) -> AggregateResult:
+    def process(
+        self, command: Any, *, correlation_id: str | None = None
+    ) -> AggregateResult:
         """Dispatch a command through the domain's full processing pipeline.
 
         Seeds the event store with given events (on first call only),
@@ -392,11 +394,11 @@ class AggregateResult:
         return [str(self._rejection)]
 
     @property
-    def aggregate(self):
+    def aggregate(self) -> Any:
         """The raw aggregate instance, if needed directly."""
         return self._aggregate
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         """Proxy attribute access to the underlying aggregate.
 
         This makes ``order.status``, ``order.items``, ``order.pricing``
@@ -423,7 +425,7 @@ class AggregateResult:
     # Internal
     # ------------------------------------------------------------------
 
-    def _seed_events(self, domain) -> Any:
+    def _seed_events(self, domain: "Domain") -> Any:
         """Write given events to the event store and process handlers.
 
         Reconstitutes the aggregate from events to determine its identity,
@@ -1093,7 +1095,7 @@ def assert_chain(
         assert_chain(chain, [PlaceOrder, OrderPlaced, ConfirmOrder, OrderConfirmed])
     """
     actual_types = [node.message_type for node in chain]
-    expected_types = [e.__type__ if hasattr(e, "__type__") else e for e in expected]
+    expected_types = [getattr(e, "__type__", e) for e in expected]
 
     if actual_types != expected_types:
         raise AssertionError(
