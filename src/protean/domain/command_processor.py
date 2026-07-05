@@ -149,7 +149,7 @@ class CommandProcessor:
 
             identifier = None
             identity_field = id_field(command)
-            if identity_field:
+            if identity_field is not None and identity_field.field_name is not None:
                 identifier = getattr(command, identity_field.field_name)
             else:
                 identifier = str(uuid4())
@@ -228,9 +228,7 @@ class CommandProcessor:
                 origin_stream=origin_stream,
                 version=command._metadata.domain.version
                 if command._metadata.domain
-                else command._metadata.version
-                if hasattr(command._metadata, "version")
-                else None,
+                else getattr(command._metadata, "version", 1),
                 sequence_id=None,
                 asynchronous=asynchronous,
                 priority=priority,
