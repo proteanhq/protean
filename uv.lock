@@ -768,6 +768,12 @@ wheels = [
 ]
 
 [[package]]
+name = "glob2"
+version = "0.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/a5/bbbc3b74a94fbdbd7915e7ad030f16539bfdc1362f7e9003b594f0537950/glob2-0.7.tar.gz", hash = "sha256:85c3dbd07c8aa26d63d7aacee34fa86e9a91a3873bc30bf62ec46e531f92ab8c", size = 10697, upload-time = "2019-06-10T23:33:48.308Z" }
+
+[[package]]
 name = "googleapis-common-protos"
 version = "1.73.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1179,6 +1185,18 @@ wheels = [
 ]
 
 [[package]]
+name = "junit-xml"
+version = "1.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/98/af/bc988c914dd1ea2bc7540ecc6a0265c2b6faccc6d9cdb82f20e2094a8229/junit-xml-1.9.tar.gz", hash = "sha256:de16a051990d4e25a3982b2dd9e89d671067548718866416faec14d9de56db9f", size = 7349, upload-time = "2023-01-24T18:42:00.836Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/93/2d896b5fd3d79b4cadd8882c06650e66d003f465c9d12c488d92853dff78/junit_xml-1.9-py2.py3-none-any.whl", hash = "sha256:ec5ca1a55aefdd76d28fcc0b135251d156c7106fa979686a4b48d62b761b4732", size = 7130, upload-time = "2020-02-22T20:41:37.661Z" },
+]
+
+[[package]]
 name = "keyring"
 version = "25.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1567,6 +1585,20 @@ wheels = [
 ]
 
 [[package]]
+name = "mutmut"
+version = "2.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "glob2" },
+    { name = "junit-xml" },
+    { name = "parso" },
+    { name = "pony" },
+    { name = "toml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/b3/bbeef9223c0f25b7336e673723f667e3a851dbe7ad235c9180937739dd44/mutmut-2.5.1.tar.gz", hash = "sha256:d8fea2538805277f6290922e88881ad045002fc284d5a53c2b3915298b77f79d", size = 50502, upload-time = "2024-08-15T13:55:23.418Z" }
+
+[[package]]
 name = "mypy"
 version = "1.19.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1906,6 +1938,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pony"
+version = "0.7.19"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/59/ab6542afa95de0d5a16545ce6ce683960352cfd9a2318722593b81a98123/pony-0.7.19.tar.gz", hash = "sha256:f7f83b2981893e49f7f18e8def52ad8fa8f8e6c5f9583b9aaed62d4d85036a0f", size = 258589, upload-time = "2024-08-27T12:29:29.963Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/cb/0ef8429024309fe6f5edf1debc7cf63adeaeb34b2242490cc18710658abd/pony-0.7.19-py3-none-any.whl", hash = "sha256:5112b4cf40d3f24e93ae66dc5ab7dc6813388efa870e750928d60dc699873cf5", size = 317259, upload-time = "2024-08-27T12:29:28.247Z" },
+]
+
+[[package]]
 name = "pre-commit"
 version = "4.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2022,6 +2063,9 @@ docs = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "pymdown-extensions" },
 ]
+mutation = [
+    { name = "mutmut" },
+]
 test = [
     { name = "chardet" },
     { name = "coverage" },
@@ -2096,6 +2140,7 @@ docs = [
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.27,<2" },
     { name = "pymdown-extensions", specifier = ">=10.21.2" },
 ]
+mutation = [{ name = "mutmut", specifier = "<3" }]
 test = [
     { name = "chardet", specifier = ">=3.0.2,<8" },
     { name = "coverage", specifier = ">=7.8.0" },
@@ -3003,6 +3048,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ef/52/9ba0f43b686e7f3ddfeaa78ac3af750292662284b3661e91ad5494f21dbc/structlog-25.5.0.tar.gz", hash = "sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98", size = 1460830, upload-time = "2025-10-27T08:28:23.028Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/45/a132b9074aa18e799b891b91ad72133c98d8042c70f6240e4c5f9dabee2f/structlog-25.5.0-py3-none-any.whl", hash = "sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f", size = 72510, upload-time = "2025-10-27T08:28:21.535Z" },
+]
+
+[[package]]
+name = "toml"
+version = "0.10.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/ba/1f744cdc819428fc6b5084ec34d9b30660f6f9daaf70eead706e3203ec3c/toml-0.10.2.tar.gz", hash = "sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f", size = 22253, upload-time = "2020-11-01T01:40:22.204Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/44/6f/7120676b6d73228c96e17f1f794d8ab046fc910d781c8d151120c3f1569e/toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b", size = 16588, upload-time = "2020-11-01T01:40:20.672Z" },
 ]
 
 [[package]]

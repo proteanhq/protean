@@ -84,11 +84,16 @@ celerybeat-schedule
 # Environments
 .env
 .venv
+.venv-mutation
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Mutation testing (mutmut) — see scripts/mutation.sh
+.mutmut-cache
+*.mutbak
 
 # Spyder project settings
 .spyderproject

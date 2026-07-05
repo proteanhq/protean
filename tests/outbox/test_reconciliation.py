@@ -79,6 +79,65 @@ class TestOutboxReconciliation:
         assert len(rows) == 1
         assert rows[0].target_broker == "default"
 
+    def test_reconcile_scans_from_tail_minus_limit_plus_one(
+        self, domain_and_repo, monkeypatch
+    ):
+        """The tail scan starts at ``max(0, tail - limit + 1)``.
+
+        With more events than ``limit``, reconcile must scan only the newest
+        ``limit`` events — the window ending at the tail. This pins the
+        off-by-one arithmetic: any drift in ``tail - limit + 1`` reads the wrong
+        slice and silently fails to repair the crash-window event.
+        """
+        domain, outbox_repo = domain_and_repo
+        for _ in range(4):
+            _deposit(domain)
+        store = domain.event_store.store
+        tail = store.read_last_message("$all").metadata.event_store.global_position
+
+        outbox_repo._dao._delete_all()  # crash window: newest row missing → scan
+
+        positions = []
+        real_read = store.read
+
+        def spy(*args, **kwargs):
+            positions.append(kwargs.get("position"))
+            return real_read(*args, **kwargs)
+
+        monkeypatch.setattr(store, "read", spy)
+
+        limit = 2
+        reconcile_outbox(domain, limit=limit)
+
+        assert positions == [max(0, tail - limit + 1)]
+        assert tail - limit + 1 > 0  # guard: we're testing the un-clamped path
+
+    def test_reconcile_clamps_scan_start_to_zero(self, domain_and_repo, monkeypatch):
+        """When there are fewer events than ``limit``, the scan starts at 0.
+
+        ``max(0, tail - limit + 1)`` must clamp a negative start to 0 rather than
+        reading from a positive offset that would skip the earliest events.
+        """
+        domain, outbox_repo = domain_and_repo
+        _deposit(domain)
+        _deposit(domain)
+        store = domain.event_store.store
+
+        outbox_repo._dao._delete_all()
+
+        positions = []
+        real_read = store.read
+
+        def spy(*args, **kwargs):
+            positions.append(kwargs.get("position"))
+            return real_read(*args, **kwargs)
+
+        monkeypatch.setattr(store, "read", spy)
+
+        reconcile_outbox(domain, limit=1000)  # limit >> number of events
+
+        assert positions == [0]
+
     def test_reconcile_is_a_noop_when_nothing_is_missing(self, domain_and_repo):
         domain, _ = domain_and_repo
         _deposit(domain)

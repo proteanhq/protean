@@ -333,6 +333,51 @@ class TestFindUnprocessedBoundaryConditions:
 
         assert outbox_repo.find_unprocessed() == []
 
+    def test_find_unprocessed_limit_one_returns_exactly_one(
+        self, outbox_repo, create_sample_messages
+    ):
+        """``limit=1`` returns a single row even though several are eligible.
+
+        Guards the ``limit == 0`` short-circuit boundary: a mutation of the
+        literal (``== 1``) would swallow ``limit=1`` and return nothing.
+        """
+        create_sample_messages()  # 3 PENDING + 2 retry-ready FAILED are eligible
+
+        assert len(outbox_repo.find_unprocessed(limit=1)) == 1
+
+    def test_find_unprocessed_filters_by_target_broker_excluding_ineligible(
+        self, outbox_repo, sample_metadata
+    ):
+        """``target_broker`` narrows to the broker AND keeps every eligibility
+        predicate.
+
+        Seeds an eligible external row, an *ineligible* external row (PUBLISHED),
+        and an eligible row for another broker. Only the eligible external row
+        may come back — proving the broker filter is *added* to the eligibility
+        criteria, not substituted for it (a dropped ``criteria &=`` would leak
+        the PUBLISHED external row; an OR'd filter would leak the default row).
+        """
+        rows = {
+            ("external", OutboxStatus.PENDING.value),  # eligible, right broker
+            ("external", OutboxStatus.PUBLISHED.value),  # wrong status
+            ("default", OutboxStatus.PENDING.value),  # eligible, wrong broker
+        }
+        for broker, status in rows:
+            msg = Outbox.create_message(
+                message_id=f"{broker}-{status}",
+                stream_name="s",
+                message_type="TestEvent",
+                data={},
+                metadata=sample_metadata,
+                target_broker=broker,
+            )
+            msg.status = status
+            outbox_repo.add(msg)
+
+        found = outbox_repo.find_unprocessed(target_broker="external")
+
+        assert [m.message_id for m in found] == ["external-pending"]
+
 
 class TestOutboxRepositoryFilterQueries:
     """Test repository filter query methods."""
@@ -884,6 +929,17 @@ class TestClaimBatch:
 
         claimed = outbox_repo.claim_batch("worker-A", limit=2)
         assert len(claimed) == 2
+
+    def test_limit_one_claims_exactly_one(self, outbox_repo, create_sample_messages):
+        """``limit=1`` claims a single row (not zero).
+
+        Guards the ``limit <= 0`` short-circuit boundary: a mutation of the
+        literal (``<= 1``) would treat a one-message claim as "claim nothing".
+        """
+        create_sample_messages()
+
+        claimed = outbox_repo.claim_batch("worker-A", limit=1)
+        assert len(claimed) == 1
 
     def test_zero_or_negative_limit_claims_nothing(
         self, outbox_repo, create_sample_messages
