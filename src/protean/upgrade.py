@@ -260,6 +260,147 @@ def _check_outbox_schema(domain: "Domain") -> list[UpgradeFinding]:
 
 
 # ---------------------------------------------------------------------------
+# Outbox structural migrations (index + nullability) added across 0.16
+# ---------------------------------------------------------------------------
+
+# The framework backfills a NULL ``target_broker`` to the configured internal
+# broker; ``'default'`` is the out-of-the-box name. Both migrations below share
+# this preamble — a NULL ``target_broker`` would violate the NOT NULL constraint
+# and, because NULLs compare as distinct in a UNIQUE index, defeat the
+# composite idempotency index.
+_OUTBOX_BACKFILL_NULL_TARGET_BROKER = (
+    "UPDATE outbox SET target_broker = 'default' WHERE target_broker IS NULL;"
+)
+
+
+def _outbox_set_not_null_sql(dialect: str) -> str:
+    """Per-dialect SQL to backfill NULLs and add ``NOT NULL`` on ``target_broker``."""
+    if dialect == "mysql":
+        alter = "ALTER TABLE outbox MODIFY target_broker varchar(128) NOT NULL;"
+    elif dialect in ("mssql", "mssql+pyodbc"):
+        alter = "ALTER TABLE outbox ALTER COLUMN target_broker varchar(128) NOT NULL;"
+    else:  # postgresql / standard
+        alter = "ALTER TABLE outbox ALTER COLUMN target_broker SET NOT NULL;"
+    return f"{_OUTBOX_BACKFILL_NULL_TARGET_BROKER}\n{alter}"
+
+
+def _outbox_composite_index_sql(dialect: str) -> str:
+    """Per-dialect SQL to replace ``uq_outbox_message_id`` with the composite index."""
+    if dialect in ("mysql", "mssql", "mssql+pyodbc"):
+        drop = "DROP INDEX uq_outbox_message_id ON outbox;"
+    else:  # postgresql / sqlite / standard
+        drop = "DROP INDEX IF EXISTS uq_outbox_message_id;"
+    create = (
+        "CREATE UNIQUE INDEX uq_outbox_message_id_target_broker\n"
+        "  ON outbox (message_id, target_broker);"
+    )
+    return f"{_OUTBOX_BACKFILL_NULL_TARGET_BROKER}\n{drop}\n{create}"
+
+
+def _check_outbox_migrations(domain: "Domain") -> list[UpgradeFinding]:
+    """Flag the intra-0.16 outbox structural migrations on each live outbox table.
+
+    Two changes landed after the initial VARCHAR bounds: the recommended unique
+    index became composite over (``message_id``, ``target_broker``) in 0.16.1,
+    and ``target_broker`` became ``NOT NULL`` in 0.16.2. Protean never alters a
+    populated table, so an outbox created on an earlier 0.16 release keeps the
+    old shape; generate the SQL to bring it in line. Complements
+    :func:`_check_outbox_schema`, which covers the column-length bounds.
+    """
+    try:
+        from sqlalchemy import inspect as sa_inspect
+    except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
+        return []
+
+    from protean.adapters.repository.sqlalchemy import SAProvider
+
+    findings: list[UpgradeFinding] = []
+    for name, provider in domain.providers.items():
+        if not isinstance(provider, SAProvider):
+            continue
+        engine = getattr(provider, "_engine", None)
+        if engine is None:  # pragma: no cover - an initialized SAProvider has one
+            continue
+        dialect = engine.dialect.name
+        schema = getattr(getattr(provider, "_metadata", None), "schema", None)
+        try:
+            inspector = sa_inspect(engine)
+            if not inspector.has_table("outbox", schema=schema):
+                continue
+            columns = {
+                c["name"]: c for c in inspector.get_columns("outbox", schema=schema)
+            }
+            indexes = inspector.get_indexes("outbox", schema=schema)
+        except Exception:
+            # Introspection is best-effort; never fail the upgrade check on it.
+            continue
+
+        # (0.16.2) target_broker NOT NULL. SQLite cannot add the constraint in
+        # place — it needs a full table rebuild — so only the enforcing backends
+        # get generated SQL here; the migration guide covers the SQLite rebuild.
+        target_broker = columns.get("target_broker")
+        if (
+            target_broker is not None
+            and target_broker.get("nullable", True)
+            and dialect != "sqlite"
+        ):
+            findings.append(
+                UpgradeFinding(
+                    code="OUTBOX_TARGET_BROKER_NULLABLE",
+                    level="warning",
+                    title=f"Outbox `target_broker` on `{name}` is still nullable",
+                    detail=(
+                        "0.16.2 makes `Outbox.target_broker` NOT NULL. A NULL row "
+                        "bypasses the (message_id, target_broker) idempotency index "
+                        "(NULLs compare as distinct), silently reopening the "
+                        "duplicate-publish window. The existing column keeps working; "
+                        "backfill and add the constraint to match the new schema."
+                    ),
+                    remediation=(
+                        "Confirm the backfill value matches your configured internal "
+                        "broker (`[outbox] broker`, default `default`), then run the SQL."
+                    ),
+                    element=f"databases.{name}",
+                    sql=_outbox_set_not_null_sql(dialect),
+                )
+            )
+
+        # (0.16.1) composite unique index. Only flag when the legacy single-column
+        # unique index exists and the composite one does not — the index is
+        # recommended, not framework-created, so its absence means nothing to do.
+        unique_index_cols = {
+            tuple(ix.get("column_names") or []) for ix in indexes if ix.get("unique")
+        }
+        if ("message_id",) in unique_index_cols and (
+            "message_id",
+            "target_broker",
+        ) not in unique_index_cols:
+            findings.append(
+                UpgradeFinding(
+                    code="OUTBOX_UNIQUE_INDEX_LEGACY",
+                    level="warning",
+                    title=f"Outbox unique index on `{name}` is `message_id`-only",
+                    detail=(
+                        "0.16.1 changed the recommended outbox unique index from "
+                        "`message_id` alone to a composite over (message_id, "
+                        "target_broker). A single event is dual-written once per "
+                        "target broker (all rows sharing one message_id), so the "
+                        "single-column index rejects the framework's own dual-write "
+                        "with a UniqueViolation."
+                    ),
+                    remediation=(
+                        "Confirm the backfill value matches your configured internal "
+                        "broker (`[outbox] broker`, default `default`), then run the SQL."
+                    ),
+                    element=f"databases.{name}",
+                    sql=_outbox_composite_index_sql(dialect),
+                )
+            )
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
@@ -269,6 +410,7 @@ _CHECKS: tuple[Callable[["Domain"], list[UpgradeFinding]], ...] = (
     _check_elasticsearch_server,
     _check_health_port,
     _check_outbox_schema,
+    _check_outbox_migrations,
 )
 
 

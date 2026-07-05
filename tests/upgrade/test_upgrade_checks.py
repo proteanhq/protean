@@ -8,6 +8,8 @@ from protean.upgrade import (
     _check_elasticsearch_server,
     _check_health_port,
     _check_pool_defaults,
+    _outbox_composite_index_sql,
+    _outbox_set_not_null_sql,
     run_upgrade_checks,
 )
 
@@ -287,3 +289,186 @@ class TestOutboxSchemaPostgres:
         assert len(findings) == 1
         assert "ALTER COLUMN message_id" in findings[0].sql
         assert "status" not in findings[0].sql
+
+
+# ---------------------------------------------------------------------------
+# Outbox structural migrations: target_broker NOT NULL (#1041) + composite
+# unique index (#1009). Generated-SQL unit tests need no database.
+# ---------------------------------------------------------------------------
+
+
+class TestOutboxMigrationSql:
+    def test_not_null_backfills_then_alters(self):
+        sql = _outbox_set_not_null_sql("postgresql")
+        assert sql.index("UPDATE outbox SET target_broker = 'default'") < sql.index(
+            "ALTER COLUMN target_broker SET NOT NULL"
+        )
+
+    def test_not_null_is_typed_on_mysql_and_mssql(self):
+        assert "MODIFY target_broker varchar(128) NOT NULL" in _outbox_set_not_null_sql(
+            "mysql"
+        )
+        assert (
+            "ALTER COLUMN target_broker varchar(128) NOT NULL"
+            in _outbox_set_not_null_sql("mssql")
+        )
+
+    def test_index_backfills_then_swaps_to_composite(self):
+        sql = _outbox_composite_index_sql("postgresql")
+        assert (
+            sql.index("UPDATE outbox")
+            < sql.index("DROP INDEX")
+            < sql.index("CREATE UNIQUE INDEX uq_outbox_message_id_target_broker")
+        )
+
+    def test_index_drop_syntax_differs_by_dialect(self):
+        assert (
+            "DROP INDEX IF EXISTS uq_outbox_message_id;"
+            in _outbox_composite_index_sql("postgresql")
+        )
+        assert (
+            "DROP INDEX uq_outbox_message_id ON outbox;"
+            in _outbox_composite_index_sql("mysql")
+        )
+
+
+@pytest.mark.sqlite
+class TestOutboxMigrationsSqlite:
+    @pytest.fixture
+    def sqlite_domain(self, tmp_path):
+        from protean.domain import Domain
+
+        domain = Domain(name="UpgradeMigrationsSqlite")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'um.db'}",
+        }
+        domain.init(traverse=False)
+        return domain
+
+    def _create_outbox(self, domain, *, index_sql=None):
+        from sqlalchemy import text
+
+        engine = domain.providers["default"]._engine
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE outbox (id varchar(36), message_id varchar(255), "
+                    "target_broker varchar(128))"
+                )
+            )
+            if index_sql:
+                conn.execute(text(index_sql))
+
+    def test_no_outbox_table_yields_no_finding(self, sqlite_domain):
+        from protean.upgrade import _check_outbox_migrations
+
+        assert _check_outbox_migrations(sqlite_domain) == []
+
+    def test_legacy_message_id_index_is_flagged(self, sqlite_domain):
+        from protean.upgrade import _check_outbox_migrations
+
+        self._create_outbox(
+            sqlite_domain,
+            index_sql="CREATE UNIQUE INDEX uq_outbox_message_id ON outbox (message_id)",
+        )
+        codes = _codes(_check_outbox_migrations(sqlite_domain))
+        assert "OUTBOX_UNIQUE_INDEX_LEGACY" in codes
+        # SQLite cannot ALTER-add NOT NULL in place, so that finding is skipped.
+        assert "OUTBOX_TARGET_BROKER_NULLABLE" not in codes
+
+    def test_index_migration_sql_applies_and_clears(self, sqlite_domain):
+        from sqlalchemy import text
+
+        from protean.upgrade import _check_outbox_migrations
+
+        self._create_outbox(
+            sqlite_domain,
+            index_sql="CREATE UNIQUE INDEX uq_outbox_message_id ON outbox (message_id)",
+        )
+        finding = next(
+            f
+            for f in _check_outbox_migrations(sqlite_domain)
+            if f.code == "OUTBOX_UNIQUE_INDEX_LEGACY"
+        )
+        engine = sqlite_domain.providers["default"]._engine
+        with engine.begin() as conn:
+            for stmt in filter(None, (s.strip() for s in finding.sql.split(";"))):
+                conn.execute(text(stmt))
+        assert _check_outbox_migrations(sqlite_domain) == []
+
+    def test_composite_index_is_not_flagged(self, sqlite_domain):
+        from protean.upgrade import _check_outbox_migrations
+
+        self._create_outbox(
+            sqlite_domain,
+            index_sql=(
+                "CREATE UNIQUE INDEX uq_outbox_message_id_target_broker "
+                "ON outbox (message_id, target_broker)"
+            ),
+        )
+        assert _check_outbox_migrations(sqlite_domain) == []
+
+    def test_no_unique_index_is_not_flagged(self, sqlite_domain):
+        from protean.upgrade import _check_outbox_migrations
+
+        self._create_outbox(sqlite_domain)
+        assert _check_outbox_migrations(sqlite_domain) == []
+
+
+_LEGACY_OUTBOX_DDL = """
+DROP TABLE IF EXISTS outbox;
+CREATE TABLE outbox (
+  id varchar(36) PRIMARY KEY,
+  message_id varchar(255) NOT NULL,
+  target_broker varchar(128),
+  created_at timestamptz
+);
+CREATE UNIQUE INDEX uq_outbox_message_id ON outbox (message_id)
+"""
+
+
+@pytest.mark.postgresql
+class TestOutboxMigrationsPostgres:
+    @pytest.fixture
+    def pg_domain(self):
+        from sqlalchemy import text
+
+        from protean.domain import Domain
+        from tests.shared import POSTGRES_URI
+
+        domain = Domain(name="UpgradeMigrationsPG")
+        domain.config["databases"]["default"] = {
+            "provider": "postgresql",
+            "database_uri": POSTGRES_URI,
+        }
+        domain.init(traverse=False)
+        engine = domain.providers["default"]._engine
+        # A nullable target_broker and the legacy message_id-only unique index.
+        with engine.begin() as conn:
+            for stmt in filter(
+                None, (s.strip() for s in _LEGACY_OUTBOX_DDL.split(";"))
+            ):
+                conn.execute(text(stmt))
+        yield domain
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS outbox"))
+
+    def test_flags_both_nullable_target_broker_and_legacy_index(self, pg_domain):
+        from protean.upgrade import _check_outbox_migrations
+
+        codes = _codes(_check_outbox_migrations(pg_domain))
+        assert codes == {"OUTBOX_TARGET_BROKER_NULLABLE", "OUTBOX_UNIQUE_INDEX_LEGACY"}
+
+    def test_generated_sql_applies_and_clears_both_findings(self, pg_domain):
+        from sqlalchemy import text
+
+        from protean.upgrade import _check_outbox_migrations
+
+        engine = pg_domain.providers["default"]._engine
+        for finding in _check_outbox_migrations(pg_domain):
+            with engine.begin() as conn:
+                for stmt in filter(None, (s.strip() for s in finding.sql.split(";"))):
+                    conn.execute(text(stmt))
+        # Both migrations applied -> the check is clean and idempotent.
+        assert _check_outbox_migrations(pg_domain) == []
