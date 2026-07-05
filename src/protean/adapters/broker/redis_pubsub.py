@@ -106,7 +106,7 @@ class RedisPubSubBroker(BaseBroker):
         )
         return False
 
-    def _ensure_group(self, group_name: str, stream: str = "") -> None:
+    def _ensure_group(self, group_name: str, stream: str | None = "") -> None:
         """Bootstrap/create consumer group"""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
         if group_key not in self._consumer_groups:

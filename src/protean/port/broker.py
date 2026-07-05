@@ -48,7 +48,7 @@ class DLQEntry:
     original_id: str
     stream: str
     consumer_group: str
-    payload: dict
+    payload: dict[str, Any]
     failure_reason: str
     failed_at: str | None
     retry_count: int
@@ -178,7 +178,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
         return bool(self.capabilities & capabilities)
 
-    def publish(self, stream: str, message: dict) -> Optional[str]:
+    def publish(self, stream: str, message: dict[str, Any]) -> Optional[str]:
         """Publish a message to the broker.
 
         Args:
@@ -199,6 +199,7 @@ class BaseBroker(metaclass=ABCMeta):
             logger.debug(f"Recording message {message} in {current_uow} for dispatch")
 
             current_uow.register_message(stream, message, broker_name=self.name)
+            return None
         else:
             try:
                 identifier = self._publish(stream, message)
@@ -242,7 +243,7 @@ class BaseBroker(metaclass=ABCMeta):
             self._last_ping_success = False
             return False
 
-    def health_stats(self) -> dict:
+    def health_stats(self) -> dict[str, Any]:
         """Get comprehensive health statistics for the broker.
 
         Returns:
@@ -336,7 +337,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _health_stats(self) -> dict:
+    def _health_stats(self) -> dict[str, Any]:
         """Get broker-specific health and performance statistics.
 
         Returns:
@@ -357,7 +358,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _publish(self, stream: str, message: dict) -> str:
+    def _publish(self, stream: str, message: dict[str, Any]) -> str:
         """Overidden method to publish a message with payload to the configured broker.
 
         Args:
@@ -369,7 +370,9 @@ class BaseBroker(metaclass=ABCMeta):
             All brokers must return a non-empty string identifier.
         """
 
-    def get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
+    def get_next(
+        self, stream: str, consumer_group: str
+    ) -> tuple[str, dict[str, Any]] | None:
         """Retrieve the next message to process from broker.
 
         Args:
@@ -399,12 +402,14 @@ class BaseBroker(metaclass=ABCMeta):
                 raise
 
     @abstractmethod
-    def _get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
+    def _get_next(
+        self, stream: str, consumer_group: str
+    ) -> tuple[str, dict[str, Any]] | None:
         """Overridden method to retrieve the next message to process from broker."""
 
     def read(
         self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from the broker.
 
         Args:
@@ -501,7 +506,7 @@ class BaseBroker(metaclass=ABCMeta):
     @abstractmethod
     def _read(
         self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from the broker.
 
         Args:
@@ -520,7 +525,7 @@ class BaseBroker(metaclass=ABCMeta):
         consumer_name: str,
         timeout_ms: int = 5000,
         count: int = 1,
-    ) -> list[tuple[str, dict]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from the broker using blocking mode.
 
         This is an optional method that brokers can implement to support
@@ -593,7 +598,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _ensure_group(self, group_name: str, stream: str = None) -> None:
+    def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
         """Bootstrap/create consumer group.
 
         Args:
@@ -601,7 +606,7 @@ class BaseBroker(metaclass=ABCMeta):
             stream (str, optional): The stream name for brokers that require it (e.g., Redis Streams)
         """
 
-    def info(self) -> dict:
+    def info(self) -> dict[str, Any]:
         """Get information about consumer groups and consumers in each group.
 
         Returns:
@@ -610,7 +615,7 @@ class BaseBroker(metaclass=ABCMeta):
         return self._info()
 
     @abstractmethod
-    def _info(self) -> dict:
+    def _info(self) -> dict[str, Any]:
         """Overridden method to provide information about consumer groups and consumers.
 
         Returns:
