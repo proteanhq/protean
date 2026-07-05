@@ -1,20 +1,25 @@
 import importlib
 import logging
+from typing import TYPE_CHECKING
 
 from protean.exceptions import ConfigurationError
+
+if TYPE_CHECKING:
+    from protean.core.email import BaseEmail, BaseEmailProvider
+    from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
 
 
 class EmailProviders:
-    def __init__(self, domain):
+    def __init__(self, domain: "Domain") -> None:
         self.domain = domain
-        self._email_providers = None
+        self._email_providers: dict[str, "BaseEmailProvider"] | None = None
 
-    def _initialize_email_providers(self):
+    def _initialize_email_providers(self) -> None:
         """Read config file and initialize email providers"""
         configured_email_providers = self.domain.config["email_providers"]
-        email_provider_objects = {}
+        email_provider_objects: dict[str, "BaseEmailProvider"] = {}
 
         if configured_email_providers and isinstance(configured_email_providers, dict):
             if "default" not in configured_email_providers:
@@ -35,7 +40,7 @@ class EmailProviders:
 
         self._email_providers = email_provider_objects
 
-    def get_email_provider(self, provider_name):
+    def get_email_provider(self, provider_name: str) -> "BaseEmailProvider":
         """Retrieve the email provider object with a given provider name"""
         if self._email_providers is None:
             self._initialize_email_providers()
@@ -46,7 +51,7 @@ class EmailProviders:
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
 
-    def send_email(self, email):
+    def send_email(self, email: "BaseEmail") -> None:
         """Push email through registered provider"""
         if self._email_providers is None:
             self._initialize_email_providers()
