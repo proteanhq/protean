@@ -204,8 +204,9 @@ def _replay_projector(
     # category.  For production stores (MessageDB) a single large read
     # per category is equally efficient thanks to server-side cursors.
     all_messages: list[Message] = []
+    event_store = domain._require_event_store()
     for category in stream_categories:
-        messages = domain.event_store.store.read(
+        messages = event_store.read(
             category,
             position=0,
             no_of_messages=1_000_000,
