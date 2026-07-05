@@ -678,7 +678,12 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 
     # --- Per-consumer metrics (via XINFO CONSUMERS) ---
     try:
-        from protean.server.observatory.api import _discover_streams, _get_redis  # noqa: PLC0415
+        from protean.server.observatory.api import (  # noqa: PLC0415
+            _discover_streams,
+            _get_redis,
+            _xinfo_consumers,
+            _xinfo_groups,
+        )
 
         redis_conn = _get_redis(domains)
         if redis_conn:
@@ -695,7 +700,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 
             for stream_name in _discover_streams(redis_conn):
                 try:
-                    groups = redis_conn.xinfo_groups(stream_name)
+                    groups = _xinfo_groups(redis_conn, stream_name)
                     for grp in groups:
                         if not isinstance(grp, dict):
                             continue
@@ -706,8 +711,8 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
                             continue
 
                         try:
-                            consumers_info = redis_conn.xinfo_consumers(
-                                stream_name, gname
+                            consumers_info = _xinfo_consumers(
+                                redis_conn, stream_name, gname
                             )
                             for c in consumers_info:
                                 if not isinstance(c, dict):
