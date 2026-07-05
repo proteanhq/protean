@@ -60,8 +60,8 @@ class BaseEventStore(metaclass=ABCMeta):
         self,
         stream: str,
         message_type: str,
-        data: Dict,
-        metadata: Dict | None = None,
+        data: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
         expected_version: int | None = None,
     ) -> int:
         """Write a message to the event store.
@@ -85,7 +85,7 @@ class BaseEventStore(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _read_last_message(self, stream) -> Optional[Dict[str, Any]]:
+    def _read_last_message(self, stream: str) -> Optional[Dict[str, Any]]:
         """Read the last message from the event store.
 
         Implemented by the concrete event store adapter.
@@ -104,7 +104,7 @@ class BaseEventStore(metaclass=ABCMeta):
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
-    ):
+    ) -> list[Message]:
         raw_messages = self._read(
             stream, sql=sql, position=position, no_of_messages=no_of_messages
         )
@@ -115,7 +115,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         return messages
 
-    def read_last_message(self, stream) -> Optional[Message]:
+    def read_last_message(self, stream: str) -> Optional[Message]:
         raw_message = self._read_last_message(stream)
         if raw_message:
             return Message.deserialize(raw_message)
