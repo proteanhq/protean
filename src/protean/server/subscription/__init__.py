@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ class BaseSubscription(ABC):
                 backoff = min(2 ** (consecutive_errors - 1), 30)
                 await asyncio.sleep(backoff)
 
-    async def tick(self):
+    async def tick(self) -> None:
         """
         This method retrieves the next batch of messages to process and calls the `process_batch` method
         to handle each message.
@@ -117,7 +118,7 @@ class BaseSubscription(ABC):
         if messages:
             await self.process_batch(messages)
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """
         Shutdown the subscription.
 
@@ -146,24 +147,27 @@ class BaseSubscription(ABC):
         pass
 
     @abstractmethod
-    async def get_next_batch_of_messages(self):
+    async def get_next_batch_of_messages(self) -> list[Any]:
         """
         Get the next batch of messages to process.
 
         This method should be implemented by subclasses to retrieve messages
-        from their specific backend.
+        from their specific backend. The element type of the returned list is
+        backend-specific (domain ``Message``, broker ``(id, payload)`` tuples,
+        ``Outbox`` rows, ...), hence the ``list[Any]`` contract at the port.
 
         Returns:
             The next batch of messages to process.
         """
 
     @abstractmethod
-    async def process_batch(self, messages):
+    async def process_batch(self, messages: Any) -> int:
         """
         Process a batch of messages.
 
         This method should be implemented by subclasses to handle the processing
-        of messages specific to their backend.
+        of messages specific to their backend. ``messages`` is backend-specific
+        (see :meth:`get_next_batch_of_messages`), hence typed ``Any`` at the port.
 
         Args:
             messages: The batch of messages to process.
