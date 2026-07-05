@@ -20,7 +20,7 @@ EMPTY_VALUES: tuple[Any, ...] = (None, "", [], (), {})
 
 
 def normalize_field_deprecated(
-    value: str | dict | None,
+    value: str | dict[str, Any] | None,
 ) -> dict[str, str] | None:
     """Normalize the ``deprecated`` field parameter.
 
@@ -105,16 +105,16 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
     def __init__(
         self,
-        referenced_as: str = None,
-        description: str = None,
+        referenced_as: str | None = None,
+        description: str | None = None,
         identifier: bool = False,
         default: Any = None,
         required: bool = False,
         unique: bool = False,
-        choices: enum.Enum = None,
-        validators: Iterable = (),
-        error_messages: dict = None,
-        deprecated: str | dict | None = None,
+        choices: enum.Enum | None = None,
+        validators: Iterable[Callable[..., Any]] = (),
+        error_messages: dict[str, str] | None = None,
+        deprecated: str | dict[str, Any] | None = None,
     ):
         # Pass to FieldDescriptorMixin for initialization
         super().__init__(referenced_as=referenced_as, description=description)
