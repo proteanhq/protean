@@ -20,13 +20,14 @@ import asyncio
 import ipaddress
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from protean.domain import Domain
 
@@ -50,17 +51,17 @@ class _GracefulShutdownMiddleware:
     so the shutdown is clean.
     """
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
         response_started = False
 
-        async def send_wrapper(message):
+        async def send_wrapper(message: Message) -> None:
             nonlocal response_started
             if message["type"] == "http.response.start":
                 response_started = True
@@ -102,7 +103,7 @@ class Observatory:
         domains: List[Domain],
         title: str = "Protean Observatory",
         enable_cors: bool = True,
-        cors_origins: list[str] = None,
+        cors_origins: Optional[list[str]] = None,
     ) -> None:
         self.domains = domains
         self.title = title

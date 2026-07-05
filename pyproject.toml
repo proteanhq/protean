@@ -317,7 +317,6 @@ module = [
   "protean.port.dao",
   "protean.port.event_store",
   "protean.server.engine",
-  "protean.server.observatory",
   "protean.server.outbox_processor",
   "protean.server.subscription_status",
   "protean.server.subscription",
