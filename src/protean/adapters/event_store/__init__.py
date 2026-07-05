@@ -181,7 +181,7 @@ class EventStore:
         """
         return self._projectors.get(fqn(projection_cls), set())
 
-    def command_handler_for(self, command: Any) -> Optional[BaseCommandHandler]:
+    def command_handler_for(self, command: Any) -> Optional[type[BaseCommandHandler]]:
         if not command.meta_.part_of:
             raise ConfigurationError(
                 f"Command `{command.__name__}` needs to be associated with an aggregate"

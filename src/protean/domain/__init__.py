@@ -2126,7 +2126,7 @@ class Domain:
             timeout=timeout,
         )
 
-    def command_handler_for(self, command: Any) -> Optional[BaseCommandHandler]:
+    def command_handler_for(self, command: Any) -> Optional[type[BaseCommandHandler]]:
         """Return Command Handler for a specific command."""
         return self._command_processor.handler_for(command)
 
