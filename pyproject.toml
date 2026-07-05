@@ -156,6 +156,15 @@ types = [
     "types-redis>=3.5.4",
     "types-Werkzeug>=1.0.5",
 ]
+# Mutation testing. Installed only into the dedicated .venv-mutation environment
+# built by `make mutation` / scripts/mutation.sh — never the project .venv. That
+# env is Python 3.12: Python 3.14 is too bleeding-edge for reliable mutation
+# testing of Protean's C-extension deps (mutmut 2.x pickle-crashes on 3.14;
+# mutmut 3.x segfaults ~20% of mutants there). See scripts/mutation.sh and
+# docs/community/contributing/mutation-testing.md for the full rationale.
+mutation = [
+    "mutmut>=3",
+]
 
 ##################
 # Configurations #

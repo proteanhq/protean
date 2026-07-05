@@ -673,6 +673,99 @@ class TestPrivateHelperMethods:
         assert time_diff < 1  # Less than 1 second difference
 
 
+def _freeze_outbox_now(monkeypatch, instant):
+    """Freeze ``datetime.now()`` inside the outbox module to ``instant``.
+
+    The outbox compares ``datetime.now(...)`` against ``next_retry_at`` /
+    ``locked_until`` with a strict ``<``. The *only* input that distinguishes
+    ``<`` from ``<=`` is the exact boundary instant (now == the stored time), and
+    the outbox has no injectable clock — so pinning that instant requires
+    patching the module-level ``datetime``. These boundary tests exist to lock in
+    the "due/expired at the exact instant" semantics (and to kill the
+    ``<`` -> ``<=`` mutants that no wall-clock test can reach).
+    """
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant
+
+    monkeypatch.setattr("protean.utils.outbox.datetime", _FrozenDatetime)
+
+
+class TestBoundaryClockConditions:
+    """Exact-instant boundary semantics of the retry/lock time comparisons.
+
+    ``next_retry_at`` and ``locked_until`` use a strict ``<`` against "now", so
+    at the exact stored instant the retry is *due* and the lock is *expired*.
+    """
+
+    FIXED = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_retry_due_at_exact_next_retry_instant(self, sample_outbox, monkeypatch):
+        """At now == next_retry_at the retry is due; start_processing proceeds."""
+        sample_outbox.status = OutboxStatus.FAILED.value
+        sample_outbox.retry_count = 1
+        sample_outbox.next_retry_at = self.FIXED
+        _freeze_outbox_now(monkeypatch, self.FIXED)
+
+        success, result = sample_outbox.start_processing("worker-1")
+
+        assert success is True
+        assert result == ProcessingResult.SUCCESS
+
+    def test_ready_at_exact_next_retry_instant(self, sample_outbox, monkeypatch):
+        """is_ready_for_processing is True at now == next_retry_at."""
+        sample_outbox.status = OutboxStatus.FAILED.value
+        sample_outbox.next_retry_at = self.FIXED
+        _freeze_outbox_now(monkeypatch, self.FIXED)
+
+        assert sample_outbox.is_ready_for_processing() is True
+
+    def test_lock_expired_at_exact_locked_until_instant(
+        self, sample_outbox, monkeypatch
+    ):
+        """A lock is already free at now == locked_until (reclaimable)."""
+        sample_outbox.status = OutboxStatus.PROCESSING.value
+        sample_outbox.locked_until = self.FIXED
+        _freeze_outbox_now(monkeypatch, self.FIXED)
+
+        assert sample_outbox._is_locked() is False
+
+    def test_start_processing_reclaims_at_exact_lock_expiry(
+        self, sample_outbox, monkeypatch
+    ):
+        """start_processing is not blocked by a lock that expires at this instant."""
+        sample_outbox.status = OutboxStatus.PENDING.value
+        sample_outbox.locked_until = self.FIXED
+        _freeze_outbox_now(monkeypatch, self.FIXED)
+
+        # Lock is free at the exact instant, so the PENDING row is claimable and
+        # does not report ALREADY_LOCKED.
+        success, result = sample_outbox.start_processing("worker-2")
+
+        assert result != ProcessingResult.ALREADY_LOCKED
+        assert success is True
+
+
+class TestFieldDefaults:
+    """Pin behaviourally-meaningful field defaults (not just create_message's)."""
+
+    def test_max_retries_field_default_is_three(self, sample_metadata):
+        """Constructing an Outbox directly (bypassing create_message) still
+        defaults max_retries to 3 — the retry policy must not silently drift."""
+        outbox = Outbox(
+            target_broker="default",
+            message_id="message-123",
+            stream_name="test-stream",
+            type="TestEvent",
+            data={"key": "value"},
+            metadata_=sample_metadata,
+        )
+
+        assert outbox.max_retries == 3
+
+
 class TestNaiveDatetimeHandling:
     """Test that naive (timezone-unaware) datetimes from database round-trips
     are handled correctly without raising TypeError."""

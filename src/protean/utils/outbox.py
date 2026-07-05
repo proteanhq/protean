@@ -416,7 +416,12 @@ class OutboxRepository(BaseRepository):
                 OutboxStatus.PROCESSING.value,
             ]
         )
-        criteria &= Q(locked_until__isnull=True) | Q(locked_until__lt=now)
+        # ``__lte``, not ``__lt``: a lock is free at the exact ``locked_until``
+        # instant, matching ``Outbox._is_locked`` (``now < locked_until`` means
+        # locked, so equality is reclaimable) and the ``next_retry_at`` boundary
+        # below. Using ``__lt`` here made the claim path disagree with the
+        # aggregate at that one instant.
+        criteria &= Q(locked_until__isnull=True) | Q(locked_until__lte=now)
         criteria &= Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now)
         criteria &= Q(retry_count__lt=F("max_retries"))
         if target_broker is not None:
