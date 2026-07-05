@@ -412,7 +412,7 @@ class BaseAggregate(BaseEntity):
         return aggregate
 
     @classmethod
-    def from_events(cls, events: list) -> "BaseAggregate":
+    def from_events(cls, events: list[Any]) -> "BaseAggregate":
         """Event-Sourcing: reconstruct an aggregate from a list of events.
 
         Creates a blank aggregate via ``_create_for_reconstitution()`` and
@@ -440,7 +440,7 @@ class BaseAggregate(BaseEntity):
 # ---------------------------------------------------------------------------
 # Fact Event Conversion
 # ---------------------------------------------------------------------------
-def element_to_fact_event(element_cls):
+def element_to_fact_event(element_cls: type[Any]) -> Any:
     """Convert an Element to a Fact Event.
 
     This is a helper function to convert an Element to a Fact Event. Fact Events are used to
