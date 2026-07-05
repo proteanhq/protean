@@ -20,7 +20,7 @@ EMPTY_VALUES: tuple[Any, ...] = (None, "", [], (), {})
 
 
 def normalize_field_deprecated(
-    value: str | dict[str, Any] | None,
+    value: str | dict[str, Any] | bool | None,
 ) -> dict[str, str] | None:
     """Normalize the ``deprecated`` field parameter.
 
@@ -111,10 +111,10 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         default: Any = None,
         required: bool = False,
         unique: bool = False,
-        choices: enum.Enum | None = None,
+        choices: type[enum.Enum] | list[Any] | tuple[Any, ...] | None = None,
         validators: Iterable[Callable[..., Any]] = (),
         error_messages: dict[str, str] | None = None,
-        deprecated: str | dict[str, Any] | None = None,
+        deprecated: str | dict[str, Any] | bool | None = None,
     ):
         # Pass to FieldDescriptorMixin for initialization
         super().__init__(referenced_as=referenced_as, description=description)
@@ -307,17 +307,17 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
         # If choices exist then validate that value is be one of the choices
         if self.choices:
-            # Check if self.choices is an Enum
-            if type(self.choices) not in [list, tuple] and issubclass(
-                self.choices, enum.Enum
-            ):
-                choices = [item.value for item in self.choices]
+            choices: list[Any] | tuple[Any, ...]
+            # A list/tuple of choices is used as-is; otherwise it is an Enum class
+            if isinstance(self.choices, (list, tuple)):
+                choices = self.choices
+            else:
+                enum_cls = self.choices
+                choices = [item.value for item in enum_cls]
 
                 # Check if value is an Enum instance
-                if isinstance(value, self.choices):
+                if isinstance(value, enum_cls):
                     value = value.value
-            else:
-                choices = self.choices
 
             value_list = [value] if not isinstance(value, (list, tuple)) else value
 
