@@ -163,8 +163,8 @@ def main(
 def server(
     ctx: typer.Context,
     domain: Annotated[str, typer.Option()] = ".",
-    test_mode: Annotated[Optional[bool], typer.Option()] = False,
-    debug: Annotated[Optional[bool], typer.Option()] = False,
+    test_mode: Annotated[bool, typer.Option()] = False,
+    debug: Annotated[bool, typer.Option()] = False,
     workers: Annotated[int, typer.Option(help="Number of worker processes")] = 1,
     reload: Annotated[
         bool,
