@@ -168,9 +168,12 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         is_temporal = at_version is not None or as_of is not None
 
         # Temporal queries always bypass the identity map.
-        if not is_temporal:
-            if current_uow and identifier in current_uow._identity_map:
-                return cast(BaseAggregate, current_uow._identity_map[identifier])
+        if not is_temporal and current_uow:
+            identity_map = current_uow._identity_map.get(
+                self.meta_.part_of.meta_.provider, {}
+            )
+            if identifier in identity_map:
+                return cast(BaseAggregate, identity_map[identifier])
 
         aggregate = self._domain.event_store.store.load_aggregate(
             self.meta_.part_of,

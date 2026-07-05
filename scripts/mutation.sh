@@ -50,9 +50,13 @@ case "$TARGET" in
     MODULE="src/protean/fields/simple.py"
     TESTS="tests/field/test_status.py tests/field/test_status_transitions.py"
     ;;
+  event-sourcing)
+    MODULE="src/protean/core/event_sourced_repository.py"
+    TESTS="tests/event_sourced_repository tests/event_sourced_aggregates"
+    ;;
   *)
     echo "Unknown mutation target: '$TARGET'" >&2
-    echo "Known targets: outbox, entity, status-field" >&2
+    echo "Known targets: outbox, entity, status-field, event-sourcing" >&2
     exit 2
     ;;
 esac
