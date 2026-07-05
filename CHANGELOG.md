@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-07-04
+
+### Fixed
+
+- Fix `datetime` values in serialized payloads being encoded with `str()` (a space-separated form) instead of ISO-8601. Datetime fields now serialize with `.isoformat()`, matching the message-metadata timestamp format. The naive/aware distinction and the UTC offset are preserved, so the instant round-trips unchanged (a named timezone is serialized as its fixed offset). This only affected real JSON-backed stores (event store, Elasticsearch, outbox); the in-memory adapter was unaffected. Records written before the fix remain readable (`datetime.fromisoformat()` and Pydantic parse both forms). (#1039)
+- Fix a `Date` (`datetime.date`) field on a command or event raising `TypeError: Object of type date is not JSON serializable` when the message is processed. `ResolvedField.as_dict` now serializes plain `date` values to ISO-8601 strings; previously only `datetime` had a branch, so a raw `date` reached the checksum's `json.dumps` and failed. (#1046)
+- Fix `repository.add()` leaving an `Auto(increment=True)` identity as `None` for stores that assign the value during create (e.g. the in-memory provider). The generated value is now reflected back onto the aggregate instance after `add()`, restoring parity with `dao.create()`. (#1056)
+- Fix a DB-assigned `Auto(increment=True)` identifier not being reflected back onto the aggregate when persisting through a relational adapter (SQLAlchemy → Postgres/SQLite/MSSQL). After `repository.add()` (or `dao.create()`) the generated primary key now populates the original instance, including when the persist runs inside an outer `UnitOfWork`, instead of staying `None` until commit. Because reflecting the value forces the insert to flush early, a constraint violation on such an insert may now surface at `add()`/`create()` time rather than only at commit. (#1059)
+- Fix an embedded `ValueObject` whose fields hold default/falsy values (e.g. all zeros) being reconstructed as `None` after persist + reload. Presence was gated on truthiness — and such a VO is falsy — so it was reset to `None` on assignment and dropped from serialization. Presence is now decided by identity (`is not None`), so an explicitly-assigned VO round-trips to an equal VO across the in-memory, relational, and Message-DB adapters (and on event-sourced aggregates); an unset VO still reads back as `None`. Note: `bool(vo)` still reports an all-default VO as falsy (check presence with `agg.vo_field is not None`), and a VO whose every field is `None` still reads back as `None` from flattened storage. (#1078)
+- Enforce `Index(unique=True)` declarations in the in-memory repository. A save or update that violates a single-column or composite unique index now raises `ValidationError` (the same error already raised for field-level `unique=True`), so memory-mode tests catch duplicate-key regressions instead of silently accepting them. NULLs are treated as distinct, matching PostgreSQL/SQLite semantics. (#1071)
+- Make `Outbox.target_broker` NOT NULL so a NULL row can no longer bypass the `(message_id, target_broker)` unique index — the dual-write idempotency guard (NULLs compare as distinct in a unique index, silently reopening the duplicate-publish window). It now defaults to the internal broker name; the framework always sets it on write, and legacy rows with a NULL `target_broker` are coerced to the default broker name on read. (#1041)
+- Fix projectors rejecting the `retries`, `backoff`, and `retry_exceptions` options with `Unknown option(s)`. Projectors now accept them for per-projector transient-failure retry, mirroring event and command handlers. (#1076)
+- Fix `protean check` raising a `PROJECTION_WITHOUT_PROJECTOR` false positive for projections populated by a subscriber or event handler (the anti-corruption-layer / cross-domain pattern) rather than a co-located `@projector`. Declare such projections with `@domain.projection(externally_populated=True)` to record that they are populated externally and suppress the warning. (#1013)
+
+### Upgrade Notes
+
+- **Outbox `target_broker` NOT NULL (#1041).** New deployments get a `NOT NULL target_broker` column automatically. Existing deployments keep their current (nullable) column — Protean does not auto-alter tables — and continue to read any legacy NULL rows safely. To enforce the constraint on an existing database, backfill and add it manually, e.g. `UPDATE outbox SET target_broker = 'default' WHERE target_broker IS NULL;` followed by an `ALTER TABLE ... ALTER COLUMN target_broker SET NOT NULL`.
+
 ## [0.16.1] - 2026-06-30
 
 ### Added
