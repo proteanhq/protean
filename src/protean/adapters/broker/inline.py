@@ -106,7 +106,7 @@ class InlineBroker(BaseBroker):
             BrokerCapabilities.RELIABLE_MESSAGING | BrokerCapabilities.DEAD_LETTER_QUEUE
         )
 
-    def _publish(self, stream: str, message: dict) -> str:
+    def _publish(self, stream: str, message: dict[str, Any]) -> str:
         """Publish a message dict to the stream"""
         # We always generate a new identifier for inline broker, since
         #   there is underlying persistence layer to generate identifiers.
@@ -119,7 +119,7 @@ class InlineBroker(BaseBroker):
 
     def _read(
         self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Default implementation using _get_next"""
         # Ensure consumer group exists
         self._ensure_group(consumer_group, stream)
@@ -134,7 +134,9 @@ class InlineBroker(BaseBroker):
 
         return messages
 
-    def _get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
+    def _get_next(
+        self, stream: str, consumer_group: str
+    ) -> tuple[str, dict[str, Any]] | None:
         """Get next message in stream for a specific consumer group"""
         # Ensure consumer group exists (create if it doesn't)
         self._ensure_group(consumer_group, stream)
@@ -453,7 +455,9 @@ class InlineBroker(BaseBroker):
                 extra={"consumer_group": consumer_group, "stream": stream},
             )
 
-    def get_dlq_messages(self, consumer_group: str, stream: str = None) -> dict:
+    def get_dlq_messages(
+        self, consumer_group: str, stream: str | None = None
+    ) -> dict[str, list[tuple[str, dict[str, Any], str, float]]]:
         """Get messages from Dead Letter Queue for inspection"""
         return self._get_dlq_messages(consumer_group, stream)
 
@@ -930,7 +934,7 @@ class InlineBroker(BaseBroker):
                 "created_at": time.time(),
             }
 
-    def _info(self) -> dict:
+    def _info(self) -> dict[str, Any]:
         """Provide information about consumer groups and consumers."""
         # Group info by consumer group name across all streams
         consumer_groups_info = {}
@@ -984,7 +988,7 @@ class InlineBroker(BaseBroker):
         """
         return True
 
-    def _health_stats(self) -> dict:
+    def _health_stats(self) -> dict[str, Any]:
         """Get health statistics for the inline broker.
 
         Returns:
