@@ -9,7 +9,16 @@ import asyncio
 import json
 import logging
 from fnmatch import fnmatch
-from typing import List, Optional
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    Protocol,
+    cast,
+)
 
 from fastapi import Query, Request
 from fastapi.responses import StreamingResponse
@@ -21,7 +30,22 @@ from ..tracing import TRACE_CHANNEL
 logger = logging.getLogger(__name__)
 
 
-def create_sse_endpoint(domains: List[Domain]):
+class _RedisStyleBroker(Protocol):
+    """Structural view of the Redis-backed broker surface used for SSE streaming.
+
+    The concrete Redis broker adapters expose ``redis_instance`` (the live
+    ``redis.Redis`` client), which is not part of the ``BaseBroker`` port. The
+    guarded ``hasattr`` check at the call site narrows a ``BaseBroker`` to this
+    shape. ``redis_instance`` is typed ``Any`` because the ``redis`` client is an
+    optional dependency not importable at module scope here.
+    """
+
+    redis_instance: Any
+
+
+def create_sse_endpoint(
+    domains: List[Domain],
+) -> Callable[..., Awaitable[StreamingResponse]]:
     """Create the SSE streaming endpoint function.
 
     Args:
@@ -38,18 +62,18 @@ def create_sse_endpoint(domains: List[Domain]):
         type: Optional[str] = Query(
             None, description="Filter by message type (supports glob)"
         ),
-    ):
+    ) -> StreamingResponse:
         """Stream real-time MessageTrace events via Server-Sent Events."""
 
-        async def event_generator():
+        async def event_generator() -> AsyncIterator[str]:
             # Get Redis connection from the first domain's broker
-            redis_conn = None
+            redis_conn: Any = None
             for d in domains:
                 try:
                     with d.domain_context():
                         broker = d.brokers.get("default")
                         if broker and hasattr(broker, "redis_instance"):
-                            redis_conn = broker.redis_instance
+                            redis_conn = cast(_RedisStyleBroker, broker).redis_instance
                             break
                 except Exception:
                     continue
@@ -117,7 +141,7 @@ def create_sse_endpoint(domains: List[Domain]):
     return stream_events
 
 
-def _format_sse(data: dict, event_type: str = "trace") -> str:
+def _format_sse(data: dict[str, Any], event_type: str = "trace") -> str:
     """Format a dict as an SSE event string."""
     json_str = json.dumps(data, default=str)
     return f"event: {event_type}\ndata: {json_str}\n\n"
