@@ -6,7 +6,7 @@ Finding #21: Port abstract methods have complete type hints.
 """
 
 import inspect
-from typing import get_type_hints
+from typing import Any, get_type_hints
 
 from protean.adapters.broker.inline import InlineBroker
 from protean.adapters.cache.memory import MemoryCache
@@ -49,19 +49,26 @@ class TestCacheParameterConsistency:
 # ---------------------------------------------------------------------------
 class TestBrokerGetNextReturnType:
     def test_port_get_next_returns_tuple_or_none(self):
-        """Port's get_next declares tuple[str, dict] | None return type."""
+        """Port's get_next declares tuple[str, dict[str, Any]] | None return type."""
         hints = get_type_hints(BaseBroker.get_next)
-        assert hints["return"] == tuple[str, dict] | None
+        assert hints["return"] == tuple[str, dict[str, Any]] | None
 
     def test_port_private_get_next_returns_tuple_or_none(self):
-        """Port's _get_next declares tuple[str, dict] | None return type."""
+        """Port's _get_next declares tuple[str, dict[str, Any]] | None return type."""
         hints = get_type_hints(BaseBroker._get_next)
-        assert hints["return"] == tuple[str, dict] | None
+        assert hints["return"] == tuple[str, dict[str, Any]] | None
 
     def test_inline_broker_get_next_matches_port(self):
-        """InlineBroker._get_next return annotation matches port."""
-        hints = get_type_hints(InlineBroker._get_next)
-        assert hints["return"] == tuple[str, dict] | None
+        """InlineBroker._get_next return annotation matches the port's.
+
+        Asserts consistency dynamically (the point of Finding #19) rather than
+        pinning a literal, so precision improvements to the shared type stay in
+        lock-step without a brittle test edit.
+        """
+        assert (
+            get_type_hints(InlineBroker._get_next)["return"]
+            == get_type_hints(BaseBroker._get_next)["return"]
+        )
 
 
 # ---------------------------------------------------------------------------
