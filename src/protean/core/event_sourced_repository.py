@@ -203,12 +203,16 @@ def event_sourced_repository_factory(
 ) -> type[_T]:
     element_cls = derive_element_class(element_cls, BaseEventSourcedRepository, **opts)
 
-    if not element_cls.meta_.part_of:
+    # `meta_` is injected by the element metaclass and is not visible on the
+    # unbound TypeVar; narrow to the concrete base to access it.
+    repository_cls = cast("type[BaseEventSourcedRepository]", element_cls)
+
+    if not repository_cls.meta_.part_of:
         raise IncorrectUsageError(
             f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
         )
 
-    if not element_cls.meta_.part_of.meta_.is_event_sourced:
+    if not repository_cls.meta_.part_of.meta_.is_event_sourced:
         raise IncorrectUsageError(
             f"Repository `{element_cls.__name__}` can only be associated with an Event Sourced Aggregate"
         )
