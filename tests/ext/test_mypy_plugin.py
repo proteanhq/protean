@@ -16,18 +16,21 @@ from pathlib import Path
 from mypy import api as mypy_api
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+_TEST_CONFIG = Path(__file__).parent / "mypy_plugin_test_config.ini"
 
-# Common mypy flags used for all tests
+# Common mypy flags used for all tests. An explicit --config-file isolates the
+# fixture runs from the project's pyproject [tool.mypy] (which is otherwise
+# auto-discovered by mypy_api): these tests verify plugin behavior
+# (reveal_type, base injection) on minimal fixtures, not strict compliance or
+# ignore hygiene, so the project's `strict = true` / `warn_unused_ignores` must
+# not apply to them.
 _MYPY_FLAGS = [
+    "--config-file",
+    str(_TEST_CONFIG),
     "--no-incremental",
     "--show-error-codes",
     "--no-error-summary",
     "--hide-error-context",
-    # These tests check plugin behavior (reveal_type, base injection) on fixtures,
-    # not ignore hygiene. The project's warn_unused_ignores (pyproject [tool.mypy])
-    # is auto-discovered by mypy_api and would otherwise flag the fixtures'
-    # intentional `# type: ignore`s. Disable it for the fixture runs.
-    "--no-warn-unused-ignores",
 ]
 
 # Field fixture files (original tests)
