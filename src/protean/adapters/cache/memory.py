@@ -134,6 +134,7 @@ class MemoryCache(BaseCache):
         """
         id_f = id_field(projection)
         assert id_f is not None
+        assert id_f.field_name is not None
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
@@ -172,6 +173,7 @@ class MemoryCache(BaseCache):
     def remove(self, projection: BaseProjection) -> None:
         id_f = id_field(projection)
         assert id_f is not None
+        assert id_f.field_name is not None
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
         del self._db[key]
