@@ -57,9 +57,7 @@ class ReadView:
 
     def _cache(self) -> "BaseCache":
         """Return the cache adapter for a cache-backed projection."""
-        # ``cache_for`` is currently untyped (returns ``Any``); cast to the
-        # port type so callers see the precise ``BaseCache`` surface.
-        return cast("BaseCache", self._domain.caches.cache_for(self._projection_cls))
+        return self._domain.caches.cache_for(self._projection_cls)
 
     # ── Public read API ──────────────────────────────────────
 
