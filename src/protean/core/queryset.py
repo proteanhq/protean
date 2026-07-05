@@ -52,7 +52,7 @@ class QuerySet:
         limit: int | None = None,  # No limit by default
         order_by: list[str] | str | None = None,
         only_fields: list[str] | None = None,
-    ):
+    ) -> None:
         """Initialize either with empty preferences (when invoked on an Entity)
         or carry forward filters and preferences when chained
         """
