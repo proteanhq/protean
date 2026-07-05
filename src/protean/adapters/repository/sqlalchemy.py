@@ -11,7 +11,7 @@ import uuid
 from abc import abstractmethod
 from datetime import date as _date, datetime as _datetime
 from enum import Enum
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, ClassVar
 
 import sqlalchemy.dialects.postgresql as psql
@@ -844,9 +844,9 @@ class SADAO(BaseDAO):
         criteria: Q,
         offset: int = 0,
         limit: int = 10,
-        order_by: list = (),
+        order_by: Sequence[str] = (),
         with_total: bool = True,
-        fields: list | None = None,
+        fields: list[str] | None = None,
     ) -> ResultSet:
         """Filter objects from the sqlalchemy database"""
         conn = self._get_session()
@@ -1183,7 +1183,7 @@ class SADAO(BaseDAO):
         finally:
             self._commit_if_standalone(conn)
 
-    def _delete_all(self, criteria: Q = None) -> int:
+    def _delete_all(self, criteria: Q | None = None) -> int:
         """Delete a record from the sqlalchemy database"""
         conn = self._get_session()
         assert conn is not None

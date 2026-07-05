@@ -1,5 +1,6 @@
 import logging
 from abc import ABCMeta, abstractmethod
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from protean.core.database_model import BaseDatabaseModel
@@ -173,7 +174,7 @@ class BaseDAO(metaclass=ABCMeta):
         if current_uow and entity.element_type == DomainObjects.AGGREGATE:
             current_uow._add_to_identity_map(entity)
 
-    def outside_uow(self):
+    def outside_uow(self) -> "BaseDAO":
         """When called, the DAO is instructed to work outside active transactions."""
         self._outside_uow = True
 
@@ -190,9 +191,9 @@ class BaseDAO(metaclass=ABCMeta):
         criteria: Q,
         offset: int = 0,
         limit: int = 10,
-        order_by: list = (),
+        order_by: Sequence[str] = (),
         with_total: bool = True,
-        fields: list | None = None,
+        fields: list[str] | None = None,
     ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
@@ -244,7 +245,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _update_all(self, criteria: Q, *args, **kwargs):
+    def _update_all(self, criteria: Q, *args: Any, **kwargs: Any) -> int:
         """Perform a bulk update on the persistent store.
 
         Concrete implementation will be provided by the database DAO class.
@@ -280,7 +281,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _delete_all(self, criteria: Q = None):
+    def _delete_all(self, criteria: Q | None = None) -> int:
         """Perform a bulk delete on the persistent store.
 
         Concrete implementation will be provided by the database DAO class.
@@ -875,7 +876,7 @@ class BaseDAO(metaclass=ABCMeta):
             logger.error(f"Failed entity deletion because of {exc}")
             raise
 
-    def delete_all(self):
+    def delete_all(self) -> None:
         """Delete all records in this table/document in the persistent store.
 
         Does not perform validations before data deletion.
