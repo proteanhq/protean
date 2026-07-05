@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 import subprocess
-from typing import List, Optional
+from typing import List
 
 import typer
 from copier import run_copy
@@ -134,10 +134,10 @@ def new(
         str, typer.Option("--output-dir", "-o", show_default=False)
     ] = ".",
     data: Annotated[List[str], typer.Option("--data", "-d", show_default=False)] = [],
-    pretend: Annotated[Optional[bool], typer.Option("--pretend", "-p")] = False,
-    force: Annotated[Optional[bool], typer.Option("--force", "-f")] = False,
-    defaults: Annotated[Optional[bool], typer.Option("--defaults")] = False,
-    skip_setup: Annotated[Optional[bool], typer.Option("--skip-setup")] = False,
+    pretend: Annotated[bool, typer.Option("--pretend", "-p")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f")] = False,
+    defaults: Annotated[bool, typer.Option("--defaults")] = False,
+    skip_setup: Annotated[bool, typer.Option("--skip-setup")] = False,
 ) -> None:
     def is_valid_project_name(project_name: str) -> bool:
         """
