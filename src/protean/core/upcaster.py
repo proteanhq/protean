@@ -66,7 +66,7 @@ class BaseUpcaster(Element, OptionsMixin):
         ...
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=OptionsMixin)
 
 
 def upcaster_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
