@@ -21,7 +21,7 @@ import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, overload
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import SubscriptionType
@@ -31,6 +31,36 @@ if TYPE_CHECKING:
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
+
+
+class _RedisStyleBroker(Protocol):
+    """Structural view of the Redis-backed broker surface used for lag lookups.
+
+    The concrete Redis broker adapters expose ``redis_instance`` (the live
+    ``redis.Redis`` client) and the ``_get_field_value`` helper, neither of
+    which is part of the ``BaseBroker`` port. Guarded ``hasattr`` checks at the
+    call sites narrow a ``BaseBroker`` to this shape. ``redis_instance`` is typed
+    ``Any`` because the ``redis`` client is an optional dependency not importable
+    at module scope here.
+    """
+
+    redis_instance: Any
+
+    @overload
+    def _get_field_value(
+        self,
+        info_dict: dict[Any, Any],
+        field_name: str,
+        convert_to_int: Literal[False] = ...,
+    ) -> str | None: ...
+
+    @overload
+    def _get_field_value(
+        self,
+        info_dict: dict[Any, Any],
+        field_name: str,
+        convert_to_int: Literal[True],
+    ) -> int | None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -201,12 +231,13 @@ def _collect_stream_status(
 
     try:
         with domain.domain_context():
-            broker = domain.brokers.get("default")
-            if not broker or not hasattr(broker, "redis_instance"):
+            base_broker = domain.brokers.get("default")
+            if not base_broker or not hasattr(base_broker, "redis_instance"):
                 return _unknown_status(
                     name, handler_cls.__name__, "stream", stream_category
                 )
 
+            broker = cast(_RedisStyleBroker, base_broker)
             redis_conn = broker.redis_instance
 
             # Stream length
@@ -305,14 +336,15 @@ def _collect_broker_status(
 
     try:
         with domain.domain_context():
-            broker = domain.brokers.get(broker_name)
-            if not broker:
+            base_broker = domain.brokers.get(broker_name)
+            if not base_broker:
                 return _unknown_status(
                     name, handler_cls.__name__, "broker", stream_name
                 )
 
             # Try Redis-style introspection if available
-            if hasattr(broker, "redis_instance"):
+            if hasattr(base_broker, "redis_instance"):
+                broker = cast(_RedisStyleBroker, base_broker)
                 redis_conn = broker.redis_instance
 
                 try:
@@ -384,7 +416,7 @@ def _collect_broker_status(
                 )
 
             # Non-Redis brokers: use info() API
-            info = broker.info()
+            info = base_broker.info()
             cg_info = info.get("consumer_groups", {}).get(consumer_group, {})
             pending = cg_info.get("pending", 0)
             consumer_count = cg_info.get("consumer_count", 0)
