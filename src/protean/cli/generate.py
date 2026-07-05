@@ -22,7 +22,7 @@ https://typer.tiangolo.com/tutorial/commands/one-or-multiple/#one-command-and-on
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     pass
 
 
@@ -30,7 +30,7 @@ def callback():
 @handle_cli_exceptions("generate docker-compose")
 def docker_compose(
     domain: Annotated[str, typer.Option()] = ".",
-):
+) -> None:
     """Generate a `docker-compose.yml` from Domain config"""
     try:
         domain_instance = derive_domain(domain)
