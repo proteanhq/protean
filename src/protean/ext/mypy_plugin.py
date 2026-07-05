@@ -50,6 +50,7 @@ from mypy.nodes import (
     ARG_NAMED_OPT,
     ARG_POS,
     MDEF,
+    ArgKind,
     Argument,
     AssignmentStmt,
     Block,
@@ -774,7 +775,7 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
 
     args: list[Argument] = [Argument(Var("self", self_type), self_type, None, ARG_POS)]
     arg_names: list[str] = ["self"]
-    arg_kinds: list[int] = [ARG_POS]
+    arg_kinds: list[ArgKind] = [ARG_POS]
     arg_types: list[Type] = [self_type]
 
     for field_name, field_type in fields:
