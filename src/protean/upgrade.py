@@ -14,7 +14,7 @@ command renders the findings.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from protean.utils.outbox import Outbox
 
@@ -34,7 +34,7 @@ class UpgradeFinding:
     element: str | None = None
     sql: str | None = None  # generated migration SQL, when applicable
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, str | None]:
         return {
             "code": self.code,
             "level": self.level,
@@ -51,7 +51,7 @@ class UpgradeFinding:
 # ---------------------------------------------------------------------------
 
 
-def _databases(domain: "Domain") -> dict:
+def _databases(domain: "Domain") -> dict[str, dict[str, Any]]:
     cfg = domain.config.get("databases", {})
     return {k: v for k, v in cfg.items() if isinstance(v, dict)}
 
