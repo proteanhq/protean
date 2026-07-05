@@ -30,11 +30,14 @@ class EventStore:
     def __init__(self, domain: "Domain") -> None:
         self.domain: "Domain" = domain
         self._event_store: Optional["BaseEventStore"] = None
-        self._event_streams: DefaultDict[str, Set[BaseEventHandler]] = defaultdict(set)
-        self._command_streams: DefaultDict[str, Set[BaseCommandHandler]] = defaultdict(
-            set
+        # These hold handler/projector CLASSES (record.cls), not instances.
+        self._event_streams: DefaultDict[str, Set[type[BaseEventHandler]]] = (
+            defaultdict(set)
         )
-        self._projectors: DefaultDict[str, Set[BaseProjector]] = defaultdict(set)
+        self._command_streams: DefaultDict[str, Set[type[BaseCommandHandler]]] = (
+            defaultdict(set)
+        )
+        self._projectors: DefaultDict[str, Set[type[BaseProjector]]] = defaultdict(set)
 
     @property
     def store(self) -> Optional["BaseEventStore"]:

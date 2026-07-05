@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, cast
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
@@ -538,11 +538,13 @@ class OutboxProcessor(BaseSubscription):
 
             # ``stream_category`` may legitimately be ``None`` here (message
             # without domain metadata); publishing to a ``None`` stream is
-            # intended, tested behavior. ``BaseBroker.publish`` is a public ABC
-            # typed ``stream: str``; widening it to accept ``None`` is a public
-            # signature change left queued for maintainer review, so the
-            # narrowing mismatch below is a known cross-file remainder.
-            broker_message_id = self.broker.publish(stream_category, message_dict)
+            # intended, tested behavior. ``BaseBroker.publish`` is typed
+            # ``stream: str`` and its body cannot accept ``None``; whether a
+            # None-stream publish is truly valid is queued for maintainer review
+            # (item [11]). Cast preserves the exact tested runtime behavior.
+            broker_message_id = self.broker.publish(
+                cast(str, stream_category), message_dict
+            )
 
             logger.debug(
                 "outbox.broker_published",

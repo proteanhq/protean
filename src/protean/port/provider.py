@@ -286,7 +286,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_connection(self) -> SessionProtocol:
+    def get_connection(self) -> Any:
         """Get the connection object for the repository.
 
         Must return an object satisfying :class:`SessionProtocol`.

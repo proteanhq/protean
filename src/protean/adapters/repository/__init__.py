@@ -4,7 +4,7 @@ import collections.abc
 import logging
 from collections import defaultdict
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
@@ -13,7 +13,6 @@ from protean.utils import fully_qualified_name
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.port.provider import SessionProtocol
     from protean.utils.container import OptionsMixin
 
 logger = logging.getLogger(__name__)
@@ -138,7 +137,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
 
         self._providers = provider_objects
 
-    def get_connection(self, provider_name: str = "default") -> "SessionProtocol":
+    def get_connection(self, provider_name: str = "default") -> Any:
         """Fetch connection from Provider"""
         if self._providers is None:
             self._initialize()

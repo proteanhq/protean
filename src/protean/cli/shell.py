@@ -50,6 +50,8 @@ def shell(
             f"    location: {sys.executable}\n"
             f"Domain: {domain_instance.name}\n"
         )
-        ipshell = InteractiveShellEmbed(banner1=banner, user_ns=ctx)
+        ipshell = InteractiveShellEmbed(  # type: ignore[no-untyped-call]  # IPython ships no py.typed
+            banner1=banner, user_ns=ctx
+        )
 
         ipshell()
