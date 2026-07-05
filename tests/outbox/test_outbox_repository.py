@@ -378,6 +378,41 @@ class TestFindUnprocessedBoundaryConditions:
 
         assert [m.message_id for m in found] == ["external-pending"]
 
+    def test_lock_free_at_exact_expiry_instant_is_reclaimable(
+        self, outbox_repo, sample_metadata, monkeypatch
+    ):
+        """At the exact ``locked_until`` instant a PROCESSING row is reclaimable,
+        matching ``Outbox._is_locked``.
+
+        The claim path (``_eligibility_criteria``) must use ``locked_until__lte``,
+        not ``__lt``, so it agrees with the aggregate's ``now < locked_until``
+        (locked) at the boundary. Now is frozen to exactly ``locked_until`` so the
+        equality case is exercised deterministically.
+        """
+        fixed = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        msg = Outbox.create_message(
+            message_id="reclaim-at-boundary",
+            stream_name="s",
+            message_type="TestEvent",
+            data={},
+            metadata=sample_metadata,
+        )
+        msg.status = OutboxStatus.PROCESSING.value
+        msg.locked_by = "dead-worker"
+        msg.locked_until = fixed
+        outbox_repo.add(msg)
+
+        class _FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed
+
+        monkeypatch.setattr("protean.utils.outbox.datetime", _FrozenDatetime)
+
+        found = outbox_repo.find_unprocessed()
+
+        assert [m.message_id for m in found] == ["reclaim-at-boundary"]
+
 
 class TestOutboxRepositoryFilterQueries:
     """Test repository filter query methods."""

@@ -92,7 +92,20 @@ import sqlite3
 import sys
 
 src = sys.argv[1]
+
+# mutmut may have crashed before writing a usable cache. Fail loudly with a
+# clear message instead of a confusing "no such table: Mutant" (or an empty DB
+# silently created by sqlite3.connect).
+if not os.path.exists(".mutmut-cache"):
+    sys.exit("ERROR: .mutmut-cache not found — `mutmut run` produced no results "
+             "(it likely crashed before recording any mutants).")
 con = sqlite3.connect(".mutmut-cache")
+has_mutant_table = con.execute(
+    "select count(*) from sqlite_master where type='table' and name='Mutant'"
+).fetchone()[0]
+if not has_mutant_table:
+    sys.exit("ERROR: .mutmut-cache has no 'Mutant' table — `mutmut run` did not "
+             "record any results (crash, or an incompatible cache schema).")
 
 counts = dict(con.execute("select status, count(*) from Mutant group by status").fetchall())
 killed = counts.get("ok_killed", 0)
