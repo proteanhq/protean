@@ -44,6 +44,7 @@ from protean.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.port.broker import BaseBroker
 
 logger = get_logger(__name__)
 
@@ -51,7 +52,7 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Manage dead letter queues."""
 
 
@@ -75,7 +76,7 @@ def _load_domain(domain_path: str) -> "Domain":
     return derived_domain
 
 
-def _get_broker(domain: "Domain"):
+def _get_broker(domain: "Domain") -> "BaseBroker":
     """Retrieve the default broker from the domain."""
     broker = domain.brokers.get("default")
     if broker is None:
