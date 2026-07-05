@@ -318,7 +318,6 @@ module = [
   "protean.port.event_store",
   "protean.server.engine",
   "protean.server.observatory",
-  "protean.server.observatory.routes.processes",
   "protean.server.observatory.routes.timeline",
   "protean.server.outbox_processor",
   "protean.server.subscription_status",
