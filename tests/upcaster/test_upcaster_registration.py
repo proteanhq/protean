@@ -130,6 +130,51 @@ class TestUpcasterValidation:
                 to_version=2,
             )
 
+    # The positive-integer check runs for both `from_version` and `to_version`
+    # (a shared ``for attr in ("from_version", "to_version")`` loop). Both attrs
+    # are tested so a mutant dropping either one from the loop is caught.
+
+    def test_error_negative_from_version(self, test_domain):
+        """A negative version is truthy, so it passes the "must specify" guard
+        and must be rejected by the positive-integer check."""
+        with pytest.raises(IncorrectUsageError, match="must be a positive integer"):
+            test_domain.upcaster(
+                UpcastOrderPlacedV1ToV2,
+                event_type=OrderPlaced,
+                from_version=-1,
+                to_version=2,
+            )
+
+    def test_error_non_integer_from_version(self, test_domain):
+        """A non-integer version must be rejected by the positive-integer check."""
+        with pytest.raises(IncorrectUsageError, match="must be a positive integer"):
+            test_domain.upcaster(
+                UpcastOrderPlacedV1ToV2,
+                event_type=OrderPlaced,
+                from_version="1",
+                to_version=2,
+            )
+
+    def test_error_negative_to_version(self, test_domain):
+        """The positive-integer check applies to `to_version` as well."""
+        with pytest.raises(IncorrectUsageError, match="must be a positive integer"):
+            test_domain.upcaster(
+                UpcastOrderPlacedV1ToV2,
+                event_type=OrderPlaced,
+                from_version=2,
+                to_version=-1,
+            )
+
+    def test_error_non_integer_to_version(self, test_domain):
+        """A non-integer `to_version` must be rejected too."""
+        with pytest.raises(IncorrectUsageError, match="must be a positive integer"):
+            test_domain.upcaster(
+                UpcastOrderPlacedV1ToV2,
+                event_type=OrderPlaced,
+                from_version=1,
+                to_version="2",
+            )
+
     def test_base_upcaster_cannot_be_instantiated(self):
         with pytest.raises(NotSupportedError):
             BaseUpcaster()
