@@ -46,7 +46,7 @@ class QuerySet:
         self,
         owner_dao: "BaseDAO",
         domain: "Domain",
-        entity_cls: "BaseEntity",
+        entity_cls: type["BaseEntity"],
         criteria: Q | None = None,
         offset: int = 0,
         limit: int | None = None,  # No limit by default
