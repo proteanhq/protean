@@ -54,9 +54,13 @@ case "$TARGET" in
     MODULE="src/protean/core/event_sourced_repository.py"
     TESTS="tests/event_sourced_repository tests/event_sourced_aggregates"
     ;;
+  repositories-dao)
+    MODULE="src/protean/adapters/repository/memory.py"
+    TESTS="tests/adapters/repository/memory tests/dao tests/repository"
+    ;;
   *)
     echo "Unknown mutation target: '$TARGET'" >&2
-    echo "Known targets: outbox, entity, status-field, event-sourcing" >&2
+    echo "Known targets: outbox, entity, status-field, event-sourcing, repositories-dao" >&2
     exit 2
     ;;
 esac
