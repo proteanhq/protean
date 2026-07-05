@@ -1,8 +1,10 @@
 from abc import abstractmethod
+from typing import TYPE_CHECKING, Any
 
-from protean import exceptions, utils
+from protean import exceptions
 from protean.exceptions import ValidationError
 from protean.utils.globals import current_domain
+from protean.utils.inflection import underscore
 from protean.utils.reflection import (
     association_fields,
     has_association_fields,
@@ -12,6 +14,10 @@ from protean.utils.reflection import (
 from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
 from .tempdata import HasManyChanges, HasOneChanges
+
+if TYPE_CHECKING:
+    from protean.core.entity import BaseEntity
+    from protean.domain import Domain
 
 
 class _ReferenceField(Field):
@@ -23,12 +29,12 @@ class _ReferenceField(Field):
         **kwargs: Additional keyword arguments to be passed to the base `Field` class.
     """
 
-    def __init__(self, reference, **kwargs):
+    def __init__(self, reference: "Reference", **kwargs: Any) -> None:
         """Accept reference field as an attribute, otherwise is a straightforward field"""
         self.reference = reference
         super().__init__(**kwargs)
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Any) -> None:
         """Override `__set__` to update relation field and keep it in sync with the shadow
         attribute's value
 
@@ -44,7 +50,7 @@ class _ReferenceField(Field):
             # Important to handle None assignment, and interpret it to mean resetting values
             self._reset_values(instance)
 
-    def __delete__(self, instance):
+    def __delete__(self, instance: Any) -> None:
         """Nullify values and linkages
 
         Args:
@@ -52,7 +58,7 @@ class _ReferenceField(Field):
         """
         self._reset_values(instance)
 
-    def _cast_to_type(self, value):
+    def _cast_to_type(self, value: Any) -> Any:
         """Pass through without validation.
 
         The shadow field's value is set by Reference.__set__ which
@@ -60,7 +66,7 @@ class _ReferenceField(Field):
         """
         return value
 
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self
 
         Args:
@@ -72,7 +78,7 @@ class _ReferenceField(Field):
         """
         raise NotImplementedError
 
-    def _reset_values(self, instance):
+    def _reset_values(self, instance: Any) -> None:
         """Reset all associated values and clean up dictionary items
 
         Args:
@@ -94,32 +100,36 @@ class Reference(FieldCacheMixin, Field):
         **kwargs (Any): Additional keyword arguments to be passed to the base `Field` class.
     """
 
-    def __init__(self, to_cls, **kwargs):
+    #: Shadow slot cleared by the paired ``_ReferenceField`` on reset. Written
+    #: to but not read; declared so the reset path type-checks.
+    value: Any
+
+    def __init__(self, to_cls: "str | type", **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._to_cls = to_cls
 
         self.relation = _ReferenceField(self)
 
     @property
-    def to_cls(self):
+    def to_cls(self) -> "str | type":
         return self._to_cls
 
-    def get_attribute_name(self):
+    def get_attribute_name(self) -> str:
         """Return formatted attribute name for the shadow field"""
         return self.referenced_as or "{}_{}".format(
             self.field_name, self.linked_attribute
         )
 
-    def get_shadow_field(self):
+    def get_shadow_field(self) -> "tuple[str | None, _ReferenceField]":
         """Return shadow field
         Primarily used during Entity initialization to register shadow field"""
         return (self.attribute_name, self.relation)
 
-    def get_cache_name(self):
+    def get_cache_name(self) -> "str | None":
         return self.field_name
 
     @property
-    def linked_attribute(self):
+    def linked_attribute(self) -> str:
         """Return linkage attribute to the target class
 
         This method is initially called from `__set_name__()` -> `get_attribute_name()`
@@ -134,9 +144,10 @@ class Reference(FieldCacheMixin, Field):
         else:
             id_fld = id_field(self.to_cls)
             assert id_fld is not None
+            assert id_fld.attribute_name is not None
             return id_fld.attribute_name
 
-    def _resolve_to_cls(self, domain, to_cls, owner_cls):
+    def _resolve_to_cls(self, domain: "Domain", to_cls: type, owner_cls: type) -> None:
         assert isinstance(self.to_cls, str)
 
         self._to_cls = to_cls
@@ -162,7 +173,7 @@ class Reference(FieldCacheMixin, Field):
         # Update domain records because we enriched the class structure
         domain._replace_element_by_class(owner_cls)
 
-    def __get__(self, instance, owner):
+    def __get__(self, instance: Any, owner: Any) -> Any:
         """Retrieve associated objects"""
         reference_obj = None
         if hasattr(instance, "state_"):
@@ -186,17 +197,18 @@ class Reference(FieldCacheMixin, Field):
 
         return reference_obj
 
-    def _fetch_objects(self, key, value):
+    def _fetch_objects(self, key: str, value: Any) -> Any:
         """Fetch referenced aggregate through its repository's public API"""
         return current_domain.repository_for(self.to_cls).find_by(**{key: value})
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Any) -> None:
         """Override `__set__` to coordinate between relation field and its shadow attribute"""
         value = self._load(value)
 
         if value:
             id_fld = id_field(value)
             assert id_fld is not None
+            assert id_fld.field_name is not None
             if getattr(value, id_fld.field_name) is None:
                 raise ValueError(
                     "Target Object must be saved before being referenced",
@@ -210,7 +222,7 @@ class Reference(FieldCacheMixin, Field):
         else:
             self._reset_values(instance)
 
-    def _set_own_value(self, instance, value):
+    def _set_own_value(self, instance: Any, value: Any) -> None:
         if value is None:
             instance.__dict__.pop(self.field_name, None)
             self.delete_cached_value(instance)
@@ -222,21 +234,21 @@ class Reference(FieldCacheMixin, Field):
         if hasattr(instance, "state_"):
             instance.state_.mark_changed()
 
-    def _set_relation_value(self, instance, value):
+    def _set_relation_value(self, instance: Any, value: Any) -> None:
         if value is None:
             instance.__dict__.pop(self.attribute_name, None)
         else:
             instance.__dict__[self.attribute_name] = value
 
-    def __delete__(self, instance):
+    def __delete__(self, instance: Any) -> None:
         self._reset_values(instance)
 
-    def _reset_values(self, instance):
+    def _reset_values(self, instance: Any) -> None:
         """Reset all associated values and clean up dictionary items"""
         self._set_own_value(instance, None)
         self._set_relation_value(instance, None)
 
-    def _cast_to_type(self, value):
+    def _cast_to_type(self, value: Any) -> Any:
         """Pass through without validation.
 
         Type checking happens in __set__ after the reference is fully
@@ -244,7 +256,7 @@ class Reference(FieldCacheMixin, Field):
         """
         return value
 
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self"""
         raise NotImplementedError
 
@@ -260,21 +272,40 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         to_cls (class): The class of the target entity that this association references.
     """
 
-    def __init__(self, to_cls, **kwargs):
+    #: Pending change state for a HasOne association, mirroring the tracked
+    #: ``HasOneChanges.change`` value ("ADDED"/"UPDATED"/"DELETED"/None). Read
+    #: by ``has_changed``; set explicitly by callers before it is inspected.
+    change: str | None
+
+    def __init__(self, to_cls: "str | type", **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
         self._to_cls = to_cls
-        self.via = kwargs.pop("via", None)
+        self.via: str | None = kwargs.pop("via", None)
+        self.change = None
 
         # Associations are not data fields — they cannot be `required` or `unique`
         self.required = False
         self.unique = False
 
     @property
-    def to_cls(self):
+    def to_cls(self) -> "str | type":
         return self._to_cls
 
-    def _resolve_to_cls(self, domain, to_cls, owner_cls):
+    @property
+    def _target_cls(self) -> "type[BaseEntity]":
+        """Return the resolved target entity class.
+
+        ``to_cls`` starts life as a string during registration and is replaced
+        with the actual class by ``_resolve_to_cls``. Every runtime mutation
+        path (``__set__``/``add``/``remove``/``_fetch_objects``) only executes
+        once the association is bound to an initialized entity, by which point
+        the class has been resolved.
+        """
+        assert not isinstance(self._to_cls, str)
+        return self._to_cls
+
+    def _resolve_to_cls(self, domain: "Domain", to_cls: type, owner_cls: type) -> None:
         """Resolves class references to actual class object.
 
         Called by the domain when a new element is registered,
@@ -282,7 +313,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         """
         self._to_cls = to_cls
 
-    def _cast_to_type(self, value):
+    def _cast_to_type(self, value: Any) -> Any:
         """Pass through without validation.
 
         Type checking happens in HasOne.__set__ and HasMany.add()
@@ -290,19 +321,20 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         """
         return value
 
-    def _linked_attribute(self, owner):
+    def _linked_attribute(self, owner: type) -> str:
         """Return linkage attribute to own entity's `id_field`."""
         if self.via:
             return self.via
 
         id_fld = id_field(owner)
         assert id_fld is not None
-        return utils.inflection.underscore(owner.__name__) + "_" + id_fld.attribute_name
+        assert id_fld.attribute_name is not None
+        return underscore(owner.__name__) + "_" + id_fld.attribute_name
 
-    def _linked_reference(self, owner):
-        return utils.inflection.underscore(owner.__name__)
+    def _linked_reference(self, owner: type) -> str:
+        return underscore(owner.__name__)
 
-    def __get__(self, instance, owner):
+    def __get__(self, instance: Any, owner: Any) -> Any:
         """Retrieve associated objects"""
 
         try:
@@ -328,6 +360,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
                     # Fetch target object by own Identifier
                     id_fld = id_field(instance)
                     assert id_fld is not None
+                    assert id_fld.field_name is not None
                     id_value = getattr(instance, id_fld.field_name)
                     reference_obj = self._fetch_objects(
                         instance, self._linked_attribute(owner), id_value
@@ -337,7 +370,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
 
         return reference_obj
 
-    def _set_own_value(self, instance, value):
+    def _set_own_value(self, instance: Any, value: Any) -> None:
         instance.__dict__[self.field_name] = value
         self.set_cached_value(instance, value)
 
@@ -346,14 +379,14 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
             instance.state_.mark_changed()
 
     @abstractmethod
-    def _fetch_objects(self, instance, key, value):
+    def _fetch_objects(self, instance: Any, key: str, value: Any) -> Any:
         """Placeholder method for customized Association query methods"""
 
     @abstractmethod
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of field"""
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Any) -> None:
         """Set the value of the association field"""
         # Preserve heirarchy of entities.
         #
@@ -364,18 +397,18 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
             for item in items:
                 item._set_root_and_owner(instance._root, instance)
 
-    def __delete__(self, instance):
+    def __delete__(self, instance: Any) -> None:
         """Cannot pop values for an association"""
         raise exceptions.NotSupportedError(
             "Object does not support the operation being performed",
             self.field_name,
         )
 
-    def get_cache_name(self):
+    def get_cache_name(self) -> "str | None":
         return self.field_name
 
     @property
-    def has_changed(self):
+    def has_changed(self) -> bool:
         return self.change is not None
 
     def _clone(self) -> "Association":
@@ -395,7 +428,7 @@ class HasOne(Association):
     with at most one instance of a child entity.
     """
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Any) -> None:
         """Setup relationship to be persisted/updated
 
         We track the change in the instance's `_temp_cache` to determine if the relationship
@@ -416,15 +449,15 @@ class HasOne(Association):
         """
         # Accept dictionary values and convert them to Entity objects
         if isinstance(value, dict):
-            value = self.to_cls(**value)
+            value = self._target_cls(**value)
 
         super().__set__(instance, value)
 
-        if value is not None and not isinstance(value, self.to_cls):
+        if value is not None and not isinstance(value, self._target_cls):
             raise ValidationError(
                 {
                     "_entity": [
-                        f"Value assigned to '{self.field_name}' is not of type '{self.to_cls.__name__}'"
+                        f"Value assigned to '{self.field_name}' is not of type '{self._target_cls.__name__}'"
                     ]
                 }
             )
@@ -435,6 +468,7 @@ class HasOne(Association):
             #   so that the foreign key relationship is preserved
             instance_id_fld = id_field(instance)
             assert instance_id_fld is not None
+            assert instance_id_fld.field_name is not None
             id_value = getattr(instance, instance_id_fld.field_name)
             linked_attribute = self._linked_attribute(instance.__class__)
             if hasattr(value, linked_attribute):
@@ -447,16 +481,19 @@ class HasOne(Association):
             setattr(value, self._linked_reference(type(instance)), instance)
 
         # 2. Determine and store the change in the relationship
+        assert self.field_name is not None
         current_value = getattr(instance, self.field_name)
         if current_value:
             current_value_id_fld = id_field(current_value)
             assert current_value_id_fld is not None
+            assert current_value_id_fld.field_name is not None
             current_value_id = getattr(current_value, current_value_id_fld.field_name)
         else:
             current_value_id = None
         if value:
             value_id_fld = id_field(value)
             assert value_id_fld is not None
+            assert value_id_fld.field_name is not None
             value_id = getattr(value, value_id_fld.field_name)
         else:
             value_id = None
@@ -493,22 +530,22 @@ class HasOne(Association):
         if instance._initialized and instance._root is not None:
             instance._root._postcheck()  # Trigger validations from the top
 
-    def _fetch_objects(self, instance, key, identifier):
+    def _fetch_objects(self, instance: Any, key: str, value: Any) -> Any:
         """Fetch single linked object"""
         try:
             repo = current_domain.repository_for(self.to_cls)
-            value = repo._dao.find_by(**{key: identifier})
+            obj = repo._dao.find_by(**{key: value})
 
             # Set up linkage with owner element
             setattr(
-                value, key, identifier
+                obj, key, value
             )  # This overwrites any existing linkage, which is correct
 
-            return value
+            return obj
         except exceptions.ObjectNotFoundError:
             return None
 
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self"""
         if value is not None:
             return value.to_dict()
@@ -524,7 +561,7 @@ class HasMany(Association):
         **kwargs (Any): Additional keyword arguments to be passed to the base field class.
     """
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Any) -> None:
         """This supports direct assignment of values to HasMany fields, like:
         `order.items = [item1, item2, item3]`
         """
@@ -534,7 +571,7 @@ class HasMany(Association):
         values = []
         for item in value:
             if isinstance(item, dict):
-                values.append(self.to_cls(**item))
+                values.append(self._target_cls(**item))
             else:
                 values.append(item)
 
@@ -550,7 +587,7 @@ class HasMany(Association):
                 self.set_cached_value(instance, [])
             self.add(instance, values)
 
-    def add(self, instance, items) -> None:
+    def add(self, instance: Any, items: Any) -> None:
         """
         Available as `add_<HasMany Field Name>` method on the entity instance.
 
@@ -585,6 +622,7 @@ class HasMany(Association):
         if instance._initialized and instance._root is not None:
             instance._root._precheck()
 
+        assert self.field_name is not None
         data = getattr(instance, self.field_name)
 
         # Convert a single item into a list of items, if necessary
@@ -592,19 +630,21 @@ class HasMany(Association):
 
         # Validate that all items are of the same type, and the correct type
         for item in items:
-            if not isinstance(item, self.to_cls):
+            if not isinstance(item, self._target_cls):
                 raise ValidationError(
                     {
                         "_entity": [
-                            f"Value assigned to '{self.field_name}' is not of type '{self.to_cls.__name__}'"
+                            f"Value assigned to '{self.field_name}' is not of type '{self._target_cls.__name__}'"
                         ]
                     }
                 )
 
-        entity_id_fld = id_field(self.to_cls)
+        entity_id_fld = id_field(self._target_cls)
         assert entity_id_fld is not None
+        assert entity_id_fld.field_name is not None
         instance_id_fld = id_field(instance)
         assert instance_id_fld is not None
+        assert instance_id_fld.field_name is not None
 
         current_value_ids = [getattr(value, entity_id_fld.field_name) for value in data]
 
@@ -670,7 +710,7 @@ class HasMany(Association):
         if instance._initialized and instance._root is not None:
             instance._root._postcheck()  # Trigger validations from the top
 
-    def remove(self, instance, items) -> None:
+    def remove(self, instance: Any, items: Any) -> None:
         """
         Available as `remove_<HasMany Field Name>` method on the entity instance.
 
@@ -686,6 +726,7 @@ class HasMany(Association):
         if instance._initialized and instance._root is not None:
             instance._root._precheck()
 
+        assert self.field_name is not None
         data = getattr(instance, self.field_name)
 
         # Convert a single item into a list of items, if necessary
@@ -693,22 +734,23 @@ class HasMany(Association):
 
         # Validate that all items are of the same type, and the correct type
         for item in items:
-            if not isinstance(item, self.to_cls):
+            if not isinstance(item, self._target_cls):
                 raise ValidationError(
                     {
                         "_entity": [
-                            f"Value assigned to '{self.field_name}' is not of type '{self.to_cls.__name__}'"
+                            f"Value assigned to '{self.field_name}' is not of type '{self._target_cls.__name__}'"
                         ]
                     }
                 )
 
-        entity_id_fld = id_field(self.to_cls)
+        entity_id_fld = id_field(self._target_cls)
         assert entity_id_fld is not None
+        assert entity_id_fld.field_name is not None
 
         current_value_ids = [getattr(value, entity_id_fld.field_name) for value in data]
 
         cache = instance._temp_cache.setdefault(self.field_name, HasManyChanges())
-        removed_ids = set()
+        removed_ids: set[Any] = set()
         for item in items:
             identity = getattr(item, entity_id_fld.field_name)
             if identity in current_value_ids:
@@ -736,7 +778,7 @@ class HasMany(Association):
         if instance._initialized and instance._root is not None:
             instance._root._postcheck()  # Trigger validations from the top
 
-    def _fetch_objects(self, instance, key, value) -> list:
+    def _fetch_objects(self, instance: Any, key: str, value: Any) -> list[Any]:
         """
         Fetch linked entities.
 
@@ -748,10 +790,11 @@ class HasMany(Association):
         Returns:
             list: A list of linked entity instances.
         """
-        entity_id_fld = id_field(self.to_cls)
+        entity_id_fld = id_field(self._target_cls)
         assert entity_id_fld is not None
+        assert entity_id_fld.field_name is not None
 
-        children_repo = current_domain.repository_for(self.to_cls)
+        children_repo = current_domain.repository_for(self._target_cls)
         data = children_repo._dao.query.filter(**{key: value}).all().items
 
         # Set up linkage with owner element.
@@ -792,7 +835,7 @@ class HasMany(Association):
 
         return data
 
-    def as_dict(self, value) -> list:
+    def as_dict(self, value: Any) -> list[Any]:
         """
         Return JSON-compatible value of self.
 
@@ -804,7 +847,7 @@ class HasMany(Association):
         """
         return [item.to_dict() for item in value]
 
-    def get(self, instance, **kwargs):
+    def get(self, instance: Any, **kwargs: Any) -> Any:
         """Fetch a single linked entity based on the provided criteria.
 
         Available as `get_one_from_<HasMany Field Name>` method on the entity instance.
@@ -826,7 +869,7 @@ class HasMany(Association):
 
         return data[0]
 
-    def filter(self, instance, **kwargs):
+    def filter(self, instance: Any, **kwargs: Any) -> list[Any]:
         """Filter the linked entities based on the provided criteria.
 
         Available as `filter_<HasMany Field Name>` method on the entity instance.
@@ -834,6 +877,7 @@ class HasMany(Association):
         Args:
             **kwargs (Any): The filtering criteria.
         """
+        assert self.field_name is not None
         data = getattr(instance, self.field_name)
         return [
             item
