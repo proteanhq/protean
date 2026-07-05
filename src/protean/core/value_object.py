@@ -364,7 +364,7 @@ def value_object_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
 # Entity → Value Object projection
 # ---------------------------------------------------------------------------
 def value_object_from_entity(
-    entity_cls: type,
+    entity_cls: type[Any],
     name: str | None = None,
     exclude: set[str] | None = None,
 ) -> type[BaseValueObject]:
