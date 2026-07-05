@@ -80,6 +80,7 @@ if TYPE_CHECKING:
     from types import FrameType
 
     from protean.port.cache import BaseCache
+    from protean.utils.outbox import OutboxRepository
     from protean.utils.projection_rebuilder import RebuildResult
     from protean.utils.upcasting import UpcasterChain
 
@@ -2475,8 +2476,12 @@ class Domain:
     def _initialize_outbox(self) -> None:
         self._infrastructure.initialize_outbox()
 
-    def _get_outbox_repo(self, provider_name: str) -> BaseRepository:
-        return self._infrastructure.get_outbox_repo(provider_name)
+    def _get_outbox_repo(self, provider_name: str) -> "OutboxRepository":
+        # The infrastructure builds an OutboxRepository (typed BaseRepository at
+        # its boundary); narrow so callers see count_by_status et al.
+        return cast(
+            "OutboxRepository", self._infrastructure.get_outbox_repo(provider_name)
+        )
 
     def _initialize_processed_messages(self) -> None:
         self._infrastructure.initialize_processed_messages()
