@@ -266,7 +266,6 @@ module = [
   "protean.adapters.repository.memory",
   "protean.adapters.repository.sqlalchemy",
   "protean.cli",
-  "protean.cli.events",
   "protean.cli.generate",
   "protean.cli.new",
   "protean.cli.test",

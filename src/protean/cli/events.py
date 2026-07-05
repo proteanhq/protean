@@ -51,7 +51,7 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Inspect and query the event store."""
 
 
@@ -75,8 +75,12 @@ def _load_domain(domain_path: str) -> "Domain":
     return derived_domain
 
 
-def _resolve_aggregate(domain: "Domain", aggregate_name: str):
-    """Resolve an aggregate class by name from the domain registry."""
+def _resolve_aggregate(domain: "Domain", aggregate_name: str) -> Any:
+    """Resolve an aggregate class by name from the domain registry.
+
+    Returns the aggregate class (registry entries are untyped ``Any``) or
+    ``None`` when no aggregate matches the given name.
+    """
     for _, record in domain.registry._elements[DomainObjects.AGGREGATE.value].items():
         if record.cls.__name__ == aggregate_name:
             return record.cls
@@ -99,7 +103,7 @@ def _format_time(raw_time: Any) -> str:
     return str(raw_time)
 
 
-def _data_keys_summary(data: dict | None) -> str:
+def _data_keys_summary(data: dict[str, Any] | None) -> str:
     """Return a short summary of the data keys."""
     if not data:
         return "-"
@@ -242,6 +246,7 @@ def read(
     derived_domain = _load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
+        assert store is not None  # guaranteed by _load_domain -> init()
         messages = store._read(stream, position=position, no_of_messages=limit)
 
         if not messages:
@@ -268,6 +273,7 @@ def stats(
     derived_domain = _load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
+        assert store is not None  # guaranteed by _load_domain -> init()
         aggregates = derived_domain.registry._elements.get(
             DomainObjects.AGGREGATE.value, {}
         )
@@ -356,6 +362,7 @@ def search(
     derived_domain = _load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
+        assert store is not None  # guaranteed by _load_domain -> init()
         stream = category if category else "$all"
         all_messages = store._read(stream, no_of_messages=1_000_000)
 
@@ -413,6 +420,7 @@ def history(
             raise typer.Abort()
 
         store = derived_domain.event_store.store
+        assert store is not None  # guaranteed by _load_domain -> init()
         stream_category = aggregate_cls.meta_.stream_category
         stream_name = f"{stream_category}-{identifier}"
 
@@ -483,6 +491,7 @@ def trace(
     derived_domain = _load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
+        assert store is not None  # guaranteed by _load_domain -> init()
 
         if flat:
             # Flat table display (original behavior)
