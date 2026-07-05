@@ -165,7 +165,8 @@ def field_type_label(field: dict[str, Any]) -> str:
         return "Dict"
 
     # standard / fallback
-    return field.get("type", "?")
+    type_name: str = field.get("type", "?")
+    return type_name
 
 
 def field_summary(field: dict[str, Any]) -> str:
