@@ -3,23 +3,25 @@
 import collections
 import logging
 from collections import defaultdict
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
-from protean.port.provider import registry
+from protean.port.provider import BaseProvider, registry
 from protean.utils import fully_qualified_name
 
 if TYPE_CHECKING:
+    from protean.domain import Domain
     from protean.utils.container import Element
 
 logger = logging.getLogger(__name__)
 
 
-class Providers(collections.abc.MutableMapping):
-    def __init__(self, domain):
+class Providers(collections.abc.MutableMapping[str, BaseProvider]):
+    def __init__(self, domain: "Domain") -> None:
         self.domain = domain
-        self._providers = None
+        self._providers: dict[str, BaseProvider] | None = None
 
         # Recognized Repositories are memoized within providers
         # for subsequent calls.
@@ -34,22 +36,24 @@ class Providers(collections.abc.MutableMapping):
         # }
         self._repositories: dict[str, dict[str, type]] = defaultdict(dict)
 
-    def __getitem__(self, key):
-        return self._providers[key] if self._providers else None
+    def __getitem__(self, key: str) -> BaseProvider:
+        if not self._providers:
+            raise KeyError(key)
+        return self._providers[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self._providers) if self._providers else iter({})
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._providers) if self._providers else 0
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: BaseProvider) -> None:
         if self._providers is None:
             self._providers = {}
 
         self._providers[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         assert self._providers is not None
         if key in self._providers:
             del self._providers[key]
