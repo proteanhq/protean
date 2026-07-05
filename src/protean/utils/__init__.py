@@ -4,7 +4,7 @@ Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
 
-import importlib
+import importlib.metadata
 import keyword
 import logging
 import types
@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field as PydanticField
 from pydantic.fields import FieldInfo
 
 from protean.exceptions import ConfigurationError
-from protean.utils.container import Options
+from protean.utils.container import Options, OptionsMixin
 from protean.utils.globals import current_domain
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 
@@ -282,7 +282,7 @@ def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
 
 def _prepare_pydantic_namespace(
     new_dict: dict[str, Any],
-    base_cls: type,
+    base_cls: type[OptionsMixin],
     opts: dict[str, Any],
 ) -> None:
     """Prepare a class namespace dict for dynamic Pydantic class creation.
@@ -430,7 +430,7 @@ def _normalize_deprecated(value: Any) -> dict[str, str] | None:
 
 def derive_element_class(
     element_cls: type[_T],
-    base_cls: type,
+    base_cls: type[OptionsMixin],
     **opts: Any,
 ) -> type[_T]:
     # Extract and normalize the universal `deprecated` option before
@@ -466,7 +466,9 @@ def derive_element_class(
             if issubclass(base_cls, BaseModel):
                 _prepare_pydantic_namespace(new_dict, base_cls, opts)
 
-            element_cls = type(element_cls.__name__, (base_cls,), new_dict)
+            element_cls = cast(
+                "type[_T]", type(element_cls.__name__, (base_cls,), new_dict)
+            )
 
             # Fix zero-argument super() calls: rebind __class__ closure cells
             # from original_cls to the newly created element_cls (PEP 3135).
@@ -475,7 +477,7 @@ def derive_element_class(
             logger.debug("Error during Element registration: %s", repr(exc))
             raise
     else:
-        element_cls.meta_ = Options(opts)
+        cast("type[OptionsMixin]", element_cls).meta_ = Options(opts)
 
         # For Pydantic-based elements that explicitly inherit from the base,
         # ensure meta_ has a ClassVar annotation so that Pydantic ignores it
@@ -485,21 +487,27 @@ def derive_element_class(
             annots["meta_"] = ClassVar[Options]
             element_cls.__annotations__ = annots
 
+    # `element_cls` is now guaranteed to be an ``OptionsMixin`` subclass
+    # (either it already was, or it was rebuilt on top of ``base_cls``).
+    element_with_meta = cast("type[OptionsMixin]", element_cls)
+
     # Assign default options for remaining items
-    element_cls._set_defaults()
+    element_with_meta._set_defaults()
 
     # Set the universal `deprecated` option on meta_ (after _set_defaults
     # so it doesn't interfere with element-specific default logic).
-    element_cls.meta_.deprecated = normalized_deprecated
+    element_with_meta.meta_.deprecated = normalized_deprecated
 
     # Re-trigger identity field tracking when a previously-abstract class
     # is registered as concrete (e.g. via domain.register()).  During normal
     # class creation __pydantic_init_subclass__ skips __track_id_field()
     # because the inherited meta_.abstract is still True at that point.
-    if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
+    if not element_with_meta.meta_.abstract and not hasattr(
+        element_cls, _ID_FIELD_NAME
+    ):
         _track_id_field(element_cls)
 
-    return element_cls  # pyright: ignore[reportReturnType]
+    return element_cls
 
 
 def generate_identity(
