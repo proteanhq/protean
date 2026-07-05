@@ -14,7 +14,7 @@ Example:
 """
 
 import logging
-from typing import TYPE_CHECKING, Type, Union
+from typing import TYPE_CHECKING, Protocol, Union, cast
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
@@ -22,13 +22,53 @@ from protean.server.subscription.profiles import SubscriptionConfig, Subscriptio
 from protean.server.subscription.stream_subscription import StreamSubscription
 
 if TYPE_CHECKING:
+    from protean.core.command import BaseCommand
     from protean.core.command_handler import BaseCommandHandler
+    from protean.core.event import BaseEvent
     from protean.core.event_handler import BaseEventHandler
     from protean.server import Engine
+    from protean.utils.container import Options
+    from protean.utils.eventing import Message
 
     from . import BaseSubscription
 
+
+class CommandDispatcherProtocol(Protocol):
+    """Structural type for the engine's ``CommandDispatcher``.
+
+    The engine may pass a ``CommandDispatcher`` *instance* (rather than a
+    handler class) to :meth:`SubscriptionFactory.create_subscription` when
+    several command handlers share a stream category. The factory and the
+    subscriptions treat the handler purely duck-typed, so this Protocol
+    captures the surface actually consumed: an identity (``__name__``), the
+    resolved subscription options (``meta_``), and the message-routing methods.
+    """
+
+    __name__: str
+    meta_: "Options"
+
+    def resolve_handler(
+        self, message: "Message | BaseCommand | BaseEvent"
+    ) -> "type[BaseCommandHandler] | None": ...
+
+    def _handle(
+        self, message: "Message | BaseCommand | BaseEvent"
+    ) -> object | None: ...
+
+    def handle_error(self, exc: Exception, message: "Message") -> None: ...
+
+
 logger = logging.getLogger(__name__)
+
+# The kinds of handler the factory can build a subscription for: a handler
+# *class* (event or command handler — also covers projectors and process
+# managers, which are ``HandlerMixin`` subclasses), or a duck-typed
+# ``CommandDispatcher`` instance routing several command handlers on one stream.
+HandlerArg = Union[
+    "type[BaseEventHandler]",
+    "type[BaseCommandHandler]",
+    "CommandDispatcherProtocol",
+]
 
 
 class SubscriptionFactory:
@@ -73,7 +113,7 @@ class SubscriptionFactory:
 
     def create_subscription(
         self,
-        handler: Type[Union["BaseEventHandler", "BaseCommandHandler"]],
+        handler: "HandlerArg",
         stream_category: str,
     ) -> "BaseSubscription":
         """Create a subscription for the given handler.
@@ -130,7 +170,7 @@ class SubscriptionFactory:
 
     def _create_subscription_from_config(
         self,
-        handler: Type[Union["BaseEventHandler", "BaseCommandHandler"]],
+        handler: "HandlerArg",
         stream_category: str,
         config: SubscriptionConfig,
     ) -> "BaseSubscription":
@@ -144,18 +184,25 @@ class SubscriptionFactory:
         Returns:
             A configured subscription instance.
         """
+        # ``from_config`` still declares the narrower handler-class type; the
+        # engine's ``CommandDispatcher`` instance is accepted duck-typed at
+        # runtime (only ``__name__``/``__module__``/``__qualname__`` and the
+        # routing methods are read). Cast to the declared type at this boundary
+        # until the subscription classes' signatures are widened in turn.
+        handler_arg = cast("type[BaseEventHandler] | type[BaseCommandHandler]", handler)
+
         if config.subscription_type == SubscriptionType.STREAM:
             return StreamSubscription.from_config(
                 engine=self._engine,
                 stream_category=stream_category,
-                handler=handler,
+                handler=handler_arg,
                 config=config,
             )
         else:  # EVENT_STORE
             return EventStoreSubscription.from_config(
                 engine=self._engine,
                 stream_category=stream_category,
-                handler=handler,
+                handler=handler_arg,
                 config=config,
             )
 

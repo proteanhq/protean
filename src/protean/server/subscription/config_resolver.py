@@ -35,6 +35,7 @@ from protean.server.subscription.profiles import (
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.server.subscription.factory import CommandDispatcherProtocol
     from protean.utils.mixins import HandlerMixin
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ class ConfigResolver:
 
     def resolve(
         self,
-        handler_cls: Type["HandlerMixin"],
+        handler_cls: 'Type["HandlerMixin"] | "CommandDispatcherProtocol"',
         *,
         stream_category: Optional[str] = None,
     ) -> SubscriptionConfig:
@@ -257,7 +258,7 @@ class ConfigResolver:
         return dict(subscriptions.get(handler_name, {}))
 
     def _get_handler_meta_config(
-        self, handler_cls: Type["HandlerMixin"]
+        self, handler_cls: 'Type["HandlerMixin"] | "CommandDispatcherProtocol"'
     ) -> dict[str, Any]:
         """Extract subscription configuration from handler's Meta options.
 
