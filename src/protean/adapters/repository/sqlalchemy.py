@@ -1513,11 +1513,12 @@ class SAProvider(BaseProvider):
         if not hasattr(self, "_engine") or self._engine is None:
             return {}
 
-        pool = self._engine.pool
         # Only ``QueuePool`` exposes these counters; SingletonThreadPool
-        # (SQLite) does not, so it falls through to the empty dict.
-        if not isinstance(pool, QueuePool):
-            return {}
+        # (SQLite) does not. We keep the duck-typed access (any pool exposing
+        # the counters works) and let the AttributeError handler catch the
+        # rest — the cast is a static-only hint that does not narrow at
+        # runtime, so behaviour is unchanged.
+        pool = typing.cast("QueuePool", self._engine.pool)
         try:
             return {
                 "size": pool.size(),
