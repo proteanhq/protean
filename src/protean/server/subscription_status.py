@@ -87,7 +87,7 @@ class SubscriptionStatus:
 # ---------------------------------------------------------------------------
 
 
-def _infer_stream_category(handler_cls: type) -> str:
+def _infer_stream_category(handler_cls: type[Any]) -> str:
     """Infer the stream category for a handler.
 
     Mirrors ``Engine._infer_stream_category`` in
@@ -129,7 +129,7 @@ def _infer_stream_category(handler_cls: type) -> str:
 def _collect_event_store_status(
     domain: Domain,
     name: str,
-    handler_cls: type,
+    handler_cls: type[Any],
     stream_category: str,
     *,
     subscriber_name: str | None = None,
@@ -191,7 +191,7 @@ def _collect_event_store_status(
 def _collect_stream_status(
     domain: Domain,
     name: str,
-    handler_cls: type,
+    handler_cls: type[Any],
     stream_category: str,
     *,
     consumer_group_name: str | None = None,
@@ -296,7 +296,7 @@ def _collect_stream_status(
 def _collect_broker_status(
     domain: Domain,
     name: str,
-    handler_cls: type,
+    handler_cls: type[Any],
     stream_name: str,
     broker_name: str,
 ) -> SubscriptionStatus:
@@ -516,7 +516,7 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
             )
 
     # 2. Command handlers — grouped by stream category
-    handlers_by_stream: dict[str, list[tuple[str, type]]] = defaultdict(list)
+    handlers_by_stream: dict[str, list[tuple[str, type[Any]]]] = defaultdict(list)
     for handler_name, record in domain.registry.command_handlers.items():
         handler_cls = record.cls
         try:
