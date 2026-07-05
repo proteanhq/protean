@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _SECURITY_DETAIL_MAX_LEN = 256
 
 
-def _emit_security_event(event_type: str, args: tuple) -> None:
+def _emit_security_event(event_type: str, args: tuple[Any, ...]) -> None:
     """Route boundary-level exceptions to the ``protean.security`` logger.
 
     Only emits when a domain handler is on the stack (``g.message_in_context``
@@ -136,7 +136,12 @@ class ValidationError(ProteanExceptionWithMessage):
 class DatabaseError(ProteanException):
     """Raised when database operations fail."""
 
-    def __init__(self, message: str, original_exception=None, **kwargs):
+    def __init__(
+        self,
+        message: str,
+        original_exception: BaseException | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(message, **kwargs)
         self.original_exception = original_exception
 
@@ -160,7 +165,9 @@ class DuplicateCommandError(ProteanException):
     Carries the original result from the first successful processing.
     """
 
-    def __init__(self, message: str, original_result: Any = None, **kwargs):
+    def __init__(
+        self, message: str, original_result: Any = None, **kwargs: Any
+    ) -> None:
         super().__init__(message, **kwargs)
         self.original_result = original_result
 
@@ -177,8 +184,8 @@ class CommandExpiredError(ProteanException):
         message: str,
         command_type: str | None = None,
         deadline: datetime | None = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         super().__init__(message, **kwargs)
         self.command_type = command_type
         self.deadline = deadline
@@ -192,8 +199,12 @@ class DeserializationError(ProteanException):
     """
 
     def __init__(
-        self, message_id: str, error: str, context: dict[str, Any] = None, **kwargs
-    ):
+        self,
+        message_id: str,
+        error: str,
+        context: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Initialize DeserializationError.
 
         Args:
