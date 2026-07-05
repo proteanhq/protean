@@ -2,6 +2,8 @@
 
 import datetime
 
+from typing import Any, Callable, cast
+
 from protean.exceptions import ValidationError
 from protean.fields import Field
 from protean.fields.embedded import ValueObject
@@ -49,7 +51,12 @@ class ValueObjectList(Field):
         "invalid_content": "Invalid value {value}",
     }
 
-    def __init__(self, content_type=str, pickled=False, **kwargs):
+    def __init__(
+        self,
+        content_type: type | ValueObject = str,
+        pickled: bool = False,
+        **kwargs: Any,
+    ) -> None:
         if content_type not in _SUPPORTED_CONTENT_TYPES and not isinstance(
             content_type, ValueObject
         ):
@@ -59,7 +66,7 @@ class ValueObjectList(Field):
 
         super().__init__(**kwargs)
 
-    def _cast_to_type(self, value):
+    def _cast_to_type(self, value: Any) -> Any:
         """Raise errors if the value is not a list, or
         the items in the list are not of the right data type.
         """
@@ -75,16 +82,19 @@ class ValueObjectList(Field):
                 self.fail("invalid_content", value=value)
             return new_value
 
-        # For Python primitive types, cast each item
+        # For Python primitive types, cast each item. In this branch
+        # ``content_type`` is a constructor invoked with a single value; a
+        # bad arity (e.g. ``date``) surfaces as the caught TypeError below.
+        cast_fn = cast(Callable[[Any], Any], self.content_type)
         new_value = []
         try:
             for item in value:
-                new_value.append(self.content_type(item))
+                new_value.append(cast_fn(item))
         except (ValueError, TypeError):
             self.fail("invalid_content", value=value)
         return new_value
 
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self"""
         if isinstance(self.content_type, ValueObject):
             return [self.content_type.as_dict(item) for item in value]
@@ -99,15 +109,15 @@ class ValueObjectList(Field):
 class Method(Field):
     """Helper field for custom methods associated with serializer fields"""
 
-    def __init__(self, method_name, **kwargs):
+    def __init__(self, method_name: str, **kwargs: Any) -> None:
         self.method_name = method_name
         super().__init__(**kwargs)
 
-    def _cast_to_type(self, value):
+    def _cast_to_type(self, value: Any) -> Any:
         """Perform no validation for Method fields. Return the value as is"""
         return value
 
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self"""
         return value
 
@@ -115,20 +125,20 @@ class Method(Field):
 class Nested(Field):
     """Helper field for nested objects associated with serializer fields"""
 
-    def __init__(self, schema_name, many=False, **kwargs):
+    def __init__(self, schema_name: str, many: bool = False, **kwargs: Any) -> None:
         self.schema_name = schema_name
         self.many = many
         super().__init__(**kwargs)
 
-    def _cast_to_type(self, value):
+    def _cast_to_type(self, value: Any) -> Any:
         """Perform no validation for Nested fields. Return the value as is"""
         return value
 
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self"""
         return value
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         values = []
         if self.schema_name:
             values.append(f"'{self.schema_name}'")
