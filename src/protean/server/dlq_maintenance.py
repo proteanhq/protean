@@ -28,7 +28,9 @@ from protean.utils.telemetry import get_domain_metrics
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.port.broker import BaseBroker
     from protean.server.engine import Engine
+    from protean.utils.dlq import SubscriptionInfo
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,7 @@ def _resolve_callback(dotted_path: str | None) -> Callable[..., Any] | None:
         return None
     try:
         module = importlib.import_module(module_path)
-        resolved = getattr(module, attr_name)
+        resolved: Callable[..., Any] = getattr(module, attr_name)
         if not callable(resolved):
             logger.warning(
                 "dlq.callback_not_callable",
@@ -199,13 +201,15 @@ class DLQMaintenanceTask:
                 )
 
     @staticmethod
-    def _trim_and_depth(broker, dlq_stream: str, min_id: str) -> tuple[int, int]:
+    def _trim_and_depth(
+        broker: "BaseBroker", dlq_stream: str, min_id: str
+    ) -> tuple[int, int]:
         """Run trim + depth in a single thread call."""
         trimmed = broker.dlq_trim(dlq_stream, min_id)
         depth = broker.dlq_depth(dlq_stream)
         return trimmed, depth
 
-    def _get_broker(self):
+    def _get_broker(self) -> "BaseBroker | None":
         """Return the first broker that supports DLQ, or None."""
         for broker in self.domain.brokers.values():
             if broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
@@ -213,7 +217,7 @@ class DLQMaintenanceTask:
         return None
 
     @staticmethod
-    def _dlq_streams(sub_info) -> list[str]:
+    def _dlq_streams(sub_info: "SubscriptionInfo") -> list[str]:
         """Return all DLQ stream names for a subscription."""
         streams = [sub_info.dlq_stream]
         if sub_info.backfill_dlq_stream:
