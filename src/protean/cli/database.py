@@ -15,7 +15,7 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Manage database tables for a Protean domain."""
 
 
