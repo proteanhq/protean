@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
@@ -37,7 +38,7 @@ def create_health_router(
     domain: Domain,
     *,
     prefix: str = "",
-    tags: list[str] | None = None,
+    tags: list[str | Enum] | None = None,
 ) -> APIRouter:
     """Create a FastAPI router with health check endpoints.
 
