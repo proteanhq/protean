@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 def shell(
     domain: Annotated[str, typer.Option()] = ".",
     traverse: Annotated[bool, typer.Option()] = False,
-):
+) -> None:
     try:
         domain_instance = derive_domain(domain)
     except NoDomainException as exc:
