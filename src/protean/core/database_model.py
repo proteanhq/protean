@@ -179,11 +179,14 @@ def _entity_to_dict(
     item_dict: dict[str, Any] = {}
     for attr_obj in attributes(model_cls.meta_.part_of).values():
         # ``field_name`` / ``attribute_name`` are always populated for a
-        # registered field (set by ``Field.__set_name__``); the fallbacks below
-        # only satisfy the ``str | None`` type and are never taken at runtime
-        # for fields returned by ``attributes()``.
-        field_name = attr_obj.field_name or ""
-        attribute_name = attr_obj.attribute_name or ""
+        # registered field (set by ``Field.__set_name__``). ``attributes()``
+        # returns fully-bound fields, so these asserts hold for every field;
+        # they fail loudly rather than silently writing a ``""`` key if the
+        # invariant is ever violated.
+        assert attr_obj.field_name is not None
+        assert attr_obj.attribute_name is not None
+        field_name = attr_obj.field_name
+        attribute_name = attr_obj.attribute_name
         referenced_as = attr_obj.referenced_as
         if referenced_as:
             # Use None default: shadow fields for a None ValueObject are

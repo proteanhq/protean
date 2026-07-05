@@ -263,8 +263,10 @@ class Config2(dict[str, Any]):
                     self[key.lower()] = getattr(obj, key)
 
     @classmethod
-    def load_from_dict(cls, config: dict[str, Any] = _default_config()) -> "Config2":
+    def load_from_dict(cls, config: dict[str, Any] | None = None) -> "Config2":
         """Load configuration from a dictionary."""
+        if config is None:
+            config = _default_config()
         return cls(**cls._normalize_config(config))
 
     @classmethod
