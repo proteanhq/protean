@@ -3,9 +3,15 @@
 import collections
 import importlib
 import logging
+from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 from protean.exceptions import ConfigurationError
+from protean.port.cache import BaseCache
 from protean.utils.inflection import underscore
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
 
@@ -15,27 +21,29 @@ CACHE_PROVIDERS = {
 }
 
 
-class Caches(collections.abc.MutableMapping):
-    def __init__(self, domain):
+class Caches(collections.abc.MutableMapping[str, BaseCache]):
+    def __init__(self, domain: "Domain") -> None:
         self.domain = domain
-        self._caches = None
+        self._caches: dict[str, BaseCache] | None = None
 
-    def __getitem__(self, key):
-        return self._caches[key] if self._caches else None
+    def __getitem__(self, key: str) -> BaseCache:
+        if not self._caches:
+            raise KeyError(key)
+        return self._caches[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self._caches) if self._caches else iter({})
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._caches) if self._caches else 0
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: BaseCache) -> None:
         if self._caches is None:
             self._caches = {}
 
         self._caches[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         assert self._caches is not None
         if key in self._caches:
             del self._caches[key]

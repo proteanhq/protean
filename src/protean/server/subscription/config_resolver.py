@@ -68,7 +68,8 @@ class ConfigResolver:
     @property
     def server_config(self) -> dict[str, Any]:
         """Get the server configuration from the domain."""
-        return self._domain.config.get("server", {})
+        server: dict[str, Any] = self._domain.config.get("server", {})
+        return server
 
     def resolve(
         self,

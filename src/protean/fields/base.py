@@ -3,7 +3,7 @@
 import enum
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from typing import Any, Callable, Iterable, List
+from typing import Any, Callable, Iterable
 
 from protean import exceptions
 from protean.fields.mixins import FieldDescriptorMixin
@@ -16,11 +16,11 @@ MISSING_ERROR_MESSAGE = (
 # Values treated as "empty": they trigger the ``required`` check and short-circuit
 # per-field validators (validators must not run on an omitted optional field).
 # Shared with the Pydantic-based field system in ``spec.py`` so both stay aligned.
-EMPTY_VALUES: tuple = (None, "", [], (), {})
+EMPTY_VALUES: tuple[Any, ...] = (None, "", [], (), {})
 
 
 def normalize_field_deprecated(
-    value: str | dict | None,
+    value: str | dict[str, Any] | bool | None,
 ) -> dict[str, str] | None:
     """Normalize the ``deprecated`` field parameter.
 
@@ -98,23 +98,23 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     }
 
     # Default validators for a Field
-    default_validators: List[Callable] = []
+    default_validators: list[Callable[..., Any]] = []
 
     # These values will trigger the self.required check.
-    empty_values: tuple = EMPTY_VALUES
+    empty_values: tuple[Any, ...] = EMPTY_VALUES
 
     def __init__(
         self,
-        referenced_as: str = None,
-        description: str = None,
+        referenced_as: str | None = None,
+        description: str | None = None,
         identifier: bool = False,
         default: Any = None,
         required: bool = False,
         unique: bool = False,
-        choices: enum.Enum = None,
-        validators: Iterable = (),
-        error_messages: dict = None,
-        deprecated: str | dict | None = None,
+        choices: type[enum.Enum] | list[Any] | tuple[Any, ...] | None = None,
+        validators: Iterable[Callable[..., Any]] = (),
+        error_messages: dict[str, str] | None = None,
+        deprecated: str | dict[str, Any] | bool | None = None,
     ):
         # Pass to FieldDescriptorMixin for initialization
         super().__init__(referenced_as=referenced_as, description=description)
@@ -136,7 +136,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         self._validators = validators
 
         # Collect default error message from self and parent classes
-        messages = {}
+        messages: dict[str, str] = {}
         for cls in reversed(self.__class__.__mro__):
             messages.update(getattr(cls, "default_error_messages", {}))
         messages.update(error_messages or {})
@@ -164,18 +164,18 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
                     values.append(f"default={self.default}")
         return values
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
             + ", ".join(self._generic_param_values_for_repr())
             + ")"
         )
 
-    def __get__(self, instance, owner):
+    def __get__(self, instance: Any, owner: Any) -> Any:
         if hasattr(instance, "__dict__"):
             return instance.__dict__.get(self.field_name)
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Any) -> None:
         value = self._load(value)
 
         # The hasattr check is necessary to avoid running invariant checks on unrelated elements
@@ -200,10 +200,10 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         if hasattr(instance, "state_"):
             instance.state_.mark_changed()
 
-    def __delete__(self, instance):
+    def __delete__(self, instance: Any) -> None:
         instance.__dict__.pop(self.field_name, None)
 
-    def fail(self, key, **kwargs):
+    def fail(self, key: str, **kwargs: Any) -> None:
         """A helper method that simply raises a `ValidationError`."""
         try:
             msg = self.error_messages[key]
@@ -221,7 +221,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         raise exceptions.ValidationError({field_name: [msg]})
 
     @property
-    def validators(self):
+    def validators(self) -> list[Callable[..., Any]]:
         """
         Some validators can't be created at field initialization time.
         This method provides a way to handle such default validators.
@@ -240,14 +240,14 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of field"""
 
-    def _run_validators(self, value):
+    def _run_validators(self, value: Any) -> None:
         """Perform validation on ``value``. Raise a :exc:`ValidationError` if
         validation does not succeed.
         """
         if value in self.empty_values:
             return
 
-        errors = defaultdict(list)
+        errors: defaultdict[str, list[Any]] = defaultdict(list)
         for validator in self.validators:
             try:
                 validator(value)
@@ -277,7 +277,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
             deprecated=self.deprecated,
         )
 
-    def _load(self, value: Any):
+    def _load(self, value: Any) -> Any:
         """
         Load the value for the field, run validators and return the value.
         Subclasses can override this to provide custom load logic.
@@ -307,17 +307,17 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
         # If choices exist then validate that value is be one of the choices
         if self.choices:
-            # Check if self.choices is an Enum
-            if type(self.choices) not in [list, tuple] and issubclass(
-                self.choices, enum.Enum
-            ):
-                choices = [item.value for item in self.choices]
+            choices: list[Any] | tuple[Any, ...]
+            # A list/tuple of choices is used as-is; otherwise it is an Enum class
+            if isinstance(self.choices, (list, tuple)):
+                choices = self.choices
+            else:
+                enum_cls = self.choices
+                choices = [item.value for item in enum_cls]
 
                 # Check if value is an Enum instance
-                if isinstance(value, self.choices):
+                if isinstance(value, enum_cls):
                     value = value.value
-            else:
-                choices = self.choices
 
             value_list = [value] if not isinstance(value, (list, tuple)) else value
 

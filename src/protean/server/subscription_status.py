@@ -21,7 +21,7 @@ import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, overload
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import SubscriptionType
@@ -31,6 +31,36 @@ if TYPE_CHECKING:
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
+
+
+class _RedisStyleBroker(Protocol):
+    """Structural view of the Redis-backed broker surface used for lag lookups.
+
+    The concrete Redis broker adapters expose ``redis_instance`` (the live
+    ``redis.Redis`` client) and the ``_get_field_value`` helper, neither of
+    which is part of the ``BaseBroker`` port. Guarded ``hasattr`` checks at the
+    call sites narrow a ``BaseBroker`` to this shape. ``redis_instance`` is typed
+    ``Any`` because the ``redis`` client is an optional dependency not importable
+    at module scope here.
+    """
+
+    redis_instance: Any
+
+    @overload
+    def _get_field_value(
+        self,
+        info_dict: dict[Any, Any],
+        field_name: str,
+        convert_to_int: Literal[False] = ...,
+    ) -> str | None: ...
+
+    @overload
+    def _get_field_value(
+        self,
+        info_dict: dict[Any, Any],
+        field_name: str,
+        convert_to_int: Literal[True],
+    ) -> int | None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +108,7 @@ class SubscriptionStatus:
     last_updated: str | None = None
     """ISO timestamp of the last processed position (event-store subscriptions only)."""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -87,7 +117,7 @@ class SubscriptionStatus:
 # ---------------------------------------------------------------------------
 
 
-def _infer_stream_category(handler_cls: type) -> str:
+def _infer_stream_category(handler_cls: type[Any]) -> str:
     """Infer the stream category for a handler.
 
     Mirrors ``Engine._infer_stream_category`` in
@@ -101,7 +131,7 @@ def _infer_stream_category(handler_cls: type) -> str:
         )
 
     # Priority 1: Explicit stream_category on handler
-    stream_category = getattr(meta, "stream_category", None)
+    stream_category: str | None = getattr(meta, "stream_category", None)
     if stream_category:
         return stream_category
 
@@ -110,7 +140,9 @@ def _infer_stream_category(handler_cls: type) -> str:
     if part_of:
         aggregate_meta = getattr(part_of, "meta_", None)
         if aggregate_meta:
-            aggregate_stream = getattr(aggregate_meta, "stream_category", None)
+            aggregate_stream: str | None = getattr(
+                aggregate_meta, "stream_category", None
+            )
             if aggregate_stream:
                 return aggregate_stream
 
@@ -127,7 +159,7 @@ def _infer_stream_category(handler_cls: type) -> str:
 def _collect_event_store_status(
     domain: Domain,
     name: str,
-    handler_cls: type,
+    handler_cls: type[Any],
     stream_category: str,
     *,
     subscriber_name: str | None = None,
@@ -189,7 +221,7 @@ def _collect_event_store_status(
 def _collect_stream_status(
     domain: Domain,
     name: str,
-    handler_cls: type,
+    handler_cls: type[Any],
     stream_category: str,
     *,
     consumer_group_name: str | None = None,
@@ -199,12 +231,13 @@ def _collect_stream_status(
 
     try:
         with domain.domain_context():
-            broker = domain.brokers.get("default")
-            if not broker or not hasattr(broker, "redis_instance"):
+            base_broker = domain.brokers.get("default")
+            if not base_broker or not hasattr(base_broker, "redis_instance"):
                 return _unknown_status(
                     name, handler_cls.__name__, "stream", stream_category
                 )
 
+            broker = cast(_RedisStyleBroker, base_broker)
             redis_conn = broker.redis_instance
 
             # Stream length
@@ -294,7 +327,7 @@ def _collect_stream_status(
 def _collect_broker_status(
     domain: Domain,
     name: str,
-    handler_cls: type,
+    handler_cls: type[Any],
     stream_name: str,
     broker_name: str,
 ) -> SubscriptionStatus:
@@ -303,14 +336,15 @@ def _collect_broker_status(
 
     try:
         with domain.domain_context():
-            broker = domain.brokers.get(broker_name)
-            if not broker:
+            base_broker = domain.brokers.get(broker_name)
+            if not base_broker:
                 return _unknown_status(
                     name, handler_cls.__name__, "broker", stream_name
                 )
 
             # Try Redis-style introspection if available
-            if hasattr(broker, "redis_instance"):
+            if hasattr(base_broker, "redis_instance"):
+                broker = cast(_RedisStyleBroker, base_broker)
                 redis_conn = broker.redis_instance
 
                 try:
@@ -382,7 +416,7 @@ def _collect_broker_status(
                 )
 
             # Non-Redis brokers: use info() API
-            info = broker.info()
+            info = base_broker.info()
             cg_info = info.get("consumer_groups", {}).get(consumer_group, {})
             pending = cg_info.get("pending", 0)
             consumer_count = cg_info.get("consumer_count", 0)
@@ -514,7 +548,7 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
             )
 
     # 2. Command handlers — grouped by stream category
-    handlers_by_stream: dict[str, list[tuple[str, type]]] = defaultdict(list)
+    handlers_by_stream: dict[str, list[tuple[str, type[Any]]]] = defaultdict(list)
     for handler_name, record in domain.registry.command_handlers.items():
         handler_cls = record.cls
         try:
@@ -615,7 +649,7 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
 # ---------------------------------------------------------------------------
 
 
-def _as_dict(value: object) -> dict | None:
+def _as_dict(value: object) -> dict[str, Any] | None:
     """Return *value* as a dict, JSON-decoding a string first, else ``None``."""
     if isinstance(value, str):
         try:
@@ -625,7 +659,7 @@ def _as_dict(value: object) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
-def _extract_position_time(last_msg: dict | None) -> str | None:
+def _extract_position_time(last_msg: dict[str, Any] | None) -> str | None:
     """Pull the ISO timestamp of a position write from its stored message.
 
     ``write_position`` stamps ``metadata.headers.time``; some stores also expose a

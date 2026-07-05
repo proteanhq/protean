@@ -1,9 +1,12 @@
 import traceback
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from typing import Annotated, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Annotated, Any, List, Optional, Tuple, cast
 
 from pydantic import BeforeValidator, Field
+
+if TYPE_CHECKING:
+    from protean.core.queryset import QuerySet
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
@@ -71,7 +74,7 @@ class Outbox(BaseAggregate):
     message_id: Annotated[str, Field(max_length=255)]
     stream_name: Annotated[str, Field(max_length=255)]
     type: Annotated[str, Field(max_length=255)]
-    data: dict
+    data: dict[str, Any]
     metadata_: Metadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     published_at: datetime | None = None
@@ -79,7 +82,7 @@ class Outbox(BaseAggregate):
 
     # Last processed timestamp and error details
     last_processed_at: datetime | None = None
-    last_error: dict | None = None
+    last_error: dict[str, Any] | None = None
 
     status: Annotated[str, Field(max_length=32)] = OutboxStatus.PENDING.value
 
@@ -109,7 +112,11 @@ class Outbox(BaseAggregate):
     # composite (message_id, target_broker) unique index depends on it being
     # non-NULL, so the column is NOT NULL. Legacy rows written before the field
     # was populated are coerced from NULL to the default broker name on read.
-    target_broker: Annotated[
+    # mypy [misc] "attributes without a default cannot follow attributes with one"
+    # is a false positive here: Protean fields are metaclass-managed, not Python
+    # dataclass fields, so positional-default ordering does not apply. This field
+    # is intentionally required (NOT NULL) and must not be given a default.
+    target_broker: Annotated[  # type: ignore[misc]
         str, BeforeValidator(_coerce_target_broker), Field(max_length=128)
     ]
 
@@ -119,7 +126,7 @@ class Outbox(BaseAggregate):
         message_id: str,
         stream_name: str,
         message_type: str,
-        data: dict,
+        data: dict[str, Any],
         metadata: Metadata,
         priority: int = 0,
         correlation_id: Optional[str] = None,
@@ -372,7 +379,9 @@ OUTBOX_INDEXES = [
 class OutboxRepository(BaseRepository):
     """Repository for querying outbox messages with specialized filtering methods."""
 
-    def _apply_limit_and_execute(self, query, limit: Optional[int]):
+    def _apply_limit_and_execute(
+        self, query: "QuerySet", limit: Optional[int]
+    ) -> list[Outbox]:
         """Helper method to apply limit and handle zero limit case."""
         if limit is not None and limit == 0:
             return []
@@ -382,7 +391,7 @@ class OutboxRepository(BaseRepository):
 
         # The poll path only needs the rows, never the full match count, so
         # skip the adapter's total-count round-trip (a wrapped ``COUNT`` on SQL).
-        return query.all(with_total=False).items
+        return cast(list[Outbox], query.all(with_total=False).items)
 
     def _eligibility_criteria(
         self, now: datetime, target_broker: str | None = None
@@ -511,16 +520,19 @@ class OutboxRepository(BaseRepository):
 
         now = datetime.now(timezone.utc)
 
-        return self._dao._claim(
-            criteria=self._eligibility_criteria(now, target_broker),
-            claim_fields={
-                "status": OutboxStatus.PROCESSING.value,
-                "locked_by": worker_id,
-                "locked_until": now + timedelta(minutes=lock_duration_minutes),
-                "last_processed_at": now,
-            },
-            limit=limit,
-            order_by="-priority",
+        return cast(
+            list[Outbox],
+            self._dao._claim(
+                criteria=self._eligibility_criteria(now, target_broker),
+                claim_fields={
+                    "status": OutboxStatus.PROCESSING.value,
+                    "locked_by": worker_id,
+                    "locked_until": now + timedelta(minutes=lock_duration_minutes),
+                    "last_processed_at": now,
+                },
+                limit=limit,
+                order_by="-priority",
+            ),
         )
 
     def find_failed(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
@@ -617,7 +629,7 @@ class OutboxRepository(BaseRepository):
         criteria = {"message_id": message_id}
         if target_broker is not None:
             criteria["target_broker"] = target_broker
-        results = self._dao.query.filter(**criteria).all().items
+        results = cast(list[Outbox], self._dao.query.filter(**criteria).all().items)
         return results[0] if results else None
 
     def find_all_by_message_id(self, message_id: str) -> list[Outbox]:
@@ -632,7 +644,9 @@ class OutboxRepository(BaseRepository):
         Returns:
             All Outbox messages with the given message ID (possibly empty)
         """
-        return self._dao.query.filter(message_id=message_id).all().items
+        return cast(
+            list[Outbox], self._dao.query.filter(message_id=message_id).all().items
+        )
 
     def find_by_message_type(
         self, message_type: str, limit: Optional[int] = PAGE_SIZE
@@ -720,7 +734,7 @@ class OutboxRepository(BaseRepository):
         )
         query = query.order_by("last_processed_at")
 
-        return query.all().items
+        return cast(list[Outbox], query.all().items)
 
     def find_recent(
         self, hours: int = 24, limit: Optional[int] = PAGE_SIZE
@@ -758,7 +772,7 @@ class OutboxRepository(BaseRepository):
 
         return self._apply_limit_and_execute(query, limit)
 
-    def count_by_status(self) -> dict:
+    def count_by_status(self) -> dict[str, int]:
         """Get count of messages by their status.
 
         Returns:
@@ -776,10 +790,11 @@ class OutboxRepository(BaseRepository):
         global) so cleanup works in standalone/cron usage with no active domain
         context. Defaults to 5000 when unset, matching ``domain.config``.
         """
-        return (
+        return cast(
+            int,
             self._dao.domain.config.get("outbox", {})
             .get("cleanup", {})
-            .get("batch_size", 5000)
+            .get("batch_size", 5000),
         )
 
     def cleanup_old_published(
@@ -833,7 +848,7 @@ class OutboxRepository(BaseRepository):
         published_retention_hours: int = 168,
         abandoned_retention_hours: int = 720,
         batch_size: Optional[int] = None,
-    ) -> dict:
+    ) -> dict[str, int]:
         """Clean up old published and abandoned messages based on retention periods.
 
         This method cleans up both published and abandoned messages that are older

@@ -6,15 +6,18 @@
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from protean.core.queryset import ReadOnlyQuerySet
 from protean.exceptions import NotSupportedError, ObjectNotFoundError
 from protean.utils.inflection import underscore
 
 if TYPE_CHECKING:
+    from protean.core.entity import BaseEntity
     from protean.core.projection import BaseProjection
+    from protean.core.repository import BaseRepository
     from protean.domain import Domain
+    from protean.port.cache import BaseCache
 
 logger = logging.getLogger(__name__)
 
@@ -48,13 +51,15 @@ class ReadView:
 
     # ── Internal helpers ─────────────────────────────────────
 
-    def _repo(self):
+    def _repo(self) -> "BaseRepository":
         """Return the repository for a database-backed projection."""
         return self._domain.providers.repository_for(self._projection_cls)
 
-    def _cache(self):
+    def _cache(self) -> "BaseCache":
         """Return the cache adapter for a cache-backed projection."""
-        return self._domain.caches.cache_for(self._projection_cls)
+        # ``cache_for`` is currently untyped (returns ``Any``); cast to the
+        # port type so callers see the precise ``BaseCache`` surface.
+        return cast("BaseCache", self._domain.caches.cache_for(self._projection_cls))
 
     # ── Public read API ──────────────────────────────────────
 
@@ -73,7 +78,15 @@ class ReadView:
                 f"Use get() for key-based lookups."
             )
         repo = self._domain.providers.repository_for(self._projection_cls)
-        return ReadOnlyQuerySet(repo._dao, self._domain, self._projection_cls)
+        # ``QuerySet`` is typed against ``type[BaseEntity]`` but operates on any
+        # persistable ``Element`` (both entities and projections share the same
+        # ``meta_``/reflection surface). Cast until that public signature is
+        # widened to accept projections.
+        return ReadOnlyQuerySet(
+            repo._dao,
+            self._domain,
+            cast("type[BaseEntity]", self._projection_cls),
+        )
 
     def get(self, identifier: Any) -> "BaseProjection":
         """Retrieve a single projection record by its identifier.
@@ -91,7 +104,9 @@ class ReadView:
                 )
             return result
         else:
-            return self._repo()._dao.get(identifier)
+            # ``BaseDAO.get`` is typed to return ``BaseEntity``; for a
+            # projection-backed repository it returns the projection instance.
+            return cast("BaseProjection", self._repo()._dao.get(identifier))
 
     def find_by(self, **kwargs: Any) -> "BaseProjection":
         """Find a single projection record matching the given criteria.
@@ -107,7 +122,9 @@ class ReadView:
                 f"projection `{self._projection_cls.__name__}`. "
                 f"Use get() for key-based lookups."
             )
-        return self._repo()._dao.find_by(**kwargs)
+        # ``BaseDAO.find_by`` is typed to return ``BaseEntity``; for a
+        # projection-backed repository it returns the projection instance.
+        return cast("BaseProjection", self._repo()._dao.find_by(**kwargs))
 
     def count(self) -> int:
         """Return the total number of projection records."""

@@ -345,16 +345,16 @@ class Domain:
         #: The configuration dictionary as ``Config``.  This behaves
         #: exactly like a regular dictionary but supports additional methods
         #: to load a config from files.
-        self.config = self.load_config(config)
+        self.config: Config2 = self.load_config(config)
 
         # The function to invoke to generate identity
         self._identity_function = identity_function
 
-        self.providers = Providers(self)
-        self.event_store = EventStore(self)
-        self.brokers = Brokers(self)
-        self.caches = Caches(self)
-        self.email_providers = EmailProviders(self)
+        self.providers: Providers = Providers(self)
+        self.event_store: EventStore = EventStore(self)
+        self.brokers: Brokers = Brokers(self)
+        self.caches: Caches = Caches(self)
+        self.email_providers: EmailProviders = EmailProviders(self)
 
         # Cache for holding Model to Entity/Aggregate associations
         # Structure mirrors Providers._repositories:
@@ -410,7 +410,9 @@ class Domain:
     # ------------------------------------------------------------------
 
     @property
-    def _events_and_commands(self) -> Dict[str, Union[BaseCommand, BaseEvent]]:
+    def _events_and_commands(
+        self,
+    ) -> Dict[str, Union[Type[BaseCommand], Type[BaseEvent]]]:
         return self._type_manager.events_and_commands
 
     @property
@@ -872,7 +874,7 @@ class Domain:
 
         logger.info("Domain infrastructure closed")
 
-    def load_config(self, config=None):
+    def load_config(self, config: Optional[Dict] = None) -> Config2:
         """Load configuration from a dict or a .toml file."""
         if config is not None:
             config_obj = Config2.load_from_dict(config)

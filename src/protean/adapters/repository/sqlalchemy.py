@@ -11,7 +11,8 @@ import uuid
 from abc import abstractmethod
 from datetime import date as _date, datetime as _datetime
 from enum import Enum
-from typing import Any  # type: ignore[reportAssignmentType]
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, ClassVar
 
 import sqlalchemy.dialects.postgresql as psql
 import sqlalchemy.dialects.mssql as mssql
@@ -35,7 +36,10 @@ from sqlalchemy import (
 )
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import sqlite as sqlite_dialect
+from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
+from sqlalchemy.pool import QueuePool
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy import inspect
 from sqlalchemy.schema import CreateIndex
@@ -65,6 +69,9 @@ from protean.utils.logging import get_logging_config_value
 from protean.utils.query import F, Q
 from protean.utils.reflection import attributes, fields, id_field
 
+if TYPE_CHECKING:
+    from protean.core.entity import BaseEntity
+
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
@@ -88,7 +95,9 @@ def _truncate_statement(statement: str, max_chars: int) -> str:
     return statement[:max_chars] + "..."
 
 
-def _maybe_log_query(statement: str, parameters: Any, duration_ms: float) -> None:
+def _maybe_log_query(
+    statement: str, parameters: typing.Any, duration_ms: float
+) -> None:
     """Emit a DEBUG query event or a WARNING slow-query event based on threshold.
 
     Uses stdlib loggers so the ``ProteanCorrelationFilter`` installed on the
@@ -125,7 +134,7 @@ def _maybe_log_query(statement: str, parameters: Any, duration_ms: float) -> Non
         query_logger.debug("repository.sqlalchemy.query", extra=extra)
 
 
-def _install_query_timing(engine: Any) -> None:
+def _install_query_timing(engine: typing.Any) -> None:
     """Attach SQLAlchemy engine events that measure query latency.
 
     Installed once per engine at provider construction time so listener setup
@@ -136,22 +145,22 @@ def _install_query_timing(engine: Any) -> None:
 
     @event.listens_for(engine, "before_cursor_execute")
     def _before(
-        conn: Any,
-        cursor: Any,
+        conn: typing.Any,
+        cursor: typing.Any,
         statement: str,
-        parameters: Any,
-        context: Any,
+        parameters: typing.Any,
+        context: typing.Any,
         executemany: bool,
     ) -> None:
         conn.info[_QUERY_START_KEY] = time.perf_counter()
 
     @event.listens_for(engine, "after_cursor_execute")
     def _after(
-        conn: Any,
-        cursor: Any,
+        conn: typing.Any,
+        cursor: typing.Any,
         statement: str,
-        parameters: Any,
-        context: Any,
+        parameters: typing.Any,
+        context: typing.Any,
         executemany: bool,
     ) -> None:
         start = conn.info.pop(_QUERY_START_KEY, None)
@@ -164,7 +173,7 @@ def _install_query_timing(engine: Any) -> None:
             logger.debug("slow_query_log_emission_failed", exc_info=True)
 
 
-class GUID(TypeDecorator):
+class GUID(TypeDecorator[uuid.UUID]):
     """Platform-independent GUID type.
 
     Uses PostgreSQL's UUID type, otherwise uses
@@ -175,7 +184,7 @@ class GUID(TypeDecorator):
     impl = CHAR
     cache_ok = True
 
-    def load_dialect_impl(self, dialect):
+    def load_dialect_impl(self, dialect: typing.Any) -> typing.Any:
         if dialect.name == "postgresql":
             return dialect.type_descriptor(psql.UUID())
         elif dialect.name == "mssql":
@@ -183,7 +192,7 @@ class GUID(TypeDecorator):
         else:
             return dialect.type_descriptor(CHAR(32))
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value: typing.Any, dialect: typing.Any) -> typing.Any:
         if value is None:
             return value
         elif dialect.name == "postgresql":
@@ -197,7 +206,9 @@ class GUID(TypeDecorator):
                 # hexstring
                 return "%.32x" % value.int
 
-    def process_result_value(self, value, dialect):
+    def process_result_value(
+        self, value: typing.Any, dialect: typing.Any
+    ) -> typing.Any:
         if value is None:
             return value
         else:
@@ -206,23 +217,25 @@ class GUID(TypeDecorator):
             return value
 
 
-class MSSQLJSON(TypeDecorator):
+class MSSQLJSON(TypeDecorator[typing.Any]):
     """JSON type for MSSQL using NVARCHAR storage with automatic serialization."""
 
     impl = mssql.NVARCHAR
     cache_ok = True
 
-    def __init__(self, length=None):
+    def __init__(self, length: int | None = None) -> None:
         # Use NVARCHAR(MAX) by default for JSON storage
         super().__init__(length=length)
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value: typing.Any, dialect: typing.Any) -> typing.Any:
         """Serialize Python objects to JSON string when binding to database."""
         if value is None:
             return value
         return _custom_json_dumps(value)
 
-    def process_result_value(self, value, dialect):
+    def process_result_value(
+        self, value: typing.Any, dialect: typing.Any
+    ) -> typing.Any:
         """Deserialize JSON string back to Python objects when reading from database."""
         if value is None:
             return value
@@ -233,7 +246,7 @@ class MSSQLJSON(TypeDecorator):
             return value
 
 
-def _get_identity_type():
+def _get_identity_type() -> type[sa_types.TypeEngine[typing.Any]]:
     """Retrieve the configured data type for AutoGenerated Identifiers
 
     If `current_domain` is not yet available, it simply means that Protean is still being loaded.
@@ -251,7 +264,7 @@ def _get_identity_type():
         )
 
 
-def _default(value):
+def _default(value: typing.Any) -> typing.Any:
     """A function that gets called for objects that can't otherwise be serialized.
     We handle the special case of Value Objects here.
 
@@ -262,7 +275,7 @@ def _default(value):
     raise TypeError()
 
 
-def _custom_json_dumps(value):
+def _custom_json_dumps(value: typing.Any) -> str:
     """Custom JSON Serializer method to handle the special case of ValueObject deserialization.
 
     This method is passed into sqlalchemy as a value for param `json_serializer` in the call to `create_engine`.
@@ -327,7 +340,7 @@ _PARTIAL_INDEX_DIALECTS = frozenset({"postgresql", "sqlite"})
 _INCLUDE_INDEX_DIALECTS = frozenset({"postgresql", "mssql"})
 
 
-def _q_field_names(criteria) -> set[str]:
+def _q_field_names(criteria: Q) -> set[str]:
     """Collect the field names referenced by a ``Q`` predicate (recursively)."""
     names: set[str] = set()
     for child in criteria.children:
@@ -338,7 +351,9 @@ def _q_field_names(criteria) -> set[str]:
     return names
 
 
-def _partial_index_predicate(criteria, column_for):
+def _partial_index_predicate(
+    criteria: Q, column_for: Callable[[str], typing.Any]
+) -> typing.Any:
     """Render a :class:`~protean.utils.query.Q` into a SQLAlchemy expression.
 
     Used to compile an :class:`~protean.core.index.Index` ``where=`` predicate
@@ -367,16 +382,21 @@ def _partial_index_predicate(criteria, column_for):
 
 
 def _make_sa_indexes(
-    declared, column_for, attr_for, table_name, dialect_name, owner_name
-):
+    declared: typing.Any,
+    column_for: Callable[[str], typing.Any],
+    attr_for: dict[str, str],
+    table_name: str,
+    dialect_name: str,
+    owner_name: str,
+) -> tuple[list[SAIndex], list[RawIndex]]:
     """Core translation of portable ``Index`` declarations into SQLAlchemy.
 
     Column-agnostic so it can serve both the live model path (columns resolved
     from the mapped class) and the DDL-rendering path (columns from a throwaway
     table). Returns ``(sa_indexes, raw_indexes)``.
     """
-    sa_indexes = []
-    raw_indexes = []
+    sa_indexes: list[SAIndex] = []
+    raw_indexes: list[RawIndex] = []
 
     for index in declared:
         if isinstance(index, RawIndex):
@@ -392,7 +412,7 @@ def _make_sa_indexes(
             column_for(f).desc() if f in index.desc else column_for(f)
             for f in index.fields
         ]
-        kwargs = {"unique": index.unique}
+        kwargs: dict[str, typing.Any] = {"unique": index.unique}
 
         if index.where is not None:
             if dialect_name in _PARTIAL_INDEX_DIALECTS:
@@ -427,14 +447,17 @@ def _make_sa_indexes(
     return sa_indexes, raw_indexes
 
 
-def _attribute_map(entity_cls):
+def _attribute_map(entity_cls: typing.Any) -> dict[str, str]:
     """Map declared field names to their persisted column attribute names."""
     return {
-        name: field_obj.attribute_name for name, field_obj in fields(entity_cls).items()
+        name: field_obj.attribute_name or name
+        for name, field_obj in fields(entity_cls).items()
     }
 
 
-def _merge_table_args(existing, sa_indexes):
+def _merge_table_args(
+    existing: typing.Any, sa_indexes: list[SAIndex]
+) -> tuple[typing.Any, ...]:
     """Append SQLAlchemy ``Index`` objects to a model's ``__table_args__``.
 
     SQLAlchemy allows ``__table_args__`` to be a dict (table kwargs), a tuple of
@@ -454,7 +477,9 @@ def _merge_table_args(existing, sa_indexes):
     return (*existing, *indexes)
 
 
-def _build_sa_indexes(model_cls, entity_cls, dialect_name):
+def _build_sa_indexes(
+    model_cls: typing.Any, entity_cls: typing.Any, dialect_name: str
+) -> tuple[list[SAIndex], list[RawIndex]]:
     """Translate an entity's ``Index`` declarations into SQLAlchemy constructs.
 
     Returns a tuple of ``(sa_indexes, raw_indexes)``: SQLAlchemy ``Index``
@@ -467,7 +492,7 @@ def _build_sa_indexes(model_cls, entity_cls, dialect_name):
 
     attr_for = _attribute_map(entity_cls)
 
-    def column_for(field_name):
+    def column_for(field_name: str) -> typing.Any:
         return getattr(model_cls, attr_for.get(field_name, field_name))
 
     return _make_sa_indexes(
@@ -480,7 +505,7 @@ def _build_sa_indexes(model_cls, entity_cls, dialect_name):
     )
 
 
-def render_index_ddl(entity_cls, dialect_name):
+def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     """Render an entity's index declarations to ``CREATE INDEX`` DDL strings.
 
     Builds the indexes against a throwaway table (column names only; types are
@@ -511,7 +536,7 @@ def render_index_ddl(entity_cls, dialect_name):
     }
     table = Table(table_name, metadata, *columns.values())
 
-    def column_for(field_name):
+    def column_for(field_name: str) -> typing.Any:
         return table.c[attr_for.get(field_name, field_name)]
 
     sa_indexes, raw_indexes = _make_sa_indexes(
@@ -538,8 +563,8 @@ def render_index_ddl(entity_cls, dialect_name):
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
-    def __init_subclass__(cls, **kwargs):  # noqa: C901
-        def field_mapping_for(field_obj):
+    def __init_subclass__(cls, **kwargs: typing.Any) -> None:  # noqa: C901
+        def field_mapping_for(field_obj: typing.Any) -> typing.Any:
             """Return SQLAlchemy-equivalent type for Protean's field"""
             # Handle ResolvedField: resolve Python type → SA type
             if isinstance(field_obj, ResolvedField):
@@ -571,7 +596,10 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         if "meta_" in cls.__dict__:
             entity_cls = cls.__dict__["meta_"].part_of
             for _, field_obj in attributes(entity_cls).items():
-                attribute_name = field_obj.attribute_name
+                # ``attribute_name`` is ``None`` only on an unbound Field; the
+                # fields returned by ``attributes()`` are always bound.
+                attribute_name = field_obj.attribute_name or field_obj.field_name
+                assert attribute_name is not None
 
                 # Map the field if not in attributes
                 if attribute_name not in cls.__dict__:
@@ -580,17 +608,18 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         field_obj = field_obj.field_obj
 
                     # Resolve the Python type for Pydantic shims (used in dialect checks)
+                    resolved_type: type[typing.Any] | None
                     if isinstance(field_obj, ResolvedField):
                         resolved_type = _resolve_python_type(field_obj)
                     elif isinstance(field_obj, ValueObjectList):
                         resolved_type = list
                     else:
                         resolved_type = None
-                    type_args = []
-                    type_kwargs = {}
+                    type_args: list[typing.Any] = []
+                    type_kwargs: dict[str, typing.Any] = {}
 
                     # Get the SA type
-                    sa_type_cls = field_mapping_for(field_obj)
+                    sa_type_cls: typing.Any = field_mapping_for(field_obj)
 
                     # Upgrade to Database-specific Data Types
                     dialect_name = cls.__dict__["engine"].dialect.name
@@ -615,6 +644,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                                     and issubclass(content_type, BaseValueObject)
                                 )
                                 if _is_vo:
+                                    field_mapping_type: typing.Any
                                     if not pickled:
                                         field_mapping_type = psql.JSON
                                     else:
@@ -665,7 +695,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         sa_type_cls = sa_types.String
 
                     # Build the column arguments
-                    col_args = {
+                    col_args: dict[str, typing.Any] = {
                         "primary_key": field_obj.identifier,
                         "nullable": not field_obj.required,
                         "unique": field_obj.unique,
@@ -676,9 +706,11 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     #   will not work for MSSQL.
                     if field_obj.identifier and sa_type_cls == sa_types.String:
                         type_kwargs["length"] = 255
-                    elif resolved_type is str:
+                    elif resolved_type is str and isinstance(field_obj, ResolvedField):
                         type_kwargs["length"] = field_obj.max_length
-                    elif resolved_type is decimal.Decimal:
+                    elif resolved_type is decimal.Decimal and isinstance(
+                        field_obj, ResolvedField
+                    ):
                         # NUMERIC(precision, scale); without them the column is
                         # arbitrary-precision (lossless) on backends that support it.
                         if field_obj.precision is not None:
@@ -713,7 +745,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         # Translate portable Index declarations into table-level indexes.
         # Must happen before super().__init_subclass__() so the declarative
         # mapper picks up __table_args__ when it builds the Table.
-        raw_indexes = []
+        raw_indexes: list[RawIndex] = []
         raw_dialect = None
         if "meta_" in cls.__dict__:
             entity_cls = cls.__dict__["meta_"].part_of
@@ -732,12 +764,12 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             if raw.dialect == raw_dialect:
                 event.listen(cls.__table__, "after_create", DDL(raw.ddl))
 
-    @orm.declared_attr
-    def __tablename__(cls):
+    @orm.declared_attr.directive
+    def __tablename__(cls) -> str:
         return cls.derive_schema_name()
 
     @classmethod
-    def from_entity(cls, entity) -> "SqlalchemyModel":
+    def from_entity(cls, entity: typing.Any) -> "SqlalchemyModel":
         """Convert the entity to a model object"""
         item_dict = cls._entity_to_dict(entity)
 
@@ -747,6 +779,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             if isinstance(attr_obj, Reference):
                 continue
             key = attr_obj.referenced_as or attr_obj.attribute_name
+            assert key is not None
             value = item_dict.get(key)
             if isinstance(attr_obj, ValueObjectList) and value:
                 item_dict[key] = attr_obj.as_dict(value)
@@ -759,10 +792,17 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 class SADAO(BaseDAO):
     """DAO implementation for Databases compliant with SQLAlchemy"""
 
+    # An ``SADAO`` is always constructed with an ``SAProvider`` (see
+    # ``SAProvider.get_dao``) and a ``SqlalchemyModel`` subclass; narrow the base
+    # annotations so the SQLAlchemy-specific engine/session/table attributes
+    # resolve.
+    provider: "SAProvider"
+    database_model_cls: type[SqlalchemyModel]
+
     def __repr__(self) -> str:
         return f"SQLAlchemyDAO <{self.entity_cls.__name__}>"
 
-    def _get_session(self):
+    def _get_session(self) -> typing.Any:
         """Returns an active connection to the persistence store.
 
         - If there is an active transaction, the connection associated with the transaction (in the UoW) is returned
@@ -788,7 +828,7 @@ class SADAO(BaseDAO):
                 new_connection.begin()
             return new_connection
 
-    def _build_filters(self, criteria: Q):
+    def _build_filters(self, criteria: Q) -> typing.Any:
         """Recursively Build the filters from the criteria object"""
         # Decide the function based on the connector type
         func = and_ if criteria.connector == criteria.AND else or_
@@ -821,9 +861,9 @@ class SADAO(BaseDAO):
         criteria: Q,
         offset: int = 0,
         limit: int = 10,
-        order_by: list = (),
+        order_by: Sequence[str] = (),
         with_total: bool = True,
-        fields: list | None = None,
+        fields: list[str] | None = None,
     ) -> ResultSet:
         """Filter objects from the sqlalchemy database"""
         conn = self._get_session()
@@ -866,6 +906,7 @@ class SADAO(BaseDAO):
         if not order_cols:
             entity_id_field = id_field(self.entity_cls)
             assert entity_id_field is not None
+            assert entity_id_field.attribute_name is not None
             order_cols.append(
                 getattr(self.database_model_cls, entity_id_field.attribute_name).asc()
             )
@@ -916,7 +957,7 @@ class SADAO(BaseDAO):
         """
         self._get_session().flush()
 
-    def _create(self, model_obj):
+    def _create(self, model_obj: typing.Any) -> typing.Any:
         """Add a new record to the sqlalchemy database"""
         conn = self._get_session()
         assert conn is not None
@@ -926,7 +967,9 @@ class SADAO(BaseDAO):
 
         return model_obj
 
-    def _update(self, model_obj: Any, expected_version: int | None = None):
+    def _update(
+        self, model_obj: typing.Any, expected_version: int | None = None
+    ) -> typing.Any:
         """Update a record in the sqlalchemy database.
 
         When ``expected_version`` is not ``None``, the stored version is
@@ -940,6 +983,7 @@ class SADAO(BaseDAO):
 
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
 
         # Fetch the record from database
         identifier = getattr(model_obj, entity_id_field.attribute_name)
@@ -978,7 +1022,9 @@ class SADAO(BaseDAO):
 
         return model_obj
 
-    def _update_all(self, criteria: Q, *args, **kwargs):
+    def _update_all(
+        self, criteria: Q, *args: typing.Any, **kwargs: typing.Any
+    ) -> typing.Any:
         """Update all objects satisfying the criteria"""
         conn = self._get_session()
         assert conn is not None
@@ -1007,7 +1053,9 @@ class SADAO(BaseDAO):
     # portable :meth:`BaseDAO._claim` default, which is correct everywhere.
     _SKIP_LOCKED_DIALECTS = frozenset({"postgresql"})
 
-    def _bounded_id_select(self, criteria: Q, limit: int, order_by: str | None):
+    def _bounded_id_select(
+        self, criteria: Q, limit: int, order_by: str | None
+    ) -> tuple[typing.Any, typing.Any, typing.Any]:
         """Build ``(table, id_col, select-of-ids)`` for bounded id-subquery
         operations (:meth:`_claim`, :meth:`_delete_top`).
 
@@ -1019,6 +1067,7 @@ class SADAO(BaseDAO):
         """
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
         id_attr = entity_id_field.attribute_name
 
         table = self.database_model_cls.__table__
@@ -1040,10 +1089,10 @@ class SADAO(BaseDAO):
     def _claim(
         self,
         criteria: Q,
-        claim_fields: dict[str, Any],
+        claim_fields: dict[str, typing.Any],
         limit: int,
         order_by: str | None = None,
-    ) -> list:
+    ) -> "list[BaseEntity]":
         """Atomic find-and-claim in a single ``UPDATE … RETURNING`` statement.
 
         On PostgreSQL this issues::
@@ -1112,13 +1161,14 @@ class SADAO(BaseDAO):
 
         return claimed
 
-    def _delete(self, model_obj):
+    def _delete(self, model_obj: typing.Any) -> typing.Any:
         """Delete the entity record in the database"""
         conn = self._get_session()
         assert conn is not None
 
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
 
         # Fetch the record from database
         identifier = getattr(model_obj, entity_id_field.attribute_name)
@@ -1154,12 +1204,12 @@ class SADAO(BaseDAO):
         finally:
             self._commit_if_standalone(conn)
 
-    def _delete_all(self, criteria: Q = None):
+    def _delete_all(self, criteria: Q | None = None) -> int:
         """Delete a record from the sqlalchemy database"""
         conn = self._get_session()
         assert conn is not None
 
-        del_count = 0
+        del_count: int = 0
         if criteria:
             qs = conn.query(self.database_model_cls).filter(
                 self._build_filters(criteria)
@@ -1208,14 +1258,15 @@ class SADAO(BaseDAO):
         assert conn is not None
         try:
             result = conn.execute(stmt)
-            return result.rowcount or 0
+            rowcount: int = result.rowcount or 0
+            return rowcount
         except DatabaseError:
             logger.exception("repository.sqlalchemy.delete_top_failed")
             raise
         finally:
             self._commit_if_standalone(conn)
 
-    def _raw(self, query: Any, data: Any = None):
+    def _raw(self, query: typing.Any, data: typing.Any = None) -> ResultSet:
         """Run a raw query on the repository and return entity objects"""
         assert isinstance(query, str)
 
@@ -1261,6 +1312,20 @@ class SADAO(BaseDAO):
 class SAProvider(BaseProvider):
     """Provider Implementation class for SQLAlchemy"""
 
+    # Concrete provider subclasses (Postgresql/Sqlite/Mssql) assign the
+    # database name here; declared for the type checkers since it is read on
+    # the abstract base.
+    __database__: ClassVar[str]
+
+    # Populated in ``__init__``; declared here so the type checkers see the
+    # SQLAlchemy-specific engine/session state that the DAO reads back off the
+    # provider.
+    _engine: Engine
+    _metadata: MetaData
+    _session_factory: sessionmaker[Session]
+    _scoped_session_cls: scoped_session[Session]
+    _database_model_classes: dict[str, type]
+
     @property
     def capabilities(self) -> DatabaseCapabilities:
         """SQLAlchemy providers support full relational capabilities."""
@@ -1271,7 +1336,7 @@ class SAProvider(BaseProvider):
         sqlite = "sqlite"
         mssql = "mssql"
 
-    def _additional_engine_args(self):
+    def _additional_engine_args(self) -> dict[str, typing.Any]:
         """Construct additional arguments for the engine"""
         extra_args = self._get_database_specific_engine_args()
 
@@ -1293,7 +1358,7 @@ class SAProvider(BaseProvider):
 
         return extra_args
 
-    def _get_default_schema(self, database):
+    def _get_default_schema(self, database: str) -> str | None:
         try:
             return {
                 self.databases.postgresql.value: "public",
@@ -1302,11 +1367,13 @@ class SAProvider(BaseProvider):
         except KeyError:
             return None
 
-    def __init__(self, name, domain, conn_info: dict):
+    def __init__(
+        self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]
+    ) -> None:
         """Initialize and maintain Engine"""
         super().__init__(name, domain, conn_info)
 
-        self._engine = create_engine(  # type: ignore[reportCallIssue]
+        self._engine = create_engine(
             make_url(self.conn_info["database_uri"]),
             json_serializer=_custom_json_dumps,
             **self._additional_engine_args(),
@@ -1325,25 +1392,25 @@ class SAProvider(BaseProvider):
         self._metadata = MetaData(schema=schema)
 
         # A temporary cache of already constructed model classes
-        self._database_model_classes = {}
+        self._database_model_classes: dict[str, type] = {}
 
         # Cache the session factory and scoped session so they are created once
         # per provider, not on every get_session() call.
         kwargs = self._get_database_specific_session_args()
-        self._session_factory = orm.sessionmaker(  # type: ignore[reportCallIssue]
+        self._session_factory = orm.sessionmaker(
             bind=self._engine, expire_on_commit=False, **kwargs
         )
         self._scoped_session_cls = orm.scoped_session(self._session_factory)
 
     @abstractmethod
-    def _get_database_specific_engine_args(self):
+    def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
 
     @abstractmethod
-    def _get_database_specific_session_args(self):
+    def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
         """Set Database specific session parameters.
 
         Depending on the database in use, this method supplies
@@ -1352,7 +1419,7 @@ class SAProvider(BaseProvider):
         Return: a dictionary with additional arguments and values.
         """
 
-    def get_session(self):
+    def get_session(self) -> typing.Any:
         """Return the cached scoped session class for this provider.
 
         The session factory and scoped session registry are created once
@@ -1362,7 +1429,9 @@ class SAProvider(BaseProvider):
         return self._scoped_session_cls
 
     @abstractmethod
-    def _execute_database_specific_connection_statements(self, conn):
+    def _execute_database_specific_connection_statements(
+        self, conn: typing.Any
+    ) -> typing.Any:
         """Execute connection statements depending on the database in use.
 
         Each database has a unique set of commands and associated format to control
@@ -1375,7 +1444,7 @@ class SAProvider(BaseProvider):
         Return: None
         """
 
-    def get_connection(self, session_cls=None):
+    def get_connection(self, session_cls: typing.Any = None) -> typing.Any:
         """Create the connection to the Database instance"""
         # If this connection has to be created within an existing session,
         #   ``session_cls`` will be provided as an argument.
@@ -1412,7 +1481,7 @@ class SAProvider(BaseProvider):
             if conn is not None and not current_uow:
                 conn.close()
 
-    def _data_reset(self):
+    def _data_reset(self) -> None:
         conn = self._engine.connect()
         try:
             transaction = conn.begin()
@@ -1444,7 +1513,12 @@ class SAProvider(BaseProvider):
         if not hasattr(self, "_engine") or self._engine is None:
             return {}
 
-        pool = self._engine.pool
+        # Only ``QueuePool`` exposes these counters; SingletonThreadPool
+        # (SQLite) does not. We keep the duck-typed access (any pool exposing
+        # the counters works) and let the AttributeError handler catch the
+        # rest — the cast is a static-only hint that does not narrow at
+        # runtime, so behaviour is unchanged.
+        pool = typing.cast("QueuePool", self._engine.pool)
         try:
             return {
                 "size": pool.size(),
@@ -1453,10 +1527,10 @@ class SAProvider(BaseProvider):
                 "checked_in": pool.checkedin(),
             }
         except AttributeError:
-            # SingletonThreadPool (SQLite) lacks these methods
+            # Defensive: any pool implementation lacking these methods.
             return {}
 
-    def close(self):
+    def close(self) -> None:
         """Close the provider and clean up all connections.
 
         Removes the scoped session (closing the underlying session and discarding
@@ -1468,13 +1542,13 @@ class SAProvider(BaseProvider):
         if hasattr(self, "_engine") and self._engine:
             self._engine.dispose()
 
-    def _create_database_artifacts(self):
+    def _create_database_artifacts(self) -> None:
         # Create tables for all registered aggregates, entities, and projections
 
         # Loop through self.domain.registry._elements and extract the classes under
         #   the keys 'AGGREGATE', 'ENTITY', and 'PROJECTION'
         #   We don't use properties because we want to access even the internal elements
-        elements = {}
+        elements: dict[str, typing.Any] = {}
 
         for element_type in ["AGGREGATE", "ENTITY", "PROJECTION"]:
             if element_type in self.domain.registry._elements:
@@ -1498,7 +1572,7 @@ class SAProvider(BaseProvider):
         finally:
             conn.close()
 
-    def _drop_database_artifacts(self):
+    def _drop_database_artifacts(self) -> None:
         # Drop all tables in a single transaction
         conn = self._engine.connect()
         try:
@@ -1510,7 +1584,9 @@ class SAProvider(BaseProvider):
 
         self._metadata.clear()
 
-    def decorate_database_model_class(self, entity_cls, database_model_cls):
+    def decorate_database_model_class(
+        self, entity_cls: typing.Any, database_model_cls: typing.Any
+    ) -> type:
         schema_name = database_model_cls.derive_schema_name()
         cache_key = fully_qualified_name(entity_cls)
 
@@ -1521,7 +1597,9 @@ class SAProvider(BaseProvider):
         # If `database_model_cls` is already subclassed from SqlAlchemyModel,
         #   this method call is a no-op
         if issubclass(database_model_cls, SqlalchemyModel):
-            return database_model_cls
+            # ``database_model_cls`` is an untyped (``Any``) parameter; the
+            # ``issubclass`` guard establishes it is a class at runtime.
+            return typing.cast(type, database_model_cls)
         else:
             # Strip out `Column` attributes from the model class
             # Create a deep copy to make this work
@@ -1574,7 +1652,7 @@ class SAProvider(BaseProvider):
 
             return decorated_database_database_model_cls
 
-    def construct_database_model_class(self, entity_cls):
+    def construct_database_model_class(self, entity_cls: typing.Any) -> type:
         """Return a fully-baked Model class for a given Entity class"""
         database_model_cls = None
         cache_key = fully_qualified_name(entity_cls)
@@ -1608,16 +1686,18 @@ class SAProvider(BaseProvider):
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls
 
-    def get_dao(self, entity_cls, database_model_cls):
+    def get_dao(
+        self, entity_cls: typing.Any, database_model_cls: typing.Any
+    ) -> "SADAO":
         """Return a DAO object configured with a live connection"""
         return SADAO(self.domain, self, entity_cls, database_model_cls)
 
-    def _raw(self, query: Any, data: Any = None):
+    def _raw(self, query: typing.Any, data: typing.Any = None) -> typing.Any:
         """Run raw query on Provider"""
         if data is None:
             data = {}
         assert isinstance(query, str)
-        assert isinstance(data, (dict, None))
+        assert isinstance(data, dict)
 
         conn = self.get_connection()
         try:
@@ -1640,7 +1720,7 @@ class PostgresqlProvider(SAProvider):
             | DatabaseCapabilities.NATIVE_ARRAY
         )
 
-    def _get_database_specific_engine_args(self) -> dict:
+    def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
@@ -1653,7 +1733,7 @@ class PostgresqlProvider(SAProvider):
             "pool_recycle": 1800,
         }
 
-    def _get_database_specific_session_args(self) -> dict:
+    def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
         """Set Database specific session parameters.
 
         Depending on the database in use, this method supplies
@@ -1663,7 +1743,9 @@ class PostgresqlProvider(SAProvider):
         """
         return {"autoflush": False}
 
-    def _execute_database_specific_connection_statements(self, conn):
+    def _execute_database_specific_connection_statements(
+        self, conn: typing.Any
+    ) -> typing.Any:
         """Execute connection statements depending on the database in use.
         Overridden implementation for PostgreSQL.
         Arguments:
@@ -1677,14 +1759,14 @@ class PostgresqlProvider(SAProvider):
 class SqliteProvider(SAProvider):
     __database__ = SAProvider.databases.sqlite.value
 
-    def _get_database_specific_engine_args(self) -> dict:
+    def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
         return {}
 
-    def _get_database_specific_session_args(self) -> dict:
+    def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
         """Set Database specific session parameters.
 
         Depending on the database in use, this method supplies
@@ -1694,7 +1776,9 @@ class SqliteProvider(SAProvider):
         """
         return {}
 
-    def _execute_database_specific_connection_statements(self, conn):
+    def _execute_database_specific_connection_statements(
+        self, conn: typing.Any
+    ) -> typing.Any:
         """Execute connection statements depending on the database in use.
         Overridden implementation for SQLite.
 
@@ -1720,7 +1804,7 @@ class MssqlProvider(SAProvider):
             | DatabaseCapabilities.NATIVE_ARRAY
         )
 
-    def _get_database_specific_engine_args(self) -> dict:
+    def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
@@ -1733,7 +1817,7 @@ class MssqlProvider(SAProvider):
             "pool_recycle": 1800,
         }
 
-    def _get_database_specific_session_args(self) -> dict:
+    def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
         """Set Database specific session parameters.
 
         Depending on the database in use, this method supplies
@@ -1743,7 +1827,9 @@ class MssqlProvider(SAProvider):
         """
         return {"autoflush": False}
 
-    def _execute_database_specific_connection_statements(self, conn):
+    def _execute_database_specific_connection_statements(
+        self, conn: typing.Any
+    ) -> typing.Any:
         """Execute connection statements depending on the database in use.
         Overridden implementation for SQL Server.
 
@@ -1778,16 +1864,22 @@ operators = {
 class DefaultLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
 
-    def __init__(self, source, target, *, database_model_cls=None):
+    def __init__(
+        self,
+        source: typing.Any,
+        target: typing.Any,
+        *,
+        database_model_cls: typing.Any = None,
+    ) -> None:
         """Source is LHS and Target is RHS of a comparsion"""
         super().__init__(source, target, database_model_cls=database_model_cls)
 
-    def process_source(self):
+    def process_source(self) -> typing.Any:
         """Return source with transformations, if any"""
         source_col = getattr(self.database_model_cls, self.source)
         return source_col
 
-    def process_target(self):
+    def process_target(self) -> typing.Any:
         """Return target with transformations, if any.
 
         An :class:`~protean.utils.query.F` target is resolved to the referenced
@@ -1798,7 +1890,8 @@ class DefaultLookup(BaseLookup):
             return getattr(self.database_model_cls, self.target.name)
         return self.target
 
-    def as_expression(self):
+    def as_expression(self) -> typing.Any:
+        assert self.lookup_name is not None
         lookup_func = getattr(self.process_source(), operators[self.lookup_name])
         return lookup_func(self.process_target())
 
@@ -1830,7 +1923,7 @@ class IContains(DefaultLookup):
 
     lookup_name = "icontains"
 
-    def process_target(self):
+    def process_target(self) -> typing.Any:
         """Return target in lowercase"""
         assert isinstance(self.target, str)
         return f"%{super().process_target()}%"
@@ -1884,7 +1977,7 @@ class In(DefaultLookup):
 
     lookup_name = "in"
 
-    def process_target(self):
+    def process_target(self) -> typing.Any:
         """Ensure target is a list or tuple"""
         assert isinstance(self.target, (list, tuple))
         return super().process_target()
@@ -1892,7 +1985,7 @@ class In(DefaultLookup):
 
 @SAProvider.register_lookup
 class Any(DefaultLookup):
-    """Any Query"""
+    """typing.Any Query"""
 
     lookup_name = "any"
 
@@ -1914,7 +2007,7 @@ class IsNull(DefaultLookup):
 
     lookup_name = "isnull"
 
-    def as_expression(self):
+    def as_expression(self) -> typing.Any:
         source_col = self.process_source()
         return source_col.is_(None) if self.target else source_col.isnot(None)
 
@@ -1922,7 +2015,14 @@ class IsNull(DefaultLookup):
 class MSSQLStringLookupMixin:
     """Mixin to add MSSQL case-sensitive collation support to string lookups"""
 
-    def _is_string_type(self, column):
+    if TYPE_CHECKING:
+        # This mixin is only ever combined with ``BaseLookup`` subclasses (see
+        # the ``MSSQL*`` lookups below), which supply these attributes at
+        # runtime. Declared here so the mixin's own methods type-check.
+        source: typing.Any
+        database_model_cls: type[BaseDatabaseModel] | None
+
+    def _is_string_type(self, column: typing.Any) -> bool:
         """Check if the column type is a string-based type"""
         if not hasattr(column, "type"):
             return False
@@ -1949,7 +2049,7 @@ class MSSQLStringLookupMixin:
 
         return isinstance(column_type, string_types)
 
-    def process_source(self):
+    def process_source(self) -> typing.Any:
         """Return source column with case-sensitive collation applied only for string types"""
         source_col = getattr(self.database_model_cls, self.source)
 
@@ -1967,7 +2067,7 @@ class MSSQLExact(MSSQLStringLookupMixin, DefaultLookup):
 
     lookup_name = "exact"
 
-    def as_expression(self):
+    def as_expression(self) -> typing.Any:
         """Build the expression with case-sensitive collation for string fields only"""
         return self.process_source() == self.process_target()
 
@@ -1978,7 +2078,7 @@ class MSSQLContains(MSSQLStringLookupMixin, DefaultLookup):
 
     lookup_name = "contains"
 
-    def as_expression(self):
+    def as_expression(self) -> typing.Any:
         """Build the contains expression with case-sensitive collation for string fields only"""
         return self.process_source().contains(self.process_target())
 
@@ -1989,7 +2089,7 @@ class MSSQLStartswith(MSSQLStringLookupMixin, DefaultLookup):
 
     lookup_name = "startswith"
 
-    def as_expression(self):
+    def as_expression(self) -> typing.Any:
         """Build the startswith expression with case-sensitive collation for string fields only"""
         return self.process_source().startswith(self.process_target())
 
@@ -2000,7 +2100,7 @@ class MSSQLEndswith(MSSQLStringLookupMixin, DefaultLookup):
 
     lookup_name = "endswith"
 
-    def as_expression(self):
+    def as_expression(self) -> typing.Any:
         """Build the endswith expression with case-sensitive collation for string fields only"""
         return self.process_source().endswith(self.process_target())
 

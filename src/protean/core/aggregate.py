@@ -7,7 +7,7 @@ import typing
 from collections import defaultdict
 from enum import Enum
 from functools import partial
-from typing import Any, ClassVar, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
 
 from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
@@ -83,8 +83,15 @@ class BaseAggregate(BaseEntity):
     _is_temporal: bool = PrivateAttr(default=False)
 
     # Event sourcing maps (ClassVar — populated by factory)
-    _projections: ClassVar[dict] = defaultdict(set)
-    _events_cls_map: ClassVar[dict] = {}
+    _projections: ClassVar[defaultdict[str, set[Any]]] = defaultdict(set)
+    _events_cls_map: ClassVar[dict[str, Any]] = {}
+
+    if TYPE_CHECKING:
+        # Assigned per-subclass by the fact-event factory via
+        # ``setattr(element_cls, "_fact_event_cls", event_cls)`` when the
+        # aggregate opts into fact events; declared here only so static
+        # checkers see the attribute.
+        _fact_event_cls: ClassVar[type[BaseEvent]]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseAggregate":
         if cls is BaseAggregate:
@@ -336,17 +343,21 @@ class BaseAggregate(BaseEntity):
 
         # --- Initialize all model fields to None ---
         for fname in cls.model_fields:
-            aggregate.__dict__[fname] = None
+            aggregate.__dict__[fname] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Initialize VO shadow fields ---
-        for field_obj in value_object_fields(cls).values():
-            for _, shadow_field in field_obj.get_shadow_fields():
-                aggregate.__dict__[shadow_field.attribute_name] = None
+        # ``value_object_fields`` filters on ``ValueObject`` at runtime, so each
+        # field carries ``get_shadow_fields``; narrow the generic ``Field`` type.
+        for vo_field in value_object_fields(cls).values():
+            for _, shadow_field in cast(ValueObject, vo_field).get_shadow_fields():
+                aggregate.__dict__[shadow_field.attribute_name] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Initialize Reference shadow fields ---
-        for field_obj in reference_fields(cls).values():
-            shadow_name, _ = field_obj.get_shadow_field()
-            aggregate.__dict__[shadow_name] = None
+        # ``reference_fields`` filters on ``Reference`` at runtime, so each field
+        # carries ``get_shadow_field``; narrow the generic ``Field`` type.
+        for ref_field in reference_fields(cls).values():
+            shadow_name, _ = cast(Reference, ref_field).get_shadow_field()
+            aggregate.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Setup association pseudo-methods (add_*, remove_*, etc.) ---
         for field_name, field_obj in association_fields(cls).items():
@@ -398,14 +409,14 @@ class BaseAggregate(BaseEntity):
         # Set identity — either from kwargs or auto-generate
         id_field_name = getattr(cls, _ID_FIELD_NAME)
         if id_field_name in identity_kwargs:
-            aggregate.__dict__[id_field_name] = identity_kwargs[id_field_name]
+            aggregate.__dict__[id_field_name] = identity_kwargs[id_field_name]  # pyright: ignore[reportIndexIssue]
         else:
-            aggregate.__dict__[id_field_name] = generate_identity()
+            aggregate.__dict__[id_field_name] = generate_identity()  # pyright: ignore[reportIndexIssue]
 
         return aggregate
 
     @classmethod
-    def from_events(cls, events: list) -> "BaseAggregate":
+    def from_events(cls, events: list[Any]) -> "BaseAggregate":
         """Event-Sourcing: reconstruct an aggregate from a list of events.
 
         Creates a blank aggregate via ``_create_for_reconstitution()`` and
@@ -433,7 +444,7 @@ class BaseAggregate(BaseEntity):
 # ---------------------------------------------------------------------------
 # Fact Event Conversion
 # ---------------------------------------------------------------------------
-def element_to_fact_event(element_cls):
+def element_to_fact_event(element_cls: type[Any]) -> Any:
     """Convert an Element to a Fact Event.
 
     This is a helper function to convert an Element to a Fact Event. Fact Events are used to
@@ -449,8 +460,14 @@ def element_to_fact_event(element_cls):
     return _pydantic_element_to_fact_event(element_cls)
 
 
-def _pydantic_element_to_fact_event(element_cls):
-    """Pydantic path: create fact events using Pydantic annotations and BaseModel."""
+def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
+    """Pydantic path: create fact events using Pydantic annotations and BaseModel.
+
+    Returns either a ``ValueObject`` field descriptor (entity path) or a
+    dynamically-built ``type[BaseEvent]`` (aggregate path).  Typed ``Any``
+    because both branches flow through the untyped ``ValueObject`` field
+    factory / dynamic ``type()`` construction.
+    """
     if element_cls.element_type == DomainObjects.ENTITY:
         # Entity → Value Object: delegate to the shared utility
         vo_cls = value_object_from_entity(element_cls)
@@ -493,7 +510,9 @@ def _pydantic_element_to_fact_event(element_cls):
             )
             list_descriptor = ValueObjectList(content_type=vo_descriptor)
             vo_cls = vo_descriptor.value_object_cls
-            annotations[key] = list[vo_cls]
+            # Dynamic generic alias built from a runtime-derived VO class for
+            # Pydantic's annotations; mypy cannot treat a variable as a type here.
+            annotations[key] = list[vo_cls]  # type: ignore[valid-type]
             namespace[key] = PydanticField(default_factory=list)
             association_descriptors[key] = list_descriptor
 
@@ -554,32 +573,41 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     # Derive the aggregate class from the base aggregate class
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 
+    # The derived class is always a ``BaseAggregate`` subclass at runtime;
+    # narrow the unbound ``type[_T]`` typevar so the injected class attributes
+    # (``_invariants``, ``meta_``, ``_projections``, ``_events_cls_map``) are
+    # visible to both type checkers.
+    aggregate_cls = cast("type[BaseAggregate]", element_cls)
+
     # Iterate through methods marked as `@invariant` and record them for later use
-    for klass in element_cls.__mro__:
+    for klass in aggregate_cls.__mro__:
         for method_name, method in vars(klass).items():
             if (
                 not (method_name.startswith("__") and method_name.endswith("__"))
                 and callable(method)
                 and hasattr(method, "_invariant")
             ):
-                element_cls._invariants[method._invariant][method_name] = method
+                aggregate_cls._invariants[getattr(method, "_invariant")][
+                    method_name
+                ] = method
 
     # Set stream category to be `domain_name::aggregate_name`
-    element_cls.meta_.stream_category = (
-        f"{domain.normalized_name}::{element_cls.meta_.stream_category}"
+    aggregate_cls.meta_.stream_category = (
+        f"{domain.normalized_name}::{aggregate_cls.meta_.stream_category}"
     )
 
     # Event-Sourcing Functionality
     # Iterate through methods marked as `@apply` and construct a projections map
-    for klass in element_cls.__mro__:
+    for klass in aggregate_cls.__mro__:
         for method_name, method in vars(klass).items():
             if (
                 not (method_name.startswith("__") and method_name.endswith("__"))
                 and callable(method)
                 and hasattr(method, "_event_cls")
             ):
-                element_cls._projections[fqn(method._event_cls)].add(method)
-                element_cls._events_cls_map[fqn(method._event_cls)] = method._event_cls
+                event_cls = getattr(method, "_event_cls")
+                aggregate_cls._projections[fqn(event_cls)].add(method)
+                aggregate_cls._events_cls_map[fqn(event_cls)] = event_cls
 
     return element_cls
 

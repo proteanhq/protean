@@ -238,6 +238,16 @@ class TestLoadLiveIr:
             _load_live_ir("publishing7.py")
         assert exc_info.value.code == 1
 
+    def test_exits_when_derive_domain_returns_none(self, monkeypatch):
+        """If derive_domain yields None (no domain), exit 1 with a message."""
+        from protean.utils import domain_discovery
+
+        monkeypatch.setattr(domain_discovery, "derive_domain", lambda _: None)
+
+        with pytest.raises(SystemExit) as exc_info:
+            _load_live_ir("publishing7.py")
+        assert exc_info.value.code == 1
+
 
 # ---------------------------------------------------------------------------
 # TestRegenerateIr
@@ -269,6 +279,15 @@ class TestRegenerateIr:
         protean_dir = tmp_path / "deep" / "nested" / ".protean"
         _regenerate_ir("publishing7.py", protean_dir)
         assert (protean_dir / "ir.json").exists()
+
+    def test_exits_when_derive_domain_returns_none(self, tmp_path, monkeypatch):
+        """If derive_domain yields None, _regenerate_ir exits with a message."""
+        from protean.utils import domain_discovery
+
+        monkeypatch.setattr(domain_discovery, "derive_domain", lambda _: None)
+
+        with pytest.raises(SystemExit):
+            _regenerate_ir("publishing7.py", tmp_path / ".protean")
 
     def test_written_baseline_is_canonical(self, tmp_path):
         """The staleness --fix hook writes a no-timestamp baseline (#1064)."""

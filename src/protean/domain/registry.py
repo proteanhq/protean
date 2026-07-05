@@ -91,7 +91,7 @@ class _DomainRegistry:
         for element_type in DomainObjects:
             self._elements[element_type.value] = {}
 
-    def _is_invalid_element_cls(self, element_cls: Element) -> bool:
+    def _is_invalid_element_cls(self, element_cls: type[Element]) -> bool:
         """Ensure that we are dealing with an element class, that:
 
         * Has a `element_type` attribute
@@ -106,7 +106,7 @@ class _DomainRegistry:
 
     def register_element(
         self,
-        element_cls: Element,
+        element_cls: type[Element],
         internal: bool = False,
         auto_generated: bool = False,
     ) -> None:
@@ -198,10 +198,10 @@ class _DomainRegistry:
         return f"<DomainRegistry: {self.elements}>"
 
 
-def _create_element_property(element_type: str):
+def _create_element_property(element_type: str) -> property:
     """Factory function to create properties for element types."""
 
-    def getter(self) -> Dict[str, DomainRecord]:
+    def getter(self: "_DomainRegistry") -> Dict[str, DomainRecord]:
         return self._public_elements(element_type)
 
     return property(getter)

@@ -26,7 +26,16 @@ Example::
 
 import logging
 from datetime import date, datetime
-from typing import Any, ClassVar, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic_core import PydanticUndefined
@@ -45,7 +54,7 @@ from protean.utils import (
     fqn,
     inflection,
 )
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -57,11 +66,16 @@ from protean.utils.globals import current_domain
 from protean.utils.mixins import HandlerMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 
+if TYPE_CHECKING:
+    from protean.core.command import BaseCommand
+    from protean.core.query import BaseQuery
+
 logger = logging.getLogger(__name__)
 
 
 def _resolve_correlation_value(
-    event: BaseEvent, correlate_spec: Union[str, dict[str, str]]
+    event: Union["BaseCommand", BaseEvent, "BaseQuery"],
+    correlate_spec: Union[str, dict[str, str]],
 ) -> str:
     """Extract the correlation value from an event using the correlate spec.
 
@@ -82,7 +96,7 @@ def _resolve_correlation_value(
         raise ConfigurationError(f"Invalid correlate spec: {correlate_spec}")
 
 
-def _generate_pm_transition_event(pm_cls: type) -> type:
+def _generate_pm_transition_event(pm_cls: type[Any]) -> type[BaseEvent]:
     """Auto-generate a transition event class for a process manager.
 
     The transition event captures the PM's full field state after each handler
@@ -105,16 +119,21 @@ def _generate_pm_transition_event(pm_cls: type) -> type:
         "is_complete": False,
     }
 
-    event_cls = type(
-        f"_{pm_cls.__name__}Transition",
-        (BaseEvent,),
-        ns,
+    # ``type(...)`` is declared to return ``type``; the ``BaseEvent`` base makes
+    # the created class a ``type[BaseEvent]``, so narrow it for callers.
+    event_cls = cast(
+        "type[BaseEvent]",
+        type(
+            f"_{pm_cls.__name__}Transition",
+            (BaseEvent,),
+            ns,
+        ),
     )
 
     return event_cls
 
 
-class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
+class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
     """Base class for Process Managers.
 
     A Process Manager combines handler-like event dispatch (from multiple
@@ -132,7 +151,7 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
     | ``subscription_config`` | ``dict`` | Dictionary of custom configuration overrides. |
     """
 
-    element_type: ClassVar[str] = DomainObjects.PROCESS_MANAGER
+    element_type: ClassVar[DomainObjects] = DomainObjects.PROCESS_MANAGER
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -146,7 +165,7 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
     _correlation_value: Optional[str] = PrivateAttr(default=None)
 
     # ClassVar set during _setup_process_managers — the auto-generated transition event
-    _transition_event_cls: ClassVar[Optional[type]] = None
+    _transition_event_cls: ClassVar[Optional[type[BaseEvent]]] = None
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseProcessManager":
         if cls is BaseProcessManager:
@@ -276,7 +295,7 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
         id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
         if id_field_name is None:
             return False
-        return getattr(self, id_field_name) == getattr(other, id_field_name)
+        return bool(getattr(self, id_field_name) == getattr(other, id_field_name))
 
     def __hash__(self) -> int:
         id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
@@ -297,7 +316,9 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
     # Handler dispatch (overrides HandlerMixin._handle)
     # ------------------------------------------------------------------
     @classmethod
-    def _handle(cls, item: Union[Message, BaseEvent]) -> Any:
+    def _handle(
+        cls, item: Union[Message, "BaseCommand", BaseEvent, "BaseQuery"]
+    ) -> Any:
         """Process manager dispatch: load → dispatch → persist lifecycle.
 
         Unlike stateless event handlers, the PM loads an existing instance
@@ -306,12 +327,14 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
         state as a transition event in the PM's own event store stream.
         """
         # Deserialize
-        item = item.to_domain_object() if isinstance(item, Message) else item
+        domain_object: Union["BaseCommand", BaseEvent, "BaseQuery"] = (
+            item.to_domain_object() if isinstance(item, Message) else item
+        )
 
         # Find matching handler methods
-        handlers = cls._handlers.get(item.__class__.__type__) or cls._handlers.get(
-            "$any"
-        )
+        handlers = cls._handlers.get(
+            domain_object.__class__.__type__
+        ) or cls._handlers.get("$any")
         if not handlers:
             return None
 
@@ -326,7 +349,9 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
                     f"`{cls.__name__}` must specify a `correlate` parameter"
                 )
 
-            correlation_value = _resolve_correlation_value(item, correlate_spec)
+            correlation_value = _resolve_correlation_value(
+                domain_object, correlate_spec
+            )
 
             # Load or create PM instance
             pm_instance = cls._load_or_create(correlation_value, is_start)
@@ -336,7 +361,7 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
                     "skipping event `%s`",
                     cls.__name__,
                     correlation_value,
-                    item.__class__.__name__,
+                    domain_object.__class__.__name__,
                 )
                 continue
 
@@ -346,14 +371,17 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
                     "complete; skipping event `%s`",
                     cls.__name__,
                     correlation_value,
-                    item.__class__.__name__,
+                    domain_object.__class__.__name__,
                 )
                 continue
 
             # Run handler within UoW, then persist transition
             with UnitOfWork():
-                # Call the ORIGINAL function, bypassing the @handle wrapper's UoW
-                handler_method.__wrapped__(pm_instance, item)
+                # Call the ORIGINAL function, bypassing the @handle wrapper's UoW.
+                # ``__wrapped__`` is set by ``functools.wraps`` on the @handle
+                # wrapper but is not visible on the ``Callable`` element type.
+                wrapped = getattr(handler_method, "__wrapped__")
+                wrapped(pm_instance, domain_object)
 
                 if is_end:
                     pm_instance._is_complete = True
@@ -401,19 +429,28 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
                 },
             )
 
+            # ``vars(pm)`` is the instance ``__dict__`` we just installed above;
+            # bind it here so writes are typed as ``dict[str, Any]`` rather than
+            # the read-only ``MappingProxyType`` that ``pm.__dict__`` exposes.
+            pm_dict = vars(pm)
+
             # Initialize all model fields to defaults
             for fname, finfo in cls.model_fields.items():
                 if finfo.default is not PydanticUndefined:
-                    pm.__dict__[fname] = finfo.default
+                    pm_dict[fname] = finfo.default
                 elif finfo.default_factory is not None:
-                    pm.__dict__[fname] = finfo.default_factory()
+                    # pydantic types ``default_factory`` as a union of a 0-arg and a
+                    # 1-arg (validated-data) callable; Protean only ever uses the
+                    # 0-arg form, so narrow to that to call it without arguments.
+                    default_factory = cast(Callable[[], Any], finfo.default_factory)
+                    pm_dict[fname] = default_factory()
                 else:
-                    pm.__dict__[fname] = None
+                    pm_dict[fname] = None
 
             # Set the id field to the correlation value
             id_field_name = getattr(cls, _ID_FIELD_NAME, None)
             if id_field_name:
-                pm.__dict__[id_field_name] = correlation_value
+                pm_dict[id_field_name] = correlation_value
 
             return pm
         else:
@@ -421,7 +458,7 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
 
     @classmethod
     def _from_transitions(
-        cls, messages: list, correlation_value: str
+        cls, messages: list[Message], correlation_value: str
     ) -> "BaseProcessManager":
         """Reconstitute a PM from its transition events.
 
@@ -447,19 +484,25 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
             },
         )
 
+        # ``vars(pm)`` is the instance ``__dict__`` installed above; bind it so
+        # writes are typed as ``dict[str, Any]`` (not the read-only proxy).
+        pm_dict = vars(pm)
+
         # Initialize all model fields to None
         for fname in cls.model_fields:
-            pm.__dict__[fname] = None
+            pm_dict[fname] = None
 
         # Apply each transition event in order
         for message in messages:
             domain_obj = message.to_domain_object()
-            state = domain_obj.state
+            # ``state`` and ``is_complete`` are dynamic fields on the runtime-
+            # generated ``_<PM>Transition`` event, not declared on the base event.
+            state: dict[str, Any] = getattr(domain_obj, "state")
             for key, value in state.items():
                 if key in cls.model_fields:
-                    pm.__dict__[key] = value
+                    pm_dict[key] = value
             pm._version += 1
-            if domain_obj.is_complete:
+            if getattr(domain_obj, "is_complete"):
                 pm._is_complete = True
 
         return pm
@@ -541,7 +584,7 @@ class BaseProcessManager(BaseModel, HandlerMixin, OptionsMixin):
         current_domain.event_store.store.append(transition_event)
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=OptionsMixin)
 
 
 def process_manager_factory(

@@ -130,6 +130,7 @@ dev = [
     "twine>=4.0.2",
     "nox>=2026.2.9",
     "bump-my-version>=1.2.7",
+    "pyright>=1.1.411",
 ]
 test = [
     "chardet>=3.0.2,<8",
@@ -302,6 +303,7 @@ module = [
   "protean.domain.validation",
   "protean.exceptions",
   "protean.ext.mypy_plugin",
+  "protean.fields.association",
   "protean.fields.base",
   "protean.fields.containers",
   "protean.fields.simple",

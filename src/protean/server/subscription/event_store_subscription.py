@@ -7,7 +7,7 @@ import time
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 from uuid import uuid4
 
 from protean.core.command_handler import BaseCommandHandler
@@ -20,6 +20,8 @@ from protean.utils import fqn
 from . import BaseSubscription
 
 if TYPE_CHECKING:
+    from protean.server.engine import Engine
+
     from .profiles import SubscriptionConfig
 
 logger = logging.getLogger(__name__)
@@ -99,9 +101,9 @@ class EventStoreSubscription(BaseSubscription):
 
     def __init__(
         self,
-        engine,
+        engine: "Engine",
         stream_category: str,
-        handler: Union[BaseEventHandler, BaseCommandHandler],
+        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
         messages_per_tick: int = 10,
         position_update_interval: int = 10,
         origin_stream: str | None = None,
@@ -188,15 +190,15 @@ class EventStoreSubscription(BaseSubscription):
         )
         # In-memory cache of failed position info (populated from event store on init)
         # Maps global_position -> {"retry_count": int, "stream_name": str|None, "stream_position": int|None}
-        self._failed_positions: Dict[int, dict] = {}
+        self._failed_positions: Dict[int, dict[str, Any]] = {}
         self._last_recovery_time: float = 0.0
 
     @classmethod
     def from_config(
         cls,
-        engine,
+        engine: "Engine",
         stream_category: str,
-        handler: Union[BaseEventHandler, BaseCommandHandler],
+        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
         config: "SubscriptionConfig",
     ) -> "EventStoreSubscription":
         """Create an EventStoreSubscription instance from a SubscriptionConfig.
@@ -290,7 +292,8 @@ class EventStoreSubscription(BaseSubscription):
             self.store._read_last_message, self.subscriber_stream_name
         )
         if message:
-            return message["data"]["position"]
+            position: int = message["data"]["position"]
+            return position
 
         return -1
 
@@ -309,7 +312,7 @@ class EventStoreSubscription(BaseSubscription):
 
         return last_written_position
 
-    async def update_read_position(self, position) -> int:
+    async def update_read_position(self, position: int) -> int:
         """
         Update the current read position.
 
@@ -384,7 +387,7 @@ class EventStoreSubscription(BaseSubscription):
             origin_stream = (
                 message.metadata
                 and message.metadata.domain
-                and self.store.category(message.metadata.domain.origin_stream)
+                and self.store.category(message.metadata.domain.origin_stream or "")
             )
 
             if self.origin_stream == origin_stream:
@@ -393,7 +396,7 @@ class EventStoreSubscription(BaseSubscription):
         logger.debug(f"Filtered {len(filtered_messages)} out of {len(messages)}")
         return filtered_messages
 
-    async def get_next_batch_of_messages(self):
+    async def get_next_batch_of_messages(self) -> List[Message]:
         """
         Get the next batch of messages to process.
 
@@ -412,7 +415,7 @@ class EventStoreSubscription(BaseSubscription):
 
         return self.filter_on_origin(messages)
 
-    async def process_batch(self, messages):
+    async def process_batch(self, messages: List[Message]) -> int:
         """
         Process a batch of messages.
 
@@ -440,6 +443,20 @@ class EventStoreSubscription(BaseSubscription):
         idempotency_store = self.engine.domain.idempotency_store
 
         for message in messages:
+            # Messages read from the event store are always deserialized with
+            # metadata (headers + store positions). Guard defensively so a
+            # malformed record is skipped rather than crashing the batch.
+            if (
+                message.metadata is None
+                or message.metadata.event_store is None
+                or message.metadata.event_store.global_position is None
+            ):  # pragma: no cover — corruption guard; real store messages always carry these
+                logger.warning(
+                    f"[{self.subscriber_class_name}] "
+                    f"Skipping message with missing metadata/position"
+                )
+                continue
+
             message_type = message.metadata.headers.type or "unknown"
             message_id = message.metadata.headers.id or "unknown"
             short_id = message_id[:8]
@@ -699,7 +716,9 @@ class EventStoreSubscription(BaseSubscription):
             last_msg = messages[-1]
             new_watermark = (
                 last_msg.metadata.event_store.position + 1
-                if last_msg.metadata and last_msg.metadata.event_store
+                if last_msg.metadata
+                and last_msg.metadata.event_store
+                and last_msg.metadata.event_store.position is not None
                 else watermark
             )
 
@@ -749,7 +768,7 @@ class EventStoreSubscription(BaseSubscription):
             },
         )
 
-    def _get_unresolved_positions(self) -> Dict[int, dict]:
+    def _get_unresolved_positions(self) -> Dict[int, dict[str, Any]]:
         """Get positions that need recovery (still in Failed state).
 
         Returns:
@@ -840,6 +859,13 @@ class EventStoreSubscription(BaseSubscription):
 
             message = messages[0]
 
+            # Resolve message type/id defensively — a re-read message always
+            # carries metadata, but the type allows None, so fall back to
+            # "unknown" (matching the ``or "unknown"`` intent below).
+            headers = message.metadata.headers if message.metadata else None
+            recovered_message_type = (headers.type if headers else None) or "unknown"
+            recovered_message_id = (headers.id if headers else None) or "unknown"
+
             # Apply retry delay
             if self.retry_delay_seconds > 0:
                 await asyncio.sleep(self.retry_delay_seconds)
@@ -862,8 +888,8 @@ class EventStoreSubscription(BaseSubscription):
                     position,
                     FailedPositionStatus.RESOLVED,
                     new_retry_count,
-                    message_type=message.metadata.headers.type or "unknown",
-                    message_id=message.metadata.headers.id or "unknown",
+                    message_type=recovered_message_type,
+                    message_id=recovered_message_id,
                 )
                 self._failed_positions.pop(position, None)
                 recovered_count += 1
@@ -880,8 +906,8 @@ class EventStoreSubscription(BaseSubscription):
                 }
                 await self._record_failed_position(
                     position,
-                    message.metadata.headers.type or "unknown",
-                    message.metadata.headers.id or "unknown",
+                    recovered_message_type,
+                    recovered_message_id,
                     stream_name=stream_name,
                     stream_position=stream_position,
                 )

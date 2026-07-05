@@ -80,8 +80,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from protean.core.process_manager import (
@@ -95,6 +95,7 @@ from protean.exceptions import (
 )
 
 if TYPE_CHECKING:
+    from protean.core.aggregate import BaseAggregate
     from protean.core.event import BaseEvent
     from protean.domain import Domain
     from protean.port.event_store import CausationNode
@@ -113,7 +114,7 @@ from protean.utils.sync_dispatch import dispatch_events_sync
 
 
 def given(
-    cls_or_event: type | "BaseEvent", *events: "BaseEvent"
+    cls_or_event: "type | BaseEvent", *events: "BaseEvent"
 ) -> AggregateResult | ProcessManagerResult | EventSequence:
     """Start a test sentence.
 
@@ -143,7 +144,7 @@ def given(
     if isinstance(cls_or_event, type):
         if issubclass(cls_or_event, BaseProcessManager):
             return ProcessManagerResult(cls_or_event, list(events))
-        return AggregateResult(cls_or_event, list(events))
+        return AggregateResult(cast("type[BaseAggregate]", cls_or_event), list(events))
     # All arguments are event instances → projection / PM testing path
     return EventSequence([cls_or_event, *events])
 
@@ -217,7 +218,7 @@ class EventLog:
     def __bool__(self) -> bool:
         return len(self._events) > 0
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         return iter(self._events)
 
     def __repr__(self) -> str:
@@ -245,11 +246,13 @@ class AggregateResult:
     """
 
     def __init__(
-        self, aggregate_cls: type, given_events: list[Any] | None = None
+        self,
+        aggregate_cls: "type[BaseAggregate]",
+        given_events: list[Any] | None = None,
     ) -> None:
         self._aggregate_cls = aggregate_cls
         self._given_events = list(given_events or [])
-        self._aggregate = None
+        self._aggregate: BaseAggregate | None = None
         self._new_events: EventLog = EventLog([])
         self._all_events: list[Any] = []
         self._rejection: Exception | None = None
@@ -258,7 +261,7 @@ class AggregateResult:
         self._event_count: int = 0
         self._seeded: bool = False
 
-    def after(self, *events) -> AggregateResult:
+    def after(self, *events: Any) -> AggregateResult:
         """Accumulate more history events (for BDD "And given" steps).
 
         Returns self for chaining::
@@ -270,7 +273,9 @@ class AggregateResult:
         self._given_events.extend(events)
         return self
 
-    def process(self, command, *, correlation_id: str | None = None) -> AggregateResult:
+    def process(
+        self, command: Any, *, correlation_id: str | None = None
+    ) -> AggregateResult:
         """Dispatch a command through the domain's full processing pipeline.
 
         Seeds the event store with given events (on first call only),
@@ -392,11 +397,11 @@ class AggregateResult:
         return [str(self._rejection)]
 
     @property
-    def aggregate(self):
+    def aggregate(self) -> Any:
         """The raw aggregate instance, if needed directly."""
         return self._aggregate
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         """Proxy attribute access to the underlying aggregate.
 
         This makes ``order.status``, ``order.items``, ``order.pricing``
@@ -423,7 +428,7 @@ class AggregateResult:
     # Internal
     # ------------------------------------------------------------------
 
-    def _seed_events(self, domain) -> Any:
+    def _seed_events(self, domain: "Domain") -> Any:
         """Write given events to the event store and process handlers.
 
         Reconstitutes the aggregate from events to determine its identity,
@@ -815,7 +820,9 @@ class EventSequence:
         """
         identifier_value = next(iter(identity.values()), None) if identity else None
         return ProcessManagerResult(
-            pm_cls, self._events, correlation_value=identifier_value
+            cast("type[BaseProcessManager]", pm_cls),
+            self._events,
+            correlation_value=identifier_value,
         )
 
     def __repr__(self) -> str:
@@ -846,14 +853,14 @@ class ProcessManagerResult:
 
     def __init__(
         self,
-        pm_cls: type,
+        pm_cls: "type[BaseProcessManager]",
         events: list[Any] | None = None,
         *,
         correlation_value: str | None = None,
     ) -> None:
         self._pm_cls = pm_cls
         self._events = list(events or [])
-        self._pm_instance: Any = None
+        self._pm_instance: BaseProcessManager | None = None
         self._transition_count: int = 0
         self._correlation_value = correlation_value
         self._processed: bool = False
@@ -1093,7 +1100,7 @@ def assert_chain(
         assert_chain(chain, [PlaceOrder, OrderPlaced, ConfirmOrder, OrderConfirmed])
     """
     actual_types = [node.message_type for node in chain]
-    expected_types = [e.__type__ if hasattr(e, "__type__") else e for e in expected]
+    expected_types = [getattr(e, "__type__", e) for e in expected]
 
     if actual_types != expected_types:
         raise AssertionError(

@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import redis
 
@@ -32,7 +32,7 @@ class RedisCache(BaseCache):
         }
     )
 
-    def __init__(self, name, domain, conn_info: dict):
+    def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
         """Initialize Cache with Connection/Adapter details"""
 
         # In case of `RedisCache`, the `cache` value will always be `redis`.
@@ -42,7 +42,9 @@ class RedisCache(BaseCache):
         pool_kwargs = {
             key: value for key, value in conn_info.items() if key in self._POOL_KEYS
         }
-        self.r = redis.Redis.from_url(conn_info["URI"], **pool_kwargs)
+        self.r: "redis.Redis[Any]" = redis.Redis.from_url(
+            conn_info["URI"], **pool_kwargs
+        )
 
     def close(self) -> None:
         """Close the Redis connection and release resources."""
@@ -54,10 +56,10 @@ class RedisCache(BaseCache):
         except Exception:
             logger.exception("Error closing Redis cache %s", self.name)
 
-    def ping(self):
-        return self.r.ping()
+    def ping(self) -> bool:
+        return bool(self.r.ping())
 
-    def get_connection(self):
+    def get_connection(self) -> "redis.Redis[Any]":
         return self.r
 
     def add(
@@ -85,14 +87,16 @@ class RedisCache(BaseCache):
 
         self.r.psetex(key, int(ttl * 1000), json.dumps(projection.to_dict()))
 
-    def get(self, key):
+    def get(self, key: str) -> Optional[BaseProjection]:
         projection_name = key.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
         value = self.r.get(key)
         return projection_cls(json.loads(value)) if value else None
 
-    def get_all(self, key_pattern, last_position=0, size=25):
+    def get_all(
+        self, key_pattern: str, last_position: int = 0, size: int = 25
+    ) -> list[BaseProjection]:
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
@@ -101,29 +105,29 @@ class RedisCache(BaseCache):
         )
         return [projection_cls(json.loads(self.r.get(value))) for value in values]
 
-    def count(self, key_pattern):
+    def count(self, key_pattern: str) -> int:
         values = self.r.scan_iter(match=key_pattern)
         return len(list(values))
 
-    def remove(self, projection):
+    def remove(self, projection: BaseProjection) -> None:
         id_f = id_field(projection)
         assert id_f is not None
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
         self.r.delete(key)
 
-    def remove_by_key(self, key):
+    def remove_by_key(self, key: str) -> None:
         self.r.delete(key)
 
-    def remove_by_key_pattern(self, key_pattern):
+    def remove_by_key_pattern(self, key_pattern: str) -> None:
         values = self.r.scan_iter(match=key_pattern)
         self.r.delete(*values)
 
-    def flush_all(self):
+    def flush_all(self) -> None:
         self.r.flushall()
 
-    def set_ttl(self, key, ttl):
+    def set_ttl(self, key: str, ttl: Union[int, float]) -> None:
         self.r.pexpire(key, ttl * 1000)
 
-    def get_ttl(self, key):
+    def get_ttl(self, key: str) -> float:
         return self.r.pttl(key)

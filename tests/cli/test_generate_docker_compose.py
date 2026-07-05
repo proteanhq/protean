@@ -22,6 +22,27 @@ class TestGenerateDockerComposeNullGuard:
             assert result.exit_code == 1
             assert "Aborted" in result.output
 
+    def test_aborts_cleanly_when_domain_cannot_be_loaded(self):
+        """A NoDomainException must abort cleanly, not crash.
+
+        Regression: the handler previously read ``exc.messages``, which does
+        not exist on NoDomainException, so this error path raised
+        AttributeError instead of reporting the real cause. The fix reads
+        ``exc.args[0]`` (matching every other CLI handler).
+        """
+        from unittest.mock import patch
+
+        from protean.exceptions import NoDomainException
+
+        with patch(
+            "protean.cli.generate.derive_domain",
+            side_effect=NoDomainException("Could not import 'dummy'."),
+        ):
+            result = runner.invoke(app, ["docker-compose", "--domain", "dummy"])
+            assert result.exit_code == 1
+            # With the bug, the except branch itself raised AttributeError.
+            assert not isinstance(result.exception, AttributeError)
+
 
 class TestGenerateDockerCompose:
     @pytest.fixture(autouse=True)

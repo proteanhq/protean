@@ -1,12 +1,12 @@
 from abc import ABCMeta, abstractmethod
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from protean.core.projection import BaseProjection
 from protean.utils.inflection import underscore
 
 
 class BaseCache(metaclass=ABCMeta):
-    def __init__(self, name, domain, conn_info: dict):
+    def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
         """Initialize Cache with Connection/Adapter details"""
         self.name = name
         self.domain = domain
@@ -16,9 +16,9 @@ class BaseCache(metaclass=ABCMeta):
         self.ttl = conn_info.get("TTL", 300)
 
         # Temporary cache of projections
-        self._projections = {}
+        self._projections: dict[str, type[BaseProjection]] = {}
 
-    def register_projection(self, projection_cls):
+    def register_projection(self, projection_cls: type[BaseProjection]) -> None:
         """Registers a projection object for data serialization and de-serialization"""
         projection_name = underscore(projection_cls.__name__)
         self._projections[projection_name] = projection_cls

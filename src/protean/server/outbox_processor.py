@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
@@ -11,6 +11,9 @@ from protean.utils.outbox import Outbox, OutboxRepository
 from protean.utils.telemetry import get_domain_metrics, get_tracer, set_span_error
 
 from .subscription import BaseSubscription
+
+if TYPE_CHECKING:
+    from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,7 @@ class OutboxProcessor(BaseSubscription):
 
     def __init__(
         self,
-        engine,
+        engine: "Engine",
         database_provider_name: str,
         broker_provider_name: str,
         messages_per_tick: int = 10,
@@ -275,7 +278,7 @@ class OutboxProcessor(BaseSubscription):
                 )
             return successful_count
 
-    async def tick(self):
+    async def tick(self) -> None:
         """
         Override base tick method to add periodic cleanup and adaptive backoff.
 
@@ -526,6 +529,12 @@ class OutboxProcessor(BaseSubscription):
             ):
                 stream_category = f"{stream_category}:{self._backfill_suffix}"
 
+            # ``stream_category`` may legitimately be ``None`` here (message
+            # without domain metadata); publishing to a ``None`` stream is
+            # intended, tested behavior. ``BaseBroker.publish`` is a public ABC
+            # typed ``stream: str``; widening it to accept ``None`` is a public
+            # signature change left queued for maintainer review, so the
+            # narrowing mismatch below is a known cross-file remainder.
             broker_message_id = self.broker.publish(stream_category, message_dict)
 
             logger.debug(
@@ -560,14 +569,21 @@ class OutboxProcessor(BaseSubscription):
         # Any cleanup specific to outbox processor can be added here
         pass
 
-    def _mark_message_failed(self, message: Outbox, error: Exception) -> None:
+    def _mark_message_failed(self, message: Outbox, error: Exception | None) -> None:
         """
         Mark message as failed using configured retry parameters.
 
         Args:
             message (Outbox): The message to mark as failed.
-            error (Exception): The error that occurred during processing.
+            error (Exception | None): The error that occurred during processing.
+                A missing error is normalized to a generic ``Exception`` so the
+                failure is still recorded.
         """
+        # ``mark_failed`` requires a concrete exception to record. Callers may
+        # pass ``None`` when the publish failed without surfacing an exception,
+        # so normalize it to a generic error rather than crashing.
+        if error is None:
+            error = Exception("Unknown publish error")
         # Use configured retry parameters
         message.mark_failed(
             error,

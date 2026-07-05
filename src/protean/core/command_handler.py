@@ -97,7 +97,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
     element_type = DomainObjects.COMMAND_HANDLER
 
     @classmethod
-    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict]]]]:
+    def _default_options(cls) -> list[tuple[str, Optional[Union[str, dict[str, Any]]]]]:
         part_of = (
             getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
         )
@@ -131,7 +131,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         return super().__new__(cls)
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=OptionsMixin)
 
 
 def derive_command_stream_category(aggregate_cls: Any) -> str:

@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
-from typing import Any
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, cast
 
 from protean.exceptions import (
     ConfigurationError,
@@ -15,6 +16,9 @@ from protean.utils.processing import current_priority
 from protean.utils.reflection import id_field
 from protean.utils.sync_dispatch import dispatch_events_sync
 from protean.utils.telemetry import get_domain_metrics, set_span_error
+
+if TYPE_CHECKING:
+    from protean.port.provider import BaseProvider, SessionProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -45,20 +49,25 @@ class UnitOfWork:
         self.domain = current_domain
         self._in_progress = False
 
-        self._sessions = {}
-        self._messages_to_dispatch = []
-        self._identity_map = defaultdict(dict)
+        self._sessions: dict[str, SessionProtocol] = {}
+        self._messages_to_dispatch: list[tuple[str, dict[str, Any], str | None]] = []
+        self._identity_map: defaultdict[str, dict[Any, Any]] = defaultdict(dict)
 
     @property
-    def in_progress(self):
+    def in_progress(self) -> bool:
         return self._in_progress
 
-    def __enter__(self):
+    def __enter__(self) -> "UnitOfWork":
         # Initiate a new session as part of self
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool | None:
         if exc_type is not None:  # something blew up inside the block
             self.rollback()
             return False  # re-raise the original exception
@@ -71,22 +80,25 @@ class UnitOfWork:
         finally:
             self._reset()  # close sessions, clear state
 
-    def _add_to_identity_map(self, aggregate) -> None:
+        return None
+
+    def _add_to_identity_map(self, aggregate: Any) -> None:
         id_f = id_field(aggregate)
         assert id_f is not None
+        assert id_f.field_name is not None
         identifier = getattr(aggregate, id_f.field_name)
         self._identity_map[aggregate.meta_.provider][identifier] = aggregate
 
-    def _gather_events(self):
+    def _gather_events(self) -> defaultdict[str, list[Any]]:
         """Gather all events from items in the identity map"""
-        all_events = defaultdict(list)
+        all_events: defaultdict[str, list[Any]] = defaultdict(list)
         for provider, identity_map in self._identity_map.items():
             for item in identity_map.values():
                 if item._events:
                     all_events[provider].extend(item._events)
         return all_events
 
-    def _clear_events_from_items(self):
+    def _clear_events_from_items(self) -> None:
         """Clear events from all items in the identity map"""
         for provider, items in self._identity_map.items():
             for item in items.values():
@@ -373,7 +385,7 @@ class UnitOfWork:
 
         self._reset()
 
-    def _reset(self):
+    def _reset(self) -> None:
         # Remove all scoped sessions — this calls close() on the underlying
         # session (releasing connections back to the pool) AND discards the
         # session from the scoped registry, preventing stale session reuse.
@@ -421,19 +433,21 @@ class UnitOfWork:
 
         self._reset()
 
-    def _get_session(self, provider_name):
-        provider = self.domain.providers[provider_name]
+    def _get_session(self, provider_name: str) -> "SessionProtocol":
+        # ``Providers.__getitem__`` is not yet typed (returns ``Any``); cast to
+        # the port type so the declared ``SessionProtocol`` return holds.
+        provider = cast("BaseProvider", self.domain.providers[provider_name])
         assert provider is not None
         return provider.get_session()
 
-    def _initialize_session(self, provider_name):
+    def _initialize_session(self, provider_name: str) -> "SessionProtocol":
         new_session = self._get_session(provider_name)
         self._sessions[provider_name] = new_session
         if not new_session.is_active:
             new_session.begin()
         return new_session
 
-    def get_session(self, provider_name):
+    def get_session(self, provider_name: str) -> "SessionProtocol":
         """Get session for provider, initializing one if it doesn't exist"""
         if provider_name in self._sessions:
             return self._sessions[provider_name]

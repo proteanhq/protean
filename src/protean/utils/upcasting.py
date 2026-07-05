@@ -158,7 +158,9 @@ class UpcasterChain:
     # Runtime lookup & application
     # ------------------------------------------------------------------
 
-    def upcast(self, event_base_type: str, from_version: int, data: dict) -> dict:
+    def upcast(
+        self, event_base_type: str, from_version: int, data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Apply the upcaster chain and return the transformed payload.
 
         Returns *data* unchanged if no chain exists for the given key.

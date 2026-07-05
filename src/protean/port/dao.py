@@ -1,6 +1,7 @@
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
@@ -58,8 +59,8 @@ class BaseDAO(metaclass=ABCMeta):
         self,
         domain: "Domain",
         provider: BaseProvider,
-        entity_cls: BaseEntity,
-        database_model_cls: BaseDatabaseModel,
+        entity_cls: type[BaseEntity],
+        database_model_cls: type[BaseDatabaseModel],
     ):
         #: Holds a reference to the domain to which the DAO belongs to.
         self.domain = domain
@@ -106,7 +107,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
         return not current_uow or self._outside_uow
 
-    def _commit_if_standalone(self, conn) -> None:
+    def _commit_if_standalone(self, conn: Any) -> None:
         """Commit the connection if we're not inside a Unit of Work.
 
         When operating within a UoW, the UoW handles commit/rollback/close.
@@ -151,7 +152,7 @@ class BaseDAO(metaclass=ABCMeta):
             return
 
         id_f = id_field(entity)
-        assert id_f is not None
+        assert id_f is not None and id_f.field_name is not None
         identifier = getattr(entity, id_f.field_name)
         last_message = current_domain.event_store.store.read_last_message(
             f"{entity.meta_.stream_category}-{identifier}"
@@ -173,7 +174,7 @@ class BaseDAO(metaclass=ABCMeta):
         if current_uow and entity.element_type == DomainObjects.AGGREGATE:
             current_uow._add_to_identity_map(entity)
 
-    def outside_uow(self):
+    def outside_uow(self) -> "BaseDAO":
         """When called, the DAO is instructed to work outside active transactions."""
         self._outside_uow = True
 
@@ -190,9 +191,9 @@ class BaseDAO(metaclass=ABCMeta):
         criteria: Q,
         offset: int = 0,
         limit: int = 10,
-        order_by: list = (),
+        order_by: Sequence[str] = (),
         with_total: bool = True,
-        fields: list | None = None,
+        fields: list[str] | None = None,
     ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
@@ -213,7 +214,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _create(self, model_obj: Any):
+    def _create(self, model_obj: Any) -> Any:
         """Persist a new entity into the persistent store. Concrete implementation will be provided by
         the database DAO class.
 
@@ -227,7 +228,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _update(self, model_obj: Any, expected_version: int | None = None):
+    def _update(self, model_obj: Any, expected_version: int | None = None) -> Any:
         """Update entity data in the persistence store.
 
         Concrete implementations must perform the version check **atomically**
@@ -244,7 +245,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _update_all(self, criteria: Q, *args, **kwargs):
+    def _update_all(self, criteria: Q, *args: Any, **kwargs: Any) -> int:
         """Perform a bulk update on the persistent store.
 
         Concrete implementation will be provided by the database DAO class.
@@ -266,7 +267,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _delete(self, model_obj: Any):
+    def _delete(self, model_obj: Any) -> Any:
         """Delete this entity from the persistence store. Concrete implementation will be provided by
         the database DAO class.
 
@@ -280,7 +281,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _delete_all(self, criteria: Q = None):
+    def _delete_all(self, criteria: Q | None = None) -> int:
         """Perform a bulk delete on the persistent store.
 
         Concrete implementation will be provided by the database DAO class.
@@ -311,7 +312,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _raw(self, query: Any, data: Any = None):
+    def _raw(self, query: Any, data: Any = None) -> ResultSet:
         """Run raw query on Data source. Concrete implementation will be provided by
         the database DAO class.
 
@@ -406,6 +407,7 @@ class BaseDAO(metaclass=ABCMeta):
         assert entity_id_field is not None, (
             f"`{self.entity_cls.__name__}` does not have an identity field"
         )
+        assert entity_id_field.field_name is not None
         id_name = entity_id_field.field_name
 
         # Read candidate entities via the entity-level query API (``self.query``
@@ -470,6 +472,7 @@ class BaseDAO(metaclass=ABCMeta):
         assert entity_id_field is not None, (
             f"`{self.entity_cls.__name__}` does not have an identity field"
         )
+        assert entity_id_field.field_name is not None
         id_name = entity_id_field.field_name
 
         # Read up to ``limit`` identifiers via the entity-level query API,
@@ -490,7 +493,8 @@ class BaseDAO(metaclass=ABCMeta):
         deleted = 0
         for start in range(0, len(ids), _DELETE_IN_CHUNK_SIZE):
             chunk = ids[start : start + _DELETE_IN_CHUNK_SIZE]
-            deleted += self._delete_all(Q(**{f"{id_name}__in": chunk}))
+            chunk_filter: dict[str, Any] = {f"{id_name}__in": chunk}
+            deleted += self._delete_all(Q(**chunk_filter))
         return deleted
 
     ######################
@@ -519,11 +523,12 @@ class BaseDAO(metaclass=ABCMeta):
         assert entity_id_field is not None, (
             f"`{self.entity_cls.__name__}` does not have an identity field"
         )
+        assert entity_id_field.field_name is not None
         filters = {
             entity_id_field.field_name: identifier,
         }
 
-        results = self.query.filter(**filters).all()  # type: ignore[reportCallIssue]
+        results = self.query.filter(**filters).all()
         if not results:
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
@@ -536,7 +541,9 @@ class BaseDAO(metaclass=ABCMeta):
             )
 
         # Return the first result, because `filter` would have returned an array
-        return results.first
+        result: BaseEntity | None = results.first
+        assert result is not None
+        return result
 
     def find_by(self, **kwargs: Any) -> "BaseEntity":
         """Find a specific entity record that matches one or more criteria.
@@ -568,11 +575,11 @@ class BaseDAO(metaclass=ABCMeta):
             )
 
         # Return the first result, because `filter` would have returned an array
-        result = results.first
+        result: BaseEntity | None = results.first
         assert result is not None
         return result
 
-    def exists(self, excludes_, **filters):
+    def exists(self, excludes_: dict[str, Any], **filters: Any) -> bool:
         """Returns `True` if objects matching the provided filters were found. Else, returns False.
 
         This method internally uses the `filter` method to fetch records. But it can be overridden for better and
@@ -633,11 +640,13 @@ class BaseDAO(metaclass=ABCMeta):
                     # An object model (SQLAlchemy) exposes the generated column
                     # under its attribute name, which differs from the field
                     # name when ``referenced_as`` is set.
-                    field_val = getattr(model_obj, field_obj.attribute_name)
+                    attribute_name = field_obj.attribute_name
+                    assert attribute_name is not None
+                    field_val = getattr(model_obj, attribute_name)
 
                 setattr(entity_obj, field_name, field_val)
 
-    def create(self, *args, **kwargs) -> "BaseEntity":
+    def create(self, *args: Any, **kwargs: Any) -> "BaseEntity":
         """Create a new record in the data store.
 
         Performs validations for unique attributes before creating the entity
@@ -656,7 +665,7 @@ class BaseDAO(metaclass=ABCMeta):
         try:
             # Build the entity from input arguments
             # Raises validation errors, if any, at this point
-            entity_obj = self.entity_cls(*args, **kwargs)  # type: ignore[reportCallIssue]
+            entity_obj = self.entity_cls(*args, **kwargs)
 
             # Perform unique checks. Raises validation errors if unique constraints are violated.
             self._validate_unique(entity_obj)
@@ -685,7 +694,7 @@ class BaseDAO(metaclass=ABCMeta):
             logger.error(f"Failed creating entity because of {exc}")
             raise
 
-    def _validate_and_update_version(self, entity_obj) -> int | None:
+    def _validate_and_update_version(self, entity_obj: Any) -> int | None:
         """Compute the expected version and advance the entity's version.
 
         Returns the expected version that the persistence store must match
@@ -771,7 +780,7 @@ class BaseDAO(metaclass=ABCMeta):
             logger.error(f"Failed saving entity because {exc}")
             raise
 
-    def update(self, entity_obj, *data, **kwargs) -> "BaseEntity":
+    def update(self, entity_obj: Any, *data: Any, **kwargs: Any) -> "BaseEntity":
         """Update a record in the data store.
 
         Performs validations for unique attributes before creating the entity.
@@ -810,12 +819,13 @@ class BaseDAO(metaclass=ABCMeta):
             if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
                 current_uow._add_to_identity_map(entity_obj)
 
-            return entity_obj
+            updated: BaseEntity = entity_obj
+            return updated
         except Exception as exc:
             logger.error(f"Failed updating entity because of {exc}")
             raise
 
-    def _validate_unique(self, entity_obj, create=True):
+    def _validate_unique(self, entity_obj: Any, create: bool = True) -> None:
         """Validate the unique constraints for the entity. Raise ValidationError, if constraints were violated.
 
         This method internally uses each field object's fail method to construct a valid error message.
@@ -852,7 +862,7 @@ class BaseDAO(metaclass=ABCMeta):
                     value=lookup_value,
                 )
 
-    def delete(self, entity_obj: Any) -> None:
+    def delete(self, entity_obj: Any) -> Any:
         """Delete a record in the data store.
 
         Performs validations before data deletion.
@@ -875,7 +885,7 @@ class BaseDAO(metaclass=ABCMeta):
             logger.error(f"Failed entity deletion because of {exc}")
             raise
 
-    def delete_all(self):
+    def delete_all(self) -> None:
         """Delete all records in this table/document in the persistent store.
 
         Does not perform validations before data deletion.
@@ -900,9 +910,15 @@ class BaseLookup(metaclass=ABCMeta):
     Lookups are identified by their names, and the names are stored in the `lookup_name` class variable.
     """
 
-    lookup_name = None
+    lookup_name: ClassVar[str | None] = None
 
-    def __init__(self, source, target, *, database_model_cls=None):
+    def __init__(
+        self,
+        source: Any,
+        target: Any,
+        *,
+        database_model_cls: type[BaseDatabaseModel] | None = None,
+    ) -> None:
         """Source is LHS and Target is RHS of a comparsion.
 
         For example, in the expression `name == 'John'`, `name` is source (LHS) and `'John'` is target (RHS).
@@ -916,7 +932,7 @@ class BaseLookup(metaclass=ABCMeta):
         self.source, self.target = source, target
         self.database_model_cls = database_model_cls
 
-    def process_source(self):
+    def process_source(self) -> Any:
         """This is a blank implementation that simply returns the source.
 
         Returns `source` (LHS of the expression).
@@ -926,7 +942,7 @@ class BaseLookup(metaclass=ABCMeta):
         """
         return self.source
 
-    def process_target(self):
+    def process_target(self) -> Any:
         """This is a blank implementation that simply returns the target.
 
         Returns `target` (RHS of the expression).
@@ -937,7 +953,7 @@ class BaseLookup(metaclass=ABCMeta):
         return self.target
 
     @abstractmethod
-    def as_expression(self):
+    def as_expression(self) -> Any:
         """This methods should return the source and the target in the format required by the persistence store.
 
         Concrete implementation for this method varies from database to database.

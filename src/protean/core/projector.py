@@ -107,13 +107,13 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
             ("idempotent", False),
         ]
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseProjector":
         if cls is BaseProjector:
             raise NotSupportedError("BaseProjector cannot be instantiated")
         return super().__new__(cls)
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=OptionsMixin)
 
 
 def projector_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:

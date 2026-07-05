@@ -2,7 +2,7 @@ import logging
 import traceback
 import warnings
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from werkzeug.local import LocalProxy, LocalStack
 
@@ -20,7 +20,7 @@ documentation for more information.\
 """
 
 
-def _lookup_domain_object(name) -> Any | None:
+def _lookup_domain_object(name: str) -> Any | None:
     top = _domain_context_stack.top
     if top is None:
         warnings.warn(
@@ -42,11 +42,11 @@ def _find_domain() -> "Domain | None":
             stacklevel=3,
         )
         return None
-    return top.domain
+    return cast("Domain", top.domain)
 
 
 def _find_uow() -> "UnitOfWork":
-    return _uow_context_stack.top
+    return cast("UnitOfWork", _uow_context_stack.top)
 
 
 # context locals
@@ -54,4 +54,6 @@ _domain_context_stack = LocalStack()
 _uow_context_stack = LocalStack()
 current_domain: "Domain" = LocalProxy(_find_domain)  # type: ignore  # noqa: F821
 current_uow: "UnitOfWork" = LocalProxy(_find_uow)  # type: ignore  # noqa: F821
-g = LocalProxy(partial(_lookup_domain_object, "g"))
+# ``g`` is a request-scoped scratch namespace (Werkzeug-style) that intentionally
+# holds arbitrary attributes; typing it ``Any`` reflects that dynamic contract.
+g: Any = LocalProxy(partial(_lookup_domain_object, "g"))

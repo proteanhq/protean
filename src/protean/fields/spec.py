@@ -27,9 +27,9 @@ from protean.utils import generate_identity
 class _UNSET_TYPE:
     """Sentinel indicating no default was provided."""
 
-    _instance = None
+    _instance: "_UNSET_TYPE | None" = None
 
-    def __new__(cls):
+    def __new__(cls) -> "_UNSET_TYPE":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -56,6 +56,14 @@ class FieldSpec:
     ``__set__`` — and is discarded after the class is built.
     """
 
+    # Auto()-specific metadata, set on the instance by the ``Auto`` factory
+    # (see ``protean.fields.simple``) and read back here via ``getattr`` with
+    # a default.  Declared for static checkers; not initialized in ``__init__``.
+    _increment: bool
+    _identity_strategy: str | None
+    _identity_function: Callable[..., Any] | str | None
+    _identity_type: str | None
+
     def __init__(
         self,
         python_type: type,
@@ -67,7 +75,10 @@ class FieldSpec:
         default: Any = _UNSET,
         identifier: bool = False,
         unique: bool = False,
-        choices: tuple | list | type | None = None,  # supports Enum classes too
+        choices: type[Enum]
+        | list[Any]
+        | tuple[Any, ...]
+        | None = None,  # supports Enum classes too
         description: str = "",
         referenced_as: str | None = None,
         # Type-specific constraints
@@ -83,14 +94,14 @@ class FieldSpec:
         # Sanitization
         sanitize: bool = False,  # For String/Text — runs bleach.clean()
         # Validators
-        validators: Iterable[Callable] = (),  # Per-field validator callables
+        validators: Iterable[Callable[..., Any]] = (),  # Per-field validator callables
         # Error messages
         error_messages: dict[str, str] | None = None,
         # Status transitions
-        transitions: dict
+        transitions: dict[Any, Any]
         | None = None,  # For Status fields — {state: [allowed_targets]}
         # Deprecation metadata
-        deprecated: str | dict | None = None,
+        deprecated: str | dict[str, Any] | None = None,
     ) -> None:
         self.python_type = python_type
         self.field_kind = field_kind
@@ -133,7 +144,7 @@ class FieldSpec:
 
         Handles choices → Literal, and optional wrapping.
         """
-        resolved = self.python_type
+        resolved: Any = self.python_type
 
         # If choices is set, replace with Literal
         if self.choices is not None:
@@ -141,7 +152,7 @@ class FieldSpec:
                 choices_values = tuple(item.value for item in self.choices)
             else:
                 choices_values = tuple(self.choices)
-            resolved = Literal[choices_values]  # type: ignore[valid-type]
+            resolved = Literal[choices_values]
 
         # Wrap in Optional when not required, no explicit default, and not identifier.
         # Auto-increment identifiers are also Optional since the DAO assigns
@@ -311,7 +322,7 @@ class FieldSpec:
 
             def _run_protean_validators(
                 v: Any,
-                validators: list[Callable] = captured_validators,
+                validators: list[Callable[..., Any]] = captured_validators,
             ) -> Any:
                 # Skip validators for empty values, matching the legacy field
                 # system and the documented order (empty -> choices -> cast ->
@@ -327,8 +338,7 @@ class FieldSpec:
                         # maps it to the correct field name.
                         msg = str(e.messages) if hasattr(e, "messages") else str(e)
                         # If the validator set an error string on itself, use that
-                        if hasattr(validator_fn, "error"):
-                            msg = validator_fn.error
+                        msg = getattr(validator_fn, "error", msg)
                         raise ValueError(msg) from e
                 return v
 
@@ -343,7 +353,9 @@ class FieldSpec:
         return Annotated[resolved_type, pydantic_field]
 
     @staticmethod
-    def _normalize_transitions(transitions: dict) -> dict[str, list[str]]:
+    def _normalize_transitions(
+        transitions: dict[Any, Any],
+    ) -> dict[str, list[str]]:
         """Normalize Enum members in a transition map to string values.
 
         Accepts both Enum members and raw strings as keys/values::
@@ -478,8 +490,8 @@ def resolve_fieldspecs(cls: type) -> None:
 
     # Store FieldSpec metadata for downstream access (adapters, reflection)
     if field_meta:
-        existing = getattr(cls, "__protean_field_meta__", {})
-        cls.__protean_field_meta__ = {**existing, **field_meta}
+        existing: dict[str, FieldSpec] = getattr(cls, "__protean_field_meta__", {})
+        setattr(cls, "__protean_field_meta__", {**existing, **field_meta})
 
 
 # ---------------------------------------------------------------------------
@@ -502,8 +514,9 @@ def _sanitize_string(v: str) -> str:
     if not isinstance(v, str):
         return v
     try:
-        import bleach  # noqa: PLC0415
+        import bleach  # type: ignore[import-untyped]  # noqa: PLC0415
 
-        return bleach.clean(v)
+        cleaned: str = bleach.clean(v)
+        return cleaned
     except ImportError:
         return v

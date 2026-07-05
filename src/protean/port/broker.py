@@ -5,7 +5,7 @@ import time
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from enum import Enum, Flag, auto
-from typing import TYPE_CHECKING, Dict, Optional, Type
+from typing import TYPE_CHECKING, Any, Dict, Optional, Type
 
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError, ValidationError
@@ -48,7 +48,7 @@ class DLQEntry:
     original_id: str
     stream: str
     consumer_group: str
-    payload: dict
+    payload: dict[str, Any]
     failure_reason: str
     failed_at: str | None
     retry_count: int
@@ -108,6 +108,20 @@ class BaseBroker(metaclass=ABCMeta):
     checks, subscriber registration) via the Template Method pattern. Subclasses
     implement the abstract ``_underscore`` methods for broker-specific logic."""
 
+    if TYPE_CHECKING:
+        # Optional broker-specific method implemented by adapters that advertise
+        # the BLOCKING_READ capability (e.g. the Redis Streams adapter). Declared
+        # here for type-checkers so callers in this base class resolve; there is
+        # no runtime attribute on BaseBroker itself.
+        def _read_blocking(
+            self,
+            stream: str,
+            consumer_group: str,
+            consumer_name: str,
+            timeout_ms: int = 5000,
+            count: int = 1,
+        ) -> list[tuple[str, dict[str, Any]]]: ...
+
     def __init__(
         self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
     ) -> None:
@@ -115,9 +129,11 @@ class BaseBroker(metaclass=ABCMeta):
         self.domain = domain
         self.conn_info = conn_info
 
-        self._subscribers = defaultdict(set)
-        self._last_ping_time = None
-        self._last_ping_success = None
+        self._subscribers: defaultdict[str, set[type[BaseSubscriber]]] = defaultdict(
+            set
+        )
+        self._last_ping_time: float | None = None
+        self._last_ping_success: bool | None = None
         self._start_time = time.time()
 
     @property
@@ -162,7 +178,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
         return bool(self.capabilities & capabilities)
 
-    def publish(self, stream: str, message: dict) -> Optional[str]:
+    def publish(self, stream: str, message: dict[str, Any]) -> Optional[str]:
         """Publish a message to the broker.
 
         Args:
@@ -183,6 +199,7 @@ class BaseBroker(metaclass=ABCMeta):
             logger.debug(f"Recording message {message} in {current_uow} for dispatch")
 
             current_uow.register_message(stream, message, broker_name=self.name)
+            return None
         else:
             try:
                 identifier = self._publish(stream, message)
@@ -226,7 +243,7 @@ class BaseBroker(metaclass=ABCMeta):
             self._last_ping_success = False
             return False
 
-    def health_stats(self) -> dict:
+    def health_stats(self) -> dict[str, Any]:
         """Get comprehensive health statistics for the broker.
 
         Returns:
@@ -320,7 +337,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _health_stats(self) -> dict:
+    def _health_stats(self) -> dict[str, Any]:
         """Get broker-specific health and performance statistics.
 
         Returns:
@@ -341,7 +358,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _publish(self, stream: str, message: dict) -> str:
+    def _publish(self, stream: str, message: dict[str, Any]) -> str:
         """Overidden method to publish a message with payload to the configured broker.
 
         Args:
@@ -353,7 +370,9 @@ class BaseBroker(metaclass=ABCMeta):
             All brokers must return a non-empty string identifier.
         """
 
-    def get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
+    def get_next(
+        self, stream: str, consumer_group: str
+    ) -> tuple[str, dict[str, Any]] | None:
         """Retrieve the next message to process from broker.
 
         Args:
@@ -383,12 +402,14 @@ class BaseBroker(metaclass=ABCMeta):
                 raise
 
     @abstractmethod
-    def _get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
+    def _get_next(
+        self, stream: str, consumer_group: str
+    ) -> tuple[str, dict[str, Any]] | None:
         """Overridden method to retrieve the next message to process from broker."""
 
     def read(
         self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from the broker.
 
         Args:
@@ -485,7 +506,7 @@ class BaseBroker(metaclass=ABCMeta):
     @abstractmethod
     def _read(
         self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from the broker.
 
         Args:
@@ -504,7 +525,7 @@ class BaseBroker(metaclass=ABCMeta):
         consumer_name: str,
         timeout_ms: int = 5000,
         count: int = 1,
-    ) -> list[tuple[str, dict]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from the broker using blocking mode.
 
         This is an optional method that brokers can implement to support
@@ -577,7 +598,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _ensure_group(self, group_name: str, stream: str = None) -> None:
+    def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
         """Bootstrap/create consumer group.
 
         Args:
@@ -585,7 +606,22 @@ class BaseBroker(metaclass=ABCMeta):
             stream (str, optional): The stream name for brokers that require it (e.g., Redis Streams)
         """
 
-    def info(self) -> dict:
+    def _cleanup_stale_consumers(
+        self, stream: str, group_name: str, current_consumer_name: str
+    ) -> int:
+        """Remove stale consumers from a consumer group.
+
+        Optional maintenance hook. Brokers that track per-consumer state
+        (e.g. Redis Streams) override this to drop consumer entries left
+        behind by previous engine runs. Brokers without such state leave the
+        default implementation, which is a no-op.
+
+        Returns:
+            int: The number of stale consumers removed (0 by default).
+        """
+        return 0
+
+    def info(self) -> dict[str, Any]:
         """Get information about consumer groups and consumers in each group.
 
         Returns:
@@ -594,7 +630,7 @@ class BaseBroker(metaclass=ABCMeta):
         return self._info()
 
     @abstractmethod
-    def _info(self) -> dict:
+    def _info(self) -> dict[str, Any]:
         """Overridden method to provide information about consumer groups and consumers.
 
         Returns:
@@ -832,7 +868,7 @@ class BrokerRegistry:
         try:
             module_path, class_name = broker_path.rsplit(".", maxsplit=1)
             module = import_module(module_path)
-            broker_cls = getattr(module, class_name)
+            broker_cls: type[BaseBroker] = getattr(module, class_name)
             return broker_cls
         except (ImportError, AttributeError) as e:
             raise ConfigurationError(

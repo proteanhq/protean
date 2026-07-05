@@ -1,6 +1,6 @@
 import logging
 from functools import lru_cache
-from typing import Any, TYPE_CHECKING, TypeVar
+from typing import Any, TYPE_CHECKING, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -49,10 +49,10 @@ class BaseRepository(Element, OptionsMixin):
     element_type = DomainObjects.REPOSITORY
 
     @classmethod
-    def _default_options(cls):
+    def _default_options(cls) -> list[tuple[str, Any]]:
         return [("database", "ALL"), ("part_of", None)]
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseRepository":
         # Prevent instantiation of `BaseRepository itself`
         if cls is BaseRepository:
             raise NotSupportedError("BaseRepository cannot be instantiated")
@@ -64,7 +64,7 @@ class BaseRepository(Element, OptionsMixin):
 
     @property
     @lru_cache()
-    def _database_model(self):
+    def _database_model(self) -> type[Any]:
         """Retrieve Database Model class connected to Entity"""
         # Look up custom models registered for this entity, keyed by database type.
         # Prefer a model targeting this provider's database type; fall back to a
@@ -117,7 +117,8 @@ class BaseRepository(Element, OptionsMixin):
             domain queries.
         """
         # Fixate on Model class at the domain level because an explicit model may have been registered
-        return self._provider.get_dao(self.meta_.part_of, self._database_model)  # type: ignore[return-value]
+        dao: BaseDAO = self._provider.get_dao(self.meta_.part_of, self._database_model)
+        return dao
 
     def _delete_in_batches(self, criteria: Q, batch_size: int) -> int:
         """Delete all rows matching ``criteria`` in bounded batches of ``batch_size``.
@@ -301,7 +302,7 @@ class BaseRepository(Element, OptionsMixin):
 
         return item
 
-    def _persist_child(self, child_cls: type, item: Any) -> None:
+    def _persist_child(self, child_cls: type[Any], item: Any) -> None:
         """Persist a child entity through its repository's DAO.
 
         This is an internal helper used by ``_sync_children`` to keep the
@@ -310,14 +311,14 @@ class BaseRepository(Element, OptionsMixin):
         """
         self._domain.repository_for(child_cls)._dao.save(item)
 
-    def _remove_child(self, child_cls: type, item: Any) -> None:
+    def _remove_child(self, child_cls: type[Any], item: Any) -> None:
         """Delete a child entity through its repository's DAO.
 
         Internal counterpart to ``_persist_child`` for removals.
         """
         self._domain.repository_for(child_cls)._dao.delete(item)
 
-    def _sync_children(self, entity):
+    def _sync_children(self, entity: Any) -> None:
         """Recursively sync child entities to the persistence store.
 
         Cache clearing is deferred until all DAO operations complete successfully.
@@ -332,7 +333,7 @@ class BaseRepository(Element, OptionsMixin):
         #   in a variable called `_temp_cache`
 
         # Collect cache clear operations to execute after all DAO operations succeed
-        cache_clears: list[tuple] = []
+        cache_clears: list[tuple[Any, str]] = []
 
         for field_name, field in association_fields(entity).items():
             if isinstance(field, HasMany):
@@ -387,7 +388,11 @@ class BaseRepository(Element, OptionsMixin):
                             # Explicitly mark changed: the entity's is_changed flag may
                             # have been cleared (e.g. by a prior save) even though
                             # HasOne.__set__ recorded the mutation in _temp_cache.
-                            item.state_.mark_changed()
+                            # ``item`` is the live HasOne value here (same-object
+                            # update path); pyright narrows the ``Any`` from
+                            # ``getattr`` to ``None`` off the ``is not None`` guard
+                            # above, a false positive on this branch.
+                            item.state_.mark_changed()  # pyright: ignore[reportOptionalMemberAccess]
 
                         self._persist_child(field.to_cls, item)
                     elif cache.change == "DELETED":
@@ -400,14 +405,21 @@ class BaseRepository(Element, OptionsMixin):
             # Recurse AFTER persisting children at this level so that the child
             # row exists before any grandchild insert that holds an FK to it.
             # This gives top-down insert ordering: parent → child → grandchild.
-            if has_association_fields(field.to_cls):
-                # Flush this level's child inserts so their rows exist in the
-                # transaction before grandchild inserts reference them.
-                self._dao._flush()
-                if isinstance(field, HasMany):
+            #
+            # ``field`` is always a ``HasMany``/``HasOne`` here (only those two
+            # ``Association`` subclasses carry a child cluster to recurse into),
+            # so narrow via the same isinstance branches used above to make the
+            # ``to_cls`` attribute visible to the type checkers.
+            if isinstance(field, HasMany):
+                if has_association_fields(field.to_cls):
+                    # Flush this level's child inserts so their rows exist in the
+                    # transaction before grandchild inserts reference them.
+                    self._dao._flush()
                     for item in getattr(entity, field_name):
                         self._sync_children(item)
-                elif isinstance(field, HasOne):
+            elif isinstance(field, HasOne):
+                if has_association_fields(field.to_cls):
+                    self._dao._flush()
                     if getattr(entity, field_name):
                         self._sync_children(getattr(entity, field_name))
 
@@ -431,7 +443,7 @@ class BaseRepository(Element, OptionsMixin):
         for field_name in association_fields(aggregate):
             getattr(aggregate, field_name)
 
-    def get(self, identifier) -> Any:
+    def get(self, identifier: Any) -> Any:
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
         including enclosed entities, are returned as part of this call.
 
@@ -479,9 +491,14 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
 
     element_cls = derive_element_class(element_cls, BaseRepository, **opts)
 
-    if not element_cls.meta_.part_of:
+    # The derived class is always a ``BaseRepository`` subclass at runtime;
+    # narrow the unbound ``type[_T]`` typevar so the injected ``meta_``
+    # class attribute is visible to both type checkers.
+    repository_cls = cast("type[BaseRepository]", element_cls)
+
+    if not repository_cls.meta_.part_of:
         raise IncorrectUsageError(
-            f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
+            f"Repository `{repository_cls.__name__}` should be associated with an Aggregate"
         )
 
     # Enforce that user-defined repositories can only be associated with Aggregates.
@@ -492,19 +509,19 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
     # unresolved reference during validation.
     if (
         not auto_constructed
-        and not isinstance(element_cls.meta_.part_of, str)
-        and not issubclass(element_cls.meta_.part_of, BaseAggregate)
+        and not isinstance(repository_cls.meta_.part_of, str)
+        and not issubclass(repository_cls.meta_.part_of, BaseAggregate)
     ):
         raise IncorrectUsageError(
-            f"Repository `{element_cls.__name__}` can only be associated with an Aggregate"
+            f"Repository `{repository_cls.__name__}` can only be associated with an Aggregate"
         )
 
     # Ensure the value of `database` is among known databases
-    if element_cls.meta_.database != "ALL" and element_cls.meta_.database not in [
+    if repository_cls.meta_.database != "ALL" and repository_cls.meta_.database not in [
         database.value for database in Database
     ]:
         raise IncorrectUsageError(
-            f"Repository `{element_cls.__name__}` should be associated with a valid Database"
+            f"Repository `{repository_cls.__name__}` should be associated with a valid Database"
         )
 
     return element_cls

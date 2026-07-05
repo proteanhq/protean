@@ -5,14 +5,16 @@ These work alongside the simple field factories in ``simple.py``.
 
 import types as _types
 import typing
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from protean.exceptions import ValidationError
 from protean.fields.embedded import ValueObject as VODescriptor
 from protean.fields.spec import FieldSpec
 
 
-def List(content_type: Any = None, pickled: bool = False, **kwargs: Any) -> FieldSpec:
+def List(  # pyright: ignore[reportRedeclaration]
+    content_type: Any = None, pickled: bool = False, **kwargs: Any
+) -> FieldSpec:
     """A list field.
 
     ``content_type`` can be:
@@ -62,7 +64,7 @@ def List(content_type: Any = None, pickled: bool = False, **kwargs: Any) -> Fiel
     return FieldSpec(python_type, content_type=content_type, **kwargs)
 
 
-def Dict(**kwargs: Any) -> FieldSpec:
+def Dict(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
     """A dict/JSON field.
 
     Accepts both ``dict`` and ``list`` values to support JSON columns that
@@ -73,7 +75,11 @@ def Dict(**kwargs: Any) -> FieldSpec:
     if "default" not in kwargs and not kwargs.get("required", False):
         kwargs["default"] = dict  # Will become default_factory=dict
 
-    return FieldSpec(dict | list, **kwargs)
+    # ``dict | list`` is a ``types.UnionType`` accepted at runtime (FieldSpec
+    # guards every python_type use with ``isinstance(..., type)``), but the
+    # public ``FieldSpec.__init__`` still declares ``python_type: type``.
+    # Cast until that exported signature is widened to ``type | UnionType``.
+    return FieldSpec(cast(type, dict | list), **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -81,8 +87,8 @@ def Dict(**kwargs: Any) -> FieldSpec:
 # ---------------------------------------------------------------------------
 if TYPE_CHECKING:
 
-    def List(
+    def List(  # type: ignore[misc]
         content_type: Any = None, pickled: bool = False, **kwargs: Any
-    ) -> list: ...  # type: ignore[misc]
+    ) -> list[Any]: ...
 
-    def Dict(**kwargs: Any) -> dict: ...  # type: ignore[misc]
+    def Dict(**kwargs: Any) -> dict[str, Any]: ...  # type: ignore[misc]

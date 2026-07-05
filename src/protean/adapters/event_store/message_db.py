@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import psycopg2
@@ -50,14 +50,15 @@ class MessageDBStore(BaseEventStore):
         self,
         stream_name: str,
         message_type: str,
-        data: Dict,
-        metadata: Dict | None = None,
+        data: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
         expected_version: int | None = None,
     ) -> int:
         """Write a message to the event store."""
-        return self.client.write(
+        position: int = self.client.write(
             stream_name, message_type, data, metadata, expected_version
         )
+        return position
 
     def _read(
         self,
@@ -65,13 +66,14 @@ class MessageDBStore(BaseEventStore):
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Read messages from the event store."""
-        return self.client.read(
+        messages: list[dict[str, Any]] = self.client.read(
             stream_name, position=position, no_of_messages=no_of_messages
         )
+        return messages
 
-    def _read_last_message(self, stream_name: str) -> Optional[Dict[str, Any]]:
+    def _read_last_message(self, stream_name: str) -> dict[str, Any] | None:
         """Read the last message from ``stream_name``.
 
         The client's ``get_last_stream_message()`` resolves only *specific*
@@ -81,7 +83,7 @@ class MessageDBStore(BaseEventStore):
         ``reconcile_outbox``, which reads ``$all`` (ADR-0015) — get the newest
         message instead of a spurious ``None``.
         """
-        message = self.client.read_last_message(stream_name)
+        message: dict[str, Any] | None = self.client.read_last_message(stream_name)
         if message is not None:
             return message
 
@@ -98,13 +100,14 @@ class MessageDBStore(BaseEventStore):
         message = self._read_last_message(stream_category)
         return message.get("global_position", -1) if message else -1
 
-    def _stream_identifiers(self, stream_category: str) -> List[str]:
+    def _stream_identifiers(self, stream_category: str) -> list[str]:
         """Return unique aggregate identifiers for a stream category.
 
         Delegates to the MessageDB client which uses an efficient SQL
         DISTINCT query, avoiding loading all messages into memory.
         """
-        return self.client.stream_identifiers(stream_category)
+        identifiers: list[str] = self.client.stream_identifiers(stream_category)
+        return identifiers
 
     def close(self) -> None:
         """Close the event store and release all pooled connections."""
@@ -112,7 +115,7 @@ class MessageDBStore(BaseEventStore):
             self._client.connection_pool.closeall()
             self._client = None
 
-    def _data_reset(self):
+    def _data_reset(self) -> None:
         """Utility function to empty messages, to be used only by test harness.
 
         This method is designed to work only with the postgres instance running in the configured docker container:

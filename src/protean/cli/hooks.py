@@ -109,6 +109,13 @@ def _load_live_ir(domain_path: str) -> dict:
         print(f"Error loading domain: {exc.args[0]}", file=sys.stderr)
         raise SystemExit(1)
 
+    if domain is None:
+        print(
+            f"Error loading domain: could not derive a Protean domain from {domain_path!r}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     try:
         domain.init()
         return domain.to_ir()
@@ -130,6 +137,8 @@ def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict:
     from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
 
     domain = derive_domain(domain_module)
+    if domain is None:
+        raise SystemExit(f"Could not derive a Protean domain from {domain_module!r}")
     domain.init()
     live_ir = IRBuilder(domain).build()
 

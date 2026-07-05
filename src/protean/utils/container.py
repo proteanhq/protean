@@ -9,7 +9,7 @@ class Element:
     """Base class for all Protean elements"""
 
 
-class Options(dict):
+class Options(dict[str, Any]):
     """Metadata info for the Container.
 
     Common options:
@@ -73,7 +73,7 @@ class OptionsMixin:
         return []
 
     @classmethod
-    def _set_defaults(cls):
+    def _set_defaults(cls) -> None:
         # Assign default options for remaining items
         #   with the help of `_default_options()` method defined in the Element's Root.
         #   Element Roots are `Event`, `Subscriber`, `Repository`, and so on.

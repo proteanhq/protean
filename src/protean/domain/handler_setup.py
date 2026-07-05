@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Protocol, cast
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -20,9 +20,28 @@ from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects
 
 if TYPE_CHECKING:
+    from protean.core.process_manager import BaseProcessManager
     from protean.domain import Domain
+    from protean.utils.container import OptionsMixin
+
 
 logger = logging.getLogger(__name__)
+
+
+class HandlerMethod(Protocol):
+    """Structural type for a method decorated with ``@handle`` / ``@read``.
+
+    The decorators in ``protean.utils.mixins`` attach ``_target_cls`` (and, for
+    ``@handle``, ``_start`` / ``_correlate`` / ``_end``) to the wrapped method
+    via ``setattr``. ``_target_cls`` holds the target command/event/query class,
+    or the ``"$any"`` sentinel string for wildcard event handlers (matched by an
+    ``== "$any"`` comparison, and guarded by ``inspect.isclass`` before any
+    class-only attribute access).
+    """
+
+    _target_cls: type[Any] | str
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
 def _is_handler_method(method_name: str, method: object) -> bool:
@@ -32,10 +51,13 @@ def _is_handler_method(method_name: str, method: object) -> bool:
     ) and hasattr(method, "_target_cls")
 
 
-def _discover_handler_methods(cls: type) -> list[tuple[str, object]]:
+def _discover_handler_methods(cls: type) -> list[tuple[str, HandlerMethod]]:
     """Return all handler-decorated methods on *cls*."""
+    # ``getmembers`` yields concrete function/method types; ``_is_handler_method``
+    # verifies each carries the dynamically-attached ``_target_cls`` at runtime,
+    # so each match structurally satisfies ``HandlerMethod``.
     return [
-        (name, method)
+        (name, cast("HandlerMethod", method))
         for name, method in inspect.getmembers(cls, predicate=inspect.isroutine)
         if _is_handler_method(name, method)
     ]
@@ -74,12 +96,14 @@ class HandlerConfigurator:
                 continue
 
             for method_name, method in _discover_handler_methods(element.cls):
-                self._validate_command_handler_method(method_name, method, element.cls)
+                target_cls = self._validate_command_handler_method(
+                    method_name, method, element.cls
+                )
 
                 command_type = (
-                    method._target_cls.__type__
-                    if issubclass(method._target_cls, BaseCommand)
-                    else method._target_cls
+                    target_cls.__type__
+                    if issubclass(target_cls, BaseCommand)
+                    else target_cls
                 )
 
                 # Do not allow multiple handlers per command
@@ -88,35 +112,36 @@ class HandlerConfigurator:
                     and len(element.cls._handlers[command_type]) != 0
                 ):
                     raise NotSupportedError(
-                        f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
+                        f"Command {target_cls.__name__} cannot be handled by multiple handlers"
                     )
 
                 element.cls._handlers[command_type].add(method)
 
     @staticmethod
     def _validate_command_handler_method(
-        method_name: str, method: object, handler_cls: type
-    ) -> None:
-        """Validate a single command handler method's target."""
-        if not inspect.isclass(method._target_cls) or not issubclass(
-            method._target_cls, BaseCommand
-        ):
+        method_name: str, method: HandlerMethod, handler_cls: type[OptionsMixin]
+    ) -> type[BaseCommand]:
+        """Validate a single command handler method's target and return it."""
+        target_cls = method._target_cls
+        if not inspect.isclass(target_cls) or not issubclass(target_cls, BaseCommand):
             raise IncorrectUsageError(
                 f"Method `{method_name}` in Command Handler `{handler_cls.__name__}` "
                 "is not associated with a command"
             )
 
-        if not method._target_cls.meta_.part_of:
+        if not target_cls.meta_.part_of:
             raise IncorrectUsageError(
-                f"Command `{method._target_cls.__name__}` in Command Handler `{handler_cls.__name__}` "
+                f"Command `{target_cls.__name__}` in Command Handler `{handler_cls.__name__}` "
                 "is not associated with an aggregate"
             )
 
-        if method._target_cls.meta_.part_of != handler_cls.meta_.part_of:
+        if target_cls.meta_.part_of != handler_cls.meta_.part_of:
             raise IncorrectUsageError(
-                f"Command `{method._target_cls.__name__}` in Command Handler `{handler_cls.__name__}` "
+                f"Command `{target_cls.__name__}` in Command Handler `{handler_cls.__name__}` "
                 "is not associated with the same aggregate as the Command Handler"
             )
+
+        return target_cls
 
     # ------------------------------------------------------------------
     # Event Handlers
@@ -201,7 +226,7 @@ class HandlerConfigurator:
             if not pm_cls.meta_.stream_categories:
                 self._infer_stream_categories(pm_cls)
 
-    def _wire_process_manager_handlers(self, pm_cls: type) -> None:
+    def _wire_process_manager_handlers(self, pm_cls: type[BaseProcessManager]) -> None:
         """Wire handler methods for a single process manager class."""
         has_start = False
 
@@ -237,7 +262,11 @@ class HandlerConfigurator:
                 f"one handler with `start=True`"
             )
 
-    def _register_transition_event(self, pm_cls: type, generator_fn: callable) -> None:
+    def _register_transition_event(
+        self,
+        pm_cls: type[BaseProcessManager],
+        generator_fn: Callable[[type[BaseProcessManager]], type[BaseEvent]],
+    ) -> None:
         """Generate, register, and type-tag the transition event for a process manager."""
         transition_cls = generator_fn(pm_cls)
 
@@ -263,12 +292,12 @@ class HandlerConfigurator:
         pm_cls._transition_event_cls = transition_cls
 
     @staticmethod
-    def _infer_stream_categories(pm_cls: type) -> None:
+    def _infer_stream_categories(pm_cls: type[BaseProcessManager]) -> None:
         """Infer stream categories from the aggregates of handled events."""
         inferred_categories: set[str] = set()
         for _, method in _discover_handler_methods(pm_cls):
             if inspect.isclass(method._target_cls):
-                target = method._target_cls
+                target: type[Any] = method._target_cls
                 if hasattr(target, "meta_") and hasattr(target.meta_, "part_of"):
                     part_of = target.meta_.part_of
                     if part_of and hasattr(part_of, "meta_"):
@@ -304,9 +333,11 @@ class HandlerConfigurator:
                 continue
 
             for method_name, method in _discover_handler_methods(element.cls):
-                self._validate_query_handler_method(method_name, method, element.cls)
+                target_cls = self._validate_query_handler_method(
+                    method_name, method, element.cls
+                )
 
-                query_type = method._target_cls.__type__
+                query_type = target_cls.__type__
 
                 # Do not allow multiple handlers per query
                 if (
@@ -314,7 +345,7 @@ class HandlerConfigurator:
                     and len(element.cls._handlers[query_type]) != 0
                 ):
                     raise NotSupportedError(
-                        f"Query {method._target_cls.__name__} cannot be handled "
+                        f"Query {target_cls.__name__} cannot be handled "
                         f"by multiple handlers"
                     )
 
@@ -322,26 +353,27 @@ class HandlerConfigurator:
 
     @staticmethod
     def _validate_query_handler_method(
-        method_name: str, method: object, handler_cls: type
-    ) -> None:
-        """Validate a single query handler method's target."""
-        if not inspect.isclass(method._target_cls) or not issubclass(
-            method._target_cls, BaseQuery
-        ):
+        method_name: str, method: HandlerMethod, handler_cls: type[OptionsMixin]
+    ) -> type[BaseQuery]:
+        """Validate a single query handler method's target and return it."""
+        target_cls = method._target_cls
+        if not inspect.isclass(target_cls) or not issubclass(target_cls, BaseQuery):
             raise IncorrectUsageError(
                 f"Method `{method_name}` in Query Handler "
                 f"`{handler_cls.__name__}` is not associated with a query"
             )
 
-        if not method._target_cls.meta_.part_of:
+        if not target_cls.meta_.part_of:
             raise IncorrectUsageError(
-                f"Query `{method._target_cls.__name__}` in Query Handler "
+                f"Query `{target_cls.__name__}` in Query Handler "
                 f"`{handler_cls.__name__}` is not associated with a projection"
             )
 
-        if method._target_cls.meta_.part_of != handler_cls.meta_.part_of:
+        if target_cls.meta_.part_of != handler_cls.meta_.part_of:
             raise IncorrectUsageError(
-                f"Query `{method._target_cls.__name__}` in Query Handler "
+                f"Query `{target_cls.__name__}` in Query Handler "
                 f"`{handler_cls.__name__}` is not associated with the same "
                 f"projection as the Query Handler"
             )
+
+        return target_cls

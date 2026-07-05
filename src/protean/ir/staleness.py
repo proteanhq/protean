@@ -22,6 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from protean.exceptions import NoDomainException
 from protean.ir.builder import IRBuilder
 from protean.ir.config import load_config
 from protean.utils.domain_discovery import derive_domain
@@ -148,6 +149,10 @@ def check_staleness(
     # 2. Build the live IR and compute its checksum                        #
     # ------------------------------------------------------------------ #
     domain = derive_domain(domain_module)
+    if domain is None:
+        raise NoDomainException(
+            f"Could not derive a Protean domain from {domain_module!r}"
+        )
     domain.init()
     live_ir = IRBuilder(domain).build()
     domain_checksum: str = live_ir["checksum"]

@@ -8,11 +8,12 @@ registration.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Dict, Type, Union
+from typing import TYPE_CHECKING
 
 from protean.core.aggregate import element_to_fact_event
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
+from protean.core.upcaster import BaseUpcaster
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects
 from protean.utils.upcasting import UpcasterChain
@@ -37,8 +38,8 @@ class TypeManager:
 
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
-        self.events_and_commands: Dict[str, Union[BaseCommand, BaseEvent]] = {}
-        self.upcasters: list[type] = []
+        self.events_and_commands: dict[str, type[BaseCommand] | type[BaseEvent]] = {}
+        self.upcasters: list[type[BaseUpcaster]] = []
         self.upcaster_chain: UpcasterChain = UpcasterChain()
 
     def set_and_record_types(self) -> None:
@@ -79,7 +80,7 @@ class TypeManager:
         self.upcaster_chain.build_chains(self.events_and_commands)
 
     def register_external_event(
-        self, event_cls: Type[BaseEvent], type_string: str
+        self, event_cls: type[BaseEvent], type_string: str
     ) -> None:
         """Register an external event with the domain.
 

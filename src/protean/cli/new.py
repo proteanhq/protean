@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 import subprocess
-from typing import List, Optional
+from typing import List
 
 import typer
 from copier import run_copy
@@ -134,12 +134,12 @@ def new(
         str, typer.Option("--output-dir", "-o", show_default=False)
     ] = ".",
     data: Annotated[List[str], typer.Option("--data", "-d", show_default=False)] = [],
-    pretend: Annotated[Optional[bool], typer.Option("--pretend", "-p")] = False,
-    force: Annotated[Optional[bool], typer.Option("--force", "-f")] = False,
-    defaults: Annotated[Optional[bool], typer.Option("--defaults")] = False,
-    skip_setup: Annotated[Optional[bool], typer.Option("--skip-setup")] = False,
-):
-    def is_valid_project_name(project_name):
+    pretend: Annotated[bool, typer.Option("--pretend", "-p")] = False,
+    force: Annotated[bool, typer.Option("--force", "-f")] = False,
+    defaults: Annotated[bool, typer.Option("--defaults")] = False,
+    skip_setup: Annotated[bool, typer.Option("--skip-setup")] = False,
+) -> None:
+    def is_valid_project_name(project_name: str) -> bool:
         """
         Validates the project name against criteria that ensure compatibility across
         Mac, Linux, and Windows systems, and also disallows spaces.
@@ -153,7 +153,7 @@ def new(
 
         return True
 
-    def clear_directory_contents(dir_path):
+    def clear_directory_contents(dir_path: str) -> None:
         """
         Removes all contents of a specified directory without deleting the directory itself.
 

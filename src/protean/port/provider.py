@@ -4,10 +4,13 @@ import logging
 from abc import ABCMeta, abstractmethod
 from enum import Flag, auto
 from importlib import import_module, metadata
-from typing import Any, Protocol, Type, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, Type, runtime_checkable
 
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils.query import RegisterLookupMixin
+
+if TYPE_CHECKING:
+    from protean.port.dao import BaseLookup
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +196,12 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         Provider.close()                        # release connections
     """
 
+    # Short database identifier every concrete provider must set (e.g.
+    # ``"memory"``, ``"elasticsearch"``, or one of the SQLAlchemy dialect
+    # values). Declared here so the adapter contract is visible to both type
+    # checkers; concrete providers assign it as a class attribute.
+    __database__: ClassVar[str]
+
     # Minimum lookups every adapter must register
     REQUIRED_LOOKUPS: frozenset[str] = frozenset(
         {
@@ -245,7 +254,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         registered = set(cls.get_lookups().keys())
         return sorted(cls.REQUIRED_LOOKUPS - registered)
 
-    def _extract_lookup(self, key):
+    def _extract_lookup(self, key: str) -> "tuple[str, type[BaseLookup]]":
         """Extract lookup method based on key name format"""
         parts = key.split("__")
         # 'exact' is the default lookup if there was no explicit comparison op in `key`

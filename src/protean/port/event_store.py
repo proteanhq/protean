@@ -58,10 +58,10 @@ class BaseEventStore(metaclass=ABCMeta):
     @abstractmethod
     def _write(
         self,
-        stream: str,
+        stream_name: str,
         message_type: str,
-        data: Dict,
-        metadata: Dict | None = None,
+        data: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
         expected_version: int | None = None,
     ) -> int:
         """Write a message to the event store.
@@ -74,7 +74,7 @@ class BaseEventStore(metaclass=ABCMeta):
     @abstractmethod
     def _read(
         self,
-        stream_nae: str,
+        stream_name: str,
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
@@ -85,7 +85,7 @@ class BaseEventStore(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _read_last_message(self, stream) -> Optional[Dict[str, Any]]:
+    def _read_last_message(self, stream_name: str) -> Optional[Dict[str, Any]]:
         """Read the last message from the event store.
 
         Implemented by the concrete event store adapter.
@@ -104,7 +104,7 @@ class BaseEventStore(metaclass=ABCMeta):
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
-    ):
+    ) -> list[Message]:
         raw_messages = self._read(
             stream, sql=sql, position=position, no_of_messages=no_of_messages
         )
@@ -115,7 +115,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         return messages
 
-    def read_last_message(self, stream) -> Optional[Message]:
+    def read_last_message(self, stream: str) -> Optional[Message]:
         raw_message = self._read_last_message(stream)
         if raw_message:
             return Message.deserialize(raw_message)
@@ -133,17 +133,18 @@ class BaseEventStore(metaclass=ABCMeta):
             message = Message.from_domain_object(object)
             assert message.metadata is not None, "Message metadata cannot be None"
 
-            span.set_attribute(
-                "protean.event_store.stream", message.metadata.headers.stream
-            )
-            span.set_attribute(
-                "protean.event_store.message_type", message.metadata.headers.type
-            )
+            stream = message.metadata.headers.stream
+            message_type = message.metadata.headers.type
+            assert stream is not None, "Message stream cannot be None"
+            assert message_type is not None, "Message type cannot be None"
+
+            span.set_attribute("protean.event_store.stream", stream)
+            span.set_attribute("protean.event_store.message_type", message_type)
 
             try:
                 position = self._write(
-                    message.metadata.headers.stream,
-                    message.metadata.headers.type,
+                    stream,
+                    message_type,
                     message.data,
                     metadata=message.metadata.to_dict(),
                     expected_version=message.metadata.domain.expected_version
@@ -215,7 +216,7 @@ class BaseEventStore(metaclass=ABCMeta):
                 )
             )
 
-            events = []
+            events: list[Union[BaseEvent, BaseCommand]] = []
             for event_message in event_stream:
                 event = Message.deserialize(event_message).to_domain_object()
                 aggregate._apply(event)
@@ -528,7 +529,8 @@ class BaseEventStore(metaclass=ABCMeta):
         headers = metadata.get("headers")
         if not headers or not isinstance(headers, dict):
             return None
-        return headers.get("id")
+        message_id: str | None = headers.get("id")
+        return message_id
 
     @staticmethod
     def _extract_causation_id(msg: dict[str, Any]) -> str | None:
@@ -539,7 +541,8 @@ class BaseEventStore(metaclass=ABCMeta):
         domain = metadata.get("domain")
         if not domain or not isinstance(domain, dict):
             return None
-        return domain.get("causation_id")
+        causation_id: str | None = domain.get("causation_id")
+        return causation_id
 
     @staticmethod
     def _extract_correlation_id(msg: dict[str, Any]) -> str | None:
@@ -550,7 +553,8 @@ class BaseEventStore(metaclass=ABCMeta):
         domain = metadata.get("domain")
         if not domain or not isinstance(domain, dict):
             return None
-        return domain.get("correlation_id")
+        correlation_id: str | None = domain.get("correlation_id")
+        return correlation_id
 
     def _load_correlation_group(self, correlation_id: str) -> list[dict[str, Any]]:
         """Load all raw messages sharing a correlation_id from the event store.
@@ -830,7 +834,7 @@ class BaseEventStore(metaclass=ABCMeta):
         """
 
     def _last_event_of_type(
-        self, event_cls: Type[BaseEvent], stream_category: str = None
+        self, event_cls: Type[BaseEvent], stream_category: str | None = None
     ) -> Optional[Union[BaseEvent, BaseCommand]]:
         stream_category = stream_category or "$all"
         events = [
@@ -846,7 +850,7 @@ class BaseEventStore(metaclass=ABCMeta):
         )
 
     def _events_of_type(
-        self, event_cls: Type[BaseEvent], stream_category: str = None
+        self, event_cls: Type[BaseEvent], stream_category: str | None = None
     ) -> List[Union[BaseEvent, BaseCommand]]:
         """Read events of a specific type in a given stream.
 

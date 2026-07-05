@@ -75,7 +75,8 @@ class IdempotencyStore:
             raw = self._redis.get(self._key(idempotency_key))
             if raw is None:
                 return None
-            return json.loads(raw)
+            result: dict[str, Any] = json.loads(raw)
+            return result
         except Exception:
             logger.warning(
                 "Idempotency check failed for key %s — proceeding without dedup",

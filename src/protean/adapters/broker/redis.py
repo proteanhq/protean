@@ -1,7 +1,17 @@
 import json
 import logging
 import time
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    cast,
+    overload,
+)
 
 import redis
 
@@ -44,17 +54,21 @@ class RedisBroker(BaseBroker):
         }
     )
 
-    def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
+    def __init__(
+        self, name: str, domain: "Domain", conn_info: Dict[str, str | bool]
+    ) -> None:
         super().__init__(name, domain, conn_info)
 
-        self._pool_kwargs = {
+        # Values are heterogeneous (int timeouts, int max_connections, bool
+        # retry_on_timeout) and forwarded verbatim to the Redis connection pool.
+        self._pool_kwargs: dict[str, Any] = {
             key: value for key, value in conn_info.items() if key in self._POOL_KEYS
         }
-        self.redis_instance: Optional["redis.Redis"] = None
+        self.redis_instance: Optional["redis.Redis[Any]"] = None
         self._connect()
         self._consumer_name = f"consumer-{int(time.time() * 1000)}"
-        self._created_groups_set = set()
-        self._group_creation_times = {}  # Track creation times for consistency
+        self._created_groups_set: set[str] = set()
+        self._group_creation_times: dict[str, float] = {}  # creation times
 
         # Add compatibility attributes for generic tests
         # Redis Streams handle these differently but tests expect these attributes
@@ -63,15 +77,17 @@ class RedisBroker(BaseBroker):
         self._message_timeout = 300.0
         self._enable_dlq = False
 
-    def _connect(self) -> "redis.Redis":
+    def _connect(self) -> "redis.Redis[Any]":
         """Create (or recreate) the underlying synchronous Redis client."""
-        self.redis_instance = redis.Redis.from_url(
-            self.conn_info["URI"], **self._pool_kwargs
-        )
-        return self.redis_instance
+        # ``conn_info`` is typed ``dict[str, str | bool]`` by the broker port
+        # contract; the URI is always a string at runtime.
+        uri = cast(str, self.conn_info["URI"])
+        instance: "redis.Redis[Any]" = redis.Redis.from_url(uri, **self._pool_kwargs)
+        self.redis_instance = instance
+        return instance
 
     @property
-    def _client(self) -> "redis.Redis":
+    def _client(self) -> "redis.Redis[Any]":
         """Return a live Redis client, reconnecting if the connection was closed.
 
         ``close()`` sets ``redis_instance`` to ``None``; a straggler poll read or
@@ -95,17 +111,19 @@ class RedisBroker(BaseBroker):
         )
 
     @property
-    def _created_groups(self):
+    def _created_groups(self) -> set[str]:
         """Property to access created groups (allows for test monkeypatching)"""
         return self._created_groups_set
 
-    def _publish(self, stream: str, message: dict) -> str:
+    def _publish(self, stream: str, message: dict[str, Any]) -> str:
         """Publish a message to Redis Stream using XADD"""
         serialized_message = {DATA_FIELD: json.dumps(message or {})}
         redis_stream_id = self._client.xadd(stream, serialized_message)
         return self._decode_if_bytes(redis_stream_id)
 
-    def _get_next(self, stream: str, consumer_group: str) -> Optional[Tuple[str, dict]]:
+    def _get_next(
+        self, stream: str, consumer_group: str
+    ) -> Optional[Tuple[str, dict[str, Any]]]:
         """Get next message from Redis Stream using consumer group
 
         Reads the next available message, prioritizing new messages over pending ones.
@@ -141,7 +159,9 @@ class RedisBroker(BaseBroker):
             logger.exception("broker.redis.get_next_failed")
             return None
 
-    def _extract_message_from_response(self, response) -> Optional[Tuple[str, dict]]:
+    def _extract_message_from_response(
+        self, response: Any
+    ) -> Optional[Tuple[str, dict[str, Any]]]:
         """Extract message from Redis response"""
         if not (response and response[0][1]):
             return None
@@ -157,7 +177,7 @@ class RedisBroker(BaseBroker):
 
     def _handle_redis_error(
         self, error: redis.ResponseError, stream: str, consumer_group: str
-    ) -> Optional[Tuple[str, dict]]:
+    ) -> Optional[Tuple[str, dict[str, Any]]]:
         """Handle Redis errors during message retrieval"""
         if "NOGROUP" in str(error):
             self._ensure_group(consumer_group, stream)
@@ -166,7 +186,7 @@ class RedisBroker(BaseBroker):
         logger.debug(f"Redis error in _get_next: {error}")
         return None
 
-    def _deserialize_message(self, fields: dict) -> dict:
+    def _deserialize_message(self, fields: dict[Any, Any]) -> dict[str, Any]:
         """Deserialize the message from the fields"""
         data_field = self._extract_data_field(fields)
         if data_field is None:
@@ -174,12 +194,13 @@ class RedisBroker(BaseBroker):
 
         try:
             data_str = self._decode_if_bytes(data_field)
-            return json.loads(data_str)
+            result: dict[str, Any] = json.loads(data_str)
+            return result
         except (json.JSONDecodeError, UnicodeDecodeError):
             logger.exception("broker.redis.deserialize_failed")
             return {}
 
-    def _extract_data_field(self, fields: dict):
+    def _extract_data_field(self, fields: dict[Any, Any]) -> Any:
         """Extract the data field from Redis fields"""
         for key, value in fields.items():
             key_str = self._decode_if_bytes(key)
@@ -187,7 +208,7 @@ class RedisBroker(BaseBroker):
                 return value
         return None
 
-    def _decode_if_bytes(self, value) -> str:
+    def _decode_if_bytes(self, value: Any) -> str:
         """Convert bytes to string if needed, otherwise return as string"""
         if isinstance(value, bytes):
             return value.decode()
@@ -195,11 +216,11 @@ class RedisBroker(BaseBroker):
 
     def _read(
         self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> List[Tuple[str, dict]]:
+    ) -> List[Tuple[str, dict[str, Any]]]:
         """Read multiple messages from Redis Stream"""
         self._ensure_group(consumer_group, stream)
 
-        messages = []
+        messages: List[Tuple[str, dict[str, Any]]] = []
         try:
             # Read all requested messages at once to maintain order
             # First try to read new messages
@@ -248,7 +269,7 @@ class RedisBroker(BaseBroker):
         consumer_name: str,
         timeout_ms: int = 5000,
         count: int = 1,
-    ) -> List[Tuple[str, dict]]:
+    ) -> List[Tuple[str, dict[str, Any]]]:
         """Read messages from Redis Stream using blocking mode with XREADGROUP.
 
         This method uses Redis's XREADGROUP with BLOCK parameter for efficient
@@ -518,7 +539,7 @@ class RedisBroker(BaseBroker):
         return count
 
     def _parse_dlq_entry(
-        self, dlq_stream: str, redis_id: bytes | str, fields: dict
+        self, dlq_stream: str, redis_id: bytes | str, fields: dict[Any, Any]
     ) -> DLQEntry | None:
         """Parse a raw Redis DLQ message into a DLQEntry."""
         message = self._deserialize_message(fields)
@@ -569,7 +590,7 @@ class RedisBroker(BaseBroker):
         except redis.ResponseError:
             return 0
 
-    def _ensure_group(self, group_name: str, stream: str) -> None:
+    def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
         """Create consumer group if it doesn't exist"""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
 
@@ -659,10 +680,10 @@ class RedisBroker(BaseBroker):
 
         return removed
 
-    def _info(self) -> dict:
+    def _info(self) -> dict[str, Any]:
         """Get information about consumer groups and consumers"""
-        info = {"consumer_groups": {}}
-        stream_info_nested = {}  # For Redis-specific structure
+        info: dict[str, Any] = {"consumer_groups": {}}
+        stream_info_nested: dict[str, Any] = {}  # For Redis-specific structure
 
         try:
             streams_to_check = self._get_streams_to_check()
@@ -692,7 +713,7 @@ class RedisBroker(BaseBroker):
 
         return info
 
-    def _get_streams_to_check(self) -> set:
+    def _get_streams_to_check(self) -> set[str]:
         """Get set of streams to check for info"""
         streams = set(self._subscribers.keys())
 
@@ -704,11 +725,11 @@ class RedisBroker(BaseBroker):
 
         return streams
 
-    def _get_stream_info(self, stream: str) -> Optional[dict]:
+    def _get_stream_info(self, stream: str) -> Optional[dict[str, Any]]:
         """Get info for a specific stream"""
         try:
             groups_info = self._client.xinfo_groups(stream)
-            stream_info = {}
+            stream_info: dict[str, Any] = {}
 
             for group_info in groups_info:
                 if not isinstance(group_info, dict):
@@ -726,8 +747,8 @@ class RedisBroker(BaseBroker):
             return None
 
     def _extract_group_data(
-        self, group_info: dict, stream: str
-    ) -> Optional[Tuple[str, dict]]:
+        self, group_info: dict[Any, Any], stream: str
+    ) -> Optional[Tuple[str, dict[str, Any]]]:
         """Extract group data from Redis group info"""
         try:
             # Handle both bytes and string keys
@@ -756,9 +777,9 @@ class RedisBroker(BaseBroker):
             logger.debug(f"Error extracting group data: {e}")
             return None
 
-    def _extract_consumers_data(self, consumers_info) -> List[dict]:
+    def _extract_consumers_data(self, consumers_info: Any) -> List[dict[str, Any]]:
         """Extract consumers data from Redis consumer info"""
-        consumers = []
+        consumers: List[dict[str, Any]] = []
         for consumer_info in consumers_info:
             if not isinstance(consumer_info, dict):
                 continue
@@ -773,9 +794,28 @@ class RedisBroker(BaseBroker):
 
         return consumers
 
+    @overload
     def _get_field_value(
-        self, info_dict: dict, field_name: str, convert_to_int: bool = False
-    ):
+        self,
+        info_dict: dict[Any, Any],
+        field_name: str,
+        convert_to_int: Literal[False] = ...,
+    ) -> str | None: ...
+
+    @overload
+    def _get_field_value(
+        self,
+        info_dict: dict[Any, Any],
+        field_name: str,
+        convert_to_int: Literal[True],
+    ) -> int | None: ...
+
+    def _get_field_value(
+        self,
+        info_dict: dict[Any, Any],
+        field_name: str,
+        convert_to_int: bool = False,
+    ) -> str | int | None:
         """Get field value from Redis info dict, handling both bytes and string keys"""
         for key_format in [field_name.encode(), field_name]:
             if key_format in info_dict:
@@ -802,7 +842,7 @@ class RedisBroker(BaseBroker):
             logger.debug(f"Redis ping failed: {e}")
             return False
 
-    def _calculate_message_counts(self) -> dict:
+    def _calculate_message_counts(self) -> dict[str, Any]:
         """Calculate message counts across all streams"""
         try:
             streams_to_check = self._get_streams_to_check()
@@ -851,7 +891,7 @@ class RedisBroker(BaseBroker):
             logger.debug(f"Error calculating message counts: {e}")
             return {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
 
-    def _calculate_streams_info(self) -> dict:
+    def _calculate_streams_info(self) -> dict[str, Any]:
         """Calculate streams information"""
         try:
             streams_to_check = self._get_streams_to_check()
@@ -870,7 +910,7 @@ class RedisBroker(BaseBroker):
             logger.debug(f"Error calculating streams info: {e}")
             return {"count": 0, "names": []}
 
-    def _calculate_consumer_groups_info(self) -> dict:
+    def _calculate_consumer_groups_info(self) -> dict[str, Any]:
         """Calculate consumer groups information"""
         try:
             # Get all unique consumer group names across all streams
@@ -889,7 +929,7 @@ class RedisBroker(BaseBroker):
             logger.debug(f"Error calculating consumer groups info: {e}")
             return {"count": 0, "names": []}
 
-    def _health_stats(self) -> dict:
+    def _health_stats(self) -> dict[str, Any]:
         """Get Redis-specific health and performance statistics"""
         try:
             redis_info = self._client.info()
@@ -1041,7 +1081,7 @@ class RedisBroker(BaseBroker):
 
 
 # Self-registration function for entry point
-def register():
+def register() -> None:
     """Register Redis broker with Protean if redis is available."""
     try:
         import redis  # noqa: F401, PLC0415

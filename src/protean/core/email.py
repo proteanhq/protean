@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -11,7 +11,7 @@ from protean.utils import (
     convert_str_values_to_list,
     derive_element_class,
 )
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
 
 
@@ -23,21 +23,28 @@ class BaseEmailProvider:
     ```
     """
 
-    def __init__(self, name, domain, conn_info, fail_silently=False, **kwargs):
+    def __init__(
+        self,
+        name: str,
+        domain: Any,
+        conn_info: dict[str, Any],
+        fail_silently: bool = False,
+        **kwargs: Any,
+    ) -> None:
         self.name = name
         self.domain = domain
         self.conn_info = conn_info
         self.fail_silently = fail_silently
 
     @abstractmethod
-    def send_email(self, email_message):
+    def send_email(self, email_message: "BaseEmail") -> bool:
         """Send EmailMessage object via registered email provider."""
 
 
 # ---------------------------------------------------------------------------
 # BaseEmail
 # ---------------------------------------------------------------------------
-class BaseEmail(BaseModel, OptionsMixin):
+class BaseEmail(Element, BaseModel, OptionsMixin):
     """Base Email class.
 
     All domain email message classes should inherit from this.
@@ -68,7 +75,7 @@ class BaseEmail(BaseModel, OptionsMixin):
     html: str | None = None
 
     # JSON data with template
-    data: dict | None = None
+    data: dict[str, Any] | None = None
     template: str | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -143,7 +150,10 @@ class BaseEmail(BaseModel, OptionsMixin):
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return False
-        return self.to_dict() == other.to_dict()
+        # `other` is the exact same type as `self` after the guard above;
+        # narrow for the type checker without changing `==` semantics
+        # (an `isinstance` guard would wrongly accept subclasses).
+        return self.to_dict() == cast("BaseEmail", other).to_dict()
 
     def __hash__(self) -> int:
         return id(self)

@@ -6,7 +6,7 @@ projections -- the read-side counterpart of commands.
 
 import json
 from collections import defaultdict
-from typing import Any, ClassVar, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -22,14 +22,14 @@ from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
 
 
 # ---------------------------------------------------------------------------
 # BaseQuery
 # ---------------------------------------------------------------------------
-class BaseQuery(BaseModel, OptionsMixin):
+class BaseQuery(Element, BaseModel, OptionsMixin):
     """Base class for domain queries -- immutable DTOs representing a
     read intent against a projection.
 
@@ -49,6 +49,12 @@ class BaseQuery(BaseModel, OptionsMixin):
     """
 
     element_type: ClassVar[str] = DomainObjects.QUERY
+
+    if TYPE_CHECKING:
+        # Assigned at registration via ``setattr(cls, "__type__", ...)`` in
+        # protean.domain (set_query_type) — a str type string; declared here
+        # only so static checkers see the attribute.
+        __type__: ClassVar[str]
 
     model_config = ConfigDict(
         extra="forbid",
@@ -232,7 +238,7 @@ class BaseQuery(BaseModel, OptionsMixin):
         }
 
     def __eq__(self, other: object) -> bool:
-        if type(other) is not type(self):
+        if not isinstance(other, BaseQuery) or type(other) is not type(self):
             return False
         return self.payload == other.payload
 
@@ -255,9 +261,14 @@ def query_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
 
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 
-    if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
+    # `derive_element_class` returns a subclass of ``base_cls`` (here
+    # ``BaseQuery``); narrow to expose ``meta_`` to the type checkers. The
+    # unbounded ``_T`` return contract is preserved via ``element_cls`` below.
+    query_cls = cast("type[BaseQuery]", element_cls)
+
+    if not query_cls.meta_.part_of and not query_cls.meta_.abstract:
         raise IncorrectUsageError(
-            f"Query `{element_cls.__name__}` needs to be associated with a projection"
+            f"Query `{query_cls.__name__}` needs to be associated with a projection"
         )
 
     return element_cls

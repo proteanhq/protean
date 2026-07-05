@@ -4,7 +4,7 @@ import os
 import secrets
 import socket
 import time
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
@@ -17,6 +17,8 @@ from protean.utils.telemetry import get_domain_metrics
 from . import BaseSubscription
 
 if TYPE_CHECKING:
+    from protean.server.engine import Engine
+
     from .profiles import SubscriptionConfig
 
 logger = logging.getLogger(__name__)
@@ -40,9 +42,9 @@ class StreamSubscription(BaseSubscription):
 
     def __init__(
         self,
-        engine,
+        engine: "Engine",
         stream_category: str,
-        handler: Union[BaseEventHandler, BaseCommandHandler],
+        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
         messages_per_tick: Optional[int] = None,
         blocking_timeout_ms: Optional[int] = None,
         max_retries: Optional[int] = None,
@@ -145,9 +147,9 @@ class StreamSubscription(BaseSubscription):
     @classmethod
     def from_config(
         cls,
-        engine,
+        engine: "Engine",
         stream_category: str,
-        handler: Union[BaseEventHandler, BaseCommandHandler],
+        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
         config: "SubscriptionConfig",
     ) -> "StreamSubscription":
         """Create a StreamSubscription instance from a SubscriptionConfig.
@@ -356,7 +358,7 @@ class StreamSubscription(BaseSubscription):
                 backoff = min(2 ** (consecutive_errors - 1), 30)
                 await asyncio.sleep(backoff)
 
-    async def _read_primary_nonblocking(self) -> List[tuple[str, dict]]:
+    async def _read_primary_nonblocking(self) -> List[tuple[str, dict[str, Any]]]:
         """Non-blocking read from primary (production) stream.
 
         Uses ``timeout_ms=0`` so the call returns immediately if no messages
@@ -382,7 +384,7 @@ class StreamSubscription(BaseSubscription):
             logger.error(f"Error reading primary stream {self.stream_category}: {e}")
             return []
 
-    async def _read_backfill_blocking(self) -> List[tuple[str, dict]]:
+    async def _read_backfill_blocking(self) -> List[tuple[str, dict[str, Any]]]:
         """Blocking read from backfill stream with capped timeout.
 
         Uses a short timeout (capped at 1 second) so we frequently re-check
@@ -410,7 +412,7 @@ class StreamSubscription(BaseSubscription):
             logger.error(f"Error reading backfill stream {self.backfill_stream}: {e}")
             return []
 
-    async def get_next_batch_of_messages(self) -> List[tuple[str, dict]]:
+    async def get_next_batch_of_messages(self) -> List[tuple[str, dict[str, Any]]]:
         """
         Get the next batch of messages using blocking read.
 
@@ -443,7 +445,7 @@ class StreamSubscription(BaseSubscription):
 
     async def process_batch(
         self,
-        messages: List[tuple[str, dict]],
+        messages: List[tuple[str, dict[str, Any]]],
         stream: str | None = None,
     ) -> int:
         """
@@ -518,7 +520,7 @@ class StreamSubscription(BaseSubscription):
         return successful_count
 
     async def _deserialize_message(
-        self, identifier: str, payload: dict, stream: str | None = None
+        self, identifier: str, payload: dict[str, Any], stream: str | None = None
     ) -> Optional[Message]:
         """Deserialize a message payload, handling errors by moving to DLQ."""
         try:
@@ -575,7 +577,7 @@ class StreamSubscription(BaseSubscription):
             return False
 
     async def handle_failed_message(
-        self, identifier: str, payload: dict, stream: str | None = None
+        self, identifier: str, payload: dict[str, Any], stream: str | None = None
     ) -> None:
         """
         Handle a message that failed processing.
@@ -646,7 +648,7 @@ class StreamSubscription(BaseSubscription):
         self.broker.nack(stream, identifier, self.consumer_group)
 
     async def _exhaust_retries(
-        self, identifier: str, payload: dict, stream: str | None = None
+        self, identifier: str, payload: dict[str, Any], stream: str | None = None
     ) -> None:
         """Handle a message that has exhausted all retries.
 
@@ -669,7 +671,7 @@ class StreamSubscription(BaseSubscription):
         self.retry_counts.pop(identifier, None)
 
     async def move_to_dlq(
-        self, identifier: str, payload: dict, stream: str | None = None
+        self, identifier: str, payload: dict[str, Any], stream: str | None = None
     ) -> None:
         """
         Move a failed message to the dead letter queue.
@@ -733,8 +735,8 @@ class StreamSubscription(BaseSubscription):
             logger.exception(f"Failed to move message {identifier} to DLQ: {e}")
 
     def _create_dlq_message(
-        self, identifier: str, payload: dict, stream: str | None = None
-    ) -> dict:
+        self, identifier: str, payload: dict[str, Any], stream: str | None = None
+    ) -> dict[str, Any]:
         """Create a DLQ message with failure metadata."""
         stream = stream or self._default_stream
         return {

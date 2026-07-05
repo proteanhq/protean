@@ -3,10 +3,13 @@ import logging
 import platform
 import signal
 import time
+from signal import Signals
 from collections import defaultdict
-from typing import Type, Union
+from typing import TYPE_CHECKING, Any, Type, Union
 
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
@@ -37,6 +40,10 @@ from .subscription.factory import SubscriptionFactory
 from .tracing import TraceEmitter
 from .outbox_processor import OutboxProcessor
 
+if TYPE_CHECKING:
+    from protean.domain import Domain
+    from protean.server.subscription import BaseSubscription
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +71,7 @@ class CommandDispatcher:
         self._stream_category = stream_category
         self._handler_map = handler_map
         self._last_resolved_handler: Type[BaseCommandHandler] | None = None
-        self._last_resolved_item: object | None = None
+        self._last_resolved_item: BaseCommand | BaseEvent | None = None
 
         # Identity attributes for fqn() and logging
         self.__name__ = f"Commands:{stream_category}"
@@ -75,7 +82,9 @@ class CommandDispatcher:
         # subscription settings (type, profile, tick interval, etc.)
         self.meta_ = source_handler_cls.meta_
 
-    def _to_domain_object(self, message: Message | object) -> object:
+    def _to_domain_object(
+        self, message: "Message | BaseCommand | BaseEvent"
+    ) -> "BaseCommand | BaseEvent | None":
         """Convert a message to its domain object, using cached result if available."""
         if self._last_resolved_item is not None:
             item = self._last_resolved_item
@@ -84,7 +93,7 @@ class CommandDispatcher:
         return message.to_domain_object() if isinstance(message, Message) else message
 
     def resolve_handler(
-        self, message: Message | object
+        self, message: "Message | BaseCommand | BaseEvent"
     ) -> Type[BaseCommandHandler] | None:
         """Look up the specific handler class for a message.
 
@@ -104,7 +113,7 @@ class CommandDispatcher:
         command_type = item.__class__.__type__
         return self._handler_map.get(command_type)
 
-    def _handle(self, message: Message | object) -> object | None:
+    def _handle(self, message: "Message | BaseCommand | BaseEvent") -> object | None:
         """Route the message to the correct command handler."""
         item = self._to_domain_object(message)
         if item is None:
@@ -123,16 +132,17 @@ class CommandDispatcher:
             )
             return None
 
-        return handler_cls._handle(item)
+        result: object = handler_cls._handle(item)
+        return result
 
-    def handle_error(self, exc: Exception, message: Message | object) -> None:
+    def handle_error(self, exc: Exception, message: Message) -> None:
         """Delegate error handling to the resolved handler."""
         handler_cls = self._last_resolved_handler
         if handler_cls and hasattr(handler_cls, "handle_error"):
             handler_cls.handle_error(exc, message)
 
 
-def _extract_source_message_id(message: dict) -> str | None:
+def _extract_source_message_id(message: dict[str, Any]) -> str | None:
     """Extract the source event's message_id from an incoming broker message.
 
     When Protean publishes events to a broker, the original event store
@@ -154,7 +164,7 @@ def _extract_source_message_id(message: dict) -> str | None:
     return None
 
 
-def _extract_correlation_id(message: dict) -> str:
+def _extract_correlation_id(message: dict[str, Any]) -> str:
     """Extract correlation_id from an incoming broker message dict.
 
     Checks the Protean external message format paths, in order:
@@ -195,7 +205,9 @@ class Engine:
     The Engine class represents the Protean Engine that handles message processing and subscription management.
     """
 
-    def __init__(self, domain, test_mode: bool = False, debug: bool = False) -> None:
+    def __init__(
+        self, domain: "Domain", test_mode: bool = False, debug: bool = False
+    ) -> None:
         """
         Initialize the Engine.
 
@@ -217,7 +229,7 @@ class Engine:
         self.shutting_down = False  # Flag to indicate the engine is shutting down
 
         # Store original signal handlers for cleanup
-        self._original_signal_handlers = {}
+        self._original_signal_handlers: dict[signal.Signals, Any] = {}
 
         if self.debug:
             logger.setLevel(logging.DEBUG)
@@ -249,11 +261,11 @@ class Engine:
         self._subscription_factory = SubscriptionFactory(self)
 
         # Gather all handler subscriptions
-        self._subscriptions = {}
+        self._subscriptions: dict[str, "BaseSubscription"] = {}
         self._register_handler_subscriptions()
 
         # Gather broker subscriptions
-        self._broker_subscriptions = {}
+        self._broker_subscriptions: dict[str, BrokerSubscription] = {}
 
         for (
             subscriber_name,
@@ -271,7 +283,7 @@ class Engine:
             )
 
         # Gather outbox processors - one per database-broker provider combination
-        self._outbox_processors = {}
+        self._outbox_processors: dict[str, OutboxProcessor] = {}
 
         # Create an outbox processor for each database provider to each broker provider
         # Only if outbox is enabled in the domain
@@ -507,7 +519,7 @@ class Engine:
             )
 
         # Priority 1: Explicit stream_category on handler
-        stream_category = getattr(meta, "stream_category", None)
+        stream_category: str | None = getattr(meta, "stream_category", None)
         if stream_category:
             return stream_category
 
@@ -516,7 +528,9 @@ class Engine:
         if part_of:
             aggregate_meta = getattr(part_of, "meta_", None)
             if aggregate_meta:
-                aggregate_stream = getattr(aggregate_meta, "stream_category", None)
+                aggregate_stream: str | None = getattr(
+                    aggregate_meta, "stream_category", None
+                )
                 if aggregate_stream:
                     return aggregate_stream
 
@@ -561,20 +575,20 @@ class Engine:
 
         setattr(self.domain, self._ENGINE_GAUGES_KEY, True)
 
-    def _observe_engine_up(self, options: object = None) -> list:
+    def _observe_engine_up(self, options: object = None) -> list[Any]:
         return [create_observation(0 if self.shutting_down else 1)]
 
-    def _observe_uptime(self, options: object = None) -> list:
+    def _observe_uptime(self, options: object = None) -> list[Any]:
         return [create_observation(time.monotonic() - self._start_time)]
 
-    def _observe_active_subscriptions(self, options: object = None) -> list:
+    def _observe_active_subscriptions(self, options: object = None) -> list[Any]:
         count = len(self._subscriptions) + len(self._broker_subscriptions)
         return [create_observation(count)]
 
     async def handle_broker_message(
         self,
         subscriber_cls: Type[BaseSubscriber],
-        message: dict,
+        message: dict[str, Any],
         *,
         message_id: str | None = None,
         stream: str | None = None,
@@ -730,7 +744,12 @@ class Engine:
                 # no deadline, so this is a no-op for them.
                 headers = message.metadata.headers
                 if headers and headers.is_expired():
-                    deadline_iso = headers.deadline.isoformat()
+                    # is_expired() is only True when a deadline is set, so
+                    # deadline is always present here; the guard narrows the
+                    # Optional for the type checkers.
+                    deadline_iso = (
+                        headers.deadline.isoformat() if headers.deadline else None
+                    )
                     get_domain_metrics(self.domain).command_expired.add(
                         1, {"command_type": message_type}
                     )
@@ -912,7 +931,7 @@ class Engine:
             finally:
                 g.pop("message_in_context", None)
 
-    def _setup_signal_handlers(self):
+    def _setup_signal_handlers(self) -> None:
         """
         Set up signal handlers using the appropriate method based on the platform.
 
@@ -920,7 +939,7 @@ class Engine:
         On Windows, fall back to signal.signal as add_signal_handler is not available.
         """
 
-        def signal_handler(sig, frame=None):
+        def signal_handler(sig: int, frame: Any = None) -> None:
             """Signal handler for non-asyncio signal handling (Windows)"""
             if not self.shutting_down and self.loop.is_running():
                 asyncio.run_coroutine_threadsafe(self.shutdown(signal=sig), self.loop)
@@ -949,7 +968,7 @@ class Engine:
                 try:
                     # Create a proper signal handler that ensures task creation works
                     # even when called from a signal context
-                    def handle_signal(sig=s):
+                    def handle_signal(sig: signal.Signals = s) -> None:
                         if not self.shutting_down:
                             # Ensure we create the task in the proper context
                             self.loop.call_soon_threadsafe(
@@ -961,7 +980,7 @@ class Engine:
                     # Some signals may not be available on all platforms
                     logger.debug(f"Signal {s} not available on this platform: {e}")
 
-    def _cleanup_signal_handlers(self):
+    def _cleanup_signal_handlers(self) -> None:
         """
         Clean up signal handlers when shutting down.
         """
@@ -984,7 +1003,7 @@ class Engine:
                     pass  # Ignore errors during cleanup
 
     @staticmethod
-    def _on_health_server_done(task: asyncio.Task) -> None:
+    def _on_health_server_done(task: "asyncio.Task[Any]") -> None:
         """Log unhandled exceptions from the health server startup task."""
         if task.cancelled():
             return
@@ -992,7 +1011,9 @@ class Engine:
         if exc is not None:
             logger.warning("Health check server task failed: %s", exc)
 
-    async def shutdown(self, signal=None, exit_code=0):
+    async def shutdown(
+        self, signal: "signal.Signals | int | None" = None, exit_code: int = 0
+    ) -> None:
         """
         Cleanup tasks tied to the service's shutdown.
 
@@ -1011,7 +1032,7 @@ class Engine:
         try:
             sig_name = (
                 signal.name
-                if hasattr(signal, "name")
+                if isinstance(signal, Signals)
                 else str(signal)
                 if signal
                 else None
@@ -1140,7 +1161,9 @@ class Engine:
         self._setup_signal_handlers()
 
         # Handle Exceptions
-        def handle_exception(loop, context):
+        def handle_exception(
+            loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+        ) -> None:
             exc = context.get("exception")
 
             if exc is not None:
@@ -1216,7 +1239,7 @@ class Engine:
             if self.test_mode:
                 # In test mode, run the loop multiple times to ensure all messages are processed
                 # This is necessary for multi-step flows where handlers generate new messages
-                async def run_test_cycles():
+                async def run_test_cycles() -> None:
                     # Start all tasks
                     all_tasks = (
                         subscription_tasks

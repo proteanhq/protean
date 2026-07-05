@@ -82,7 +82,7 @@ class TestRunner:
 
     __test__ = False  # Prevent pytest from collecting this as a test class
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.exit_status = 0
 
         # Broker capability mappings
@@ -150,7 +150,10 @@ class TestRunner:
         self.exit_status |= code
 
     def build_test_command(
-        self, marker: str = None, config_flag: str = None, extra_flags: list[str] = None
+        self,
+        marker: str | None = None,
+        config_flag: str | None = None,
+        extra_flags: list[str] | None = None,
     ) -> list[str]:
         """Build a pytest command with optional marker and configuration."""
         cmd = PYTEST_BASE_CMD.copy()
@@ -506,7 +509,7 @@ def test(
             "--sequential", help="Run tests sequentially instead of in parallel"
         ),
     ] = False,
-):
+) -> None:
     """Run tests with various configurations and coverage options."""
     runner = TestRunner()
 
@@ -801,7 +804,7 @@ def test_adapter(
         domain = Domain(name="ConformanceTest")
 
         # Configure the provider
-        db_config: dict[str, str | dict] = {"provider": provider}
+        db_config: dict[str, str | dict[str, str]] = {"provider": provider}
         if uri:
             db_config["database_uri"] = uri
         domain.config["databases"]["default"] = db_config

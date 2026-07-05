@@ -132,6 +132,10 @@ class TestInlineBrokerInternalState:
         assert dlq_entry[2] == "max_retries_exceeded"  # Failure reason
         assert isinstance(dlq_entry[3], float)  # Timestamp
 
+    def test_cleanup_stale_consumers_default_is_noop(self, broker):
+        """InlineBroker inherits the base no-op _cleanup_stale_consumers (0)."""
+        assert broker._cleanup_stale_consumers("stream", "group", "consumer") == 0
+
     def test_stale_message_cleanup(self, broker):
         """Test cleanup of stale in-flight messages."""
         stream = "test_stream"

@@ -54,7 +54,7 @@ class BaseUpcaster(Element, OptionsMixin):
         ]
 
     @abstractmethod
-    def upcast(self, data: dict) -> dict:
+    def upcast(self, data: dict[str, Any]) -> dict[str, Any]:
         """Transform event data from ``from_version`` to ``to_version``.
 
         Args:
@@ -66,7 +66,7 @@ class BaseUpcaster(Element, OptionsMixin):
         ...
 
 
-_T = TypeVar("_T")
+_T = TypeVar("_T", bound=OptionsMixin)
 
 
 def upcaster_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:

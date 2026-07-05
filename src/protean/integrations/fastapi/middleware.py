@@ -32,7 +32,7 @@ from uuid import uuid4
 
 import structlog
 from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp
 
@@ -247,7 +247,9 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
             ),
         }
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         """Push domain context for the request and forward to the next handler."""
         domain = self._resolve_domain(request.url.path)
         correlation_id = self._extract_correlation_id(request)
@@ -330,7 +332,7 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
                 config=http_config,
             )
 
-        return response  # type: ignore[return-value]
+        return response
 
     @staticmethod
     async def _run_endpoint(

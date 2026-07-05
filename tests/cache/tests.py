@@ -215,6 +215,22 @@ class TestCachePersistenceFlows:
         total = cache.count("token:::qu*")
         assert total == 0
 
+    def test_flush_all_keeps_backend_usable(self, test_domain):
+        """The cache must stay fully usable after ``flush_all``.
+
+        Regression: ``MemoryCache.flush_all`` reassigned ``_db`` to a plain
+        ``{}``, so ``set_ttl``/``get_ttl`` (used by ``add(..., ttl=...)``)
+        raised ``AttributeError`` on the next operation.
+        """
+        cache = test_domain.cache_for(Token)
+        cache.add(Token(key="qux", user_id="foo", email="bar@baz.com"))
+
+        cache.flush_all()
+
+        # add-with-ttl exercises set_ttl; must not raise after a flush.
+        cache.add(Token(key="quux", user_id="foo", email="bar@baz.com"), ttl=100)
+        assert cache.count("token:::qu*") == 1
+
 
 class TestCacheSerialization:
     def test_serializing_projection_object_data(self, test_domain):

@@ -14,6 +14,7 @@ from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, fqn
 
 if TYPE_CHECKING:
+    from protean.core.query_handler import BaseQueryHandler
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ class QueryProcessor:
             span.set_attribute("protean.handler.name", handler_cls.__name__)
             return handler_cls._handle(query)
 
-    def handler_for(self, query: Any) -> type | None:
+    def handler_for(self, query: Any) -> type[BaseQueryHandler] | None:
         """Find the QueryHandler class registered to handle *query*.
 
         Returns ``None`` when no handler is registered.
@@ -79,6 +80,7 @@ class QueryProcessor:
         for _, record in self._domain.registry._elements[
             DomainObjects.QUERY_HANDLER.value
         ].items():
-            if query.__class__.__type__ in record.cls._handlers:
-                return record.cls
+            handler_cls: type[BaseQueryHandler] = record.cls
+            if query.__class__.__type__ in handler_cls._handlers:
+                return handler_cls
         return None

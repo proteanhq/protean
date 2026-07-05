@@ -25,6 +25,8 @@ import os
 import signal
 import sys
 import time
+from multiprocessing.process import BaseProcess
+from types import FrameType
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -73,7 +75,7 @@ class Supervisor:
         self.test_mode = test_mode
         self.debug = debug
 
-        self.workers: list[multiprocessing.Process] = []
+        self.workers: list[BaseProcess] = []
         self.exit_code: int = 0
         self._shutting_down: bool = False
 
@@ -81,7 +83,7 @@ class Supervisor:
         # is created from the spawn context so it is safe to share with child
         # processes; the listener runs on the supervisor and owns the real
         # stream/file handlers.
-        self._log_queue: Optional[multiprocessing.Queue] = None
+        self._log_queue: Optional["multiprocessing.Queue[logging.LogRecord]"] = None
         self._queue_listener: Optional[logging.handlers.QueueListener] = None
 
     def run(self) -> None:
@@ -148,7 +150,7 @@ class Supervisor:
         except (OSError, AttributeError):
             pass  # SIGHUP not available on Windows
 
-    def _handle_signal(self, signum, frame) -> None:
+    def _handle_signal(self, signum: int, frame: Optional[FrameType]) -> None:
         """Propagate shutdown to all workers on receiving a signal."""
         if self._shutting_down:
             return
@@ -225,7 +227,7 @@ class Supervisor:
 
 
 def _build_queue_listener(
-    queue: multiprocessing.Queue,
+    queue: "multiprocessing.Queue[logging.LogRecord]",
 ) -> logging.handlers.QueueListener:
     """Construct a ``QueueListener`` bound to the supervisor's real handlers.
 
@@ -244,7 +246,9 @@ def _build_queue_listener(
     return logging.handlers.QueueListener(queue, *handlers, respect_handler_level=True)
 
 
-def _install_worker_log_queue(queue: multiprocessing.Queue) -> None:
+def _install_worker_log_queue(
+    queue: "multiprocessing.Queue[logging.LogRecord]",
+) -> None:
     """Install a ``QueueHandler`` as the sole root handler for this worker.
 
     Called from :func:`_worker_entry` after ``configure_logging()`` so the
@@ -265,7 +269,7 @@ def _worker_entry(
     test_mode: bool,
     debug: bool,
     worker_id: int,
-    log_queue: Optional[multiprocessing.Queue] = None,
+    log_queue: Optional["multiprocessing.Queue[logging.LogRecord]"] = None,
 ) -> None:
     """Entry point for each spawned worker process.
 
@@ -313,7 +317,7 @@ def _worker_entry(
         # run BEFORE installing the QueueHandler so we know which handlers the
         # listener should mirror, and so filters attached to root by
         # ``Domain.configure_logging`` survive into the queue path.
-        log_overrides: dict = {}
+        log_overrides: dict[str, str] = {}
         if debug:
             log_overrides["level"] = "DEBUG"
         domain.configure_logging(**log_overrides)
