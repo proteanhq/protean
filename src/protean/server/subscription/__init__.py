@@ -1,7 +1,10 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +17,14 @@ class BaseSubscription(ABC):
     It provides methods to start and stop the subscription, as well as process messages in batches.
     """
 
+    # Human-readable identifier for the subscriber, set by each concrete
+    # subscription in its ``__init__`` (typically ``fqn(self.handler)``). The
+    # base class reads it for structured logging.
+    subscriber_name: str
+
     def __init__(
         self,
-        engine,
+        engine: "Engine",
         messages_per_tick: int = 10,
         tick_interval: float = 1,
     ) -> None:
