@@ -1177,3 +1177,31 @@ class TestProcessesEndpointTraceMetricsException:
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["processes"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# get_pm_instance_count / get_pm_instances — event store not yet initialized
+# (store is None) — lines 294, 324
+# ---------------------------------------------------------------------------
+
+
+class TestPMInstancesStoreUnavailable:
+    """When ``domain.event_store.store`` is ``None`` (the domain has not
+    initialized its event store yet), the instance helpers must degrade
+    gracefully rather than raise."""
+
+    def test_get_pm_instance_count_returns_none_when_store_is_none(self):
+        """Line 294: ``store is None`` short-circuits to ``None``."""
+        pm_cls = _make_mock_pm_cls(name="TestPM", stream_category="test::pm")
+        domain = _make_mock_domain()
+        domain.event_store.store = None
+
+        assert get_pm_instance_count(domain, pm_cls) is None
+
+    def test_get_pm_instances_returns_empty_when_store_is_none(self):
+        """Line 324: ``store is None`` short-circuits to ``[]``."""
+        pm_cls = _make_mock_pm_cls(name="TestPM", stream_category="test::pm")
+        domain = _make_mock_domain()
+        domain.event_store.store = None
+
+        assert get_pm_instances(domain, pm_cls) == []
