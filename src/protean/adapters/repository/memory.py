@@ -3,11 +3,12 @@
 import copy
 import json
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, datetime
 from itertools import count
 
+import typing
 from threading import Lock
-from typing import Any  # type: ignore[reportAssignmentType]
 from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
@@ -30,40 +31,40 @@ from protean.utils.reflection import fields, id_field
 class _ReverseCompare:
     """Helper class to reverse comparison order for descending sorts"""
 
-    def __init__(self, value):
+    def __init__(self, value: typing.Any) -> None:
         self.value = value
 
-    def __lt__(self, other):
+    def __lt__(self, other: typing.Any) -> bool:
         if isinstance(other, _ReverseCompare):
             # Both are reverse, so flip the comparison
-            return self.value > other.value
+            return bool(self.value > other.value)
         # Comparing with non-reverse value should not happen in our context
-        return self.value > other
+        return bool(self.value > other)
 
-    def __le__(self, other):
+    def __le__(self, other: typing.Any) -> bool:
         if isinstance(other, _ReverseCompare):
-            return self.value >= other.value
-        return self.value >= other
+            return bool(self.value >= other.value)
+        return bool(self.value >= other)
 
-    def __eq__(self, other):
+    def __eq__(self, other: typing.Any) -> bool:
         if isinstance(other, _ReverseCompare):
-            return self.value == other.value
-        return self.value == other
+            return bool(self.value == other.value)
+        return bool(self.value == other)
 
-    def __ne__(self, other):
+    def __ne__(self, other: typing.Any) -> bool:
         return not self.__eq__(other)
 
-    def __gt__(self, other):
+    def __gt__(self, other: typing.Any) -> bool:
         if isinstance(other, _ReverseCompare):
-            return self.value < other.value
-        return self.value < other
+            return bool(self.value < other.value)
+        return bool(self.value < other)
 
-    def __ge__(self, other):
+    def __ge__(self, other: typing.Any) -> bool:
         if isinstance(other, _ReverseCompare):
-            return self.value <= other.value
-        return self.value <= other
+            return bool(self.value <= other.value)
+        return bool(self.value <= other)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"_ReverseCompare({self.value!r})"
 
 
@@ -71,17 +72,19 @@ class MemoryModel(BaseDatabaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
-    def _get_value(cls, item: dict[str, Any], key: str) -> Any:
+    def _get_value(cls, item: dict[str, typing.Any], key: str) -> typing.Any:
         return item[key]
 
     @classmethod
-    def from_entity(cls, entity) -> dict[str, Any]:
+    def from_entity(cls, entity: typing.Any) -> dict[str, typing.Any]:
         """Convert the entity to a dictionary record"""
         return cls._entity_to_dict(entity)
 
 
 class MemorySession:
-    def __init__(self, provider, new_connection=False):
+    def __init__(
+        self, provider: "MemoryProvider", new_connection: bool = False
+    ) -> None:
         self._provider = provider
         self.is_active = True
 
@@ -96,16 +99,16 @@ class MemorySession:
                 "counters": self._provider._counters,
             }
 
-    def commit(self):
+    def commit(self) -> None:
         if current_uow and self._provider.name in current_uow._sessions:
             current_uow._sessions[self._provider.name]._db["data"] = self._db["data"]
         else:
             self._provider._databases = self._db["data"]
 
-    def rollback(self):
+    def rollback(self) -> None:
         pass
 
-    def close(self):
+    def close(self) -> None:
         pass
 
 
@@ -119,21 +122,23 @@ class MemoryProvider(BaseProvider):
         """Memory provider supports basic storage with simulated transactions."""
         return DatabaseCapabilities.IN_MEMORY
 
-    def __init__(self, name, domain, conn_info: dict):
+    def __init__(
+        self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]
+    ) -> None:
         """Initialize Provider with Connection/Adapter details"""
 
         # In case of `MemoryProvider`, the `database` value will always be `memory`.
         super().__init__(name, domain, conn_info)
 
         # Global in-memory store of dict data.
-        self._databases = defaultdict(dict)
-        self._locks = defaultdict(Lock)
-        self._counters = defaultdict(count)
+        self._databases: dict[str, dict[typing.Any, typing.Any]] = defaultdict(dict)
+        self._locks: dict[str, Lock] = defaultdict(Lock)
+        self._counters: dict[str, count[int]] = defaultdict(count)
 
         # A temporary cache of already constructed model classes
-        self._database_model_classes = {}
+        self._database_model_classes: dict[str, type[typing.Any]] = {}
 
-    def get_session(self):
+    def get_session(self) -> MemorySession:
         """Return a session object
 
         For Dictionary Repo, a session translates to a copy of the
@@ -142,7 +147,7 @@ class MemoryProvider(BaseProvider):
         """
         return MemorySession(self)
 
-    def get_connection(self, session_cls=None):
+    def get_connection(self, session_cls: typing.Any = None) -> MemorySession:
         """Return the dictionary database object"""
         return MemorySession(self, new_connection=True)
 
@@ -150,7 +155,7 @@ class MemoryProvider(BaseProvider):
         """Check if the connection is alive"""
         return True
 
-    def _data_reset(self):
+    def _data_reset(self) -> None:
         """Reset data"""
         self._databases = defaultdict(dict)
         self._locks = defaultdict(Lock)
@@ -160,7 +165,7 @@ class MemoryProvider(BaseProvider):
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
 
-    def close(self):
+    def close(self) -> None:
         """Close the provider and clean up resources.
 
         For MemoryProvider, this is a no-op since there are no persistent
@@ -168,7 +173,9 @@ class MemoryProvider(BaseProvider):
         """
         pass
 
-    def decorate_database_model_class(self, entity_cls, database_model_cls):
+    def decorate_database_model_class(
+        self, entity_cls: type[typing.Any], database_model_cls: type[typing.Any]
+    ) -> type[typing.Any]:
         cache_key = fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
@@ -204,7 +211,9 @@ class MemoryProvider(BaseProvider):
 
             return decorated_database_database_model_cls
 
-    def construct_database_model_class(self, entity_cls):
+    def construct_database_model_class(
+        self, entity_cls: type[typing.Any]
+    ) -> type[typing.Any]:
         """Return associated, fully-baked Model class"""
         database_model_cls = None
         cache_key = fully_qualified_name(entity_cls)
@@ -230,11 +239,19 @@ class MemoryProvider(BaseProvider):
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls
 
-    def get_dao(self, entity_cls, database_model_cls):
+    def get_dao(
+        self, entity_cls: type[typing.Any], database_model_cls: type[typing.Any]
+    ) -> "DictDAO":
         """Return a DAO object configured with a live connection"""
         return DictDAO(self.domain, self, entity_cls, database_model_cls)
 
-    def _evaluate_lookup(self, key, value, negated, db):
+    def _evaluate_lookup(
+        self,
+        key: str,
+        value: typing.Any,
+        negated: bool,
+        db: dict[typing.Any, typing.Any],
+    ) -> dict[typing.Any, typing.Any]:
         """Extract values from DB that match the given criteria.
 
         When ``value`` is an :class:`~protean.utils.query.F`, the right-hand
@@ -266,7 +283,7 @@ class MemoryProvider(BaseProvider):
 
         return results
 
-    def _raw(self, query: Any, data: Any = None) -> list:
+    def _raw(self, query: typing.Any, data: typing.Any = None) -> list[typing.Any]:
         """Run raw queries on the memory database.
 
         As an example of running ``raw`` queries on a Dict repository, we will run the query
@@ -287,7 +304,7 @@ class MemoryProvider(BaseProvider):
             input_db = conn._db["data"][schema_name]
             try:
                 # Ensures that the string contains double quotes around keys and values
-                query = query.replace("'", '"')  # type: ignore[reportAssignmentType]
+                query = query.replace("'", '"')
                 criteria = json.loads(query)
 
                 for key, value in criteria.items():
@@ -303,10 +320,10 @@ class MemoryProvider(BaseProvider):
 
         return items
 
-    def _create_database_artifacts(self):
+    def _create_database_artifacts(self) -> None:
         """Dummy placeholder. Nothing to do."""
 
-    def _drop_database_artifacts(self):
+    def _drop_database_artifacts(self) -> None:
         """Dummy placeholder. Nothing to do."""
 
 
@@ -316,7 +333,9 @@ class DictDAO(BaseDAO):
     def __repr__(self) -> str:
         return f"DictDAO <{self.entity_cls.__name__}>"
 
-    def _set_auto_fields(self, model_obj):
+    def _set_auto_fields(
+        self, model_obj: dict[str, typing.Any]
+    ) -> dict[str, typing.Any]:
         """Set the values of the auto field using counter"""
         conn = self._get_session()
         assert conn is not None
@@ -349,7 +368,12 @@ class DictDAO(BaseDAO):
         # Already an attribute name (e.g. a value-object shadow attribute).
         return field_name
 
-    def _check_unique_indexes(self, model_obj, records, identifier) -> None:
+    def _check_unique_indexes(
+        self,
+        model_obj: dict[str, typing.Any],
+        records: dict[typing.Any, typing.Any],
+        identifier: typing.Any,
+    ) -> None:
         """Enforce declared ``Index(unique=True)`` constraints in memory.
 
         Relational adapters get this for free from the DDL they render; the
@@ -402,7 +426,7 @@ class DictDAO(BaseDAO):
                         }
                     )
 
-    def _create(self, model_obj):
+    def _create(self, model_obj: typing.Any) -> typing.Any:
         """Write a record to the dict repository"""
         conn = self._get_session()
         assert conn is not None
@@ -424,7 +448,9 @@ class DictDAO(BaseDAO):
 
         return model_obj
 
-    def _filter_items(self, criteria: Q, db):
+    def _filter_items(
+        self, criteria: Q, db: dict[typing.Any, typing.Any]
+    ) -> dict[typing.Any, typing.Any]:
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
         negated = criteria.negated
@@ -462,10 +488,10 @@ class DictDAO(BaseDAO):
         criteria: Q,
         offset: int = 0,
         limit: int = 10,
-        order_by: list = (),
+        order_by: Sequence[str] = (),
         with_total: bool = True,
-        fields: list | None = None,
-    ):
+        fields: list[str] | None = None,
+    ) -> ResultSet:
         """Read the repository and return results as per the filter.
 
         ``fields`` is accepted for interface parity. The in-memory store holds
@@ -489,9 +515,11 @@ class DictDAO(BaseDAO):
         # Use compound sorting to match database behavior
         if order_by:
 
-            def compound_sort_key(item):
+            def compound_sort_key(
+                item: dict[str, typing.Any],
+            ) -> tuple[typing.Any, ...]:
                 """Create a compound sort key that matches database ORDER BY behavior"""
-                key_parts = []
+                key_parts: list[tuple[typing.Any, ...]] = []
 
                 for o_key in order_by:
                     is_desc = o_key.startswith("-")
@@ -538,7 +566,9 @@ class DictDAO(BaseDAO):
 
         return result
 
-    def _update(self, model_obj: Any, expected_version: int | None = None):
+    def _update(
+        self, model_obj: typing.Any, expected_version: int | None = None
+    ) -> typing.Any:
         """Update the entity record in the dictionary.
 
         When ``expected_version`` is set, the version check and write happen
@@ -581,7 +611,7 @@ class DictDAO(BaseDAO):
 
         return model_obj
 
-    def _update_all(self, criteria: Q, *args, **kwargs):
+    def _update_all(self, criteria: Q, *args: typing.Any, **kwargs: typing.Any) -> int:
         """Update all objects satisfying the criteria"""
         conn = self._get_session()
         assert conn is not None
@@ -604,10 +634,10 @@ class DictDAO(BaseDAO):
     def _claim(
         self,
         criteria: Q,
-        claim_fields: dict[str, Any],
+        claim_fields: dict[str, typing.Any],
         limit: int,
         order_by: str | None = None,
-    ) -> list:
+    ) -> list[typing.Any]:
         """Atomic find-and-claim for the in-memory adapter.
 
         The memory adapter has no row-level locking, and its ``_update_all`` is
@@ -625,7 +655,7 @@ class DictDAO(BaseDAO):
         with conn._db["lock"]:
             return super()._claim(criteria, claim_fields, limit, order_by)
 
-    def _delete(self, model_obj):
+    def _delete(self, model_obj: typing.Any) -> typing.Any:
         """Delete the entity record in the dictionary"""
         conn = self._get_session()
         assert conn is not None
@@ -699,11 +729,11 @@ class DictDAO(BaseDAO):
 
         return len(to_delete)
 
-    def _delete_all(self, criteria: Q = None):
+    def _delete_all(self, criteria: Q | None = None) -> int:
         """Delete the dictionary object by its criteria"""
         conn = self._get_session()
         assert conn is not None
-        items = []
+        items: dict[typing.Any, typing.Any] | list[typing.Any] = []
 
         if criteria:
             # Delete the object from the dictionary and return the deletion count
@@ -722,7 +752,7 @@ class DictDAO(BaseDAO):
 
         return len(items)
 
-    def _raw(self, query: Any, data: Any = None) -> ResultSet:
+    def _raw(self, query: typing.Any, data: typing.Any = None) -> ResultSet:
         """Run raw query on Repository.
 
         For this stand-in repository, the query string is a json string that contains kwargs
@@ -747,7 +777,7 @@ class MemoryLookup(BaseLookup):
     (filter value) directly — no string construction or eval().
     """
 
-    def _coerce(self, value: Any) -> Any:
+    def _coerce(self, value: typing.Any) -> typing.Any:
         """Coerce UUID/datetime/date to str for comparison."""
         if isinstance(value, (UUID, datetime, date)):
             return str(value)
@@ -769,7 +799,7 @@ class Exact(MemoryLookup):
     lookup_name = "exact"
 
     def evaluate(self) -> bool:
-        return self._coerce(self.source) == self._coerce(self.target)
+        return bool(self._coerce(self.source) == self._coerce(self.target))
 
 
 @MemoryProvider.register_lookup
@@ -829,7 +859,7 @@ class GreaterThan(MemoryLookup):
     lookup_name = "gt"
 
     def evaluate(self) -> bool:
-        return self._coerce(self.source) > self._coerce(self.target)
+        return bool(self._coerce(self.source) > self._coerce(self.target))
 
 
 @MemoryProvider.register_lookup
@@ -839,7 +869,7 @@ class GreaterThanOrEqual(MemoryLookup):
     lookup_name = "gte"
 
     def evaluate(self) -> bool:
-        return self._coerce(self.source) >= self._coerce(self.target)
+        return bool(self._coerce(self.source) >= self._coerce(self.target))
 
 
 @MemoryProvider.register_lookup
@@ -849,7 +879,7 @@ class LessThan(MemoryLookup):
     lookup_name = "lt"
 
     def evaluate(self) -> bool:
-        return self._coerce(self.source) < self._coerce(self.target)
+        return bool(self._coerce(self.source) < self._coerce(self.target))
 
 
 @MemoryProvider.register_lookup
@@ -859,7 +889,7 @@ class LessThanOrEqual(MemoryLookup):
     lookup_name = "lte"
 
     def evaluate(self) -> bool:
-        return self._coerce(self.source) <= self._coerce(self.target)
+        return bool(self._coerce(self.source) <= self._coerce(self.target))
 
 
 @MemoryProvider.register_lookup
