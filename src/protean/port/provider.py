@@ -4,7 +4,7 @@ import logging
 from abc import ABCMeta, abstractmethod
 from enum import Flag, auto
 from importlib import import_module, metadata
-from typing import Any, Protocol, Type, runtime_checkable
+from typing import Any, ClassVar, Protocol, Type, runtime_checkable
 
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils.query import RegisterLookupMixin
@@ -192,6 +192,12 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         Provider.is_alive()                     # health check
         Provider.close()                        # release connections
     """
+
+    # Short database identifier every concrete provider must set (e.g.
+    # ``"memory"``, ``"elasticsearch"``, or one of the SQLAlchemy dialect
+    # values). Declared here so the adapter contract is visible to both type
+    # checkers; concrete providers assign it as a class attribute.
+    __database__: ClassVar[str]
 
     # Minimum lookups every adapter must register
     REQUIRED_LOOKUPS: frozenset[str] = frozenset(

@@ -405,14 +405,21 @@ class BaseRepository(Element, OptionsMixin):
             # Recurse AFTER persisting children at this level so that the child
             # row exists before any grandchild insert that holds an FK to it.
             # This gives top-down insert ordering: parent → child → grandchild.
-            if has_association_fields(field.to_cls):
-                # Flush this level's child inserts so their rows exist in the
-                # transaction before grandchild inserts reference them.
-                self._dao._flush()
-                if isinstance(field, HasMany):
+            #
+            # ``field`` is always a ``HasMany``/``HasOne`` here (only those two
+            # ``Association`` subclasses carry a child cluster to recurse into),
+            # so narrow via the same isinstance branches used above to make the
+            # ``to_cls`` attribute visible to the type checkers.
+            if isinstance(field, HasMany):
+                if has_association_fields(field.to_cls):
+                    # Flush this level's child inserts so their rows exist in the
+                    # transaction before grandchild inserts reference them.
+                    self._dao._flush()
                     for item in getattr(entity, field_name):
                         self._sync_children(item)
-                elif isinstance(field, HasOne):
+            elif isinstance(field, HasOne):
+                if has_association_fields(field.to_cls):
+                    self._dao._flush()
                     if getattr(entity, field_name):
                         self._sync_children(getattr(entity, field_name))
 
