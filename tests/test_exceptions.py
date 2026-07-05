@@ -59,6 +59,20 @@ class TestProteanExceptionWithMessage:
 
         assert str(exception_instance) == "{'error': 'An error occurred'}"
 
+    def test_exception_str_with_string_messages(self):
+        # Non-dict ``messages`` (a bare string) exercise the
+        # ``return f"{self.messages}"`` branch of ``__str__``.
+        exception_instance = ProteanExceptionWithMessage("some error")
+
+        assert str(exception_instance) == "some error"
+
+    def test_exception_str_with_list_messages(self):
+        # Non-dict ``messages`` (a list) also flow through the
+        # ``return f"{self.messages}"`` branch of ``__str__``.
+        exception_instance = ProteanExceptionWithMessage(["a", "b"])
+
+        assert str(exception_instance) == "['a', 'b']"
+
     def test_exception_reduce(self):
         messages = {"error": "An error occurred"}
         exception_instance = ProteanExceptionWithMessage(messages)

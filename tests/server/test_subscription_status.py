@@ -237,6 +237,24 @@ class TestCollectEventStoreStatus:
         assert result.status == "unknown"
         assert result.lag is None
 
+    def test_unknown_when_event_store_not_initialized(self):
+        """Returns unknown status when the backing store is None."""
+        mock_domain = MagicMock()
+        mock_domain.event_store.store = None
+
+        handler_cls = MagicMock()
+        handler_cls.__name__ = "UninitHandler"
+        handler_cls.__module__ = "tests.handlers"
+        handler_cls.__qualname__ = "UninitHandler"
+
+        result = _collect_event_store_status(
+            mock_domain, "uninit-sub", handler_cls, "order"
+        )
+
+        assert result.status == "unknown"
+        assert result.subscription_type == "event_store"
+        assert result.handler_name == "UninitHandler"
+
 
 # ---------------------------------------------------------------------------
 # Stream subscription status collection

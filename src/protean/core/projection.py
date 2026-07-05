@@ -321,7 +321,9 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
                         embedded_field.attribute_name is None
                         or embedded_field.field_name is None
                     ):
-                        continue
+                        # ``embedded_fields`` yields fully-bound fields, so both
+                        # names are always set; guard never fires at runtime.
+                        continue  # pragma: no cover
                     vo_kwargs[embedded_field.field_name] = shadow_kwargs.get(
                         embedded_field.attribute_name
                     )

@@ -126,7 +126,8 @@ class DomainContext(object):
         # ``sys.exc_clear`` only existed in Python 2; guard preserved for
         # historical parity but never fires on supported (3.11+) runtimes.
         exc_clear = getattr(sys, "exc_clear", None)
-        if exc_clear is not None:
+        if exc_clear is not None:  # pragma: no cover
+            # ``sys.exc_clear`` was removed in Python 3; never taken on 3.11+.
             exc_clear()
         _domain_ctx_stack.push(self)
 

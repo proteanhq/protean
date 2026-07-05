@@ -365,8 +365,9 @@ class BaseAggregate(BaseEntity):
         # carries ``get_shadow_field``; narrow the generic ``Field`` type.
         for ref_field in reference_fields(cls).values():
             shadow_name, _ = cast(Reference, ref_field).get_shadow_field()
-            # ``shadow_name`` is ``str | None`` but always resolved here.
-            assert shadow_name is not None
+            # ``shadow_name`` is ``str | None`` but always resolved for a bound
+            # reference field, so this assert never fires at runtime.
+            assert shadow_name is not None  # pragma: no cover
             aggregate.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Setup association pseudo-methods (add_*, remove_*, etc.) ---

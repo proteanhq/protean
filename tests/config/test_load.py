@@ -106,6 +106,12 @@ class TestLoadingDefaults:
         assert config["custom"]["FOO"] == "bar"
         assert config["custom"]["qux"] == "quux"
 
+    def test_that_config_defaults_when_none_passed(self):
+        # Omitting the argument (or passing ``None``) falls back to the
+        # default config rather than a mutable import-time default.
+        config = Config2.load_from_dict()
+        assert config["databases"]["default"]["provider"] == "memory"
+
 
 def test_that_config_is_loaded_from_1st_parent_folder_of_path():
     change_working_directory_to("test22")

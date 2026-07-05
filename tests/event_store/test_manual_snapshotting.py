@@ -8,7 +8,11 @@ import pytest
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
+from protean.exceptions import (
+    ConfigurationError,
+    IncorrectUsageError,
+    ObjectNotFoundError,
+)
 from protean.fields import Identifier, String
 
 
@@ -169,6 +173,15 @@ class TestCreateSnapshot:
 
         with pytest.raises(IncorrectUsageError, match="not registered"):
             test_domain.create_snapshot(UnregisteredAggregate, "some-id")
+
+    @pytest.mark.eventstore
+    def test_raises_when_event_store_not_initialized(self, test_domain):
+        # ``_require_event_store`` raises a clear error when the backing
+        # store is None (e.g. before ``domain.init()``).
+        test_domain.event_store._event_store = None
+
+        with pytest.raises(ConfigurationError, match="Event store is not initialized"):
+            test_domain.create_snapshot(User, "some-id")
 
     @pytest.mark.eventstore
     def test_aggregate_loads_correctly_from_manual_snapshot(self, test_domain):
