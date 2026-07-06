@@ -32,6 +32,7 @@ class TestResolvedFieldNonDictExtra:
         assert rf.field_kind == "standard"
         assert rf._validators == []
         assert rf._error_messages == {}
+        assert rf.renamed_from is None
 
 
 # ---------------------------------------------------------------------------

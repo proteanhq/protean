@@ -19,6 +19,8 @@ Protean classifies changes to persisted domain elements using these rules:
 | Add optional field (or with default) | Safe |
 | Add required field without default | **Breaking** |
 | Remove field from any persisted element | **Breaking** |
+| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`) |
+| Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
 | Remove an element | **Breaking** |
 | Add a new element | Safe |

@@ -203,6 +203,13 @@ class IRBuilder:
                 if deprecated is not None:
                     entry["deprecated"] = deprecated
 
+            # Renamed-from — carried on the field object for both classic
+            # ``Field`` and ``ResolvedField`` (unlike ``deprecated``), so it can
+            # be emitted uniformly here for every field type.
+            renamed_from = getattr(field_obj, "renamed_from", None)
+            if renamed_from:
+                entry["renamed_from"] = renamed_from
+
             result[name] = dict(sorted(entry.items()))
 
         return result

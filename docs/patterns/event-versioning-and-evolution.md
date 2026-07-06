@@ -140,6 +140,39 @@ status = String(choices=["pending", "shipped", "returned", "refunded"])
 Old events still match. New events use the expanded set. Consumers should
 already handle unknown values gracefully.
 
+### Renaming a Field
+
+Renaming a field is normally a breaking change: the old key disappears and a
+new one takes its place, so stored payloads no longer match. Declare the old
+name with `renamed_from` to make the rename backward-compatible instead:
+
+```python
+# Before
+@domain.event(part_of=Order)
+class OrderPlaced(BaseEvent):
+    order_id = Identifier(required=True)
+    name = String(required=True)
+
+# After: `name` becomes `customer_name`
+@domain.event(part_of=Order)
+class OrderPlaced(BaseEvent):
+    order_id = Identifier(required=True)
+    customer_name = String(required=True, renamed_from="name")
+```
+
+A stored payload written with the old `name` key now deserializes into
+`customer_name` without an upcaster. `renamed_from` also accepts a list of
+aliases (`renamed_from=["name", "full_name"]`) when a field has been renamed
+more than once. The compatibility checker reads the declared rename and reports
+a single safe `field_renamed` change rather than a breaking remove + add. Keep
+the `renamed_from` declaration for as long as payloads written under the old
+name may still be read.
+
+A rename only stays safe when the field type is unchanged: renaming *and*
+changing the type (say `String` to `Integer`) is still breaking, because an
+old payload's value cannot satisfy the new type. The checker reports that as a
+`field_type_changed` change; handle the type change with an upcaster.
+
 ---
 
 ## Strategies for Breaking Changes
