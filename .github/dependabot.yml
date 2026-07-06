@@ -14,10 +14,15 @@ updates:
     labels:
       - "dependencies"
     groups:
-      minor-and-patch-dependencies:
+      # Collapse every non-security version update — major, minor, and patch —
+      # into a single grouped PR per run. Without "major" here, each major bump
+      # (e.g. elasticsearch, diff-cover, types-mock) opens its own PR and fires
+      # its own CI run; grouping them keeps the weekly bump to one PR.
+      all-dependencies:
         patterns:
           - "*"
         update-types:
+          - "major"
           - "minor"
           - "patch"
       security-updates:
