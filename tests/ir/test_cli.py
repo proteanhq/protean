@@ -169,6 +169,32 @@ class TestIRShowSummary:
         assert "Element Counts" in result.output
 
 
+class TestIRShowUpcasters:
+    """Upcasters register through the standard lifecycle, so they appear in the
+    IR that `protean ir show` renders (#1109).
+
+    Asserts against ``load_domain_ir`` (exactly the data `ir show` prints)
+    rather than the CliRunner-captured stdout: capturing a subprocess-free
+    CLI's stdout is order-fragile in a shared test process, and the `ir show`
+    renderer over the elements index is generic and already covered.
+    """
+
+    # Absolute path + explicit `:domain`: cwd-independent (this file's other
+    # classes chdir) and skips directory-traversal discovery.
+    _UPCASTER_DOMAIN = (
+        f"{Path(__file__).resolve().parents[1] / 'support' / 'domains' / 'test29' / 'domain29.py'}"
+        ":domain"
+    )
+
+    def test_upcaster_in_ir_elements_index(self):
+        from protean.cli._ir_utils import load_domain_ir
+
+        ir = load_domain_ir(self._UPCASTER_DOMAIN)
+        upcasters = ir["elements"].get("UPCASTER", [])
+        assert len(upcasters) == 1
+        assert any("UpcastOrderPlacedV1ToV2" in fqn for fqn in upcasters)
+
+
 class TestIRShowErrors:
     """Tests for error handling in `protean ir show`."""
 

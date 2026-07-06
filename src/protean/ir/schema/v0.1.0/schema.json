@@ -938,6 +938,7 @@
         "QUERY_HANDLER": { "type": "array", "items": { "type": "string" } },
         "REPOSITORY": { "type": "array", "items": { "type": "string" } },
         "SUBSCRIBER": { "type": "array", "items": { "type": "string" } },
+        "UPCASTER": { "type": "array", "items": { "type": "string" } },
         "VALUE_OBJECT": { "type": "array", "items": { "type": "string" } }
       },
       "required": [

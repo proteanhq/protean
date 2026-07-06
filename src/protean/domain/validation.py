@@ -165,6 +165,7 @@ class DomainValidator:
             self._validate_outbox_subscription_consistency,
             self._validate_priority_lanes_config,
             self._validate_indexes,
+            self._validate_upcaster_chains,
         ]
 
         for validator_fn in validators:
@@ -411,6 +412,19 @@ class DomainValidator:
         ):
             for _, record in registry._elements[element_type].items():
                 validate_indexes(record.cls)
+
+    def _validate_upcaster_chains(self) -> None:
+        """Report a malformed upcaster chain as a structured error.
+
+        Validates a throwaway chain (leaving the runtime chain untouched): a
+        duplicate, cyclic, non-convergent, or unreachable-version chain raises
+        ``ConfigurationError``, and a string ``event_type`` raises
+        ``IncorrectUsageError``; ``validate_all()`` collects either as an error
+        so ``check()`` reports it instead of crashing ``protean check`` with a
+        traceback. ``init()`` builds and validates the real chain fail-fast in
+        ``_prepare()``.
+        """
+        self._domain._type_manager.validate_upcaster_chains()
 
     def _warn_unhandled_commands(self) -> None:
         """Warn about registered Commands that have no handler."""

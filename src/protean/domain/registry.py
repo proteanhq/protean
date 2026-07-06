@@ -115,6 +115,7 @@ class _DomainRegistry:
         query_handlers: Dict[str, DomainRecord]
         repositories: Dict[str, DomainRecord]
         subscribers: Dict[str, DomainRecord]
+        upcasters: Dict[str, DomainRecord]
         value_objects: Dict[str, DomainRecord]
 
     def __init__(self) -> None:

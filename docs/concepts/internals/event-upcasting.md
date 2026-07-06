@@ -43,25 +43,35 @@ cache misses.
 
 ## Registration Model
 
-### Why Upcasters Are Not Full Domain Elements
+### Upcasters register through the standard element lifecycle
 
-Upcasters are **infrastructure helpers** for schema migration, not business
-domain concepts. They do not need:
+Like every other element, `@domain.upcaster(...)` routes through
+`_register_element`. As a result an upcaster:
 
-- An entry in the `DomainObjects` enum
-- Registration in `_DomainRegistry` (the general element registry)
-- Aggregate cluster assignment
-- Mypy plugin support
-- Auto-discovery via module traversal
+- has a `UPCASTER` entry in the `DomainObjects` enum,
+- is stored in the `_DomainRegistry` (the general element registry),
+- appears in the IR elements index (so `protean ir show` lists it), and
+- is validated by `domain.check()`: a malformed registration (a duplicate,
+  cyclic, or non-convergent chain, or a string `event_type`) is reported as a
+  structured error instead of crashing `protean check` with a traceback.
 
-Instead, they use a lightweight registration path:
+Upcasters remain **infrastructure helpers** for schema migration, so the
+lifecycle steps that only apply to business elements do not touch them:
+`_register_element`'s association resolution no-ops (an upcaster has no fields),
+and the element-type-scoped `_prepare` steps (aggregate cluster assignment,
+fact-event generation) never enumerate upcasters.
 
-1. `@domain.upcaster(...)` calls `upcaster_factory()` for validation
-2. The validated class is appended to `domain._upcasters` (a plain list)
-3. During `domain.init()`, `_build_upcaster_chains()` processes the list
+Registration flow:
 
-This follows the same spirit as `domain._events_and_commands` — a dedicated
-purpose-built cache separate from the general registry.
+1. `@domain.upcaster(...)` calls `_register_element(DomainObjects.UPCASTER, ...)`,
+   which runs `upcaster_factory()` for validation and stores the class in the registry.
+2. During `domain.init()`, `_build_upcaster_chains()` reads the registered
+   upcasters from the registry and builds the chain (fail-fast: a malformed
+   chain raises `ConfigurationError`, and a string `event_type` raises
+   `IncorrectUsageError`).
+3. `domain.check()` runs the same chain build under the collecting validator
+   (`DomainValidator.validate_all()`), surfacing a malformed chain as an error
+   (exit code 1) rather than raising.
 
 ### `BaseUpcaster`
 
