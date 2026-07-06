@@ -533,7 +533,7 @@ def _diff_contracts(
         # safe rename (the alias resolves old payloads), not a breaking removal.
         added_fields = {
             name: right_fields[name]
-            for name in right_fields.keys() - left_fields.keys()
+            for name in sorted(right_fields.keys() - left_fields.keys())
         }
         contract_renames = _detect_field_renames(added_fields, removed_fields)
         for old_name, new_name in contract_renames.items():

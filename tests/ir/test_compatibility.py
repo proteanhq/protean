@@ -646,6 +646,36 @@ class TestContractFieldRename:
             for b in contracts.get("breaking_changes", [])
         )
 
+    def test_multiple_contract_renames_are_deterministically_ordered(self):
+        """Rename detection iterates the added fields in sorted order, so the
+        emitted ``renamed_fields`` list is stable regardless of set-iteration
+        order (guards against flaky diffs)."""
+        left = self._ir(
+            [
+                {
+                    "fqn": "app.OrderPlaced",
+                    "type": "App.OrderPlaced.v1",
+                    "fields": {"aaa": _std(), "bbb": _std()},
+                }
+            ]
+        )
+        right = self._ir(
+            [
+                {
+                    "fqn": "app.OrderPlaced",
+                    "type": "App.OrderPlaced.v1",
+                    "fields": {
+                        "zzz": _std(renamed_from=["bbb"]),
+                        "yyy": _std(renamed_from=["aaa"]),
+                    },
+                }
+            ]
+        )
+        renamed = diff_ir(left, right)["contracts"]["renamed_fields"]
+        # Ordered by the (sorted) new field name: yyy (from aaa), zzz (from bbb).
+        assert [r["renamed_to"] for r in renamed] == ["yyy", "zzz"]
+        assert [r["field"] for r in renamed] == ["aaa", "bbb"]
+
 
 # ------------------------------------------------------------------
 # __type__ string changes
