@@ -220,20 +220,31 @@ jobs:
       - name: Mypy
         run: uv run mypy src/protean
 
+  # Publishes the docs via the GitHub Actions Pages pipeline (build the site,
+  # then deploy the artifact) instead of `mkdocs gh-deploy` to the gh-pages
+  # branch. The legacy branch-based Pages builder proved unreliable (builds
+  # intermittently stuck/errored), freezing the live site on a stale snapshot;
+  # the Actions deployment removes that GitHub-side build step entirely.
+  #
+  # Not gated on `test`: the rendered docs don't depend on the DB integration
+  # matrix, and gating publication on a 30-min (occasionally flaky) suite means
+  # a single flake strands the docs. Runs on main only.
   docs-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: test
     if: github.ref == 'refs/heads/main'
     permissions:
-      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # Serialize Pages deployments; never cancel one mid-publish.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-
-      - name: Configure Git Credentials
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -254,4 +265,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --group docs --no-dev
 
-      - run: uv run mkdocs gh-deploy --force
+      - name: Build site
+        run: uv run mkdocs build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
