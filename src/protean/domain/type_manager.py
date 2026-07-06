@@ -16,7 +16,7 @@ from protean.core.event import BaseEvent
 from protean.core.upcaster import BaseUpcaster
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects
-from protean.utils.upcasting import UpcasterChain
+from protean.utils.upcasting import UpcasterChain, upcaster_event_name
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -81,16 +81,12 @@ class TypeManager:
         to have run so event type strings are available.
         """
         for upcaster_cls in self.upcasters:
-            event_type = upcaster_cls.meta_.event_type
-            # A string event_type is tolerated at registration (so a forward
-            # reference does not crash the import) but is not resolved, so it
-            # surfaces here as a structured error rather than an AttributeError.
-            if isinstance(event_type, str):
-                raise IncorrectUsageError(
-                    f"Upcaster `{upcaster_cls.__name__}` references event_type "
-                    f"`{event_type}` by string; pass the Event class instead."
-                )
-            event_base_type = f"{self._domain.camel_case_name}.{event_type.__name__}"
+            # event_type may be an Event class or a string (forward reference).
+            # Resolve by name: build_chains validates the named event is
+            # registered (raising an unreachable-terminal ConfigurationError if
+            # not), so a valid string works and a bad one fails cleanly.
+            event_name = upcaster_event_name(upcaster_cls.meta_.event_type)
+            event_base_type = f"{self._domain.camel_case_name}.{event_name}"
 
             chain.register_upcaster(
                 event_base_type=event_base_type,
