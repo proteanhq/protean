@@ -43,8 +43,9 @@ release (a new version) of Protean with bug fixes and new features.
 
 ## Contribute to Protean
 
-You can contribute to Protean in many ways, and we appreciate all types of
-contributions. Here are some ways you can get involved:
+Protean is developed and maintained by a single maintainer, so the
+contributions that help most are bug reports, real-world use cases, and
+adapters. Here are the ways you can get involved:
 
 ### Report issues
 
@@ -53,10 +54,16 @@ requests on our [GitHub Issues](https://github.com/proteanhq/protean/issues)
 page. When reporting an issue, please include as much detail as possible to
 help us understand and resolve the problem quickly.
 
-### Submit enhancements
+### Contribute code
 
-[Set up Protean locally](./contributing/setup.md) to contribute enhancements,
-bug-fixes, tests, and documentation to the code base.
+Small, obvious fixes (typos, docstrings, a clearly correct one-line bug fix)
+are welcome directly as pull requests. For anything larger, such as a new
+feature, a behavioral change, or a refactor, please open an issue to discuss
+the approach first. Unsolicited large pull requests may not be merged, so
+starting with an issue saves everyone's time. See
+[CONTRIBUTING](https://github.com/proteanhq/protean/blob/main/CONTRIBUTING.md)
+for the full picture, and [set up Protean locally](./contributing/setup.md)
+once you are ready.
 
 ### Triage Issues
 

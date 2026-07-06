@@ -3,7 +3,8 @@ name = "protean"
 version = "0.16.0"
 description = "An opinionated DDD, CQRS, and event-sourcing framework for Python"
 authors = [{name = "Subhash Bhushan C", email = "subhash@team8solutions.com"}]
-license = {text = "BSD-3-Clause"}
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 readme = "README.md"
 requires-python = ">=3.11"
 keywords = [
@@ -31,7 +32,6 @@ classifiers = [
     # complete classifier list: http://pypi.python.org/pypi?%3Aaction=list_classifiers
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.11",

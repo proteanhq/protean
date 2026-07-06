@@ -99,46 +99,23 @@ See the full [Quality Report](https://docs.proteanhq.com/community/quality/) for
 
 > **Note**: Protean framework is not associated or related to [Protean eGov Technologies](https://www.proteantech.in/) or [Code for Gov Tech](https://codeforgovtech.in/) initiatives.
 
-1. Check for open issues or open a fresh issue to start a discussion
-    around a feature idea or a bug.
-2. Fork [the repository](https://github.com/proteanhq/protean) on
-    GitHub, branch off `main` and start making your changes.
-3. Write a test which shows that the bug was fixed or that the feature
-    works as expected.
-4. Send a pull request and bug the maintainer until it gets merged and
-    published.
+Protean is developed and maintained by a single maintainer. The contributions
+that help most are **bug reports**, **real-world use cases**, and **adapter
+packages** built against the public conformance suite.
 
-For more information, please check out the
-[community](https://docs.proteanhq.com/community/) section.
+- Found a bug or have a use case to share? [Open an issue](https://github.com/proteanhq/protean/issues). Clear, reproducible reports are the most valuable contribution you can make, and they are answered as a priority.
+- Planning a non-trivial code change? Open an issue to discuss it first, before investing in a pull request. Unsolicited large PRs may not be merged. Small, obvious fixes are welcome directly.
+- Building an adapter? Adapters live in their own packages, certified against the conformance suite. See the [contributing guide](https://docs.proteanhq.com/community/contributing/).
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[community](https://docs.proteanhq.com/community/) section for the full picture.
 
 ## License
 
-BSD 3-Clause License
+Protean is licensed under the [Apache License 2.0](LICENSE).
 
-Copyright (c) 2018-2026, Subhash Bhushan C.
-All rights reserved.
+**Licensing commitment.** The Protean framework core is, and will remain,
+available under the Apache License 2.0. This is a permanent commitment: the
+core will not be relicensed to a proprietary or source-available license.
 
-Redistribution and use in source and binary forms, with or without modification,
-are permitted provided that the following conditions are met:
-
-* Redistributions of source code must retain the above copyright notice, this
-list of conditions and the following disclaimer.
-
-* Redistributions in binary form must reproduce the above copyright notice,
-this list of conditions and the following disclaimer in the documentation
-and/or other materials provided with the distribution.
-
-* Neither the name of the copyright holder nor the names of its contributors
-may be used to endorse or promote products derived from this software
-without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+Copyright 2018-2026 Subhash Bhushan C and the Protean contributors.

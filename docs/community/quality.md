@@ -19,7 +19,7 @@ practices and metrics behind the framework.
 | **CI Backing Services** | PostgreSQL, Redis, Elasticsearch, MessageDB, MSSQL |
 | **Releases** | 46 |
 | **Project Age** | Since July 2018 |
-| **License** | BSD 3-Clause |
+| **License** | Apache 2.0 |
 
 ---
 
