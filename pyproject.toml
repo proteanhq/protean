@@ -58,7 +58,7 @@ dependencies = [
     "structlog>=24.1.0",
     "werkzeug>=2.0.0",
     "cffi>=1.16.5",
-    "pydantic>=2.10,<3.0",
+    "pydantic>=2.13.4,<3.0",
     "greenlet>=3.0.3,<4",
 ]
 
