@@ -11,6 +11,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
+from protean.core.upcaster import BaseUpcaster
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
 
@@ -28,6 +29,11 @@ class CreateAccount(BaseCommand):
 
 class AccountCreated(BaseEvent):
     name: String(required=True)
+
+
+class UpcastAccountCreated(BaseUpcaster):
+    def upcast(self, data):
+        return data
 
 
 # --- set_and_record_types() --------------------------------------------------
@@ -272,11 +278,27 @@ class TestPropertyProxies:
         assert proxy_result is internal_result
 
     def test_upcasters_proxy(self, test_domain):
-        """domain._upcasters returns the TypeManager's list."""
+        """domain._upcasters and the TypeManager both source upcasters from the
+        registry (registered via the standard element lifecycle, #1109).
+
+        Registration alone is exercised here (no init()/check()), so the
+        AccountCreated version vs upcaster to_version convergence is not
+        validated and does not matter for this proxy assertion.
+        """
+        test_domain.register(Account, is_event_sourced=True)
+        test_domain.register(AccountCreated, part_of=Account)
+        test_domain.upcaster(
+            UpcastAccountCreated,
+            event_type=AccountCreated,
+            from_version=1,
+            to_version=2,
+        )
+
         proxy_result = test_domain._upcasters
         internal_result = test_domain._type_manager.upcasters
 
-        assert proxy_result is internal_result
+        assert proxy_result == internal_result
+        assert UpcastAccountCreated in proxy_result
 
     def test_upcaster_chain_proxy(self, test_domain):
         """domain._upcaster_chain returns the TypeManager's chain."""

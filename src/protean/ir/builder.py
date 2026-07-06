@@ -1325,6 +1325,7 @@ class IRBuilder:
             "QUERY_HANDLER",
             "REPOSITORY",
             "SUBSCRIBER",
+            "UPCASTER",
             "VALUE_OBJECT",
         ]
 

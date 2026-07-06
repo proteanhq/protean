@@ -107,7 +107,7 @@ from protean.core.query import query_factory
 from protean.core.query_handler import query_handler_factory
 from protean.core.repository import BaseRepository, repository_factory
 from protean.core.subscriber import subscriber_factory
-from protean.core.upcaster import upcaster_factory
+from protean.core.upcaster import BaseUpcaster, upcaster_factory
 from protean.core.value_object import value_object_factory
 from protean.core.view import ReadView
 from protean.domain.registry import DomainRecord, _DomainRegistry
@@ -417,7 +417,7 @@ class Domain:
         return self._type_manager.events_and_commands
 
     @property
-    def _upcasters(self) -> list[type]:
+    def _upcasters(self) -> list[type[BaseUpcaster]]:
         return self._type_manager.upcasters
 
     @property
@@ -583,8 +583,13 @@ class Domain:
         # Generate and set event/command `__type__` value
         self._set_and_record_event_and_command_type()
 
-        # Build upcaster chains for event schema evolution
-        self._build_upcaster_chains()
+        # Build the runtime upcaster chain (used during deserialization).
+        # Gated on `validate` so check() (validate=False) skips the runtime
+        # build; check() instead validates a throwaway chain via
+        # DomainValidator.validate_all(), reporting a malformed chain as a
+        # structured error rather than crashing.
+        if validate:
+            self._build_upcaster_chains()
 
         # Parse and setup handler methods in Command Handlers
         self._setup_command_handlers()
@@ -972,6 +977,7 @@ class Domain:
             DomainObjects.PROJECTOR.value: projector_factory,
             DomainObjects.QUERY.value: query_factory,
             DomainObjects.QUERY_HANDLER.value: query_handler_factory,
+            DomainObjects.UPCASTER.value: upcaster_factory,
         }
 
         if domain_object_type.value not in factories:
@@ -1962,15 +1968,11 @@ class Domain:
                     data["currency"] = "USD"
                     return data
         """
-
-        def wrap(cls: type) -> type:
-            new_cls: type = upcaster_factory(cls, self, **kwargs)
-            self._upcasters.append(new_cls)
-            return new_cls
-
-        if _cls is None:
-            return wrap
-        return wrap(_cls)
+        return self._domain_element(
+            DomainObjects.UPCASTER,
+            _cls=_cls,
+            **kwargs,
+        )
 
     ########################
     # Message Enrichment  #

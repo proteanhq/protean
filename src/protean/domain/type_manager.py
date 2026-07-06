@@ -8,7 +8,7 @@ registration.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from protean.core.aggregate import element_to_fact_event
 from protean.core.command import BaseCommand
@@ -32,15 +32,28 @@ class TypeManager:
 
     Owns the following state (previously on Domain):
     - ``events_and_commands`` — maps type strings to event/command classes
-    - ``upcasters`` — list of registered upcaster classes
+    - ``upcasters`` — registered upcaster classes, read from the domain registry
     - ``upcaster_chain`` — the built upcaster chain for schema evolution
     """
 
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
         self.events_and_commands: dict[str, type[BaseCommand] | type[BaseEvent]] = {}
-        self.upcasters: list[type[BaseUpcaster]] = []
         self.upcaster_chain: UpcasterChain = UpcasterChain()
+
+    @property
+    def upcasters(self) -> list[type[BaseUpcaster]]:
+        """Registered upcaster classes, sourced from the domain registry.
+
+        Upcasters register through the standard element lifecycle (see #1109),
+        so the registry is the single source of truth rather than a separate
+        list on this manager.
+        """
+        registry = self._domain._domain_registry
+        return [
+            cast(type[BaseUpcaster], record.cls)
+            for record in registry._elements[DomainObjects.UPCASTER.value].values()
+        ]
 
     def set_and_record_types(self) -> None:
         """Set ``__type__`` on all registered events and commands.
@@ -60,24 +73,52 @@ class TypeManager:
                 setattr(element.cls, "__type__", type_string)
                 self.events_and_commands[type_string] = element.cls
 
-    def build_upcaster_chains(self) -> None:
-        """Build upcaster chains from registered upcasters.
+    def _populate_chain(self, chain: UpcasterChain) -> None:
+        """Register every upcaster as an edge on ``chain`` and build it.
 
-        Called during ``init()`` after ``set_and_record_types()``
-        so that event type strings are available for chain validation.
+        ``build_chains`` raises ``ConfigurationError`` on a malformed chain
+        (duplicate / cyclic / non-convergent). Requires ``set_and_record_types``
+        to have run so event type strings are available.
         """
         for upcaster_cls in self.upcasters:
             event_type = upcaster_cls.meta_.event_type
+            # A string event_type is tolerated at registration (so a forward
+            # reference does not crash the import) but is not resolved, so it
+            # surfaces here as a structured error rather than an AttributeError.
+            if isinstance(event_type, str):
+                raise IncorrectUsageError(
+                    f"Upcaster `{upcaster_cls.__name__}` references event_type "
+                    f"`{event_type}` by string; pass the Event class instead."
+                )
             event_base_type = f"{self._domain.camel_case_name}.{event_type.__name__}"
 
-            self.upcaster_chain.register_upcaster(
+            chain.register_upcaster(
                 event_base_type=event_base_type,
                 from_version=upcaster_cls.meta_.from_version,
                 to_version=upcaster_cls.meta_.to_version,
                 upcaster_cls=upcaster_cls,
             )
 
-        self.upcaster_chain.build_chains(self.events_and_commands)
+        chain.build_chains(self.events_and_commands)
+
+    def build_upcaster_chains(self) -> None:
+        """Build the runtime upcaster chain used during deserialization.
+
+        Called during ``init()`` after ``set_and_record_types()``. Rebuilt from
+        scratch each call so it is idempotent and never carries stale edges from
+        a prior (possibly failed) build.
+        """
+        self.upcaster_chain = UpcasterChain()
+        self._populate_chain(self.upcaster_chain)
+
+    def validate_upcaster_chains(self) -> None:
+        """Validate the upcaster chains without touching the runtime chain.
+
+        Builds a throwaway chain so ``check()`` can surface a malformed chain as
+        a structured error without mutating deserialization state (the validator
+        stays read-only w.r.t. runtime state).
+        """
+        self._populate_chain(UpcasterChain())
 
     def register_external_event(
         self, event_cls: type[BaseEvent], type_string: str

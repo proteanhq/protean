@@ -88,6 +88,33 @@ _ERR_DOMAIN = "tests/support/domains/test26/domain26.py:domain"
 _INFO_DOMAIN = "tests/support/domains/test27/domain27.py:domain"
 # Domain with a deprecated aggregate (test28)
 _DEPRECATED_DOMAIN = "tests/support/domains/test28/domain28.py:domain"
+# Domain with a malformed (duplicate) upcaster chain (test30)
+_UPCASTER_ERR_DOMAIN = "tests/support/domains/test30/domain30.py:domain"
+
+
+@pytest.mark.no_test_domain
+class TestCheckMalformedUpcasterChain:
+    """A malformed upcaster chain is a structured error (exit 1), not a Python
+    traceback (#1109) — the chain build used to crash `protean check`."""
+
+    def test_malformed_chain_json_reports_structured_error(self):
+        result = runner.invoke(app, ["check", "-d", _UPCASTER_ERR_DOMAIN, "-f", "json"])
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert data["status"] == "fail"
+        assert data["counts"]["errors"] >= 1
+        upcaster_errors = [
+            e for e in data["errors"] if "upcaster" in e["message"].lower()
+        ]
+        assert len(upcaster_errors) == 1
+        assert upcaster_errors[0]["level"] == "error"
+
+    def test_malformed_chain_rich_output_fails_without_traceback(self):
+        result = runner.invoke(app, ["check", "-d", _UPCASTER_ERR_DOMAIN])
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+        assert "Duplicate upcaster" in result.output
+        assert "Traceback" not in result.output
 
 
 @pytest.mark.no_test_domain

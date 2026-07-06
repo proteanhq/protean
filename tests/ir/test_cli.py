@@ -169,6 +169,36 @@ class TestIRShowSummary:
         assert "Element Counts" in result.output
 
 
+class TestIRShowUpcasters:
+    """Upcasters register through the standard lifecycle, so `ir show` lists
+    them in the elements index (#1109)."""
+
+    _UPCASTER_DOMAIN = "tests/support/domains/test29/domain29.py:domain"
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_upcaster_in_json_elements_index(self):
+        result = runner.invoke(app, ["ir", "show", "-d", self._UPCASTER_DOMAIN])
+        assert result.exit_code == 0
+        ir = json.loads(result.output)
+        upcasters = ir["elements"].get("UPCASTER", [])
+        assert len(upcasters) == 1
+        assert any("UpcastOrderPlacedV1ToV2" in fqn for fqn in upcasters)
+
+    def test_upcaster_in_summary_counts(self):
+        result = runner.invoke(
+            app, ["ir", "show", "-d", self._UPCASTER_DOMAIN, "-f", "summary"]
+        )
+        assert result.exit_code == 0
+        assert "UPCASTER" in result.output
+
+
 class TestIRShowErrors:
     """Tests for error handling in `protean ir show`."""
 
