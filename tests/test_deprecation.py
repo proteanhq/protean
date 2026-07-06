@@ -136,6 +136,17 @@ class TestWarnDeprecated:
         assert record[0].category is ProteanDeprecationWarning
         assert f"Will be removed in v{removal}." in str(record[0].message)
 
+    def test_no_removal_omits_the_removal_clause(self):
+        """A deprecation with no scheduled removal (e.g. a deprecated event)
+        uses the base class and drops the "Will be removed" sentence."""
+        with pytest.warns(ProteanDeprecationWarning) as record:
+            warn_deprecated("Event `OrderPlaced`", alternative="Use `NewOne`.")
+        assert record[0].category is ProteanDeprecationWarning
+        assert str(record[0].message) == (
+            "Event `OrderPlaced` is deprecated. Use `NewOne`."
+        )
+        assert "Will be removed" not in str(record[0].message)
+
 
 class TestDeprecatedDecorator:
     def test_call_emits_the_warning(self):

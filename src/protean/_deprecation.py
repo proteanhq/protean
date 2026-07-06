@@ -75,7 +75,7 @@ def _warning_for_removal(removal: str) -> type[ProteanDeprecationWarning]:
 def warn_deprecated(
     subject: str,
     *,
-    removal: str,
+    removal: str | None = None,
     alternative: str | None = None,
     stacklevel: int = 2,
 ) -> None:
@@ -84,8 +84,11 @@ def warn_deprecated(
     Args:
         subject: What is deprecated, phrased as it should read at the start of
             the sentence (e.g. ``"--debug"`` or ``"assert_valid()"``).
-        removal: Canonical ``X.Y.Z`` version the API is removed in. Selects the
-            per-version warning class via :func:`_warning_for_removal`.
+        removal: Canonical ``X.Y.Z`` version the API is removed in, or ``None``
+            when no removal is scheduled yet. A recognized version selects its
+            per-version warning class; ``None`` (or an unrecognized version)
+            uses the base :class:`ProteanDeprecationWarning` and omits the
+            "Will be removed" clause.
         alternative: An optional complete sentence telling the caller what to do
             instead (e.g. ``"Use --log-level DEBUG instead."``).
         stacklevel: Which frame the warning is attributed to, counted from the
@@ -105,11 +108,17 @@ def warn_deprecated(
     parts = [f"{subject} is deprecated."]
     if alternative:
         parts.append(alternative)
-    parts.append(f"Will be removed in v{removal}.")
+    if removal:
+        parts.append(f"Will be removed in v{removal}.")
 
+    category: type[ProteanDeprecationWarning] = (
+        _REMOVAL_WARNINGS.get(removal, ProteanDeprecationWarning)
+        if removal
+        else ProteanDeprecationWarning
+    )
     warnings.warn(
         " ".join(parts),
-        _REMOVAL_WARNINGS.get(removal, ProteanDeprecationWarning),
+        category,
         # +1 accounts for this helper's own frame so the caller's ``stacklevel``
         # has the same meaning it would when calling ``warnings.warn`` directly.
         stacklevel=stacklevel + 1,

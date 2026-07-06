@@ -214,6 +214,39 @@ class FulfillmentEventHandler(BaseEventHandler):
 **When to use:** Significant structural changes, renamed fields, changed
 semantics, new required fields without meaningful defaults.
 
+#### Marking the old event deprecated
+
+Once the aggregate raises the new event, mark the old one deprecated and point
+`superseded_by` at its replacement:
+
+```python
+@domain.event(
+    part_of=Order,
+    deprecated={"since": "0.16", "removal": "0.19"},
+    superseded_by=OrderPlacedV2,          # an Event class or its name as a string
+)
+class OrderPlaced(BaseEvent):
+    order_id = Identifier(required=True)
+    customer_id = Identifier(required=True)
+    items = List(required=True)
+    total = Float(required=True)
+```
+
+The old class stays registered so historical events keep deserializing, but
+two things now flag its continued use:
+
+- **Raising it warns.** If code still calls `raise_(OrderPlaced(...))`, Protean
+  emits a `ProteanDeprecationWarning` naming the successor. The warning fires
+  **once per event type**, not once per instance, so a hot path is nudged
+  without flooding the logs.
+- **`protean check` reports it.** The `DEPRECATED_ELEMENT` diagnostic names the
+  successor (`superseded by \`OrderPlacedV2\``), and `protean ir diff` treats
+  removing it before its `removal` version as a premature (breaking) removal.
+
+`superseded_by` is documentation-only: it accepts an Event class or a name
+string and is never resolved to a link, so pointing at an event in another
+bounded context is fine.
+
 ### Strategy 2: Upcasting on Read
 
 Transform old events to the new schema when they're read from the event store,

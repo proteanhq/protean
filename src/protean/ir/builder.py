@@ -591,6 +591,12 @@ class IRBuilder:
         if deprecated is not None:
             entry["deprecated"] = deprecated
 
+        superseded_by = getattr(cls.meta_, "superseded_by", None)
+        if superseded_by is not None:
+            entry["superseded_by"] = (
+                fqn(superseded_by) if isinstance(superseded_by, type) else superseded_by
+            )
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -1792,6 +1798,10 @@ class IRBuilder:
                 )
             else:
                 msg = f"`{name}` is deprecated since v{since}"
+
+            superseded_by = element.get("superseded_by")
+            if superseded_by:
+                msg += f"; superseded by `{superseded_by}`"
 
             self._diagnostics.append(
                 {
