@@ -273,6 +273,27 @@ class TestNoMatchingHandler:
         assert result is None
 
 
+class TestEventStoreNotConfigured:
+    """Guards that fire when the backing event store is None."""
+
+    def test_load_or_create_raises_without_event_store(self, test_domain):
+        # ``_load_or_create`` reads from the store; a None store must raise.
+        test_domain.event_store._event_store = None
+
+        with pytest.raises(ConfigurationError, match="Event store is not configured"):
+            OrderFulfillmentPM._load_or_create("order-1", is_start=True)
+
+    def test_persist_transition_raises_without_event_store(self, test_domain):
+        # Build a PM while the store is available, then drop the store and
+        # persist — exercising the guard in ``_persist_transition``.
+        pm = OrderFulfillmentPM._load_or_create("order-1", is_start=True)
+
+        test_domain.event_store._event_store = None
+
+        with pytest.raises(ConfigurationError, match="Event store is not configured"):
+            OrderFulfillmentPM._persist_transition(pm, "on_order")
+
+
 class TestAbstractProcessManager:
     def test_abstract_pm_cannot_be_instantiated(self, test_domain):
         """An abstract process manager should raise NotSupportedError on instantiation."""

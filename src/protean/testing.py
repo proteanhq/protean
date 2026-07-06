@@ -98,7 +98,7 @@ if TYPE_CHECKING:
     from protean.core.aggregate import BaseAggregate
     from protean.core.event import BaseEvent
     from protean.domain import Domain
-    from protean.port.event_store import CausationNode
+    from protean.port.event_store import BaseEventStore, CausationNode
 from protean.utils import Processing, fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -111,6 +111,36 @@ from protean.utils.eventing import (
 from protean.utils.globals import current_domain
 from protean.utils.reflection import _ID_FIELD_NAME
 from protean.utils.sync_dispatch import dispatch_events_sync
+
+
+def _event_store_of(domain: "Domain") -> "BaseEventStore":
+    """Return the domain's initialised event store, narrowing away ``None``.
+
+    The testing DSL always runs against a live, fully-initialised domain, so
+    ``domain.event_store.store`` is never ``None`` here. This helper makes that
+    invariant explicit for the type checker (and fails loudly if it is ever
+    violated).
+    """
+    store = domain.event_store.store
+    if store is None:  # pragma: no cover - defensive; store is always set here
+        raise RuntimeError("Event store is not initialised on the domain")
+    return store
+
+
+def _flatten_messages(
+    messages: dict[str, list[str]] | list[str] | str,
+) -> list[str]:
+    """Flatten a :class:`ProteanExceptionWithMessage.messages` value.
+
+    ``messages`` can be a ``{field: [msg, ...]}`` dict, a flat list of
+    messages, or a single string. Normalise all three into a flat
+    ``list[str]``.
+    """
+    if isinstance(messages, dict):
+        return [msg for msgs in messages.values() for msg in msgs]
+    if isinstance(messages, str):
+        return [messages]
+    return list(messages)
 
 
 def given(
@@ -299,6 +329,7 @@ class AggregateResult:
         Returns self for chaining.
         """
         domain = current_domain
+        store = _event_store_of(domain)
         self._processed = True
         self._rejection = None  # Reset for this command
 
@@ -318,7 +349,7 @@ class AggregateResult:
             # On rejection, load aggregate from event store to reflect
             # the state before the failed command
             if self._aggregate_id is not None:
-                self._aggregate = domain.event_store.store.load_aggregate(
+                self._aggregate = store.load_aggregate(
                     self._aggregate_cls, str(self._aggregate_id)
                 )
             self._new_events = EventLog([])
@@ -331,13 +362,11 @@ class AggregateResult:
         aggregate_id_str = str(self._aggregate_id)
 
         # Load aggregate from event store
-        self._aggregate = domain.event_store.store.load_aggregate(
-            self._aggregate_cls, aggregate_id_str
-        )
+        self._aggregate = store.load_aggregate(self._aggregate_cls, aggregate_id_str)
 
         # Read new events (those beyond previously seen events)
         stream = f"{self._aggregate_cls.meta_.stream_category}-{aggregate_id_str}"
-        all_messages = domain.event_store.store.read(stream)
+        all_messages = store.read(stream)
         new_events = [m.to_domain_object() for m in all_messages[self._event_count :]]
         self._new_events = EventLog(new_events)
         self._all_events.extend(new_events)
@@ -389,11 +418,7 @@ class AggregateResult:
         if self._rejection is None:
             return []
         if isinstance(self._rejection, ProteanExceptionWithMessage):
-            return [
-                msg
-                for messages in self._rejection.messages.values()
-                for msg in messages
-            ]
+            return _flatten_messages(self._rejection.messages)
         return [str(self._rejection)]
 
     @property
@@ -443,7 +468,7 @@ class AggregateResult:
 
         Returns the aggregate identifier.
         """
-        event_store = domain.event_store.store
+        event_store = _event_store_of(domain)
 
         # Reconstitute aggregate to discover its identity
         temp_aggregate = self._aggregate_cls.from_events(self._given_events)
@@ -597,7 +622,7 @@ def _events_for_correlation(domain: "Domain", correlation_id: str) -> list[Any]:
     ``EVENT`` messages (commands excluded) as reconstituted domain
     objects, ordered by ``global_position``.
     """
-    store = domain.event_store.store
+    store = _event_store_of(domain)
     group = store._load_correlation_group(correlation_id)
     group.sort(key=lambda raw: raw.get("global_position", 0))
 
@@ -890,7 +915,7 @@ class ProcessManagerResult:
             return
 
         stream_name = f"{self._pm_cls.meta_.stream_category}-{correlation_value}"
-        messages = current_domain.event_store.store.read(stream_name)
+        messages = _event_store_of(current_domain).read(stream_name)
 
         if messages:
             self._pm_instance = self._pm_cls._from_transitions(
@@ -1370,7 +1395,7 @@ def assert_invalid(
         operation()
     except ValidationError as exc:
         if message is not None:
-            flat_messages = [msg for msgs in exc.messages.values() for msg in msgs]
+            flat_messages = _flatten_messages(exc.messages)
             if not any(message in m for m in flat_messages):
                 raise AssertionError(
                     f"Expected validation message containing {message!r}, "
@@ -1403,7 +1428,7 @@ def assert_valid(operation: Callable[[], Any]) -> Any:
     try:
         return operation()
     except ValidationError as exc:
-        flat_messages = [msg for msgs in exc.messages.values() for msg in msgs]
+        flat_messages = _flatten_messages(exc.messages)
         raise AssertionError(
             f"Expected no ValidationError but got: {flat_messages}"
         ) from exc

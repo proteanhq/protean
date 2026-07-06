@@ -4,7 +4,7 @@ import logging
 from abc import ABCMeta, abstractmethod
 from enum import Flag, auto
 from importlib import import_module, metadata
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol, Type, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast, runtime_checkable
 
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils.query import RegisterLookupMixin
@@ -220,7 +220,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         }
     )
 
-    def __init__(self, name, domain, conn_info: dict):
+    def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
         """Initialize Provider with Connection/Adapter details"""
         self.name = name
         self.domain = domain
@@ -286,7 +286,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_connection(self) -> SessionProtocol:
+    def get_connection(self) -> Any:
         """Get the connection object for the repository.
 
         Must return an object satisfying :class:`SessionProtocol`.
@@ -308,13 +308,13 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_dao(self, entity_cls: Type, database_model_cls: Type) -> Any:
+    def get_dao(self, entity_cls: type[Any], database_model_cls: type[Any]) -> Any:
         """Return a DAO object configured with a live connection"""
 
     @abstractmethod
     def decorate_database_model_class(
-        self, entity_cls: Type, database_model_cls: Type
-    ) -> Type:
+        self, entity_cls: type[Any], database_model_cls: type[Any]
+    ) -> type[Any]:
         """Enhance a user-defined DatabaseModel class with adapter internals.
 
         Called when the user has defined a custom ``@domain.model`` for an
@@ -325,7 +325,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def construct_database_model_class(self, entity_cls: Type) -> Type:
+    def construct_database_model_class(self, entity_cls: type[Any]) -> type[Any]:
         """Dynamically build a DatabaseModel class for an entity.
 
         Called when no user-defined ``@domain.model`` exists for the entity.
@@ -372,7 +372,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """
         return {}
 
-    def owns(self, element_cls: Type) -> bool:
+    def owns(self, element_cls: type[Any]) -> bool:
         """Return whether this provider materializes a table/index for ``element_cls``.
 
         A single, positive gate for the "does this registered element get a
@@ -424,7 +424,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         # In multi-provider domains, only materialize elements owned by this
         # provider. Provider names are the unique keys of the provider registry,
         # so comparing names resolves ownership without indexing on ``None``.
-        return provider_name == self.name
+        return bool(provider_name == self.name)
 
     @abstractmethod
     def _data_reset(self) -> None:
@@ -492,7 +492,7 @@ class ProviderRegistry:
         logger.debug(f"Registered provider '{name}' -> {provider_class_path}")
 
     @classmethod
-    def get(cls, name: str) -> Type["BaseProvider"]:
+    def get(cls, name: str) -> type["BaseProvider"]:
         """Get a provider class by name.
 
         Args:
@@ -521,7 +521,7 @@ class ProviderRegistry:
         try:
             module_path, class_name = provider_path.rsplit(".", maxsplit=1)
             module = import_module(module_path)
-            provider_cls = getattr(module, class_name)
+            provider_cls = cast("type[BaseProvider]", getattr(module, class_name))
         except (ImportError, AttributeError) as e:
             raise ConfigurationError(
                 f"Failed to load provider '{name}' from '{provider_path}': {e}. "

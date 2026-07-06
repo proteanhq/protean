@@ -345,7 +345,7 @@ class CommandProcessor:
 
             # If asynchronous is not specified, use the command_processing setting from config
             if asynchronous is None:
-                asynchronous = (
+                asynchronous = bool(
                     domain.config["command_processing"] == Processing.ASYNC.value
                 )
 
@@ -408,7 +408,7 @@ class CommandProcessor:
             if will_handle_sync:
                 raise_if_expired(cmd_meta.headers, command_type, metrics)
 
-            position = domain.event_store.store.append(command_with_metadata)
+            position = domain._require_event_store().append(command_with_metadata)
 
             if will_handle_sync:
                 handler_class = self.handler_for(command)
@@ -537,14 +537,15 @@ class CommandProcessor:
 
             return position
 
-    def handler_for(self, command: Any) -> Optional[BaseCommandHandler]:
+    def handler_for(self, command: Any) -> Optional[type[BaseCommandHandler]]:
         """Return Command Handler for a specific command.
 
         Args:
             command: Command to process (instance of a ``@domain.command``-decorated class)
 
         Returns:
-            Optional[BaseCommandHandler]: Command Handler registered to process the command
+            Optional[type[BaseCommandHandler]]: Command Handler class registered to
+            process the command
         """
         return self._domain.event_store.command_handler_for(command)
 

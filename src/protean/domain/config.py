@@ -3,6 +3,8 @@ import os
 import re
 import warnings
 
+from typing import Any
+
 import tomllib
 
 from protean.exceptions import ConfigurationError
@@ -12,7 +14,7 @@ from protean.utils import IdentityStrategy, IdentityType, Processing
 logger = logging.getLogger(__name__)
 
 
-def _default_config():
+def _default_config() -> dict[str, Any]:
     """Return the default configuration for a Protean application.
 
     This is placed in a separate function because we want to be absolutely
@@ -234,17 +236,17 @@ def _default_config():
 class ConfigAttribute:
     """Makes an attribute forward to the config"""
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         self.__name__ = name
 
-    def __get__(self, obj, type=None):
+    def __get__(self, obj: Any, type: Any = None) -> Any:
         return obj.config[self.__name__]
 
-    def __set__(self, obj, value):
+    def __set__(self, obj: Any, value: Any) -> None:
         obj.config[self.__name__] = value
 
 
-class Config2(dict):
+class Config2(dict[str, Any]):
     ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
     def from_object(self, obj: object) -> None:
@@ -261,13 +263,15 @@ class Config2(dict):
                     self[key.lower()] = getattr(obj, key)
 
     @classmethod
-    def load_from_dict(cls, config: dict = _default_config()):
+    def load_from_dict(cls, config: dict[str, Any] | None = None) -> "Config2":
         """Load configuration from a dictionary."""
+        if config is None:
+            config = _default_config()
         return cls(**cls._normalize_config(config))
 
     @classmethod
-    def load_from_path(cls, path: str):
-        def find_config_file(directory: str):
+    def load_from_path(cls, path: str) -> "Config2":
+        def find_config_file(directory: str) -> str | None:
             config_files = [".domain.toml", "domain.toml", "pyproject.toml"]
             for config_file in config_files:
                 config_file_path = os.path.join(directory, config_file)
@@ -311,7 +315,7 @@ class Config2(dict):
         return cls(**config_dict)
 
     @classmethod
-    def _normalize_config(cls, config):
+    def _normalize_config(cls, config: dict[str, Any]) -> dict[str, Any]:
         """Normalize configuration values.
 
         This method accepts a dictionary and combines the values from the
@@ -336,7 +340,9 @@ class Config2(dict):
         return finalized_config
 
     @classmethod
-    def _deep_merge(cls, dict1: dict, dict2: dict):
+    def _deep_merge(
+        cls, dict1: dict[str, Any], dict2: dict[str, Any]
+    ) -> dict[str, Any]:
         result = dict1.copy()
         for key, value in dict2.items():
             if (
@@ -350,7 +356,7 @@ class Config2(dict):
         return result
 
     @classmethod
-    def _load_env_vars(cls, config: dict) -> dict:
+    def _load_env_vars(cls, config: dict[str, Any]) -> dict[str, Any]:
         """Replace environment variables in configuration dictionary.
 
         Args:
@@ -373,7 +379,7 @@ class Config2(dict):
         return config
 
     @classmethod
-    def _replace_env_var(cls, value):
+    def _replace_env_var(cls, value: str) -> str:
         """Replace environment variables in a string.
 
         Cases:

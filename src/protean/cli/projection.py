@@ -28,6 +28,7 @@ from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
 
 if TYPE_CHECKING:
+    from protean.core.projection import BaseProjection
     from protean.domain import Domain
 
 logger = get_logger(__name__)
@@ -36,7 +37,7 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Manage projections."""
 
 
@@ -85,14 +86,17 @@ def rebuild(
             _rebuild_all(derived_domain, batch_size)
 
 
-def _resolve_projection(domain: "Domain", projection_name: str):
+def _resolve_projection(
+    domain: "Domain", projection_name: str
+) -> "type[BaseProjection] | None":
     """Resolve a projection class by name from the domain registry.
 
     Returns the class or None (with error printed).
     """
     for _, record in domain.registry._elements[DomainObjects.PROJECTION.value].items():
-        if record.cls.__name__ == projection_name:
-            return record.cls
+        projection_cls: type[BaseProjection] = record.cls
+        if projection_cls.__name__ == projection_name:
+            return projection_cls
 
     print(f"Error: Projection '{projection_name}' not found in domain.")
     return None

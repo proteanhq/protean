@@ -26,7 +26,7 @@ class MessageDBStore(BaseEventStore):
     def __init__(self, domain: Domain, conn_info: dict[str, Any]) -> None:
         super().__init__("MessageDB", domain, conn_info)
 
-        self._client = None
+        self._client: MessageDB | None = None
         self._pool_kwargs: dict[str, Any] = {
             key: value for key, value in conn_info.items() if key in self._POOL_KEYS
         }

@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, cast
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
@@ -127,8 +127,11 @@ class OutboxProcessor(BaseSubscription):
 
         self.tick_count = 0
 
-        # Will be initialized in initialize() method
-        self.subscriber_name: Optional[str] = None
+        # ``subscriber_name`` is refined to the Outbox aggregate name in
+        # ``initialize()``; until then the base subscription lifecycle (which
+        # logs it before ``initialize()`` runs) reads this stable identifier,
+        # keeping the attribute a ``str`` as the base class declares.
+        self.subscriber_name: str = self.subscription_id
         self.broker: Optional[BaseBroker] = None
         self.outbox_repo: Optional[OutboxRepository] = None
 
@@ -358,14 +361,18 @@ class OutboxProcessor(BaseSubscription):
         # Start processing single message
         assert self.outbox_repo is not None, "Outbox repository not initialized"
 
-        stream_category = (
+        stream_category: str = (
             message.metadata_.domain.stream_category
-            if message.metadata_ and message.metadata_.domain
+            if message.metadata_
+            and message.metadata_.domain
+            and message.metadata_.domain.stream_category
             else "unknown"
         )
-        message_type = (
+        message_type: str = (
             message.metadata_.headers.type
-            if message.metadata_ and message.metadata_.headers
+            if message.metadata_
+            and message.metadata_.headers
+            and message.metadata_.headers.type
             else "unknown"
         )
 
@@ -531,11 +538,13 @@ class OutboxProcessor(BaseSubscription):
 
             # ``stream_category`` may legitimately be ``None`` here (message
             # without domain metadata); publishing to a ``None`` stream is
-            # intended, tested behavior. ``BaseBroker.publish`` is a public ABC
-            # typed ``stream: str``; widening it to accept ``None`` is a public
-            # signature change left queued for maintainer review, so the
-            # narrowing mismatch below is a known cross-file remainder.
-            broker_message_id = self.broker.publish(stream_category, message_dict)
+            # intended, tested behavior. ``BaseBroker.publish`` is typed
+            # ``stream: str`` and its body cannot accept ``None``; whether a
+            # None-stream publish is truly valid is queued for maintainer review
+            # (item [11]). Cast preserves the exact tested runtime behavior.
+            broker_message_id = self.broker.publish(
+                cast(str, stream_category), message_dict
+            )
 
             logger.debug(
                 "outbox.broker_published",
@@ -592,14 +601,18 @@ class OutboxProcessor(BaseSubscription):
         )
 
         # Emit trace event — distinguish internal from external
-        stream_category = (
+        stream_category: str = (
             message.metadata_.domain.stream_category
-            if message.metadata_ and message.metadata_.domain
+            if message.metadata_
+            and message.metadata_.domain
+            and message.metadata_.domain.stream_category
             else "unknown"
         )
-        message_type = (
+        message_type: str = (
             message.metadata_.headers.type
-            if message.metadata_ and message.metadata_.headers
+            if message.metadata_
+            and message.metadata_.headers
+            and message.metadata_.headers.type
             else "unknown"
         )
         trace_event = "outbox.external_failed" if self.is_external else "outbox.failed"

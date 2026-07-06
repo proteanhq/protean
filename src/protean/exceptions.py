@@ -51,7 +51,7 @@ class ProteanException(Exception):
 class ProteanExceptionWithMessage(ProteanException):
     def __init__(
         self,
-        messages: dict[str, list[str]],
+        messages: "dict[str, list[str]] | list[str] | str",
         traceback: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
@@ -63,7 +63,9 @@ class ProteanExceptionWithMessage(ProteanException):
         super().__init__(**kwargs)
 
     def __str__(self) -> str:
-        return f"{dict(self.messages)}"
+        if isinstance(self.messages, dict):
+            return f"{dict(self.messages)}"
+        return f"{self.messages}"
 
     def __reduce__(self) -> tuple[Any, tuple[Any]]:
         return (ProteanExceptionWithMessage, (self.messages,))

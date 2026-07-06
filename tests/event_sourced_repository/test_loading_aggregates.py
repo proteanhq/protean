@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
-from protean.exceptions import ObjectNotFoundError
+from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
 from protean.fields import Identifier, String
 from protean.fields.basic import Boolean
 from protean.utils.globals import current_domain
@@ -117,6 +117,15 @@ def test_fetching_non_existing_aggregates(test_domain):
 
     assert exc is not None
     assert exc.value.args[0] == "`User` object with identifier foobar does not exist."
+
+
+@pytest.mark.eventstore
+def test_get_raises_when_event_store_not_configured(test_domain):
+    # Force the backing store to None to exercise the guard in ``get``.
+    test_domain.event_store._event_store = None
+
+    with pytest.raises(IncorrectUsageError, match="Event store is not configured"):
+        current_domain.repository_for(User).get("foobar")
 
 
 @pytest.mark.eventstore

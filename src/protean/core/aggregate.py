@@ -355,6 +355,9 @@ class BaseAggregate(BaseEntity):
         # field carries ``get_shadow_fields``; narrow the generic ``Field`` type.
         for vo_field in value_object_fields(cls).values():
             for _, shadow_field in cast(ValueObject, vo_field).get_shadow_fields():
+                # ``attribute_name`` is ``str | None`` on the base field but is
+                # always resolved to a concrete name by reconstitution time.
+                assert shadow_field.attribute_name is not None
                 aggregate.__dict__[shadow_field.attribute_name] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Initialize Reference shadow fields ---
@@ -362,6 +365,9 @@ class BaseAggregate(BaseEntity):
         # carries ``get_shadow_field``; narrow the generic ``Field`` type.
         for ref_field in reference_fields(cls).values():
             shadow_name, _ = cast(Reference, ref_field).get_shadow_field()
+            # ``shadow_name`` is ``str | None`` but always resolved for a bound
+            # reference field, so this assert never fires at runtime.
+            assert shadow_name is not None  # pragma: no cover
             aggregate.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Setup association pseudo-methods (add_*, remove_*, etc.) ---
@@ -493,7 +499,11 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
             continue
 
         if isinstance(value, HasOne):
-            # Recursively convert entity to VO
+            # Recursively convert entity to VO. ``to_cls`` is typed ``str | type``
+            # because associations carry a string reference during registration;
+            # by the time fact events are built (domain init, post-resolution) it
+            # is always the resolved target class.
+            assert not isinstance(value.to_cls, str)
             result = element_to_fact_event(value.to_cls)
             vo_descriptor = (
                 result
@@ -506,7 +516,9 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
             association_descriptors[key] = vo_descriptor
 
         elif isinstance(value, HasMany):
-            # Recursively convert entity to list of VOs
+            # Recursively convert entity to list of VOs. ``to_cls`` is resolved to
+            # the target class by the time fact events are built (see above).
+            assert not isinstance(value.to_cls, str)
             result = element_to_fact_event(value.to_cls)
             vo_descriptor = (
                 result
@@ -522,7 +534,10 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
             association_descriptors[key] = list_descriptor
 
         elif isinstance(value, ValueObject):
-            # Legacy-style VO descriptor in a Pydantic element
+            # Legacy-style VO descriptor in a Pydantic element. ``value_object_cls``
+            # is typed ``type[BaseValueObject] | str`` for the same registration-time
+            # reason; it is the resolved class at fact-event build time.
+            assert not isinstance(value.value_object_cls, str)
             vo_cls = value.value_object_cls
             annotations[key] = Optional[vo_cls]
             namespace[key] = None

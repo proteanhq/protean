@@ -386,7 +386,11 @@ class RedisBroker(BaseBroker):
         the pending list and cannot be ACKed again.
         """
         try:
-            result = self._client.xack(stream, consumer_group, identifier)
+            # redis-stubs leaves xack without type annotations, so mypy --strict
+            # flags the call as untyped. Stub gap, not a defect in this code.
+            result = self._client.xack(  # type: ignore[no-untyped-call]
+                stream, consumer_group, identifier
+            )
             # result is the number of messages successfully acknowledged
             # 0 means the message was not pending (already ACKed or doesn't exist)
             # 1 means the message was successfully acknowledged
@@ -646,7 +650,10 @@ class RedisBroker(BaseBroker):
 
         removed = 0
         try:
-            consumers_info = self._client.xinfo_consumers(stream, group_name)
+            # redis-stubs leaves xinfo_consumers untyped (stub gap, not our bug).
+            consumers_info = self._client.xinfo_consumers(  # type: ignore[no-untyped-call]
+                stream, group_name
+            )
             for c in consumers_info:
                 if not isinstance(c, dict):
                     continue
@@ -668,7 +675,10 @@ class RedisBroker(BaseBroker):
                     continue
 
                 try:
-                    self._client.xgroup_delconsumer(stream, group_name, name)
+                    # redis-stubs leaves xgroup_delconsumer untyped (stub gap).
+                    self._client.xgroup_delconsumer(  # type: ignore[no-untyped-call]
+                        stream, group_name, name
+                    )
                     removed += 1
                     logger.debug(f"Removed stale consumer {name} from {group_name}")
                 except Exception as e:
@@ -728,7 +738,8 @@ class RedisBroker(BaseBroker):
     def _get_stream_info(self, stream: str) -> Optional[dict[str, Any]]:
         """Get info for a specific stream"""
         try:
-            groups_info = self._client.xinfo_groups(stream)
+            # redis-stubs leaves xinfo_groups untyped (stub gap, not our bug).
+            groups_info = self._client.xinfo_groups(stream)  # type: ignore[no-untyped-call]
             stream_info: dict[str, Any] = {}
 
             for group_info in groups_info:
@@ -761,7 +772,10 @@ class RedisBroker(BaseBroker):
             if group_name is None:
                 return None
 
-            consumers_info = self._client.xinfo_consumers(stream, group_name)
+            # redis-stubs leaves xinfo_consumers untyped (stub gap, not our bug).
+            consumers_info = self._client.xinfo_consumers(  # type: ignore[no-untyped-call]
+                stream, group_name
+            )
             consumers = self._extract_consumers_data(consumers_info)
 
             return (
@@ -857,7 +871,8 @@ class RedisBroker(BaseBroker):
 
                     # Get pending messages for all consumer groups in this stream
                     try:
-                        groups_info = self._client.xinfo_groups(stream)
+                        # redis-stubs leaves xinfo_groups untyped (stub gap).
+                        groups_info = self._client.xinfo_groups(stream)  # type: ignore[no-untyped-call]
                         for group_info in groups_info:
                             if isinstance(group_info, dict):
                                 pending_count = self._get_field_value(

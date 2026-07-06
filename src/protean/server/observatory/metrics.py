@@ -47,7 +47,7 @@ Plus OTel counters and histograms when telemetry is active:
 
 import logging
 import time
-from typing import Any, Callable, List
+from typing import TYPE_CHECKING, Any, Callable, List, TypeVar, cast
 
 from fastapi import Response
 
@@ -60,7 +60,13 @@ from protean.utils.telemetry import (
     get_prometheus_text,
 )
 
+if TYPE_CHECKING:
+    from protean.server.projection_status import ProjectionStatus
+    from protean.server.subscription_status import SubscriptionStatus
+
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 # ---------------------------------------------------------------------------
 # Per-scrape cache
@@ -83,14 +89,14 @@ class _ScrapeCache:
         self._ttl = ttl_seconds
         self._data: dict[str, tuple[float, Any]] = {}
 
-    def get(self, key: str, collector: Callable[[], Any]) -> Any:
+    def get(self, key: str, collector: Callable[[], _T]) -> _T:
         """Return cached value or call *collector* and cache it."""
         now = time.monotonic()
         entry = self._data.get(key)
         if entry is not None:
             ts, value = entry
             if now - ts < self._ttl:
-                return value
+                return cast("_T", value)
         value = collector()
         self._data[key] = (now, value)
         return value
@@ -108,17 +114,19 @@ _scrape_cache = _ScrapeCache()
 # ---------------------------------------------------------------------------
 
 
-def _collect_subscription_statuses(domains: List[Domain]) -> list:
+def _collect_subscription_statuses(
+    domains: List[Domain],
+) -> list[tuple[Domain, "SubscriptionStatus"]]:
     """Collect subscription statuses from all domains.
 
     Results are cached for the duration of a single scrape cycle so
     multiple gauge callbacks reuse the same data.
     """
 
-    def _do_collect() -> list:
+    def _do_collect() -> list[tuple[Domain, "SubscriptionStatus"]]:
         from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
 
-        results: list = []
+        results: list[tuple[Domain, "SubscriptionStatus"]] = []
         for domain in domains:
             try:
                 statuses = collect_subscription_statuses(domain)
@@ -135,17 +143,19 @@ def _collect_subscription_statuses(domains: List[Domain]) -> list:
     return _scrape_cache.get("subscription_statuses", _do_collect)
 
 
-def _collect_projection_statuses(domains: List[Domain]) -> list:
+def _collect_projection_statuses(
+    domains: List[Domain],
+) -> list[tuple[Domain, "ProjectionStatus"]]:
     """Collect projection statuses from all domains.
 
     Cached per scrape cycle so the gauge callback and any other consumer reuse
     the same data. Returns ``(domain, ProjectionStatus)`` tuples.
     """
 
-    def _do_collect() -> list:
+    def _do_collect() -> list[tuple[Domain, "ProjectionStatus"]]:
         from protean.server.projection_status import collect_projection_statuses  # noqa: PLC0415
 
-        results: list = []
+        results: list[tuple[Domain, "ProjectionStatus"]] = []
         for domain in domains:
             try:
                 # Scrape path only reads staleness; skip the row COUNT queries.
@@ -162,14 +172,16 @@ def _collect_projection_statuses(domains: List[Domain]) -> list:
     return _scrape_cache.get("projection_statuses", _do_collect)
 
 
-def _collect_pool_stats(domains: List[Domain]) -> list:
+def _collect_pool_stats(
+    domains: List[Domain],
+) -> list[tuple[str, str, dict[str, int]]]:
     """Collect connection pool statistics from all providers across domains.
 
     Returns a list of ``(provider_name, database_type, stats_dict)`` tuples.
     """
 
-    def _do_collect() -> list:
-        results: list = []
+    def _do_collect() -> list[tuple[str, str, dict[str, int]]]:
+        results: list[tuple[str, str, dict[str, int]]] = []
         for domain in domains:
             try:
                 with domain.domain_context():
@@ -191,14 +203,16 @@ def _collect_pool_stats(domains: List[Domain]) -> list:
     return _scrape_cache.get("pool_stats", _do_collect)
 
 
-def _collect_broker_pool_stats(domains: List[Domain]) -> list:
+def _collect_broker_pool_stats(
+    domains: List[Domain],
+) -> list[tuple[str, int, int, int]]:
     """Collect broker connection pool statistics.
 
     Returns a list of ``(broker_name, active, available, max_conn)`` tuples.
     """
 
-    def _do_collect() -> list:
-        results: list = []
+    def _do_collect() -> list[tuple[str, int, int, int]]:
+        results: list[tuple[str, int, int, int]] = []
         for domain in domains:
             try:
                 with domain.domain_context():
@@ -264,8 +278,8 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     meter = get_meter(target_domain, name="protean.infrastructure")
 
     # --- Outbox gauges ---
-    def _outbox_callback(_options):
-        observations = []
+    def _outbox_callback(_options: Any) -> list[Any]:
+        observations: list[Any] = []
         for domain in domains:
             try:
                 with domain.domain_context():
@@ -291,7 +305,7 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     )
 
     # --- Broker gauges ---
-    def _broker_up_callback(_options):
+    def _broker_up_callback(_options: Any) -> list[Any]:
         try:
             with target_domain.domain_context():
                 broker = target_domain.brokers.get("default")
@@ -306,7 +320,7 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
             logger.debug("Gauge callback: broker_up query failed: %s", exc)
         return [create_observation(0)]
 
-    def _broker_memory_callback(_options):
+    def _broker_memory_callback(_options: Any) -> list[Any]:
         try:
             with target_domain.domain_context():
                 broker = target_domain.brokers.get("default")
@@ -318,7 +332,7 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
             logger.debug("Gauge callback: broker_memory query failed: %s", exc)
         return [create_observation(0)]
 
-    def _broker_clients_callback(_options):
+    def _broker_clients_callback(_options: Any) -> list[Any]:
         try:
             with target_domain.domain_context():
                 broker = target_domain.brokers.get("default")
@@ -330,7 +344,7 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
             logger.debug("Gauge callback: broker_clients query failed: %s", exc)
         return [create_observation(0)]
 
-    def _broker_ops_callback(_options):
+    def _broker_ops_callback(_options: Any) -> list[Any]:
         try:
             with target_domain.domain_context():
                 broker = target_domain.brokers.get("default")
@@ -366,9 +380,11 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     )
 
     # --- Subscription gauges (shared collection) ---
-    def _make_subscription_callback(field: str, transform=None):
-        def callback(_options):
-            observations = []
+    def _make_subscription_callback(
+        field: str, transform: Callable[[Any], Any] | None = None
+    ) -> Callable[[Any], list[Any]]:
+        def callback(_options: Any) -> list[Any]:
+            observations: list[Any] = []
             for domain, s in _collect_subscription_statuses(domains):
                 attrs = {
                     "domain": domain.name,
@@ -418,9 +434,9 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
         )
 
     # --- Database connection pool gauges ---
-    def _make_pool_callback(stat_key: str):
-        def callback(_options):
-            observations = []
+    def _make_pool_callback(stat_key: str) -> Callable[[Any], list[Any]]:
+        def callback(_options: Any) -> list[Any]:
+            observations: list[Any] = []
             for name, db_type, stats in _collect_pool_stats(domains):
                 attrs = {"provider_name": name, "database_type": db_type}
                 observations.append(create_observation(stats.get(stat_key, 0), attrs))
@@ -446,8 +462,8 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
         )
 
     # --- Broker connection pool gauges ---
-    def _broker_pool_active_callback(_options):
-        observations = []
+    def _broker_pool_active_callback(_options: Any) -> list[Any]:
+        observations: list[Any] = []
         for name, active, _available, _max_conn in _collect_broker_pool_stats(domains):
             observations.append(create_observation(active, {"broker_name": name}))
         return observations
@@ -460,8 +476,8 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
     )
 
     # --- Projection staleness gauge (shared collection) ---
-    def _projection_staleness_callback(_options):
-        observations = []
+    def _projection_staleness_callback(_options: Any) -> list[Any]:
+        observations: list[Any] = []
         for domain, p in _collect_projection_statuses(domains):
             if p.staleness_seconds is None:
                 continue
@@ -662,7 +678,12 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 
     # --- Per-consumer metrics (via XINFO CONSUMERS) ---
     try:
-        from protean.server.observatory.api import _discover_streams, _get_redis  # noqa: PLC0415
+        from protean.server.observatory.api import (  # noqa: PLC0415
+            _discover_streams,
+            _get_redis,
+            _xinfo_consumers,
+            _xinfo_groups,
+        )
 
         redis_conn = _get_redis(domains)
         if redis_conn:
@@ -679,7 +700,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 
             for stream_name in _discover_streams(redis_conn):
                 try:
-                    groups = redis_conn.xinfo_groups(stream_name)
+                    groups = _xinfo_groups(redis_conn, stream_name)
                     for grp in groups:
                         if not isinstance(grp, dict):
                             continue
@@ -690,8 +711,8 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
                             continue
 
                         try:
-                            consumers_info = redis_conn.xinfo_consumers(
-                                stream_name, gname
+                            consumers_info = _xinfo_consumers(
+                                redis_conn, stream_name, gname
                             )
                             for c in consumers_info:
                                 if not isinstance(c, dict):
@@ -784,7 +805,9 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def create_metrics_endpoint(domains: List[Domain]):
+def create_metrics_endpoint(
+    domains: List[Domain],
+) -> Callable[[], Any]:
     """Create the Prometheus metrics endpoint function.
 
     When OTel telemetry is enabled on at least one domain **and** the
@@ -803,7 +826,7 @@ def create_metrics_endpoint(domains: List[Domain]):
 
     gauges_attempted = False
 
-    async def metrics():
+    async def metrics() -> Response:
         """Prometheus text exposition format metrics."""
         nonlocal gauges_attempted
 

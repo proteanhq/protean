@@ -21,6 +21,7 @@ Exit codes:
 """
 
 import json
+from typing import Any
 
 import typer
 from rich import print
@@ -136,7 +137,7 @@ def check(
         raise typer.Exit(code=2)
 
 
-def _print_quiet(result: dict) -> None:
+def _print_quiet(result: dict[str, Any]) -> None:
     """Print counts-only output for CI scripts."""
     counts = result["counts"]
     status = result["status"]
@@ -146,7 +147,7 @@ def _print_quiet(result: dict) -> None:
     )
 
 
-def _print_rich(result: dict) -> None:
+def _print_rich(result: dict[str, Any]) -> None:
     """Print a rich-formatted check report to the terminal."""
     domain_name = result["domain"]
     status = result["status"]

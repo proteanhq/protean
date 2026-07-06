@@ -36,7 +36,7 @@ def observatory(
         str, typer.Option(help="Observatory title")
     ] = "Protean Observatory",
     debug: Annotated[Optional[bool], typer.Option(help="Enable debug logging")] = False,
-):
+) -> None:
     """Run the Observatory observability dashboard."""
     from protean.server.observatory import Observatory  # noqa: PLC0415
 

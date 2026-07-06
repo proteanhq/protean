@@ -175,7 +175,11 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             if identifier in identity_map:
                 return cast(BaseAggregate, identity_map[identifier])
 
-        aggregate = self._domain.event_store.store.load_aggregate(
+        store = self._domain.event_store.store
+        if store is None:
+            raise IncorrectUsageError("Event store is not configured")
+
+        aggregate = store.load_aggregate(
             self.meta_.part_of,
             identifier,
             at_version=at_version,

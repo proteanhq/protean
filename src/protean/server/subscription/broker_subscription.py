@@ -6,7 +6,7 @@ import socket
 import time
 
 from datetime import datetime, timezone
-from typing import Dict, Type
+from typing import TYPE_CHECKING, Any
 
 from protean.core.subscriber import BaseSubscriber
 from protean.port.broker import BaseBroker
@@ -14,6 +14,9 @@ from protean.utils import fqn
 from protean.utils.telemetry import get_domain_metrics
 
 from . import BaseSubscription
+
+if TYPE_CHECKING:
+    from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +60,12 @@ class BrokerSubscription(BaseSubscription):
 
     def __init__(
         self,
-        engine,
-        broker,
+        engine: "Engine",
+        broker: BaseBroker,
         stream_name: str,
-        handler: Type[BaseSubscriber],
+        handler: type[BaseSubscriber],
         messages_per_tick: int = 10,
-        tick_interval: int = 1,
+        tick_interval: float = 1,
         max_retries: int | None = None,
         retry_delay_seconds: float | None = None,
         enable_dlq: bool | None = None,
@@ -125,9 +128,9 @@ class BrokerSubscription(BaseSubscription):
         )
 
         # In-memory retry tracking (message identifier -> count)
-        self.retry_counts: Dict[str, int] = {}
+        self.retry_counts: dict[str, int] = {}
 
-    async def get_next_batch_of_messages(self):
+    async def get_next_batch_of_messages(self) -> list[Any]:
         """
         Get the next batch of messages to process.
 
@@ -145,7 +148,7 @@ class BrokerSubscription(BaseSubscription):
 
         return messages
 
-    async def process_batch(self, messages: list[dict]):
+    async def process_batch(self, messages: list[tuple[str, dict[str, Any]]]) -> int:
         """
         Process a batch of messages.
 
@@ -214,7 +217,9 @@ class BrokerSubscription(BaseSubscription):
         self.retry_counts[identifier] = self.retry_counts.get(identifier, 0) + 1
         return self.retry_counts[identifier]
 
-    async def _handle_failed_message(self, identifier: str, payload: dict) -> None:
+    async def _handle_failed_message(
+        self, identifier: str, payload: dict[str, Any]
+    ) -> None:
         """Handle a message that failed processing.
 
         Increments the retry count and either retries (NACK) or exhausts
@@ -284,7 +289,7 @@ class BrokerSubscription(BaseSubscription):
                 f"[{self.subscriber_class_name}] Failed to NACK message {identifier}"
             )
 
-    async def _exhaust_retries(self, identifier: str, payload: dict) -> None:
+    async def _exhaust_retries(self, identifier: str, payload: dict[str, Any]) -> None:
         """Handle a message that has exhausted all retry attempts.
 
         Moves the message to the DLQ (if enabled), ACKs it from the original
@@ -309,7 +314,7 @@ class BrokerSubscription(BaseSubscription):
         # Clear retry count
         self.retry_counts.pop(identifier, None)
 
-    async def _move_to_dlq(self, identifier: str, payload: dict) -> None:
+    async def _move_to_dlq(self, identifier: str, payload: dict[str, Any]) -> None:
         """Move a failed message to the dead letter queue.
 
         Publishes the message to the DLQ stream with enriched metadata
@@ -363,7 +368,9 @@ class BrokerSubscription(BaseSubscription):
                 f"{identifier} to DLQ: {e}"
             )
 
-    def _create_dlq_message(self, identifier: str, payload: dict) -> dict:
+    def _create_dlq_message(
+        self, identifier: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         """Create a DLQ message with failure metadata.
 
         Preserves the original payload and adds a ``_dlq_metadata`` dict

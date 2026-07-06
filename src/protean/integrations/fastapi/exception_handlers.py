@@ -58,35 +58,41 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(InvalidDataError)
     async def validation_error_handler(
         request: Request, exc: Union[ValidationError, InvalidDataError]
-    ):
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=400,
             content=_error_body(exc.messages, _get_correlation_id()),
         )
 
     @app.exception_handler(ValueError)
-    async def value_error_handler(request: Request, exc: ValueError):
+    async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
         return JSONResponse(
             status_code=400,
             content=_error_body(str(exc), _get_correlation_id()),
         )
 
     @app.exception_handler(ObjectNotFoundError)
-    async def not_found_handler(request: Request, exc: ObjectNotFoundError):
+    async def not_found_handler(
+        request: Request, exc: ObjectNotFoundError
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=404,
             content=_error_body(str(exc), _get_correlation_id()),
         )
 
     @app.exception_handler(InvalidStateError)
-    async def invalid_state_handler(request: Request, exc: InvalidStateError):
+    async def invalid_state_handler(
+        request: Request, exc: InvalidStateError
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=409,
             content=_error_body(str(exc), _get_correlation_id()),
         )
 
     @app.exception_handler(InvalidOperationError)
-    async def invalid_operation_handler(request: Request, exc: InvalidOperationError):
+    async def invalid_operation_handler(
+        request: Request, exc: InvalidOperationError
+    ) -> JSONResponse:
         return JSONResponse(
             status_code=422,
             content=_error_body(str(exc), _get_correlation_id()),

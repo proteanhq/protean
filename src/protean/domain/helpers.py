@@ -4,7 +4,7 @@ import os
 logger = logging.getLogger(__name__)
 
 
-def get_env():
+def get_env() -> str:
     """Get the environment the app is running in, indicated by the
     :envvar:`PROTEAN_ENV` environment variable. The default is
     ``'production'``.
@@ -12,7 +12,7 @@ def get_env():
     return os.environ.get("PROTEAN_ENV") or "production"
 
 
-def get_debug_flag():
+def get_debug_flag() -> bool:
     """Get whether debug mode should be enabled for the app, indicated
     by the :envvar:`PROTEAN_DEBUG` environment variable. The default is
     ``True`` if :func:`.get_env` returns ``'development'``, or ``False``

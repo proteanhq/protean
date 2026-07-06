@@ -42,13 +42,18 @@ from protean.ir.config import load_config
 from protean.ir.constants import canonical_ir_json
 from protean.ir.diff import classify_changes, diff_ir
 from protean.ir.git import GitError
-from protean.ir.staleness import StalenessStatus, check_staleness, load_stored_ir
+from protean.ir.staleness import (
+    StalenessResult,
+    StalenessStatus,
+    check_staleness,
+    load_stored_ir,
+)
 
 app = typer.Typer(no_args_is_help=True)
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Inspect the domain's Intermediate Representation (IR)."""
 
 
@@ -557,7 +562,7 @@ def check(
     raise typer.Exit(code=_exit_codes[result.status])
 
 
-def _print_check_text(result: Any, protean_dir: str = ".protean") -> None:
+def _print_check_text(result: StalenessResult, protean_dir: str = ".protean") -> None:
     """Print a human-readable staleness check result."""
     if result.status == StalenessStatus.FRESH:
         print("[green]IR is fresh.[/green]")
@@ -586,7 +591,7 @@ def _print_check_text(result: Any, protean_dir: str = ".protean") -> None:
         )
 
 
-def _print_summary(ir: dict) -> None:
+def _print_summary(ir: dict[str, Any]) -> None:
     """Print a human-readable summary of the IR."""
     print(f"\n[bold]Domain:[/bold] {ir['domain']['name']}")
     print(f"[bold]IR Version:[/bold] {ir['ir_version']}")

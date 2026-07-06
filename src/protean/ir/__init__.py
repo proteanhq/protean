@@ -38,7 +38,10 @@ EXAMPLES_DIR = _IR_DIR / "examples"
 
 def load_schema() -> dict[str, Any]:
     """Load and return the IR JSON Schema as a Python dict."""
-    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    # json.loads is untyped (returns Any); annotate the local to hold the
+    # declared return type.
+    schema: dict[str, Any] = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    return schema
 
 
 # Deferred imports to avoid circular dependencies

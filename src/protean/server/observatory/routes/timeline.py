@@ -62,7 +62,7 @@ def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
             # doesn't work because each domain creates its own store instance.
             store_key = (
                 store.conn_info.get("database_uri", "")
-                if hasattr(store, "conn_info")
+                if store is not None and hasattr(store, "conn_info")
                 else ""
             )
             if not store_key:
@@ -153,7 +153,8 @@ def _extract_message_id(msg: dict[str, Any]) -> str | None:
     headers = metadata.get("headers")
     if not headers or not isinstance(headers, dict):
         return None
-    return headers.get("id")
+    message_id: str | None = headers.get("id")
+    return message_id
 
 
 def _extract_stream_category(msg: dict[str, Any]) -> str:
@@ -162,11 +163,11 @@ def _extract_stream_category(msg: dict[str, Any]) -> str:
     if isinstance(metadata, dict):
         domain_meta = metadata.get("domain", {})
         if isinstance(domain_meta, dict):
-            cat = domain_meta.get("stream_category")
+            cat: str | None = domain_meta.get("stream_category")
             if cat:
                 return cat
 
-    stream = msg.get("stream_name", "")
+    stream: str = msg.get("stream_name", "")
     if stream:
         category, _, _ = stream.partition("-")
         return category
@@ -190,7 +191,7 @@ def _extract_event_type(msg: dict[str, Any]) -> str | None:
 
 def _extract_aggregate_id(msg: dict[str, Any]) -> str | None:
     """Extract the aggregate ID from the stream name (part after '-')."""
-    stream = msg.get("stream_name", "")
+    stream: str = msg.get("stream_name", "")
     if not stream:
         metadata = msg.get("metadata", {})
         if isinstance(metadata, dict):
@@ -227,6 +228,8 @@ def collect_all_events(
         try:
             with domain.domain_context():
                 store = domain.event_store.store
+                if store is None:
+                    continue
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
 
                 for msg in raw_messages:
@@ -300,6 +303,8 @@ def find_event_by_id(domains: list[Domain], message_id: str) -> dict[str, Any] |
         try:
             with domain.domain_context():
                 store = domain.event_store.store
+                if store is None:
+                    continue
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
 
                 for msg in raw_messages:
@@ -328,6 +333,8 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
         try:
             with domain.domain_context():
                 store = domain.event_store.store
+                if store is None:
+                    continue
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
 
                 for msg in raw_messages:
@@ -343,23 +350,22 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
 
                     raw_time = msg.get("time")
                     if raw_time:
+                        raw_time_str: str
                         if isinstance(raw_time, datetime):
                             msg_dt = raw_time
+                            raw_time_str = raw_time.isoformat()
                         elif isinstance(raw_time, str):
                             try:
                                 msg_dt = datetime.fromisoformat(raw_time)
                             except (ValueError, TypeError):
                                 continue
+                            raw_time_str = raw_time
                         else:
                             continue
 
                         if last_event_datetime is None or msg_dt > last_event_datetime:
                             last_event_datetime = msg_dt
-                            last_event_time = (
-                                raw_time.isoformat()
-                                if hasattr(raw_time, "isoformat")
-                                else str(raw_time)
-                            )
+                            last_event_time = raw_time_str
 
                         if (
                             first_event_datetime is None
@@ -523,12 +529,16 @@ def _load_traces_for_correlation(
     """
     traces: dict[str, dict[str, Any]] = {}
 
+    redis_conn: Any = None
     for d in domains:
         try:
             with d.domain_context():
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
-                    redis_conn = broker.redis_instance
+                    # ``redis_instance`` is specific to the Redis broker adapters
+                    # and is not part of the BaseBroker contract; access it
+                    # dynamically after the ``hasattr`` guard.
+                    redis_conn = getattr(broker, "redis_instance")
                     break
         except Exception:
             continue
@@ -620,6 +630,8 @@ def build_correlation_response(
         try:
             with domain.domain_context():
                 store = domain.event_store.store
+                if store is None:
+                    continue
                 group = store._load_correlation_group(correlation_id)
                 if not group:
                     continue
@@ -679,6 +691,8 @@ def collect_aggregate_history(
         try:
             with domain.domain_context():
                 store = domain.event_store.store
+                if store is None:
+                    continue
                 raw_messages = store._read(stream_name, no_of_messages=1_000_000)
                 if not raw_messages:
                     continue
@@ -720,7 +734,8 @@ def _extract_correlation_id(msg: dict[str, Any]) -> str | None:
     domain_meta = metadata.get("domain")
     if not domain_meta or not isinstance(domain_meta, dict):
         return None
-    return domain_meta.get("correlation_id")
+    correlation_id: str | None = domain_meta.get("correlation_id")
+    return correlation_id
 
 
 def _group_by_correlation(
@@ -738,6 +753,8 @@ def _group_by_correlation(
         try:
             with domain.domain_context():
                 store = domain.event_store.store
+                if store is None:
+                    continue
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
 
                 for msg in raw_messages:

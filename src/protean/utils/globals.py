@@ -50,8 +50,15 @@ def _find_uow() -> "UnitOfWork":
 
 
 # context locals
-_domain_context_stack = LocalStack()
-_uow_context_stack = LocalStack()
+# ``mypy`` resolves the obsolete ``types-Werkzeug`` stub package (obsolete since
+# werkzeug 2.0, which ships inline ``py.typed``), whose ``LocalStack.__init__`` is
+# untyped and non-generic. That produces a spurious ``no-untyped-call`` for a
+# source that is genuinely typed upstream, so we cast the class to ``Any`` at the
+# construction site. The explicit ``LocalStack`` annotations preserve the type for
+# downstream ``.top``/``.push`` access; pyright (which reads the inline types) is
+# unaffected.
+_domain_context_stack: LocalStack = cast("Any", LocalStack)()
+_uow_context_stack: LocalStack = cast("Any", LocalStack)()
 current_domain: "Domain" = LocalProxy(_find_domain)  # type: ignore  # noqa: F821
 current_uow: "UnitOfWork" = LocalProxy(_find_uow)  # type: ignore  # noqa: F821
 # ``g`` is a request-scoped scratch namespace (Werkzeug-style) that intentionally

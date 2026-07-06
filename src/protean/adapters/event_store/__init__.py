@@ -27,17 +27,20 @@ EVENT_STORE_PROVIDERS = {
 
 
 class EventStore:
-    def __init__(self, domain):
+    def __init__(self, domain: "Domain") -> None:
         self.domain: "Domain" = domain
-        self._event_store: "BaseEventStore" = None
-        self._event_streams: DefaultDict[str, Set[BaseEventHandler]] = defaultdict(set)
-        self._command_streams: DefaultDict[str, Set[BaseCommandHandler]] = defaultdict(
-            set
+        self._event_store: Optional["BaseEventStore"] = None
+        # These hold handler/projector CLASSES (record.cls), not instances.
+        self._event_streams: DefaultDict[str, Set[type[BaseEventHandler]]] = (
+            defaultdict(set)
         )
-        self._projectors: DefaultDict[str, Set[BaseProjector]] = defaultdict(set)
+        self._command_streams: DefaultDict[str, Set[type[BaseCommandHandler]]] = (
+            defaultdict(set)
+        )
+        self._projectors: DefaultDict[str, Set[type[BaseProjector]]] = defaultdict(set)
 
     @property
-    def store(self):
+    def store(self) -> Optional["BaseEventStore"]:
         return self._event_store
 
     def close(self) -> None:
@@ -64,7 +67,7 @@ class EventStore:
             importlib.import_module(event_store_module), event_store_class
         )
 
-        store = event_store_cls(self.domain, configured_event_store)
+        store: "BaseEventStore" = event_store_cls(self.domain, configured_event_store)
 
         return store
 
@@ -86,7 +89,7 @@ class EventStore:
         self._initialize_event_streams()
         self._initialize_command_streams()
 
-    def _initialize_event_streams(self):
+    def _initialize_event_streams(self) -> None:
         for _, record in self.domain.registry.event_handlers.items():
             stream_category = (
                 record.cls.meta_.stream_category
@@ -103,14 +106,14 @@ class EventStore:
             for stream_category in record.cls.meta_.stream_categories:
                 self._event_streams[stream_category].add(record.cls)
 
-    def _initialize_command_streams(self):
+    def _initialize_command_streams(self) -> None:
         for _, record in self.domain.registry.command_handlers.items():
             self._command_streams[record.cls.meta_.part_of.meta_.stream_category].add(
                 record.cls
             )
 
-    def repository_for(self, part_of):
-        repository_cls = type(
+    def repository_for(self, part_of: Any) -> BaseEventSourcedRepository:
+        repository_cls: type[BaseEventSourcedRepository] = type(
             part_of.__name__ + "Repository", (BaseEventSourcedRepository,), {}
         )
         repository_cls = event_sourced_repository_factory(
@@ -118,7 +121,7 @@ class EventStore:
         )
         return repository_cls(self.domain)
 
-    def handlers_for(self, event: Any) -> set:
+    def handlers_for(self, event: Any) -> set[Any]:
         """Return all handlers configured to run on the given event.
 
         For internal events (events with a ``part_of`` aggregate), looks up
@@ -181,7 +184,7 @@ class EventStore:
         """
         return self._projectors.get(fqn(projection_cls), set())
 
-    def command_handler_for(self, command: Any) -> Optional[BaseCommandHandler]:
+    def command_handler_for(self, command: Any) -> Optional[type[BaseCommandHandler]]:
         if not command.meta_.part_of:
             raise ConfigurationError(
                 f"Command `{command.__name__}` needs to be associated with an aggregate"

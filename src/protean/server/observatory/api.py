@@ -9,7 +9,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, cast
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -18,6 +18,9 @@ from protean.domain import Domain
 from protean.port.broker import BrokerCapabilities
 
 from ..tracing import TRACE_STREAM
+
+if TYPE_CHECKING:
+    import redis
 
 logger = logging.getLogger(__name__)
 
@@ -89,20 +92,23 @@ def _parse_worker_key(consumer_name: str) -> Tuple[str, str]:
     return (consumer_name, "0")
 
 
-def _get_redis(domains: List[Domain]):
+def _get_redis(domains: List[Domain]) -> "redis.Redis[Any] | None":
     """Get a Redis connection from the first domain's broker."""
     for d in domains:
         try:
             with d.domain_context():
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
-                    return broker.redis_instance
+                    # ``redis_instance`` is a dynamic attribute present only on
+                    # the Redis broker subclasses, not the ``BaseBroker`` port.
+                    instance: "redis.Redis[Any]" = getattr(broker, "redis_instance")
+                    return instance
         except Exception:
             continue
     return None
 
 
-def _discover_streams(redis_conn) -> list:
+def _discover_streams(redis_conn: "redis.Redis[Any] | None") -> list[str]:
     """Discover all application streams in Redis.
 
     The Observatory process doesn't subscribe to streams itself, so the
@@ -129,7 +135,7 @@ def _discover_streams(redis_conn) -> list:
         return []
 
 
-def _outbox_status(domain: Domain) -> dict:
+def _outbox_status(domain: Domain) -> dict[str, Any]:
     """Query outbox counts for a domain."""
     try:
         with domain.domain_context():
@@ -141,7 +147,7 @@ def _outbox_status(domain: Domain) -> dict:
         return {"status": "error", "error": "Failed to query outbox"}
 
 
-def _broker_health(domain: Domain) -> dict:
+def _broker_health(domain: Domain) -> dict[str, Any]:
     """Query broker health stats for a domain using the public port API."""
     try:
         with domain.domain_context():
@@ -155,7 +161,7 @@ def _broker_health(domain: Domain) -> dict:
         return {"status": "error", "error": "Failed to query broker health"}
 
 
-def _broker_info(domain: Domain) -> dict:
+def _broker_info(domain: Domain) -> dict[str, Any]:
     """Query broker consumer group info for a domain using the public port API."""
     try:
         with domain.domain_context():
@@ -171,11 +177,35 @@ def _broker_info(domain: Domain) -> dict:
         return {"status": "error", "error": "Failed to query broker info"}
 
 
-def _decode_stream_id(stream_id) -> str:
+def _decode_stream_id(stream_id: object) -> str:
     """Decode a Redis stream ID that may be bytes or str."""
     if isinstance(stream_id, bytes):
         return stream_id.decode("utf-8")
     return str(stream_id)
+
+
+# redis-py 7.3.0 resolves ``xinfo_groups``/``xinfo_consumers`` (via its command
+# mixin MRO) to an untyped ``def (name: Any) -> Any`` overload, so mypy --strict
+# reports ``no-untyped-call`` at every call site even though the source is
+# annotated. These thin wrappers isolate that external typing defect behind a
+# single disclosed ``cast`` and give callers a concrete ``list[Any]`` result
+# (the ``XINFO`` commands return a list of field-value mappings).
+def _xinfo_groups(redis_conn: "redis.Redis[Any]", name: str) -> list[Any]:
+    """Return ``XINFO GROUPS`` output for a stream as a list."""
+    # redis-py's MRO resolves ``xinfo_groups`` to an untyped overload; binding
+    # the method to an ``Any`` first sidesteps mypy's ``no-untyped-call`` for
+    # this external typing defect without a mode-dependent ``type: ignore``.
+    xinfo: Any = redis_conn.xinfo_groups
+    return cast("list[Any]", xinfo(name))
+
+
+def _xinfo_consumers(
+    redis_conn: "redis.Redis[Any]", name: str, groupname: str
+) -> list[Any]:
+    """Return ``XINFO CONSUMERS`` output for a (stream, group) as a list."""
+    # See ``_xinfo_groups`` — same external redis-py typing defect.
+    xinfo: Any = redis_conn.xinfo_consumers
+    return cast("list[Any]", xinfo(name, groupname))
 
 
 def create_api_router(domains: List[Domain]) -> APIRouter:
@@ -183,7 +213,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     router = APIRouter()
 
     @router.get("/health")
-    async def health():
+    async def health() -> JSONResponse:
         """Infrastructure health check."""
         # Use first domain's broker for health (they typically share infrastructure)
         broker_stats = _broker_health(domains[0])
@@ -213,26 +243,28 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         )
 
     @router.get("/outbox")
-    async def outbox():
+    async def outbox() -> JSONResponse:
         """Outbox status for all domains."""
-        result = {}
+        result: dict[str, Any] = {}
         for domain in domains:
             result[domain.name] = _outbox_status(domain)
         return JSONResponse(content=result)
 
     @router.get("/streams")
-    async def streams():
+    async def streams() -> JSONResponse:
         """Stream lengths and consumer group info."""
         redis_conn = _get_redis(domains)
         stream_names = _discover_streams(redis_conn) if redis_conn else []
 
         message_counts = {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
-        consumer_groups = {}
+        consumer_groups: dict[str, dict[str, Any]] = {}
 
         for name in stream_names:
+            if redis_conn is None:
+                break
             try:
                 message_counts["total_messages"] += redis_conn.xlen(name)
-                groups_info = redis_conn.xinfo_groups(name)
+                groups_info = _xinfo_groups(redis_conn, name)
                 for g in groups_info:
                     if isinstance(g, dict):
                         gname = g.get("name") or g.get(b"name")
@@ -258,7 +290,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         )
 
     @router.get("/consumers")
-    async def consumers():
+    async def consumers() -> JSONResponse:
         """Per-consumer breakdown across all streams and consumer groups.
 
         Calls ``XINFO CONSUMERS`` for each (stream, group) pair to show
@@ -277,11 +309,11 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             )
 
         stream_names = _discover_streams(redis_conn)
-        result = []
+        result: list[dict[str, Any]] = []
 
         for stream_name in stream_names:
             try:
-                groups = redis_conn.xinfo_groups(stream_name)
+                groups = _xinfo_groups(redis_conn, stream_name)
                 for g in groups:
                     if not isinstance(g, dict):
                         continue
@@ -292,7 +324,9 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                         continue
 
                     try:
-                        consumers_info = redis_conn.xinfo_consumers(stream_name, gname)
+                        consumers_info = _xinfo_consumers(
+                            redis_conn, stream_name, gname
+                        )
                         for c in consumers_info:
                             if not isinstance(c, dict):
                                 continue
@@ -318,7 +352,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         return JSONResponse(content={"consumers": result, "count": len(result)})
 
     @router.get("/workers")
-    async def workers():
+    async def workers() -> JSONResponse:
         """Engine worker (pod) overview with per-worker throughput sparklines.
 
         Groups Redis consumers by engine instance (hostname + pid) and computes
@@ -338,11 +372,11 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
         # 1. Collect all consumers (same logic as /api/consumers)
         stream_names = _discover_streams(redis_conn)
-        all_consumers = []
+        all_consumers: list[dict[str, Any]] = []
 
         for stream_name in stream_names:
             try:
-                groups = redis_conn.xinfo_groups(stream_name)
+                groups = _xinfo_groups(redis_conn, stream_name)
                 for g in groups:
                     if not isinstance(g, dict):
                         continue
@@ -353,7 +387,9 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                         continue
 
                     try:
-                        consumers_info = redis_conn.xinfo_consumers(stream_name, gname)
+                        consumers_info = _xinfo_consumers(
+                            redis_conn, stream_name, gname
+                        )
                         for c in consumers_info:
                             if not isinstance(c, dict):
                                 continue
@@ -377,7 +413,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 pass
 
         # 2. Group consumers by worker key (hostname, pid)
-        worker_map: dict[str, dict] = {}
+        worker_map: dict[str, dict[str, Any]] = {}
         for consumer in all_consumers:
             hostname, pid = _parse_worker_key(consumer["consumer_name"])
             worker_id = f"{hostname}-{pid}"
@@ -499,14 +535,14 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         )
 
     @router.get("/queue-depth")
-    async def queue_depth():
+    async def queue_depth() -> JSONResponse:
         """Queue depth snapshot for backpressure visualization.
 
         Returns outbox pending counts per domain, per-stream XLEN,
         and per-consumer-group XPENDING in a single response optimized
         for dashboard polling.
         """
-        result = {
+        result: dict[str, Any] = {
             "timestamp": time.time() * 1000,
             "outbox": {},
             "streams": {},
@@ -535,14 +571,14 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             for stream_name in _discover_streams(redis_conn):
                 try:
                     xlen = redis_conn.xlen(stream_name)
-                    stream_entry = {
+                    stream_entry: dict[str, Any] = {
                         "length": xlen,
                         "consumer_groups": {},
                     }
                     max_lag = 0
 
                     try:
-                        groups = redis_conn.xinfo_groups(stream_name)
+                        groups = _xinfo_groups(redis_conn, stream_name)
                         for g in groups:
                             if isinstance(g, dict):
                                 gname = g.get("name") or g.get(b"name")
@@ -567,9 +603,9 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         return JSONResponse(content=result)
 
     @router.get("/stats")
-    async def stats():
+    async def stats() -> JSONResponse:
         """Aggregated throughput and error rate statistics."""
-        outbox_data = {}
+        outbox_data: dict[str, Any] = {}
         for domain in domains:
             outbox_data[domain.name] = _outbox_status(domain)
 
@@ -578,9 +614,11 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
         message_counts = {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
         for name in stream_names:
+            if redis_conn is None:
+                break
             try:
                 message_counts["total_messages"] += redis_conn.xlen(name)
-                groups_info = redis_conn.xinfo_groups(name)
+                groups_info = _xinfo_groups(redis_conn, name)
                 for g in groups_info:
                     if isinstance(g, dict):
                         gpending = g.get("pending") or g.get(b"pending") or 0
@@ -605,7 +643,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         message_id: Optional[str] = Query(
             None, description="Filter by message ID (lifecycle lookup)"
         ),
-    ):
+    ) -> JSONResponse:
         """Recent trace history from the persisted Redis Stream."""
         redis_conn = _get_redis(domains)
         if not redis_conn:
@@ -635,7 +673,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                 status_code=500,
             )
 
-        result = []
+        result: list[dict[str, Any]] = []
         for stream_id, fields in raw_entries:
             try:
                 data_raw = fields.get(b"data") or fields.get("data")
@@ -669,14 +707,14 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.get("/traces/stats")
     async def traces_stats(
         window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
-    ):
+    ) -> JSONResponse:
         """Aggregated trace statistics for a time window.
 
         Delegates to the combined /traces/overview endpoint and returns
         only the stats portion for backward compatibility.
         """
         overview = await traces_overview(window=window)
-        body = json.loads(overview.body.decode())
+        body = json.loads(bytes(overview.body).decode())
         if "error" in body:
             return overview
         return JSONResponse(
@@ -693,14 +731,14 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.get("/traces/timeline")
     async def traces_timeline(
         window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
-    ):
+    ) -> JSONResponse:
         """Pre-aggregated activity timeline buckets for the full time window.
 
         Delegates to the combined /traces/overview endpoint and returns
         only the timeline portion for backward compatibility.
         """
         overview = await traces_overview(window=window)
-        body = json.loads(overview.body.decode())
+        body = json.loads(bytes(overview.body).decode())
         if "error" in body:
             return overview
         return JSONResponse(
@@ -714,13 +752,13 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     # Cache for the combined overview scan to avoid redundant XRANGE calls.
     # TTL is half the poller interval (5s) so data stays fresh but back-to-back
     # requests (e.g. window change triggering multiple pollers) are served instantly.
-    _overview_cache: dict[str, Tuple[float, dict]] = {}
+    _overview_cache: dict[str, Tuple[float, dict[str, Any]]] = {}
     _OVERVIEW_CACHE_TTL_S = 3.0
 
     @router.get("/traces/overview")
     async def traces_overview(
         window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
-    ):
+    ) -> JSONResponse:
         """Combined stats + timeline in a single XRANGE scan.
 
         Returns event counts, error rate, avg latency, AND pre-aggregated
@@ -770,7 +808,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
         # --- Timeline buckets ---
         window_start = (now_ms - window_ms) // bucket_ms * bucket_ms
-        buckets: dict[int, dict] = {}
+        buckets: dict[int, dict[str, int]] = {}
         t = window_start
         while t <= now_ms:
             buckets[t] = {"time_ms": t, "total": 0, "success": 0, "errors": 0}
@@ -818,7 +856,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         )
         timeline = sorted(buckets.values(), key=lambda b: b["time_ms"])
 
-        result = {
+        result: dict[str, Any] = {
             "window": window,
             # Stats
             "counts": counts,
@@ -845,7 +883,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         offset: int = Query(0, ge=0, description="Number of entries to skip"),
         start: Optional[str] = Query(None, description="Custom range start (ISO 8601)"),
         end: Optional[str] = Query(None, description="Custom range end (ISO 8601)"),
-    ):
+    ) -> JSONResponse:
         """Failed and DLQ traces filtered by time window.
 
         Returns only handler.failed and message.dlq trace events,
@@ -903,7 +941,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             )
 
         # Collect all matching entries (for total count + pagination)
-        all_matches = []
+        all_matches: list[dict[str, Any]] = []
         for stream_id, fields in raw_entries:
             try:
                 data_raw = fields.get(b"data") or fields.get("data")
@@ -936,7 +974,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         return JSONResponse(content={"traces": page, "total_count": total_count})
 
     @router.get("/traces/{stream_id}")
-    async def trace_detail(stream_id: str):
+    async def trace_detail(stream_id: str) -> JSONResponse:
         """Fetch a single trace event by its Redis stream ID."""
         redis_conn = _get_redis(domains)
         if not redis_conn:
@@ -969,7 +1007,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             )
 
     @router.get("/subscriptions")
-    async def subscriptions():
+    async def subscriptions() -> JSONResponse:
         """Subscription lag status for all domains.
 
         Returns per-subscription lag, pending count, DLQ depth, and
@@ -977,7 +1015,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         """
         from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
 
-        result = {}
+        result: dict[str, Any] = {}
         for domain in domains:
             try:
                 statuses = collect_subscription_statuses(domain)
@@ -1017,7 +1055,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         ),
         limit: int = Query(25, ge=1, le=200, description="Page size"),
         offset: int = Query(0, ge=0, description="Number of entries to skip"),
-    ):
+    ) -> JSONResponse:
         """List DLQ messages across all subscriptions.
 
         Supports offset-based pagination via offset/limit params.
@@ -1041,7 +1079,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
                 if subscription:
                     infos = discover_subscriptions(domain)
-                    dlq_streams = []
+                    dlq_streams: list[str] = []
                     for info in infos:
                         if info.stream_category == subscription:
                             dlq_streams.append(info.dlq_stream)
@@ -1086,7 +1124,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             )
 
     @router.get("/dlq/{dlq_id}")
-    async def dlq_inspect(dlq_id: str):
+    async def dlq_inspect(dlq_id: str) -> JSONResponse:
         """Inspect a single DLQ message with full payload."""
         from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
 
@@ -1138,7 +1176,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             )
 
     @router.post("/dlq/{dlq_id}/replay")
-    async def dlq_replay(dlq_id: str):
+    async def dlq_replay(dlq_id: str) -> JSONResponse:
         """Replay a single DLQ message back to its original stream."""
         from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
 
@@ -1186,7 +1224,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.post("/dlq/replay-all")
     async def dlq_replay_all(
         subscription: str = Query(..., description="Stream category (required)"),
-    ):
+    ) -> JSONResponse:
         """Replay all DLQ messages for a subscription."""
         from protean.utils.dlq import discover_subscriptions  # noqa: PLC0415
 
@@ -1203,7 +1241,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                     )
 
                 infos = discover_subscriptions(domain)
-                dlq_streams = []
+                dlq_streams: list[str] = []
                 for info in infos:
                     if info.stream_category == subscription:
                         dlq_streams.append(info.dlq_stream)
@@ -1237,7 +1275,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.delete("/dlq")
     async def dlq_purge(
         subscription: str = Query(..., description="Stream category (required)"),
-    ):
+    ) -> JSONResponse:
         """Purge all DLQ messages for a subscription."""
         from protean.utils.dlq import discover_subscriptions  # noqa: PLC0415
 
@@ -1254,7 +1292,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
                     )
 
                 infos = discover_subscriptions(domain)
-                dlq_streams = []
+                dlq_streams: list[str] = []
                 for info in infos:
                     if info.stream_category == subscription:
                         dlq_streams.append(info.dlq_stream)
@@ -1280,7 +1318,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
             )
 
     @router.delete("/traces")
-    async def delete_traces():
+    async def delete_traces() -> JSONResponse:
         """Clear all persisted trace history."""
         redis_conn = _get_redis(domains)
         if not redis_conn:

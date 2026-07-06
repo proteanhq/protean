@@ -219,7 +219,7 @@ class DomainValidator:
                     if isinstance(field_obj.to_cls, str):
                         raise IncorrectUsageError(
                             f"Unresolved target `{field_obj.to_cls}` for field "
-                            f"`{owner_cls.__name__}:{field_obj.name}`"
+                            f"`{owner_cls.__name__}:{field_obj.field_name}`"
                         )
                     if field_obj.to_cls.element_type != DomainObjects.ENTITY:
                         raise IncorrectUsageError(

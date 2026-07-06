@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from protean.exceptions import (
     ConfigurationError,
@@ -18,7 +18,30 @@ from protean.utils.sync_dispatch import dispatch_events_sync
 from protean.utils.telemetry import get_domain_metrics, set_span_error
 
 if TYPE_CHECKING:
-    from protean.port.provider import BaseProvider, SessionProtocol
+    from protean.port.provider import SessionProtocol
+
+
+class _UoWStack(Protocol):
+    """Typed view of the ``LocalStack`` methods this module relies on.
+
+    The installed werkzeug ships ``LocalStack`` without usable annotations
+    (its ``push``/``pop`` resolve to ``Any``), which trips mypy ``--strict``'s
+    ``no-untyped-call`` on every stack access. Casting the shared stack to this
+    Protocol restores precise types at the call sites without suppressing the
+    diagnostic. Mirrors the ``cast`` precedent at the construction site in
+    ``protean.utils.globals``.
+    """
+
+    @property
+    def top(self) -> "UnitOfWork | None": ...
+
+    def push(self, obj: "UnitOfWork") -> list["UnitOfWork"]: ...
+
+    def pop(self) -> "UnitOfWork | None": ...
+
+
+# Typed handle onto the process-wide UnitOfWork context stack.
+_uow_stack = cast(_UoWStack, _uow_context_stack)
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +148,7 @@ class UnitOfWork:
                     )
 
         self._in_progress = True
-        _uow_context_stack.push(self)
+        _uow_stack.push(self)
 
     def commit(self) -> None:  # noqa: C901
         """Commit all changes, persist outbox messages, and dispatch events.
@@ -302,17 +325,19 @@ class UnitOfWork:
             # directly. A genuine optimistic-concurrency conflict still raises and
             # is re-driven by the handler-level version retry, which reloads the
             # aggregate cleanly.
+            event_store = current_domain.event_store.store
+            assert event_store is not None
             for provider, events in all_events.items():
                 for event in events:
-                    current_domain.event_store.store.append(event)
+                    event_store.append(event)
 
             # Exit the UnitOfWork context: the relational commit below (and any
             # further operations) are no longer part of this transaction. Guard
             # on identity so that if the commit below fails and __exit__ then
             # calls rollback() (which also pops), the two pops together cannot
             # pop a *parent* UnitOfWork off the stack in a nested scenario.
-            if _uow_context_stack.top is self:
-                _uow_context_stack.pop()
+            if _uow_stack.top is self:
+                _uow_stack.pop()
 
             # Commit the relational session (aggregate state + outbox rows).
             for provider_name, session in self._sessions.items():
@@ -390,8 +415,12 @@ class UnitOfWork:
         # session (releasing connections back to the pool) AND discards the
         # session from the scoped registry, preventing stale session reuse.
         for session in self._sessions.values():
-            if hasattr(session, "remove"):
-                session.remove()
+            # ``remove()`` is an optional part of the session contract: scoped
+            # registries (SQLAlchemy) expose it to discard the session, plain
+            # sessions only expose ``close()``.
+            remove = getattr(session, "remove", None)
+            if remove is not None:
+                remove()
             else:
                 session.close()
 
@@ -420,8 +449,8 @@ class UnitOfWork:
         # Exit from Unit of Work. Guarded on identity so a double-pop (when the
         # relational commit failed after _do_commit already popped this UoW)
         # cannot pop a parent UnitOfWork off the stack.
-        if _uow_context_stack.top is self:
-            _uow_context_stack.pop()
+        if _uow_stack.top is self:
+            _uow_stack.pop()
 
         try:
             for session in self._sessions.values():
@@ -434,17 +463,20 @@ class UnitOfWork:
         self._reset()
 
     def _get_session(self, provider_name: str) -> "SessionProtocol":
-        # ``Providers.__getitem__`` is not yet typed (returns ``Any``); cast to
-        # the port type so the declared ``SessionProtocol`` return holds.
-        provider = cast("BaseProvider", self.domain.providers[provider_name])
-        assert provider is not None
+        provider = self.domain.providers[provider_name]
         return provider.get_session()
 
     def _initialize_session(self, provider_name: str) -> "SessionProtocol":
         new_session = self._get_session(provider_name)
         self._sessions[provider_name] = new_session
         if not new_session.is_active:
-            new_session.begin()
+            # ``begin()`` is an optional part of the session contract (see
+            # ``SessionProtocol``); adapters with deferred transaction start
+            # (e.g. SQLAlchemy) implement it, others (e.g. the in-memory
+            # session) do not.
+            begin = getattr(new_session, "begin", None)
+            if begin is not None:
+                begin()
         return new_session
 
     def get_session(self, provider_name: str) -> "SessionProtocol":

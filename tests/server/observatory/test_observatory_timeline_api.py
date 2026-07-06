@@ -38,6 +38,7 @@ from protean.server.observatory.routes.timeline import (
     build_correlation_response,
     collect_aggregate_history,
     collect_all_events,
+    collect_recent_traces,
     collect_timeline_stats,
     create_timeline_router,
     find_event_by_id,
@@ -1588,3 +1589,53 @@ class TestCausationTreeTimestampFormatting:
         tree = _build_causation_tree_from_group(store, group)
         assert tree is not None
         assert tree.time is None
+
+
+# ---------------------------------------------------------------------------
+# Event store not yet initialized (store is None) — the collectors iterate
+# domains and must skip any whose event store hasn't been initialized.
+# Covers the ``if store is None: continue`` guards across every collector.
+# ---------------------------------------------------------------------------
+
+
+class TestCollectorsSkipDomainsWithoutStore:
+    """A freshly constructed ``Domain`` (never ``init()``-ed) exposes
+    ``event_store.store is None``.  Each collector must skip such a domain
+    and return its empty result rather than raise."""
+
+    @staticmethod
+    def _domain_without_store() -> Domain:
+        domain = Domain(name="NoStore")
+        # Sanity check: the guard we exercise only fires while the event
+        # store has not been initialized.
+        assert domain.event_store.store is None
+        return domain
+
+    def test_collect_all_events_skips_storeless_domain(self):
+        domain = self._domain_without_store()
+        events, next_cursor = collect_all_events([domain])
+        assert events == []
+        assert next_cursor is None
+
+    def test_find_event_by_id_skips_storeless_domain(self):
+        domain = self._domain_without_store()
+        assert find_event_by_id([domain], "any-id") is None
+
+    def test_collect_timeline_stats_skips_storeless_domain(self):
+        domain = self._domain_without_store()
+        stats = collect_timeline_stats([domain])
+        assert stats["total_events"] == 0
+        assert stats["active_streams"] == 0
+
+    def test_build_correlation_response_skips_storeless_domain(self):
+        domain = self._domain_without_store()
+        assert build_correlation_response([domain], "corr-1") is None
+
+    def test_collect_aggregate_history_skips_storeless_domain(self):
+        domain = self._domain_without_store()
+        assert collect_aggregate_history([domain], "order", "agg-1") is None
+
+    def test_collect_recent_traces_skips_storeless_domain(self):
+        # Exercises the store-None guard inside _group_by_correlation.
+        domain = self._domain_without_store()
+        assert collect_recent_traces([domain]) == []

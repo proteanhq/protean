@@ -21,10 +21,10 @@ from protean.utils.consume_idempotency import (
 from protean.utils.outbox import OUTBOX_INDEXES, Outbox, OutboxRepository
 
 if TYPE_CHECKING:
+    from protean.core.aggregate import BaseAggregate
     from protean.core.index import Index
     from protean.core.repository import BaseRepository
     from protean.domain import Domain
-    from protean.utils.container import Element
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class InfrastructureManager:
 
     def _initialize_per_provider(
         self,
-        base_cls: type[Element],
+        base_cls: type[BaseAggregate],
         repo_cls: type[BaseRepository],
         schema_name: str,
         indexes: list[Index],
@@ -209,7 +209,7 @@ class InfrastructureManager:
                 continue
             provider._data_reset()
 
-        domain.event_store.store._data_reset()
+        domain._require_event_store()._data_reset()
 
     def drop_database(self) -> None:
         """Drop all database tables for managed providers.

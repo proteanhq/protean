@@ -1,10 +1,10 @@
 """Package for Concrete Implementations of Protean repositories"""
 
-import collections
+import collections.abc
 import logging
 from collections import defaultdict
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
@@ -13,7 +13,7 @@ from protean.utils import fully_qualified_name
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.utils.container import Element
+    from protean.utils.container import OptionsMixin
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,9 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         #        'postgresql': UserPostgresRepository,
         #    }
         # }
-        self._repositories: dict[str, dict[str, type]] = defaultdict(dict)
+        self._repositories: dict[str, dict[str, type[BaseRepository]]] = defaultdict(
+            dict
+        )
 
     def __getitem__(self, key: str) -> BaseProvider:
         if not self._providers:
@@ -58,7 +60,9 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         if key in self._providers:
             del self._providers[key]
 
-    def _construct_repository(self, part_of):
+    def _construct_repository(
+        self, part_of: type["OptionsMixin"]
+    ) -> type[BaseRepository]:
         repository_cls = type(part_of.__name__ + "Repository", (BaseRepository,), {})
         repository_cls = repository_factory(
             repository_cls, self.domain, part_of=part_of, _auto_constructed=True
@@ -66,7 +70,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         return repository_cls
 
     def _register_repository(
-        self, part_of: type["Element"], repository_cls: type[BaseRepository]
+        self, part_of: type["OptionsMixin"], repository_cls: type[BaseRepository]
     ) -> None:
         # When explicitly provided, the value of `database` will be the actual database in use
         # and will lock the repository to that type of database.
@@ -104,14 +108,14 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
                     logger.exception("Error closing provider '%s'", name)
             logger.debug("All providers closed")
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """Read config file and initialize providers"""
         # Close existing providers before re-initializing to prevent
         # connection leaks (e.g., when domain.init() is called again).
         self.close()
 
         configured_providers = self.domain.config["databases"]
-        provider_objects = {}
+        provider_objects: dict[str, BaseProvider] = {}
 
         if configured_providers and isinstance(configured_providers, dict):
             if "default" not in configured_providers:
@@ -133,7 +137,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
 
         self._providers = provider_objects
 
-    def get_connection(self, provider_name="default"):
+    def get_connection(self, provider_name: str = "default") -> Any:
         """Fetch connection from Provider"""
         if self._providers is None:
             self._initialize()
@@ -148,7 +152,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
             )
         return self._providers[provider_name].get_connection()
 
-    def repository_for(self, part_of) -> BaseRepository:
+    def repository_for(self, part_of: type["OptionsMixin"]) -> BaseRepository:
         """Retrieve a Repository registered for the Aggregate"""
         if self._providers is None:
             self._initialize()

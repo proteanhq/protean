@@ -72,8 +72,13 @@ def load_ir_from_commit(
         ) from exc
 
     try:
-        return json.loads(result.stdout)
+        # json.loads is typed to return Any (the decoded value can be any JSON
+        # type). The declared return type documents the expected shape; assign
+        # to a typed local to carry that through without a no-any-return error.
+        ir_dict: dict[str, Any] = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise GitError(
             f"Invalid JSON in '{posix_path}' at commit '{commit}': {exc}"
         ) from exc
+
+    return ir_dict

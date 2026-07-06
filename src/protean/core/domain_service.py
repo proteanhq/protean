@@ -94,10 +94,11 @@ def _make_invariant_wrapper(
             try:
                 invariant_method(self)
             except ValidationError as err:
-                for field_name in err.messages:
+                err_messages = cast("dict[str, list[str]]", err.messages)
+                for field_name in err_messages:
                     if field_name not in errors:
                         errors[field_name] = []
-                    errors[field_name].extend(err.messages[field_name])
+                    errors[field_name].extend(err_messages[field_name])
 
         if errors:
             raise ValidationError(errors)
@@ -108,10 +109,11 @@ def _make_invariant_wrapper(
             try:
                 invariant_method(self)
             except ValidationError as err:
-                for field_name in err.messages:
+                err_messages = cast("dict[str, list[str]]", err.messages)
+                for field_name in err_messages:
                     if field_name not in errors:
                         errors[field_name] = []
-                    errors[field_name].extend(err.messages[field_name])
+                    errors[field_name].extend(err_messages[field_name])
 
         if errors:
             raise ValidationError(errors)

@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import SubscriptionType
@@ -77,7 +77,7 @@ class ProjectionStatus:
     status: str
     """``"ok"`` | ``"lagging"`` | ``"unknown"``."""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 

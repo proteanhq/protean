@@ -121,6 +121,15 @@ class TestCheckEventStore:
             assert ok is False
             assert status == STATUS_UNAVAILABLE
 
+    def test_unavailable_when_event_store_not_initialized(self, domain):
+        # When the backing store is ``None`` (before init / misconfigured),
+        # the guard returns STATUS_UNAVAILABLE without touching the store.
+        with domain.domain_context():
+            domain.event_store._event_store = None
+            status, ok = check_event_store(domain)
+            assert ok is False
+            assert status == STATUS_UNAVAILABLE
+
 
 # ---------------------------------------------------------------------------
 # check_caches

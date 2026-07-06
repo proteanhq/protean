@@ -243,102 +243,27 @@ plugins = ["protean.ext.mypy_plugin"]
 exclude = [".venv", "src/protean/template", "docs_src"]
 warn_unused_configs = true
 warn_unused_ignores = true
+strict = true
 
-# Type-safety quarantine (see docs/adr/0018-type-safety-strategy.md).
-# Modules with pre-existing mypy debt are marked lenient so a clean run is green
-# and CI blocks NEW type errors everywhere else. This list is
-# append-only-shrinking: each type-safety sub-issue (D2–D6) strictifies its
-# modules and removes them here. Target end state: empty list + strict = true.
+# Third-party libraries without type stubs / py.typed. Their imports and calls
+# are treated as untyped rather than erroring under --strict.
 [[tool.mypy.overrides]]
 module = [
-  "protean.__main__",
-  "protean.adapters.broker",
-  "protean.adapters.broker.inline",
-  "protean.adapters.broker.redis_pubsub",
-  "protean.adapters.broker.redis",
-  "protean.adapters.cache.memory",
-  "protean.adapters.cache.redis",
-  "protean.adapters.email.sendgrid",
-  "protean.adapters.event_store",
-  "protean.adapters.event_store.memory",
-  "protean.adapters.event_store.message_db",
-  "protean.adapters.repository.elasticsearch",
-  "protean.adapters.repository.memory",
-  "protean.adapters.repository.sqlalchemy",
-  "protean.cli",
-  "protean.cli.generate",
-  "protean.cli.new",
-  "protean.cli.test",
-  "protean.core.aggregate",
-  "protean.core.application_service",
-  "protean.core.command_handler",
-  "protean.core.command",
-  "protean.core.database_model",
-  "protean.core.domain_service",
-  "protean.core.email",
-  "protean.core.entity",
-  "protean.core.event_handler",
-  "protean.core.event_sourced_repository",
-  "protean.core.event",
-  "protean.core.process_manager",
-  "protean.core.projection",
-  "protean.core.projector",
-  "protean.core.query_handler",
-  "protean.core.query",
-  "protean.core.queryset",
-  "protean.core.repository",
-  "protean.core.subscriber",
-  "protean.core.unit_of_work",
-  "protean.core.upcaster",
-  "protean.core.value_object",
-  "protean.core.view",
-  "protean.domain",
-  "protean.domain.command_processor",
-  "protean.domain.handler_setup",
-  "protean.domain.infrastructure",
-  "protean.domain.query_processor",
-  "protean.domain.resolver",
-  "protean.domain.type_manager",
-  "protean.domain.validation",
-  "protean.exceptions",
-  "protean.ext.mypy_plugin",
-  "protean.fields.base",
-  "protean.fields.containers",
-  "protean.fields.simple",
-  "protean.fields.spec",
-  "protean.integrations.fastapi.health",
-  "protean.integrations.fastapi.middleware",
-  "protean.integrations.pytest.adapter_conformance",
-  "protean.ir.builder",
-  "protean.ir.generators.schema",
-  "protean.port.broker",
-  "protean.port.cache",
-  "protean.port.dao",
-  "protean.port.event_store",
-  "protean.server.engine",
-  "protean.server.observatory",
-  "protean.server.outbox_processor",
-  "protean.server.subscription_status",
-  "protean.server.subscription",
-  "protean.server.subscription.config_resolver",
-  "protean.server.subscription.event_store_subscription",
-  "protean.server.subscription.factory",
-  "protean.server.subscription.stream_subscription",
-  "protean.server.supervisor",
-  "protean.server.tracing",
-  "protean.testing",
-  "protean.utils",
-  "protean.utils.dlq",
-  "protean.utils.domain_discovery",
-  "protean.utils.eventing",
-  "protean.utils.health",
-  "protean.utils.logging",
-  "protean.utils.mixins",
-  "protean.utils.outbox",
-  "protean.utils.projection_rebuilder",
-  "protean.utils.telemetry",
+  "psycopg2",
+  "psycopg2.*",
+  "message_db",
+  "message_db.*",
+  "IPython",
+  "IPython.*",
 ]
+ignore_missing_imports = true
+
+# Test helpers imported by src (e.g. integrations.pytest.adapter_conformance
+# pulls in tests.shared) are not part of the strict src surface.
+[[tool.mypy.overrides]]
+module = ["tests.*"]
 ignore_errors = true
+ignore_missing_imports = true
 
 [tool.coverage.paths]
 source = [

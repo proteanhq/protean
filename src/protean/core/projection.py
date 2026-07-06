@@ -240,7 +240,8 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         for _, fobj in getattr(type(self), _FIELDS, {}).items():
             if isinstance(fobj, ValueObject):
                 for sf in fobj.embedded_fields.values():
-                    _shadow_field_names.add(sf.attribute_name)
+                    if sf.attribute_name is not None:
+                        _shadow_field_names.add(sf.attribute_name)
 
         for name in list(kwargs):
             if name in _shadow_field_names:
@@ -316,17 +317,24 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
             ):
                 vo_kwargs: dict[str, Any] = {}
                 for embedded_field in field_obj.embedded_fields.values():
+                    if (
+                        embedded_field.attribute_name is None
+                        or embedded_field.field_name is None
+                    ):
+                        # ``embedded_fields`` yields fully-bound fields, so both
+                        # names are always set; guard never fires at runtime.
+                        continue  # pragma: no cover
                     vo_kwargs[embedded_field.field_name] = shadow_kwargs.get(
                         embedded_field.attribute_name
                     )
                 # Only reconstruct if at least one value is not None
                 if any(v is not None for v in vo_kwargs.values()):
                     # ``value_object_cls`` is a resolved class at this point; the
-                    # untyped property in ``fields/embedded.py`` widens it to
-                    # ``str | type``, so pyright flags the call.
-                    descriptor_kwargs[field_name] = field_obj.value_object_cls(  # pyright: ignore[reportCallIssue]
-                        **vo_kwargs
-                    )
+                    # property in ``fields/embedded.py`` widens it to
+                    # ``type[BaseValueObject] | str``, so narrow before calling.
+                    vo_cls = field_obj.value_object_cls
+                    assert not isinstance(vo_cls, str)
+                    descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
 
         # Set VO values via descriptors (triggers __set__ which populates
         # shadow fields and the VO instance in __dict__).
@@ -338,7 +346,9 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
             field_obj = cast(ValueObject, base_field_obj)
             for _, shadow_field in field_obj.get_shadow_fields():
                 attr_name = shadow_field.attribute_name
-                if attr_name not in self.__dict__:
+                if attr_name is not None and attr_name not in self.__dict__:
+                    # pyright models pydantic ``__dict__`` as a read-only
+                    # MappingProxyType; writing to it is valid at runtime.
                     self.__dict__[attr_name] = None  # pyright: ignore[reportIndexIssue]
 
         self.defaults()

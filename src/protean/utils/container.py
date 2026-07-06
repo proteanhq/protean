@@ -19,7 +19,7 @@ class DerivedDefault:
 
     __slots__ = ("fn",)
 
-    def __init__(self, fn: Callable[[type], Any]) -> None:
+    def __init__(self, fn: Callable[[type["OptionsMixin"]], Any]) -> None:
         self.fn = fn
 
     def __call__(self, cls: type) -> Any:

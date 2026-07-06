@@ -23,6 +23,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
+from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import PydanticUndefined
 
@@ -125,25 +126,19 @@ class ResolvedField:
         self.min_value: Any = None
         self.max_value: Any = None
         if field_info is not None:
-            try:
-                from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen  # noqa: PLC0415
-            except ImportError:  # pragma: no cover
-                MaxLen = MinLen = Ge = Gt = Le = Lt = None  # type: ignore[assignment,misc]
-
-            if MaxLen is not None:
-                for m in field_info.metadata:
-                    if isinstance(m, MaxLen):
-                        self.max_length = m.max_length
-                    elif isinstance(m, MinLen):
-                        self.min_length = m.min_length
-                    elif isinstance(m, Ge):
-                        self.min_value = m.ge
-                    elif isinstance(m, Gt):
-                        self.min_value = m.gt
-                    elif isinstance(m, Le):
-                        self.max_value = m.le
-                    elif isinstance(m, Lt):
-                        self.max_value = m.lt
+            for m in field_info.metadata:
+                if isinstance(m, MaxLen):
+                    self.max_length = m.max_length
+                elif isinstance(m, MinLen):
+                    self.min_length = m.min_length
+                elif isinstance(m, Ge):
+                    self.min_value = m.ge
+                elif isinstance(m, Gt):
+                    self.min_value = m.gt
+                elif isinstance(m, Le):
+                    self.max_value = m.le
+                elif isinstance(m, Lt):
+                    self.max_value = m.lt
 
     @property
     def pickled(self) -> bool:
@@ -174,7 +169,10 @@ class ResolvedField:
         if not type_args:
             return None
 
-        return type_args[0]
+        # typing.get_args returns tuple[Any, ...]; the first element of a
+        # list[X] annotation is the element type X.
+        inner: type = type_args[0]
+        return inner
 
     def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self."""

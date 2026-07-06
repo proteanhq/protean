@@ -4,7 +4,7 @@ from .core.aggregate import apply, atomic_change
 from .core.application_service import use_case
 from .core.entity import invariant
 from .core.index import Index
-from .core.queryset import Q, QuerySet, ReadOnlyQuerySet, Record
+from .core.queryset import QuerySet, ReadOnlyQuerySet, Record
 from .core.unit_of_work import UnitOfWork
 from .core.value_object import value_object_from_entity
 from .core.view import ReadView
@@ -14,7 +14,7 @@ from .utils import get_version
 from .utils.globals import current_domain, current_uow, g
 from .utils.mixins import handle, read
 from .utils.processing import Priority, current_priority, processing_priority
-from .utils.query import F
+from .utils.query import F, Q
 
 __all__ = [
     "apply",

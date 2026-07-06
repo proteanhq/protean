@@ -23,7 +23,7 @@ from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
-from protean.upgrade import run_upgrade_checks
+from protean.upgrade import UpgradeFinding, run_upgrade_checks
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
 
@@ -84,7 +84,7 @@ def upgrade_check(
         raise typer.Exit(code=2)
 
 
-def _print_rich(domain_name: str, findings: list) -> None:
+def _print_rich(domain_name: str, findings: list[UpgradeFinding]) -> None:
     warnings = sum(1 for f in findings if f.level == "warning")
     infos = sum(1 for f in findings if f.level == "info")
 

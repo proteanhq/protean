@@ -154,7 +154,9 @@ class BaseDAO(metaclass=ABCMeta):
         id_f = id_field(entity)
         assert id_f is not None and id_f.field_name is not None
         identifier = getattr(entity, id_f.field_name)
-        last_message = current_domain.event_store.store.read_last_message(
+        store = current_domain.event_store.store
+        assert store is not None
+        last_message = store.read_last_message(
             f"{entity.meta_.stream_category}-{identifier}"
         )
         if last_message:

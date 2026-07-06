@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import typer
 from rich import print
@@ -18,10 +18,13 @@ from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from protean.domain import Domain
+
 logger = get_logger(__name__)
 
 
-def load_domain(domain_path: str) -> Any:
+def load_domain(domain_path: str) -> Domain:
     """Import and initialise a live domain, returning the Domain object.
 
     Imports the domain module at *domain_path* and initialises it. Callers can
@@ -84,7 +87,8 @@ def load_ir_file(path: str) -> dict[str, Any]:
         print(f"[red]Error:[/red] could not read {path}: {exc}")
         raise typer.Abort()
     try:
-        return json.loads(file_contents)
+        # json.loads is typed to return Any; IR files are JSON objects.
+        return cast("dict[str, Any]", json.loads(file_contents))
     except json.JSONDecodeError as exc:
         print(f"[red]Error:[/red] invalid JSON in {path}: {exc}")
         raise typer.Abort()

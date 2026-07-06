@@ -110,10 +110,14 @@ class BaseDatabaseModel(Element, OptionsMixin):
         """
         item_dict: dict[str, Any] = {}
         for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
-            if attr_obj.referenced_as:
-                item_dict[attr_obj.field_name] = cls._get_value(
-                    item, attr_obj.referenced_as
-                )
+            referenced_as = attr_obj.referenced_as
+            if referenced_as:
+                # ``field_name`` is always populated for a registered field
+                # (set by ``Field.__set_name__``); the ``or attr_name`` fallback
+                # only satisfies the ``str | None`` type and is never taken at
+                # runtime for fields returned by ``attributes()``.
+                field_name = attr_obj.field_name or attr_name
+                item_dict[field_name] = cls._get_value(item, referenced_as)
             else:
                 item_dict[attr_name] = cls._get_value(item, attr_name)
         return cast("BaseEntity", cls.meta_.part_of(**item_dict))
@@ -174,16 +178,26 @@ def _entity_to_dict(
     """
     item_dict: dict[str, Any] = {}
     for attr_obj in attributes(model_cls.meta_.part_of).values():
-        if attr_obj.referenced_as:
+        # ``field_name`` / ``attribute_name`` are always populated for a
+        # registered field (set by ``Field.__set_name__``). ``attributes()``
+        # returns fully-bound fields, so these asserts hold for every field;
+        # they fail loudly rather than silently writing a ``""`` key if the
+        # invariant is ever violated.
+        assert attr_obj.field_name is not None
+        assert attr_obj.attribute_name is not None
+        field_name = attr_obj.field_name
+        attribute_name = attr_obj.attribute_name
+        referenced_as = attr_obj.referenced_as
+        if referenced_as:
             # Use None default: shadow fields for a None ValueObject are
             # removed from __dict__ by _set_embedded_values, and they are
             # not Pydantic model fields, so bare getattr would raise
             # AttributeError via Pydantic's __getattr__.
-            value = getattr(entity, attr_obj.field_name, None)
-            key = attr_obj.referenced_as
+            value = getattr(entity, field_name, None)
+            key = referenced_as
         else:
-            value = getattr(entity, attr_obj.attribute_name, None)
-            key = attr_obj.attribute_name
+            value = getattr(entity, attribute_name, None)
+            key = attribute_name
         item_dict[key] = value
     return item_dict
 

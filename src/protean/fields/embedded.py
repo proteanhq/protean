@@ -1,17 +1,31 @@
 """Module for defining embedded fields"""
 
 from functools import lru_cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Field
 from protean.utils.reflection import declared_fields
 
+if TYPE_CHECKING:
+    from protean.core.value_object import BaseValueObject
+
 
 class _ShadowField(Field):
     """Shadow Attribute Field to back Value Object Fields"""
 
-    def __init__(self, owner, field_name, field_obj, **kwargs):
+    # ``value`` is assigned externally by ``ValueObject._set_embedded_values``
+    # (it mirrors the corresponding value-object field value); declare it so
+    # both checkers see the dynamic attribute.
+    value: Any
+
+    def __init__(
+        self,
+        owner: "ValueObject",
+        field_name: str,
+        field_obj: Field,
+        **kwargs: Any,
+    ) -> None:
         """Preserve link to owner, and original field type for later reference"""
         super().__init__(**kwargs)
 
@@ -19,16 +33,16 @@ class _ShadowField(Field):
         self.field_name = field_name
         self.field_obj = field_obj
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Any) -> None:
         """Override `__set__` to update owner field and silently fail to update values.
         When the value object's value is set, the embedded fields will be automatically filled.
         """
 
-    def __delete__(self, instance):
+    def __delete__(self, instance: Any) -> None:
         """Nullify values and linkages"""
         self._reset_values(instance)
 
-    def _cast_to_type(self, value):
+    def _cast_to_type(self, value: Any) -> Any:
         """Pass through without validation.
 
         Shadow fields are populated by ValueObject._set_embedded_values()
@@ -38,11 +52,11 @@ class _ShadowField(Field):
         """
         return value
 
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self"""
         raise NotImplementedError
 
-    def _reset_values(self, instance):
+    def _reset_values(self, instance: Any) -> None:
         """Reset all associated values and clean up dictionary items"""
         instance.__dict__.pop(self.field_name, None)
 
@@ -62,18 +76,25 @@ class ValueObject(Field):
 
     """
 
-    def __init__(self, value_object_cls, *args, **kwargs):
+    def __init__(
+        self,
+        value_object_cls: "type[BaseValueObject] | str",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
 
         if not isinstance(value_object_cls, str):
             # Validate the class being passed is a subclass of BaseValueObject
             self._validate_value_object_cls(value_object_cls)
 
-        self._value_object_cls = value_object_cls
+        self._value_object_cls: "type[BaseValueObject] | str" = value_object_cls
 
-        self._embedded_fields = {}
+        self._embedded_fields: dict[str, _ShadowField] = {}
 
-    def _validate_value_object_cls(self, value_object_cls):
+    def _validate_value_object_cls(
+        self, value_object_cls: "type[BaseValueObject]"
+    ) -> None:
         """Validate that the value object class is a subclass of BaseValueObject"""
         from protean.core.value_object import BaseValueObject  # noqa: PLC0415
 
@@ -84,10 +105,15 @@ class ValueObject(Field):
             )
 
     @property
-    def value_object_cls(self):
+    def value_object_cls(self) -> "type[BaseValueObject] | str":
         return self._value_object_cls
 
-    def _resolve_to_cls(self, domain, value_object_cls, owner_cls):
+    def _resolve_to_cls(
+        self,
+        domain: Any,
+        value_object_cls: "type[BaseValueObject]",
+        owner_cls: Any,
+    ) -> None:
         assert isinstance(self._value_object_cls, str)
 
         # Validate the class being passed is a subclass of BaseValueObject
@@ -102,15 +128,18 @@ class ValueObject(Field):
 
     @property
     @lru_cache()
-    def embedded_fields(self):
+    def embedded_fields(self) -> dict[str, _ShadowField]:
         """Property to retrieve embedded fields"""
         if len(self._embedded_fields) == 0:
             self._construct_embedded_fields()
 
         return self._embedded_fields
 
-    def _construct_embedded_fields(self):
+    def _construct_embedded_fields(self) -> None:
         """Construct embedded fields"""
+        # By the time embedded fields are constructed, the string forward-ref
+        # has been resolved to a concrete value-object class by ``_resolve_to_cls``.
+        assert not isinstance(self._value_object_cls, str)
         for (
             field_name,
             field_obj,
@@ -128,6 +157,9 @@ class ValueObject(Field):
             else:
                 # VO is associated with an aggregate/entity
                 if self.field_name is not None:
+                    # A shadow field is always constructed with a concrete
+                    # ``field_name`` (see ``_ShadowField.__init__``).
+                    assert embedded_field.field_name is not None
                     # Refresh underlying embedded field names
                     embedded_field.attribute_name = (
                         self.field_name + "_" + embedded_field.field_name
@@ -136,27 +168,31 @@ class ValueObject(Field):
                     # VO is being used standalone
                     embedded_field.attribute_name = embedded_field.field_name
 
-    def __set_name__(self, entity_cls, name):
+    def __set_name__(self, entity_cls: type, name: str) -> None:
         super().__set_name__(entity_cls, name)
 
-    def get_shadow_fields(self):
+    def get_shadow_fields(self) -> list[tuple[str | None, _ShadowField]]:
         """Return shadow field
         Primarily used during Entity initialization to register shadow field"""
-        shadow_fields = []
+        shadow_fields: list[tuple[str | None, _ShadowField]] = []
         for field in self.embedded_fields.values():
             shadow_fields.append((field.attribute_name, field))
         return shadow_fields
 
-    def _cast_to_type(self, value):
+    def _cast_to_type(self, value: Any) -> Any:
+        # The string forward-ref has been resolved to a concrete class by the
+        # time values are cast (see ``_resolve_to_cls``).
+        assert not isinstance(self._value_object_cls, str)
+
         # If the supplied value is a dict, reconstruct value object
         if isinstance(value, dict):
-            value = self._value_object_cls(**value)  # pyright: ignore[reportCallIssue]
+            value = self._value_object_cls(**value)
 
         if not isinstance(value, self._value_object_cls):
             self.fail("invalid", value=value)
         return value
 
-    def as_dict(self, value):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self"""
         return (
             {
@@ -172,7 +208,7 @@ class ValueObject(Field):
             else None
         )
 
-    def __set__(self, instance, value):
+    def __set__(self, instance: Any, value: Any) -> None:
         """Override `__set__` to coordinate between value object and its embedded fields"""
         value = self._load(value)
 
@@ -189,13 +225,13 @@ class ValueObject(Field):
         if hasattr(instance, "state_"):
             instance.state_.mark_changed()
 
-    def _set_own_value(self, instance, value):
+    def _set_own_value(self, instance: Any, value: Any) -> None:
         if value is None:
             instance.__dict__.pop(self.field_name, None)
         else:
             instance.__dict__[self.field_name] = value
 
-    def _set_embedded_values(self, instance, value):
+    def _set_embedded_values(self, instance: Any, value: Any) -> None:
         if value is None:
             for field_name in self.embedded_fields:
                 attribute_name = self.embedded_fields[field_name].attribute_name
@@ -207,10 +243,10 @@ class ValueObject(Field):
                 attribute_name = self.embedded_fields[field_name].attribute_name
                 instance.__dict__[attribute_name] = getattr(value, field_name)
 
-    def __delete__(self, instance):
+    def __delete__(self, instance: Any) -> None:
         self._reset_values(instance)
 
-    def _reset_values(self, instance):
+    def _reset_values(self, instance: Any) -> None:
         """Reset all associated values and clean up dictionary items"""
         self._set_own_value(instance, None)
         self._set_embedded_values(instance, None)

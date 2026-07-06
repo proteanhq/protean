@@ -68,6 +68,8 @@ def check_event_store(domain: Domain) -> tuple[str, bool]:
     """Check event store reachability by reading a non-existent stream."""
     try:
         store = domain.event_store.store
+        if store is None:
+            return STATUS_UNAVAILABLE, False
         store._read_last_message("__health_check__")
         return STATUS_OK, True
     except Exception:

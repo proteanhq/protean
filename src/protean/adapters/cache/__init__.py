@@ -1,9 +1,8 @@
 """Package for  Concrete Implementations of Protean repositories"""
 
-import collections
 import importlib
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping
 from typing import TYPE_CHECKING
 
 from protean.exceptions import ConfigurationError
@@ -22,7 +21,7 @@ CACHE_PROVIDERS = {
 }
 
 
-class Caches(collections.abc.MutableMapping[str, BaseCache]):
+class Caches(MutableMapping[str, BaseCache]):
     def __init__(self, domain: "Domain") -> None:
         self.domain = domain
         self._caches: dict[str, BaseCache] | None = None
@@ -59,14 +58,14 @@ class Caches(collections.abc.MutableMapping[str, BaseCache]):
                     logger.exception("Error closing cache '%s'", name)
             logger.debug("All caches closed")
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """Read config file and initialize providers"""
         # Close existing caches before re-initializing to prevent
         # connection leaks (e.g., when domain.init() is called again).
         self.close()
 
         configured_caches = self.domain.config["caches"]
-        cache_objects = {}
+        cache_objects: dict[str, BaseCache] = {}
 
         if configured_caches and isinstance(configured_caches, dict):
             if "default" not in configured_caches:
@@ -87,7 +86,7 @@ class Caches(collections.abc.MutableMapping[str, BaseCache]):
 
         self._caches = cache_objects
 
-    def get_connection(self, provider_name="default"):
+    def get_connection(self, provider_name: str = "default") -> object:
         """Fetch connection from Provider"""
         if self._caches is None:
             self._initialize()

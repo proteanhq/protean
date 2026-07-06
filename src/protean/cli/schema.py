@@ -40,7 +40,7 @@ _CONSOLE = Console()
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Generate and inspect JSON Schemas for domain elements."""
 
 

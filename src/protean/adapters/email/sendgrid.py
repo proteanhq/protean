@@ -3,9 +3,9 @@
 import logging
 from typing import Any
 
-from python_http_client.exceptions import HTTPError
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, TemplateId
+from python_http_client.exceptions import HTTPError  # type: ignore[import-untyped]
+from sendgrid import SendGridAPIClient  # type: ignore[import-untyped]
+from sendgrid.helpers.mail import Mail, TemplateId  # type: ignore[import-untyped]
 
 from protean.core.email import BaseEmail, BaseEmailProvider
 from protean.exceptions import SendError

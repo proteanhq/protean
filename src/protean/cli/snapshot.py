@@ -1,5 +1,7 @@
 """CLI commands for event-sourced aggregate snapshotting."""
 
+from typing import TYPE_CHECKING, cast
+
 import typer
 from rich import print
 from typing_extensions import Annotated
@@ -14,13 +16,17 @@ from protean.utils import DomainObjects
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from protean.core.aggregate import BaseAggregate
+    from protean.domain import Domain
+
 logger = get_logger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Manage snapshots for event-sourced aggregates."""
 
 
@@ -70,20 +76,24 @@ def create(
             _create_all(derived_domain)
 
 
-def _resolve_aggregate(domain: "Domain", aggregate_name: str):  # type: ignore[name-defined]  # noqa: F821
+def _resolve_aggregate(
+    domain: "Domain", aggregate_name: str
+) -> "type[BaseAggregate] | None":
     """Resolve an aggregate class by name from the domain registry.
 
     Returns the class or None (with error printed).
     """
     for _, record in domain.registry._elements[DomainObjects.AGGREGATE.value].items():
         if record.cls.__name__ == aggregate_name:
-            return record.cls
+            # registry stores element classes as ``Any``; narrow to the
+            # aggregate class type expected by the snapshot APIs.
+            return cast("type[BaseAggregate]", record.cls)
 
     print(f"Error: Aggregate '{aggregate_name}' not found in domain.")
     return None
 
 
-def _create_single(domain: "Domain", aggregate_name: str, identifier: str) -> None:  # type: ignore[name-defined]  # noqa: F821
+def _create_single(domain: "Domain", aggregate_name: str, identifier: str) -> None:
     """Snapshot a single aggregate instance."""
     aggregate_cls = _resolve_aggregate(domain, aggregate_name)
     if aggregate_cls is None:
@@ -97,7 +107,7 @@ def _create_single(domain: "Domain", aggregate_name: str, identifier: str) -> No
         raise typer.Abort()
 
 
-def _create_for_aggregate(domain: "Domain", aggregate_name: str) -> None:  # type: ignore[name-defined]  # noqa: F821
+def _create_for_aggregate(domain: "Domain", aggregate_name: str) -> None:
     """Snapshot all instances of one aggregate."""
     aggregate_cls = _resolve_aggregate(domain, aggregate_name)
     if aggregate_cls is None:
@@ -111,7 +121,7 @@ def _create_for_aggregate(domain: "Domain", aggregate_name: str) -> None:  # typ
         raise typer.Abort()
 
 
-def _create_all(domain: "Domain") -> None:  # type: ignore[name-defined]  # noqa: F821
+def _create_all(domain: "Domain") -> None:
     """Snapshot all event-sourced aggregates in the domain."""
     results = domain.create_all_snapshots()
     if not results:

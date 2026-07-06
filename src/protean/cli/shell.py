@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 def shell(
     domain: Annotated[str, typer.Option()] = ".",
     traverse: Annotated[bool, typer.Option()] = False,
-):
+) -> None:
     try:
         domain_instance = derive_domain(domain)
     except NoDomainException as exc:
@@ -50,6 +50,8 @@ def shell(
             f"    location: {sys.executable}\n"
             f"Domain: {domain_instance.name}\n"
         )
-        ipshell = InteractiveShellEmbed(banner1=banner, user_ns=ctx)
+        ipshell = InteractiveShellEmbed(  # type: ignore[no-untyped-call]  # IPython ships no py.typed
+            banner1=banner, user_ns=ctx
+        )
 
         ipshell()

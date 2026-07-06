@@ -99,7 +99,7 @@ def _resolve_domains(
     raise SystemExit(1)
 
 
-def _load_live_ir(domain_path: str) -> dict:
+def _load_live_ir(domain_path: str) -> dict[str, Any]:
     """Load live IR from a domain module without depending on typer."""
     from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
 
@@ -124,7 +124,7 @@ def _load_live_ir(domain_path: str) -> dict:
         raise SystemExit(1)
 
 
-def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict:
+def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict[str, Any]:
     """Build live IR, write a canonical baseline to *protean_dir*/ir.json.
 
     The written baseline omits the volatile ``generated_at`` timestamp (see

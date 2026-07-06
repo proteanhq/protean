@@ -61,7 +61,7 @@ def _get_redis(domains: List["Domain"]) -> Any:
             with d.domain_context():
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
-                    return broker.redis_instance
+                    return getattr(broker, "redis_instance")
         except Exception:
             continue
     return None
@@ -290,6 +290,8 @@ def get_pm_instance_count(domain: "Domain", pm_cls: type) -> int | None:
     try:
         with domain.domain_context():
             store = domain.event_store.store
+            if store is None:
+                return None
             identifiers = store._stream_identifiers(stream_category)
             return len(identifiers)
     except Exception:
@@ -318,6 +320,8 @@ def get_pm_instances(
     try:
         with domain.domain_context():
             store = domain.event_store.store
+            if store is None:
+                return []
             identifiers = store._stream_identifiers(stream_category)
     except Exception:
         logger.debug(

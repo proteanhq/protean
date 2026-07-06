@@ -42,12 +42,12 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.callback()
-def callback():
+def callback() -> None:
     """Generate and preview architecture documentation."""
 
 
 @app.command()
-def preview():
+def preview() -> None:
     """Run a live preview server"""
     try:
         subprocess.call(

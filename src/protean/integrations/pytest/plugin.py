@@ -7,8 +7,10 @@ at import time.  Also registers standard test-category markers.
 
 import os
 
+import pytest
 
-def pytest_addoption(parser):
+
+def pytest_addoption(parser: pytest.Parser) -> None:
     """Add ``--protean-env`` and ``--update-snapshots`` CLI options."""
     parser.addoption(
         "--protean-env",
@@ -24,7 +26,7 @@ def pytest_addoption(parser):
     )
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
     """Set PROTEAN_ENV before test collection.
 
     Domain modules are imported at collection time (test files import
@@ -32,7 +34,7 @@ def pytest_configure(config):
     reads domain.toml and applies environment overlays during construction,
     so PROTEAN_ENV must be set before any domain module is imported.
     """
-    env = config.getoption("--protean-env", default="test")
+    env: str = config.getoption("--protean-env", default="test") or "test"
     os.environ.setdefault("PROTEAN_ENV", env)
 
     # Propagate --update-snapshots to the testing module

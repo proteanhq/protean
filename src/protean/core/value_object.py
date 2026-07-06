@@ -255,8 +255,11 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
             try:
                 invariant_method(self)
             except ValidationError as err:
-                for field_name in err.messages:
-                    errors[field_name].extend(err.messages[field_name])
+                # Invariant failures always carry a field-keyed message dict;
+                # narrow from the exception's broader ``str | list | dict`` type.
+                err_messages = cast("dict[str, list[str]]", err.messages)
+                for field_name in err_messages:
+                    errors[field_name].extend(err_messages[field_name])
 
         return dict(errors) if errors else {}
 
@@ -398,16 +401,20 @@ def value_object_from_entity(
             continue
 
         if isinstance(value, HasOne):
-            # Recursively convert associated entity to VO
-            child_vo_cls = value_object_from_entity(value.to_cls)
+            # Recursively convert associated entity to VO. ``to_cls`` is
+            # ``str | type`` (lazy string ref or resolved class), but by the
+            # time an entity is projected into a VO the target is a resolved
+            # class.
+            child_vo_cls = value_object_from_entity(cast("type[Any]", value.to_cls))
             vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
             annotations[key] = Optional[child_vo_cls]
             namespace[key] = None
             association_descriptors[key] = vo_descriptor
 
         elif isinstance(value, HasMany):
-            # Recursively convert to list of VOs
-            child_vo_cls = value_object_from_entity(value.to_cls)
+            # Recursively convert to list of VOs. See ``to_cls`` narrowing note
+            # above.
+            child_vo_cls = value_object_from_entity(cast("type[Any]", value.to_cls))
             vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
             # ``ValueObjectList.__init__`` has an untyped ``content_type``
             # parameter that defaults to ``str``, so pyright infers ``type[str]``.
