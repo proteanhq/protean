@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,10 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
+from protean._deprecation import (
+    ProteanDeprecationWarning,
+    RemovedInProtean017Warning,
+)
 from protean.cli import app
 from protean.exceptions import NoDomainException
 from tests.shared import change_working_directory_to
@@ -188,6 +193,50 @@ class TestObservatoryCommand:
 
                 assert result.exit_code == 0
                 mock_logging.assert_called_once_with(level="DEBUG")
+
+    def test_observatory_debug_flag_emits_deprecation_warning(self):
+        """--debug emits a versioned Protean deprecation warning."""
+        change_working_directory_to("test7")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+
+            with patch(OBSERVATORY_CLS):
+                with patch("protean.cli.observatory.configure_logging"):
+                    result = runner.invoke(
+                        app,
+                        ["observatory", "--domain", "publishing7.py", "--debug"],
+                    )
+
+            assert result.exit_code == 0
+
+            deprecations = [
+                w for w in caught if issubclass(w.category, RemovedInProtean017Warning)
+            ]
+            assert len(deprecations) > 0, "Expected RemovedInProtean017Warning"
+            assert "--debug is deprecated" in str(deprecations[0].message)
+
+    def test_observatory_without_debug_emits_no_deprecation(self):
+        """Negative path: the deprecation fires only for --debug, not on the
+        default invocation (guards against the emission drifting out of scope)."""
+        change_working_directory_to("test7")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+
+            with patch(OBSERVATORY_CLS):
+                with patch("protean.cli.observatory.configure_logging"):
+                    result = runner.invoke(
+                        app, ["observatory", "--domain", "publishing7.py"]
+                    )
+
+            assert result.exit_code == 0
+            deprecations = [
+                w for w in caught if issubclass(w.category, ProteanDeprecationWarning)
+            ]
+            assert deprecations == [], (
+                f"Expected no deprecation without --debug, got {deprecations}"
+            )
 
     def test_observatory_default_logging_level(self):
         """Test that observatory uses INFO logging by default."""

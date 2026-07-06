@@ -1,13 +1,16 @@
 """CLI command for running the Protean Observatory observability server."""
 
-import warnings
 from typing import List, Optional
 
 import click
 import typer
 from typing_extensions import Annotated
 
-from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
+from protean.cli._helpers import (
+    CTX_LOG_CONFIGURED,
+    handle_cli_exceptions,
+    warn_debug_flag_deprecated,
+)
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import configure_logging, get_logger
@@ -41,11 +44,7 @@ def observatory(
     from protean.server.observatory import Observatory  # noqa: PLC0415
 
     if debug:
-        warnings.warn(
-            "--debug is deprecated; use --log-level DEBUG. Will be removed in v0.17.0.",
-            DeprecationWarning,
-            stacklevel=1,
-        )
+        warn_debug_flag_deprecated()
 
     # Check parent context for CLI-level logging configuration.
     # click.get_current_context may fail when called directly (not via CLI).

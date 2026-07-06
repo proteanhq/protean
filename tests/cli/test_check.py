@@ -86,6 +86,35 @@ _DIAG_DOMAIN = "tests/support/domains/test25/domain25.py:domain"
 _ERR_DOMAIN = "tests/support/domains/test26/domain26.py:domain"
 # Domain with only info-level diagnostics (test27)
 _INFO_DOMAIN = "tests/support/domains/test27/domain27.py:domain"
+# Domain with a deprecated aggregate (test28)
+_DEPRECATED_DOMAIN = "tests/support/domains/test28/domain28.py:domain"
+
+
+@pytest.mark.no_test_domain
+class TestCheckDeprecatedElement:
+    """A deprecated element surfaces as a DEPRECATED_ELEMENT diagnostic through
+    the CLI (the IR wiring landed in #812; this pins the end-to-end path)."""
+
+    def test_deprecated_element_in_json_output(self):
+        result = runner.invoke(app, ["check", "-d", _DEPRECATED_DOMAIN, "-f", "json"])
+        # Deprecation is info-level only → exit 0.
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        deprecated = [
+            d for d in data["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"
+        ]
+        assert len(deprecated) == 1
+        diag = deprecated[0]
+        assert diag["level"] == "info"
+        assert "Order" in diag["element"]
+        assert "0.15" in diag["message"]
+        assert "1.0" in diag["message"]
+
+    def test_deprecated_element_in_rich_output(self):
+        result = runner.invoke(app, ["check", "-d", _DEPRECATED_DOMAIN])
+        assert result.exit_code == 0
+        assert "DEPRECATED_ELEMENT" in result.output
+        assert "Order" in result.output
 
 
 @pytest.mark.no_test_domain

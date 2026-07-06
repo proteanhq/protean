@@ -63,18 +63,23 @@ Not all breaking changes carry the same risk or require the same mitigation. We 
 
 Introduce the new API alongside the old. The old API emits a `DeprecationWarning` with a specific removal version. The deprecated path delegates to the new implementation.
 
-```python
-import warnings
+Do not hand-roll `warnings.warn(...)`: use the reusable mechanism in `protean._deprecation`, so every deprecation cites a removal version in the same format and emits a per-version warning class (`RemovedInProtean018Warning`, etc.) that downstream projects can filter precisely.
 
+```python
+from protean._deprecation import deprecated, warn_deprecated
+
+# A whole callable that is going away — warns on every call, then delegates:
+@deprecated(removal="0.17.0", alternative="Use new_method() instead.")
 def old_method(self):
-    warnings.warn(
-        "old_method() is deprecated. Use new_method() instead. "
-        "Will be removed in v0.17.0.",
-        DeprecationWarning,
-        stacklevel=2
-    )
     return self.new_method()
+
+# A single deprecated branch inside a still-supported function:
+def run(self, debug=False):
+    if debug:
+        warn_deprecated("debug=True", removal="0.17.0", alternative="Use log_level.")
 ```
+
+Each removal version maps internally to a `RemovedInProteanXXWarning` subclass of `DeprecationWarning`. The `@deprecated` decorator validates the version eagerly (a typo fails at import); the inline `warn_deprecated` helper never raises on the live deprecated path, degrading to the base `ProteanDeprecationWarning` for an unregistered version so a consumer's program keeps running. Because every class subclasses `DeprecationWarning`, promoting `DeprecationWarning` to an error in CI (see the guidance below) surfaces them all — filter by category, not by module, since a decorated helper attributes its warning to the *caller's* module.
 
 **Survival window:** Deprecated items survive for a minimum of two minor versions. If deprecated in 0.15, the earliest removal is 0.17.
 
@@ -161,10 +166,10 @@ Recommend that users add the following to their test configuration:
 # pytest.ini or pyproject.toml
 [tool:pytest]
 filterwarnings =
-    error::DeprecationWarning:protean.*
+    error::DeprecationWarning
 ```
 
-This turns Protean deprecation warnings into test failures, ensuring users catch deprecated usage during development rather than after a breaking release.
+This turns deprecation warnings (Protean's included) into test failures, ensuring users catch deprecated usage during development rather than after a breaking release. Filter by category rather than qualifying with a `:protean.*` module: a `@deprecated`-decorated helper attributes its warning to the caller's module, so a module filter would silently miss exactly those sites.
 
 ---
 

@@ -84,6 +84,7 @@ from collections.abc import Callable, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
+from protean._deprecation import deprecated
 from protean.core.process_manager import (
     BaseProcessManager,
     _resolve_correlation_value,
@@ -1364,6 +1365,10 @@ def get_generic_test_dir() -> Path:
 # #1011.
 
 
+@deprecated(
+    removal="0.18.0",
+    alternative="Use pytest.raises(ValidationError, match=...) instead.",
+)
 def assert_invalid(
     operation: Callable[[], Any],
     *,
@@ -1384,13 +1389,6 @@ def assert_invalid(
     Returns:
         The caught ``ValidationError`` for further assertions.
     """
-    warnings.warn(
-        "assert_invalid() is deprecated. Use "
-        "pytest.raises(ValidationError, match=...) instead. "
-        "Will be removed in v0.18.0.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     try:
         operation()
     except ValidationError as exc:
@@ -1406,6 +1404,7 @@ def assert_invalid(
     raise AssertionError("Expected ValidationError but no exception was raised")
 
 
+@deprecated(removal="0.18.0", alternative="Call the operation directly instead.")
 def assert_valid(operation: Callable[[], Any]) -> Any:
     """Assert that an operation completes without raising a ``ValidationError``.
 
@@ -1419,12 +1418,6 @@ def assert_valid(operation: Callable[[], Any]) -> Any:
     Returns:
         The return value of the operation.
     """
-    warnings.warn(
-        "assert_valid() is deprecated. Call the operation directly instead. "
-        "Will be removed in v0.18.0.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     try:
         return operation()
     except ValidationError as exc:
