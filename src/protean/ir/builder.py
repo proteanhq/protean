@@ -32,6 +32,10 @@ from protean.ir import SCHEMA_VERSION
 from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
 from protean.utils.container import Element, OptionsMixin
+from protean.utils.upcasting import (
+    missing_upcaster_source_versions,
+    upcaster_event_name,
+)
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 
 if TYPE_CHECKING:
@@ -586,6 +590,12 @@ class IRBuilder:
         deprecated = self._extract_deprecated(cls)
         if deprecated is not None:
             entry["deprecated"] = deprecated
+
+        superseded_by = getattr(cls.meta_, "superseded_by", None)
+        if superseded_by is not None:
+            entry["superseded_by"] = (
+                fqn(superseded_by) if isinstance(superseded_by, type) else superseded_by
+            )
 
         doc = (cls.__doc__ or "").strip()
         if doc:
@@ -1382,6 +1392,7 @@ class IRBuilder:
         self._diagnose_published_no_external_broker(ir)
         self._diagnose_aggregate_without_command_handler(ir)
         self._diagnose_projection_without_projector(ir)
+        self._diagnose_upcaster_gap(ir)
         # Info-level rules (design smells)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
@@ -1576,6 +1587,62 @@ class IRBuilder:
                     }
                 )
 
+    def _diagnose_upcaster_gap(self, ir: dict[str, Any]) -> None:
+        """UPCASTER_GAP: an event at version N>1 whose stored predecessors have
+        no upcaster path to N (build-time signal for a read-time failure).
+
+        Reads the registry rather than ``ir`` because upcaster metadata and an
+        event's ``abstract`` flag are not projected into the IR. A malformed
+        chain (duplicate/cyclic/non-convergent) is already an error that preempts
+        IR building, so this only reaches the two silent cases — no upcasters at
+        all, or partial coverage of ``1..N-1``.
+
+        TODO(3.4.6): consume projected upcaster IR once the event catalog adds it.
+        """
+        registry = self._domain._domain_registry
+
+        # (from_version, to_version) edges per event, keyed by bare name so a
+        # string event_type resolves the same way build_chains does. Two events
+        # sharing a class name across aggregates would pool edges — a
+        # pre-existing limitation of the name-based type string; TODO(3.4.6):
+        # key by the qualified type string once upcasters are projected to IR.
+        edges_by_event: dict[str, list[tuple[int, int]]] = {}
+        for upcaster_cls in self._domain._upcasters:
+            name = upcaster_event_name(upcaster_cls.meta_.event_type)
+            edges_by_event.setdefault(name, []).append(
+                (upcaster_cls.meta_.from_version, upcaster_cls.meta_.to_version)
+            )
+
+        for record in registry._elements.get("EVENT", {}).values():
+            if record.internal or record.auto_generated:
+                continue
+            event_cls = record.cls
+            if getattr(event_cls.meta_, "abstract", False):
+                continue
+            current_version = getattr(event_cls, "__version__", 1)
+            if current_version <= 1:
+                continue
+
+            missing = missing_upcaster_source_versions(
+                edges_by_event.get(event_cls.__name__, []), current_version
+            )
+            if missing:
+                versions = ", ".join(f"v{v}" for v in missing)
+                self._diagnostics.append(
+                    {
+                        "code": "UPCASTER_GAP",
+                        "element": fqn(event_cls),
+                        "level": "warning",
+                        "message": (
+                            f"Event `{event_cls.__name__}` is at version "
+                            f"{current_version}; stored payloads at {versions}, if "
+                            f"any exist, have no upcaster path to "
+                            f"v{current_version} and would fail to deserialize. "
+                            f"Add upcasters covering the missing versions."
+                        ),
+                    }
+                )
+
     # ------------------------------------------------------------------
     # Info-level diagnostics (design smells)
     # ------------------------------------------------------------------
@@ -1731,6 +1798,10 @@ class IRBuilder:
                 )
             else:
                 msg = f"`{name}` is deprecated since v{since}"
+
+            superseded_by = element.get("superseded_by")
+            if superseded_by:
+                msg += f"; superseded by `{superseded_by}`"
 
             self._diagnostics.append(
                 {

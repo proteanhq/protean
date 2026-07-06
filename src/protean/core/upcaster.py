@@ -89,17 +89,16 @@ def upcaster_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T
             f"Upcaster `{element_cls.__name__}` must specify `to_version`"
         )
 
-    # event_type must be a BaseEvent subclass. A bare string is tolerated here
-    # so a forward-reference import does not crash; it is not resolved, so it is
-    # reported as a structured error when the chain is built (see
-    # TypeManager._populate_chain), never as an AttributeError.
+    # event_type must be a BaseEvent subclass or a string forward reference. A
+    # string is resolved by name when the chain is built (see
+    # TypeManager._populate_chain); an unregistered name fails cleanly there.
     event_type = element_cls.meta_.event_type
     if not isinstance(event_type, str) and not (
         isinstance(event_type, type) and issubclass(event_type, BaseEvent)
     ):
         raise IncorrectUsageError(
-            f"Upcaster `{element_cls.__name__}` event_type must be an Event class, "
-            f"got `{event_type}`"
+            f"Upcaster `{element_cls.__name__}` event_type must be an Event class "
+            f"or a string reference to one, got `{event_type}`"
         )
 
     # from_version and to_version must be positive integers

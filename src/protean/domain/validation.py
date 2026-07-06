@@ -417,12 +417,12 @@ class DomainValidator:
         """Report a malformed upcaster chain as a structured error.
 
         Validates a throwaway chain (leaving the runtime chain untouched): a
-        duplicate, cyclic, non-convergent, or unreachable-version chain raises
-        ``ConfigurationError``, and a string ``event_type`` raises
-        ``IncorrectUsageError``; ``validate_all()`` collects either as an error
-        so ``check()`` reports it instead of crashing ``protean check`` with a
-        traceback. ``init()`` builds and validates the real chain fail-fast in
-        ``_prepare()``.
+        duplicate, cyclic, non-convergent, or unreachable-version chain (the
+        last also covers a string ``event_type`` naming an unregistered event)
+        raises ``ConfigurationError``, which ``validate_all()`` collects as an
+        error so ``check()`` reports it instead of crashing ``protean check``
+        with a traceback. ``init()`` builds and validates the real chain
+        fail-fast in ``_prepare()``.
         """
         self._domain._type_manager.validate_upcaster_chains()
 

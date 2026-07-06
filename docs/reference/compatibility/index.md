@@ -103,6 +103,23 @@ When deprecating a domain element or field:
 The `protean ir diff` command distinguishes expected removals (deprecated
 elements past their removal version) from unexpected removals.
 
+Events additionally accept a `superseded_by` option naming the replacement (an
+Event class or a name string):
+
+```python
+@domain.event(
+    part_of=Order,
+    deprecated={"since": "0.16", "removal": "0.19"},
+    superseded_by=OrderPlacedV2,
+)
+class OrderPlaced(BaseEvent): ...
+```
+
+The successor is surfaced two ways: raising a deprecated event emits a
+`ProteanDeprecationWarning` (once per event type) that names it, and the
+`DEPRECATED_ELEMENT` diagnostic appends `superseded by \`<name>\``. It is
+documentation-only and never resolved to a link.
+
 ---
 
 ## `.protean/config.toml` reference

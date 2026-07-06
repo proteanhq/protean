@@ -122,7 +122,12 @@ class TestUpcasterValidation:
             )
 
     def test_error_event_type_not_an_event(self, test_domain):
-        with pytest.raises(IncorrectUsageError, match="must be an Event class"):
+        # The message names both accepted forms (Event class or string
+        # reference) so a user passing a string is not misled (#1147).
+        with pytest.raises(
+            IncorrectUsageError,
+            match="must be an Event class or a string reference to one",
+        ):
             test_domain.upcaster(
                 UpcastOrderPlacedV1ToV2,
                 event_type=Order,  # Not an event!

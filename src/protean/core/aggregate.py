@@ -13,6 +13,7 @@ from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
 from pydantic_core import PydanticUndefined
 
+from protean._deprecation import warn_deprecated
 from protean.core.entity import BaseEntity, _EntityState
 from protean.core.value_object import value_object_from_entity
 from protean.fields.tempdata import AssociationCache
@@ -184,6 +185,9 @@ class BaseAggregate(BaseEntity):
                 f" aggregate `{self.__class__.__name__}`"
             )
 
+        # Warn once per type when a deprecated event is raised.
+        self._warn_if_deprecated(event.__class__)
+
         id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
         identifier = getattr(self, id_field_name) if id_field_name else None
 
@@ -279,6 +283,41 @@ class BaseAggregate(BaseEntity):
             if not event.__class__.meta_.is_fact_event:
                 with atomic_change(self):
                     self._apply_handler(event_with_metadata)
+
+    @staticmethod
+    def _warn_if_deprecated(event_cls: type[BaseEvent]) -> None:
+        """Emit a raise-time deprecation warning for a deprecated event.
+
+        Routes through :func:`protean._deprecation.warn_deprecated`. Fires at
+        most once per event type per domain (tracked on the domain, which is
+        fresh per run) to avoid log spam when the event is raised many times.
+        Names the ``superseded_by`` replacement when one is declared.
+        """
+        deprecated = event_cls.meta_.deprecated
+        if not deprecated:
+            return
+
+        warned = current_domain._deprecated_events_warned
+        if event_cls in warned:
+            return
+        warned.add(event_cls)
+
+        superseded_by = event_cls.meta_.superseded_by
+        alternative = None
+        if superseded_by is not None:
+            successor = (
+                superseded_by.__name__
+                if isinstance(superseded_by, type)
+                else superseded_by
+            )
+            alternative = f"Use `{successor}` instead."
+
+        warn_deprecated(
+            f"Event `{event_cls.__name__}`",
+            removal=deprecated.get("removal"),
+            alternative=alternative,
+            stacklevel=3,
+        )
 
     def _apply_handler(self, event: Any) -> None:
         """Invoke @apply handler(s) for an event without version management.

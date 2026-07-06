@@ -153,10 +153,9 @@ class TestMalformedChainReportedByCheck:
         assert len(first) == 1
         assert second == first
 
-    def test_string_event_type_is_a_structured_error_not_a_crash(self, test_domain):
-        """A string event_type is tolerated at registration but not resolved;
-        check() reports it as a structured error instead of crashing with
-        `AttributeError: 'str' object has no attribute '__name__'`."""
+    def test_string_event_type_resolves_for_a_registered_event(self, test_domain):
+        """A string event_type resolves by name to the registered event (a
+        forward reference), building the chain with no error (#1131)."""
         test_domain.register(Order, is_event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
 
@@ -170,10 +169,33 @@ class TestMalformedChainReportedByCheck:
 
         result = test_domain.check(traverse=False)
 
+        assert result["status"] != "fail"
+        upcaster_errors = [
+            e for e in result["errors"] if "upcaster" in e["message"].lower()
+        ]
+        assert upcaster_errors == []
+
+    def test_string_event_type_for_unregistered_event_is_a_clean_error(
+        self, test_domain
+    ):
+        """A string event_type naming an unregistered event fails cleanly via
+        the unreachable-terminal check — a structured error, not an
+        `AttributeError` crash (#1131)."""
+        test_domain.register(Order, is_event_sourced=True)
+
+        class UpcastByName(BaseUpcaster):
+            def upcast(self, data):
+                return data
+
+        test_domain.upcaster(
+            UpcastByName, event_type="Nonexistent", from_version=1, to_version=2
+        )
+
+        result = test_domain.check(traverse=False)
+
         assert result["status"] == "fail"
-        by_string = [e for e in result["errors"] if "by string" in e["message"]]
-        assert len(by_string) == 1
-        assert by_string[0]["level"] == "error"
+        assert len(result["errors"]) == 1
+        assert "Nonexistent" in result["errors"][0]["message"]
 
     def test_check_does_not_build_the_runtime_chain(self, test_domain):
         """check() validates a throwaway chain; the runtime upcaster chain used
