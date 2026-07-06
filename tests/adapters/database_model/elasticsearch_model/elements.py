@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 
-from elasticsearch_dsl import Keyword, Text
+from elasticsearch.dsl import Keyword, Text
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel

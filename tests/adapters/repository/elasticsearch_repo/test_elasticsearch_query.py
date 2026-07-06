@@ -1,5 +1,5 @@
 import pytest
-from elasticsearch_dsl.query import Bool, Term
+from elasticsearch.dsl.query import Bool, Term
 
 from .elements import Person
 
