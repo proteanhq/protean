@@ -10,6 +10,7 @@ Public API::
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -460,6 +461,7 @@ def _diff_contracts(
 
     breaking: list[dict[str, Any]] = []
     expected_removals: list[dict[str, Any]] = []
+    renamed_fields: list[dict[str, Any]] = []
 
     # Removed published events — classify by deprecation status
     for event in removed:
@@ -526,7 +528,51 @@ def _diff_contracts(
         left_fields = left_evt.get("fields", {})
         right_fields = right_evt.get("fields", {})
         removed_fields = set(left_fields.keys()) - set(right_fields.keys())
+
+        # A removed field claimed by a `renamed_from` on a surviving field is a
+        # safe rename (the alias resolves old payloads), not a breaking removal.
+        added_fields = {
+            name: right_fields[name]
+            for name in right_fields.keys() - left_fields.keys()
+        }
+        contract_renames = _detect_field_renames(added_fields, removed_fields)
+        for old_name, new_name in contract_renames.items():
+            old_type = left_fields[old_name].get("type")
+            new_type = right_fields[new_name].get("type")
+            if old_type != new_type:
+                # A rename that also changes type breaks old payloads.
+                breaking.append(
+                    {
+                        "type": "contract_field_type_changed",
+                        "fqn": event_fqn,
+                        "field": old_name,
+                        "renamed_to": new_name,
+                        "left": old_type,
+                        "right": new_type,
+                        "message": (
+                            f"Field '{old_name}' renamed to '{new_name}' with a "
+                            f"type change from '{old_type}' to '{new_type}' in "
+                            f"published event '{left_type}'"
+                        ),
+                    }
+                )
+            else:
+                renamed_fields.append(
+                    {
+                        "type": "contract_field_renamed",
+                        "fqn": event_fqn,
+                        "field": old_name,
+                        "renamed_to": new_name,
+                        "message": (
+                            f"Field '{old_name}' renamed to '{new_name}' in "
+                            f"published event '{left_type}'"
+                        ),
+                    }
+                )
+
         for field_name in sorted(removed_fields):
+            if field_name in contract_renames:
+                continue
             field_deprecated = left_fields[field_name].get("deprecated")
             field_classification = _classify_removal(field_deprecated, current_version)
 
@@ -568,6 +614,8 @@ def _diff_contracts(
         result["breaking_changes"] = breaking
     if expected_removals:
         result["expected_removals"] = expected_removals
+    if renamed_fields:
+        result["renamed_fields"] = renamed_fields
 
     return result
 
@@ -854,13 +902,71 @@ def _classify_element_delta(
     _classify_attribute_changes(element_delta.get("attributes", {}), fqn, report)
 
 
+def _detect_field_renames(
+    added: dict[str, Any],
+    removed: Collection[str],
+) -> dict[str, str]:
+    """Return ``{old_name: new_name}`` for declared renames in a fields diff.
+
+    An added field whose ``renamed_from`` names a removed field is a rename,
+    not a remove+add: the alias resolves old stored payloads, so it is a safe
+    change. ``removed`` is any container of removed field names. Each removed
+    name is claimed by at most one rename.
+    """
+    renames: dict[str, str] = {}
+    for new_name, field_dict in added.items():
+        for old_name in field_dict.get("renamed_from") or []:
+            if old_name in removed and old_name not in renames:
+                renames[old_name] = new_name
+    return renames
+
+
 def _classify_field_changes(
     fields_diff: dict[str, Any],
     fqn: str,
     element_type: str,
     report: CompatibilityReport,
 ) -> None:
-    for field_name, field_dict in fields_diff.get("added", {}).items():
+    added = fields_diff.get("added", {})
+    removed = fields_diff.get("removed", {})
+
+    # Declared renames are safe (the alias covers old payloads) and suppress
+    # the remove+add pair they would otherwise be diffed as — unless the rename
+    # also changes the field type, which old payloads cannot satisfy.
+    renames = _detect_field_renames(added, removed)
+    renamed_new = set(renames.values())
+    for old_name, new_name in renames.items():
+        old_type = removed[old_name].get("type")
+        new_type = added[new_name].get("type")
+        if old_type != new_type:
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="field_type_changed",
+                    message=(
+                        f"Field '{old_name}' renamed to '{new_name}' with a type "
+                        f"change from '{old_type}' to '{new_type}' in "
+                        f"{element_type} '{fqn}'"
+                    ),
+                )
+            )
+        else:
+            report.safe_changes.append(
+                CompatibilityChange(
+                    severity="safe",
+                    element_fqn=fqn,
+                    change_type="field_renamed",
+                    message=(
+                        f"Field '{old_name}' renamed to '{new_name}' in "
+                        f"{element_type} '{fqn}'"
+                    ),
+                )
+            )
+
+    for field_name, field_dict in added.items():
+        if field_name in renamed_new:
+            continue
         is_required = field_dict.get("required", False)
         has_default = "default" in field_dict
         if is_required and not has_default:
@@ -899,7 +1005,9 @@ def _classify_field_changes(
                 )
             )
 
-    for field_name in fields_diff.get("removed", {}):
+    for field_name in removed:
+        if field_name in renames:
+            continue
         report.breaking_changes.append(
             CompatibilityChange(
                 severity="breaking",

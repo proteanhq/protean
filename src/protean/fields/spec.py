@@ -17,7 +17,11 @@ from pydantic import AfterValidator, BeforeValidator
 from pydantic import Field as PydanticField
 
 from protean.exceptions import ValidationError as ProteanValidationError
-from protean.fields.base import EMPTY_VALUES, normalize_field_deprecated
+from protean.fields.base import (
+    EMPTY_VALUES,
+    normalize_field_deprecated,
+    normalize_field_renamed_from,
+)
 from protean.utils import generate_identity
 
 
@@ -102,6 +106,8 @@ class FieldSpec:
         | None = None,  # For Status fields — {state: [allowed_targets]}
         # Deprecation metadata
         deprecated: str | dict[str, Any] | None = None,
+        # Old field name(s) this field was renamed from
+        renamed_from: str | list[str] | tuple[str, ...] | None = None,
     ) -> None:
         self.python_type = python_type
         self.field_kind = field_kind
@@ -127,6 +133,7 @@ class FieldSpec:
         )
         self._auto_generated = False
         self.deprecated = normalize_field_deprecated(deprecated)
+        self.renamed_from = normalize_field_renamed_from(renamed_from)
 
         # Warn if required=True with an explicit default
         if self.required and self.default is not _UNSET:
@@ -276,6 +283,9 @@ class FieldSpec:
             json_extra["transitions"] = self.transitions
         if self.deprecated is not None:
             json_extra["_deprecated"] = self.deprecated
+
+        if self.renamed_from is not None:
+            json_extra["_renamed_from"] = self.renamed_from
 
         if json_extra:
             kwargs["json_schema_extra"] = json_extra

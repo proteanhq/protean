@@ -419,6 +419,235 @@ class TestClassifyAggregateFieldChanges:
 
 
 # ------------------------------------------------------------------
+# Field renames (#1139)
+# ------------------------------------------------------------------
+
+
+def _std(type_name: str = "String", **extra: object) -> dict:
+    return {"kind": "standard", "type": type_name, **extra}
+
+
+class TestClassifyFieldRename:
+    def test_declared_rename_is_safe_not_remove_add(self):
+        left = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"name": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order", fields={"customer_name": _std(renamed_from=["name"])}
+                )
+            }
+        )
+        report = _run(left, right)
+
+        assert report.is_breaking is False
+        assert [c.change_type for c in report.safe_changes] == ["field_renamed"]
+        assert "name" in report.safe_changes[0].message
+        assert "customer_name" in report.safe_changes[0].message
+        # The remove+add pair is suppressed.
+        assert report.breaking_changes == []
+
+    def test_required_field_rename_is_still_safe(self):
+        """A rename to a required field is safe — the alias resolves old
+        payloads, so it is not a 'required field added without default'."""
+        left = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"name": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={
+                        "customer_name": _std(required=True, renamed_from=["name"])
+                    },
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is False
+        assert [c.change_type for c in report.safe_changes] == ["field_renamed"]
+
+    def test_rename_without_matching_alias_is_still_breaking(self):
+        """Adding a new field and removing an old one, with no renamed_from
+        linking them, remains a breaking remove+add."""
+        left = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"name": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster("Order", fields={"customer_name": _std()})
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "field_removed" in {c.change_type for c in report.breaking_changes}
+        assert "field_renamed" not in {c.change_type for c in report.safe_changes}
+
+    def test_alias_naming_a_still_present_field_is_not_a_rename(self):
+        """renamed_from must name a *removed* field — if the alias still
+        exists, the new field is a plain addition, not a rename."""
+        left = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"name": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={
+                        "name": _std(),
+                        "customer_name": _std(renamed_from=["name"]),
+                    },
+                )
+            }
+        )
+        report = _run(left, right)
+        assert "field_renamed" not in {c.change_type for c in report.safe_changes}
+        assert "optional_field_added" in {c.change_type for c in report.safe_changes}
+
+    def test_multiple_aliases_one_matches_removed_field(self):
+        left = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"name": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={"customer_name": _std(renamed_from=["ancient", "name"])},
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is False
+        assert [c.change_type for c in report.safe_changes] == ["field_renamed"]
+
+    def test_renamed_field_on_event_is_safe(self):
+        left_event = _make_event(
+            "OrderPlaced", "app.OrderPlaced", fields={"name": _std()}
+        )
+        right_event = _make_event(
+            "OrderPlaced",
+            "app.OrderPlaced",
+            fields={"customer_name": _std(renamed_from=["name"])},
+        )
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order", events={"app.OrderPlaced": left_event}
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order", events={"app.OrderPlaced": right_event}
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is False
+        assert [c.change_type for c in report.safe_changes] == ["field_renamed"]
+
+    def test_rename_with_type_change_is_breaking(self):
+        """A rename that also changes the field type is breaking — an old
+        payload's value cannot satisfy the new type."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster("Order", fields={"amount": _std("Integer")})
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={"total": _std("Float", renamed_from=["amount"])},
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        change = report.breaking_changes[0]
+        assert change.change_type == "field_type_changed"
+        assert "amount" in change.message and "total" in change.message
+        assert "Integer" in change.message and "Float" in change.message
+        assert "field_renamed" not in {c.change_type for c in report.safe_changes}
+
+
+class TestContractFieldRename:
+    """Published-event field renames must not read as breaking in the
+    deprecation-aware contract diff either."""
+
+    @staticmethod
+    def _ir(events: list[dict]) -> dict:
+        return {
+            "clusters": {},
+            "projections": {},
+            "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+            "contracts": {"events": events},
+            "diagnostics": [],
+            "domain": {"name": "Test"},
+        }
+
+    def test_published_event_field_rename_is_not_breaking(self):
+        left = self._ir(
+            [
+                {
+                    "fqn": "app.OrderPlaced",
+                    "type": "App.OrderPlaced.v1",
+                    "fields": {"name": _std()},
+                }
+            ]
+        )
+        right = self._ir(
+            [
+                {
+                    "fqn": "app.OrderPlaced",
+                    "type": "App.OrderPlaced.v1",
+                    "fields": {"customer_name": _std(renamed_from=["name"])},
+                }
+            ]
+        )
+        result = diff_ir(left, right)
+
+        contracts = result["contracts"]
+        assert result["summary"]["has_breaking_changes"] is False
+        assert contracts.get("breaking_changes", []) == []
+        renamed = contracts.get("renamed_fields", [])
+        assert len(renamed) == 1
+        assert renamed[0]["field"] == "name"
+        assert renamed[0]["renamed_to"] == "customer_name"
+
+    def test_published_event_rename_with_type_change_is_breaking(self):
+        left = self._ir(
+            [
+                {
+                    "fqn": "app.OrderPlaced",
+                    "type": "App.OrderPlaced.v1",
+                    "fields": {"amount": _std("Integer")},
+                }
+            ]
+        )
+        right = self._ir(
+            [
+                {
+                    "fqn": "app.OrderPlaced",
+                    "type": "App.OrderPlaced.v1",
+                    "fields": {"total": _std("Float", renamed_from=["amount"])},
+                }
+            ]
+        )
+        result = diff_ir(left, right)
+
+        contracts = result["contracts"]
+        assert result["summary"]["has_breaking_changes"] is True
+        assert contracts.get("renamed_fields", []) == []
+        assert any(
+            b["type"] == "contract_field_type_changed"
+            for b in contracts.get("breaking_changes", [])
+        )
+
+
+# ------------------------------------------------------------------
 # __type__ string changes
 # ------------------------------------------------------------------
 

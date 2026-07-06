@@ -23,7 +23,7 @@ from protean.fields.base import FieldBase
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, fields
 from protean.utils.globals import current_domain
 
 if TYPE_CHECKING:
@@ -849,6 +849,51 @@ class Message(Element, BaseModel, OptionsMixin):
         except (AttributeError, TypeError):
             return default
 
+    @staticmethod
+    def _resolve_field_aliases(
+        element_cls: type, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Rename old payload keys onto their current fields via ``renamed_from``.
+
+        For each field declaring ``renamed_from``, if the payload carries an
+        old alias key, resolve it onto the current field name: the first stored
+        alias is moved onto the current name (when that name is absent), and any
+        remaining/stale alias keys are dropped so ``extra="forbid"`` does not
+        reject them. The current name always wins if both are present. A copy is
+        made only when an alias actually needs handling (the common no-rename
+        path returns the original dict untouched).
+
+        An alias that is itself a live field name is ignored (a field cannot be
+        renamed from one that still exists), so a live field's value is never
+        clobbered; presence is evaluated against the working copy so two fields
+        sharing an alias cannot double-claim the same key.
+        """
+        fields_map = fields(element_cls)
+        live_names = fields_map.keys()
+        resolved: dict[str, Any] | None = None
+        for field_name, field_obj in fields_map.items():
+            aliases = getattr(field_obj, "renamed_from", None)
+            if not aliases:
+                continue
+            current = resolved if resolved is not None else data
+            present = [
+                alias
+                for alias in aliases
+                if alias in current and alias not in live_names
+            ]
+            if not present:
+                continue
+            if resolved is None:
+                resolved = dict(data)
+            if field_name not in resolved:
+                # Adopt the first stored alias as the field's value.
+                resolved[field_name] = resolved.pop(present[0])
+                present = present[1:]
+            # Drop stale alias keys (current name already won, or a duplicate).
+            for alias in present:
+                resolved.pop(alias, None)
+        return resolved if resolved is not None else data
+
     def to_domain_object(self) -> Union["BaseEvent", "BaseCommand"]:
         """Convert this message back to its original domain object.
 
@@ -887,6 +932,10 @@ class Message(Element, BaseModel, OptionsMixin):
                 base_type, _, version_str = type_string.rpartition(".")
                 from_version = int(version_str.lstrip("v"))
                 data = upcaster_chain.upcast(base_type, from_version, data)
+
+            # Map old field names in the stored payload onto renamed fields, so
+            # a payload written before a rename loads without an upcaster.
+            data = self._resolve_field_aliases(element_cls, data)
 
             element_factory = cast(
                 "Callable[..., BaseEvent | BaseCommand]", element_cls

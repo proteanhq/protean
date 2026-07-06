@@ -52,6 +52,42 @@ def normalize_field_deprecated(
     )
 
 
+def normalize_field_renamed_from(
+    value: str | list[str] | tuple[str, ...] | None,
+) -> list[str] | None:
+    """Normalize the ``renamed_from`` field parameter to a list of aliases.
+
+    Accepts:
+    - ``None`` / empty → ``None``
+    - ``"old_name"`` (single alias) → ``["old_name"]``
+    - ``["a", "b"]`` / ``("a", "b")`` (aliases) → ``["a", "b"]``
+
+    Each alias must be a non-empty string. Raises :class:`ValueError` on
+    invalid input.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = [value]
+    elif isinstance(value, (list, tuple)):
+        value = list(value)
+    else:
+        raise ValueError(
+            f"Invalid `renamed_from` value: {value!r}. "
+            "Expected a field-name string or a list of field-name strings."
+        )
+
+    aliases: list[str] = []
+    for alias in value:
+        if not isinstance(alias, str) or not alias:
+            raise ValueError(
+                f"Invalid `renamed_from` alias: {alias!r}. "
+                "Each alias must be a non-empty field-name string."
+            )
+        aliases.append(alias)
+    return aliases or None
+
+
 class FieldBase:
     """Base class for all Protean fields.
 
@@ -115,6 +151,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         validators: Iterable[Callable[..., Any]] = (),
         error_messages: dict[str, str] | None = None,
         deprecated: str | dict[str, Any] | bool | None = None,
+        renamed_from: str | list[str] | tuple[str, ...] | None = None,
     ):
         # Pass to FieldDescriptorMixin for initialization
         super().__init__(referenced_as=referenced_as, description=description)
@@ -122,6 +159,10 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         self.identifier = identifier
         self.default = default
         self.deprecated = normalize_field_deprecated(deprecated)
+        # Old field name(s) this field was renamed from. Resolved at
+        # deserialization time so a stored payload written under the old key
+        # loads into this field without an upcaster.
+        self.renamed_from = normalize_field_renamed_from(renamed_from)
 
         # Indicates if field values need to be unique within the repository
         # always True for identifier field
@@ -275,6 +316,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
             validators=self._validators,
             error_messages=self.error_messages,
             deprecated=self.deprecated,
+            renamed_from=self.renamed_from,
         )
 
     def _load(self, value: Any) -> Any:

@@ -270,3 +270,25 @@ ERROR: Error during initialization: {'doors': ['Every building needs doors.']}
 ...
 ValidationError: {'doors': ['Every building needs doors.']}
 ```
+
+## `renamed_from`
+
+The old name (or a list of old names) this field was renamed from. Declaring a
+rename lets a stored payload written under the old key deserialize into the
+renamed field without an upcaster.
+
+```python
+@domain.event(part_of=Order)
+class OrderPlaced(BaseEvent):
+    order_id = Identifier(identifier=True)
+    customer_name = String(renamed_from="name")        # single old name
+    total = Float(renamed_from=["amount", "sum"])       # or a list of aliases
+```
+
+A stored `OrderPlaced` payload carrying the old `name` key loads into
+`customer_name`; the current name always wins if both are present, and any
+stale alias keys are dropped. The rename is also emitted into the IR, so
+`protean ir diff` reports a single safe `field_renamed` change instead of a
+breaking remove + add. See
+[Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
+for the full evolution workflow.

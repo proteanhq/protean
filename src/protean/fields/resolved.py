@@ -91,6 +91,10 @@ class ResolvedField:
             self.transitions: dict[str, list[str]] | None = extra.get(
                 "transitions", None
             )
+            # Old field name(s) this field was renamed from — carried on the
+            # resolved field (unlike ``deprecated``) because deserialization
+            # resolves aliases at runtime.
+            self.renamed_from: list[str] | None = extra.get("_renamed_from")
         else:
             self.identifier = False
             self.referenced_as = None
@@ -104,6 +108,7 @@ class ResolvedField:
             self._error_messages = {}
             self._auto_generated = False
             self.transitions = None
+            self.renamed_from = None
 
         # Identifiers are always unique (matching legacy Field behavior)
         if self.identifier:
