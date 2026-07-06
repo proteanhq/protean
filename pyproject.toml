@@ -145,7 +145,7 @@ test = [
     "jsonschema>=4.20.0",
 ]
 docs = [
-    "mkdocs>=1.6,<2",
+    "mkdocs>=1.6.1,<2",
     "mkdocs-material>=9.5.15",
     "mdx-include>=1.4.2",
     "mkdocstrings[python]>=0.27,<2",
