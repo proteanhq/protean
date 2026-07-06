@@ -6,11 +6,12 @@ version. See #999.
 """
 
 import pathlib
+import re
 import warnings
 
 import pytest
 
-import protean
+import protean.exceptions
 from protean._deprecation import (
     ProteanDeprecationWarning,
     RemovedInProtean10Warning,
@@ -32,13 +33,17 @@ class TestMechanismIsTheSingleDeprecationSource:
     """
 
     def test_deprecation_warning_referenced_only_in_the_mechanism(self):
+        # Word-boundaried so the legitimate ``ProteanDeprecationWarning``
+        # re-export in ``exceptions.py`` is not mistaken for a bare
+        # ``DeprecationWarning`` category being hand-rolled.
+        bare = re.compile(r"\bDeprecationWarning\b")
         root = pathlib.Path(protean.__file__).parent
         offenders = sorted(
             str(py.relative_to(root))
             for py in root.rglob("*.py")
             if py.name != "_deprecation.py"
             and "template" not in py.parts
-            and "DeprecationWarning" in py.read_text(encoding="utf-8")
+            and bare.search(py.read_text(encoding="utf-8"))
         )
         assert offenders == [], (
             "Hand-rolled DeprecationWarning found; route it through "
@@ -65,6 +70,16 @@ class TestWarningHierarchy:
 
     def test_base_is_a_deprecation_warning(self):
         assert issubclass(ProteanDeprecationWarning, DeprecationWarning)
+
+    def test_public_category_path_is_the_same_class(self):
+        """`protean.exceptions.ProteanDeprecationWarning` is the documented,
+        stable filter category — it must be the very class the mechanism emits,
+        so `filterwarnings = error::protean.exceptions.ProteanDeprecationWarning`
+        catches every per-version subclass."""
+        assert protean.exceptions.ProteanDeprecationWarning is ProteanDeprecationWarning
+        assert issubclass(
+            RemovedInProtean017Warning, protean.exceptions.ProteanDeprecationWarning
+        )
 
 
 class TestWarnDeprecated:

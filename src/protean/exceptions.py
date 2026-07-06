@@ -6,6 +6,11 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
+# Re-exported here as the public, stable category users filter on to promote
+# Protean deprecations to errors in CI (see ADR-0004). The emission machinery
+# and per-version subclasses live in ``protean._deprecation``.
+from protean._deprecation import ProteanDeprecationWarning  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 
