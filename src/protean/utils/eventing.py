@@ -287,6 +287,9 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         ("is_fact_event", False),
         ("published", False),
         ("version", None),
+        # The replacement for a deprecated event (an Event class or a name
+        # string). `deprecated` itself is the universal element option.
+        ("superseded_by", None),
     ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

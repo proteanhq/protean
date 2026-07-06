@@ -395,6 +395,10 @@ class Domain:
         # Placeholder array for resolving classes referenced by domain elements
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
+        # Event classes that have already emitted a raise-time deprecation
+        # warning, so a deprecated event warns once per type, not per instance.
+        self._deprecated_events_warned: set[type] = set()
+
         # Lazy-initialized idempotency store
         self._idempotency_store: IdempotencyStore | None = None
 

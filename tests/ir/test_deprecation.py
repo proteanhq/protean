@@ -335,6 +335,136 @@ class TestIRBuilderDeprecated:
 
 
 # =====================================================================
+# IR Builder — event superseded_by (#1133)
+# =====================================================================
+
+
+@pytest.mark.no_test_domain
+class TestIRBuilderSupersededBy:
+    """`superseded_by` is emitted into the IR event entry and named in the
+    DEPRECATED_ELEMENT diagnostic."""
+
+    @pytest.fixture(autouse=True)
+    def setup_domain(self) -> None:
+        self.domain = Domain(name="TestSuperseded")
+
+    @staticmethod
+    def _find_cluster(ir: dict, cls: type) -> dict:
+        from protean.utils import fqn as get_fqn
+
+        return ir["clusters"][get_fqn(cls)]
+
+    def test_superseded_by_class_emitted_as_fqn(self) -> None:
+        from protean.utils import fqn as get_fqn
+
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.event(part_of=Order)
+        class OrderConfirmed:
+            pass
+
+        @self.domain.event(
+            part_of=Order,
+            deprecated={"since": "0.15", "removal": "0.18"},
+            superseded_by=OrderConfirmed,
+        )
+        class OrderPlaced:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        placed = next(
+            e for e in cluster["events"].values() if "OrderPlaced" in e["fqn"]
+        )
+        assert placed["superseded_by"] == get_fqn(OrderConfirmed)
+
+    def test_superseded_by_string_emitted_verbatim(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.event(
+            part_of=Order,
+            deprecated="0.15",
+            superseded_by="OrderConfirmed",
+        )
+        class OrderPlaced:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        placed = list(cluster["events"].values())[0]
+        assert placed["superseded_by"] == "OrderConfirmed"
+
+    def test_no_superseded_by_key_when_unset(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.event(part_of=Order, deprecated="0.15")
+        class OrderPlaced:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        cluster = self._find_cluster(ir, Order)
+        placed = list(cluster["events"].values())[0]
+        assert "superseded_by" not in placed
+
+    def test_diagnostic_names_the_successor(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.event(part_of=Order)
+        class OrderConfirmed:
+            pass
+
+        @self.domain.event(
+            part_of=Order,
+            deprecated={"since": "0.15", "removal": "0.18"},
+            superseded_by=OrderConfirmed,
+        )
+        class OrderPlaced:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        dep_diags = [
+            d
+            for d in ir["diagnostics"]
+            if d["code"] == "DEPRECATED_ELEMENT" and "OrderPlaced" in d["message"]
+        ]
+        assert len(dep_diags) == 1
+        assert "superseded by" in dep_diags[0]["message"]
+        assert "OrderConfirmed" in dep_diags[0]["message"]
+
+    def test_diagnostic_omits_successor_when_unset(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        @self.domain.event(part_of=Order, deprecated="0.15")
+        class OrderPlaced:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        dep_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"]
+        assert len(dep_diags) == 1
+        assert "superseded by" not in dep_diags[0]["message"]
+
+
+# =====================================================================
 # IR Diagnostics — DEPRECATED_ELEMENT and DEPRECATED_FIELD
 # =====================================================================
 

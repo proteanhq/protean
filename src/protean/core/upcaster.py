@@ -97,8 +97,8 @@ def upcaster_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T
         isinstance(event_type, type) and issubclass(event_type, BaseEvent)
     ):
         raise IncorrectUsageError(
-            f"Upcaster `{element_cls.__name__}` event_type must be an Event class, "
-            f"got `{event_type}`"
+            f"Upcaster `{element_cls.__name__}` event_type must be an Event class "
+            f"or a string reference to one, got `{event_type}`"
         )
 
     # from_version and to_version must be positive integers
