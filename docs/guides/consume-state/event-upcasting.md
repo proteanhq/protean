@@ -81,7 +81,7 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `event_type` | Event class | The event this upcaster targets (always the *current* class). |
+| `event_type` | Event class or `str` | The event this upcaster targets (always the *current* class). A string is resolved by name, so a forward reference works. |
 | `from_version` | `int` | The source version this upcaster transforms from (e.g. `1`). |
 | `to_version` | `int` | The target version this upcaster transforms to (e.g. `2`). |
 
@@ -340,6 +340,17 @@ class BranchB(BaseUpcaster): ...
 class WrongTarget(BaseUpcaster): ...
 # → ConfigurationError: no event is registered with type string ...v99
 ```
+
+### Version gaps (`protean check`)
+
+The errors above are *hard* failures at `domain.init()`. A subtler problem
+passes startup but fails later, at read time: an event whose `__version__` has
+outrun its upcasters, so an old stored payload has no path to the current
+version. `protean check` flags this at build time as an `UPCASTER_GAP`
+**warning**. For example, an event at `__version__` 3 with only a `2→3`
+upcaster leaves stored `v1` payloads unreadable. Add an upcaster covering the
+missing versions (or ignore the warning if no payloads at those versions were
+ever stored).
 
 ---
 

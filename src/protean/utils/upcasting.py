@@ -181,3 +181,40 @@ class UpcasterChain:
     def needs_upcasting(self, type_string: str) -> bool:
         """Return ``True`` if *type_string* requires upcasting."""
         return type_string in self._version_map
+
+
+def upcaster_event_name(event_type: type | str) -> str:
+    """The event base name for an upcaster's ``event_type``.
+
+    ``event_type`` is either the Event class or a string forward reference; both
+    resolve to the bare name used in the ``Domain.Name`` base type string.
+    """
+    return event_type if isinstance(event_type, str) else event_type.__name__
+
+
+def missing_upcaster_source_versions(
+    edges: list[tuple[int, int]], current_version: int
+) -> list[int]:
+    """Prior versions with no upcaster path to the current version.
+
+    Given an event's registered upcaster ``(from_version, to_version)`` edges and
+    its current ``__version__`` N, return the sorted versions in ``1..N-1`` whose
+    stored payloads cannot be upcast to N (a build-time gap that otherwise only
+    surfaces as a read-time ``DeserializationError``). A version is a gap when,
+    walking the edges from it, the walk never reaches N — including the case of
+    no edges at all. Cycle-safe, though a cyclic chain is rejected earlier.
+    """
+    # A valid chain has one edge per source version (duplicate sources are
+    # rejected by build_chains before this runs).
+    adjacency: dict[int, int] = dict(edges)
+
+    missing: list[int] = []
+    for version in range(1, current_version):
+        current = version
+        seen: set[int] = set()
+        while current in adjacency and current not in seen:
+            seen.add(current)
+            current = adjacency[current]
+        if current != current_version:
+            missing.append(version)
+    return missing
