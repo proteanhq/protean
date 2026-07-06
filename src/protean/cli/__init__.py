@@ -16,7 +16,6 @@ Why does this file exist, and why not put this in __main__?
 """
 
 import json
-import warnings
 from pathlib import Path
 from typing import Any, Optional
 
@@ -28,6 +27,7 @@ from protean import __version__
 from protean.cli._helpers import CTX_LOG_CONFIGURED  # noqa: F401 — re-exported
 from protean.cli._helpers import cli_exception_handler  # noqa: F401 — re-exported
 from protean.cli._helpers import handle_cli_exceptions  # noqa: F401 — re-exported
+from protean.cli._helpers import warn_debug_flag_deprecated
 from protean.cli.check import check
 from protean.cli.database import app as db_app
 from protean.cli.dlq import app as dlq_app
@@ -177,11 +177,7 @@ def server(
     """Run Async Background Server"""
 
     if debug:
-        warnings.warn(
-            "--debug is deprecated; use --log-level DEBUG. Will be removed in v0.17.0.",
-            DeprecationWarning,
-            stacklevel=1,
-        )
+        warn_debug_flag_deprecated()
 
     parent_obj = getattr(ctx, "obj", None) or {}
     if not parent_obj.get(CTX_LOG_CONFIGURED):

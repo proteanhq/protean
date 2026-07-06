@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
+from protean._deprecation import RemovedInProtean017Warning
 from protean.cli import app
 from tests.shared import change_working_directory_to
 
@@ -229,9 +230,9 @@ class TestDeprecatedDebugFlag:
             assert result.exit_code == 0
 
             deprecation_warnings = [
-                w for w in caught if issubclass(w.category, DeprecationWarning)
+                w for w in caught if issubclass(w.category, RemovedInProtean017Warning)
             ]
-            assert len(deprecation_warnings) > 0, "Expected DeprecationWarning"
+            assert len(deprecation_warnings) > 0, "Expected RemovedInProtean017Warning"
             assert "--debug is deprecated" in str(deprecation_warnings[0].message)
 
     def test_debug_flag_still_sets_debug_level(self):
