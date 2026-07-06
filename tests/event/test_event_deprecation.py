@@ -8,10 +8,12 @@ and stay silent for non-deprecated events.
 
 import warnings
 
+import pytest
+
 from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.exceptions import ProteanDeprecationWarning
+from protean.exceptions import ConfigurationError, ProteanDeprecationWarning
 from protean.fields import Identifier, String
 
 
@@ -257,3 +259,23 @@ class TestSupersededByOption:
         test_domain.init(traverse=False)
 
         assert OrderPlaced.meta_.superseded_by is OrderConfirmed
+
+    def test_superseded_by_rejects_non_class_non_string(self, test_domain):
+        """A `superseded_by` that is neither an Event class nor a name string
+        is rejected at registration, so a non-serializable value cannot reach
+        IR serialization or warning text (#1148)."""
+
+        class Order(BaseAggregate):
+            name = String()
+
+        class OrderPlaced(BaseEvent):
+            order_id = Identifier(identifier=True)
+
+        test_domain.register(Order)
+        with pytest.raises(
+            ConfigurationError,
+            match="`superseded_by` must be an Event class or a name string",
+        ):
+            test_domain.register(
+                OrderPlaced, part_of=Order, superseded_by={"not": "valid"}
+            )

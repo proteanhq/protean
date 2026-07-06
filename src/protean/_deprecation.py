@@ -86,9 +86,11 @@ def warn_deprecated(
             the sentence (e.g. ``"--debug"`` or ``"assert_valid()"``).
         removal: Canonical ``X.Y.Z`` version the API is removed in, or ``None``
             when no removal is scheduled yet. A recognized version selects its
-            per-version warning class; ``None`` (or an unrecognized version)
-            uses the base :class:`ProteanDeprecationWarning` and omits the
-            "Will be removed" clause.
+            per-version warning class; ``None`` or an unrecognized version
+            falls back to the base :class:`ProteanDeprecationWarning`. The
+            "Will be removed in v<removal>." clause is included whenever
+            ``removal`` is given (recognized or not); it is omitted only when
+            ``removal`` is ``None``.
         alternative: An optional complete sentence telling the caller what to do
             instead (e.g. ``"Use --log-level DEBUG instead."``).
         stacklevel: Which frame the warning is attributed to, counted from the

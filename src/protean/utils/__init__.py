@@ -499,6 +499,17 @@ def derive_element_class(
     # so it doesn't interfere with element-specific default logic).
     element_with_meta.meta_.deprecated = normalized_deprecated
 
+    # Guard the event-only `superseded_by` reference (an Event class or a name
+    # string). This is the one funnel both the decorator and `register` paths
+    # pass through, so validating here rejects a bad value (e.g. an event
+    # instance or a dict) before it can reach IR serialization or warning text.
+    superseded_by = getattr(element_with_meta.meta_, "superseded_by", None)
+    if superseded_by is not None and not isinstance(superseded_by, (str, type)):
+        raise ConfigurationError(
+            f"`superseded_by` must be an Event class or a name string, "
+            f"got {superseded_by!r}"
+        )
+
     # Re-trigger identity field tracking when a previously-abstract class
     # is registered as concrete (e.g. via domain.register()).  During normal
     # class creation __pydantic_init_subclass__ skips __track_id_field()
