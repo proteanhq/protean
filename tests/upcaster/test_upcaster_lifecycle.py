@@ -74,6 +74,26 @@ class TestUpcasterInIR:
         assert len(upcasters) == 1
         assert any("UpcastOrderPlacedV1ToV2" in fqn for fqn in upcasters)
 
+    def test_upcaster_chain_is_projected_into_the_ir(self, test_domain):
+        """#1132: the ``upcasters`` section carries per-event version edges so
+        the compatibility checker can consult upcaster coverage without a live
+        domain."""
+        _register_valid(test_domain)
+        test_domain.init(traverse=False)
+
+        assert test_domain.to_ir()["upcasters"] == {
+            "OrderPlaced": [{"from_version": 1, "to_version": 2}]
+        }
+
+    def test_upcaster_free_domain_omits_the_section(self, test_domain):
+        """The section is sparse: upcaster-free domains keep a byte-identical
+        IR (and checksum)."""
+        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.init(traverse=False)
+
+        assert "upcasters" not in test_domain.to_ir()
+
 
 class TestMalformedChainReportedByCheck:
     """A malformed chain is a structured error in check(), not a crash."""

@@ -14,6 +14,8 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any
 
+from protean.utils.upcasting import missing_upcaster_source_versions
+
 
 def diff_ir(
     left: dict[str, Any],
@@ -753,6 +755,10 @@ class CompatibilityChange:
     element_fqn: str
     change_type: str
     message: str
+    # When an otherwise-breaking change is downgraded to safe because a
+    # registered upcaster transforms old payloads, this names the mitigating
+    # upcaster coverage (e.g. "upcaster OrderPlaced v1->v3").
+    mitigated_by: str | None = None
 
 
 @dataclass
@@ -772,6 +778,7 @@ def classify_changes(
     diff_result: dict[str, Any],
     left_ir: dict[str, Any],
     right_ir: dict[str, Any],
+    current_version: str | None = None,
 ) -> CompatibilityReport:
     """Classify persisted-schema changes in a diff result as breaking or safe.
 
@@ -794,18 +801,125 @@ def classify_changes(
     - Visibility public → internal (``published: True`` → absent): breaking
     - Visibility internal → public (absent → ``published: True``): safe
     - Change ``__type__`` string: breaking
+
+    Two evolution-aware refinements apply to every persisted element (not only
+    published event contracts):
+
+    - **Deprecation grace**: a field deprecated and removed at/past its
+      ``removal`` version is a safe (expected) removal. This needs
+      ``current_version`` to compare against; without it a deprecated removal is
+      classified premature (still breaking). The ``protean ir diff`` CLI does
+      not yet supply ``current_version``, so this downgrade is currently only
+      reachable by callers that pass it explicitly.
+    - **Upcaster mitigation**: an event version bump whose old→new path a
+      registered upcaster chain covers has its schema-transformation changes
+      downgraded to safe (see :func:`_apply_upcaster_mitigation`). This reads
+      ``__version__`` from the IR directly and needs no ``current_version``.
     """
     report = CompatibilityReport()
 
-    _classify_clusters(diff_result.get("clusters", {}), report)
-    _classify_projections(diff_result.get("projections", {}), report)
+    _classify_clusters(diff_result.get("clusters", {}), report, current_version)
+    _classify_projections(diff_result.get("projections", {}), report, current_version)
+
+    # Downgrade breaking changes on an event whose version bump is covered by a
+    # registered upcaster (the upcaster transforms old payloads to the new
+    # shape), citing the mitigating coverage.
+    _apply_upcaster_mitigation(report, left_ir, right_ir)
 
     return report
+
+
+def _events_by_fqn(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Collect every event entry across an IR's clusters, keyed by fqn."""
+    events: dict[str, dict[str, Any]] = {}
+    for cluster in ir.get("clusters", {}).values():
+        events.update(cluster.get("events", {}))
+    return events
+
+
+# Change types that make up a payload-schema transformation an upcaster can
+# perform. Orthogonal changes that happen to ride along with the version bump
+# (e.g. a visibility flip or the element being removed) are NOT covered.
+_UPCASTER_MITIGATABLE = frozenset(
+    {
+        "field_removed",
+        "field_type_changed",
+        "required_field_added",
+        "type_string_changed",
+    }
+)
+
+
+def _apply_upcaster_mitigation(
+    report: CompatibilityReport,
+    left_ir: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> None:
+    """Downgrade breaking changes on events whose version bump an upcaster covers.
+
+    A registered upcaster chain that reaches an event's new ``__version__`` from
+    its old one transforms stored old-version payloads to the new shape, so the
+    schema-transformation changes that make up that version bump (field removals,
+    type changes, required-field additions, the ``__type__`` version-string bump)
+    are no longer breaking. Only those change types are downgraded — an orthogonal
+    change such as a public→internal visibility flip is left breaking. Each
+    downgraded change is moved to ``safe_changes`` with ``mitigated_by`` set to
+    the covering upcaster.
+    """
+    upcasters = right_ir.get("upcasters", {})
+    if not upcasters or not report.breaking_changes:
+        return
+
+    left_events = _events_by_fqn(left_ir)
+    right_events = _events_by_fqn(right_ir)
+
+    mitigation: dict[str, str] = {}
+    for event_fqn, right_entry in right_events.items():
+        left_entry = left_events.get(event_fqn)
+        if left_entry is None:
+            continue
+        left_v = left_entry.get("__version__")
+        right_v = right_entry.get("__version__")
+        if not isinstance(left_v, int) or not isinstance(right_v, int):
+            continue
+        if right_v <= left_v:
+            continue
+        # Keyed by event base name (matching the `Domain.Name` type string and
+        # `_diagnose_upcaster_gap`). Two events sharing a class name across
+        # aggregates would pool edges — a pre-existing name-based limitation;
+        # TODO(3.4.6): key by the qualified type string once available in the IR.
+        edges = [
+            (e["from_version"], e["to_version"])
+            for e in upcasters.get(right_entry.get("name", ""), [])
+        ]
+        # left_v reaches right_v iff it is NOT among the versions with no path.
+        if left_v in missing_upcaster_source_versions(edges, right_v):
+            continue
+        mitigation[event_fqn] = (
+            f"upcaster {right_entry.get('name', '')} v{left_v}->v{right_v}"
+        )
+
+    if not mitigation:
+        return
+
+    still_breaking: list[CompatibilityChange] = []
+    for change in report.breaking_changes:
+        citation = mitigation.get(change.element_fqn)
+        # Only downgrade schema-transformation changes the upcaster actually
+        # performs; leave orthogonal changes (e.g. a visibility flip) breaking.
+        if citation is None or change.change_type not in _UPCASTER_MITIGATABLE:
+            still_breaking.append(change)
+            continue
+        change.severity = "safe"
+        change.mitigated_by = citation
+        report.safe_changes.append(change)
+    report.breaking_changes = still_breaking
 
 
 def _classify_clusters(
     clusters_diff: dict[str, Any],
     report: CompatibilityReport,
+    current_version: str | None = None,
 ) -> None:
     for fqn in clusters_diff.get("added", {}):
         report.safe_changes.append(
@@ -830,7 +944,9 @@ def _classify_clusters(
     for cluster_fqn, cluster_delta in clusters_diff.get("changed", {}).items():
         agg_delta = cluster_delta.get("aggregate", {})
         if agg_delta:
-            _classify_element_delta(agg_delta, cluster_fqn, "AGGREGATE", report)
+            _classify_element_delta(
+                agg_delta, cluster_fqn, "AGGREGATE", report, current_version
+            )
 
         for section in _PERSISTED_CLUSTER_SUBSECTIONS:
             section_diff = cluster_delta.get(section, {})
@@ -859,12 +975,15 @@ def _classify_clusters(
                 )
 
             for fqn, element_delta in section_diff.get("changed", {}).items():
-                _classify_element_delta(element_delta, fqn, element_type, report)
+                _classify_element_delta(
+                    element_delta, fqn, element_type, report, current_version
+                )
 
 
 def _classify_projections(
     projections_diff: dict[str, Any],
     report: CompatibilityReport,
+    current_version: str | None = None,
 ) -> None:
     for fqn in projections_diff.get("added", {}):
         report.safe_changes.append(
@@ -889,7 +1008,9 @@ def _classify_projections(
     for proj_fqn, proj_delta in projections_diff.get("changed", {}).items():
         proj_element_delta = proj_delta.get("projection", {})
         if proj_element_delta:
-            _classify_element_delta(proj_element_delta, proj_fqn, "PROJECTION", report)
+            _classify_element_delta(
+                proj_element_delta, proj_fqn, "PROJECTION", report, current_version
+            )
 
 
 def _classify_element_delta(
@@ -897,8 +1018,11 @@ def _classify_element_delta(
     fqn: str,
     element_type: str,
     report: CompatibilityReport,
+    current_version: str | None = None,
 ) -> None:
-    _classify_field_changes(element_delta.get("fields", {}), fqn, element_type, report)
+    _classify_field_changes(
+        element_delta.get("fields", {}), fqn, element_type, report, current_version
+    )
     _classify_attribute_changes(element_delta.get("attributes", {}), fqn, report)
 
 
@@ -926,6 +1050,7 @@ def _classify_field_changes(
     fqn: str,
     element_type: str,
     report: CompatibilityReport,
+    current_version: str | None = None,
 ) -> None:
     added = fields_diff.get("added", {})
     removed = fields_diff.get("removed", {})
@@ -1008,14 +1133,41 @@ def _classify_field_changes(
     for field_name in removed:
         if field_name in renames:
             continue
-        report.breaking_changes.append(
-            CompatibilityChange(
-                severity="breaking",
-                element_fqn=fqn,
-                change_type="field_removed",
-                message=f"Field '{field_name}' removed from {element_type} '{fqn}'",
+        # Deprecation-aware removal: a field deprecated and past its removal
+        # version is a safe (expected) removal. This now applies to every
+        # persisted element — including internal and event-sourced events,
+        # which previously only got raw (always-breaking) classification (the
+        # deprecation grace was limited to published contracts).
+        deprecated = removed[field_name].get("deprecated")
+        classification = _classify_removal(deprecated, current_version)
+        if classification == "expected_removal":
+            report.safe_changes.append(
+                CompatibilityChange(
+                    severity="safe",
+                    element_fqn=fqn,
+                    change_type="field_removed",
+                    message=(
+                        f"Field '{field_name}' removed from {element_type} '{fqn}' "
+                        f"(expected removal, deprecated since "
+                        f"v{deprecated['since']})"
+                    ),
+                )
             )
-        )
+        else:
+            message = f"Field '{field_name}' removed from {element_type} '{fqn}'"
+            if deprecated:
+                message += (
+                    f" (deprecated since v{deprecated['since']}, removed before "
+                    f"its removal version)"
+                )
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="field_removed",
+                    message=message,
+                )
+            )
 
     for field_name, field_changes in fields_diff.get("changed", {}).items():
         if "type" in field_changes:
