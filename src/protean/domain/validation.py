@@ -418,8 +418,9 @@ class DomainValidator:
 
         Validates a throwaway chain (leaving the runtime chain untouched): a
         duplicate, cyclic, non-convergent, or unreachable-version chain raises
-        ``ConfigurationError``, which ``validate_all()`` collects as an error so
-        ``check()`` reports it instead of crashing ``protean check`` with a
+        ``ConfigurationError``, and a string ``event_type`` raises
+        ``IncorrectUsageError``; ``validate_all()`` collects either as an error
+        so ``check()`` reports it instead of crashing ``protean check`` with a
         traceback. ``init()`` builds and validates the real chain fail-fast in
         ``_prepare()``.
         """

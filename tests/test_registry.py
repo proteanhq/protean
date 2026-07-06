@@ -106,6 +106,7 @@ def test_properties_method_returns_a_dictionary_of_all_protean_elements():
         "query_handlers": DomainObjects.QUERY_HANDLER.value,
         "repositories": DomainObjects.REPOSITORY.value,
         "subscribers": DomainObjects.SUBSCRIBER.value,
+        "upcasters": DomainObjects.UPCASTER.value,
         "value_objects": DomainObjects.VALUE_OBJECT.value,
         "projections": DomainObjects.PROJECTION.value,
         "projectors": DomainObjects.PROJECTOR.value,

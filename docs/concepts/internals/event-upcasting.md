@@ -51,9 +51,9 @@ Like every other element, `@domain.upcaster(...)` routes through
 - has a `UPCASTER` entry in the `DomainObjects` enum,
 - is stored in the `_DomainRegistry` (the general element registry),
 - appears in the IR elements index (so `protean ir show` lists it), and
-- is validated by `domain.check()`: a malformed chain (duplicate, cyclic, or
-  non-convergent) is reported as a structured error instead of crashing
-  `protean check` with a traceback.
+- is validated by `domain.check()`: a malformed registration (a duplicate,
+  cyclic, or non-convergent chain, or a string `event_type`) is reported as a
+  structured error instead of crashing `protean check` with a traceback.
 
 Upcasters remain **infrastructure helpers** for schema migration, so the
 lifecycle steps that only apply to business elements do not touch them:
@@ -67,7 +67,8 @@ Registration flow:
    which runs `upcaster_factory()` for validation and stores the class in the registry.
 2. During `domain.init()`, `_build_upcaster_chains()` reads the registered
    upcasters from the registry and builds the chain (fail-fast: a malformed
-   chain raises `ConfigurationError`).
+   chain raises `ConfigurationError`, and a string `event_type` raises
+   `IncorrectUsageError`).
 3. `domain.check()` runs the same chain build under the collecting validator
    (`DomainValidator.validate_all()`), surfacing a malformed chain as an error
    (exit code 1) rather than raising.

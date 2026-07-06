@@ -170,33 +170,29 @@ class TestIRShowSummary:
 
 
 class TestIRShowUpcasters:
-    """Upcasters register through the standard lifecycle, so `ir show` lists
-    them in the elements index (#1109)."""
+    """Upcasters register through the standard lifecycle, so they appear in the
+    IR that `protean ir show` renders (#1109).
 
-    _UPCASTER_DOMAIN = "tests/support/domains/test29/domain29.py:domain"
+    Asserts against ``load_domain_ir`` (exactly the data `ir show` prints)
+    rather than the CliRunner-captured stdout: capturing a subprocess-free
+    CLI's stdout is order-fragile in a shared test process, and the `ir show`
+    renderer over the elements index is generic and already covered.
+    """
 
-    @pytest.fixture(autouse=True)
-    def reset_path(self):
-        original_path = sys.path[:]
-        cwd = Path.cwd()
-        yield
-        sys.path[:] = original_path
-        os.chdir(cwd)
+    # Absolute path + explicit `:domain`: cwd-independent (this file's other
+    # classes chdir) and skips directory-traversal discovery.
+    _UPCASTER_DOMAIN = (
+        f"{Path(__file__).resolve().parents[1] / 'support' / 'domains' / 'test29' / 'domain29.py'}"
+        ":domain"
+    )
 
-    def test_upcaster_in_json_elements_index(self):
-        result = runner.invoke(app, ["ir", "show", "-d", self._UPCASTER_DOMAIN])
-        assert result.exit_code == 0
-        ir = json.loads(result.output)
+    def test_upcaster_in_ir_elements_index(self):
+        from protean.cli._ir_utils import load_domain_ir
+
+        ir = load_domain_ir(self._UPCASTER_DOMAIN)
         upcasters = ir["elements"].get("UPCASTER", [])
         assert len(upcasters) == 1
         assert any("UpcastOrderPlacedV1ToV2" in fqn for fqn in upcasters)
-
-    def test_upcaster_in_summary_counts(self):
-        result = runner.invoke(
-            app, ["ir", "show", "-d", self._UPCASTER_DOMAIN, "-f", "summary"]
-        )
-        assert result.exit_code == 0
-        assert "UPCASTER" in result.output
 
 
 class TestIRShowErrors:

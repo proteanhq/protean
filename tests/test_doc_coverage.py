@@ -25,6 +25,8 @@ ALLOWLIST = {
     "(if at all) under adapters rather than building-blocks/API.",
     "EVENT_SOURCED_REPOSITORY": "Covered in the event-sourcing / repositories docs; "
     "no standalone page.",
+    "UPCASTER": "Infrastructure helper for event schema migration, not a domain "
+    "building block; documented under concepts/internals/event-upcasting.md.",
 }
 
 
