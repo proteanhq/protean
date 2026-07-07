@@ -7,6 +7,7 @@ old payload — so the "working examples" in the guide stay working.
 
 import importlib.util
 import os
+from types import ModuleType
 
 import pytest
 
@@ -15,10 +16,10 @@ _DOCS_SRC = os.path.abspath(
 )
 
 
-def _load(name: str):
-    spec = importlib.util.spec_from_file_location(
-        f"evolving_events_{name}", os.path.join(_DOCS_SRC, f"{name}.py")
-    )
+def _load(name: str) -> ModuleType:
+    path = os.path.join(_DOCS_SRC, f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"evolving_events_{name}", path)
+    assert spec is not None and spec.loader is not None, f"cannot load {path}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

@@ -50,11 +50,20 @@ currency = String(default="USD")
 ```
 
 A field with a default is **optional** in Protean (the default supplies the
-value when it is absent), and adding it is **fully compatible**: a reader on the
-new schema reads old data (the default fills the missing value), and a reader on
-the old schema reads new data (it ignores the extra field). Protean records the
-default in the generated JSON Schema; in Avro, the field becomes a nullable,
-null-first union (Avro's mechanism for "may be absent").
+value when it is absent), and adding it is **fully compatible** under a schema
+registry's rules: a new-schema reader supplies the default for old data, and an
+old-schema reader ignores the added field. Protean records the default in the
+generated JSON Schema; in Avro, the field becomes a nullable, null-first union
+(Avro's mechanism for "may be absent").
+
+!!! note "Schema compatibility vs. Protean's runtime"
+    "An old reader ignores the added field" is a property of the *emitted
+    schema* — what a Kafka/registry consumer sees, and what the compatibility
+    verdict below measures. Protean's own runtime deserialization is **strict**
+    by default (`extra="forbid"`): decoding a stored payload that carries a
+    field the current class does not know raises unless you opt into
+    [lenient mode](#read-legacy-payloads-leniently). A field you *added* is part
+    of the current schema, so it decodes fine.
 
 !!! tip "Rule of thumb"
     Adding an **optional** field, or a **field with a default**, never breaks
