@@ -10,6 +10,7 @@ import pytest
 from protean.ir.builder import IRBuilder
 from protean.ir.generators.schema_writer import (
     _cluster_for_fqn,
+    write_all_schemas,
     write_ir,
     write_schemas,
 )
@@ -417,3 +418,55 @@ class TestHelperEdgeCases:
         output = tmp_path / ".protean"
         written = write_schemas({}, output)
         assert written == []
+
+
+@pytest.mark.no_test_domain
+class TestWriteAllSchemas:
+    """`write_all_schemas` emits every format into one tree (the on-ramp)."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, tmp_path: Path):
+        self.output = tmp_path / ".protean"
+        self.ir = _ir_for(build_command_event_test_domain)
+        self.written = write_all_schemas(self.ir, self.output)
+        self.schemas_dir = self.output / "schemas"
+
+    def test_all_three_formats_written(self):
+        assert {p.suffix for p in self.written} == {".json", ".avsc", ".proto"}
+
+    def test_formats_coexist_side_by_side(self):
+        # p.stem drops only the format extension (.json/.avsc/.proto); .with_name
+        # rebuilds siblings without mangling the `.v<N>` segment (which
+        # Path.with_suffix would treat as the suffix).
+        bases = {p.parent / p.stem for p in self.written}
+        assert len(bases) > 0
+        for base in bases:
+            assert base.with_name(base.name + ".json").exists()
+            assert base.with_name(base.name + ".avsc").exists()
+            assert base.with_name(base.name + ".proto").exists()
+
+    def test_returns_sorted_paths(self):
+        assert self.written == sorted(self.written)
+
+    def test_single_clear_is_idempotent(self):
+        rerun = write_all_schemas(self.ir, self.output)
+        assert set(rerun) == set(self.written)
+
+    def test_write_schemas_per_format_clobbers_but_write_all_does_not(
+        self, tmp_path: Path
+    ):
+        # Why write_all_schemas exists: write_schemas clears schemas/ on every
+        # call, so looping it over formats keeps only the last.
+        out = tmp_path / ".protean"
+        write_schemas(self.ir, out, fmt="json")
+        write_schemas(self.ir, out, fmt="avro")
+        assert not list((out / "schemas").rglob("*.json"))  # json clobbered
+        assert list((out / "schemas").rglob("*.avsc"))
+
+        write_all_schemas(self.ir, out)
+        assert list((out / "schemas").rglob("*.json"))
+        assert list((out / "schemas").rglob("*.avsc"))
+        assert list((out / "schemas").rglob("*.proto"))
+
+    def test_empty_ir_produces_no_files(self, tmp_path: Path):
+        assert write_all_schemas({}, tmp_path / ".protean") == []

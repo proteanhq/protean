@@ -7,6 +7,7 @@ import pytest
 from protean.ir.generators.catalog import (
     _constraints_summary,
     _render_field_table,
+    build_event_catalog,
     generate_catalog,
 )
 
@@ -560,3 +561,195 @@ class TestFullIntegration:
         # Check one field from OrderPlaced
         assert "| customer_name |" in result
         assert "| total_amount |" in result
+
+
+# ===========================================================================
+# build_event_catalog (data-first, evolution-focused)
+# ===========================================================================
+
+
+def _evt(
+    fqn: str,
+    *,
+    version: int = 1,
+    part_of: str = "app.Order",
+    type_str: str = "",
+    deprecated: dict | bool | None = None,
+    superseded_by: str | None = None,
+    published: bool = False,
+    is_fact_event: bool = False,
+) -> dict:
+    name = fqn.rsplit(".", 1)[-1]
+    entry: dict = {
+        "__type__": type_str or f"Shop.{name}.v{version}",
+        "__version__": version,
+        "element_type": "EVENT",
+        "fields": {},
+        "fqn": fqn,
+        "name": name,
+        "part_of": part_of,
+        "is_fact_event": is_fact_event,
+    }
+    if deprecated is not None:
+        entry["deprecated"] = deprecated
+    if superseded_by is not None:
+        entry["superseded_by"] = superseded_by
+    if published:
+        entry["published"] = True
+    return {fqn: entry}
+
+
+def _catalog_ir(
+    *,
+    events: dict,
+    part_of: str = "app.Order",
+    event_handlers: dict | None = None,
+    projections: dict | None = None,
+    process_managers: dict | None = None,
+    upcasters: dict | None = None,
+) -> dict:
+    ir: dict = {
+        "clusters": {
+            part_of: {
+                "events": events,
+                "event_handlers": event_handlers or {},
+            }
+        }
+    }
+    if projections is not None:
+        ir["projections"] = projections
+    if process_managers is not None:
+        ir["flows"] = {"process_managers": process_managers}
+    if upcasters is not None:
+        ir["upcasters"] = upcasters
+    return ir
+
+
+class TestBuildEventCatalog:
+    def test_basic_entry_fields(self):
+        ir = _catalog_ir(events=_evt("app.OrderPlaced", version=2))
+        entries = build_event_catalog(ir)
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["name"] == "OrderPlaced"
+        assert entry["fqn"] == "app.OrderPlaced"
+        assert entry["aggregate"] == "app.Order"
+        assert entry["type"] == "Shop.OrderPlaced.v2"
+        assert entry["version"] == 2
+        assert entry["deprecated"] is None
+        assert entry["superseded_by"] is None
+        assert entry["upcasters"] == []
+        assert entry["consumers"] == []
+
+    def test_deprecation_and_supersession(self):
+        ir = _catalog_ir(
+            events=_evt(
+                "app.OrderCreated",
+                deprecated={"since": "0.15", "removal": "0.18"},
+                superseded_by="OrderPlaced",
+            )
+        )
+        entry = build_event_catalog(ir)[0]
+        assert entry["deprecated"] == {"since": "0.15", "removal": "0.18"}
+        assert entry["superseded_by"] == "OrderPlaced"
+
+    def test_upcaster_chain_matched_by_bare_name(self):
+        # Upcasters are keyed by bare name, consumers by type string — the
+        # catalog must use the right key for each.
+        ir = _catalog_ir(
+            events=_evt("app.OrderPlaced", version=3),
+            upcasters={
+                "OrderPlaced": [
+                    {"from_version": 1, "to_version": 2},
+                    {"from_version": 2, "to_version": 3},
+                ]
+            },
+        )
+        entry = build_event_catalog(ir)[0]
+        assert entry["upcasters"] == [
+            {"from_version": 1, "to_version": 2},
+            {"from_version": 2, "to_version": 3},
+        ]
+
+    def test_consumers_from_event_handlers_projectors_and_pms(self):
+        ir = _catalog_ir(
+            events=_evt("app.OrderPlaced", version=3),
+            event_handlers={
+                "app.OrderNotifications": {
+                    "name": "OrderNotifications",
+                    "handlers": {"Shop.OrderPlaced.v3": ["on_placed"]},
+                }
+            },
+            projections={
+                "app.OrderView": {
+                    "projectors": {
+                        "app.OrderViewProjector": {
+                            "name": "OrderViewProjector",
+                            "handlers": {"Shop.OrderPlaced.v3": ["on_placed"]},
+                        }
+                    }
+                }
+            },
+            process_managers={
+                "app.OrderSaga": {
+                    "name": "OrderSaga",
+                    # PM handler values are dicts, not lists — only keys matter.
+                    "handlers": {"Shop.OrderPlaced.v3": {"methods": ["react"]}},
+                }
+            },
+        )
+        entry = build_event_catalog(ir)[0]
+        assert entry["consumers"] == [
+            "OrderNotifications",
+            "OrderSaga",
+            "OrderViewProjector",
+        ]
+
+    def test_unnamed_consumer_is_skipped(self):
+        # A handler dict lacking "name" must not contribute an empty-string
+        # consumer (a defensive guard for hand-authored IR).
+        ir = _catalog_ir(
+            events=_evt("app.OrderPlaced", version=3),
+            event_handlers={
+                "app.Anon": {"handlers": {"Shop.OrderPlaced.v3": ["on_placed"]}},
+            },
+        )
+        entry = build_event_catalog(ir)[0]
+        assert entry["consumers"] == []
+
+    def test_consumers_matched_by_exact_type_string(self):
+        # A handler for a *different* version must not be attributed.
+        ir = _catalog_ir(
+            events=_evt("app.OrderPlaced", version=3),
+            event_handlers={
+                "app.Stale": {
+                    "name": "Stale",
+                    "handlers": {"Shop.OrderPlaced.v1": ["on_old"]},
+                }
+            },
+        )
+        entry = build_event_catalog(ir)[0]
+        assert entry["consumers"] == []
+
+    def test_entries_sorted_by_aggregate_then_type(self):
+        ir = {
+            "clusters": {
+                "app.Order": {
+                    "events": {
+                        **_evt("app.Shipped", part_of="app.Order"),
+                        **_evt("app.Placed", part_of="app.Order"),
+                    },
+                    "event_handlers": {},
+                },
+            }
+        }
+        entries = build_event_catalog(ir)
+        types = [e["type"] for e in entries]
+        assert types == sorted(types)
+
+    def test_absent_upcasters_and_empty_ir(self):
+        # `upcasters` key entirely absent (sparse) must not raise.
+        ir = _catalog_ir(events=_evt("app.OrderPlaced"))
+        assert build_event_catalog(ir)[0]["upcasters"] == []
+        # No clusters at all.
+        assert build_event_catalog({}) == []
