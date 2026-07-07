@@ -130,6 +130,39 @@ protean ir diff --left baseline.json --right current.json
 | 1 | Breaking changes found |
 | 2 | Non-breaking changes only |
 
+**Avro compatibility verdict.** Alongside the breaking/safe classification, the
+diff reports an Avro-style verdict — `BACKWARD`, `FORWARD`, `FULL`, or `NONE` —
+matching the rules a schema registry applies to the Avro that
+`protean schema generate --format avro` emits:
+
+| Verdict | Meaning |
+|---------|---------|
+| `BACKWARD` | A consumer on the new schema can read data written with the old schema |
+| `FORWARD` | A consumer on the old schema can read data written with the new schema |
+| `FULL` | Both `BACKWARD` and `FORWARD` |
+| `NONE` | Neither |
+
+Adding an optional field (or a required field with a static default) is `FULL`;
+adding a required field without a default is not `BACKWARD`; removing a required
+field is not `FORWARD`; a type change is `NONE`. A declared rename is `BACKWARD`
+(the emitted schema carries Avro `aliases`), or `FULL` when the old field was
+optional or carried a static default. Visibility flips are payload-neutral for
+the verdict (they stay breaking).
+
+One rule is **Protean-specific**: an upcaster that covers the version bump makes
+an otherwise-incompatible change `BACKWARD`, because Protean rewrites old
+payloads to the new shape at read time. A plain schema registry has no knowledge
+of upcasters and would still report the underlying change (e.g. `NONE` for a
+type change) — so this clause reflects what *Protean* can decode, not what a
+registry alone would conclude.
+
+The top-level verdict is the domain-wide intersection (the conservative worst
+case). In `--format json`, the `compatibility` block also carries
+`avro_verdicts` (a per-element breakdown, since Avro compatibility is
+per-subject) and the full classified report. The verdict covers the classified
+schema changes; it is informational — the exit code is still governed by
+`[compatibility] strictness` and the breaking-change classification.
+
 Respects `.protean/config.toml` settings. See
 [Compatibility Checking](../../guides/compatibility-checking.md) for
 configuration details.

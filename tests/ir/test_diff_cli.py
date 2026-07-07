@@ -951,3 +951,139 @@ class TestIRModuleGitExports:
 
         assert load_ir_from_commit is not None
         assert callable(load_ir_from_commit)
+
+
+@pytest.mark.no_test_domain
+class TestAvroVerdictCLI:
+    """`protean ir diff` surfaces the Avro compatibility verdict."""
+
+    def _agg_ir(self, tmp_path, filename, fields):
+        return _write_ir(
+            tmp_path,
+            filename,
+            _minimal_ir(clusters={"app.Order": _make_cluster("Order", fields=fields)}),
+        )
+
+    def test_json_verdict_full_for_added_optional(self, tmp_path):
+        left = self._agg_ir(tmp_path, "left.json", {})
+        right = self._agg_ir(
+            tmp_path, "right.json", {"note": {"kind": "standard", "type": "String"}}
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "--format", "json"]
+        )
+        data = json.loads(result.output)
+        assert data["compatibility"]["avro_verdict"] == "FULL"
+        assert result.exit_code == 2  # non-breaking changes present
+
+    def test_json_verdict_forward_for_added_required_no_default(self, tmp_path):
+        left = self._agg_ir(tmp_path, "left.json", {})
+        right = self._agg_ir(
+            tmp_path,
+            "right.json",
+            {"amount": {"kind": "standard", "type": "Float", "required": True}},
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "--format", "json"]
+        )
+        data = json.loads(result.output)
+        assert data["compatibility"]["avro_verdict"] == "FORWARD"
+        assert result.exit_code == 1  # breaking under strict default
+
+    def test_json_verdict_none_for_type_change(self, tmp_path):
+        left = self._agg_ir(
+            tmp_path,
+            "left.json",
+            {"amount": {"kind": "standard", "type": "Integer", "required": True}},
+        )
+        right = self._agg_ir(
+            tmp_path,
+            "right.json",
+            {"amount": {"kind": "standard", "type": "Float", "required": True}},
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "--format", "json"]
+        )
+        data = json.loads(result.output)
+        assert data["compatibility"]["avro_verdict"] == "NONE"
+
+    def test_text_shows_verdict_and_direction_break(self, tmp_path):
+        left = self._agg_ir(tmp_path, "left.json", {})
+        right = self._agg_ir(
+            tmp_path,
+            "right.json",
+            {"amount": {"kind": "standard", "type": "Float", "required": True}},
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right], env={"COLUMNS": "200"}
+        )
+        assert "Avro compatibility" in result.output
+        assert "FORWARD" in result.output
+        # Adding a required field with no default breaks BACKWARD; the
+        # explanation line names the direction.
+        assert "breaks BACKWARD" in result.output
+
+    def test_json_has_per_element_verdicts(self, tmp_path):
+        left = self._agg_ir(tmp_path, "left.json", {})
+        right = self._agg_ir(
+            tmp_path, "right.json", {"note": {"kind": "standard", "type": "String"}}
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "--format", "json"]
+        )
+        data = json.loads(result.output)
+        assert data["compatibility"]["avro_verdicts"] == {"app.Order": "FULL"}
+
+    def test_text_no_changes_omits_verdict(self, tmp_path):
+        ir = self._agg_ir(tmp_path, "same.json", {})
+        result = runner.invoke(app, ["ir", "diff", "-l", ir, "-r", ir])
+        assert result.exit_code == 0
+        # No changes → the verdict block is suppressed (vacuously FULL is noise).
+        assert "Avro compatibility" not in result.output
+
+    def test_text_full_verdict_notes_breaking_visibility_flip(self, tmp_path):
+        # A public→internal flip is breaking but Avro-neutral → FULL with a note.
+        def _event(published):
+            entry = {
+                "__type__": "Test.OrderPlaced.v1",
+                "__version__": 1,
+                "element_type": "EVENT",
+                "fields": {},
+                "fqn": "app.OrderPlaced",
+                "is_fact_event": False,
+                "module": "app",
+                "name": "OrderPlaced",
+                "part_of": "app.Order",
+            }
+            if published:
+                entry["published"] = True
+            return entry
+
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order", events={"app.OrderPlaced": _event(True)}
+                    )
+                }
+            ),
+        )
+        right = _write_ir(
+            tmp_path,
+            "right.json",
+            _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order", events={"app.OrderPlaced": _event(False)}
+                    )
+                }
+            ),
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right], env={"COLUMNS": "200"}
+        )
+        assert "Avro compatibility" in result.output
+        assert "FULL" in result.output
+        assert "payload-compatible" in result.output

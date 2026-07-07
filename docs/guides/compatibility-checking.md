@@ -235,6 +235,37 @@ Exit codes: 0 (no changes), 1 (breaking changes), 2 (non-breaking only).
 When `strictness = "warn"`, breaking changes are reported but the exit code
 is 0. When `strictness = "off"`, the command exits 0 immediately.
 
+### Avro compatibility verdict
+
+`ir diff` also reports an **Avro-style verdict** — `BACKWARD`, `FORWARD`,
+`FULL`, or `NONE` — matching the rules a schema registry applies to the Avro
+that `protean schema generate --format avro` emits (a declared rename, for
+instance, emits Avro `aliases` so it reads as `BACKWARD`):
+
+- **`BACKWARD`** — a consumer on the new schema reads old-written data (safe:
+  delete a field, add an optional field).
+- **`FORWARD`** — a consumer on the old schema reads new-written data (safe:
+  add a field, delete an optional field).
+- **`FULL`** — both; **`NONE`** — neither.
+
+```
+Avro compatibility: FORWARD
+  breaks BACKWARD: Required field 'amount' added to EVENT 'app.OrderPlaced' without a default value
+```
+
+The verdict folds every change together: adding an optional field is `FULL`;
+adding a required field with no default is not `BACKWARD`; removing a required
+field is not `FORWARD`; a type change is `NONE`. A registered upcaster that
+covers the version bump makes an otherwise-incompatible change `BACKWARD` —
+a **Protean-specific** rule, since Protean rewrites old payloads at read time
+and a plain schema registry (which knows nothing of upcasters) would still
+report the underlying change. Visibility flips are payload-neutral for the
+verdict but still count as breaking changes.
+
+The verdict is **informational** — it is printed (and, under `--format json`,
+included in a `compatibility` block with the full classified report), but the
+exit code stays governed by `strictness` and the breaking-change classification.
+
 For the full CLI reference, see [`protean ir`](../reference/cli/ir.md).
 
 ---
