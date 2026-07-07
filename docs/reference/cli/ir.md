@@ -145,9 +145,9 @@ matching the rules a schema registry applies to the Avro that
 Adding an optional field (or a required field with a static default) is `FULL`;
 adding a required field without a default is not `BACKWARD`; removing a required
 field is not `FORWARD`; a type change is `NONE`. A declared rename is `BACKWARD`
-(the emitted schema carries Avro `aliases`), or `FULL` when the renamed field is
-optional. Visibility flips are payload-neutral for the verdict (they stay
-breaking).
+(the emitted schema carries Avro `aliases`), or `FULL` when the old field was
+optional or carried a static default. Visibility flips are payload-neutral for
+the verdict (they stay breaking).
 
 One rule is **Protean-specific**: an upcaster that covers the version bump makes
 an otherwise-incompatible change `BACKWARD`, because Protean rewrites old
