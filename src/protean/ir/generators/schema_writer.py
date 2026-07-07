@@ -34,11 +34,36 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from protean.ir.generators.avro import generate_avro_schema
 from protean.ir.generators.base import short_name
-from protean.ir.generators.schema import generate_schemas
+from protean.ir.generators.protobuf import generate_proto_schema
+from protean.ir.generators.schema import (
+    _build_flat_elements,
+    generate_element_schema,
+    iter_data_elements,
+)
+
+
+def _serialize_json(schema: Any) -> str:
+    """Serialize a schema dict to deterministic JSON with a trailing newline."""
+    return json.dumps(schema, indent=2, sort_keys=True) + "\n"
+
+
+# Per-format: (file extension, single-element generator, serializer). JSON and
+# Avro both serialize a dict as canonical JSON; Protobuf generates ``.proto``
+# text directly, so its serializer is the identity.
+_FORMATS: dict[str, tuple[str, Callable[..., Any], Callable[[Any], str]]] = {
+    "json": ("json", generate_element_schema, _serialize_json),
+    "avro": ("avsc", generate_avro_schema, _serialize_json),
+    "protobuf": ("proto", generate_proto_schema, str),
+}
+
+# The schema formats accepted by ``write_schemas`` (and the CLI ``--format``).
+SUPPORTED_FORMATS: tuple[str, ...] = tuple(_FORMATS)
 
 
 # ---------------------------------------------------------------------------
@@ -53,15 +78,6 @@ _ELEMENT_TYPE_TO_DIR: dict[str, str] = {
     "COMMAND": "commands",
     "EVENT": "events",
 }
-
-
-def _element_version(schema: dict[str, Any]) -> int:
-    """Return the version number for a schema filename.
-
-    Events and commands carry ``x-protean-version``; all other element
-    types default to ``1``.
-    """
-    return int(schema.get("x-protean-version", 1))
 
 
 def _cluster_for_fqn(fqn: str, ir: dict[str, Any]) -> str | None:
@@ -84,11 +100,6 @@ def _cluster_for_fqn(fqn: str, ir: dict[str, Any]) -> str | None:
     return None
 
 
-def _serialize_schema(schema: dict[str, Any]) -> str:
-    """Serialize a schema dict to deterministic JSON with trailing newline."""
-    return json.dumps(schema, indent=2, sort_keys=True) + "\n"
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -97,19 +108,28 @@ def _serialize_schema(schema: dict[str, Any]) -> str:
 def write_schemas(
     ir: dict[str, Any],
     output_dir: str | Path,
+    fmt: str = "json",
 ) -> list[Path]:
-    """Generate all JSON Schemas from *ir* and write them to *output_dir*.
+    """Generate schemas from *ir* and write per-version files to *output_dir*.
 
-    The ``schemas/`` subdirectory is cleared before writing so that stale
-    files from a previous run are removed.
+    The ``schemas/`` subdirectory is cleared before writing so that stale files
+    from a previous run are removed.
 
     Args:
         ir: The full IR dict (from ``IRBuilder.build()``).
         output_dir: Root output directory (e.g. ``.protean``).
+        fmt: Output format — ``"json"`` (default), ``"avro"`` (``.avsc``), or
+            ``"protobuf"`` (``.proto``).
 
     Returns:
         A sorted list of absolute ``Path`` objects for every file written.
     """
+    if fmt not in _FORMATS:
+        raise ValueError(
+            f"Unknown schema format {fmt!r}; expected one of {sorted(_FORMATS)}."
+        )
+    ext, generate_one, serialize = _FORMATS[fmt]
+
     output = Path(output_dir)
     schemas_dir = output / "schemas"
 
@@ -117,30 +137,29 @@ def write_schemas(
     if schemas_dir.exists():
         shutil.rmtree(schemas_dir)
 
-    schemas = generate_schemas(ir)
+    flat = _build_flat_elements(ir)
     written: list[Path] = []
 
-    for fqn, schema in schemas.items():
-        element_type = schema.get("x-protean-element-type", "").upper()
-        name = schema.get("title", short_name(fqn))
-        version = _element_version(schema)
-        filename = f"{name}.v{version}.json"
+    for fqn, element in iter_data_elements(flat):
+        element_type = element.get("element_type", "").upper()
+        name = element.get("name", "") or short_name(fqn)
+        version = int(element.get("__version__", 1))
+        filename = f"{name}.v{version}.{ext}"
 
         if element_type == "PROJECTION":
             # Projections go under top-level projections/ directory
             file_dir = schemas_dir / "projections"
         else:
             # Cluster-aware placement
-            cluster_name = _cluster_for_fqn(fqn, ir)
-            if cluster_name is None:
-                # Fallback: use short name from FQN
-                cluster_name = short_name(fqn)
+            cluster_name = _cluster_for_fqn(fqn, ir) or short_name(fqn)
             subdir = _ELEMENT_TYPE_TO_DIR.get(element_type, "other")
             file_dir = schemas_dir / cluster_name / subdir
 
         file_dir.mkdir(parents=True, exist_ok=True)
         file_path = file_dir / filename
-        file_path.write_text(_serialize_schema(schema), encoding="utf-8")
+        file_path.write_text(
+            serialize(generate_one(element, all_elements=flat)), encoding="utf-8"
+        )
         written.append(file_path.resolve())
 
     return sorted(written)

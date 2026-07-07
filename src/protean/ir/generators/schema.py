@@ -23,6 +23,7 @@ The output follows JSON Schema Draft 2020-12 conventions:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 from protean.ir.generators.base import short_name
@@ -326,6 +327,23 @@ _DATA_ELEMENT_TYPES = frozenset(
 )
 
 
+def iter_data_elements(
+    flat: dict[str, dict[str, Any]],
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Yield ``(fqn, element)`` for each data-carrying element with fields.
+
+    Shared by every schema generator (JSON, Avro, Protobuf) and the schema
+    writer: walks a flat FQN → element index in sorted order, skipping
+    non-data element types and elements that carry no ``fields`` key.
+    """
+    for fqn, element in sorted(flat.items()):
+        if element.get("element_type", "").upper() not in _DATA_ELEMENT_TYPES:
+            continue
+        if "fields" not in element:
+            continue
+        yield fqn, element
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -398,17 +416,8 @@ def generate_schemas(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
         A dict mapping FQN → JSON Schema dict, sorted by FQN.
     """
     flat = _build_flat_elements(ir)
-    schemas: dict[str, dict[str, Any]] = {}
-
-    for fqn, element in sorted(flat.items()):
-        element_type = element.get("element_type", "").upper()
-        if element_type not in _DATA_ELEMENT_TYPES:
-            continue
-
-        # Only generate for elements that have fields
-        if "fields" not in element:
-            continue
-
-        schemas[fqn] = generate_element_schema(element, all_elements=flat)
-
+    schemas = {
+        fqn: generate_element_schema(element, all_elements=flat)
+        for fqn, element in iter_data_elements(flat)
+    }
     return dict(sorted(schemas.items()))

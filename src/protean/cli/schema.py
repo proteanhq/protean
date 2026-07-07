@@ -74,14 +74,33 @@ def generate(
             help="Output directory (default: .protean)",
         ),
     ] = ".protean",
+    fmt: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            "-f",
+            help="Schema format: json (default), avro, or protobuf",
+        ),
+    ] = "json",
 ) -> None:
-    """Generate JSON Schema files for all data-carrying domain elements."""
+    """Generate schema files for all data-carrying domain elements."""
     if not domain and not ir:
         print("[red]Error:[/red] provide either --domain or --ir")
         raise typer.Abort()
 
     if domain and ir:
         print("[red]Error:[/red] --domain and --ir are mutually exclusive")
+        raise typer.Abort()
+
+    # Validate against the single source of truth in the writer so the CLI can
+    # never drift from the formats write_schemas actually supports.
+    from protean.ir.generators.schema_writer import SUPPORTED_FORMATS  # noqa: PLC0415
+
+    if fmt not in SUPPORTED_FORMATS:
+        allowed = ", ".join(SUPPORTED_FORMATS)
+        print(
+            f"[red]Error:[/red] unknown --format {fmt!r} (expected one of: {allowed})"
+        )
         raise typer.Abort()
 
     # Load IR
@@ -93,7 +112,7 @@ def generate(
     # Write schemas and IR
     from protean.ir.generators.schema_writer import write_ir, write_schemas  # noqa: PLC0415
 
-    written = write_schemas(ir_data, output)
+    written = write_schemas(ir_data, output, fmt=fmt)
     write_ir(ir_data, output)
 
     # Summary
