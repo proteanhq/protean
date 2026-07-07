@@ -27,6 +27,7 @@ Usage::
 """
 
 import json
+from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -40,7 +41,7 @@ from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.exceptions import NoDomainException
 from protean.ir.config import load_config
 from protean.ir.constants import canonical_ir_json
-from protean.ir.diff import classify_changes, diff_ir
+from protean.ir.diff import CompatibilityReport, classify_changes, diff_ir
 from protean.ir.git import GitError
 from protean.ir.staleness import (
     StalenessResult,
@@ -243,9 +244,16 @@ def diff(
         ]
 
     if format == "json":
+        # Attach the classified report (never rendered in JSON before) plus the
+        # Avro verdict, as an additive `compatibility` block.
+        result["compatibility"] = _compatibility_block(report)
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
         _print_diff_text(result)
+        # Only when the (exclusion-filtered) report has classified changes — a
+        # vacuous FULL beside no schema changes is noise.
+        if report.breaking_changes or report.safe_changes:
+            _print_avro_verdict(report)
 
     # ------------------------------------------------------------------ #
     # CI exit codes                                                       #
@@ -307,6 +315,46 @@ def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
 # ------------------------------------------------------------------
 
 _CONSOLE = Console()
+
+# Colour for each Avro verdict in the text output.
+_VERDICT_COLOR = {
+    "FULL": "green",
+    "BACKWARD": "yellow",
+    "FORWARD": "yellow",
+    "NONE": "red",
+}
+
+
+def _compatibility_block(report: CompatibilityReport) -> dict[str, Any]:
+    """Serializable compatibility summary for ``--format=json``.
+
+    ``avro_verdict`` is the whole-domain intersection; ``avro_verdicts`` breaks
+    it down per element (Avro compatibility is per-subject). The
+    ``breaking_changes`` / ``safe_changes`` here are the classified report
+    entries — distinct from the contract-channel ``contracts.breaking_changes``.
+    """
+    return {
+        "avro_verdict": report.avro_verdict,
+        "avro_verdicts": report.avro_verdicts_by_element(),
+        "breaking_changes": [asdict(c) for c in report.breaking_changes],
+        "safe_changes": [asdict(c) for c in report.safe_changes],
+    }
+
+
+def _print_avro_verdict(report: CompatibilityReport) -> None:
+    """Print the Avro compatibility verdict and, if not FULL, what breaks it."""
+    verdict = report.avro_verdict
+    color = _VERDICT_COLOR.get(verdict, "white")
+    print(f"\n[bold]Avro compatibility:[/bold] [{color}]{verdict}[/{color}]")
+    if verdict == "FULL" and report.is_breaking:
+        # A FULL payload verdict can still sit beside breaking changes that are
+        # Avro-neutral (e.g. a public→internal visibility flip).
+        print(
+            "  [dim](payload-compatible, but breaking changes are present "
+            "— see above)[/dim]"
+        )
+    for direction, change in report.avro_direction_breaks():
+        print(f"  [dim]breaks {direction}:[/dim] {change.message}")
 
 
 def _print_diff_text(result: dict[str, Any]) -> None:

@@ -81,6 +81,18 @@ class TestAvroMapping:
         assert name["type"] == "string"
         assert "default" not in name
 
+    def test_renamed_from_emits_aliases(self):
+        # A declared rename becomes Avro field aliases so a reader on the new
+        # schema resolves data written under the old name (backward-compatible).
+        schema = generate_avro_schema(
+            _elem(
+                "E",
+                {"new_name": _f("String", required=True, renamed_from=["old_name"])},
+            )
+        )
+        field = next(f for f in schema["fields"] if f["name"] == "new_name")
+        assert field["aliases"] == ["old_name"]
+
     def test_list_becomes_array(self):
         schema = generate_avro_schema(
             _elem("E", {"tags": {"kind": "list", "type": "List", "required": True}})

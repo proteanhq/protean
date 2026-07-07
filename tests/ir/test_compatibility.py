@@ -1752,3 +1752,291 @@ class TestClassifyWithRealDomains:
         assert report.breaking_changes == []
         assert report.safe_changes == []
         assert report.is_breaking is False
+
+
+# ------------------------------------------------------------------
+# Avro compatibility verdicts (BACKWARD / FORWARD / FULL / NONE)
+# ------------------------------------------------------------------
+
+
+def _fld(type_name: str = "String", **extra: object) -> dict:
+    return {"kind": "standard", "type": type_name, **extra}
+
+
+@pytest.mark.no_test_domain
+class TestAvroVerdict:
+    def _agg(self, fields: dict) -> dict:
+        return _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields=fields)}
+        )
+
+    def test_no_changes_is_full(self):
+        ir = self._agg({"id": _fld("Identifier")})
+        assert _run(ir, ir).avro_verdict == "FULL"
+
+    def test_add_optional_is_full(self):
+        report = _run(self._agg({}), self._agg({"note": _fld("String")}))
+        assert report.avro_verdict == "FULL"
+
+    def test_add_required_with_default_is_full(self):
+        report = _run(
+            self._agg({}),
+            self._agg({"status": _fld("String", required=True, default="pending")}),
+        )
+        assert report.avro_verdict == "FULL"
+
+    def test_add_required_no_default_is_forward_not_backward(self):
+        report = _run(
+            self._agg({}), self._agg({"amount": _fld("Float", required=True)})
+        )
+        assert report.avro_verdict == "FORWARD"
+
+    def test_remove_required_field_is_backward_not_forward(self):
+        report = _run(
+            self._agg({"amount": _fld("Float", required=True)}), self._agg({})
+        )
+        assert report.avro_verdict == "BACKWARD"
+
+    def test_remove_optional_field_is_full(self):
+        report = _run(self._agg({"note": _fld("String")}), self._agg({}))
+        assert report.avro_verdict == "FULL"
+
+    def test_type_change_is_none(self):
+        report = _run(
+            self._agg({"amount": _fld("Integer", required=True)}),
+            self._agg({"amount": _fld("Float", required=True)}),
+        )
+        assert report.avro_verdict == "NONE"
+
+    def test_element_removed_is_none(self):
+        left = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
+        right = _minimal_ir()
+        assert _run(left, right).avro_verdict == "NONE"
+
+    def test_required_rename_is_backward(self):
+        # Backward via the emitted Avro alias; forward-unsafe because an old
+        # reader cannot fill the now-absent required old name.
+        report = _run(
+            self._agg({"old_name": _fld("String", required=True)}),
+            self._agg(
+                {"new_name": _fld("String", required=True, renamed_from=["old_name"])}
+            ),
+        )
+        assert report.avro_verdict == "BACKWARD"
+
+    def test_optional_rename_is_full(self):
+        report = _run(
+            self._agg({"old_name": _fld("String")}),
+            self._agg({"new_name": _fld("String", renamed_from=["old_name"])}),
+        )
+        assert report.avro_verdict == "FULL"
+
+    def test_add_required_with_callable_default_is_forward_not_backward(self):
+        # A callable default is not emittable as a static Avro default, so a new
+        # reader has no value for old data → not BACKWARD.
+        report = _run(
+            self._agg({}),
+            self._agg({"seq": _fld("Auto", required=True, default="<callable>")}),
+        )
+        assert report.avro_verdict == "FORWARD"
+
+    def test_remove_required_with_static_default_is_full(self):
+        report = _run(
+            self._agg({"amount": _fld("Float", required=True, default=0.0)}),
+            self._agg({}),
+        )
+        assert report.avro_verdict == "FULL"
+
+    def test_remove_required_with_callable_default_is_backward(self):
+        report = _run(
+            self._agg({"seq": _fld("Auto", required=True, default="<callable>")}),
+            self._agg({}),
+        )
+        assert report.avro_verdict == "BACKWARD"
+
+    def test_remove_identifier_field_is_backward(self):
+        # Avro encodes identifier fields as required, so removing one is not
+        # forward-safe even though the IR spec carries no `required` flag.
+        report = _run(
+            self._agg({"code": _fld("Identifier", identifier=True)}),
+            self._agg({}),
+        )
+        assert report.avro_verdict == "BACKWARD"
+
+    def test_backward_only_and_forward_only_intersect_to_none(self):
+        # remove-required (BACKWARD) ∧ add-required-no-default (FORWARD) → NONE.
+        report = _run(
+            self._agg({"amount": _fld("Float", required=True)}),
+            self._agg({"qty": _fld("Integer", required=True)}),
+        )
+        assert report.avro_verdict == "NONE"
+
+    def test_per_element_verdicts(self):
+        left = _minimal_ir(
+            clusters={
+                "app.A": _make_cluster("A", fields={"x": _fld("Float", required=True)}),
+                "app.B": _make_cluster("B", fields={}),
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.A": _make_cluster("A", fields={}),  # remove required → BACKWARD
+                "app.B": _make_cluster(
+                    "B", fields={"y": _fld("Integer", required=True)}
+                ),  # add required-no-default → FORWARD
+            }
+        )
+        report = _run(left, right)
+        by_element = report.avro_verdicts_by_element()
+        assert by_element["app.A"] == "BACKWARD"
+        assert by_element["app.B"] == "FORWARD"
+        # The domain-wide verdict is the intersection.
+        assert report.avro_verdict == "NONE"
+
+    def test_intersection_across_changes(self):
+        # add-optional (FULL) ∧ remove-required (BACKWARD) → BACKWARD overall.
+        report = _run(
+            self._agg({"amount": _fld("Float", required=True)}),
+            self._agg({"note": _fld("String")}),
+        )
+        assert report.avro_verdict == "BACKWARD"
+
+    def test_visibility_flip_is_avro_neutral_but_still_breaking(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    events={
+                        "app.OrderPlaced": _make_event(
+                            "OrderPlaced", "app.OrderPlaced", published=True
+                        )
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    events={
+                        "app.OrderPlaced": _make_event("OrderPlaced", "app.OrderPlaced")
+                    },
+                )
+            }
+        )
+        report = _run(left, right)
+        # A public→internal flip is breaking, but it changes the publication
+        # contract, not the payload bytes, so it is Avro-neutral.
+        assert report.is_breaking is True
+        assert report.avro_verdict == "FULL"
+
+    def test_upcaster_mitigated_change_is_backward(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    events={
+                        "app.OrderPlaced": _make_event(
+                            "OrderPlaced",
+                            "app.OrderPlaced",
+                            fields={"a": _fld("Integer", required=True)},
+                        )
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    events={
+                        "app.OrderPlaced": _make_event(
+                            "OrderPlaced",
+                            "app.OrderPlaced",
+                            fields={"a": _fld("Float", required=True)},
+                            __version__=2,
+                            __type__="Test.OrderPlaced.v2",
+                        )
+                    },
+                )
+            },
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = _run(left, right)
+        # The upcaster covers v1→v2, so the type change is mitigated
+        # (backward-safe at read time) → BACKWARD, not NONE.
+        assert report.avro_verdict == "BACKWARD"
+        assert any(c.mitigated_by for c in report.safe_changes)
+
+    def test_direction_breaks_explain_a_non_full_verdict(self):
+        report = _run(
+            self._agg({"amount": _fld("Float", required=True)}), self._agg({})
+        )
+        breaks = report.avro_direction_breaks()
+        assert len(breaks) == 1
+        direction, change = breaks[0]
+        assert direction == "FORWARD"  # removing a required field breaks forward
+        assert change.change_type == "field_removed"
+
+
+@pytest.mark.no_test_domain
+class TestVerdictMatchesFastavro:
+    """The verdict must agree with real Avro resolution of the emitted `.avsc`.
+
+    This guards against the verdict drifting from what a schema registry would
+    actually enforce on the schema `generators/avro.py` emits.
+    """
+
+    def _avsc(self, fields: dict) -> dict:
+        from protean.ir.generators.avro import generate_avro_schema
+
+        return generate_avro_schema(
+            {"element_type": "EVENT", "name": "E", "fqn": "app.E", "fields": fields}
+        )
+
+    def _resolves(self, writer_fields: dict, reader_fields: dict, record: dict) -> bool:
+        """True if a record written with *writer_fields* decodes under *reader_fields*."""
+        import io
+
+        fastavro = pytest.importorskip("fastavro")
+        writer = fastavro.parse_schema(self._avsc(writer_fields))
+        reader = fastavro.parse_schema(self._avsc(reader_fields))
+        buf = io.BytesIO()
+        fastavro.schemaless_writer(buf, writer, record)
+        buf.seek(0)
+        try:
+            fastavro.schemaless_reader(buf, writer, reader)
+            return True
+        except Exception:
+            return False
+
+    def _agg(self, fields: dict) -> dict:
+        return _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields=fields)}
+        )
+
+    def test_required_rename_backward_matches_fastavro(self):
+        old = {"old_name": _fld("String", required=True)}
+        new = {"new_name": _fld("String", required=True, renamed_from=["old_name"])}
+        assert _run(self._agg(old), self._agg(new)).avro_verdict == "BACKWARD"
+        # BACKWARD: a new-schema reader decodes old-written data (via the alias).
+        assert self._resolves(old, new, {"old_name": "x"}) is True
+        # not FORWARD: an old-schema reader cannot decode new-written data.
+        assert self._resolves(new, old, {"new_name": "x"}) is False
+
+    def test_add_optional_full_matches_fastavro(self):
+        old = {"a": _fld("String", required=True)}
+        new = {"a": _fld("String", required=True), "note": _fld("String")}
+        assert _run(self._agg(old), self._agg(new)).avro_verdict == "FULL"
+        assert self._resolves(old, new, {"a": "x"}) is True  # backward
+        assert self._resolves(new, old, {"a": "x", "note": None}) is True  # forward
+
+    def test_add_required_no_default_not_backward_matches_fastavro(self):
+        old = {"a": _fld("String", required=True)}
+        new = {
+            "a": _fld("String", required=True),
+            "amount": _fld("Float", required=True),
+        }
+        assert _run(self._agg(old), self._agg(new)).avro_verdict == "FORWARD"
+        # not BACKWARD: the new reader needs `amount`, absent from old data.
+        assert self._resolves(old, new, {"a": "x"}) is False

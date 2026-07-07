@@ -165,6 +165,14 @@ def _build_avro_fields(
         if fspec.get("description"):
             entry["doc"] = fspec["description"]
 
+        # A declared field rename (renamed_from) becomes Avro field aliases so a
+        # reader on the new schema resolves data written under the old name —
+        # keeping the rename backward-compatible on the wire, not just at
+        # Protean's read-time alias resolution.
+        renamed_from = fspec.get("renamed_from")
+        if renamed_from:
+            entry["aliases"] = list(renamed_from)
+
         result.append(entry)
     return result
 

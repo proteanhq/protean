@@ -12,9 +12,16 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from protean.utils.upcasting import missing_upcaster_source_versions
+
+# The Avro compatibility verdict vocabulary (matches Confluent/Avro terms).
+AvroVerdict = Literal["FULL", "BACKWARD", "FORWARD", "NONE"]
+
+# The IR field-spec sentinel for a default produced by a callable (which cannot
+# be emitted as a static schema default). Mirrors ``generators/avro.py``.
+_CALLABLE_DEFAULT = "<callable>"
 
 
 def diff_ir(
@@ -759,6 +766,77 @@ class CompatibilityChange:
     # registered upcaster transforms old payloads, this names the mitigating
     # upcaster coverage (e.g. "upcaster OrderPlaced v1->v3").
     mitigated_by: str | None = None
+    # Per-field Avro safety overrides. ``None`` means "not applicable — use the
+    # ``_AVRO_CHANGE_SAFETY`` table default for this change type". They are set
+    # only where safety is per-field rather than fixed by the change type:
+    # ``field_removed`` / ``field_renamed`` set ``forward_safe`` (depends on the
+    # old field's optionality), and a required-field-add with a *callable*
+    # default sets ``backward_safe=False`` (Avro cannot emit a callable default).
+    backward_safe: bool | None = None
+    forward_safe: bool | None = None
+
+
+# Avro compatibility safety per change type: (backward_safe, forward_safe).
+# BACKWARD = a new-schema reader decodes old-written data; FORWARD = an
+# old-schema reader decodes new-written data. Change types absent from this
+# table are treated as fully incompatible (conservative). A change's per-field
+# ``backward_safe``/``forward_safe`` override wins over the table when set.
+_AVRO_CHANGE_SAFETY: dict[str, tuple[bool, bool]] = {
+    "element_added": (True, True),
+    "element_removed": (False, False),
+    "optional_field_added": (True, True),
+    "required_field_with_default_added": (True, True),
+    "required_field_added": (False, True),
+    # Removing / renaming a field is backward-safe (a new reader ignores the
+    # absent old field; a rename resolves via the emitted Avro ``aliases``);
+    # forward-safety depends on the old field and is set per-change. The table
+    # default is the conservative False in case a producer forgets to set it.
+    "field_removed": (True, False),
+    "field_renamed": (True, False),
+    "field_type_changed": (False, False),
+    "type_string_changed": (False, False),
+    # Visibility flips change the publication contract, not the payload bytes,
+    # so they are neutral for Avro decode. They remain breaking in the report
+    # (and still gate the exit code via ``is_breaking``) — the verdict and the
+    # gate are separate axes.
+    "visibility_public_to_internal": (True, True),
+    "visibility_internal_to_public": (True, True),
+}
+
+
+def _change_avro_safety(change: CompatibilityChange) -> tuple[bool, bool]:
+    """Return ``(backward_safe, forward_safe)`` for one change under Avro rules."""
+    table_backward, table_forward = _AVRO_CHANGE_SAFETY.get(
+        change.change_type, (False, False)
+    )
+    backward = table_backward if change.backward_safe is None else change.backward_safe
+    forward = table_forward if change.forward_safe is None else change.forward_safe
+    if change.mitigated_by is not None:
+        # A registered upcaster transforms old payloads to the new shape at read
+        # time, so a new-schema reader can decode old data -> backward-safe.
+        backward = True
+    return backward, forward
+
+
+def _verdict_from_safety(backward: bool, forward: bool) -> AvroVerdict:
+    if backward and forward:
+        return "FULL"
+    if backward:
+        return "BACKWARD"
+    if forward:
+        return "FORWARD"
+    return "NONE"
+
+
+def _avro_verdict(changes: list[CompatibilityChange]) -> AvroVerdict:
+    """Fold per-change Avro safety into one verdict.
+
+    The verdict holds a direction only if *every* change is safe in that
+    direction (the intersection). An empty change set is vacuously ``FULL``.
+    """
+    backward = all(_change_avro_safety(c)[0] for c in changes)
+    forward = all(_change_avro_safety(c)[1] for c in changes)
+    return _verdict_from_safety(backward, forward)
 
 
 @dataclass
@@ -772,6 +850,43 @@ class CompatibilityReport:
     def is_breaking(self) -> bool:
         """Return True if there are any breaking changes."""
         return bool(self.breaking_changes)
+
+    @property
+    def avro_verdict(self) -> AvroVerdict:
+        """Domain-wide Avro compatibility verdict — the intersection across all
+        changes (breaking and safe alike, since a safe change like a rename can
+        still be forward-incompatible). This is the conservative whole-domain
+        answer; use :meth:`avro_verdicts_by_element` for a per-element breakdown."""
+        return _avro_verdict(self.breaking_changes + self.safe_changes)
+
+    def avro_verdicts_by_element(self) -> dict[str, AvroVerdict]:
+        """Return the Avro verdict for each element that changed, keyed by FQN.
+
+        The domain-wide :attr:`avro_verdict` is the intersection of these; a
+        per-element breakdown shows exactly which element carries a weaker
+        verdict (Avro compatibility is per-subject).
+        """
+        by_element: dict[str, list[CompatibilityChange]] = {}
+        for change in self.breaking_changes + self.safe_changes:
+            by_element.setdefault(change.element_fqn, []).append(change)
+        return {fqn: _avro_verdict(changes) for fqn, changes in by_element.items()}
+
+    def avro_direction_breaks(
+        self,
+    ) -> list[tuple[Literal["BACKWARD", "FORWARD"], CompatibilityChange]]:
+        """Return ``(direction, change)`` for each change that breaks a direction.
+
+        Direction is ``"BACKWARD"`` or ``"FORWARD"``; a change unsafe in both
+        yields two entries. Used to explain a non-``FULL`` verdict.
+        """
+        breaks: list[tuple[Literal["BACKWARD", "FORWARD"], CompatibilityChange]] = []
+        for change in self.breaking_changes + self.safe_changes:
+            backward, forward = _change_avro_safety(change)
+            if not backward:
+                breaks.append(("BACKWARD", change))
+            if not forward:
+                breaks.append(("FORWARD", change))
+        return breaks
 
 
 def classify_changes(
@@ -1045,6 +1160,26 @@ def _detect_field_renames(
     return renames
 
 
+def _has_static_default(field: dict[str, Any]) -> bool:
+    """Whether *field* carries a default Avro can emit as a schema default.
+
+    A callable default (the ``<callable>`` IR sentinel) is not emittable, so it
+    does not count — matching ``generators/avro.py``'s ``has_default`` rule.
+    """
+    return "default" in field and field["default"] != _CALLABLE_DEFAULT
+
+
+def _removal_forward_safe(old_field: dict[str, Any]) -> bool:
+    """Whether removing (or renaming) away *old_field* keeps forward compatibility.
+
+    An old-schema reader can decode new data that lacks the old field only when
+    the field was optional or carried a static default. Identifier fields count
+    as required (Avro encodes them as required — see ``generators/avro.py``).
+    """
+    is_required = old_field.get("required") or old_field.get("identifier")
+    return not is_required or _has_static_default(old_field)
+
+
 def _classify_field_changes(
     fields_diff: dict[str, Any],
     fqn: str,
@@ -1086,6 +1221,10 @@ def _classify_field_changes(
                         f"Field '{old_name}' renamed to '{new_name}' in "
                         f"{element_type} '{fqn}'"
                     ),
+                    # Backward-safe via the emitted Avro ``aliases``; forward
+                    # safety depends on whether an old reader can fill the
+                    # now-absent old name (optional or defaulted).
+                    forward_safe=_removal_forward_safe(removed[old_name]),
                 )
             )
 
@@ -1116,6 +1255,10 @@ def _classify_field_changes(
                         f"Required field '{field_name}' added to {element_type} "
                         f"'{fqn}' with a default value"
                     ),
+                    # A *callable* default cannot be emitted as an Avro schema
+                    # default, so a new reader has no value for old data missing
+                    # the field — not backward-safe in that case.
+                    backward_safe=_has_static_default(field_dict),
                 )
             )
         else:
@@ -1140,6 +1283,7 @@ def _classify_field_changes(
         # deprecation grace was limited to published contracts).
         deprecated = removed[field_name].get("deprecated")
         classification = _classify_removal(deprecated, current_version)
+        forward_safe = _removal_forward_safe(removed[field_name])
         if classification == "expected_removal":
             report.safe_changes.append(
                 CompatibilityChange(
@@ -1151,6 +1295,7 @@ def _classify_field_changes(
                         f"(expected removal, deprecated since "
                         f"v{deprecated['since']})"
                     ),
+                    forward_safe=forward_safe,
                 )
             )
         else:
@@ -1177,6 +1322,7 @@ def _classify_field_changes(
                     element_fqn=fqn,
                     change_type="field_removed",
                     message=message,
+                    forward_safe=forward_safe,
                 )
             )
 
