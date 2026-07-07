@@ -281,6 +281,7 @@ nav:
       - guides/multi-domain-applications.md
       - guides/compose-a-domain/inspecting-the-ir.md
       - guides/compose-a-domain/schema-generation.md
+      - guides/evolving-events.md
       - guides/compatibility-checking.md
       - guides/pathways/migrating-between-architectures.md
     - Test Your Application:

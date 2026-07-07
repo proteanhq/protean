@@ -422,4 +422,5 @@ ever stored).
 
     **Related guides:**
 
+    - [Evolving Events Over Time](../evolving-events.md) — The broader event-evolution workflow: upcasting sits alongside `renamed_from` field renames, event `deprecated`/`superseded_by`, and opt-in lenient deserialization.
     - [Temporal Queries](../change-state/temporal-queries.md) — Load aggregate state at a specific version or point in time.
