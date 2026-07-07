@@ -44,6 +44,23 @@ schemas directly from it.
 protean schema generate --domain=my_app.domain --output=build
 ```
 
+### Other output formats
+
+By default `protean schema generate` emits JSON Schema. Pass `--format` to emit
+other contract formats — `json`, `avro`, `protobuf`, or `all` (which writes JSON
+Schema, Avro, and Protobuf into one tree):
+
+```bash
+protean schema generate --domain=my_app.domain --format all
+```
+
+The Avro schema carries an `aliases` entry for any field declared with
+[`renamed_from`](../../reference/fields/arguments.md#renamed_from), so an external
+Avro consumer resolves the old field name on the wire. See the
+[`protean schema` CLI reference](../../reference/cli/schema.md) for every flag, and
+[Evolving Events Over Time](../evolving-events.md) for how these formats fit the
+wider event-evolution workflow.
+
 ---
 
 ## Inspecting a single schema

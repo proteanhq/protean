@@ -232,7 +232,11 @@ need by what you're trying to accomplish.
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
+| Evolve an event safely from v1 to vN            | [Evolving Events Over Time](./guides/evolving-events.md) |
+| Rename an event field without breaking readers  | [Evolving Events — Rename a field](./guides/evolving-events.md#rename-a-field-with-renamed_from) |
+| Deprecate and supersede an old event            | [Evolving Events — Deprecate](./guides/evolving-events.md#deprecate-and-supersede-an-old-event) |
 | Transform old event schemas during replay       | [Event Upcasting](./guides/consume-state/event-upcasting.md) |
+| Check schema compatibility before shipping      | [Compatibility Checking](./guides/compatibility-checking.md) |
 | Add type checking to my domain code             | [Type Checking](./reference/type-checking/index.md) |
 
 ## Organize My Project

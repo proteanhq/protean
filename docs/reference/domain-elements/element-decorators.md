@@ -107,11 +107,14 @@ past tense (`OrderPlaced`, `CustomerRegistered`).
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Aggregate that raises this event |
+| `deprecated` | `None` | Marks the event deprecated. A dict `{"since": ..., "removal": ...}` recording the deprecation and planned removal versions |
+| `superseded_by` | `None` | Names the replacement event (an Event class or a string). Raising a deprecated event emits a `DeprecationWarning` naming it |
 
 Events also support a `__version__` class attribute (default `1`) for
 schema versioning.
 
-Guide: [Events](../../guides/domain-definition/events.md)
+Guide: [Events](../../guides/domain-definition/events.md) ·
+Reference: [Compatibility](../compatibility/index.md)
 
 ### `Domain.query`
 

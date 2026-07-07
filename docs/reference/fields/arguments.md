@@ -289,6 +289,9 @@ A stored `OrderPlaced` payload carrying the old `name` key loads into
 `customer_name`; the current name always wins if both are present, and any
 stale alias keys are dropped. The rename is also emitted into the IR, so
 `protean ir diff` reports a single safe `field_renamed` change instead of a
-breaking remove + add. See
+breaking remove + add, and the generated Avro schema carries an `aliases` entry
+so an external Avro consumer resolves the old name on the wire. See
+[Evolving Events Over Time](../../guides/evolving-events.md) for the end-to-end
+workflow and
 [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
-for the full evolution workflow.
+for the strategies behind it.

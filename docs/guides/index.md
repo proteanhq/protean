@@ -50,6 +50,8 @@ to use? Start with DDD and evolve later.
 
     [:material-arrow-right-box: React to Changes](./consume-state/index.md)
 
+    *See also:* [Evolving Events Over Time](./evolving-events.md)
+
 -   **:material-server-outline: Run in Production**
 
     ---

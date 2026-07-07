@@ -372,6 +372,20 @@ logic.
 logging, monitoring). Not suitable for consumers that need precise data
 (financial calculations, projections).
 
+### Lenient Deserialization (read-path escape hatch)
+
+When you must read genuinely legacy payloads that still carry fields the current
+event no longer declares, opt into **lenient deserialization**. Set
+`lenient_deserialization = true` in `domain.toml` (or override per event with
+`@domain.event(lenient=True)`); the deserializer then drops unknown fields —
+recording their names in the message metadata — instead of raising
+`DeserializationError`. It is **opt-in**: the default is strict, so a typo or
+genuine schema drift still fails loudly. Reach for lenience only on the read path
+for legacy data; for *structural* evolution, an upcaster is the precise tool.
+
+**When to use:** Reading old payloads that carry since-removed fields, where no
+upcaster exists. Not a substitute for upcasting when a value needs transforming.
+
 ---
 
 ## Fact Events and Schema Evolution
@@ -658,4 +672,12 @@ When in doubt, create a new event type.**
 
     **Guides:**
 
+    - [Evolving Events Over Time](../guides/evolving-events.md) — The how-to companion: the end-to-end evolution workflow walked with one running example.
+    - [Event Upcasting](../guides/consume-state/event-upcasting.md) — The upcaster mechanism in depth.
     - [Events](../guides/domain-definition/events.md) — Event structure, metadata, and versioning reference.
+
+    **Tooling:**
+
+    - [`protean events catalog`](../reference/cli/data/events.md) — list every event with its version, deprecation/supersession, and upcaster chain.
+    - [`protean schema generate --format`](../reference/cli/schema.md) — emit JSON Schema, Avro, or Protobuf contracts.
+    - [`protean ir diff`](../reference/cli/ir.md) — Avro-style `BACKWARD`/`FORWARD`/`FULL`/`NONE` compatibility verdict for a change.

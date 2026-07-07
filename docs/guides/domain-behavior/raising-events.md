@@ -214,6 +214,7 @@ and the output stream is `user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff`
     - [Projections](../consume-state/projections.md) — Building read models from event streams.
     - [Message Enrichment](message-enrichment.md) — Automatically add custom metadata (user context, tenant ID, audit data) to every event.
     - [Message Tracing](message-tracing.md) — Follow causal chains with correlation and causation IDs.
+    - [Evolving Events Over Time](../evolving-events.md) — Evolve an event safely over time. Raising a **deprecated** event (marked with `deprecated=`/`superseded_by=`) emits a `DeprecationWarning` at runtime that names its replacement.
 
     **Patterns:**
 

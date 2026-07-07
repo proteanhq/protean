@@ -149,6 +149,7 @@ specific area.
 - [CloudEvents Interoperability](./guides/consume-state/cloudevents.md) -- Serialize events to CloudEvents v1.0 for external systems, and consume CloudEvents from external sources.
 - [Stream Categories](./concepts/async-processing/stream-categories.md) -- How messages are organized and routed.
 - [Event Upcasting](./guides/consume-state/event-upcasting.md) -- Transforming old event schemas to match the current version during replay.
+- [Evolving Events Over Time](./guides/evolving-events.md) -- The full event-evolution workflow: add fields, rename with `renamed_from`, deprecate/supersede, upcast, and check compatibility.
 
 ### Run in Production
 
