@@ -143,6 +143,8 @@ test = [
     "coverage>=7.8.0",
     "httpx>=0.27.0",
     "jsonschema>=4.20.0",
+    # Round-trip validation of generated Avro schemas (protean schema --format avro)
+    "fastavro>=1.9.0",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",

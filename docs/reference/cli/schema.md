@@ -40,8 +40,21 @@ protean schema generate --domain=my_app.domain --output=build
 | `--domain`, `-d` | Path to the domain module (e.g. `my_app.domain`) | |
 | `--ir` | Path to an IR JSON file | |
 | `--output`, `-o` | Root output directory | `.protean` |
+| `--format`, `-f` | Output format: `json`, `avro`, or `protobuf` | `json` |
 
 Either `--domain` or `--ir` is required; they are mutually exclusive.
+
+**Formats.** `--format avro` emits Avro `{name}.v{version}.avsc` records (null-first
+unions for optionals, so optional fields default to `null`; `uuid`/`date`/`timestamp-millis`
+logical types; nested value objects become named records referenced by fullname).
+`--format protobuf` emits proto3 `{name}.v{version}.proto` messages with
+`optional`/`repeated` labels, `google.protobuf.Timestamp` for dates, and
+field numbers assigned deterministically in sorted field-name order — so
+re-generating an *unchanged* schema is byte-identical. Adding a field
+renumbers alphabetically-later fields, so these numbers are for emission, not
+wire-compatible evolution. Both are compiler backends for schema *emission*;
+runtime binary encode/decode is out of scope, and field-level constraints
+(choices/enums, min/max) are not carried into either format.
 
 **Output structure**
 

@@ -10,7 +10,6 @@ import pytest
 from protean.ir.builder import IRBuilder
 from protean.ir.generators.schema_writer import (
     _cluster_for_fqn,
-    _element_version,
     write_ir,
     write_schemas,
 )
@@ -412,12 +411,6 @@ class TestHelperEdgeCases:
     def test_cluster_for_fqn_empty_ir(self):
         result = _cluster_for_fqn("any.Fqn", {})
         assert result is None
-
-    def test_element_version_defaults_to_one(self):
-        assert _element_version({}) == 1
-
-    def test_element_version_reads_extension(self):
-        assert _element_version({"x-protean-version": 3}) == 3
 
     def test_write_schemas_empty_ir(self, tmp_path: Path):
         """Empty IR produces no files."""
