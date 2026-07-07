@@ -290,6 +290,10 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         # The replacement for a deprecated event (an Event class or a name
         # string). `deprecated` itself is the universal element option.
         ("superseded_by", None),
+        # Per-message override for lenient deserialization: True/False forces
+        # the mode for this class; None (default) defers to the domain's
+        # `lenient_deserialization` config key.
+        ("lenient", None),
     ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -894,6 +898,35 @@ class Message(Element, BaseModel, OptionsMixin):
                 resolved.pop(alias, None)
         return resolved if resolved is not None else data
 
+    @staticmethod
+    def _is_lenient(element_cls: type) -> bool:
+        """Whether unknown fields should be dropped when deserializing this class.
+
+        The per-class ``lenient`` meta option wins when set (``True``/``False``);
+        otherwise the domain's ``lenient_deserialization`` config key applies
+        (default ``False`` — strict).
+        """
+        per_class = getattr(getattr(element_cls, "meta_", None), "lenient", None)
+        if per_class is not None:
+            return bool(per_class)
+        return bool(current_domain.config.get("lenient_deserialization", False))
+
+    @staticmethod
+    def _drop_unknown_fields(
+        element_cls: type, data: dict[str, Any]
+    ) -> tuple[dict[str, Any], list[str]]:
+        """Split *data* into (known fields, sorted dropped unknown field names).
+
+        A key is unknown when it names no field on the current class. The
+        original dict is returned untouched when there is nothing to drop.
+        """
+        known = fields(element_cls).keys()
+        dropped = sorted(key for key in data if key not in known)
+        if not dropped:
+            return data, dropped
+        kept = {key: value for key, value in data.items() if key in known}
+        return kept, dropped
+
     def to_domain_object(self) -> Union["BaseEvent", "BaseCommand"]:
         """Convert this message back to its original domain object.
 
@@ -937,10 +970,29 @@ class Message(Element, BaseModel, OptionsMixin):
             # a payload written before a rename loads without an upcaster.
             data = self._resolve_field_aliases(element_cls, data)
 
+            # Lenient mode: drop fields no longer on the class (recording them on
+            # the metadata) rather than letting ``extra="forbid"`` reject them.
+            # Runs after alias resolution so a renamed old key is kept, not
+            # dropped as unknown.
+            metadata = self.metadata
+            if self._is_lenient(element_cls):
+                data, dropped = self._drop_unknown_fields(element_cls, data)
+                if dropped:
+                    # Record dropped fields under a framework-namespaced key in
+                    # the (already round-trip-preserved) extensions map.
+                    metadata = metadata.model_copy(
+                        update={
+                            "extensions": {
+                                **metadata.extensions,
+                                "_dropped_fields": dropped,
+                            }
+                        }
+                    )
+
             element_factory = cast(
                 "Callable[..., BaseEvent | BaseCommand]", element_cls
             )
-            return element_factory(_metadata=self.metadata, **data)
+            return element_factory(_metadata=metadata, **data)
 
         except Exception as e:
             context = self._build_error_context(e)
@@ -1240,9 +1292,18 @@ class Message(Element, BaseModel, OptionsMixin):
         if envelope and envelope.checksum:
             ce["proteanchecksum"] = envelope.checksum
 
-        # User extensions from enrichers
+        # User extensions from enrichers. Protean reserves the `_` prefix for
+        # framework-internal, read-time-only records (e.g. `_dropped_fields`
+        # from lenient deserialization); these are never published to the wire,
+        # so they are excluded from the emitted CloudEvent.
         if self.metadata.extensions:
-            ce.update(self.metadata.extensions)
+            ce.update(
+                {
+                    key: value
+                    for key, value in self.metadata.extensions.items()
+                    if not key.startswith("_")
+                }
+            )
 
         # Strip None values
         return {k: v for k, v in ce.items() if v is not None}

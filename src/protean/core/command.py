@@ -216,7 +216,8 @@ class BaseCommand(BaseMessageType):
         metadata_kwargs: dict[str, Any] = {"headers": headers, "domain": domain_meta}
         if existing_envelope is not None:
             metadata_kwargs["envelope"] = existing_envelope
-        # Preserve extensions from incoming metadata (set by command enrichers)
+        # Preserve extensions from incoming metadata (set by command enrichers,
+        # and lenient-deserialization dropped-field records).
         if incoming and hasattr(incoming, "extensions") and incoming.extensions:
             metadata_kwargs["extensions"] = incoming.extensions
         self._metadata = Metadata(**metadata_kwargs)
