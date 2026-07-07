@@ -762,7 +762,38 @@ class TestInternalEventDeprecationGrace:
             diff_ir(left, right), left, right, current_version="0.16"
         )
         assert report.is_breaking is True
-        assert "before its removal version" in report.breaking_changes[0].message
+        # Factual message — states the scheduled removal, does not overclaim
+        # "before its removal version" (which needs a current_version).
+        msg = report.breaking_changes[0].message
+        assert "deprecated since v0.15" in msg
+        assert "scheduled for removal in v0.18" in msg
+
+    def test_deprecated_field_without_removal_version_is_breaking(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _evt(
+                            "OrderPlaced",
+                            1,
+                            {"legacy": _std(deprecated={"since": "0.15"})},
+                        )
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {"app.OrderPlaced": _evt("OrderPlaced", 1, {})}
+                )
+            }
+        )
+        report = classify_changes(
+            diff_ir(left, right), left, right, current_version="0.20"
+        )
+        assert report.is_breaking is True
+        assert "no removal version set" in report.breaking_changes[0].message
 
     def test_non_deprecated_field_removal_stays_breaking(self):
         left = _minimal_ir(

@@ -1154,12 +1154,23 @@ def _classify_field_changes(
                 )
             )
         else:
+            # Breaking (premature/unexpected). State the deprecation facts
+            # rather than asserting the removal is "before its removal version"
+            # — which cannot be known without a removal version and a
+            # current_version (which the `ir diff` CLI does not yet supply).
             message = f"Field '{field_name}' removed from {element_type} '{fqn}'"
             if deprecated:
-                message += (
-                    f" (deprecated since v{deprecated['since']}, removed before "
-                    f"its removal version)"
-                )
+                removal = deprecated.get("removal")
+                if removal:
+                    message += (
+                        f" (deprecated since v{deprecated['since']}, "
+                        f"scheduled for removal in v{removal})"
+                    )
+                else:
+                    message += (
+                        f" (deprecated since v{deprecated['since']}, "
+                        f"no removal version set)"
+                    )
             report.breaking_changes.append(
                 CompatibilityChange(
                     severity="breaking",
