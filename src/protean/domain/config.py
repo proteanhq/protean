@@ -36,6 +36,12 @@ def _default_config() -> dict[str, Any]:
         },
         "event_processing": Processing.ASYNC.value,
         "command_processing": Processing.ASYNC.value,
+        # When True, deserializing a stored event/command payload drops fields
+        # that no longer exist on the current class (and records them on the
+        # message metadata) instead of raising. Default stays strict: unknown
+        # fields raise, so a typo or genuine schema drift is not silently
+        # swallowed. Overridable per event via the `lenient` meta option.
+        "lenient_deserialization": False,
         # Default validity window (in seconds) applied to every command when no
         # explicit deadline/timeout is passed to ``domain.process()`` and the
         # handling command handler declares no ``timeout`` option. ``None``

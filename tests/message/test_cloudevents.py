@@ -256,6 +256,22 @@ class TestToCloudeventExtensions:
 
         assert ce["tenant_id"] == "tenant-abc"
 
+    def test_underscore_prefixed_extensions_are_not_emitted(self, test_domain):
+        """Framework-internal `_`-prefixed extension keys (e.g. `_dropped_fields`
+        from lenient deserialization) are not emitted as CloudEvents attributes,
+        whose names must be lowercase-alphanumeric."""
+
+        def enrich(event, aggregate):
+            return {"_dropped_fields": ["gone"], "tenant_id": "t"}
+
+        test_domain.register_event_enricher(enrich)
+
+        message, _ = _make_event_message()
+        ce = message.to_cloudevent()
+
+        assert "_dropped_fields" not in ce
+        assert ce["tenant_id"] == "t"
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # from_cloudevent()

@@ -183,6 +183,27 @@ Supported options are `sync` and `async`.
 
 Default: `sync`
 
+### `lenient_deserialization`
+
+When `true`, deserializing a stored event or command payload drops fields that
+no longer exist on the current class (recording their names under
+`metadata.extensions["_dropped_fields"]`) instead of raising a
+`DeserializationError`. Useful when reading legacy payloads written before a
+field was removed, without an upcaster.
+
+The dropped-field record is read-time observability on the deserialized
+message: it is not written back to the event store and, being `_`-prefixed, is
+not emitted as a CloudEvents extension. Dropping only removes unknown fields —
+a payload still missing a required field raises as usual.
+
+The default is strict: an unknown field raises, so a typo or genuine schema
+drift is not silently swallowed. A per-event `lenient` meta option
+(`@domain.event(lenient=True/False)`) overrides this config for a specific
+class. Field-rename [`renamed_from`](../fields/arguments.md#renamed_from)
+aliases resolve first, so a renamed old key is kept, not dropped.
+
+Default: `false`
+
 ### `snapshot_threshold`
 
 The threshold number of aggregate events after which a snapshot is created to
