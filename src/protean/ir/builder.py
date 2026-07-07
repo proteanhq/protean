@@ -86,6 +86,12 @@ class IRBuilder:
             "projections": self._build_projections(),
         }
 
+        # Sparse: only project upcasters when the domain has any, so
+        # upcaster-free domains keep a byte-identical IR (and checksum).
+        upcasters = self._build_upcasters()
+        if upcasters:
+            ir["upcasters"] = upcasters
+
         # Collect diagnostics (must run after clusters are built)
         self._collect_diagnostics(ir)
 
@@ -1354,6 +1360,29 @@ class IRBuilder:
             )
 
         return elements
+
+    def _build_upcasters(self) -> dict[str, list[dict[str, int]]]:
+        """Project registered upcaster chains into the IR.
+
+        Keyed by event base name (matching the ``Domain.Name`` type string and
+        ``_diagnose_upcaster_gap``) → sorted ``from_version``/``to_version``
+        edges, so the compatibility checker can tell whether an upcaster covers
+        an event's version bump without a live domain. Emitted only when
+        upcasters exist, so upcaster-free domains keep a byte-identical IR.
+        """
+        edges_by_event: dict[str, list[dict[str, int]]] = {}
+        for upcaster_cls in self._domain._upcasters:
+            name = upcaster_event_name(upcaster_cls.meta_.event_type)
+            edges_by_event.setdefault(name, []).append(
+                {
+                    "from_version": upcaster_cls.meta_.from_version,
+                    "to_version": upcaster_cls.meta_.to_version,
+                }
+            )
+        return {
+            name: sorted(edges, key=lambda e: (e["from_version"], e["to_version"]))
+            for name, edges in sorted(edges_by_event.items())
+        }
 
     # ------------------------------------------------------------------
     # Contracts

@@ -678,6 +678,365 @@ class TestContractFieldRename:
 
 
 # ------------------------------------------------------------------
+# Evolution-aware compatibility (#1132)
+# ------------------------------------------------------------------
+
+
+def _evt(name: str, version: int, fields: dict) -> dict:
+    """An event IR entry at a given version (both ``__version__`` and the
+    version-encoding ``__type__`` string move together, as they do in real IR)."""
+    return _make_event(
+        name,
+        f"app.{name}",
+        fields=fields,
+        **{"__version__": version, "__type__": f"Test.{name}.v{version}"},
+    )
+
+
+def _cluster_with_events(events: dict) -> dict:
+    return _make_cluster("Order", events=events)
+
+
+class TestInternalEventDeprecationGrace:
+    """Deliverable 1: deprecation-aware removal now covers internal/ES events
+    (element-level), not only published contracts."""
+
+    def test_deprecated_field_removed_past_removal_is_safe(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _evt(
+                            "OrderPlaced",
+                            1,
+                            {
+                                "legacy": _std(
+                                    deprecated={"since": "0.15", "removal": "0.18"}
+                                )
+                            },
+                        )
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {"app.OrderPlaced": _evt("OrderPlaced", 1, {})}
+                )
+            }
+        )
+        report = classify_changes(
+            diff_ir(left, right), left, right, current_version="0.18"
+        )
+        assert report.is_breaking is False
+        assert [c.change_type for c in report.safe_changes] == ["field_removed"]
+        assert "expected removal" in report.safe_changes[0].message
+
+    def test_deprecated_field_removed_before_removal_is_breaking(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _evt(
+                            "OrderPlaced",
+                            1,
+                            {
+                                "legacy": _std(
+                                    deprecated={"since": "0.15", "removal": "0.18"}
+                                )
+                            },
+                        )
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {"app.OrderPlaced": _evt("OrderPlaced", 1, {})}
+                )
+            }
+        )
+        report = classify_changes(
+            diff_ir(left, right), left, right, current_version="0.16"
+        )
+        assert report.is_breaking is True
+        # Factual message — states the scheduled removal, does not overclaim
+        # "before its removal version" (which needs a current_version).
+        msg = report.breaking_changes[0].message
+        assert "deprecated since v0.15" in msg
+        assert "scheduled for removal in v0.18" in msg
+
+    def test_deprecated_field_without_removal_version_is_breaking(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _evt(
+                            "OrderPlaced",
+                            1,
+                            {"legacy": _std(deprecated={"since": "0.15"})},
+                        )
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {"app.OrderPlaced": _evt("OrderPlaced", 1, {})}
+                )
+            }
+        )
+        report = classify_changes(
+            diff_ir(left, right), left, right, current_version="0.20"
+        )
+        assert report.is_breaking is True
+        assert "no removal version set" in report.breaking_changes[0].message
+
+    def test_non_deprecated_field_removal_stays_breaking(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {"app.OrderPlaced": _evt("OrderPlaced", 1, {"legacy": _std()})}
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {"app.OrderPlaced": _evt("OrderPlaced", 1, {})}
+                )
+            }
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        assert report.breaking_changes[0].change_type == "field_removed"
+
+
+class TestUpcasterMitigation:
+    """Deliverable 2: a version bump an upcaster covers is not breaking."""
+
+    @staticmethod
+    def _ir(events: dict, upcasters: dict | None = None) -> dict:
+        overrides: dict = {"clusters": {"app.Order": _cluster_with_events(events)}}
+        if upcasters is not None:
+            overrides["upcasters"] = upcasters
+        return _minimal_ir(**overrides)
+
+    def test_covered_version_bump_is_not_breaking(self):
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {})},
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        # Both the field removal and the type-string bump are mitigated + cited.
+        assert {c.change_type for c in report.safe_changes} == {
+            "field_removed",
+            "type_string_changed",
+        }
+        assert all(
+            c.mitigated_by == "upcaster OrderPlaced v1->v2" for c in report.safe_changes
+        )
+
+    def test_version_bump_without_upcaster_is_breaking(self):
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
+        )
+        right = self._ir({"app.OrderPlaced": _evt("OrderPlaced", 2, {})})
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+
+    def test_multi_step_chain_mitigates(self):
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 3, {})},
+            upcasters={
+                "OrderPlaced": [
+                    {"from_version": 1, "to_version": 2},
+                    {"from_version": 2, "to_version": 3},
+                ]
+            },
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+
+    def test_upcaster_gap_leaves_change_breaking(self):
+        """v1->v3 bump with only a v2->v3 upcaster: v1 payloads are stranded, so
+        the change is NOT mitigated."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 3, {})},
+            upcasters={"OrderPlaced": [{"from_version": 2, "to_version": 3}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+
+    def test_upcaster_for_a_different_event_does_not_mitigate(self):
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {})},
+            upcasters={"OtherEvent": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+
+    def test_mitigation_leaves_unrelated_breaking_changes(self):
+        """A mitigated event bump coexists with an unrelated breaking change
+        (here an aggregate field removal): only the event's changes downgrade."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={"legacy": _std()},
+                    events={
+                        "app.OrderPlaced": _evt(
+                            "OrderPlaced", 1, {"amount": _std("Float")}
+                        )
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={},
+                    events={"app.OrderPlaced": _evt("OrderPlaced", 2, {})},
+                )
+            },
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        # Only the aggregate field removal remains breaking.
+        assert [c.change_type for c in report.breaking_changes] == ["field_removed"]
+        assert report.breaking_changes[0].element_fqn == "app.Order"
+        # The event's version-bump changes were mitigated.
+        assert any(c.mitigated_by for c in report.safe_changes)
+
+    def test_same_version_field_change_is_not_mitigated(self):
+        """An upcaster does not excuse an in-place change at the *same* version
+        — there was no version bump for it to cover."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {"amount": _std("Float")})}
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {})},
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+
+    def test_added_event_is_skipped_by_mitigation(self):
+        """The mitigation pass skips a newly-added event (no prior version to
+        bump from). An unrelated breaking change keeps the pass running so the
+        skip branch is exercised."""
+        left = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"legacy": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={},
+                    events={"app.NewEvent": _evt("NewEvent", 2, {})},
+                )
+            },
+            upcasters={"NewEvent": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        # Aggregate field removed -> breaking; the added event is safe.
+        assert report.is_breaking is True
+        assert [c.change_type for c in report.breaking_changes] == ["field_removed"]
+
+    def test_event_without_version_is_not_mitigated(self):
+        """A malformed event entry lacking ``__version__`` is left breaking
+        rather than crashing the mitigation pass."""
+        left_event = _make_event("OrderPlaced", "app.OrderPlaced", {"amount": _std()})
+        right_event = _make_event("OrderPlaced", "app.OrderPlaced", {})
+        del left_event["__version__"]
+        del right_event["__version__"]
+        left = self._ir({"app.OrderPlaced": left_event})
+        right = self._ir(
+            {"app.OrderPlaced": right_event},
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+
+    def test_visibility_flip_riding_a_mitigated_bump_stays_breaking(self):
+        """An upcaster covers the schema transformation, not an orthogonal
+        public->internal visibility flip that happens at the same bump."""
+        left_event = _make_event(
+            "OrderPlaced",
+            "app.OrderPlaced",
+            {"amount": _std("Float")},
+            **{
+                "__version__": 1,
+                "__type__": "Test.OrderPlaced.v1",
+                "published": True,
+            },
+        )
+        right_event = _evt("OrderPlaced", 2, {})  # v2, internal (no published)
+        left = self._ir({"app.OrderPlaced": left_event})
+        right = self._ir(
+            {"app.OrderPlaced": right_event},
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        assert [c.change_type for c in report.breaking_changes] == [
+            "visibility_public_to_internal"
+        ]
+        # The schema-transformation changes are still mitigated.
+        assert {c.change_type for c in report.safe_changes} == {
+            "field_removed",
+            "type_string_changed",
+        }
+
+
+class TestRenameOnEventStillSafe:
+    """Deliverable 3: the #1139 rename signal holds for event-sourced events."""
+
+    def test_declared_rename_on_es_event_is_safe(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {"app.OrderPlaced": _evt("OrderPlaced", 1, {"name": _std()})}
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _evt(
+                            "OrderPlaced",
+                            1,
+                            {"customer_name": _std(renamed_from=["name"])},
+                        )
+                    }
+                )
+            }
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        assert [c.change_type for c in report.safe_changes] == ["field_renamed"]
+
+
+# ------------------------------------------------------------------
 # __type__ string changes
 # ------------------------------------------------------------------
 

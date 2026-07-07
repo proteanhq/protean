@@ -19,6 +19,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Add optional field (or with default) | Safe |
 | Add required field without default | **Breaking** |
 | Remove field from any persisted element | **Breaking** |
+| Remove a field deprecated past its removal version | Safe (expected removal) |
 | Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
@@ -27,9 +28,30 @@ Protean classifies changes to persisted domain elements using these rules:
 | Visibility public to internal | **Breaking** |
 | Visibility internal to public | Safe |
 | Change `__type__` string | **Breaking** |
+| Event version bump covered by a registered upcaster | Safe (mitigated) |
 
 These rules apply to all persisted elements: aggregates, entities, value
 objects, commands, events, database models, and projections.
+
+### Evolution-aware classification
+
+The checker understands two evolution mechanisms:
+
+- **Deprecation grace.** A field marked `deprecated` and removed at or past its
+  `removal` version is an *expected removal* (safe), not a breaking one. This
+  applies to every persisted element, including internal and event-sourced
+  events (not only published event contracts). It compares against the release
+  version; the `protean ir diff` CLI does not yet supply one, so this downgrade
+  applies when the diff is run with an explicit current version.
+- **Upcaster mitigation.** When an event's `__version__` bumps and a registered
+  [upcaster](../../patterns/event-versioning-and-evolution.md) chain covers the
+  old→new version path, the schema-transformation changes that make up that
+  bump — field removals, type changes, required-field additions, and the
+  `__type__` version-string change — are downgraded from breaking to safe, each
+  citing the mitigating upcaster. An orthogonal change riding along with the
+  bump (for example a public→internal visibility flip) stays breaking, and a
+  version bump with an upcaster *gap* (a prior version with no path to the new
+  one) stays breaking.
 
 ---
 
