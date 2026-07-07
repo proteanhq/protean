@@ -1292,10 +1292,10 @@ class Message(Element, BaseModel, OptionsMixin):
         if envelope and envelope.checksum:
             ce["proteanchecksum"] = envelope.checksum
 
-        # User extensions from enrichers. `_`-prefixed keys are framework-
-        # internal read-time records (e.g. `_dropped_fields` from lenient
-        # deserialization) and are not emitted as CloudEvents extension
-        # attributes, whose names must be lowercase-alphanumeric.
+        # User extensions from enrichers. Protean reserves the `_` prefix for
+        # framework-internal, read-time-only records (e.g. `_dropped_fields`
+        # from lenient deserialization); these are never published to the wire,
+        # so they are excluded from the emitted CloudEvent.
         if self.metadata.extensions:
             ce.update(
                 {

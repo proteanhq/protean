@@ -257,9 +257,9 @@ class TestToCloudeventExtensions:
         assert ce["tenant_id"] == "tenant-abc"
 
     def test_underscore_prefixed_extensions_are_not_emitted(self, test_domain):
-        """Framework-internal `_`-prefixed extension keys (e.g. `_dropped_fields`
-        from lenient deserialization) are not emitted as CloudEvents attributes,
-        whose names must be lowercase-alphanumeric."""
+        """Protean's reserved `_`-prefix extension keys (framework-internal,
+        read-time-only records such as `_dropped_fields`) are filtered out of
+        CloudEvents output; regular enricher extensions still pass through."""
 
         def enrich(event, aggregate):
             return {"_dropped_fields": ["gone"], "tenant_id": "t"}
