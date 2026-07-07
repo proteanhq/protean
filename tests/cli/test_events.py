@@ -1,5 +1,6 @@
 """Tests for CLI events commands (protean events ...)."""
 
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -13,7 +14,9 @@ from protean.cli import app
 from protean.cli.events import (
     _data_keys_summary,
     _extract_trace_ids,
+    _format_deprecated,
     _format_time,
+    _format_upcaster_chain,
     _truncate_id,
 )
 from protean.exceptions import NoDomainException
@@ -1410,3 +1413,210 @@ class TestEventsTraceTree:
             assert "OrderPlaced" in result.output
             assert "ConfirmOrder" in result.output
             assert "OrderConfirmed" in result.output
+
+
+# ---------------------------------------------------------------------------
+# events catalog (IR-sourced)
+# ---------------------------------------------------------------------------
+
+
+def _write_catalog_ir(tmp_path: Path) -> Path:
+    """Write an IR file exercising versions, deprecation, upcasters, consumers."""
+    ir = {
+        "clusters": {
+            "app.Order": {
+                "events": {
+                    "app.OrderPlaced": {
+                        "__type__": "Shop.OrderPlaced.v3",
+                        "__version__": 3,
+                        "element_type": "EVENT",
+                        "fields": {},
+                        "fqn": "app.OrderPlaced",
+                        "name": "OrderPlaced",
+                        "part_of": "app.Order",
+                        "is_fact_event": False,
+                    },
+                    "app.OrderCreated": {
+                        "__type__": "Shop.OrderCreated.v1",
+                        "__version__": 1,
+                        "element_type": "EVENT",
+                        "fields": {},
+                        "fqn": "app.OrderCreated",
+                        "name": "OrderCreated",
+                        "part_of": "app.Order",
+                        "is_fact_event": False,
+                        "deprecated": {"since": "0.15", "removal": "0.18"},
+                        "superseded_by": "OrderPlaced",
+                    },
+                },
+                "event_handlers": {
+                    "app.OrderNotifications": {
+                        "name": "OrderNotifications",
+                        "handlers": {"Shop.OrderPlaced.v3": ["on_placed"]},
+                    }
+                },
+            }
+        },
+        "upcasters": {
+            "OrderPlaced": [
+                {"from_version": 1, "to_version": 2},
+                {"from_version": 2, "to_version": 3},
+            ]
+        },
+    }
+    ir_file = tmp_path / "catalog-ir.json"
+    ir_file.write_text(json.dumps(ir), encoding="utf-8")
+    return ir_file
+
+
+class TestEventsCatalog:
+    def test_json_output_carries_full_evolution_data(self, tmp_path: Path):
+        ir_file = _write_catalog_ir(tmp_path)
+        result = runner.invoke(app, ["events", "catalog", f"--ir={ir_file}", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data) == 2
+
+        placed = next(e for e in data if e["name"] == "OrderPlaced")
+        assert placed["version"] == 3
+        assert placed["type"] == "Shop.OrderPlaced.v3"
+        assert placed["upcasters"] == [
+            {"from_version": 1, "to_version": 2},
+            {"from_version": 2, "to_version": 3},
+        ]
+        assert placed["consumers"] == ["OrderNotifications"]
+
+        created = next(e for e in data if e["name"] == "OrderCreated")
+        assert created["deprecated"] == {"since": "0.15", "removal": "0.18"}
+        assert created["superseded_by"] == "OrderPlaced"
+        assert created["consumers"] == []
+
+    def test_table_output_renders_events(self, tmp_path: Path):
+        ir_file = _write_catalog_ir(tmp_path)
+        # Widen the terminal so Rich does not truncate the cells we assert on.
+        result = runner.invoke(
+            app, ["events", "catalog", f"--ir={ir_file}"], env={"COLUMNS": "220"}
+        )
+        assert result.exit_code == 0
+        out = result.output
+        assert "Event Catalog" in out
+        assert "OrderPlaced" in out
+        assert "OrderCreated" in out
+        assert "OrderNotifications" in out  # consumer column
+        assert "v1→v2→v3" in out  # upcaster chain column
+        assert "2 event(s)" in out
+
+    def test_catalog_from_live_domain(self, tmp_path: Path):
+        # Exercises the --domain path (load_domain_ir), not just --ir.
+        domain_file = tmp_path / "shopdomain.py"
+        domain_file.write_text(
+            "from protean import Domain\n"
+            "from protean.core.aggregate import BaseAggregate\n"
+            "from protean.core.event import BaseEvent\n"
+            "from protean.fields import Identifier\n"
+            "\n"
+            'domain = Domain(name="Shop")\n'
+            "\n"
+            "@domain.aggregate\n"
+            "class Order(BaseAggregate):\n"
+            "    order_id = Identifier(identifier=True)\n"
+            "\n"
+            "@domain.event(part_of=Order)\n"
+            "class OrderPlaced(BaseEvent):\n"
+            "    order_id = Identifier(identifier=True)\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            app, ["events", "catalog", f"--domain={domain_file}", "--json"]
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert any(e["name"] == "OrderPlaced" for e in data)
+
+    def test_requires_domain_or_ir(self):
+        result = runner.invoke(app, ["events", "catalog"])
+        assert result.exit_code != 0
+        assert "provide either" in result.output
+
+    def test_domain_and_ir_are_mutually_exclusive(self, tmp_path: Path):
+        ir_file = _write_catalog_ir(tmp_path)
+        result = runner.invoke(
+            app,
+            ["events", "catalog", f"--ir={ir_file}", "--domain=some.module"],
+        )
+        assert result.exit_code != 0
+        assert "mutually exclusive" in result.output
+
+    def test_empty_ir_reports_no_events(self, tmp_path: Path):
+        ir_file = tmp_path / "empty-ir.json"
+        ir_file.write_text(json.dumps({"clusters": {}}), encoding="utf-8")
+        result = runner.invoke(app, ["events", "catalog", f"--ir={ir_file}"])
+        assert result.exit_code == 0
+        assert "No events found" in result.output
+
+    def test_json_output_empty_catalog(self, tmp_path: Path):
+        ir_file = tmp_path / "empty-ir.json"
+        ir_file.write_text(json.dumps({"clusters": {}}), encoding="utf-8")
+        result = runner.invoke(app, ["events", "catalog", f"--ir={ir_file}", "--json"])
+        assert result.exit_code == 0
+        assert json.loads(result.output) == []
+
+
+class TestCatalogFormatters:
+    def test_deprecated_since_and_removal(self):
+        assert (
+            _format_deprecated({"since": "0.15", "removal": "0.18"})
+            == "since 0.15, removal 0.18"
+        )
+
+    def test_deprecated_since_only(self):
+        assert _format_deprecated({"since": "0.15"}) == "since 0.15"
+
+    def test_deprecated_removal_only(self):
+        assert _format_deprecated({"removal": "0.18"}) == "removal 0.18"
+
+    def test_deprecated_dict_without_versions(self):
+        assert _format_deprecated({"reason": "legacy"}) == "yes"
+
+    def test_deprecated_non_dict_falls_back_to_str(self):
+        assert _format_deprecated(True) == "True"
+
+    def test_deprecated_none_renders_dash(self):
+        assert _format_deprecated(None) == "-"
+
+    def test_deprecated_empty_dict_is_deprecated(self):
+        # A present-but-detail-less marker still means deprecated.
+        assert _format_deprecated({}) == "yes"
+
+    def test_upcaster_chain_empty(self):
+        assert _format_upcaster_chain([]) == "-"
+
+    def test_upcaster_chain_renders_arrows(self):
+        edges = [
+            {"from_version": 1, "to_version": 2},
+            {"from_version": 2, "to_version": 3},
+        ]
+        assert _format_upcaster_chain(edges) == "v1→v2→v3"
+
+    def test_upcaster_chain_unsorted_is_sorted(self):
+        edges = [
+            {"from_version": 2, "to_version": 3},
+            {"from_version": 1, "to_version": 2},
+        ]
+        assert _format_upcaster_chain(edges) == "v1→v2→v3"
+
+    def test_upcaster_chain_gap_is_shown(self):
+        # A non-contiguous chain must not hide the gap.
+        edges = [
+            {"from_version": 1, "to_version": 2},
+            {"from_version": 3, "to_version": 4},
+        ]
+        assert _format_upcaster_chain(edges) == "v1→v2→…→v3→v4"
+
+    def test_upcaster_chain_skips_malformed_edges(self):
+        # A malformed --ir edge must not crash the catalog.
+        assert _format_upcaster_chain([{"to_version": 2}]) == "-"
+        assert (
+            _format_upcaster_chain([{"from_version": 1, "to_version": 2}, {"bogus": 1}])
+            == "v1→v2"
+        )

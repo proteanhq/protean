@@ -7,11 +7,16 @@ Type / Required / Constraints columns.
 
 A summary section at the end lists all published event contracts.
 
+For the evolution-focused, data-first catalog consumed by
+``protean events catalog`` (version / deprecation / supersession / upcaster
+chain / consumers), use :func:`build_event_catalog` instead.
+
 Usage::
 
-    from protean.ir.generators.catalog import generate_catalog
+    from protean.ir.generators.catalog import generate_catalog, build_event_catalog
 
-    md = generate_catalog(ir)
+    md = generate_catalog(ir)              # Markdown docs
+    entries = build_event_catalog(ir)      # list of per-event dicts
 """
 
 from __future__ import annotations
@@ -199,3 +204,89 @@ def generate_catalog(ir: dict[str, Any]) -> str:
     lines.extend(_render_contract_summary(ir))
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Event catalog (data-first) — consumed by ``protean events catalog``
+# ---------------------------------------------------------------------------
+
+
+def _consumers_by_type(ir: dict[str, Any]) -> dict[str, set[str]]:
+    """Invert every consumer's handler map into ``type string -> {consumer}``.
+
+    Walks the three IR collections whose ``handlers`` maps are keyed by the
+    versioned event type string (``Domain.Event.vN``): per-cluster event
+    handlers, projectors (under ``projections``), and process managers (under
+    ``flows``). Process-manager handler *values* are dicts rather than lists, so
+    only the keys are read.
+    """
+    consumers: dict[str, set[str]] = {}
+
+    def _collect(element: dict[str, Any]) -> None:
+        name = element.get("name")
+        if not name:
+            return
+        for type_str in element.get("handlers", {}):
+            consumers.setdefault(type_str, set()).add(name)
+
+    for cluster in ir.get("clusters", {}).values():
+        for handler in cluster.get("event_handlers", {}).values():
+            _collect(handler)
+    for projection in ir.get("projections", {}).values():
+        for projector in projection.get("projectors", {}).values():
+            _collect(projector)
+    for pm in ir.get("flows", {}).get("process_managers", {}).values():
+        _collect(pm)
+
+    return consumers
+
+
+def build_event_catalog(ir: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build a flat, evolution-focused catalog of the IR's cluster events.
+
+    Covers every event that resolves to an aggregate cluster — i.e. every
+    concrete domain event. Abstract events (no owning aggregate) and events on
+    internal aggregates are not projected into clusters and so do not appear.
+
+    Each entry carries the event's type string, version, deprecation and
+    supersession status, its upcaster chain, and the consumers (event handlers
+    / projectors / process managers) that subscribe to it. The entries are
+    sorted by ``(aggregate FQN, type string)`` for deterministic output.
+
+    The upcaster chain is keyed by the event's *bare name* (matching
+    ``ir["upcasters"]``), while consumers are matched by the *type string*
+    (``__type__``) — the two IR sections use different keys.
+
+    Args:
+        ir: The full IR dict (from ``IRBuilder.build()``).
+
+    Returns:
+        A list of per-event dicts, one per event across all clusters.
+    """
+    consumers_by_type = _consumers_by_type(ir)
+    upcasters = ir.get("upcasters", {})
+
+    entries: list[dict[str, Any]] = []
+    for cluster in ir.get("clusters", {}).values():
+        for evt_fqn, event in cluster.get("events", {}).items():
+            name = event.get("name") or short_name(evt_fqn)
+            type_str = event.get("__type__", "")
+            entries.append(
+                {
+                    "name": name,
+                    "fqn": evt_fqn,
+                    "aggregate": event.get("part_of", ""),
+                    "type": type_str,
+                    "version": event.get("__version__", 1),
+                    "published": bool(event.get("published", False)),
+                    "is_fact_event": bool(event.get("is_fact_event", False)),
+                    "deprecated": event.get("deprecated"),
+                    "superseded_by": event.get("superseded_by"),
+                    "upcasters": upcasters.get(name, []),
+                    "consumers": sorted(consumers_by_type.get(type_str, set())),
+                    "fields": event.get("fields", {}),
+                }
+            )
+
+    entries.sort(key=lambda e: (e["aggregate"], e["type"]))
+    return entries

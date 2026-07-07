@@ -38,6 +38,9 @@ app = typer.Typer(no_args_is_help=True)
 
 _CONSOLE = Console()
 
+# CLI sentinel for ``--format``: emit every supported format into one tree.
+_FORMAT_ALL = "all"
+
 
 @app.callback()
 def callback() -> None:
@@ -79,7 +82,7 @@ def generate(
         typer.Option(
             "--format",
             "-f",
-            help="Schema format: json (default), avro, or protobuf",
+            help="Schema format: json (default), avro, protobuf, or all",
         ),
     ] = "json",
 ) -> None:
@@ -93,11 +96,12 @@ def generate(
         raise typer.Abort()
 
     # Validate against the single source of truth in the writer so the CLI can
-    # never drift from the formats write_schemas actually supports.
+    # never drift from the formats write_schemas actually supports. ``all`` is a
+    # CLI sentinel that emits every format into one tree (the registry on-ramp).
     from protean.ir.generators.schema_writer import SUPPORTED_FORMATS  # noqa: PLC0415
 
-    if fmt not in SUPPORTED_FORMATS:
-        allowed = ", ".join(SUPPORTED_FORMATS)
+    if fmt != _FORMAT_ALL and fmt not in SUPPORTED_FORMATS:
+        allowed = ", ".join((*SUPPORTED_FORMATS, _FORMAT_ALL))
         print(
             f"[red]Error:[/red] unknown --format {fmt!r} (expected one of: {allowed})"
         )
@@ -110,9 +114,16 @@ def generate(
         ir_data = load_ir_file(ir)
 
     # Write schemas and IR
-    from protean.ir.generators.schema_writer import write_ir, write_schemas  # noqa: PLC0415
+    from protean.ir.generators.schema_writer import (  # noqa: PLC0415
+        write_all_schemas,
+        write_ir,
+        write_schemas,
+    )
 
-    written = write_schemas(ir_data, output, fmt=fmt)
+    if fmt == _FORMAT_ALL:
+        written = write_all_schemas(ir_data, output)
+    else:
+        written = write_schemas(ir_data, output, fmt=fmt)
     write_ir(ir_data, output)
 
     # Summary

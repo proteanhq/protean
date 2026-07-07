@@ -40,7 +40,7 @@ protean schema generate --domain=my_app.domain --output=build
 | `--domain`, `-d` | Path to the domain module (e.g. `my_app.domain`) | |
 | `--ir` | Path to an IR JSON file | |
 | `--output`, `-o` | Root output directory | `.protean` |
-| `--format`, `-f` | Output format: `json`, `avro`, or `protobuf` | `json` |
+| `--format`, `-f` | Output format: `json`, `avro`, `protobuf`, or `all` | `json` |
 
 Either `--domain` or `--ir` is required; they are mutually exclusive.
 
@@ -55,6 +55,11 @@ renumbers alphabetically-later fields, so these numbers are for emission, not
 wire-compatible evolution. Both are compiler backends for schema *emission*;
 runtime binary encode/decode is out of scope, and field-level constraints
 (choices/enums, min/max) are not carried into either format.
+
+`--format all` emits every format into one `schemas/` tree in a single pass —
+JSON, Avro, and Protobuf files coexist per element (distinct extensions) rather
+than one clobbering the next. Together with [`protean events catalog`](data/events.md),
+this is the local schema-registry on-ramp.
 
 **Output structure**
 

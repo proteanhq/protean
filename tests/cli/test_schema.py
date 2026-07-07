@@ -186,6 +186,31 @@ class TestSchemaGenerateFromIR:
             assert "$schema" in data
             assert data["type"] == "object"
 
+    def test_generate_format_all_writes_every_format(self, tmp_path: Path):
+        ir_file = tmp_path / "test-ir.json"
+        ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
+        output_dir = tmp_path / "output"
+
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", f"--output={output_dir}", "-f", "all"],
+        )
+        assert result.exit_code == 0
+
+        schemas_dir = output_dir / "schemas"
+        assert list(schemas_dir.rglob("*.json"))
+        assert list(schemas_dir.rglob("*.avsc"))
+        assert list(schemas_dir.rglob("*.proto"))
+
+    def test_generate_unknown_format_lists_all_as_valid(self, tmp_path: Path):
+        ir_file = tmp_path / "test-ir.json"
+        ir_file.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
+
+        result = runner.invoke(app, ["generate", f"--ir={ir_file}", "-f", "yaml"])
+        assert result.exit_code != 0
+        # 'all' is advertised alongside the writer's supported formats.
+        assert "json, avro, protobuf, all" in result.output
+
 
 # ---------------------------------------------------------------------------
 # ``protean schema show`` — input validation

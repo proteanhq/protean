@@ -17,6 +17,11 @@ All commands accept a `--domain` option to specify the domain module path
 | `protean events search` | Search for events by type across streams |
 | `protean events history` | Display the event timeline for an aggregate instance |
 | `protean events trace` | Follow the full causal chain for a correlation ID |
+| `protean events catalog` | List every event with version, deprecation, upcasters, and consumers |
+
+Most commands read the **event store** and need a live `--domain`. `catalog`
+is the exception: it reads the **domain contract** (the IR), so it also accepts
+a serialized `--ir` file.
 
 ## `protean events read`
 
@@ -243,6 +248,65 @@ timestamps for every message.
 See [Message Tracing](../../../guides/domain-behavior/message-tracing.md) for
 details on how correlation and causation IDs work, including the programmatic
 causation chain API.
+
+## `protean events catalog`
+
+Lists every concrete event in the domain with its **evolution status**: version,
+deprecation and supersession markers, upcaster chain, and the consumers (event
+handlers, projectors, and process managers) that subscribe to it. Unlike the
+other `events` commands, `catalog` is sourced from the domain **IR** (the
+contract), not the event store — so it works from a live domain (`--domain`)
+**or** a serialized IR file (`--ir`), and does not need a running event store.
+
+The catalog covers events that belong to an aggregate cluster (every event you
+raise). Abstract events and events on internal aggregates are not listed, and
+broker **subscribers** are not counted among an event's consumers.
+
+```bash
+# From a live domain
+protean events catalog --domain=my_domain
+
+# From a serialized IR file
+protean events catalog --ir=.protean/ir.json
+
+# Machine-readable output
+protean events catalog --domain=my_domain --json
+```
+
+**Options**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--domain`, `-d` | Domain module path | |
+| `--ir` | Path to an IR JSON file | |
+| `--json` | Output the catalog as JSON instead of a table | `false` |
+
+Exactly one of `--domain` or `--ir` is required; they are mutually exclusive.
+
+**Output**
+
+```
+                                  Event Catalog
+┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃ Event        ┃ Type                  ┃ Ver ┃ Deprecated       ┃ Superseded By ┃ Upcasters ┃ Consumers         ┃
+┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━╇━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ OrderCreated │ Shop.OrderCreated.v1  │   1 │ since 0.15,      │ OrderPlaced   │ -         │ -                 │
+│              │                       │     │ removal 0.18     │               │           │                   │
+│ OrderPlaced  │ Shop.OrderPlaced.v3   │   3 │ -                │ -             │ v1→v2→v3  │ OrderNotifications │
+└──────────────┴───────────────────────┴─────┴──────────────────┴───────────────┴───────────┴───────────────────┘
+
+2 event(s)
+```
+
+With `--json`, each entry additionally includes the event's `fqn`, owning
+`aggregate`, `published`/`is_fact_event` flags, and full `fields`, so the output
+is a complete contract dump suitable for tooling.
+
+Together with `protean schema generate --format all` — which emits the matching
+versioned `.protean/schemas/` tree in JSON, Avro, and Protobuf — the catalog
+forms a **local schema-registry on-ramp**: exactly what an external registry
+(Confluent, Apicurio) would publish, without integrating the service. See
+[`protean schema`](../schema.md).
 
 ## Error Handling
 

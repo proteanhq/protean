@@ -100,6 +100,16 @@ def _cluster_for_fqn(fqn: str, ir: dict[str, Any]) -> str | None:
     return None
 
 
+def _reset_schemas_dir(output_dir: str | Path) -> Path:
+    """Return the ``schemas/`` directory under *output_dir*, cleared of any
+    previous run's files so a re-generation never leaves stale schemas behind.
+    """
+    schemas_dir = Path(output_dir) / "schemas"
+    if schemas_dir.exists():
+        shutil.rmtree(schemas_dir)
+    return schemas_dir
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -128,14 +138,51 @@ def write_schemas(
         raise ValueError(
             f"Unknown schema format {fmt!r}; expected one of {sorted(_FORMATS)}."
         )
+
+    schemas_dir = _reset_schemas_dir(output_dir)
+    return sorted(_write_format(ir, schemas_dir, fmt))
+
+
+def write_all_schemas(
+    ir: dict[str, Any],
+    output_dir: str | Path,
+) -> list[Path]:
+    """Write every supported format into one ``schemas/`` tree (the on-ramp).
+
+    Clears ``schemas/`` once, then emits JSON, Avro, and Protobuf side by side.
+    The three formats use distinct extensions (``.json`` / ``.avsc`` / ``.proto``)
+    so they coexist in the same per-cluster directories — exactly the versioned
+    tree an external schema registry would publish from.
+
+    Unlike calling :func:`write_schemas` once per format (which clears the tree
+    on every call and would clobber the previous format), this clears only once.
+
+    Args:
+        ir: The full IR dict (from ``IRBuilder.build()``).
+        output_dir: Root output directory (e.g. ``.protean``).
+
+    Returns:
+        A sorted list of absolute ``Path`` objects for every file written.
+    """
+    schemas_dir = _reset_schemas_dir(output_dir)
+
+    written: list[Path] = []
+    for fmt in SUPPORTED_FORMATS:
+        written.extend(_write_format(ir, schemas_dir, fmt))
+    return sorted(written)
+
+
+def _write_format(
+    ir: dict[str, Any],
+    schemas_dir: Path,
+    fmt: str,
+) -> list[Path]:
+    """Write every data element's schema for a single *fmt* under *schemas_dir*.
+
+    Does **not** clear ``schemas_dir`` — the caller owns clearing, so multiple
+    formats can share one tree. Returns the (unsorted) paths written.
+    """
     ext, generate_one, serialize = _FORMATS[fmt]
-
-    output = Path(output_dir)
-    schemas_dir = output / "schemas"
-
-    # Clean re-generation: remove existing schemas directory
-    if schemas_dir.exists():
-        shutil.rmtree(schemas_dir)
 
     flat = _build_flat_elements(ir)
     written: list[Path] = []
@@ -162,7 +209,7 @@ def write_schemas(
         )
         written.append(file_path.resolve())
 
-    return sorted(written)
+    return written
 
 
 def write_ir(

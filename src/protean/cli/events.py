@@ -36,6 +36,7 @@ from rich.tree import Tree as RichTree
 from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions
+from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.exceptions import NoDomainException
 from protean.utils import DomainObjects
 from protean.utils.domain_discovery import derive_domain
@@ -531,3 +532,126 @@ def trace(
                 f"\nCausation tree: {total} message(s) for correlation ID "
                 f"'{correlation_id}'"
             )
+
+
+# ---------------------------------------------------------------------------
+# Catalog (IR-sourced event contract view)
+# ---------------------------------------------------------------------------
+
+
+def _format_deprecated(deprecated: Any) -> str:
+    """Render an event's ``deprecated`` marker for the catalog table.
+
+    A missing marker (``None``) renders as ``-``; any *present* value — even an
+    empty dict — means the event is deprecated (``build_event_catalog`` passes
+    ``None`` when the IR omits the key, so ``{}`` only occurs for a declared but
+    detail-less deprecation).
+    """
+    if deprecated is None:
+        return "-"
+    if isinstance(deprecated, dict):
+        since = deprecated.get("since")
+        removal = deprecated.get("removal")
+        if since and removal:
+            return f"since {since}, removal {removal}"
+        if since:
+            return f"since {since}"
+        if removal:
+            return f"removal {removal}"
+        return "yes"
+    return str(deprecated)
+
+
+def _format_upcaster_chain(edges: list[dict[str, Any]]) -> str:
+    """Render an upcaster chain as ``v1→v2→v3``.
+
+    ``edges`` is a list of ``{from_version, to_version}`` dicts for one event.
+    A domain-sourced chain is contiguous and sorted, but a hand-authored ``--ir``
+    file may not be, so this is defensive: malformed edges (missing a version)
+    are skipped, edges are sorted, and a discontinuity is shown as ``…`` rather
+    than silently collapsed — never crashing on bad input.
+    """
+    pairs = sorted(
+        (edge["from_version"], edge["to_version"])
+        for edge in edges
+        if "from_version" in edge and "to_version" in edge
+    )
+    if not pairs:
+        return "-"
+
+    parts = [f"v{pairs[0][0]}"]
+    prev_to = pairs[0][0]
+    for frm, to in pairs:
+        if frm != prev_to:
+            parts.append("…")  # gap: versions between prev_to and frm have no upcaster
+            parts.append(f"v{frm}")
+        parts.append(f"v{to}")
+        prev_to = to
+    return "→".join(parts)
+
+
+def _build_catalog_table(entries: list[dict[str, Any]]) -> Table:
+    """Build a Rich table of event catalog entries."""
+    table = Table(title="Event Catalog")
+    table.add_column("Event", style="green")
+    table.add_column("Type", style="cyan")
+    table.add_column("Ver", justify="right")
+    table.add_column("Deprecated")
+    table.add_column("Superseded By")
+    table.add_column("Upcasters")
+    table.add_column("Consumers", style="dim")
+
+    for entry in entries:
+        table.add_row(
+            entry["name"],
+            entry["type"],
+            str(entry["version"]),
+            _format_deprecated(entry["deprecated"]),
+            entry["superseded_by"] or "-",
+            _format_upcaster_chain(entry["upcasters"]),
+            ", ".join(entry["consumers"]) if entry["consumers"] else "-",
+        )
+    return table
+
+
+@app.command()
+@handle_cli_exceptions("events catalog")
+def catalog(
+    domain: Annotated[
+        str, typer.Option("--domain", "-d", help="Domain module path")
+    ] = "",
+    ir: Annotated[str, typer.Option("--ir", help="Path to an IR JSON file")] = "",
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Output the catalog as JSON")
+    ] = False,
+) -> None:
+    """List every event with version, deprecation, upcasters, and consumers.
+
+    Sourced from the domain IR (contracts), not the event store, so it works
+    from a live domain (``--domain``) or a serialized IR file (``--ir``). Use
+    ``protean schema generate --format all`` to emit the matching versioned
+    schema tree (JSON + Avro + Protobuf) — together they form the local
+    registry on-ramp.
+    """
+    if not domain and not ir:
+        print("[red]Error:[/red] provide either --domain or --ir")
+        raise typer.Abort()
+    if domain and ir:
+        print("[red]Error:[/red] --domain and --ir are mutually exclusive")
+        raise typer.Abort()
+
+    from protean.ir.generators.catalog import build_event_catalog  # noqa: PLC0415
+
+    ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
+    entries = build_event_catalog(ir_data)
+
+    if as_json:
+        typer.echo(json.dumps(entries, indent=2, default=str))
+        return
+
+    if not entries:
+        print("No events found in domain.")
+        return
+
+    print(_build_catalog_table(entries))
+    print(f"\n{len(entries)} event(s)")
