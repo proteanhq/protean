@@ -4,6 +4,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils import Processing, fqn
 from protean.utils.eventing import MessageEnvelope
@@ -63,6 +64,27 @@ class TestMetadataVersion:
 
         command = Login(user_id=str(uuid4()))
         assert command._metadata.domain.version == 2
+
+    def test_version_option(self, test_domain):
+        """`version=N` on the command decorator sets `__version__` (#1159)."""
+
+        @test_domain.command(part_of=User, version=3)
+        class Login(BaseCommand):
+            user_id: Identifier(identifier=True)
+
+        test_domain.init(traverse=False)
+
+        assert Login.__version__ == 3
+        assert Login.__type__ == "Test.Login.v3"
+
+    def test_version_option_and_class_attribute_conflict(self, test_domain):
+        """Declaring the version both ways is rejected for commands too."""
+        with pytest.raises(IncorrectUsageError, match="declares its version twice"):
+
+            @test_domain.command(part_of=User, version=2)
+            class Login(BaseCommand):
+                __version__ = 2
+                user_id: Identifier(identifier=True)
 
 
 class TestMetadataAsynchronous:

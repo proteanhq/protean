@@ -95,6 +95,7 @@ with imperative verbs (`PlaceOrder`, `RegisterUser`).
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Target aggregate class |
+| `version` | `1` | Schema version (positive integer). Also settable via a `__version__` class attribute — see [Events](#domainevent) |
 
 Guide: [Commands](../../guides/change-state/commands.md)
 
@@ -107,11 +108,28 @@ past tense (`OrderPlaced`, `CustomerRegistered`).
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Aggregate that raises this event |
+| `version` | `1` | Schema version (positive integer). Feeds the `vN` suffix of the event's type string |
 | `deprecated` | `None` | Marks the event deprecated. A dict `{"since": ..., "removal": ...}` recording the deprecation and planned removal versions |
 | `superseded_by` | `None` | Names the replacement event (an Event class or a string). Raising a deprecated event emits a `DeprecationWarning` naming it |
 
-Events also support a `__version__` class attribute (default `1`) for
-schema versioning.
+The schema version can be declared **either** with the `version=` decorator
+option **or** with a `__version__` class attribute (both default to `1`):
+
+```python
+@domain.event(part_of=Order, version=2)     # decorator option
+class OrderPlaced:
+    order_id = String()
+
+@domain.event(part_of=Order)
+class OrderShipped:
+    __version__ = 2                          # class attribute
+    order_id = String()
+```
+
+The two forms are equivalent — both drive the `vN` suffix of the event's type
+string (`Order.OrderPlaced.v2`). Declaring the version **both** ways on the same
+class raises an `IncorrectUsageError`. The same option is available on
+`@domain.command`.
 
 Guide: [Events](../../guides/domain-definition/events.md) ·
 Reference: [Compatibility](../compatibility/index.md)
