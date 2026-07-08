@@ -363,6 +363,19 @@ class UserActivated:
     activated_at: DateTime(required=True)
 ```
 
+Equivalently, pass `version=` to the decorator — keeping the version alongside
+the other options rather than inside the class body:
+
+```python hl_lines="1"
+@domain.event(part_of=User, version=2)
+class UserActivated:
+    user_id: Identifier(required=True)
+    activated_at: DateTime(required=True)
+```
+
+Use whichever reads better; declaring the version both ways on the same class
+raises an `IncorrectUsageError`. Commands accept the same `version=` option.
+
 When event schemas evolve you have a full toolkit: add defaulted fields, rename a
 field in place with
 [`renamed_from`](../../reference/fields/arguments.md#renamed_from), retire an event

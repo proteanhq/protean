@@ -241,6 +241,19 @@ class Metadata(BaseValueObject):
     extensions: dict[str, Any] = PydanticField(default_factory=dict)
 
 
+def _validate_version(value: Any, descriptor: str) -> None:
+    """Raise ``IncorrectUsageError`` unless ``value`` is a positive integer.
+
+    ``bool`` is a subclass of ``int`` but is never a valid version, so it is
+    rejected explicitly. ``descriptor`` names the source in the error message
+    (e.g. ``` `OrderPlaced.__version__` ```).
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise IncorrectUsageError(
+            f"{descriptor} must be a positive integer, got `{value!r}`"
+        )
+
+
 # ---------------------------------------------------------------------------
 # BaseMessageType
 # ---------------------------------------------------------------------------
@@ -257,6 +270,11 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         # Assigned dynamically in ``__init_subclass__`` (never on the base
         # itself); declared here only so static checkers see the attribute.
         __version__: ClassVar[int]
+        # True when the subclass declared ``__version__`` as a class attribute,
+        # recorded in ``__init_subclass__`` before defaulting so
+        # ``_resolve_declared_version`` can reject also passing ``version=`` to
+        # the decorator.
+        _version_is_explicit: ClassVar[bool]
         # Assigned at registration via ``setattr(cls, "__type__", ...)`` in
         # protean.domain.type_manager / handler_setup — a str type string.
         __type__: ClassVar[str]
@@ -299,30 +317,18 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
 
-        # Resolve version: decorator option `version=N` sets __version__
-        meta_version = getattr(getattr(cls, "meta_", None), "version", None)
-        has_class_version = "__version__" in cls.__dict__
-
-        if meta_version is not None and has_class_version:
-            raise IncorrectUsageError(
-                f"`{cls.__name__}` sets both `version` option and "
-                f"`__version__` class attribute. Use one or the other."
-            )
-
-        if meta_version is not None:
-            if not isinstance(meta_version, int) or meta_version < 1:
-                raise IncorrectUsageError(
-                    f"`{cls.__name__}` `version` option must be a positive "
-                    f"integer, got `{meta_version!r}`"
-                )
-            cls.__version__ = meta_version
+        # Version resolution. The `__version__` class-attribute form is
+        # resolved here (at class creation). The `version=` decorator option
+        # cannot be — `__init_subclass__` runs before the decorator populates
+        # `meta_` — so it is applied later by `_resolve_declared_version`, called
+        # from `derive_element_class`. Record whether `__version__` was declared
+        # explicitly (before we default it) so that resolver can reject setting
+        # both.
+        cls._version_is_explicit = "__version__" in cls.__dict__
+        if cls._version_is_explicit:
+            _validate_version(cls.__version__, f"`{cls.__name__}.__version__`")
         elif not hasattr(cls, "__version__"):
             cls.__version__ = 1
-        elif not isinstance(cls.__version__, int) or cls.__version__ < 1:
-            raise IncorrectUsageError(
-                f"`{cls.__name__}.__version__` must be a positive integer, "
-                f"got `{cls.__version__!r}`"
-            )
 
         # Initialize invariant storage
         setattr(cls, "_invariants", defaultdict(dict))
@@ -338,6 +344,30 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
 
         # Validate that only basic field types are used (no associations/references)
         cls.__validate_for_basic_field_types()
+
+    @classmethod
+    def _resolve_declared_version(cls) -> None:
+        """Apply the ``version=`` decorator option to ``__version__``.
+
+        Called from ``derive_element_class`` once ``meta_`` is populated —
+        ``__init_subclass__`` runs too early to observe the decorator option.
+        The class-attribute form (``__version__ = N``) is resolved eagerly in
+        ``__init_subclass__``; this method only handles the decorator option and
+        rejects declaring the version both ways.
+        """
+        meta_version = getattr(cls.meta_, "version", None)
+        if meta_version is None:
+            return
+
+        if getattr(cls, "_version_is_explicit", False):
+            raise IncorrectUsageError(
+                f"`{cls.__name__}` declares its version twice: both the "
+                f"`version` option and a `__version__` class attribute are set. "
+                f"Use one or the other."
+            )
+
+        _validate_version(meta_version, f"`{cls.__name__}` `version` option")
+        cls.__version__ = meta_version
 
     @classmethod
     def _convert_vo_descriptors(cls) -> None:
