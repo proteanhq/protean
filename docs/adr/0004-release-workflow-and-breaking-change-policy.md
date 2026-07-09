@@ -143,6 +143,21 @@ This exception exists because operational defaults have different risk economics
 
 Epic 5.1 applied this exception to two shipped changes — SQLAlchemy pool defaults `2/5 → 5/10` (#794) and the Engine health server binding port 8080 by default (#795). Both carry opt-out paths in `domain.toml` and non-silent failure modes (pool warning, port-collision log entry).
 
+### Exception: Silent Correctness Bug
+
+A second narrow exception to the Tier-2 transition path applies when the "old behaviour" being changed was never an intentional contract but a **silent correctness bug** — code that ran without error yet produced incorrect or unsafe results (reads executed inside a UnitOfWork, events double-processed, a validation that never fired). Such behaviour may be rejected outright in a single release — no opt-in flag, no warning window — when **all** of the following hold:
+
+1. The prior behaviour violated a documented or clearly-implied contract; no correct program should have depended on it.
+2. The failure is **loud and immediate** — typically an `IncorrectUsageError` at `domain.init()` or on startup — carrying a message that names the fix, rather than a silent change of results.
+3. The migration is mechanical and unambiguous (usually a one-line edit), so the loud failure is self-resolving.
+4. A transition window would not help: keeping the old path alive would either *perpetuate the incorrect result* or *silently change semantics* — itself a Tier-2 silent break, the most dangerous category.
+
+An opt-out is offered only when a legitimate use of the old behaviour may exist; where none does, the mechanical migration is the only path forward.
+
+This exception exists for the same risk-economics reason as operational defaults: a loud, immediate, mechanically-fixable failure carries none of the danger the 3-version transition is designed to absorb, and a transition window here would *prolong* incorrect behaviour rather than protect against it. It is deliberately narrow — it covers bugs, not disliked-but-intentional API; the burden is on the change to show the old behaviour was never a contract.
+
+Applied to #1089 (multi-worker event-store double-processing — the server now refuses to start, with an `--allow-event-store-multiworker` opt-out for the rare legitimate case) and #1104 (`@handle` on a Query Handler method — now raises `IncorrectUsageError` at `domain.init()` naming `@read`, with no opt-out, since a stateless read must never run in a UnitOfWork).
+
 ---
 
 ## 3. Compatibility Checking
