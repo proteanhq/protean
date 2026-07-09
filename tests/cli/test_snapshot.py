@@ -48,7 +48,7 @@ class TestSnapshotCreateSingle:
             }
         }
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -77,7 +77,7 @@ class TestSnapshotCreateSingle:
         mock_record.cls.__name__ = "User"
         mock_domain.registry._elements = {"AGGREGATE": {"some.fqn.User": mock_record}}
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -105,7 +105,7 @@ class TestSnapshotCreateSingle:
         mock_record.cls.__name__ = "Order"
         mock_domain.registry._elements = {"AGGREGATE": {"some.fqn.Order": mock_record}}
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -143,7 +143,7 @@ class TestSnapshotCreateBulk:
         mock_record.cls.__name__ = "User"
         mock_domain.registry._elements = {"AGGREGATE": {"some.fqn.User": mock_record}}
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -169,7 +169,7 @@ class TestSnapshotCreateBulk:
         mock_record.cls.__name__ = "Order"
         mock_domain.registry._elements = {"AGGREGATE": {"some.fqn.Order": mock_record}}
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -202,7 +202,7 @@ class TestSnapshotCreateAll:
         mock_domain = MagicMock()
         mock_domain.create_all_snapshots.return_value = {"User": 3, "Order": 2}
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["snapshot", "create", "--domain", "publishing7.py"],
@@ -218,7 +218,7 @@ class TestSnapshotCreateAll:
         mock_domain = MagicMock()
         mock_domain.create_all_snapshots.return_value = {}
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app, ["snapshot", "create", "--domain", "publishing7.py"]
             )
@@ -242,7 +242,7 @@ class TestSnapshotCreateEdgeCases:
 
         mock_domain = MagicMock()
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -259,7 +259,7 @@ class TestSnapshotCreateEdgeCases:
 
     def test_invalid_domain_aborts(self):
         with patch(
-            "protean.cli.snapshot.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -274,7 +274,7 @@ class TestSnapshotCreateEdgeCases:
         mock_domain = MagicMock()
         mock_domain.registry._elements = {"AGGREGATE": {}}
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -295,7 +295,7 @@ class TestSnapshotCreateEdgeCases:
         mock_domain = MagicMock()
         mock_domain.registry._elements = {"AGGREGATE": {}}
 
-        with patch("protean.cli.snapshot.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [

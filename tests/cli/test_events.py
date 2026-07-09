@@ -101,7 +101,7 @@ class TestEventsRead:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["events", "read", "test::user-abc123", "--domain", "publishing7.py"],
@@ -117,7 +117,7 @@ class TestEventsRead:
 
         mock_domain = _mock_domain_with_store(read_return=[])
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["events", "read", "test::user-abc123", "--domain", "publishing7.py"],
@@ -131,7 +131,7 @@ class TestEventsRead:
         events = [_make_raw_event(5, 10)]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -154,7 +154,7 @@ class TestEventsRead:
 
         mock_domain = _mock_domain_with_store(read_return=[_make_raw_event()])
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -178,7 +178,7 @@ class TestEventsRead:
         events = [_make_raw_event(data={"email": "test@example.com"})]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -195,7 +195,7 @@ class TestEventsRead:
 
     def test_read_invalid_domain(self):
         with patch(
-            "protean.cli.events.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -255,7 +255,7 @@ class TestEventsStats:
 
         store._stream_identifiers.side_effect = side_effect_identifiers
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["events", "stats", "--domain", "publishing7.py"],
@@ -272,7 +272,7 @@ class TestEventsStats:
 
         mock_domain = _mock_domain_with_store(aggregates={})
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["events", "stats", "--domain", "publishing7.py"],
@@ -292,7 +292,7 @@ class TestEventsStats:
             aggregates=aggregates,
         )
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["events", "stats", "--domain", "publishing7.py"],
@@ -303,7 +303,7 @@ class TestEventsStats:
 
     def test_stats_invalid_domain(self):
         with patch(
-            "protean.cli.events.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(app, ["events", "stats", "--domain", "invalid.py"])
@@ -335,7 +335,7 @@ class TestEventsSearch:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -363,7 +363,7 @@ class TestEventsSearch:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -385,7 +385,7 @@ class TestEventsSearch:
         events = [_make_raw_event(0, 1)]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -410,7 +410,7 @@ class TestEventsSearch:
         events = [_make_raw_event(0, 1, event_type="Test.OrderPlaced.v1")]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -434,7 +434,7 @@ class TestEventsSearch:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -454,7 +454,7 @@ class TestEventsSearch:
 
     def test_search_invalid_domain(self):
         with patch(
-            "protean.cli.events.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -496,7 +496,7 @@ class TestEventsHistory:
         # _read_last_message for snapshot check returns None
         mock_domain.event_store.store._read_last_message.return_value = None
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -526,7 +526,7 @@ class TestEventsHistory:
             aggregates=aggregates,
         )
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -563,7 +563,7 @@ class TestEventsHistory:
             aggregates=aggregates,
         )
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -585,7 +585,7 @@ class TestEventsHistory:
 
         mock_domain = _mock_domain_with_store(aggregates={})
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -621,7 +621,7 @@ class TestEventsHistory:
         )
         mock_domain.event_store.store._read_last_message.return_value = None
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -641,7 +641,7 @@ class TestEventsHistory:
 
     def test_history_invalid_domain(self):
         with patch(
-            "protean.cli.events.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -725,7 +725,7 @@ class TestEventsStatsExceptions:
         store._stream_identifiers.side_effect = Exception("Connection error")
         store._read.return_value = [_make_raw_event(0, 1)]
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["events", "stats", "--domain", "publishing7.py"],
@@ -744,7 +744,7 @@ class TestEventsStatsExceptions:
         store._stream_identifiers.return_value = ["id1"]
         store._read.side_effect = Exception("Connection error")
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["events", "stats", "--domain", "publishing7.py"],
@@ -775,7 +775,7 @@ class TestEventsSearchData:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -922,7 +922,7 @@ class TestEventsReadTrace:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -950,7 +950,7 @@ class TestEventsReadTrace:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -990,7 +990,7 @@ class TestEventsSearchTrace:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1051,7 +1051,7 @@ class TestEventsHistoryTrace:
         )
         mock_domain.event_store.store._read_last_message.return_value = None
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1093,7 +1093,7 @@ class TestEventsHistoryTrace:
         )
         mock_domain.event_store.store._read_last_message.return_value = None
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1159,7 +1159,7 @@ class TestEventsTraceFlat:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1186,7 +1186,7 @@ class TestEventsTraceFlat:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1218,7 +1218,7 @@ class TestEventsTraceFlat:
         ]
         mock_domain = _mock_domain_with_store(read_return=events)
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1240,7 +1240,7 @@ class TestEventsTraceFlat:
 
         mock_domain = _mock_domain_with_store(read_return=[])
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1257,7 +1257,7 @@ class TestEventsTraceFlat:
 
     def test_trace_invalid_domain(self):
         with patch(
-            "protean.cli.events.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -1311,7 +1311,7 @@ class TestEventsTraceTree:
         mock_domain = _mock_domain_with_store()
         mock_domain.event_store.store.build_causation_tree.return_value = root_node
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1335,7 +1335,7 @@ class TestEventsTraceTree:
         mock_domain = _mock_domain_with_store()
         mock_domain.event_store.store.build_causation_tree.return_value = None
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -1396,7 +1396,7 @@ class TestEventsTraceTree:
         mock_domain = _mock_domain_with_store()
         mock_domain.event_store.store.build_causation_tree.return_value = root_node
 
-        with patch("protean.cli.events.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [

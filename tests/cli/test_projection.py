@@ -51,7 +51,7 @@ class TestProjectionRebuildSingle:
             }
         }
 
-        with patch("protean.cli.projection.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -84,7 +84,7 @@ class TestProjectionRebuildSingle:
             "PROJECTION": {"some.fqn.Balances": mock_record}
         }
 
-        with patch("protean.cli.projection.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -113,7 +113,7 @@ class TestProjectionRebuildSingle:
             "PROJECTION": {"some.fqn.Balances": mock_record}
         }
 
-        with patch("protean.cli.projection.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -151,7 +151,7 @@ class TestProjectionRebuildAll:
             ),
         }
 
-        with patch("protean.cli.projection.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["projection", "rebuild", "--domain", "publishing7.py"],
@@ -167,7 +167,7 @@ class TestProjectionRebuildAll:
         mock_domain = MagicMock()
         mock_domain.rebuild_all_projections.return_value = {}
 
-        with patch("protean.cli.projection.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["projection", "rebuild", "--domain", "publishing7.py"],
@@ -188,7 +188,7 @@ class TestProjectionRebuildAll:
             ),
         }
 
-        with patch("protean.cli.projection.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 ["projection", "rebuild", "--domain", "publishing7.py"],
@@ -215,7 +215,7 @@ class TestProjectionRebuildEdgeCases:
         mock_domain = MagicMock()
         mock_domain.registry._elements = {"PROJECTION": {}}
 
-        with patch("protean.cli.projection.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app,
                 [
@@ -232,7 +232,7 @@ class TestProjectionRebuildEdgeCases:
 
     def test_invalid_domain(self):
         with patch(
-            "protean.cli.projection.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -278,7 +278,7 @@ class TestProjectionStatus:
         mock_domain = MagicMock()
         mock_domain.name = "test-domain"
         with (
-            patch("protean.cli.projection.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.server.projection_status.collect_projection_statuses",
                 return_value=statuses,
@@ -334,7 +334,7 @@ class TestProjectionStatus:
     def test_domain_loading_error(self):
         change_working_directory_to("test7")
         with patch(
-            "protean.cli.projection.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("not found"),
         ):
             result = runner.invoke(

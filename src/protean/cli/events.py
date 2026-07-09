@@ -35,18 +35,13 @@ from rich.table import Table
 from rich.tree import Tree as RichTree
 from typing_extensions import Annotated
 
-from protean.cli._helpers import handle_cli_exceptions
+from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
-from protean.exceptions import NoDomainException
 from protean.utils import DomainObjects
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from protean.domain import Domain
     from protean.port.event_store import CausationNode
-
-logger = get_logger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -59,21 +54,6 @@ def callback() -> None:
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-
-def _load_domain(domain_path: str) -> "Domain":
-    """Load and initialize a domain, handling errors consistently."""
-    try:
-        derived_domain = derive_domain(domain_path)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-    derived_domain.init()
-    return derived_domain
 
 
 def _resolve_aggregate(domain: "Domain", aggregate_name: str) -> Any:
@@ -244,10 +224,10 @@ def read(
     ] = False,
 ) -> None:
     """Read and display events from a stream."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by _load_domain -> init()
+        assert store is not None  # guaranteed by load_domain -> init()
         messages = store._read(stream, position=position, no_of_messages=limit)
 
         if not messages:
@@ -271,10 +251,10 @@ def stats(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
 ) -> None:
     """Show stream statistics across the domain."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by _load_domain -> init()
+        assert store is not None  # guaranteed by load_domain -> init()
         aggregates = derived_domain.registry._elements.get(
             DomainObjects.AGGREGATE.value, {}
         )
@@ -360,10 +340,10 @@ def search(
     ] = False,
 ) -> None:
     """Search for events by type across streams."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by _load_domain -> init()
+        assert store is not None  # guaranteed by load_domain -> init()
         stream = category if category else "$all"
         all_messages = store._read(stream, no_of_messages=1_000_000)
 
@@ -414,14 +394,14 @@ def history(
     ] = False,
 ) -> None:
     """Display the event timeline for a specific aggregate instance."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         aggregate_cls = _resolve_aggregate(derived_domain, aggregate)
         if aggregate_cls is None:
             raise typer.Abort()
 
         store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by _load_domain -> init()
+        assert store is not None  # guaranteed by load_domain -> init()
         stream_category = aggregate_cls.meta_.stream_category
         stream_name = f"{stream_category}-{identifier}"
 
@@ -489,10 +469,10 @@ def trace(
     ] = False,
 ) -> None:
     """Follow the full causal chain for a correlation ID across all streams."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by _load_domain -> init()
+        assert store is not None  # guaranteed by load_domain -> init()
 
         if flat:
             # Flat table display (original behavior)

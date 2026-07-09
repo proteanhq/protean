@@ -14,22 +14,13 @@ Usage::
 """
 
 import json as json_mod
-from typing import TYPE_CHECKING
 
 import typer
 from rich import print
 from rich.table import Table
 from typing_extensions import Annotated
 
-from protean.cli._helpers import handle_cli_exceptions
-from protean.exceptions import NoDomainException
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
-
-if TYPE_CHECKING:
-    from protean.domain import Domain
-
-logger = get_logger(__name__)
+from protean.cli._helpers import handle_cli_exceptions, load_domain
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -37,21 +28,6 @@ app = typer.Typer(no_args_is_help=True)
 @app.callback()
 def callback() -> None:
     """Monitor subscription lag and health."""
-
-
-def _load_domain(domain_path: str) -> "Domain":
-    """Load and initialize a domain, handling errors consistently."""
-    try:
-        derived_domain = derive_domain(domain_path)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-    derived_domain.init()
-    return derived_domain
 
 
 def _status_style(status: str) -> str:
@@ -75,7 +51,7 @@ def status(
     """Show subscription lag status for all handlers."""
     from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
 
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
 
     with derived_domain.domain_context():
         statuses = collect_subscription_statuses(derived_domain)
