@@ -35,6 +35,14 @@ stream subscriptions (`subscription_type = "stream"`), or passing
 `--acknowledge-event-store-risk` to override (accepting that events will be
 double-processed).
 
+The guard is **per-process**: it only sees the workers within a single `protean
+server` invocation. It cannot detect a second `protean server` (another
+container, host, or Kubernetes replica) running against the same event store, so
+multiple single-worker processes still double-process event-store subscriptions.
+A domain with any event-store subscription must therefore run as exactly one
+process cluster-wide until database-backed cluster ownership is available; use
+stream subscriptions to scale horizontally.
+
 ## Starting the Server
 
 To launch the async server with default settings:

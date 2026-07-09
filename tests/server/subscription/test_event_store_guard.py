@@ -8,8 +8,13 @@ multi-worker deployments.
 """
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.process_manager import BaseProcessManager
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector
 from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier, String
 from protean.server.subscription import (
@@ -27,6 +32,16 @@ class Order(BaseAggregate):
 
 class OrderPlaced(BaseEvent):
     order_id = Identifier()
+    name = String()
+
+
+class PlaceOrder(BaseCommand):
+    order_id = Identifier()
+    name = String()
+
+
+class OrderSummary(BaseProjection):
+    order_id = Identifier(identifier=True)
     name = String()
 
 
@@ -65,6 +80,104 @@ class TestEventStoreSubscriptionHandlers:
 
         offenders = event_store_subscription_handlers(test_domain)
         assert offenders == ["OrderEventHandler"]
+
+    def test_detects_event_store_command_handler(self, test_domain):
+        """A command handler resolving to EVENT_STORE is reported."""
+
+        @test_domain.command_handler(
+            part_of=Order, subscription_type=SubscriptionType.EVENT_STORE
+        )
+        class OrderCommandHandler(BaseCommandHandler):
+            @handle(PlaceOrder)
+            def place(self, command):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(PlaceOrder, part_of=Order)
+        test_domain.init(traverse=False)
+
+        assert event_store_subscription_handlers(test_domain) == ["OrderCommandHandler"]
+
+    def test_detects_event_store_projector(self, test_domain):
+        """A projector resolving to EVENT_STORE is reported."""
+
+        @test_domain.projector(
+            projector_for=OrderSummary,
+            aggregates=[Order],
+            subscription_type=SubscriptionType.EVENT_STORE,
+        )
+        class OrderProjector(BaseProjector):
+            @handle(OrderPlaced)
+            def on_placed(self, event):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(OrderSummary)
+        test_domain.init(traverse=False)
+
+        assert event_store_subscription_handlers(test_domain) == ["OrderProjector"]
+
+    def test_detects_event_store_process_manager(self, test_domain):
+        """A process manager resolving to EVENT_STORE is reported."""
+
+        @test_domain.process_manager(
+            stream_categories=["test::order"],
+            subscription_type=SubscriptionType.EVENT_STORE,
+        )
+        class OrderProcessManager(BaseProcessManager):
+            order_id = Identifier()
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                self.order_id = event.order_id
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.init(traverse=False)
+
+        assert event_store_subscription_handlers(test_domain) == ["OrderProcessManager"]
+
+    def test_reports_multiple_offenders_across_groups_omitting_stream(
+        self, test_domain
+    ):
+        """Mixed domain: every event-store handler is reported (in registry-group
+        order), and a stream-resolved handler in the same domain is omitted."""
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+
+        @test_domain.event_handler(
+            part_of=Order, subscription_type=SubscriptionType.EVENT_STORE
+        )
+        class EventStoreEventHandler(BaseEventHandler):
+            @handle(OrderPlaced)
+            def on_placed(self, event):
+                pass
+
+        @test_domain.event_handler(part_of=Order)
+        class StreamEventHandler(BaseEventHandler):
+            @handle(OrderPlaced)
+            def on_placed(self, event):
+                pass
+
+        @test_domain.command_handler(
+            part_of=Order, subscription_type=SubscriptionType.EVENT_STORE
+        )
+        class EventStoreCommandHandler(BaseCommandHandler):
+            @handle(PlaceOrder)
+            def place(self, command):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(PlaceOrder, part_of=Order)
+        test_domain.init(traverse=False)
+
+        # Event handlers are iterated before command handlers; the stream event
+        # handler is excluded even though it shares the domain.
+        assert event_store_subscription_handlers(test_domain) == [
+            "EventStoreEventHandler",
+            "EventStoreCommandHandler",
+        ]
 
     def test_stream_handler_not_reported(self, test_domain):
         """A stream-resolved handler is not reported — the negative case."""

@@ -270,10 +270,15 @@ def server(
             # Refuse to start when the domain has event-store subscriptions,
             # which are single-writer: multiple workers would double-process
             # their events. Init in the parent (workers re-init independently)
-            # only to resolve subscription types for the guard.
+            # only to resolve subscription types for the guard, then close it so
+            # the parent holds no infrastructure connections while the workers
+            # run.
             if not acknowledge_event_store_risk:
                 derived_domain.init()
-                offenders = event_store_subscription_handlers(derived_domain)
+                try:
+                    offenders = event_store_subscription_handlers(derived_domain)
+                finally:
+                    derived_domain.close()
                 if offenders:
                     print(
                         f"Error: {event_store_multi_worker_error(offenders, workers)}"

@@ -214,9 +214,12 @@ def event_store_subscription_handlers(domain: "Domain") -> list[str]:
     :meth:`Engine._register_handler_subscriptions
     <protean.server.engine.Engine._register_handler_subscriptions>` turns into
     subscriptions — event handlers, command handlers, projectors, and process
-    managers. Broker subscribers use a separate ``BrokerSubscription`` path that
-    is multi-worker-safe, so they are intentionally excluded. Keep the two lists
-    in sync if a new handler group is ever added to the engine.
+    managers. Broker subscribers are intentionally excluded: they use a separate
+    ``BrokerSubscription`` path, and whether that path is multi-worker-safe is a
+    property of the broker adapter (Redis Streams consumer groups distribute
+    across workers; Redis Pub/Sub and the in-memory ``inline`` broker do not),
+    not of this guard. This guard only governs the event-store path. Keep the two
+    lists in sync if a new handler group is ever added to the engine.
 
     Command handlers are a deliberate over-approximation: the engine groups
     them by stream category into one ``CommandDispatcher`` per group and
@@ -234,8 +237,8 @@ def event_store_subscription_handlers(domain: "Domain") -> list[str]:
 
     Returns:
         The names of registered handlers resolving to event-store
-        subscriptions, in registry order. Empty when every subscription is a
-        stream subscription (the default) or the domain has no handlers.
+        subscriptions, in registry order. Empty when every handler resolves to a
+        stream subscription or the domain has no handlers.
     """
     resolver = ConfigResolver(domain)
     registry = domain.registry

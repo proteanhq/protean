@@ -173,17 +173,23 @@ class Supervisor:
         """Refuse multi-worker startup for event-store subscriptions.
 
         Derives and initializes the domain in the parent process purely to
-        resolve subscription types (each worker re-derives and re-inits
-        independently in its own interpreter). If any handler resolves to an
-        event-store subscription, raises before any worker is spawned.
+        resolve subscription types, then closes it again so the parent holds no
+        infrastructure connections while the workers run (each worker re-derives
+        and re-inits independently in its own interpreter). If any handler
+        resolves to an event-store subscription, raises before any worker is
+        spawned.
+
+        Any failure to derive or initialize the domain here (unimportable path,
+        a module that raises at import, an unreachable database, ...) is *not*
+        fatal to the guard: it is swallowed and each worker is left to re-derive
+        and report the failure with its own per-worker context, matching the
+        pre-guard behavior where derivation happened only inside the workers.
+        The guard only ever refuses a start it could positively classify.
 
         Raises:
             ConfigurationError: If the domain has event-store subscriptions.
         """
-        from protean.exceptions import (  # noqa: PLC0415
-            ConfigurationError,
-            NoDomainException,
-        )
+        from protean.exceptions import ConfigurationError  # noqa: PLC0415
         from protean.server.subscription import (  # noqa: PLC0415
             event_store_multi_worker_error,
             event_store_subscription_handlers,
@@ -192,16 +198,28 @@ class Supervisor:
 
         try:
             domain = derive_domain(self.domain_path)
-        except NoDomainException:
-            domain = None
-
-        if domain is None:
-            # Derivation failure surfaces per-worker with a clearer message;
-            # don't mask it here.
+            if domain is None:
+                # Derivation returned no domain; the workers surface the real
+                # error when they re-derive.
+                return
+            domain.init()
+            try:
+                offenders = event_store_subscription_handlers(domain)
+            finally:
+                # Release the parent's transient infrastructure connections;
+                # only the workers should hold live connections long-term.
+                domain.close()
+        except Exception:
+            # Could not derive/init the domain to classify it. Defer to the
+            # workers rather than crash the parent before any of them start.
+            logger.debug(
+                "Event-store single-writer guard skipped: domain '%s' could not "
+                "be initialized; deferring to workers",
+                self.domain_path,
+                exc_info=True,
+            )
             return
 
-        domain.init()
-        offenders = event_store_subscription_handlers(domain)
         if offenders:
             raise ConfigurationError(
                 event_store_multi_worker_error(offenders, self.num_workers)

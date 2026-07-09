@@ -244,6 +244,29 @@ class TestServerCommand:
             )
             mock_supervisor.run.assert_called_once()
 
+    def test_server_multi_worker_stream_domain_proceeds(self):
+        """A domain whose handler resolves to STREAM passes the real guard and
+        constructs the Supervisor — the guard must not block legitimate stream
+        multi-worker deployments."""
+        change_working_directory_to("test31")
+
+        with patch("protean.server.supervisor.Supervisor") as MockSupervisor:
+            mock_supervisor = MockSupervisor.return_value
+            mock_supervisor.exit_code = 0
+
+            args = ["server", "--domain", "stream_domain.py", "--workers", "2"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 0
+            MockSupervisor.assert_called_once_with(
+                domain_path="stream_domain.py",
+                num_workers=2,
+                test_mode=False,
+                debug=False,
+                acknowledge_event_store_risk=False,
+            )
+            mock_supervisor.run.assert_called_once()
+
     def test_server_single_worker_event_store_domain_unaffected(self):
         """The guard never runs for the default single-worker path."""
         change_working_directory_to("test31")

@@ -126,6 +126,15 @@ probe reference — response bodies, status codes, and how to move the
 port — see
 [Server Hardening reference](../../reference/server/hardening.md#health-checks).
 
+!!! warning "`replicas: 3` is only safe for stream/broker-backed domains"
+
+    The `replicas: 3` above runs three independent server processes against the
+    same event store. That is safe for stream subscriptions and cluster-aware
+    brokers, but a domain with any **event-store** subscription would
+    double-process every event across the replicas, and the per-process
+    `--workers` guard cannot catch it. Set `replicas: 1` for such domains. See
+    [Scaling Considerations](#scaling-considerations) below.
+
 ### FastAPI apps
 
 API pods serving HTTP traffic should mount the equivalent router on
@@ -162,6 +171,24 @@ separate health server is needed.
   override (you accept that events will be double-processed).
 - Use it for a single worker, or for projections where idempotency is
   guaranteed; consider StreamSubscription for scalable workloads.
+
+!!! warning "The single-writer guard is per-process, not cluster-wide"
+
+    The `--workers` guard only sees the workers inside one `protean server`
+    process. It **cannot** detect a second `protean server` running elsewhere.
+    Running two processes, two containers, or two Kubernetes replicas against
+    the same event store, each with the default `--workers 1`, sails past the
+    guard and double-processes every event-store subscription just as surely as
+    `--workers 2` would.
+
+    Until cluster-wide ownership lands (a database-backed lease, planned for a
+    future release), a domain with any event-store subscription must run as
+    **exactly one process for the whole cluster**: `replicas: 1`, a single
+    worker, no horizontal scaling. To scale horizontally, move those handlers to
+    stream subscriptions (`subscription_type = "stream"`), which coordinate
+    across processes via Redis consumer groups. The Kubernetes example above
+    (`replicas: 3`) is safe only for stream/broker-backed domains; set
+    `replicas: 1` for any domain that keeps event-store subscriptions.
 
 For connection pool sizing across workers, DLQ retention, and OTEL
 metric emission, follow the full production checklist in
