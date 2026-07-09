@@ -454,8 +454,8 @@ def _close_test_clients(monkeypatch):
 def _fd_report(request):
     # Opt-in file-descriptor probe. Set ``PROTEAN_FD_REPORT=1`` to log the
     # change in open descriptors across each test module, used to locate the
-    # descriptor leaks in #1168. ``psutil.num_fds()`` is portable across Linux
-    # and macOS (unlike ``/proc/self/fd``), so this runs on a dev box too.
+    # descriptor leaks in #1168. ``num_fds()`` covers Linux and macOS (unlike
+    # ``/proc/self/fd``); on Windows psutil exposes ``num_handles()`` instead.
     if not os.environ.get("PROTEAN_FD_REPORT"):
         yield
         return
@@ -463,9 +463,16 @@ def _fd_report(request):
     import psutil
 
     proc = psutil.Process()
-    before = proc.num_fds()
+    # ``num_fds`` is UNIX-only; fall back to ``num_handles`` on Windows, and
+    # skip the report entirely if neither metric is available.
+    count = getattr(proc, "num_fds", None) or getattr(proc, "num_handles", None)
+    if count is None:  # pragma: no cover - no descriptor metric on this platform
+        yield
+        return
+
+    before = count()
     yield
-    after = proc.num_fds()
+    after = count()
     sys.stderr.write(
         f"\n[fd-report] {request.node.nodeid}: "
         f"{before} -> {after} (delta {after - before:+d})\n"
