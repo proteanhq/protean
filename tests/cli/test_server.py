@@ -183,6 +183,7 @@ class TestServerCommand:
                 num_workers=2,
                 test_mode=False,
                 debug=False,
+                acknowledge_event_store_risk=False,
             )
             mock_supervisor.run.assert_called_once()
 
@@ -198,6 +199,61 @@ class TestServerCommand:
             result = runner.invoke(app, args)
 
             assert result.exit_code == 3
+
+    def test_server_multi_worker_refuses_event_store_domain(self):
+        """--workers > 1 refuses to start when a handler uses event-store subs."""
+        change_working_directory_to("test31")
+
+        # Supervisor is patched so a failure to guard would still "succeed"
+        # loudly — the guard must short-circuit before Supervisor is built.
+        with patch("protean.server.supervisor.Supervisor") as MockSupervisor:
+            args = ["server", "--domain", "event_store_domain.py", "--workers", "2"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code != 0
+            assert "OrderEventHandler" in result.output
+            assert "single-writer" in result.output
+            assert "--acknowledge-event-store-risk" in result.output
+            MockSupervisor.assert_not_called()
+
+    def test_server_multi_worker_event_store_override_proceeds(self):
+        """--acknowledge-event-store-risk bypasses the guard and starts."""
+        change_working_directory_to("test31")
+
+        with patch("protean.server.supervisor.Supervisor") as MockSupervisor:
+            mock_supervisor = MockSupervisor.return_value
+            mock_supervisor.exit_code = 0
+
+            args = [
+                "server",
+                "--domain",
+                "event_store_domain.py",
+                "--workers",
+                "2",
+                "--acknowledge-event-store-risk",
+            ]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 0
+            MockSupervisor.assert_called_once_with(
+                domain_path="event_store_domain.py",
+                num_workers=2,
+                test_mode=False,
+                debug=False,
+                acknowledge_event_store_risk=True,
+            )
+            mock_supervisor.run.assert_called_once()
+
+    def test_server_single_worker_event_store_domain_unaffected(self):
+        """The guard never runs for the default single-worker path."""
+        change_working_directory_to("test31")
+
+        with patch.object(Engine, "run", return_value=None) as mock_run:
+            args = ["server", "--domain", "event_store_domain.py"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 0
+            mock_run.assert_called_once()
 
     def test_server_reload_invokes_reloader(self):
         """Test that the server command uses Reloader when --reload is set."""

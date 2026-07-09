@@ -150,11 +150,18 @@ separate health server is needed.
 - Messages are distributed across consumers via Redis consumer groups
 - Each message is processed by exactly one consumer
 
-**EventStoreSubscription** has limited scaling:
+**EventStoreSubscription** is single-writer:
 
-- Multiple instances will process the same messages
-- Use for projections where idempotency is guaranteed
-- Consider using StreamSubscription for scalable workloads
+- It reads directly from the event store with no cluster-wide ownership, so
+  every worker reading a stream processes the same events.
+- Because of this, `protean server --workers N` refuses to start with more than
+  one worker when any handler resolves to an event-store subscription. The
+  error names the offending handlers and offers three ways forward: run a
+  single worker, switch those handlers to stream subscriptions
+  (`subscription_type = "stream"`), or pass `--acknowledge-event-store-risk` to
+  override (you accept that events will be double-processed).
+- Use it for a single worker, or for projections where idempotency is
+  guaranteed; consider StreamSubscription for scalable workloads.
 
 For connection pool sizing across workers, DLQ retention, and OTEL
 metric emission, follow the full production checklist in

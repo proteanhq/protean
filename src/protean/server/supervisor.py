@@ -7,6 +7,11 @@ Workers coordinate implicitly through:
 - Redis consumer groups (StreamSubscription) — messages are distributed
 - Database-level locking (OutboxProcessor) — prevents duplicate processing
 
+Event-store subscriptions (EventStoreSubscription) have no such cluster-wide
+ownership: every worker reading the same stream processes the same events. They
+are therefore single-writer, and the Supervisor refuses to spawn more than one
+worker for a domain that has any — unless ``acknowledge_event_store_risk=True``.
+
 No IPC or shared memory is needed between workers.
 
 Usage:
@@ -56,6 +61,7 @@ class Supervisor:
         num_workers: int,
         test_mode: bool = False,
         debug: bool = False,
+        acknowledge_event_store_risk: bool = False,
     ) -> None:
         """Initialize the Supervisor.
 
@@ -66,6 +72,10 @@ class Supervisor:
             test_mode: If True, each worker Engine runs in test mode
                 (limited cycles, then exit).
             debug: If True, workers run with DEBUG-level logging.
+            acknowledge_event_store_risk: If True, skip the single-writer guard
+                and spawn multiple workers even when the domain has event-store
+                subscriptions, accepting that their events will be
+                double-processed.
         """
         if num_workers < 1:
             raise ValueError("num_workers must be >= 1")
@@ -74,6 +84,7 @@ class Supervisor:
         self.num_workers = num_workers
         self.test_mode = test_mode
         self.debug = debug
+        self.acknowledge_event_store_risk = acknowledge_event_store_risk
 
         self.workers: list[BaseProcess] = []
         self.exit_code: int = 0
@@ -87,7 +98,20 @@ class Supervisor:
         self._queue_listener: Optional[logging.handlers.QueueListener] = None
 
     def run(self) -> None:
-        """Spawn workers and block until all have exited."""
+        """Spawn workers and block until all have exited.
+
+        Raises:
+            ConfigurationError: If ``num_workers > 1`` and the domain has
+                event-store subscriptions (unless
+                ``acknowledge_event_store_risk`` is True).
+        """
+        # Defense-in-depth backstop for the programmatic entry point: the
+        # ``protean server`` CLI runs the same guard before ever constructing a
+        # Supervisor, so this only fires for direct ``Supervisor(...).run()``
+        # callers. Fail fast before spawning any worker.
+        if self.num_workers > 1 and not self.acknowledge_event_store_risk:
+            self._guard_event_store_single_writer()
+
         # Use 'spawn' start method for safety on all platforms.
         # Avoids fork-related issues with asyncio event loops, database
         # connections, and other non-fork-safe resources.
@@ -136,6 +160,47 @@ class Supervisor:
                 except Exception:
                     logger.exception("supervisor.queue_listener_stop_failed")
                 self._queue_listener = None
+
+    # ------------------------------------------------------------------
+    # Single-writer guard
+    # ------------------------------------------------------------------
+
+    def _guard_event_store_single_writer(self) -> None:
+        """Refuse multi-worker startup for event-store subscriptions.
+
+        Derives and initializes the domain in the parent process purely to
+        resolve subscription types (each worker re-derives and re-inits
+        independently in its own interpreter). If any handler resolves to an
+        event-store subscription, raises before any worker is spawned.
+
+        Raises:
+            ConfigurationError: If the domain has event-store subscriptions.
+        """
+        from protean.exceptions import (  # noqa: PLC0415
+            ConfigurationError,
+            NoDomainException,
+        )
+        from protean.server.subscription import (  # noqa: PLC0415
+            event_store_multi_worker_error,
+            event_store_subscription_handlers,
+        )
+        from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
+
+        try:
+            domain = derive_domain(self.domain_path)
+        except NoDomainException:
+            # Derivation failure surfaces per-worker with a clearer message;
+            # don't mask it here.
+            return
+        if domain is None:
+            return
+
+        domain.init()
+        offenders = event_store_subscription_handlers(domain)
+        if offenders:
+            raise ConfigurationError(
+                event_store_multi_worker_error(offenders, self.num_workers)
+            )
 
     # ------------------------------------------------------------------
     # Signal handling
