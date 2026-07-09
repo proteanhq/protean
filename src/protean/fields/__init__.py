@@ -39,7 +39,8 @@ __all__ = [
     "FieldSpec",
     # Resolved field metadata
     "ResolvedField",
-    # Legacy base
+    # Descriptor engine backing the association fields (HasMany/HasOne/
+    # Reference) and the extension point for custom fields
     "Field",
     "FieldBase",
     # Serializer fields

@@ -1,4 +1,18 @@
+import pytest
+
+from protean._deprecation import RemovedInProtean10Warning
 from protean.fields import Nested
+
+
+def test_nested_is_deprecated():
+    """Instantiating a Nested field warns it is removed at v1.0.0."""
+    with pytest.warns(RemovedInProtean10Warning) as record:
+        field = Nested("schema1")
+
+    assert "v1.0.0" in str(record[0].message)
+    # The field is still functional despite the deprecation.
+    assert field.schema_name == "schema1"
+    assert field._cast_to_type("x") == "x"
 
 
 def test_nested_field_repr_and_str():

@@ -11,9 +11,11 @@ Covers:
 """
 
 import datetime
+import warnings
 
 import pytest
 
+from protean._deprecation import ProteanDeprecationWarning
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields.basic import ValueObjectList
@@ -43,6 +45,24 @@ class TestValueObjectListInit:
         vo = ValueObject(value_object_cls=Inner)
         field = ValueObjectList(content_type=vo)
         assert field.content_type is vo
+
+    def test_pickled_is_live_and_not_deprecated(self):
+        """ValueObjectList keeps its own live ``pickled`` flag (honored by the
+        SQLAlchemy PickleType mapping) — unlike List's dead kwarg, it does not
+        warn and still records the value."""
+
+        class Inner(BaseValueObject):
+            name: str | None = None
+
+        vo = ValueObject(value_object_cls=Inner)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            field = ValueObjectList(content_type=vo, pickled=True)
+
+        assert field.pickled is True
+        assert not [
+            w for w in caught if issubclass(w.category, ProteanDeprecationWarning)
+        ]
 
 
 class TestValueObjectListCastToType:

@@ -1,10 +1,24 @@
 from datetime import datetime, timezone
 
+import pytest
+
+from protean._deprecation import RemovedInProtean10Warning
 from protean.fields import Method
 
 
 def utc_now():
     return datetime.now(timezone.utc)
+
+
+def test_method_is_deprecated():
+    """Instantiating a Method field warns it is removed at v1.0.0."""
+    with pytest.warns(RemovedInProtean10Warning) as record:
+        field = Method("fake_method")
+
+    assert "v1.0.0" in str(record[0].message)
+    # The field is still functional despite the deprecation.
+    assert field.method_name == "fake_method"
+    assert field._cast_to_type("x") == "x"
 
 
 def test_method_repr_and_str():

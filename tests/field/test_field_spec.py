@@ -6,9 +6,13 @@ from enum import Enum
 
 import pytest
 
+from protean._deprecation import (
+    ProteanDeprecationWarning,
+    RemovedInProtean10Warning,
+)
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ValidationError
-from protean.fields import String
+from protean.fields import List, String, ValueObject
 from protean.fields.spec import (
     FieldSpec,
     _UNSET,
@@ -366,3 +370,41 @@ class TestFieldSpecValidateDefault:
 
         kwargs = spec.resolve_field_kwargs()
         assert kwargs.get("validate_default") is True
+
+
+# ---------------------------------------------------------------------------
+# Tests: deprecated ``pickled`` argument on List()
+#
+# ``pickled`` is a dead legacy kwarg — accepted but never forwarded to the
+# FieldSpec. Passing it (with any value) is deprecated and removed at v1.0.0.
+# ---------------------------------------------------------------------------
+class TestListPickledDeprecation:
+    def test_pickled_true_is_deprecated(self):
+        with pytest.warns(RemovedInProtean10Warning) as record:
+            spec = List(pickled=True)
+
+        assert "v1.0.0" in str(record[0].message)
+        # The kwarg is ignored, not fatal — a usable list spec is returned.
+        assert isinstance(spec, FieldSpec)
+
+    def test_pickled_false_is_deprecated(self):
+        """Even an explicit ``pickled=False`` warns — the arg is going away."""
+        with pytest.warns(RemovedInProtean10Warning):
+            List(pickled=False)
+
+    def test_list_without_pickled_does_not_warn(self):
+        """The common paths emit no deprecation warning."""
+        from protean.core.value_object import BaseValueObject
+
+        class Addr(BaseValueObject):
+            street: str | None = None
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            List(String())
+            List(content_type=ValueObject(Addr))
+            List()
+
+        assert not [
+            w for w in caught if issubclass(w.category, ProteanDeprecationWarning)
+        ]
