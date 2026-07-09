@@ -129,7 +129,7 @@ dev = [
     "ruff>=0.15.20",
     "twine>=4.0.2",
     "nox>=2026.2.9",
-    "bump-my-version>=1.2.7",
+    "bump-my-version>=1.4.1",
     "pyright>=1.1.411",
 ]
 test = [
