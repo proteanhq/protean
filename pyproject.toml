@@ -145,6 +145,8 @@ test = [
     "jsonschema>=4.20.0",
     # Round-trip validation of generated Avro schemas (protean schema --format avro)
     "fastavro>=1.9.0",
+    # Portable open-file-descriptor probe for the fd-leak guard (PROTEAN_FD_REPORT); see #1168
+    "psutil>=5.9.0",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",

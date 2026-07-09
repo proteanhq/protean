@@ -125,6 +125,38 @@ The `run_around_tests` autouse fixture resets all provider data, broker
 data, caches, and event store state after each test. You don't need to
 clean up manually.
 
+### Descriptor hermeticity
+
+The **core** suite (`protean test`) must run in a single process under the
+common **1024 open-file limit** without leaking file descriptors (issue #1168 —
+a full core run once died partway with a flood of `OSError: Too many open
+files`). This is the run the `FD Hermeticity Gate` CI job enforces. Adapter
+suites (`-c DATABASE`/`BROKER`/`EVENTSTORE`) open bounded connection *pools*
+that `run_around_tests` closes per test, so they are not the accumulation risk
+core tests were; they are not run under the constrained limit. Two autouse
+fixtures in `tests/conftest.py` keep the core run hermetic by closing, at each
+test's teardown, every resource created during the test:
+
+- `auto_set_and_close_loop` — closes every `asyncio` event loop (including the
+  private loop `Engine.__init__` creates but a non-`run()` test never closes).
+- `_close_test_clients` — closes every Starlette/FastAPI `TestClient` (each
+  wraps an `httpx.Client` whose pool holds sockets open).
+
+Because of these, a fixture or test that opens a loop or `TestClient` does
+**not** need to close it by hand. If you add a fixture that opens some *other*
+kind of descriptor (a raw socket, a subprocess, an open file), release it in
+teardown — do not rely on process exit.
+
+To hunt a suspected leak, run with `PROTEAN_FD_REPORT=1` (uses `psutil`) to log
+the per-module change in open descriptors:
+
+```bash
+PROTEAN_FD_REPORT=1 uv run pytest tests/server -s   # watch the delta per module
+```
+
+A CI job (`FD Hermeticity Gate`) runs the core suite under `ulimit -n 1024` to
+catch regressions; `protean test` also raises the soft limit as a local backstop.
+
 ### Database Tests
 
 Tests marked `@pytest.mark.database` automatically get the `db` fixture,
