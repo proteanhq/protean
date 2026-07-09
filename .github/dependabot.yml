@@ -14,17 +14,16 @@ updates:
     labels:
       - "dependencies"
     groups:
-      # Collapse every non-security version update — major, minor, and patch —
-      # into a single grouped PR per run. Without "major" here, each major bump
-      # (e.g. elasticsearch, diff-cover, types-mock) opens its own PR and fires
-      # its own CI run; grouping them keeps the weekly bump to one PR.
+      # Collapse every non-security version update into a single grouped PR per
+      # run. A group with no "update-types" filter already covers major, minor,
+      # and patch — so we deliberately omit it. Listing update-types here breaks
+      # grouping for "requirement" updates (raising a >= floor in
+      # [dependency-groups]); Dependabot can't classify those into a semver
+      # bucket, drops them from the group, and opens one PR per package instead
+      # (see #1163–#1167). Leaving patterns: "*" alone groups everything.
       all-dependencies:
         patterns:
           - "*"
-        update-types:
-          - "major"
-          - "minor"
-          - "patch"
       security-updates:
         patterns:
           - "*"
