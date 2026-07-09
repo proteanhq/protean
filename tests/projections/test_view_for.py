@@ -217,10 +217,19 @@ class TestReadViewCount:
         view = test_domain.view_for(PersonProjection)
         assert view.count() == 0
 
+    @pytest.mark.sqlite
     def test_count_issues_a_flat_count_query(self, test_domain, seeded_projections):
         """``count()`` must issue a single flat ``SELECT COUNT(*)`` — not
         fetch rows via ``.all()`` and read ``.total`` off the result.
+
+        ``--sqlite`` only signals the flag is available; the active provider is
+        set by ``--db``. Skip when it is the in-memory provider, which gives the
+        query-shape primitives no engine to observe (so the assertions below
+        would be vacuous no-ops).
         """
+        if type(test_domain.providers["default"]).__name__ == "MemoryProvider":
+            pytest.skip("query-shape assertions need a real SQLAlchemy engine")
+
         view = test_domain.view_for(PersonProjection)
 
         with assert_no_subquery_wrap():
@@ -228,8 +237,9 @@ class TestReadViewCount:
                 result = view.count()
 
         assert result == 4
-        if statements:
-            assert "COUNT(" in statements[0].upper()
+        selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+        assert selects, "expected a SELECT statement, got none"
+        assert all("COUNT(" in s.upper() for s in selects)
 
 
 # ---------------------------------------------------------------------------
