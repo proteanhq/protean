@@ -6,21 +6,16 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
-from protean.cli._helpers import handle_cli_exceptions
+from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.exceptions import (
     IncorrectUsageError,
-    NoDomainException,
     ObjectNotFoundError,
 )
 from protean.utils import DomainObjects
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from protean.core.aggregate import BaseAggregate
     from protean.domain import Domain
-
-logger = get_logger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -56,17 +51,7 @@ def create(
         print("Error: --identifier requires --aggregate")
         raise typer.Abort()
 
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-
-    derived_domain.init()
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         if aggregate and identifier:
             _create_single(derived_domain, aggregate, identifier)

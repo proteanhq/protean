@@ -87,7 +87,7 @@ class TestSubscriptionsStatus:
         mock_domain = _mock_domain_for_cli()
 
         with (
-            patch("protean.cli.subscriptions.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.server.subscription_status.collect_subscription_statuses",
                 return_value=statuses,
@@ -110,7 +110,7 @@ class TestSubscriptionsStatus:
         mock_domain = _mock_domain_for_cli()
 
         with (
-            patch("protean.cli.subscriptions.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.server.subscription_status.collect_subscription_statuses",
                 return_value=[],
@@ -133,7 +133,7 @@ class TestSubscriptionsStatus:
         mock_domain = _mock_domain_for_cli()
 
         with (
-            patch("protean.cli.subscriptions.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.server.subscription_status.collect_subscription_statuses",
                 return_value=statuses,
@@ -156,7 +156,7 @@ class TestSubscriptionsStatus:
         mock_domain = _mock_domain_for_cli()
 
         with (
-            patch("protean.cli.subscriptions.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.server.subscription_status.collect_subscription_statuses",
                 return_value=[],
@@ -175,7 +175,7 @@ class TestSubscriptionsStatus:
         change_working_directory_to("test7")
 
         with patch(
-            "protean.cli.subscriptions.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("not found"),
         ):
             result = runner.invoke(
@@ -201,7 +201,7 @@ class TestSubscriptionsStatus:
         mock_domain = _mock_domain_for_cli()
 
         with (
-            patch("protean.cli.subscriptions.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.server.subscription_status.collect_subscription_statuses",
                 return_value=statuses,
@@ -227,7 +227,7 @@ class TestSubscriptionsStatus:
         mock_domain = _mock_domain_for_cli()
 
         with (
-            patch("protean.cli.subscriptions.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.server.subscription_status.collect_subscription_statuses",
                 return_value=statuses,

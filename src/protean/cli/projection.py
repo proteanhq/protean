@@ -21,17 +21,12 @@ from rich import print
 from rich.table import Table
 from typing_extensions import Annotated
 
-from protean.cli._helpers import handle_cli_exceptions
-from protean.exceptions import NoDomainException
+from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.utils import DomainObjects
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from protean.core.projection import BaseProjection
     from protean.domain import Domain
-
-logger = get_logger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -68,17 +63,7 @@ def rebuild(
     Warning: ensure the server is stopped before rebuilding projections
     to avoid conflicts with concurrent event processing.
     """
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-
-    derived_domain.init()
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         if projection:
             _rebuild_single(derived_domain, projection, batch_size)
@@ -175,16 +160,7 @@ def status(
     """
     from protean.server.projection_status import collect_projection_statuses  # noqa: PLC0415
 
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-    derived_domain.init()
+    derived_domain = load_domain(domain)
 
     with derived_domain.domain_context():
         statuses = collect_projection_statuses(derived_domain)

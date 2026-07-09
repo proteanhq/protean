@@ -84,7 +84,7 @@ class TestDlqList:
         mock_domain = _mock_domain_with_broker(entries)
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.collect_dlq_streams",
                 return_value=["order:dlq", "user:dlq"],
@@ -99,7 +99,7 @@ class TestDlqList:
         mock_domain = _mock_domain_with_broker([])
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.collect_dlq_streams",
                 return_value=["order:dlq"],
@@ -113,7 +113,7 @@ class TestDlqList:
         change_working_directory_to("test7")
         mock_domain = _mock_domain_with_broker(has_dlq=False)
 
-        with patch("protean.cli.dlq.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(app, ["dlq", "list", "--domain", "publishing7.py"])
             assert result.exit_code != 0
             assert "does not support" in result.output
@@ -122,7 +122,7 @@ class TestDlqList:
         change_working_directory_to("test7")
 
         with patch(
-            "protean.cli.dlq.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Could not find domain"),
         ):
             result = runner.invoke(app, ["dlq", "list", "--domain", "nonexistent.py"])
@@ -134,7 +134,7 @@ class TestDlqList:
         mock_domain = MagicMock()
         mock_domain.brokers = {"default": None}
 
-        with patch("protean.cli.dlq.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(app, ["dlq", "list", "--domain", "publishing7.py"])
             assert result.exit_code != 0
 
@@ -143,7 +143,7 @@ class TestDlqList:
         mock_domain = _mock_domain_with_broker([])
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch("protean.cli.dlq.collect_dlq_streams", return_value=[]),
         ):
             result = runner.invoke(app, ["dlq", "list", "--domain", "publishing7.py"])
@@ -156,7 +156,7 @@ class TestDlqList:
         mock_domain = _mock_domain_with_broker(entries)
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.discover_subscriptions",
                 return_value=[
@@ -186,7 +186,7 @@ class TestDlqList:
         mock_domain = _mock_domain_with_broker([])
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch("protean.cli.dlq.discover_subscriptions", return_value=[]),
         ):
             result = runner.invoke(
@@ -215,7 +215,7 @@ class TestDlqList:
         mock_domain = _mock_domain_with_broker(entries)
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.collect_dlq_streams",
                 return_value=["order:dlq"],
@@ -249,7 +249,7 @@ class TestDlqInspect:
         mock_broker.dlq_inspect.return_value = entry
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.collect_dlq_streams",
                 return_value=["order:dlq"],
@@ -270,7 +270,7 @@ class TestDlqInspect:
         mock_broker.dlq_inspect.return_value = None
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.collect_dlq_streams",
                 return_value=["order:dlq"],
@@ -307,7 +307,7 @@ class TestDlqReplay:
         mock_broker.dlq_replay.return_value = True
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.collect_dlq_streams",
                 return_value=["order:dlq"],
@@ -326,7 +326,7 @@ class TestDlqReplay:
         mock_broker.dlq_inspect.return_value = None
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.collect_dlq_streams",
                 return_value=["order:dlq"],
@@ -348,7 +348,7 @@ class TestDlqReplay:
         mock_broker.dlq_replay.return_value = False
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.collect_dlq_streams",
                 return_value=["order:dlq"],
@@ -381,7 +381,7 @@ class TestDlqReplayAll:
         mock_domain = _mock_domain_with_broker(entries)
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.discover_subscriptions",
                 return_value=[
@@ -429,7 +429,7 @@ class TestDlqPurge:
         mock_domain = _mock_domain_with_broker(entries)
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.discover_subscriptions",
                 return_value=[
@@ -462,7 +462,7 @@ class TestDlqPurge:
         mock_domain = _mock_domain_with_broker(entries)
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.discover_subscriptions",
                 return_value=[
@@ -496,7 +496,7 @@ class TestDlqPurge:
         mock_domain = _mock_domain_with_broker(entries)
 
         with (
-            patch("protean.cli.dlq.derive_domain", return_value=mock_domain),
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
             patch(
                 "protean.cli.dlq.discover_subscriptions",
                 return_value=[

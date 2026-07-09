@@ -33,7 +33,7 @@ class TestDbSetup:
         mock_domain = MagicMock()
         mock_domain.has_outbox = False
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(app, ["db", "setup", "--domain", "publishing7.py"])
             assert result.exit_code == 0
             assert "Database tables created successfully" in result.output
@@ -42,7 +42,7 @@ class TestDbSetup:
 
     def test_with_invalid_domain(self):
         with patch(
-            "protean.cli.database.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(app, ["db", "setup", "--domain", "invalid.py"])
@@ -68,7 +68,7 @@ class TestDbDrop:
         mock_domain = MagicMock()
         mock_domain.has_outbox = False
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app, ["db", "drop", "--domain", "publishing7.py", "--yes"]
             )
@@ -81,7 +81,7 @@ class TestDbDrop:
 
         mock_domain = MagicMock()
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             # Send "n" to the confirmation prompt
             result = runner.invoke(
                 app, ["db", "drop", "--domain", "publishing7.py"], input="n\n"
@@ -96,7 +96,7 @@ class TestDbDrop:
         mock_domain = MagicMock()
         mock_domain.has_outbox = False
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app, ["db", "drop", "--domain", "publishing7.py"], input="y\n"
             )
@@ -106,7 +106,7 @@ class TestDbDrop:
 
     def test_with_invalid_domain(self):
         with patch(
-            "protean.cli.database.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -133,7 +133,7 @@ class TestDbTruncate:
 
         mock_domain = MagicMock()
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app, ["db", "truncate", "--domain", "publishing7.py", "--yes"]
             )
@@ -146,7 +146,7 @@ class TestDbTruncate:
 
         mock_domain = MagicMock()
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             # Send "n" to the confirmation prompt
             result = runner.invoke(
                 app, ["db", "truncate", "--domain", "publishing7.py"], input="n\n"
@@ -160,7 +160,7 @@ class TestDbTruncate:
 
         mock_domain = MagicMock()
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app, ["db", "truncate", "--domain", "publishing7.py"], input="y\n"
             )
@@ -170,7 +170,7 @@ class TestDbTruncate:
 
     def test_with_invalid_domain(self):
         with patch(
-            "protean.cli.database.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -198,7 +198,7 @@ class TestDbSetupOutbox:
         mock_domain = MagicMock()
         mock_domain.has_outbox = True
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app, ["db", "setup-outbox", "--domain", "publishing7.py"]
             )
@@ -208,7 +208,7 @@ class TestDbSetupOutbox:
 
     def test_with_invalid_domain(self):
         with patch(
-            "protean.cli.database.derive_domain",
+            "protean.cli._helpers.derive_domain",
             side_effect=NoDomainException("Not found"),
         ):
             result = runner.invoke(
@@ -225,7 +225,7 @@ class TestDbSetupOutbox:
             "Outbox is not enabled."
         )
 
-        with patch("protean.cli.database.derive_domain", return_value=mock_domain):
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
                 app, ["db", "setup-outbox", "--domain", "publishing7.py"]
             )

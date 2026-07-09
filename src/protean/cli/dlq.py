@@ -35,18 +35,13 @@ from rich import print
 from rich.table import Table
 from typing_extensions import Annotated
 
-from protean.cli._helpers import handle_cli_exceptions
-from protean.exceptions import NoDomainException
+from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.port.broker import BrokerCapabilities
 from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from protean.domain import Domain
     from protean.port.broker import BaseBroker
-
-logger = get_logger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -59,21 +54,6 @@ def callback() -> None:
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-
-def _load_domain(domain_path: str) -> "Domain":
-    """Load and initialize a domain, handling errors consistently."""
-    try:
-        derived_domain = derive_domain(domain_path)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-    derived_domain.init()
-    return derived_domain
 
 
 def _get_broker(domain: "Domain") -> "BaseBroker":
@@ -139,7 +119,7 @@ def list_dlq(
     ] = 100,
 ) -> None:
     """List failed messages across DLQ streams."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         broker = _get_broker(derived_domain)
         dlq_streams = _resolve_dlq_streams(derived_domain, subscription)
@@ -189,7 +169,7 @@ def inspect(
     ] = None,
 ) -> None:
     """Show full details of a DLQ message."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         broker = _get_broker(derived_domain)
         dlq_streams = _resolve_dlq_streams(derived_domain, subscription)
@@ -231,7 +211,7 @@ def replay(
     ] = None,
 ) -> None:
     """Replay a single DLQ message back to its original stream."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         broker = _get_broker(derived_domain)
         dlq_streams = _resolve_dlq_streams(derived_domain, subscription)
@@ -264,7 +244,7 @@ def replay_all(
     ] = False,
 ) -> None:
     """Replay all DLQ messages for a subscription back to their original stream."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         broker = _get_broker(derived_domain)
         dlq_streams = _resolve_dlq_streams(derived_domain, subscription)
@@ -296,7 +276,7 @@ def purge(
     ] = False,
 ) -> None:
     """Purge all DLQ messages for a subscription."""
-    derived_domain = _load_domain(domain)
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         broker = _get_broker(derived_domain)
         dlq_streams = _resolve_dlq_streams(derived_domain, subscription)

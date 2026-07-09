@@ -4,12 +4,8 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
-from protean.cli._helpers import handle_cli_exceptions
-from protean.exceptions import ConfigurationError, NoDomainException
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
-
-logger = get_logger(__name__)
+from protean.cli._helpers import handle_cli_exceptions, load_domain
+from protean.exceptions import ConfigurationError
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -25,17 +21,7 @@ def setup(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
 ) -> None:
     """Create all database tables (aggregates, entities, projections, outbox)."""
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-
-    derived_domain.init()
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         derived_domain.setup_database()
 
@@ -56,17 +42,7 @@ def drop(
         if not confirmed:
             raise typer.Abort()
 
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-
-    derived_domain.init()
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         derived_domain.drop_database()
 
@@ -89,17 +65,7 @@ def truncate(
         if not confirmed:
             raise typer.Abort()
 
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-
-    derived_domain.init()
+    derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         derived_domain.truncate_database()
 
@@ -112,17 +78,7 @@ def setup_outbox(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
 ) -> None:
     """Create only outbox tables (for stream subscription migration)."""
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
-        logger.error(msg)
-        raise typer.Abort()
-
-    assert derived_domain is not None
-
-    derived_domain.init()
+    derived_domain = load_domain(domain)
     try:
         with derived_domain.domain_context():
             derived_domain.setup_outbox()
