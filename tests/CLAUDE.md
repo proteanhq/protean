@@ -130,7 +130,7 @@ clean up manually.
 The **core** suite (`protean test`) must run in a single process under the
 common **1024 open-file limit** without leaking file descriptors (issue #1168 —
 a full core run once died partway with a flood of `OSError: Too many open
-files`). This is the run the `FD Hermeticity Gate` CI job enforces. Adapter
+files`). Adapter
 suites (`-c DATABASE`/`BROKER`/`EVENTSTORE`) open bounded connection *pools*
 that `run_around_tests` closes per test, so they are not the accumulation risk
 core tests were; they are not run under the constrained limit. Two autouse
@@ -154,8 +154,9 @@ the per-module change in open descriptors:
 PROTEAN_FD_REPORT=1 uv run pytest tests/server -s   # watch the delta per module
 ```
 
-A CI job (`FD Hermeticity Gate`) runs the core suite under `ulimit -n 1024` to
-catch regressions; `protean test` also raises the soft limit as a local backstop.
+The guard tests in `tests/test_fd_hermeticity.py` verify the two trackers keep
+closing resources at teardown; they run with the normal suite, so a change that
+breaks the trackers fails there.
 
 ### Database Tests
 

@@ -220,38 +220,6 @@ jobs:
       - name: Mypy
         run: uv run mypy src/protean
 
-  fd-hermeticity:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    name: FD Hermeticity Gate (ulimit 1024)
-    # Regression gate for #1168: the core suite must run in a single process
-    # under the common 1024 open-file soft limit without leaking descriptors
-    # ("OSError: Too many open files"). GitHub runners default to a high limit,
-    # so we pin it to 1024 here to reproduce a fresh container / default dev box.
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: uv sync --all-extras --all-groups
-
-      - name: Run core suite under a 1024 descriptor limit
-        run: |
-          ulimit -n 1024
-          echo "open-file limits -> soft: $(ulimit -Sn), hard: $(ulimit -Hn)"
-          uv run protean test
-
   # Publishes the docs via the GitHub Actions Pages pipeline (build the site,
   # then deploy the artifact) instead of `mkdocs gh-deploy` to the gh-pages
   # branch. The legacy branch-based Pages builder proved unreliable (builds

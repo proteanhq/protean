@@ -492,29 +492,6 @@ def validate_category(value: str) -> str:
         raise typer.BadParameter(f"'{value}' is not one of {valid_categories}")
 
 
-def raise_open_file_limit() -> None:
-    """Best-effort raise of the open-file soft limit for the test process.
-
-    The suite opens many descriptors; on systems with the common 1024 soft
-    limit this can exhaust them mid-run (``OSError: Too many open files``, see
-    #1168). We raise the soft limit toward the hard limit as a convenience
-    backstop for local full runs. This never lowers the limit, and it cannot
-    mask a leak on the CI ``FD Hermeticity Gate``: that job runs Linux
-    ``ulimit -n 1024``, which pins *both* the soft and hard limits to 1024, so
-    the raise below no-ops there. Windows lacks ``resource`` entirely.
-    """
-    try:
-        import resource  # noqa: PLC0415 - platform-specific; absent on Windows
-    except ImportError:  # pragma: no cover - Windows has no resource module
-        return
-
-    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-    target = 65536 if hard == resource.RLIM_INFINITY else min(hard, 65536)
-    if target > soft:
-        with suppress(ValueError, OSError):
-            resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
-
-
 @app.callback(invoke_without_command=True)
 def test(
     category: Annotated[
@@ -534,7 +511,6 @@ def test(
     ] = False,
 ) -> None:
     """Run tests with various configurations and coverage options."""
-    raise_open_file_limit()
     runner = TestRunner()
 
     match category:

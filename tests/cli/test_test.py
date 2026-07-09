@@ -17,7 +17,6 @@ from protean.cli.test import (
     _print_conformance_report,
     _provider_has_capability_for_marker,
     _run_pytest_for_marker,
-    raise_open_file_limit,
     test_adapter as cli_test_adapter,
     validate_category,
 )
@@ -1376,56 +1375,3 @@ class TestTestAdapterCommand:
 
         captured = capsys.readouterr()
         assert "Conformance Report" in captured.out
-
-
-class TestRaiseOpenFileLimit:
-    """`raise_open_file_limit` bumps the open-file soft limit as a backstop
-    against descriptor exhaustion during long test runs (issue #1168)."""
-
-    def test_raises_soft_limit_toward_hard(self):
-        import resource
-
-        with (
-            patch.object(resource, "getrlimit", return_value=(1024, 524288)),
-            patch.object(resource, "setrlimit") as set_limit,
-        ):
-            raise_open_file_limit()
-
-        set_limit.assert_called_once_with(resource.RLIMIT_NOFILE, (65536, 524288))
-
-    def test_caps_target_at_hard_limit(self):
-        import resource
-
-        with (
-            patch.object(resource, "getrlimit", return_value=(256, 1024)),
-            patch.object(resource, "setrlimit") as set_limit,
-        ):
-            raise_open_file_limit()
-
-        set_limit.assert_called_once_with(resource.RLIMIT_NOFILE, (1024, 1024))
-
-    def test_infinite_hard_limit_targets_65536(self):
-        import resource
-
-        with (
-            patch.object(
-                resource, "getrlimit", return_value=(1024, resource.RLIM_INFINITY)
-            ),
-            patch.object(resource, "setrlimit") as set_limit,
-        ):
-            raise_open_file_limit()
-
-        set_limit.assert_called_once_with(
-            resource.RLIMIT_NOFILE, (65536, resource.RLIM_INFINITY)
-        )
-
-    def test_noop_when_soft_already_at_or_above_target(self):
-        import resource
-
-        with (
-            patch.object(resource, "getrlimit", return_value=(65536, 524288)),
-            patch.object(resource, "setrlimit") as set_limit,
-        ):
-            raise_open_file_limit()
-
-        set_limit.assert_not_called()
