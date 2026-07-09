@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, ClassVar, TypeVar, cast
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -148,10 +148,10 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return False
-        # `other` is the exact same type as `self` after the guard above;
-        # narrow for the type checker without changing `==` semantics
-        # (an `isinstance` guard would wrongly accept subclasses).
-        return self.to_dict() == cast("BaseEmail", other).to_dict()
+        # `other` is the exact same type as `self` after the guard above
+        # (an `isinstance` guard would wrongly accept subclasses), which the
+        # type checker narrows automatically.
+        return self.to_dict() == other.to_dict()
 
     def __hash__(self) -> int:
         return id(self)

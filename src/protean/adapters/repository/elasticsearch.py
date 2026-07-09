@@ -65,7 +65,10 @@ _PYTHON_TYPE_TO_ES: dict[type, type[elasticsearch_dsl.Field]] = {
 
 def _resolve_python_type(field_obj: ResolvedField) -> _Any:
     """Unwrap Optional/Union and generic aliases to get the base Python type."""
-    python_type = field_obj._python_type
+    # Annotated `_Any` (matching the return): after unwrapping, `python_type`
+    # is reassigned to `typing.get_origin(...)`, whose type mypy widens beyond
+    # the initial `type | None`.
+    python_type: _Any = field_obj._python_type
     origin = typing.get_origin(python_type)
     if origin is types.UnionType or origin is typing.Union:
         args = [a for a in typing.get_args(python_type) if a is not type(None)]

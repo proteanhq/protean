@@ -111,14 +111,18 @@ def _extract_revealed_types(notes: list[str]) -> list[str]:
     """Extract the revealed type strings from mypy note output.
 
     Each note looks like:
-        /path/to/file.py:6: note: Revealed type is "builtins.str"
-    Returns: ["builtins.str", ...]
+        /path/to/file.py:6: note: Revealed type is "str"
+    Returns: ["str", ...]
+
+    mypy 2.x prints builtin types unqualified ("str"); older releases prefixed
+    them with "builtins." ("builtins.str"). Strip the prefix so the expected
+    values below stay stable regardless of which mypy renders the note.
     """
     types = []
     for note in notes:
         match = re.search(r'Revealed type is "([^"]+)"', note)
         if match:
-            types.append(match.group(1))
+            types.append(match.group(1).replace("builtins.", ""))
     return types
 
 
@@ -134,12 +138,12 @@ class TestSimpleFields:
         notes, errors = _get_field_results("simple_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # String(required=True)
-            "builtins.str",  # Text(required=True)
-            "builtins.int",  # Integer(required=True)
-            "builtins.float",  # Float(required=True)
+            "str",  # String(required=True)
+            "str",  # Text(required=True)
+            "int",  # Integer(required=True)
+            "float",  # Float(required=True)
             "decimal.Decimal",  # Decimal(required=True)
-            "builtins.bool",  # Boolean(required=True)
+            "bool",  # Boolean(required=True)
             "datetime.date",  # Date(required=True)
             "datetime.datetime",  # DateTime(required=True)
         ]
@@ -150,10 +154,10 @@ class TestSimpleFields:
         notes, errors = _get_field_results("optional_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str | None",  # String()
-            "builtins.int | None",  # Integer()
-            "builtins.float | None",  # Float()
-            "builtins.bool | None",  # Boolean()
+            "str | None",  # String()
+            "int | None",  # Integer()
+            "float | None",  # Float()
+            "bool | None",  # Boolean()
             "datetime.date | None",  # Date()
             "datetime.datetime | None",  # DateTime()
         ]
@@ -163,10 +167,10 @@ class TestSimpleFields:
         notes, errors = _get_field_results("default_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # String(default="hello")
-            "builtins.int",  # Integer(default=0)
-            "builtins.float",  # Float(default=0.0)
-            "builtins.bool",  # Boolean(default=True)
+            "str",  # String(default="hello")
+            "int",  # Integer(default=0)
+            "float",  # Float(default=0.0)
+            "bool",  # Boolean(default=True)
         ]
         assert not errors
 
@@ -178,11 +182,11 @@ class TestContainerFields:
         notes, errors = _get_field_results("container_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.list[Any]",  # List()
-            "builtins.list[Any]",  # List(content_type=int)
-            "builtins.dict[builtins.str, Any]",  # Dict()
-            "builtins.list[Any]",  # List(required=True)
-            "builtins.dict[builtins.str, Any]",  # Dict(required=True)
+            "list[Any]",  # List()
+            "list[Any]",  # List(content_type=int)
+            "dict[str, Any]",  # Dict()
+            "list[Any]",  # List(required=True)
+            "dict[str, Any]",  # Dict(required=True)
         ]
         assert not errors
 
@@ -194,9 +198,9 @@ class TestIdentifierFields:
         notes, errors = _get_field_results("identifier_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # Identifier(identifier=True) - not Optional
-            "builtins.str",  # Auto(identifier=True) - not Optional
-            "builtins.str | None",  # Identifier() - Optional
+            "str",  # Identifier(identifier=True) - not Optional
+            "str",  # Auto(identifier=True) - not Optional
+            "str | None",  # Identifier() - Optional
         ]
         assert not errors
 
@@ -208,9 +212,9 @@ class TestStatusField:
         notes, errors = _get_field_results("status_field.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # Status(OrderStatus, required=True)
-            "builtins.str",  # Status(OrderStatus, default="DRAFT")
-            "builtins.str | None",  # Status(OrderStatus, transitions=...) - optional
+            "str",  # Status(OrderStatus, required=True)
+            "str",  # Status(OrderStatus, default="DRAFT")
+            "str | None",  # Status(OrderStatus, transitions=...) - optional
         ]
         assert not errors
 
@@ -222,10 +226,10 @@ class TestClassFields:
         notes, errors = _get_field_results("class_fields.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # customer_name: required
-            "builtins.int | None",  # quantity: optional
-            "builtins.float | None",  # price: optional
-            "builtins.bool",  # is_active: has default
+            "str",  # customer_name: required
+            "int | None",  # quantity: optional
+            "float | None",  # price: optional
+            "bool",  # is_active: has default
         ]
         # call-arg errors from Order() are expected (no __init__ synthesis)
         # but there should be no type errors
@@ -247,7 +251,7 @@ class TestAssociationFields:
         notes, errors = _get_field_results("association_fields.py")
         types = _extract_revealed_types(notes)
         # HasMany(OrderItem) → list[OrderItem]
-        assert types[1].startswith("builtins.list[")
+        assert types[1].startswith("list[")
         assert "OrderItem" in types[1]
 
     def test_value_object_resolves_to_optional_vo(self) -> None:
@@ -265,14 +269,14 @@ class TestFieldAnnotations:
         notes, errors = _get_field_results("field_annotations.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # String
-            "builtins.str",  # Text
-            "builtins.int",  # Integer
-            "builtins.float",  # Float
-            "builtins.bool",  # Boolean
+            "str",  # String
+            "str",  # Text
+            "int",  # Integer
+            "float",  # Float
+            "bool",  # Boolean
             "datetime.date",  # Date
             "datetime.datetime",  # DateTime
-            "builtins.str",  # Identifier
+            "str",  # Identifier
         ]
         assert not errors
 
@@ -289,9 +293,9 @@ class TestDecoratorAggregate:
         notes, errors = _get_decorator_results("decorator_aggregate.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # customer.id (auto-injected)
-            "builtins.str",  # customer.name
-            "def () -> builtins.dict[builtins.str, Any]",  # customer.to_dict
+            "str",  # customer.id (auto-injected)
+            "str",  # customer.name
+            "def () -> dict[str, Any]",  # customer.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
@@ -307,8 +311,8 @@ class TestDecoratorEntity:
         notes, errors = _get_decorator_results("decorator_entity.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # addr.id (auto-injected)
-            "def () -> builtins.dict[builtins.str, Any]",  # addr.to_dict
+            "str",  # addr.id (auto-injected)
+            "def () -> dict[str, Any]",  # addr.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
@@ -323,7 +327,7 @@ class TestDecoratorCommand:
         notes, errors = _get_decorator_results("decorator_command.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "def () -> builtins.dict[builtins.str, Any]",  # cmd.to_dict
+            "def () -> dict[str, Any]",  # cmd.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
@@ -338,7 +342,7 @@ class TestDecoratorEvent:
         notes, errors = _get_decorator_results("decorator_event.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "def () -> builtins.dict[builtins.str, Any]",  # evt.to_dict
+            "def () -> dict[str, Any]",  # evt.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
@@ -353,7 +357,7 @@ class TestDecoratorValueObject:
         notes, errors = _get_decorator_results("decorator_value_object.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "def () -> builtins.dict[builtins.str, Any]",  # money.to_dict
+            "def () -> dict[str, Any]",  # money.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
@@ -368,9 +372,9 @@ class TestDecoratorCrossUsage:
         notes, errors = _get_decorator_results("decorator_cross_usage.py")
         types = _extract_revealed_types(notes)
         assert types == [
-            "builtins.str",  # order.id (with parens)
-            "def () -> builtins.dict[builtins.str, Any]",  # order.to_dict
-            "def () -> builtins.dict[builtins.str, Any]",  # product.to_dict
+            "str",  # order.id (with parens)
+            "def () -> dict[str, Any]",  # order.to_dict
+            "def () -> dict[str, Any]",  # product.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
@@ -394,7 +398,7 @@ class TestDecoratorNonDomain:
         notes, errors = _get_decorator_results("decorator_non_domain.py")
         types = _extract_revealed_types(notes)
         # Should reveal str for obj.name, NOT inject BaseAggregate methods
-        assert "builtins.str" in types
+        assert "str" in types
 
     def test_no_attribute_errors_for_non_domain(self) -> None:
         notes, errors = _get_decorator_results("decorator_non_domain.py")

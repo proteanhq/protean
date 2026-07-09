@@ -480,7 +480,6 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         """Equivalence check based only on identifier."""
         if type(other) is not type(self):
             return False
-        other = cast("BaseMessageType", other)
         self_id = (
             self._metadata.headers.id
             if self._metadata and self._metadata.headers
@@ -570,7 +569,7 @@ class Message(Element, BaseModel, OptionsMixin):
     def __eq__(self, other: object) -> bool:
         if type(other) is not type(self):
             return False
-        return self.to_dict() == cast("Message", other).to_dict()
+        return self.to_dict() == other.to_dict()
 
     def __hash__(self) -> int:
         return hash(json.dumps(self.to_dict(), sort_keys=True))
