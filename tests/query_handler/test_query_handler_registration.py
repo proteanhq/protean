@@ -5,10 +5,10 @@ import pytest
 from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
-from protean.exceptions import NotSupportedError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Float, Identifier, String
 from protean.utils import DomainObjects
-from protean.utils.mixins import read
+from protean.utils.mixins import handle, read
 
 
 class OrderSummary(BaseProjection):
@@ -71,3 +71,20 @@ class TestQueryHandlerRegistration:
         test_domain.init(traverse=False)
 
         assert len(test_domain.registry.query_handlers) == 1
+
+    def test_handle_decorator_on_query_handler_method_is_rejected(self, test_domain):
+        """`@handle` wraps execution in a UnitOfWork, which violates the
+        stateless-read contract of Query Handlers. Only `@read` is allowed.
+        """
+        test_domain.register(OrderSummary)
+        test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
+
+        class MisusedQueryHandler(BaseQueryHandler):
+            @handle(GetOrdersByCustomer)
+            def get_by_customer(self, query):
+                return []
+
+        test_domain.register(MisusedQueryHandler, part_of=OrderSummary)
+
+        with pytest.raises(IncorrectUsageError, match="@read"):
+            test_domain.init(traverse=False)

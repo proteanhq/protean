@@ -131,7 +131,7 @@ class ReadView:
             key_pattern = f"{projection_name}:::.*"
             return self._cache().count(key_pattern)
         else:
-            return self.query.all().total
+            return self.query.count()
 
     def exists(self, identifier: Any) -> bool:
         """Return ``True`` if a record with *identifier* exists."""

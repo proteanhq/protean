@@ -26,6 +26,7 @@ from protean.exceptions import (
     ObjectNotFoundError,
     TooManyObjectsError,
 )
+from protean.integrations.pytest import assert_no_subquery_wrap, assert_query_count
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +216,20 @@ class TestReadViewCount:
     def test_count_empty(self, test_domain):
         view = test_domain.view_for(PersonProjection)
         assert view.count() == 0
+
+    def test_count_issues_a_flat_count_query(self, test_domain, seeded_projections):
+        """``count()`` must issue a single flat ``SELECT COUNT(*)`` — not
+        fetch rows via ``.all()`` and read ``.total`` off the result.
+        """
+        view = test_domain.view_for(PersonProjection)
+
+        with assert_no_subquery_wrap():
+            with assert_query_count(1) as statements:
+                result = view.count()
+
+        assert result == 4
+        if statements:
+            assert "COUNT(" in statements[0].upper()
 
 
 # ---------------------------------------------------------------------------

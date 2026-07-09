@@ -356,6 +356,14 @@ class HandlerConfigurator:
         method_name: str, method: HandlerMethod, handler_cls: type[OptionsMixin]
     ) -> type[BaseQuery]:
         """Validate a single query handler method's target and return it."""
+        if hasattr(method, "_start"):
+            raise IncorrectUsageError(
+                f"Method `{method_name}` in Query Handler "
+                f"`{handler_cls.__name__}` is decorated with `@handle`, which "
+                f"wraps execution in a UnitOfWork. Query Handler methods must "
+                f"be stateless reads — use `@read` instead"
+            )
+
         target_cls = method._target_cls
         if not inspect.isclass(target_cls) or not issubclass(target_cls, BaseQuery):
             raise IncorrectUsageError(
