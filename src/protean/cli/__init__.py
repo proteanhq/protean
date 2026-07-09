@@ -173,6 +173,18 @@ def server(
             help="Enable auto-reload on file changes (development only)",
         ),
     ] = False,
+    allow_event_store_multiworker: Annotated[
+        bool,
+        typer.Option(
+            "--allow-event-store-multiworker",
+            "--acknowledge-event-store-risk",
+            help=(
+                "Start multiple workers even when the domain has event-store "
+                "subscriptions. These are single-writer; overriding accepts that "
+                "each worker will double-process their events."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Run Async Background Server"""
 
@@ -250,13 +262,45 @@ def server(
         else:
             # Multi-worker path: Supervisor spawns N independent Engine processes.
             # Each worker derives and initializes the domain independently.
+            from protean.server.subscription import (  # noqa: PLC0415
+                event_store_multi_worker_error,
+                event_store_subscription_handlers,
+            )
             from protean.server.supervisor import Supervisor  # noqa: PLC0415
+
+            # Refuse to start when the domain has event-store subscriptions,
+            # which are single-writer: multiple workers would double-process
+            # their events. Init in the parent (workers re-init independently)
+            # only to resolve subscription types for the guard, then close it so
+            # the parent holds no infrastructure connections while the workers
+            # run.
+            if not allow_event_store_multiworker:
+                offenders: list[str] = []
+                try:
+                    derived_domain.init()
+                    try:
+                        offenders = event_store_subscription_handlers(derived_domain)
+                    finally:
+                        derived_domain.close()
+                except Exception:
+                    logger.debug(
+                        "Event-store single-writer guard skipped: domain '%s' could "
+                        "not be initialized; deferring to workers",
+                        domain,
+                        exc_info=True,
+                    )
+                if offenders:
+                    print(
+                        f"Error: {event_store_multi_worker_error(offenders, workers)}"
+                    )
+                    raise typer.Abort()
 
             supervisor = Supervisor(
                 domain_path=domain,
                 num_workers=workers,
                 test_mode=test_mode,
                 debug=debug,
+                acknowledge_event_store_risk=allow_event_store_multiworker,
             )
             supervisor.run()
 

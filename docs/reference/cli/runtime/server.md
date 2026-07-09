@@ -10,12 +10,38 @@ protean server [OPTIONS]
 
 ## Options
 
-| Option        | Description                                  | Default |
-|---------------|----------------------------------------------|---------|
-| `--domain`    | Sets the domain context for the server.      | `.`     |
-| `--test-mode` | Runs the server in test mode.                | `False` |
-| `--debug`     | Enables debug mode for verbose logging.      | `False` |
-| `--help`      | Shows the help message and exits.            |         |
+| Option                          | Description                                                                 | Default |
+|---------------------------------|-----------------------------------------------------------------------------|---------|
+| `--domain`                      | Sets the domain context for the server.                                     | `.`     |
+| `--test-mode`                   | Runs the server in test mode.                                               | `False` |
+| `--debug`                       | Enables debug mode for verbose logging.                                    | `False` |
+| `--workers`                     | Number of worker processes to spawn.                                       | `1`     |
+| `--reload`                      | Auto-reload on file changes (development only; cannot combine with `--workers > 1`). | `False` |
+| `--allow-event-store-multiworker`| Allow `--workers > 1` even with event-store subscriptions (see below).      | `False` |
+| `--help`                        | Shows the help message and exits.                                          |         |
+
+### Multiple workers and the event-store single-writer boundary
+
+`--workers N` spawns `N` independent worker processes. Stream subscriptions
+distribute messages across workers via Redis consumer groups, so they scale
+horizontally.
+
+Event-store subscriptions are single-writer: they read directly from the event
+store with no cluster-wide ownership, so every worker would process the same
+events. When any handler resolves to an event-store subscription, `protean
+server --workers N` (with `N > 1`) refuses to start and names the offending
+handlers. Resolve it by running a single worker, switching those handlers to
+stream subscriptions (`subscription_type = "stream"`), or passing
+`--allow-event-store-multiworker` to override (accepting that events will be
+double-processed).
+
+The guard is **per-process**: it only sees the workers within a single `protean
+server` invocation. It cannot detect a second `protean server` (another
+container, host, or Kubernetes replica) running against the same event store, so
+multiple single-worker processes still double-process event-store subscriptions.
+A domain with any event-store subscription must therefore run as exactly one
+process cluster-wide until database-backed cluster ownership is available; use
+stream subscriptions to scale horizontally.
 
 ## Starting the Server
 

@@ -4,12 +4,17 @@ The Supervisor spawns child processes, so these tests exercise initialization,
 validation, signal handling, and shutdown logic without spawning real workers.
 """
 
+import os
 import signal
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from protean.exceptions import ConfigurationError
 from protean.server.supervisor import Supervisor, _worker_entry
+from tests.shared import change_working_directory_to
 
 
 class TestSupervisorInit:
@@ -302,6 +307,9 @@ class TestSupervisorRun:
             ),
         ):
             supervisor._monitor = MagicMock()
+            # The single-writer guard is exercised on its own below; stub it so
+            # this test can use a placeholder domain path.
+            supervisor._guard_event_store_single_writer = MagicMock()
             supervisor.run()
 
             assert mock_ctx.Process.call_count == 2
@@ -427,3 +435,164 @@ class TestWorkerEntry:
             _worker_entry("d", test_mode=False, debug=True, worker_id=0)
 
         mock_configure.assert_called_once_with(level="DEBUG")
+
+
+class TestSupervisorEventStoreGuard:
+    """The Supervisor is a documented programmatic entry point, so it enforces
+    the single-writer boundary itself (defense-in-depth) rather than relying on
+    the CLI guard."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        """Restore sys.path and cwd after tests that chdir into a fixture."""
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+
+        yield
+
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_run_refuses_event_store_domain(self):
+        """run() raises before spawning when the domain has event-store subs."""
+        change_working_directory_to("test31")
+
+        supervisor = Supervisor(domain_path="event_store_domain.py", num_workers=2)
+
+        with patch("multiprocessing.get_context") as mock_get_context:
+            with pytest.raises(ConfigurationError, match="event-store"):
+                supervisor.run()
+
+            # Guard fires before any worker machinery is set up.
+            mock_get_context.assert_not_called()
+
+    def test_run_names_offending_handler(self):
+        """The raised error names the offending handler and the override."""
+        change_working_directory_to("test31")
+
+        supervisor = Supervisor(domain_path="event_store_domain.py", num_workers=2)
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            supervisor.run()
+
+        message = str(exc_info.value)
+        assert "OrderEventHandler" in message
+        assert "acknowledge_event_store_risk=True" in message
+
+    def test_run_proceeds_with_acknowledgment(self):
+        """acknowledge_event_store_risk=True bypasses the guard entirely."""
+        change_working_directory_to("test31")
+
+        supervisor = Supervisor(
+            domain_path="event_store_domain.py",
+            num_workers=2,
+            acknowledge_event_store_risk=True,
+        )
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_ctx = MagicMock()
+        mock_ctx.Process.return_value = mock_process
+
+        with (
+            patch("multiprocessing.get_context", return_value=mock_ctx),
+            patch(
+                "protean.server.supervisor._build_queue_listener",
+                return_value=MagicMock(),
+            ),
+        ):
+            supervisor._monitor = MagicMock()
+            supervisor.run()
+
+            assert mock_ctx.Process.call_count == 2
+
+    def test_run_proceeds_for_stream_resolved_domain(self):
+        """The real guard runs over a handler resolving to STREAM and passes,
+        so workers are spawned. Guards against a regression that wrongly blocks
+        legitimate stream multi-worker deployments."""
+        change_working_directory_to("test31")
+
+        supervisor = Supervisor(domain_path="stream_domain.py", num_workers=2)
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_ctx = MagicMock()
+        mock_ctx.Process.return_value = mock_process
+
+        with (
+            patch("multiprocessing.get_context", return_value=mock_ctx),
+            patch(
+                "protean.server.supervisor._build_queue_listener",
+                return_value=MagicMock(),
+            ),
+        ):
+            supervisor._monitor = MagicMock()
+            # Guard is NOT stubbed here — it must run over the real stream
+            # handler and let the start proceed.
+            supervisor.run()
+
+            assert mock_ctx.Process.call_count == 2
+
+    def test_run_skips_guard_for_single_worker(self):
+        """A single worker never triggers the guard, even for event-store."""
+        change_working_directory_to("test31")
+
+        supervisor = Supervisor(domain_path="event_store_domain.py", num_workers=1)
+
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_ctx = MagicMock()
+        mock_ctx.Process.return_value = mock_process
+
+        with patch("multiprocessing.get_context", return_value=mock_ctx):
+            supervisor._monitor = MagicMock()
+            supervisor.run()
+
+            assert mock_ctx.Process.call_count == 1
+
+    def test_guard_tolerates_unimportable_domain(self):
+        """An unimportable domain path is left for the worker to report."""
+        supervisor = Supervisor(domain_path="does.not.exist", num_workers=2)
+
+        # derive_domain raises NoDomainException for an unimportable module;
+        # the guard must swallow it (workers report the real error).
+        supervisor._guard_event_store_single_writer()
+
+    def test_guard_tolerates_domain_less_module(self):
+        """A module with no domain object is left for the worker to report."""
+        supervisor = Supervisor(domain_path="does.not.exist", num_workers=2)
+
+        with patch("protean.utils.domain_discovery.derive_domain", return_value=None):
+            # Should not raise — derivation returning None surfaces per-worker.
+            supervisor._guard_event_store_single_writer()
+
+    def test_guard_tolerates_domain_that_raises_on_import(self):
+        """A domain module raising a hard error at import is deferred to workers.
+
+        A ``SyntaxError`` / import-time ``RuntimeError`` is not a
+        ``NoDomainException``; the guard must still swallow it and let each
+        worker re-derive and report the failure, rather than crash the parent
+        before any worker spawns."""
+        supervisor = Supervisor(domain_path="broken.domain", num_workers=2)
+
+        with patch(
+            "protean.utils.domain_discovery.derive_domain",
+            side_effect=RuntimeError("import blew up"),
+        ):
+            # Must not raise — the failure surfaces per-worker.
+            supervisor._guard_event_store_single_writer()
+
+    def test_guard_tolerates_domain_that_fails_to_init(self):
+        """A domain whose ``init()`` fails (e.g. an unreachable database) is
+        deferred to workers rather than crashing the parent."""
+        supervisor = Supervisor(domain_path="unreachable.domain", num_workers=2)
+
+        mock_domain = MagicMock()
+        mock_domain.init.side_effect = RuntimeError("db unreachable")
+
+        with patch(
+            "protean.utils.domain_discovery.derive_domain",
+            return_value=mock_domain,
+        ):
+            # Must not raise — the failure surfaces per-worker.
+            supervisor._guard_event_store_single_writer()
