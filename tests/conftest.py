@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import sys
+from typing import Any
 
 import pytest
 
@@ -347,34 +348,128 @@ def run_around_tests(test_domain):
 
 
 @pytest.fixture(autouse=True)
-def auto_set_and_close_loop():
-    # Create and set a new loop
+def auto_set_and_close_loop(monkeypatch):
+    # Track and close every event loop created during a test.
+    #
+    # ``Engine.__init__`` eagerly creates its own loop via
+    # ``asyncio.new_event_loop()`` and only closes it at the end of ``run()``.
+    # A test that constructs an Engine without running it (there are dozens),
+    # or any code that creates a loop and forgets to close it, leaks that
+    # loop's file descriptors. Because such a loop is never installed as the
+    # thread's current loop, the previous teardown here — which only closed the
+    # *current* loop — never reclaimed them. Across the ~11k-test suite these
+    # accumulate until the process exhausts its descriptor limit
+    # ("OSError: Too many open files"). See #1168.
+    #
+    # We wrap ``asyncio.new_event_loop`` for the duration of the test so every
+    # loop created — the test's own, Engine's private loops, ad-hoc loops in
+    # tests — is recorded and closed at teardown, keeping the suite hermetic.
+    created_loops: list[asyncio.AbstractEventLoop] = []
+    real_new_event_loop = asyncio.new_event_loop
+
+    def tracking_new_event_loop() -> asyncio.AbstractEventLoop:
+        loop = real_new_event_loop()
+        created_loops.append(loop)
+        return loop
+
+    # Patch both the ``asyncio`` re-export and the underlying
+    # ``asyncio.events`` name: ``Engine`` and tests call
+    # ``asyncio.new_event_loop()`` (the re-export), while ``asyncio.Runner``
+    # (pytest-asyncio) reaches ``events.new_event_loop()`` directly — cover both
+    # so the tracker sees every loop it claims to.
+    monkeypatch.setattr(asyncio, "new_event_loop", tracking_new_event_loop)
+    monkeypatch.setattr(asyncio.events, "new_event_loop", tracking_new_event_loop)
+
+    # Create and set a fresh loop for the test itself.
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     yield
 
-    # Cancel any pending tasks and close all loops that may have been created
-    # during the test (e.g. Engine creates its own loop).
+    # Stop tracking before running our own teardown coroutines.
+    monkeypatch.setattr(asyncio, "new_event_loop", real_new_event_loop)
+    monkeypatch.setattr(asyncio.events, "new_event_loop", real_new_event_loop)
+
     try:
         current_loop = asyncio.get_event_loop()
     except RuntimeError:
         current_loop = None
 
-    for active_loop in {loop, current_loop} - {None}:
-        if active_loop.is_closed():
+    seen: set[int] = set()
+    for active_loop in [*created_loops, current_loop]:
+        if active_loop is None or id(active_loop) in seen:
+            continue
+        seen.add(id(active_loop))
+        if active_loop.is_closed() or active_loop.is_running():
             continue
         pending = [t for t in asyncio.all_tasks(active_loop) if not t.done()]
         for task in pending:
             task.cancel()
-        if pending and not active_loop.is_running():
+        if pending:
             active_loop.run_until_complete(
                 asyncio.gather(*pending, return_exceptions=True)
             )
-        if not active_loop.is_running():
-            active_loop.close()
+        active_loop.close()
 
     asyncio.set_event_loop(None)  # Explicitly unset the loop
+
+
+@pytest.fixture(autouse=True)
+def _close_test_clients(monkeypatch):
+    # Close every Starlette/FastAPI ``TestClient`` created during a test.
+    #
+    # ``TestClient`` subclasses ``httpx.Client``; its connection pool holds
+    # sockets open until ``close()`` is called. Observatory and FastAPI
+    # integration tests build ~185 clients in fixtures and inline without ever
+    # closing them, so their descriptors accumulate across the suite and drive
+    # the exhaustion in #1168. Tracking construction and closing at teardown
+    # makes the suite hermetic without editing every call site. ``fastapi``'s
+    # ``TestClient`` is a re-export of Starlette's, so patching the one class
+    # covers both import paths.
+    try:
+        from starlette.testclient import TestClient
+    except ImportError:
+        yield
+        return
+
+    created: list[Any] = []
+    real_init = TestClient.__init__
+
+    def tracking_init(self: Any, *args: Any, **kwargs: Any) -> None:
+        real_init(self, *args, **kwargs)
+        created.append(self)
+
+    monkeypatch.setattr(TestClient, "__init__", tracking_init)
+
+    yield
+
+    for client in created:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001 - best-effort teardown cleanup
+            pass
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _fd_report(request):
+    # Opt-in file-descriptor probe. Set ``PROTEAN_FD_REPORT=1`` to log the
+    # change in open descriptors across each test module, used to locate the
+    # descriptor leaks in #1168. ``psutil.num_fds()`` is portable across Linux
+    # and macOS (unlike ``/proc/self/fd``), so this runs on a dev box too.
+    if not os.environ.get("PROTEAN_FD_REPORT"):
+        yield
+        return
+
+    import psutil
+
+    proc = psutil.Process()
+    before = proc.num_fds()
+    yield
+    after = proc.num_fds()
+    sys.stderr.write(
+        f"\n[fd-report] {request.node.nodeid}: "
+        f"{before} -> {after} (delta {after - before:+d})\n"
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
