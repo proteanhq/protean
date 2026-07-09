@@ -173,9 +173,10 @@ def server(
             help="Enable auto-reload on file changes (development only)",
         ),
     ] = False,
-    acknowledge_event_store_risk: Annotated[
+    allow_event_store_multiworker: Annotated[
         bool,
         typer.Option(
+            "--allow-event-store-multiworker",
             "--acknowledge-event-store-risk",
             help=(
                 "Start multiple workers even when the domain has event-store "
@@ -273,12 +274,21 @@ def server(
             # only to resolve subscription types for the guard, then close it so
             # the parent holds no infrastructure connections while the workers
             # run.
-            if not acknowledge_event_store_risk:
-                derived_domain.init()
+            if not allow_event_store_multiworker:
+                offenders: list[str] = []
                 try:
-                    offenders = event_store_subscription_handlers(derived_domain)
-                finally:
-                    derived_domain.close()
+                    derived_domain.init()
+                    try:
+                        offenders = event_store_subscription_handlers(derived_domain)
+                    finally:
+                        derived_domain.close()
+                except Exception:
+                    logger.debug(
+                        "Event-store single-writer guard skipped: domain '%s' could "
+                        "not be initialized; deferring to workers",
+                        domain,
+                        exc_info=True,
+                    )
                 if offenders:
                     print(
                         f"Error: {event_store_multi_worker_error(offenders, workers)}"
@@ -290,7 +300,7 @@ def server(
                 num_workers=workers,
                 test_mode=test_mode,
                 debug=debug,
-                acknowledge_event_store_risk=acknowledge_event_store_risk,
+                acknowledge_event_store_risk=allow_event_store_multiworker,
             )
             supervisor.run()
 

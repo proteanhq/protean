@@ -3,7 +3,7 @@
 Used to exercise the multi-worker single-writer guard: ``protean server
 --workers N>1`` must refuse to start against this domain (its handler reads
 directly from the event store, which has no cluster-wide ownership) unless
-``--acknowledge-event-store-risk`` is passed.
+``--allow-event-store-multiworker`` is passed.
 """
 
 from protean import Domain

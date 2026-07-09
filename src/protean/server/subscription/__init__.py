@@ -286,7 +286,7 @@ def event_store_multi_worker_error(handler_names: list[str], num_workers: int) -
         f"  - running a single worker,\n"
         f'  - switching these handlers to stream subscriptions (subscription_type = "stream"), '
         f"which coordinate across workers via Redis consumer groups, or\n"
-        f"  - explicitly acknowledging the risk (CLI: --acknowledge-event-store-risk; "
+        f"  - explicitly acknowledging the risk (CLI: --allow-event-store-multiworker; "
         f"Supervisor: acknowledge_event_store_risk=True)."
     )
 

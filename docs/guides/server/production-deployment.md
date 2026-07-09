@@ -167,7 +167,7 @@ separate health server is needed.
   one worker when any handler resolves to an event-store subscription. The
   error names the offending handlers and offers three ways forward: run a
   single worker, switch those handlers to stream subscriptions
-  (`subscription_type = "stream"`), or pass `--acknowledge-event-store-risk` to
+  (`subscription_type = "stream"`), or pass `--allow-event-store-multiworker` to
   override (you accept that events will be double-processed).
 - Use it for a single worker, or for projections where idempotency is
   guaranteed; consider StreamSubscription for scalable workloads.

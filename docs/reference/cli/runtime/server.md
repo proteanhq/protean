@@ -17,7 +17,7 @@ protean server [OPTIONS]
 | `--debug`                       | Enables debug mode for verbose logging.                                    | `False` |
 | `--workers`                     | Number of worker processes to spawn.                                       | `1`     |
 | `--reload`                      | Auto-reload on file changes (development only; cannot combine with `--workers > 1`). | `False` |
-| `--acknowledge-event-store-risk`| Allow `--workers > 1` even with event-store subscriptions (see below).      | `False` |
+| `--allow-event-store-multiworker`| Allow `--workers > 1` even with event-store subscriptions (see below).      | `False` |
 | `--help`                        | Shows the help message and exits.                                          |         |
 
 ### Multiple workers and the event-store single-writer boundary
@@ -32,7 +32,7 @@ events. When any handler resolves to an event-store subscription, `protean
 server --workers N` (with `N > 1`) refuses to start and names the offending
 handlers. Resolve it by running a single worker, switching those handlers to
 stream subscriptions (`subscription_type = "stream"`), or passing
-`--acknowledge-event-store-risk` to override (accepting that events will be
+`--allow-event-store-multiworker` to override (accepting that events will be
 double-processed).
 
 The guard is **per-process**: it only sees the workers within a single `protean

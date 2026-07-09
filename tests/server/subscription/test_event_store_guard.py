@@ -229,4 +229,4 @@ class TestEventStoreMultiWorkerError:
 
         assert "single worker" in message
         assert 'subscription_type = "stream"' in message
-        assert "--acknowledge-event-store-risk" in message
+        assert "--allow-event-store-multiworker" in message

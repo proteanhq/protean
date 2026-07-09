@@ -213,11 +213,11 @@ class TestServerCommand:
             assert result.exit_code != 0
             assert "OrderEventHandler" in result.output
             assert "single-writer" in result.output
-            assert "--acknowledge-event-store-risk" in result.output
+            assert "--allow-event-store-multiworker" in result.output
             MockSupervisor.assert_not_called()
 
     def test_server_multi_worker_event_store_override_proceeds(self):
-        """--acknowledge-event-store-risk bypasses the guard and starts."""
+        """--allow-event-store-multiworker bypasses the guard and starts."""
         change_working_directory_to("test31")
 
         with patch("protean.server.supervisor.Supervisor") as MockSupervisor:
@@ -230,7 +230,7 @@ class TestServerCommand:
                 "event_store_domain.py",
                 "--workers",
                 "2",
-                "--acknowledge-event-store-risk",
+                "--allow-event-store-multiworker",
             ]
             result = runner.invoke(app, args)
 
@@ -266,6 +266,30 @@ class TestServerCommand:
                 acknowledge_event_store_risk=False,
             )
             mock_supervisor.run.assert_called_once()
+
+    def test_server_multi_worker_defer_guard_init_failures(self):
+        """Guard init failures are deferred to workers, matching Supervisor."""
+        mock_domain = MagicMock()
+        mock_domain.init.side_effect = RuntimeError("db unavailable")
+
+        with patch("protean.cli.derive_domain", return_value=mock_domain):
+            with patch("protean.server.supervisor.Supervisor") as MockSupervisor:
+                mock_supervisor = MockSupervisor.return_value
+                mock_supervisor.exit_code = 0
+
+                args = ["server", "--domain", "publishing7.py", "--workers", "2"]
+                result = runner.invoke(app, args)
+
+                assert result.exit_code == 0
+                MockSupervisor.assert_called_once_with(
+                    domain_path="publishing7.py",
+                    num_workers=2,
+                    test_mode=False,
+                    debug=False,
+                    acknowledge_event_store_risk=False,
+                )
+                mock_supervisor.run.assert_called_once()
+                mock_domain.close.assert_not_called()
 
     def test_server_single_worker_event_store_domain_unaffected(self):
         """The guard never runs for the default single-worker path."""
