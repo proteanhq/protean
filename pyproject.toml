@@ -136,7 +136,7 @@ test = [
     "chardet>=3.0.2,<8",
     "diff-cover>=10.3.0",
     "mock==5.2.0",
-    "pytest-asyncio>=0.21.1",
+    "pytest-asyncio>=1.4.0",
     "pytest-mock==3.15.1",
     "pytest>=8.2.1,<10.0.0",
     "mypy>=1.11.0",
