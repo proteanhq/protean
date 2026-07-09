@@ -221,6 +221,10 @@ sides of CQRS:
 | Side effects | Expected (persist aggregates, raise events) | None — reads only |
 | Parameters | `start`, `correlate`, `end` for lifecycle control | None beyond the query class |
 
+Using `@handle` on a query-handler method is **not permitted** -- `domain.init()`
+raises `IncorrectUsageError` (naming `@read`), because a query handler must be a
+stateless read with no UnitOfWork. Use `@read` for every query-handler method.
+
 ---
 
 !!! tip "See also"
