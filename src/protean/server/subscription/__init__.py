@@ -218,6 +218,17 @@ def event_store_subscription_handlers(domain: "Domain") -> list[str]:
     is multi-worker-safe, so they are intentionally excluded. Keep the two lists
     in sync if a new handler group is ever added to the engine.
 
+    Command handlers are a deliberate over-approximation: the engine groups
+    them by stream category into one ``CommandDispatcher`` per group and
+    resolves that dispatcher's subscription type from only the first handler
+    registered in the group, but this helper resolves each command-handler
+    class independently. A handler sharing a stream category with an
+    event-store handler can therefore be reported here even if the group's
+    actual runtime subscription resolves to ``stream``. This is intentional:
+    the helper must never miss a real event-store subscription, and the
+    conservative direction for a safety guard is to occasionally over-block
+    rather than risk under-blocking.
+
     Args:
         domain: An initialized domain whose registry has been populated.
 

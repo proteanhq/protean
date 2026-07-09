@@ -278,7 +278,7 @@ def server(
                     print(
                         f"Error: {event_store_multi_worker_error(offenders, workers)}"
                     )
-                    raise typer.Exit(code=1)
+                    raise typer.Abort()
 
             supervisor = Supervisor(
                 domain_path=domain,

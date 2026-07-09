@@ -105,10 +105,14 @@ class Supervisor:
                 event-store subscriptions (unless
                 ``acknowledge_event_store_risk`` is True).
         """
-        # Defense-in-depth backstop for the programmatic entry point: the
-        # ``protean server`` CLI runs the same guard before ever constructing a
-        # Supervisor, so this only fires for direct ``Supervisor(...).run()``
-        # callers. Fail fast before spawning any worker.
+        # Defense-in-depth backstop: this runs on every multi-worker start,
+        # including ones already pre-checked by the ``protean server`` CLI (which
+        # short-circuits before ever constructing a Supervisor when it refuses).
+        # On that path this re-derives and re-inits the domain to reach the same
+        # "no offenders" conclusion again — redundant but cheap relative to
+        # spawning workers, and it's what makes direct ``Supervisor(...).run()``
+        # callers (who skip the CLI entirely) safe too. Fail fast before
+        # spawning any worker.
         if self.num_workers > 1 and not self.acknowledge_event_store_risk:
             self._guard_event_store_single_writer()
 
@@ -189,10 +193,11 @@ class Supervisor:
         try:
             domain = derive_domain(self.domain_path)
         except NoDomainException:
+            domain = None
+
+        if domain is None:
             # Derivation failure surfaces per-worker with a clearer message;
             # don't mask it here.
-            return
-        if domain is None:
             return
 
         domain.init()
