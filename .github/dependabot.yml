@@ -28,3 +28,13 @@ updates:
         patterns:
           - "*"
         applies-to: security-updates
+    ignore:
+      # Major bumps of these two need deliberate handling, not the weekly group.
+      # mypy majors change reveal_type() output and tighten checks (breaking the
+      # plugin tests and adding new errors); adopt them in a dedicated PR.
+      - dependency-name: "mypy"
+        update-types: ["version-update:semver-major"]
+      # The elasticsearch 9.x client migration is tracked separately (#1150); the
+      # adapter is pinned to the 8.x line and CI runs against ES 8.7.
+      - dependency-name: "elasticsearch"
+        update-types: ["version-update:semver-major"]
