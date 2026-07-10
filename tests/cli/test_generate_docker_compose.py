@@ -1,112 +1,55 @@
-import os
-import sys
-from pathlib import Path
+"""Regression tests pinning the removal of the ``generate`` command group.
 
-import pytest
+The ``generate docker-compose`` command was a no-op stub (it wrote no file and
+ended at a ``# FIXME``); it was removed outright in the 1.0 CLI surface
+consolidation (#1113). Real Dockerfile/compose generation is tracked separately
+under #397. These tests ensure the command does not silently reappear and that
+the ``protean.cli.generate`` module stays inert (a reserved namespace, exposing
+no commands and unregistered on the top-level app) until #397 revives it.
+"""
+
+import re
+
 from typer.testing import CliRunner
 
-from protean.cli import derive_domain
-from protean.cli.generate import app, docker_compose
-from tests.shared import change_working_directory_to
+from protean.cli import app
 
 runner = CliRunner()
 
-
-class TestGenerateDockerComposeNullGuard:
-    def test_aborts_when_derive_domain_returns_none(self):
-        """Test that docker_compose aborts when derive_domain returns None."""
-        from unittest.mock import patch
-
-        with patch("protean.cli.generate.derive_domain", return_value=None):
-            result = runner.invoke(app, ["docker-compose", "--domain", "dummy"])
-            assert result.exit_code == 1
-            assert "Aborted" in result.output
-
-    def test_aborts_cleanly_when_domain_cannot_be_loaded(self):
-        """A NoDomainException must abort cleanly, not crash.
-
-        Regression: the handler previously read ``exc.messages``, which does
-        not exist on NoDomainException, so this error path raised
-        AttributeError instead of reporting the real cause. The fix reads
-        ``exc.args[0]`` (matching every other CLI handler).
-        """
-        from unittest.mock import patch
-
-        from protean.exceptions import NoDomainException
-
-        with patch(
-            "protean.cli.generate.derive_domain",
-            side_effect=NoDomainException("Could not import 'dummy'."),
-        ):
-            result = runner.invoke(app, ["docker-compose", "--domain", "dummy"])
-            assert result.exit_code == 1
-            # With the bug, the except branch itself raised AttributeError.
-            assert not isinstance(result.exception, AttributeError)
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
-class TestGenerateDockerCompose:
-    @pytest.fixture(autouse=True)
-    def reset_path(self):
-        """Reset sys.path after every test run"""
-        original_path = sys.path[:]
-        cwd = Path.cwd()
+def test_generate_group_is_not_registered():
+    """`protean generate` is no longer a registered command."""
+    result = runner.invoke(app, ["generate"])
+    assert result.exit_code != 0
+    assert "No such command 'generate'" in _ANSI_RE.sub("", result.output)
 
-        yield
 
-        sys.path[:] = original_path
-        os.chdir(cwd)
+def test_generate_docker_compose_command_gone():
+    """`protean generate docker-compose` is no longer invocable."""
+    result = runner.invoke(app, ["generate", "docker-compose"])
+    assert result.exit_code != 0
+    assert "No such command 'generate'" in _ANSI_RE.sub("", result.output)
 
-    def test_cli_command(self):
-        """Test the CLI command to generate a docker compose file"""
-        change_working_directory_to("test8")
 
-        args = ["docker-compose", "--domain", "sqlite_domain.py"]
-        result = runner.invoke(app, args)
+def test_generate_absent_from_top_level_help():
+    """The `generate` group does not appear in `protean --help`."""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    output = _ANSI_RE.sub("", result.output)
+    # Match the command column entry, not the word "Generate" in other
+    # commands' descriptions (e.g. schema/docs "Generate ...").
+    assert not re.search(r"(?m)^\W*generate\b", output)
 
-        print(result.output)
-        assert result.exit_code == 0
 
-        # FIXME - This test is failing because the docker-compose.yml file is not being generated
-        # assert Path("docker-compose.yml").exists()
+def test_generate_module_exposes_no_commands():
+    """The reserved `generate` module stays inert — no Typer app, no stub.
 
-    class TestGenerateSqliteService:
-        @pytest.mark.sqlite
-        def test_correct_config_is_loaded(self):
-            """Test that the correct configuration is loaded for SQLite database"""
-            change_working_directory_to("test8")
+    Pins that the module remains an empty placeholder (no ``app`` and no
+    ``docker_compose``) so the removed no-op cannot creep back in unregistered.
+    """
+    import protean.cli.generate as generate_module
 
-            domain = derive_domain("sqlite_domain")
-            domain.init()
-            assert domain is not None
-            assert domain.name == "SQLite-Domain"
-            assert domain.providers["default"].conn_info["provider"] == "sqlite"
-            assert domain.providers["default"]._engine.url.database == ":memory:"
-            assert domain.providers["default"]._engine.url.drivername == "sqlite"
-
-        @pytest.mark.sqlite
-        def test_docker_compose_is_generated(self):
-            """Test that the docker-compose.yml file is generated for SQLite database"""
-            change_working_directory_to("test8")
-
-            docker_compose("sqlite_domain")
-
-            # FIXME - This test is failing because the docker-compose.yml file is not being generated
-            #   A few example tests have been provided as illustration.
-
-            # Assert that the docker-compose.yml file is generated in the same directory as the domain file
-            # assert Path("docker-compose.yml").exists()
-            # assert Path("docker-compose.yml").is_file()
-
-            # with open("docker-compose.yml", "r") as f:
-            #     content = f.read()
-
-            #     assert "version: '3.8'" in content
-            #     assert "services:" in content
-            #     assert "sqlite:" in content
-            #     assert "image: sqlite" in content
-            #     assert "container_name: sqlite" in content
-            #     assert "restart: always" in content
-            #     assert "volumes:" in content
-            #     assert "sqlite:/var/lib/sqlite" in content
-            #     assert "networks:" in content
-            #     assert "default:" in content
+    assert not hasattr(generate_module, "app")
+    assert not hasattr(generate_module, "docker_compose")

@@ -21,7 +21,6 @@ protean server [OPTIONS]
 |--------|-------------|---------|
 | `--domain` | Path to domain module | `.` (current directory) |
 | `--test-mode` | Run in test mode | `False` |
-| `--debug` | Enable debug logging | `False` |
 | `--workers` | Number of worker processes | `1` |
 | `--reload` | Auto-reload on Python source changes (development only) | `False` |
 | `--help` | Show help message | |
@@ -109,13 +108,14 @@ Within a module, it looks for:
 
 ### Debug Mode
 
-Enable verbose logging for troubleshooting:
+Enable verbose logging for troubleshooting with the global `--log-level DEBUG`
+flag:
 
 ```bash
-protean server --domain=my_domain --debug
+protean --log-level DEBUG server --domain=my_domain
 ```
 
-Debug mode logs:
+Debug logging includes:
 
 - Subscription registration details
 - Message processing events

@@ -33,10 +33,14 @@ load the domain.
 
 !!! note
 
-    **Developing Protean:** There are a few additional commands to help you if you
-    want to contribute to Protean.
+    **Developing Protean:** These commands are for contributors working on
+    Protean itself, not for end-user application projects. `protean test` and
+    `protean test test-adapter` drive the framework's own pytest suite and
+    hardcode framework-repo paths; their `--help` output is labelled
+    `[Framework development]`.
 
     | Command                        |                                    |
     | :----------------------------- | :----------------------------------|
     | [`protean docs`](project/docs.md)      | Documentation helpers              |
     | [`protean test`](../../community/contributing/testing.md) | Framework test runner |
+    | [`protean test test-adapter`](../../community/contributing/testing.md) | Database adapter conformance runner |

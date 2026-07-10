@@ -47,7 +47,7 @@ is processed by exactly one worker.
 protean server --domain=my_domain --workers 4
 
 # With debug logging
-protean server --domain=my_domain --workers 4 --debug
+protean --log-level DEBUG server --domain=my_domain --workers 4
 
 # With test mode (each worker processes available messages and exits)
 protean server --domain=my_domain --workers 4 --test-mode

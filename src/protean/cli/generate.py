@@ -1,50 +1,14 @@
-import typer
-from typing_extensions import Annotated
+"""Reserved namespace for Protean's CLI code generators.
 
-from protean.cli._helpers import handle_cli_exceptions
-from protean.exceptions import NoDomainException
-from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
+The original ``generate docker-compose`` command was a no-op stub — it wrote no
+file and ended at a ``# FIXME`` — so it was removed outright during the 1.0 CLI
+surface consolidation (#1113) rather than carried through a deprecation cycle.
+Real Dockerfile/compose generation is tracked under #397.
 
-logger = get_logger(__name__)
-
-app = typer.Typer(no_args_is_help=True)
-
-
+This module is intentionally kept as the future home of the ``generate`` command
+group, but exposes **no commands** and is **not** registered on the top-level
+``protean`` app while it is empty. Once a concrete generator lands (#397) it can
+be reintroduced here and wired into ``protean.cli`` without re-plumbing anything.
+Keeping the module inert (rather than deleting it) avoids churning the CLI
+package layout for a namespace that is coming back.
 """
-If we want to create a CLI app with one single command but
-still want it to be a command/subcommand, we need to add a callback (see below).
-
-This can be removed when we have more than one command/subcommand.
-
-https://typer.tiangolo.com/tutorial/commands/one-or-multiple/#one-command-and-one-callback
-"""
-
-
-@app.callback()
-def callback() -> None:
-    pass
-
-
-@app.command()
-@handle_cli_exceptions("generate docker-compose")
-def docker_compose(
-    domain: Annotated[str, typer.Option()] = ".",
-) -> None:
-    """Generate a `docker-compose.yml` from Domain config"""
-    try:
-        domain_instance = derive_domain(domain)
-    except NoDomainException as exc:
-        logger.error(f"Error loading Protean domain: {exc.args[0]}")
-        raise typer.Abort()
-
-    if domain_instance is None:
-        logger.error("Could not derive a Protean domain")
-        raise typer.Abort()
-
-    print(f"Generating docker-compose.yml for domain at {domain}")
-
-    with domain_instance.domain_context():
-        domain_instance.init()
-
-        # FIXME Generate docker-compose.yml from domain config

@@ -1,25 +1,28 @@
 """Tests for CLI global logging flags (--log-level, --log-format, --log-config).
 
 Verifies the Typer callback wires up logging correctly and that the
-deprecated --debug flag still works with a deprecation warning.
+removed --debug flag is rejected in favour of --log-level DEBUG.
 """
 
 import json
 import logging
 import os
+import re
 import sys
-import warnings
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
-from protean._deprecation import RemovedInProtean017Warning
 from protean.cli import app
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
+
+# Rich/Typer styles the offending option name in error panels, so strip ANSI
+# escape codes before substring assertions to stay robust when CI forces color.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 @pytest.fixture(autouse=True)
@@ -210,33 +213,9 @@ class TestLogConfigFlag:
         assert "Invalid JSON in log config" in result.output
 
 
-class TestDeprecatedDebugFlag:
-    def test_debug_flag_emits_deprecation_warning(self):
-        """--debug emits a DeprecationWarning mentioning the new flag."""
-        change_working_directory_to("test7")
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-
-            with patch("protean.cli.Engine") as MockEngine:
-                mock_engine = MockEngine.return_value
-                mock_engine.exit_code = 0
-
-                result = runner.invoke(
-                    app,
-                    ["server", "--domain", "publishing7.py", "--debug"],
-                )
-
-            assert result.exit_code == 0
-
-            deprecation_warnings = [
-                w for w in caught if issubclass(w.category, RemovedInProtean017Warning)
-            ]
-            assert len(deprecation_warnings) > 0, "Expected RemovedInProtean017Warning"
-            assert "--debug is deprecated" in str(deprecation_warnings[0].message)
-
-    def test_debug_flag_still_sets_debug_level(self):
-        """--debug still sets logging level to DEBUG for backward compat."""
+class TestRemovedDebugFlag:
+    def test_debug_flag_rejected(self):
+        """--debug was removed; --log-level DEBUG is the supported replacement."""
         change_working_directory_to("test7")
 
         with patch("protean.cli.Engine") as MockEngine:
@@ -248,8 +227,44 @@ class TestDeprecatedDebugFlag:
                 ["server", "--domain", "publishing7.py", "--debug"],
             )
 
+            assert result.exit_code == 2
+            assert "No such option: --debug" in _ANSI_RE.sub("", result.output)
+
+    def test_env_log_level_debug_replaces_debug_flag(self):
+        """PROTEAN_LOG_LEVEL=DEBUG drives the server bootstrap to DEBUG.
+
+        This is the documented multi-worker/reload replacement for the removed
+        ``--debug`` flag: the bootstrap must honor the env var rather than
+        forcing INFO, so the supervisor's log listener passes worker DEBUG
+        records through.
+        """
+        change_working_directory_to("test7")
+
+        with (
+            patch("protean.cli.Engine") as MockEngine,
+            patch.dict(os.environ, {"PROTEAN_LOG_LEVEL": "DEBUG"}),
+        ):
+            mock_engine = MockEngine.return_value
+            mock_engine.exit_code = 0
+
+            result = runner.invoke(app, ["server", "--domain", "publishing7.py"])
+
             assert result.exit_code == 0
             assert logging.getLogger().level == logging.DEBUG
+
+    def test_bootstrap_defaults_to_info_without_env(self, monkeypatch):
+        """Without PROTEAN_LOG_LEVEL, the server bootstrap stays at INFO."""
+        change_working_directory_to("test7")
+        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
+
+        with patch("protean.cli.Engine") as MockEngine:
+            mock_engine = MockEngine.return_value
+            mock_engine.exit_code = 0
+
+            result = runner.invoke(app, ["server", "--domain", "publishing7.py"])
+
+            assert result.exit_code == 0
+            assert logging.getLogger().level == logging.INFO
 
 
 class TestGlobalFlagsInHelpText:
@@ -261,9 +276,7 @@ class TestGlobalFlagsInHelpText:
 
     @staticmethod
     def _strip_ansi(text: str) -> str:
-        import re
-
-        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+        return _ANSI_RE.sub("", text)
 
     def test_help_shows_log_level(self):
         """protean --help shows --log-level in the output."""

@@ -26,7 +26,6 @@ protean observatory [OPTIONS]
 | `--host`    | Host to bind the server to. Loopback by default; see [Security](#security). | `127.0.0.1`           |
 | `--port`    | Port to bind the server to.          | `9000`                 |
 | `--title`   | Title shown in the dashboard.        | `Protean Observatory`  |
-| `--debug`   | Enable debug logging.                | `False`                |
 | `--help`    | Shows the help message and exits.    |                        |
 
 ## Starting the Observatory
@@ -68,18 +67,19 @@ protean observatory --domain auth --host 0.0.0.0 --port 8080
 protean observatory --domain auth --title "My App Observatory"
 ```
 
-### Debug mode
+### Verbose logging
 
-To enable verbose debug logging:
+To raise the log verbosity, pass the global `--log-level DEBUG` flag before the
+subcommand:
 
 ```shell
-protean observatory --domain auth --debug
+protean --log-level DEBUG observatory --domain auth
 ```
 
 You can combine options as needed:
 
 ```shell
-protean observatory --domain identity --domain catalogue --host 127.0.0.1 --port 3000 --title "ShopStream Observatory" --debug
+protean --log-level DEBUG observatory --domain identity --domain catalogue --host 127.0.0.1 --port 3000 --title "ShopStream Observatory"
 ```
 
 ## Endpoints

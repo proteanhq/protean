@@ -1367,3 +1367,49 @@ class TestTestAdapterCommand:
 
         captured = capsys.readouterr()
         assert "Conformance Report" in captured.out
+
+
+class TestFrameworkDevelopmentHelp:
+    """`protean test` and `test-adapter` advertise themselves as framework tooling.
+
+    Rich/Typer may inject ANSI escape codes, so strip them before matching.
+    """
+
+    @staticmethod
+    def _strip_ansi(text: str) -> str:
+        import re
+
+        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+    def test_test_help_marks_framework_development(self, cli_runner):
+        """`protean test --help` labels the command as framework development.
+
+        Anchored to the ``test`` callback's own description line (not just the
+        phrase appearing anywhere on the page) so it fails if that specific
+        docstring loses the marker — the ``test-adapter`` row carries the same
+        phrase and would otherwise mask the regression.
+        """
+        import re
+
+        result = cli_runner.invoke(app, ["test", "--help"])
+        assert result.exit_code == 0
+        output = self._strip_ansi(result.output)
+        assert re.search(r"\[Framework development\] Run tests with", output)
+
+    def test_test_adapter_short_help_marks_framework_development(self, cli_runner):
+        """The test-adapter subcommand carries the framework-development marker.
+
+        It surfaces in the ``protean test --help`` command list; invoking
+        ``test test-adapter --help`` directly would first trigger the ``test``
+        callback (which runs the suite), so the group listing is the seam.
+
+        The marker must appear on the ``test-adapter`` row itself — asserting
+        the two conditions independently is vacuous, since the ``test``
+        callback docstring also renders ``[Framework development]``.
+        """
+        import re
+
+        result = cli_runner.invoke(app, ["test", "--help"])
+        assert result.exit_code == 0
+        output = self._strip_ansi(result.output)
+        assert re.search(r"test-adapter\s+\[Framework development\]", output)

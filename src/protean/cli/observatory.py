@@ -1,6 +1,7 @@
 """CLI command for running the Protean Observatory observability server."""
 
-from typing import List, Optional
+import os
+from typing import List
 
 import click
 import typer
@@ -9,7 +10,6 @@ from typing_extensions import Annotated
 from protean.cli._helpers import (
     CTX_LOG_CONFIGURED,
     handle_cli_exceptions,
-    warn_debug_flag_deprecated,
 )
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
@@ -38,20 +38,18 @@ def observatory(
     title: Annotated[
         str, typer.Option(help="Observatory title")
     ] = "Protean Observatory",
-    debug: Annotated[Optional[bool], typer.Option(help="Enable debug logging")] = False,
 ) -> None:
     """Run the Observatory observability dashboard."""
     from protean.server.observatory import Observatory  # noqa: PLC0415
-
-    if debug:
-        warn_debug_flag_deprecated()
 
     # Check parent context for CLI-level logging configuration.
     # click.get_current_context may fail when called directly (not via CLI).
     ctx = click.get_current_context(silent=True)
     parent_obj = getattr(ctx, "obj", None) or {} if ctx else {}
     if not parent_obj.get(CTX_LOG_CONFIGURED):
-        configure_logging(level="DEBUG" if debug else "INFO")
+        # Honor PROTEAN_LOG_LEVEL so `PROTEAN_LOG_LEVEL=DEBUG protean
+        # observatory` replaces the removed `--debug` flag.
+        configure_logging(level=os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
 
     if not domain:
         print("Error: at least one --domain is required")
