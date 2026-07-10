@@ -19,10 +19,9 @@ from pydantic import Field as PydanticField
 from protean.exceptions import ValidationError as ProteanValidationError
 from protean.fields.base import (
     EMPTY_VALUES,
-    normalize_field_deprecated,
     normalize_field_renamed_from,
 )
-from protean.utils import generate_identity
+from protean.utils import _normalize_deprecated, generate_identity
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +131,7 @@ class FieldSpec:
             self._normalize_transitions(transitions) if transitions else None
         )
         self._auto_generated = False
-        self.deprecated = normalize_field_deprecated(deprecated)
+        self.deprecated = _normalize_deprecated(deprecated)
         self.renamed_from = normalize_field_renamed_from(renamed_from)
 
         # Warn if required=True with an explicit default
