@@ -2,8 +2,10 @@
 
 The ``generate docker-compose`` command was a no-op stub (it wrote no file and
 ended at a ``# FIXME``); it was removed outright in the 1.0 CLI surface
-consolidation. Real Dockerfile/compose generation is tracked separately under
-#397. These tests ensure the group does not silently reappear.
+consolidation (#1113). Real Dockerfile/compose generation is tracked separately
+under #397. These tests ensure the command does not silently reappear and that
+the ``protean.cli.generate`` module stays inert (a reserved namespace, exposing
+no commands and unregistered on the top-level app) until #397 revives it.
 """
 
 import re
@@ -39,3 +41,15 @@ def test_generate_absent_from_top_level_help():
     # Match the command column entry, not the word "Generate" in other
     # commands' descriptions (e.g. schema/docs "Generate ...").
     assert not re.search(r"(?m)^\W*generate\b", output)
+
+
+def test_generate_module_exposes_no_commands():
+    """The reserved `generate` module stays inert — no Typer app, no stub.
+
+    Pins that the module remains an empty placeholder (no ``app`` and no
+    ``docker_compose``) so the removed no-op cannot creep back in unregistered.
+    """
+    import protean.cli.generate as generate_module
+
+    assert not hasattr(generate_module, "app")
+    assert not hasattr(generate_module, "docker_compose")
