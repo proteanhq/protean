@@ -36,7 +36,7 @@ def List(  # pyright: ignore[reportRedeclaration]
         warn_deprecated(
             "The `pickled` argument on `List`",
             removal="1.0.0",
-            alternative="It has no effect and will be removed.",
+            alternative="It has no effect.",
         )
 
     # If content_type is a FieldSpec factory function (e.g. ``Integer`` rather
