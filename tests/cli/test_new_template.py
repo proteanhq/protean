@@ -5,6 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from protean.cli import app
+from tests.shared import isolated_filesystem
 
 runner = CliRunner()
 
@@ -14,7 +15,7 @@ class TestTemplateGeneration:
 
     def test_project_structure_is_created_correctly(self):
         """Test that all expected files and directories are created."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_project",
@@ -79,7 +80,7 @@ class TestTemplateGeneration:
 
     def test_activation_scripts_exist_and_are_readable(self):
         """Test that activation scripts exist and are readable."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_scripts",
@@ -126,7 +127,7 @@ class TestTemplateGeneration:
 
     def test_template_variable_substitution(self):
         """Test that template variables are correctly substituted."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "my_awesome_project",
@@ -183,7 +184,7 @@ class TestTemplateGeneration:
         ]
 
         for db_choice, expected_value in databases:
-            with runner.isolated_filesystem() as project_dir:
+            with isolated_filesystem() as project_dir:
                 args = [
                     "new",
                     f"test_db_{db_choice}",
@@ -224,7 +225,7 @@ class TestTemplateGeneration:
         ]
 
         for broker_choice, expected_value in brokers:
-            with runner.isolated_filesystem() as project_dir:
+            with isolated_filesystem() as project_dir:
                 # Use underscores in project name to ensure valid package name
                 project_name = f"test_broker_{broker_choice.replace('-', '_')}"
                 args = [
@@ -260,7 +261,7 @@ class TestTemplateGeneration:
 
     def test_copier_answers_file_is_created(self):
         """Test that .copier-answers.yml is created with correct answers."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_copier",
@@ -294,7 +295,7 @@ class TestTemplateGeneration:
 
     def test_example_code_generation(self):
         """Test that example code is generated when include_example is true."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_with_example",
@@ -328,7 +329,7 @@ class TestTemplateGeneration:
 
     def test_no_example_code_when_disabled(self):
         """Test that example code is not generated when include_example is false."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_no_example",
@@ -354,7 +355,7 @@ class TestTemplateGeneration:
 
     def test_github_workflow_generation(self):
         """Test that GitHub workflow files are generated."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_github",
@@ -384,7 +385,7 @@ class TestTemplateGeneration:
 
     def test_docker_compose_files_content(self):
         """Test that docker-compose files are generated with correct service definitions."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_docker",
@@ -422,7 +423,7 @@ class TestTemplateGeneration:
 
     def test_makefile_contains_expected_targets(self):
         """Test that Makefile contains expected targets."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_makefile",
@@ -449,7 +450,7 @@ class TestTemplateGeneration:
 
     def test_logging_configuration_file(self):
         """Test that logging.toml is created with proper configuration."""
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "test_logging",

@@ -25,6 +25,8 @@ from protean.server.observatory.routes.infrastructure import (
     sanitize_config,
 )
 
+from tests.server.observatory.conftest import route_paths
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -437,12 +439,12 @@ class TestInfrastructureStaticFiles:
 class TestInfrastructureRouteWiring:
     def test_infrastructure_routes_included(self, observatory):
         """Verify the infrastructure routes are in the Observatory app."""
-        routes = [r.path for r in observatory.app.routes]
+        routes = route_paths(observatory.app.routes)
         assert "/api/infrastructure/status" in routes
 
     def test_page_route_included(self, observatory):
         """Verify the page route exists."""
-        routes = [r.path for r in observatory.app.routes]
+        routes = route_paths(observatory.app.routes)
         assert "/infrastructure" in routes
 
 

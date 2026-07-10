@@ -5,6 +5,7 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from tests.shared import isolated_filesystem
 
 runner = CliRunner()
 
@@ -13,8 +14,8 @@ PROJECT_NAME = "foobar"
 
 class TestGenerator:
     def test_successful_project_generation(self):
-        with runner.isolated_filesystem() as current_dir:
-            with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as current_dir:
+            with isolated_filesystem() as project_dir:
                 args = [
                     "new",
                     PROJECT_NAME,
@@ -43,8 +44,8 @@ class TestGenerator:
 
     def test_output_directory_is_current_directory_if_not_specified(self):
         # Create a temporary directory
-        with runner.isolated_filesystem() as current_dir:
-            with runner.isolated_filesystem():
+        with isolated_filesystem() as current_dir:
+            with isolated_filesystem():
                 args = [
                     "new",
                     "foobar",
@@ -69,7 +70,7 @@ class TestGenerator:
 
     def test_pretend_project_generation(self):
         # Create a temporary directory
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "foobar",
@@ -97,7 +98,7 @@ class TestGenerator:
 
     def test_nonempty_output_folder_throws_error(self):
         # Create a temporary directory
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             # Create a non-empty directory
             os.makedirs(f"{project_dir}/{PROJECT_NAME}")
             Path(f"{project_dir}/{PROJECT_NAME}/file.txt").touch()
@@ -114,7 +115,7 @@ class TestGenerator:
 
     def test_nonempty_output_folder_can_be_overwritten_explicitly(self):
         # Create a temporary directory
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             # Create a non-empty directory
             os.makedirs(f"{project_dir}/{PROJECT_NAME}")
 
@@ -144,7 +145,7 @@ class TestGenerator:
 
     def test_project_generation_in_unwritable_directory(self):
         # Create a temporary directory
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             # Make the directory unwritable
             os.chmod(project_dir, 0o400)
 
@@ -175,14 +176,14 @@ class TestGenerator:
         ],
     )
     def test_project_generation_with_invalid_names(self, invalid_project_name):
-        with runner.isolated_filesystem():
+        with isolated_filesystem():
             args = ["new", invalid_project_name]
             result = runner.invoke(app, args)
             assert result.exit_code != 0
             assert result.exception.args[0] == "Invalid project name"
 
     def test_supplying_data(self):
-        with runner.isolated_filesystem() as project_dir:
+        with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 PROJECT_NAME,

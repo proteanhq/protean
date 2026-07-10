@@ -86,13 +86,18 @@ class TraceParent(BaseValueObject):
             if len(parts) != 4:
                 raise ValueError("Traceparent must have 4 parts separated by hyphens")
 
-            version, trace_id, parent_id, sampled_flag = parts
+            version, trace_id, parent_id, trace_flags = parts
 
             # Version should always be "00" for current W3C spec
             if version != "00":
                 raise ValueError(f"Unsupported traceparent version: {version}")
 
-            sampled = sampled_flag == "01"
+            # ``trace_flags`` is an 8-bit field; only the low bit (0x01) is the
+            # W3C "sampled" flag. Higher bits (e.g. 0x02 RANDOM_TRACE_ID, set by
+            # OpenTelemetry >= 1.43) must be masked off rather than compared as a
+            # literal string, otherwise a header like "03" (SAMPLED|RANDOM) would
+            # be misread as unsampled.
+            sampled = bool(int(trace_flags, 16) & 0x01)
             return cls(trace_id=trace_id, parent_id=parent_id, sampled=sampled)
         except Exception as e:
             logger.error(f"Error parsing traceparent: {e}")
