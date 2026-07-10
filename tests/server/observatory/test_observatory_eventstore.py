@@ -23,6 +23,8 @@ from protean.server.observatory.routes.eventstore import (
     enrich_with_event_store_stats,
 )
 
+from tests.server.observatory.conftest import route_paths
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -413,12 +415,12 @@ class TestEventStoreStaticFiles:
 class TestEventStoreRouteWiring:
     def test_eventstore_routes_included(self, observatory):
         """Verify the eventstore routes are in the Observatory app."""
-        routes = [r.path for r in observatory.app.routes]
+        routes = route_paths(observatory.app.routes)
         assert "/api/eventstore/streams" in routes
 
     def test_page_route_included(self, observatory):
         """Verify the page route exists."""
-        routes = [r.path for r in observatory.app.routes]
+        routes = route_paths(observatory.app.routes)
         assert "/eventstore" in routes
 
 

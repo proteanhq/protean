@@ -30,6 +30,8 @@ from protean.server.observatory.routes.handlers import (
     merge_subscription_status,
 )
 
+from tests.server.observatory.conftest import route_paths
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -1095,7 +1097,7 @@ class TestRouteWiring:
         page_router, api_router = create_all_routes([test_domain], templates)
 
         # API router should have /handlers routes
-        api_paths = [r.path for r in api_router.routes]
+        api_paths = route_paths(api_router.routes)
         assert "/handlers" in api_paths
         assert "/handlers/{name}" in api_paths
 

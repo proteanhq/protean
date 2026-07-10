@@ -17,6 +17,8 @@ from protean.server.observatory.routes.pages import (
     create_page_router,
 )
 
+from tests.server.observatory.conftest import route_paths
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -148,7 +150,7 @@ class TestCreateAllRoutes:
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
         _, api_router = create_all_routes([test_domain], templates)
-        api_paths = [r.path for r in api_router.routes]
+        api_paths = route_paths(api_router.routes)
         assert "/handlers" in api_paths
         assert "/handlers/{name}" in api_paths
 

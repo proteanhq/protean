@@ -1,7 +1,11 @@
 """Shared utilities for tests"""
 
+import contextlib
 import os
+import shutil
 import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from uuid import UUID
 
@@ -62,6 +66,25 @@ def assert_int_is_uuid(value: int) -> None:
         UUID(int=value)
     except ValueError:
         pytest.fail("Invalid UUID")
+
+
+@contextlib.contextmanager
+def isolated_filesystem() -> Iterator[str]:
+    """Create a temporary directory and chdir into it for the duration.
+
+    Replaces Click's ``CliRunner.isolated_filesystem`` context manager, which
+    Typer 0.26 dropped when its test runner stopped subclassing Click's
+    ``CliRunner``. The current working directory is restored and the temporary
+    directory removed on exit.
+    """
+    cwd = os.getcwd()
+    temp_dir = tempfile.mkdtemp()
+    os.chdir(temp_dir)
+    try:
+        yield temp_dir
+    finally:
+        os.chdir(cwd)
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def change_working_directory_to(path):

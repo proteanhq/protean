@@ -1,9 +1,30 @@
+from collections.abc import Sequence
+
 import pytest
+from fastapi.routing import iter_route_contexts
 from fastapi.testclient import TestClient
+from starlette.routing import BaseRoute
 
 from protean.server.observatory import Observatory
 
 from tests.shared import initialize_domain
+
+
+def route_paths(routes: Sequence[BaseRoute]) -> list[str]:
+    """Flatten a FastAPI/Starlette routes list to their effective paths.
+
+    Since FastAPI 0.139 (Starlette 1.x), ``include_router`` no longer copies
+    sub-router routes into the parent's ``.routes`` list; instead it appends
+    ``_IncludedRouter`` nodes that lazily resolve prefixes. FastAPI's own
+    ``iter_route_contexts`` is the supported way to walk those nodes and read
+    each route's effective ``.path`` (the same helper drives OpenAPI schema
+    generation).
+    """
+    return [
+        route_context.path
+        for route_context in iter_route_contexts(routes)
+        if route_context.path is not None
+    ]
 
 
 @pytest.fixture(autouse=True)

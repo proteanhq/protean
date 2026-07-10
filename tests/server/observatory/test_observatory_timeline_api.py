@@ -44,6 +44,8 @@ from protean.server.observatory.routes.timeline import (
     find_event_by_id,
 )
 
+from tests.server.observatory.conftest import route_paths
+
 # All tests in this module use standalone in-memory domains
 # so they don't need the observatory conftest's Redis-dependent test_domain.
 pytestmark = pytest.mark.no_test_domain
@@ -695,7 +697,7 @@ class TestTimelineStatsEndpoint:
 
 class TestTimelineRouteWiring:
     def test_timeline_routes_included(self, observatory):
-        routes = [r.path for r in observatory.app.routes]
+        routes = route_paths(observatory.app.routes)
         assert "/api/timeline/events" in routes
         assert "/api/timeline/events/{message_id}" in routes
         assert "/api/timeline/stats" in routes
@@ -1309,13 +1311,13 @@ class TestNewRouteWiring:
     def test_correlation_route_included(self, correlated_domain):
         domain, _, _, _ = correlated_domain
         obs = Observatory(domains=[domain])
-        routes = [r.path for r in obs.app.routes]
+        routes = route_paths(obs.app.routes)
         assert "/api/timeline/correlation/{correlation_id}" in routes
 
     def test_aggregate_route_included(self, correlated_domain):
         domain, _, _, _ = correlated_domain
         obs = Observatory(domains=[domain])
-        routes = [r.path for r in obs.app.routes]
+        routes = route_paths(obs.app.routes)
         assert "/api/timeline/aggregate/{stream_category}/{aggregate_id}" in routes
 
 

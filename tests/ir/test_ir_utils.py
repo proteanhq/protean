@@ -4,7 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from click.exceptions import Abort
+from typer import Abort
 
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.exceptions import NoDomainException

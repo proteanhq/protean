@@ -1300,8 +1300,8 @@ class TestTestAdapterCommand:
     Uses the real memory provider (fast, no external services).
     Exercises the full command path including real subprocess pytest runs.
 
-    When called directly (not via Typer CLI), ``typer.Exit`` raises
-    ``click.exceptions.Exit``, not ``SystemExit``.
+    When called directly (not via Typer CLI), ``typer.Exit`` is raised
+    directly, not ``SystemExit``.
     """
 
     def test_success_with_single_capability(self, capsys):
@@ -1315,9 +1315,7 @@ class TestTestAdapterCommand:
 
     def test_unknown_provider_exits(self, capsys):
         """Unknown provider name exits with code 1."""
-        from click.exceptions import Exit
-
-        with pytest.raises(Exit) as exc_info:
+        with pytest.raises(typer.Exit) as exc_info:
             cli_test_adapter(provider="nonexistent_provider_xyz")
         assert exc_info.value.exit_code == 1
 
@@ -1326,9 +1324,7 @@ class TestTestAdapterCommand:
 
     def test_invalid_capability_exits(self, capsys):
         """Unknown capability name exits with code 1."""
-        from click.exceptions import Exit
-
-        with pytest.raises(Exit) as exc_info:
+        with pytest.raises(typer.Exit) as exc_info:
             cli_test_adapter(provider="memory", capabilities="nonexistent_cap")
         assert exc_info.value.exit_code == 1
 
@@ -1337,9 +1333,7 @@ class TestTestAdapterCommand:
 
     def test_nonexistent_test_dir_exits(self, capsys):
         """Missing test directory exits with code 1."""
-        from click.exceptions import Exit
-
-        with pytest.raises(Exit) as exc_info:
+        with pytest.raises(typer.Exit) as exc_info:
             cli_test_adapter(provider="memory", test_dir="/nonexistent/path")
         assert exc_info.value.exit_code == 1
 
@@ -1348,10 +1342,8 @@ class TestTestAdapterCommand:
 
     def test_no_applicable_capabilities(self, capsys):
         """Requested capability not declared by provider exits cleanly."""
-        from click.exceptions import Exit
-
         # Memory doesn't have native_json
-        with pytest.raises(Exit) as exc_info:
+        with pytest.raises(typer.Exit) as exc_info:
             cli_test_adapter(provider="memory", capabilities="native_json")
         assert exc_info.value.exit_code == 0
 
