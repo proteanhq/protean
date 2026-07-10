@@ -27,6 +27,7 @@ from protean.fields.association import HasMany, HasOne, Reference
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
+from protean.exceptions import ConfigurationError
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
 from protean.ir.constants import VOLATILE_IR_KEYS
@@ -53,6 +54,34 @@ if TYPE_CHECKING:
         follow to ``cls.meta_`` and the reflection helpers at once. It has no
         runtime effect.
         """
+
+
+def validate_lint_suppressions(suppressions: Any) -> str | None:
+    """Return an error message if ``[lint].suppressions`` is malformed, else ``None``.
+
+    ``[lint].suppressions`` must be a table mapping diagnostic codes to
+    non-negative integer counts (``{CODE: N}``). Without this guard a
+    non-integer value crashes the IR build with a bare ``TypeError`` /
+    ``AttributeError`` at *every* entry point that builds the IR (``protean
+    check``, ``protean generate``, the pre-commit/materialize hooks, staleness
+    detection) — see :meth:`IRBuilder._apply_suppressions`. Callers surface the
+    returned message in whatever form suits them (a CLI error, a raised
+    :class:`ConfigurationError`).
+    """
+    if not isinstance(suppressions, dict):
+        return (
+            "[lint].suppressions must be a table of {code: count}, got "
+            f"{type(suppressions).__name__}."
+        )
+    for code, count in suppressions.items():
+        # ``bool`` is an ``int`` subclass — reject it explicitly so a stray
+        # ``CODE = true`` is not silently read as ``1``.
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            return (
+                f"[lint].suppressions.{code} must be a non-negative integer, "
+                f"got {count!r}."
+            )
+    return None
 
 
 class IRBuilder:
@@ -1470,15 +1499,20 @@ class IRBuilder:
         registry = self._domain._domain_registry
 
         # 1. FQN -> suppressed codes. ``getattr(..., ()) or ()`` is defensive:
-        #    element types that never gained the ``suppress_checks`` option
-        #    (EMAIL, UPCASTER, internal aggregates) have no ``meta_`` attribute,
-        #    so the stage must not assume its presence.
+        #    element types whose Root never declared the ``suppress_checks``
+        #    option (e.g. UPCASTER) carry no ``suppress_checks`` key on
+        #    ``meta_``, so the stage must not assume the option's presence — it
+        #    guards a missing *option*, not a missing ``meta_``. A bare string
+        #    is normalised to a single-code tuple so ``suppress_checks="CODE"``
+        #    is not iterated character-by-character.
         fqn_suppress: dict[str, set[str]] = {}
         for records in registry._elements.values():
             for record in records.values():
                 if record.internal:
                     continue
                 codes = getattr(record.cls.meta_, "suppress_checks", ()) or ()
+                if isinstance(codes, str):
+                    codes = (codes,)
                 if codes:
                     fqn_suppress[fqn(record.cls)] = set(codes)
 
@@ -1504,6 +1538,12 @@ class IRBuilder:
         suppressions: dict[str, int] = self._domain.config.get("lint", {}).get(
             "suppressions", {}
         )
+        # Fail fast on a malformed value rather than crashing mid-loop with a
+        # bare TypeError/AttributeError (this runs on every IR build path, not
+        # just ``protean check``).
+        error = validate_lint_suppressions(suppressions)
+        if error:
+            raise ConfigurationError(error)
         seen: dict[str, int] = {}
         kept: list[dict[str, Any]] = []
         for d in survivors:

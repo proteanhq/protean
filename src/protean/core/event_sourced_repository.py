@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 class BaseEventSourcedRepository(Element, OptionsMixin):
     element_type = DomainObjects.EVENT_SOURCED_REPOSITORY
 
-    _default_options: ClassVar[list[tuple[str, Any]]] = [("part_of", None)]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("part_of", None),
+        ("suppress_checks", ()),
+    ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEventSourcedRepository":
         # Prevent instantiation of `BaseEventSourcedRepository itself`

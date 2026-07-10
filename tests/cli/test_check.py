@@ -288,6 +288,10 @@ _LEVEL_ERROR_DOMAIN = "tests/support/domains/test32/domain32.py:domain"
 _LEVEL_INFO_DOMAIN = "tests/support/domains/test33/domain33.py:domain"
 # Domain with an invalid [lint].level value
 _LEVEL_INVALID_DOMAIN = "tests/support/domains/test34/domain34.py:domain"
+# Domain with a structural error AND level="error" (error floor invariant)
+_LEVEL_ERROR_WITH_ERROR_DOMAIN = "tests/support/domains/test35/domain35.py:domain"
+# Domain with a malformed [lint].suppressions value
+_BAD_SUPPRESSIONS_DOMAIN = "tests/support/domains/test36/domain36.py:domain"
 
 
 @pytest.mark.no_test_domain
@@ -316,11 +320,18 @@ class TestCheckLintLevelExitCode:
         assert result.exit_code == 0
 
     def test_level_error_still_gates_errors(self):
-        """[lint].level="error": a domain with a structural error still exits 1."""
-        result = runner.invoke(app, ["check", "-d", _ERR_DOMAIN])
-        # test26 has no [lint].level set, but confirm the error floor is the
-        # invariant across every level — errors always exit 1.
+        """[lint].level="error": a domain that sets the floor to "error" and
+        has a structural error still exits 1 — the error floor is invariant."""
+        result = runner.invoke(app, ["check", "-d", _LEVEL_ERROR_WITH_ERROR_DOMAIN])
         assert result.exit_code == 1
+
+    def test_malformed_suppressions_exits_with_clean_error(self):
+        """A non-integer [lint].suppressions count is a CLI error (exit 1),
+        not a traceback — validated before the IR build runs."""
+        result = runner.invoke(app, ["check", "-d", _BAD_SUPPRESSIONS_DOMAIN])
+        assert result.exit_code == 1
+        assert "[lint].suppressions" in result.output
+        assert "non-negative integer" in result.output
 
     def test_level_info_gates_info(self):
         """[lint].level="info": an info-only domain now exits 2."""

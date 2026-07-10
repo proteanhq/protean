@@ -1438,6 +1438,31 @@ class TestIRDiagnosticsEmailDeprecated:
         email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
         assert email_diags == []
 
+    def test_email_accepts_and_honours_suppress_checks(self) -> None:
+        """The email Root carries ``suppress_checks`` (the email FQN is the
+        ``element`` target of DEPRECATED_EMAIL), so the option is accepted and
+        silences the finding for that element."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            @self.domain.email(suppress_checks=["DEPRECATED_EMAIL"])
+            class WelcomeMail:
+                pass
+
+            @self.domain.email
+            class GoodbyeMail:
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
+        messages = " ".join(d["message"] for d in email_diags)
+        assert "WelcomeMail" not in messages  # suppressed for this element
+        assert "GoodbyeMail" in messages  # untouched
+
     def test_internal_email_yields_no_diagnostic(self) -> None:
         """Internal/auto-generated email records are skipped: the deprecation
         diagnostic targets user code, not platform-internal registrations."""
