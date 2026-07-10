@@ -575,6 +575,13 @@ class IRBuilder:
         if deprecated is not None:
             entry["deprecated"] = deprecated
 
+        # Sparse: only present when the command was declared with a deprecated
+        # event-only option (``published``/``is_fact_event``). ``command_factory``
+        # drops the option but records it here so ``protean check`` can flag it.
+        deprecated_options = getattr(cls, "_deprecated_options", None)
+        if deprecated_options:
+            entry["deprecated_options"] = sorted(deprecated_options)
+
         doc = (cls.__doc__ or "").strip()
         if doc:
             entry["description"] = doc
@@ -1873,6 +1880,25 @@ class IRBuilder:
                         "message": f_msg,
                     }
                 )
+
+        # Option-level deprecation (currently only commands passed the event-only
+        # ``published`` option). Warning-level: unlike a still-functional
+        # deprecated element, the option is inert today and becomes a hard
+        # ``IncorrectUsageError`` at v1.0.0.
+        for opt in element.get("deprecated_options", []):
+            self._diagnostics.append(
+                {
+                    "code": "DEPRECATED_OPTION",
+                    "element": fqn_val,
+                    "level": "warning",
+                    "message": (
+                        f"The `{opt}` option on `{name}` is deprecated and "
+                        f"scheduled for removal in v1.0.0; commands are internal "
+                        f"to the bounded context and carry no published-language "
+                        f"or fact-event semantics, so it has no effect."
+                    ),
+                }
+            )
 
     def _diagnose_deprecated_options(self, ir: dict[str, Any]) -> None:
         """DEPRECATED_OPTION: a deprecated decorator/register option was used.

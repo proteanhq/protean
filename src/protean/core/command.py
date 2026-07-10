@@ -3,6 +3,7 @@ from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
+from protean._deprecation import warn_deprecated
 from protean.fields.resolved import convert_pydantic_errors
 from protean.exceptions import (
     ConfigurationError,
@@ -22,6 +23,15 @@ from protean.utils.eventing import (
     Metadata,
 )
 from protean.utils.globals import g
+
+
+# The ``published`` option a command silently inherited from ``BaseMessageType``
+# but never acted on: commands are internal and take no part in the published
+# language. Deprecated in 0.17 (warn + ``protean check`` diagnostic), removed at
+# 1.0 where ``command_factory`` will raise ``IncorrectUsageError`` naming the
+# option instead of dropping it. (``is_fact_event`` is framework-internal and
+# rejected outright by ``derive_element_class``; it is not deprecated here.)
+_DEPRECATED_COMMAND_OPTIONS: tuple[str, ...] = ("published",)
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +58,20 @@ class BaseCommand(BaseMessageType):
     """
 
     element_type: ClassVar[str] = DomainObjects.COMMAND
+
+    # Commands are internal to the bounded context: unlike events, they never
+    # participate in the published language. Drop ``published`` from the
+    # inherited option set so it is not a valid command option. Filter the parent
+    # list rather than re-transcribing it, so future additions to
+    # ``BaseMessageType`` are inherited automatically. See ``command_factory`` for
+    # the deprecation window that lets existing (no-op) usage warn before it
+    # raises. (``is_fact_event`` stays in the inherited options and remains a
+    # framework-internal option, so passing it is rejected, not deprecated.)
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        (name, default)
+        for (name, default) in BaseMessageType._default_options
+        if name not in _DEPRECATED_COMMAND_OPTIONS
+    ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseCommand":
         if cls is BaseCommand:
@@ -233,7 +257,36 @@ def command_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]
     # Always route to Pydantic base
     base_cls = BaseCommand
 
+    # Warn-and-drop options that commands used to inherit but never honoured.
+    # This MUST run before ``derive_element_class``: once these options are no
+    # longer in ``BaseCommand._default_options``, that call would raise
+    # ``ConfigurationError("Unknown option(s) ...")`` and skip the deprecation
+    # window. Both the ``@domain.command`` decorator and ``domain.register()``
+    # funnel through here, so one interception covers every entry point.
+    deprecated_used: list[str] = []
+    for opt in _DEPRECATED_COMMAND_OPTIONS:
+        if opt in opts:
+            warn_deprecated(
+                f"The `{opt}` option on a command",
+                removal="1.0.0",
+                alternative=(
+                    "Commands are internal to the bounded context; only events "
+                    "are published. It has no effect."
+                ),
+            )
+            opts.pop(opt)
+            deprecated_used.append(opt)
+
     element_cls = derive_element_class(element_cls, base_cls, **opts)
+
+    # Record the dropped options on the class so ``protean check`` can surface
+    # them as a ``DEPRECATED_OPTION`` diagnostic. The runtime warning above fires
+    # transiently at registration and leaves no residue on ``meta_``; this
+    # attribute is the only durable trace the IR builder can read at check time.
+    # Always assign (even when empty) so this call's outcome shadows any stale
+    # value left by an earlier in-place registration of the same class, or one
+    # inherited from a base command class.
+    element_cls._deprecated_options = tuple(deprecated_used)  # type: ignore[attr-defined]
 
     # `derive_element_class` returns a subclass of ``base_cls`` (here
     # ``BaseCommand``); narrow to expose ``meta_`` to the type checkers. The
