@@ -1437,3 +1437,23 @@ class TestIRDiagnosticsEmailDeprecated:
 
         email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
         assert email_diags == []
+
+    def test_internal_email_yields_no_diagnostic(self) -> None:
+        """Internal/auto-generated email records are skipped: the deprecation
+        diagnostic targets user code, not platform-internal registrations."""
+        import warnings
+
+        from protean.core.email import BaseEmail
+
+        class InternalMail(BaseEmail):
+            pass
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.domain.register(InternalMail, internal=True)
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
+        assert email_diags == []
