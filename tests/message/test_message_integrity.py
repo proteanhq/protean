@@ -8,8 +8,14 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders
-from protean.utils.eventing import Metadata, DomainMeta, EventStoreMeta
+from protean.utils.eventing import (
+    DomainMeta,
+    EventStoreMeta,
+    Message,
+    MessageEnvelope,
+    MessageHeaders,
+    Metadata,
+)
 
 
 class Register(BaseCommand):

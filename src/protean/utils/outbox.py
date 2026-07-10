@@ -1,7 +1,7 @@
 import traceback
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from pydantic import BeforeValidator, Field
 
@@ -76,7 +76,7 @@ class Outbox(BaseAggregate):
     type: Annotated[str, Field(max_length=255)]
     data: dict[str, Any]
     metadata_: Metadata
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     published_at: datetime | None = None
     retry_count: int = 0
 
@@ -129,10 +129,10 @@ class Outbox(BaseAggregate):
         data: dict[str, Any],
         metadata: Metadata,
         priority: int = 0,
-        correlation_id: Optional[str] = None,
-        causation_id: Optional[str] = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
         max_retries: int = 3,
-        sequence_number: Optional[int] = None,
+        sequence_number: int | None = None,
         target_broker: str = DEFAULT_TARGET_BROKER,
     ) -> "Outbox":
         """Create a new outbox message ready for publishing.
@@ -176,7 +176,7 @@ class Outbox(BaseAggregate):
 
     def start_processing(
         self, worker_id: str, lock_duration_minutes: int = 5
-    ) -> Tuple[bool, ProcessingResult]:
+    ) -> tuple[bool, ProcessingResult]:
         """Attempt to acquire lock and start processing the message.
 
         Args:
@@ -199,24 +199,22 @@ class Outbox(BaseAggregate):
 
         # Check if enough time has passed for retry
         if self.next_retry_at:
-            current_time = datetime.now(timezone.utc)
+            current_time = datetime.now(UTC)
             if current_time < ensure_utc_aware(self.next_retry_at):
                 return False, ProcessingResult.RETRY_NOT_DUE
 
         # Acquire lock and mark as processing
         self.status = OutboxStatus.PROCESSING.value
         self.locked_by = worker_id
-        self.locked_until = datetime.now(timezone.utc) + timedelta(
-            minutes=lock_duration_minutes
-        )
-        self.last_processed_at = datetime.now(timezone.utc)
+        self.locked_until = datetime.now(UTC) + timedelta(minutes=lock_duration_minutes)
+        self.last_processed_at = datetime.now(UTC)
         return True, ProcessingResult.SUCCESS
 
     def mark_published(self) -> None:
         """Mark message as successfully published."""
         self.status = OutboxStatus.PUBLISHED.value
-        self.published_at = datetime.now(timezone.utc)
-        self.last_processed_at = datetime.now(timezone.utc)
+        self.published_at = datetime.now(UTC)
+        self.last_processed_at = datetime.now(UTC)
         self.last_error = None
         # Clear lock
         self._clear_lock()
@@ -225,7 +223,7 @@ class Outbox(BaseAggregate):
         self,
         error: Exception,
         base_delay_seconds: int = 60,
-        max_retries: Optional[int] = None,
+        max_retries: int | None = None,
     ) -> None:
         """Mark processing as failed and schedule retry if applicable.
 
@@ -235,11 +233,11 @@ class Outbox(BaseAggregate):
             max_retries: Override max retries (uses self.max_retries if None)
         """
         self.retry_count += 1
-        self.last_processed_at = datetime.now(timezone.utc)
+        self.last_processed_at = datetime.now(UTC)
         self.last_error = {
             "message": str(error),
             "traceback": traceback.format_exc(),
-            "failed_at": datetime.now(timezone.utc).isoformat(),
+            "failed_at": datetime.now(UTC).isoformat(),
             "retry_count": self.retry_count,
         }
 
@@ -269,7 +267,7 @@ class Outbox(BaseAggregate):
         self.status = OutboxStatus.ABANDONED.value
         self.last_error = {
             "message": reason,
-            "abandoned_at": datetime.now(timezone.utc).isoformat(),
+            "abandoned_at": datetime.now(UTC).isoformat(),
             "retry_count": self.retry_count,
             "reason": "Manually abandoned",
         }
@@ -312,7 +310,7 @@ class Outbox(BaseAggregate):
 
         # Check if enough time has passed for retry
         if self.next_retry_at:
-            current_time = datetime.now(timezone.utc)
+            current_time = datetime.now(UTC)
             if current_time < ensure_utc_aware(self.next_retry_at):
                 return False
 
@@ -323,7 +321,7 @@ class Outbox(BaseAggregate):
         """Check if message is currently locked for processing."""
         return bool(
             self.locked_until
-            and datetime.now(timezone.utc) < ensure_utc_aware(self.locked_until)
+            and datetime.now(UTC) < ensure_utc_aware(self.locked_until)
             and self.status == OutboxStatus.PROCESSING.value
         )
 
@@ -345,7 +343,7 @@ class Outbox(BaseAggregate):
             max_backoff_seconds: Maximum allowable delay in seconds to cap the backoff.
         """
         delay = min(base_delay_seconds * (2**self.retry_count), max_backoff_seconds)
-        self.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
+        self.next_retry_at = datetime.now(UTC) + timedelta(seconds=delay)
 
 
 # Recommended indexes for the outbox table. Applied when the framework
@@ -380,7 +378,7 @@ class OutboxRepository(BaseRepository):
     """Repository for querying outbox messages with specialized filtering methods."""
 
     def _apply_limit_and_execute(
-        self, query: "QuerySet", limit: Optional[int]
+        self, query: "QuerySet", limit: int | None
     ) -> list[Outbox]:
         """Helper method to apply limit and handle zero limit case."""
         if limit is not None and limit == 0:
@@ -439,9 +437,9 @@ class OutboxRepository(BaseRepository):
 
     def find_unprocessed(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         target_broker: str | None = None,
-    ) -> List[Outbox]:
+    ) -> list[Outbox]:
         """Find messages that are ready for processing.
 
         Returns messages whose lock is free (``locked_until`` null or in the
@@ -474,7 +472,7 @@ class OutboxRepository(BaseRepository):
         if limit is not None and limit == 0:
             return []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         query = self._dao.query.filter(self._eligibility_criteria(now, target_broker))
 
         # Order by priority (higher first)
@@ -488,7 +486,7 @@ class OutboxRepository(BaseRepository):
         limit: int,
         target_broker: str | None = None,
         lock_duration_minutes: int = DEFAULT_LOCK_DURATION_MINUTES,
-    ) -> List[Outbox]:
+    ) -> list[Outbox]:
         """Atomically select and claim up to ``limit`` ready messages.
 
         This is the production claim path. It selects eligible messages and
@@ -518,7 +516,7 @@ class OutboxRepository(BaseRepository):
         if limit <= 0:
             return []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         return cast(
             list[Outbox],
@@ -535,7 +533,7 @@ class OutboxRepository(BaseRepository):
             ),
         )
 
-    def find_failed(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
+    def find_failed(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that have failed processing.
 
         Args:
@@ -549,7 +547,7 @@ class OutboxRepository(BaseRepository):
 
         return self._apply_limit_and_execute(query, limit)
 
-    def find_abandoned(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
+    def find_abandoned(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that have been abandoned.
 
         Args:
@@ -563,7 +561,7 @@ class OutboxRepository(BaseRepository):
 
         return self._apply_limit_and_execute(query, limit)
 
-    def find_published(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
+    def find_published(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that have been successfully published.
 
         Args:
@@ -577,7 +575,7 @@ class OutboxRepository(BaseRepository):
 
         return self._apply_limit_and_execute(query, limit)
 
-    def find_processing(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
+    def find_processing(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that are currently being processed.
 
         Args:
@@ -592,8 +590,8 @@ class OutboxRepository(BaseRepository):
         return self._apply_limit_and_execute(query, limit)
 
     def find_by_stream(
-        self, stream_name: str, limit: Optional[int] = PAGE_SIZE
-    ) -> List[Outbox]:
+        self, stream_name: str, limit: int | None = PAGE_SIZE
+    ) -> list[Outbox]:
         """Find messages for a specific stream.
 
         Args:
@@ -610,7 +608,7 @@ class OutboxRepository(BaseRepository):
 
     def find_by_message_id(
         self, message_id: str, target_broker: str | None = None
-    ) -> Optional[Outbox]:
+    ) -> Outbox | None:
         """Find a single outbox message by its message ID.
 
         In multi-broker mode a published event is dual-written once per target
@@ -649,8 +647,8 @@ class OutboxRepository(BaseRepository):
         )
 
     def find_by_message_type(
-        self, message_type: str, limit: Optional[int] = PAGE_SIZE
-    ) -> List[Outbox]:
+        self, message_type: str, limit: int | None = PAGE_SIZE
+    ) -> list[Outbox]:
         """Find messages of a specific type.
 
         Args:
@@ -666,8 +664,8 @@ class OutboxRepository(BaseRepository):
         return self._apply_limit_and_execute(query, limit)
 
     def find_by_priority(
-        self, min_priority: int = 1, limit: Optional[int] = PAGE_SIZE
-    ) -> List[Outbox]:
+        self, min_priority: int = 1, limit: int | None = PAGE_SIZE
+    ) -> list[Outbox]:
         """Find messages with priority greater than or equal to the specified value.
 
         Args:
@@ -683,8 +681,8 @@ class OutboxRepository(BaseRepository):
         return self._apply_limit_and_execute(query, limit)
 
     def find_by_correlation_id(
-        self, correlation_id: str, limit: Optional[int] = PAGE_SIZE
-    ) -> List[Outbox]:
+        self, correlation_id: str, limit: int | None = PAGE_SIZE
+    ) -> list[Outbox]:
         """Find messages with a specific correlation ID.
 
         Args:
@@ -700,8 +698,8 @@ class OutboxRepository(BaseRepository):
         return self._apply_limit_and_execute(query, limit)
 
     def find_by_causation_id(
-        self, causation_id: str, limit: Optional[int] = PAGE_SIZE
-    ) -> List[Outbox]:
+        self, causation_id: str, limit: int | None = PAGE_SIZE
+    ) -> list[Outbox]:
         """Find messages caused by a specific parent message.
 
         Args:
@@ -716,7 +714,7 @@ class OutboxRepository(BaseRepository):
 
         return self._apply_limit_and_execute(query, limit)
 
-    def find_stale_processing(self, stale_threshold_minutes: int = 10) -> List[Outbox]:
+    def find_stale_processing(self, stale_threshold_minutes: int = 10) -> list[Outbox]:
         """Find messages that have been processing for too long (stale locks).
 
         Args:
@@ -725,9 +723,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages that are stale
         """
-        threshold_time = datetime.now(timezone.utc) - timedelta(
-            minutes=stale_threshold_minutes
-        )
+        threshold_time = datetime.now(UTC) - timedelta(minutes=stale_threshold_minutes)
 
         query = self._dao.query.filter(
             status=OutboxStatus.PROCESSING.value, last_processed_at__lt=threshold_time
@@ -737,8 +733,8 @@ class OutboxRepository(BaseRepository):
         return cast(list[Outbox], query.all().items)
 
     def find_recent(
-        self, hours: int = 24, limit: Optional[int] = PAGE_SIZE
-    ) -> List[Outbox]:
+        self, hours: int = 24, limit: int | None = PAGE_SIZE
+    ) -> list[Outbox]:
         """Find messages created within the specified number of hours.
 
         Args:
@@ -748,14 +744,14 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of recent Outbox messages
         """
-        threshold_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        threshold_time = datetime.now(UTC) - timedelta(hours=hours)
 
         query = self._dao.query.filter(created_at__gte=threshold_time)
         query = query.order_by("-created_at")
 
         return self._apply_limit_and_execute(query, limit)
 
-    def find_retry_ready(self, limit: Optional[int] = PAGE_SIZE) -> List[Outbox]:
+    def find_retry_ready(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find failed messages that are ready for retry.
 
         Args:
@@ -764,7 +760,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages ready for retry
         """
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
 
         query = self._dao.query.filter(
             status=OutboxStatus.FAILED.value, next_retry_at__lte=current_time
@@ -798,7 +794,7 @@ class OutboxRepository(BaseRepository):
         )
 
     def cleanup_old_published(
-        self, older_than_hours: int = 168, batch_size: Optional[int] = None
+        self, older_than_hours: int = 168, batch_size: int | None = None
     ) -> int:
         """Clean up published messages older than specified hours.
 
@@ -810,7 +806,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             Number of messages deleted
         """
-        threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
+        threshold_time = datetime.now(UTC) - timedelta(hours=older_than_hours)
 
         return self._delete_in_batches(
             Q(status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time),
@@ -818,7 +814,7 @@ class OutboxRepository(BaseRepository):
         )
 
     def cleanup_old_abandoned(
-        self, older_than_hours: int = 720, batch_size: Optional[int] = None
+        self, older_than_hours: int = 720, batch_size: int | None = None
     ) -> int:
         """Clean up abandoned messages older than specified hours.
 
@@ -833,7 +829,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             Number of messages deleted
         """
-        threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
+        threshold_time = datetime.now(UTC) - timedelta(hours=older_than_hours)
 
         return self._delete_in_batches(
             Q(
@@ -847,7 +843,7 @@ class OutboxRepository(BaseRepository):
         self,
         published_retention_hours: int = 168,
         abandoned_retention_hours: int = 720,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
     ) -> dict[str, int]:
         """Clean up old published and abandoned messages based on retention periods.
 

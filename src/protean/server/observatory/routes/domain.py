@@ -56,7 +56,7 @@ def _build_event_to_agg_index(clusters: dict[str, Any]) -> dict[str, str]:
     """
     event_to_agg: dict[str, str] = {}
     for agg_fqn, cluster in clusters.items():
-        for _evt_fqn, evt in cluster.get("events", {}).items():
+        for evt in cluster.get("events", {}).values():
             type_key = evt.get("__type__", "")
             if type_key:
                 event_to_agg[type_key] = agg_fqn
@@ -156,7 +156,7 @@ def _build_links(
     # Cross-aggregate event handlers: handler belongs to agg B but
     # listens to events from agg A (via source_stream or handler map)
     for agg_fqn, cluster in clusters.items():
-        for _eh_fqn, eh in cluster.get("event_handlers", {}).items():
+        for eh in cluster.get("event_handlers", {}).values():
             for type_key in eh.get("handlers", {}):
                 source_agg = event_to_agg.get(type_key)
                 if source_agg and source_agg != agg_fqn:
@@ -272,7 +272,7 @@ def _build_flow_graph(ir: dict[str, Any]) -> dict[str, Any]:
     for pm_fqn, pm in flows.get("process_managers", {}).items():
         _add_node(pm_fqn, pm.get("name", short_name(pm_fqn)), "process_manager")
 
-    for _proj_fqn, proj_group in projections.items():
+    for proj_group in projections.values():
         for projector_fqn, projector in proj_group.get("projectors", {}).items():
             _add_node(
                 projector_fqn,
@@ -334,7 +334,7 @@ def _build_flow_graph(ir: dict[str, Any]) -> dict[str, Any]:
                 )
 
     # Projector edges
-    for _proj_fqn, proj_group in projections.items():
+    for proj_group in projections.values():
         for projector_fqn, projector in proj_group.get("projectors", {}).items():
             for type_key in projector.get("handlers", {}):
                 evt_fqn = evt_type_to_fqn.get(type_key)
@@ -414,7 +414,13 @@ def _build_pm_graphs(
             if agg_fqn:
                 agg_set.add(agg_fqn)
 
-        def _add_state(sid: str, label: str, state_type: str = "intermediate") -> None:
+        def _add_state(
+            sid: str,
+            label: str,
+            state_type: str = "intermediate",
+            state_ids: set[str] = state_ids,
+            states: list[dict[str, Any]] = states,
+        ) -> None:
             if sid not in state_ids:
                 state_ids.add(sid)
                 states.append({"id": sid, "label": label, "type": state_type})
@@ -454,20 +460,20 @@ def _build_pm_graphs(
                 _state_label_from_event(type_key),
                 "intermediate",
             )
-            for prev in prev_states:
-                transitions.append(
-                    _make_transition(prev, target_id, type_key, handler_info)
-                )
+            transitions.extend(
+                _make_transition(prev, target_id, type_key, handler_info)
+                for prev in prev_states
+            )
             prev_states = [target_id]
 
         # Build transitions for end events
         if end_events:
             _add_state("completed", "Completed", "end")
             for type_key, handler_info in end_events:
-                for src in prev_states:
-                    transitions.append(
-                        _make_transition(src, "completed", type_key, handler_info)
-                    )
+                transitions.extend(
+                    _make_transition(src, "completed", type_key, handler_info)
+                    for src in prev_states
+                )
 
         pm_graphs.append(
             {
@@ -550,7 +556,7 @@ def _build_stats(ir: dict[str, Any]) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
-def create_domain_router(domains: list["Domain"]) -> APIRouter:
+def create_domain_router(domains: list[Domain]) -> APIRouter:
     """Create the /domain API router.
 
     The domain IR is computed once at startup and cached — domain

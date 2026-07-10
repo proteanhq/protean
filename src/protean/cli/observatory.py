@@ -1,11 +1,10 @@
 """CLI command for running the Protean Observatory observability server."""
 
 import os
-from typing import List
+from typing import Annotated
 
 import click
 import typer
-from typing_extensions import Annotated
 
 from protean.cli._helpers import (
     CTX_LOG_CONFIGURED,
@@ -21,7 +20,7 @@ logger = get_logger(__name__)
 @handle_cli_exceptions("observatory")
 def observatory(
     domain: Annotated[
-        List[str],
+        list[str],
         typer.Option(help="Domain module path(s) to monitor"),
     ],
     host: Annotated[
@@ -63,7 +62,7 @@ def observatory(
             msg = f"Error loading Protean domain '{domain_path}': {exc.args[0]}"
             print(msg)
             logger.error(msg)
-            raise typer.Abort()
+            raise typer.Abort() from exc
 
         assert derived is not None
         derived.init()

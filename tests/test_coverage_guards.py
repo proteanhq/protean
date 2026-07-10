@@ -176,12 +176,10 @@ class TestResolvePythonType:
 
     def test_unwraps_optional_type(self):
         """_resolve_python_type unwraps Optional[str] to str."""
-        from typing import Optional
-
         from protean.adapters.repository.sqlalchemy import _resolve_python_type
 
         shim = MagicMock()
-        shim._python_type = Optional[str]
+        shim._python_type = str | None
         result = _resolve_python_type(shim)
         assert result is str
 
@@ -416,14 +414,13 @@ class TestSqlalchemyContentTypeGuard:
     @pytest.mark.postgresql
     def test_list_of_primitive_type_uses_elif_branch(self, test_domain):
         """list[str] field on PostgreSQL exercises the content_type isinstance(type) branch."""
-        from typing import List
 
         from protean.core.aggregate import BaseAggregate
         from protean.fields import String
 
         class TaggedItem(BaseAggregate):
             name: String(max_length=50)
-            tags: List[str]
+            tags: list[str]
 
         test_domain.register(TaggedItem)
         test_domain.init(traverse=False)
@@ -440,14 +437,13 @@ class TestSqlalchemyContentTypeGuard:
     @pytest.mark.postgresql
     def test_list_of_int_type_uses_elif_branch(self, test_domain):
         """list[int] field on PostgreSQL exercises the content_type isinstance(type) branch."""
-        from typing import List
 
         from protean.core.aggregate import BaseAggregate
         from protean.fields import String
 
         class ScoreBoard(BaseAggregate):
             player: String(max_length=50)
-            scores: List[int]
+            scores: list[int]
 
         test_domain.register(ScoreBoard)
         test_domain.init(traverse=False)
@@ -781,11 +777,13 @@ class TestRepositoryMissingDefault:
             }
         }
 
-        with domain.domain_context():
-            with pytest.raises(
+        with (
+            domain.domain_context(),
+            pytest.raises(
                 ConfigurationError, match="You must define a 'default' provider"
-            ):
-                domain.providers._initialize()
+            ),
+        ):
+            domain.providers._initialize()
 
 
 class TestEmailSendEmail:

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import asdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -278,7 +278,7 @@ class TestTreeBuilderDeltaMs:
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
 
-        base_time = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
         group = _make_timed_group(base_time)
 
         tree = _build_causation_tree_from_group(store, group)
@@ -375,7 +375,7 @@ class TestTreeBuilderTraceEnrichment:
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
 
-        base_time = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
         group = _make_timed_group(base_time)
 
         traces = {

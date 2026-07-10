@@ -8,9 +8,9 @@ from protean.utils.projection_rebuilder import RebuildResult
 from .elements import (
     Balances,
     Registered,
+    Transacted,
     Transaction,
     TransactionProjector,
-    Transacted,
     User,
 )
 

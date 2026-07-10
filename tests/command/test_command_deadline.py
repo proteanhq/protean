@@ -1,6 +1,6 @@
 """Tests for command timeout/deadline propagation and expiry rejection."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -8,12 +8,12 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.exceptions import CommandExpiredError, IncorrectUsageError
 from protean.domain.command_processor import (
     coerce_timeout,
     raise_if_expired,
     resolve_deadline,
 )
+from protean.exceptions import CommandExpiredError, IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils.eventing import Message, MessageHeaders
 from protean.utils.globals import current_domain, g
@@ -85,32 +85,28 @@ class TestIsExpired:
         assert MessageHeaders().is_expired() is False
 
     def test_future_deadline_is_not_expired(self):
-        headers = MessageHeaders(
-            deadline=datetime.now(timezone.utc) + timedelta(minutes=5)
-        )
+        headers = MessageHeaders(deadline=datetime.now(UTC) + timedelta(minutes=5))
         assert headers.is_expired() is False
 
     def test_past_deadline_is_expired(self):
-        headers = MessageHeaders(
-            deadline=datetime.now(timezone.utc) - timedelta(seconds=1)
-        )
+        headers = MessageHeaders(deadline=datetime.now(UTC) - timedelta(seconds=1))
         assert headers.is_expired() is True
 
     def test_naive_deadline_is_treated_as_utc(self):
         # A naive past deadline is still expired.
-        past = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=5)
+        past = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
         assert MessageHeaders(deadline=past).is_expired() is True
 
     def test_explicit_now_reference(self):
-        deadline = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        before = datetime(2025, 12, 31, tzinfo=timezone.utc)
-        after = datetime(2026, 1, 2, tzinfo=timezone.utc)
+        deadline = datetime(2026, 1, 1, tzinfo=UTC)
+        before = datetime(2025, 12, 31, tzinfo=UTC)
+        after = datetime(2026, 1, 2, tzinfo=UTC)
         headers = MessageHeaders(deadline=deadline)
         assert headers.is_expired(now=before) is False
         assert headers.is_expired(now=after) is True
 
     def test_naive_now_reference_is_treated_as_utc(self):
-        deadline = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        deadline = datetime(2026, 1, 1, tzinfo=UTC)
         headers = MessageHeaders(deadline=deadline)
         # Naive reference times are normalized to UTC, like deadlines.
         assert headers.is_expired(now=datetime(2025, 12, 31)) is False
@@ -124,29 +120,29 @@ class TestResolveDeadline:
     def test_timeout_is_converted_to_absolute_deadline(self):
         resolved = resolve_deadline(None, timedelta(seconds=30))
         assert resolved is not None
-        assert resolved > datetime.now(timezone.utc)
+        assert resolved > datetime.now(UTC)
 
     def test_explicit_deadline_is_returned(self):
-        deadline = datetime.now(timezone.utc) + timedelta(minutes=1)
+        deadline = datetime.now(UTC) + timedelta(minutes=1)
         assert resolve_deadline(deadline, None) == deadline
 
     def test_naive_deadline_is_coerced_to_utc(self):
         naive = datetime(2030, 1, 1, 12, 0, 0)
         resolved = resolve_deadline(naive, None)
-        assert resolved.tzinfo is timezone.utc
+        assert resolved.tzinfo is UTC
 
     def test_tz_aware_deadline_is_normalized_to_utc(self):
         # A non-UTC tz-aware deadline is stored as UTC, preserving the instant.
         tz = timezone(timedelta(hours=5, minutes=30))  # IST
         aware = datetime(2030, 1, 1, 17, 30, 0, tzinfo=tz)
         resolved = resolve_deadline(aware, None)
-        assert resolved.tzinfo is timezone.utc
+        assert resolved.tzinfo is UTC
         assert resolved == aware  # same instant
-        assert resolved == datetime(2030, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        assert resolved == datetime(2030, 1, 1, 12, 0, 0, tzinfo=UTC)
 
     def test_both_raises(self):
         with pytest.raises(IncorrectUsageError, match="not both"):
-            resolve_deadline(datetime.now(timezone.utc), timedelta(seconds=1))
+            resolve_deadline(datetime.now(UTC), timedelta(seconds=1))
 
     def test_invalid_timeout_type_raises(self):
         with pytest.raises(IncorrectUsageError, match="timedelta"):
@@ -162,13 +158,11 @@ class TestRaiseIfExpired:
         raise_if_expired(None, "Cmd")  # should not raise
 
     def test_future_deadline_is_noop(self):
-        headers = MessageHeaders(
-            deadline=datetime.now(timezone.utc) + timedelta(minutes=5)
-        )
+        headers = MessageHeaders(deadline=datetime.now(UTC) + timedelta(minutes=5))
         raise_if_expired(headers, "Cmd")  # should not raise
 
     def test_expired_deadline_raises_with_context(self):
-        deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+        deadline = datetime.now(UTC) - timedelta(seconds=1)
         headers = MessageHeaders(deadline=deadline)
         with pytest.raises(CommandExpiredError) as exc_info:
             raise_if_expired(headers, "MyCommand")
@@ -179,7 +173,7 @@ class TestRaiseIfExpired:
 class TestDeadlineInMetadata:
     def test_deadline_is_stored_in_metadata_when_provided(self, test_domain):
         identifier = str(uuid4())
-        deadline = datetime.now(timezone.utc) + timedelta(minutes=5)
+        deadline = datetime.now(UTC) + timedelta(minutes=5)
         command = Register(user_id=identifier, email="john@example.com")
 
         test_domain.process(command, deadline=deadline)
@@ -192,7 +186,7 @@ class TestDeadlineInMetadata:
         identifier = str(uuid4())
         command = Register(user_id=identifier, email="john@example.com")
 
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         test_domain.process(command, timeout=timedelta(minutes=10))
 
         messages = test_domain.event_store.store.read("user:command")
@@ -213,7 +207,7 @@ class TestDeadlineInMetadata:
 
     def test_deadline_round_trips_through_event_store(self, test_domain):
         identifier = str(uuid4())
-        deadline = datetime.now(timezone.utc) + timedelta(hours=1)
+        deadline = datetime.now(UTC) + timedelta(hours=1)
         command = Register(user_id=identifier, email="john@example.com")
 
         test_domain.process(command, deadline=deadline)
@@ -229,7 +223,7 @@ class TestDeadlineInMetadata:
         with pytest.raises(IncorrectUsageError, match="not both"):
             test_domain.process(
                 command,
-                deadline=datetime.now(timezone.utc),
+                deadline=datetime.now(UTC),
                 timeout=timedelta(seconds=1),
             )
 
@@ -238,7 +232,7 @@ class TestSyncDeadlineEnforcement:
     def test_expired_command_is_rejected_before_handler_runs(self, test_domain):
         identifier = str(uuid4())
         command = Register(user_id=identifier, email="john@example.com")
-        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        past = datetime.now(UTC) - timedelta(seconds=1)
 
         with pytest.raises(CommandExpiredError) as exc_info:
             test_domain.process(command, asynchronous=False, deadline=past)
@@ -249,7 +243,7 @@ class TestSyncDeadlineEnforcement:
     def test_non_expired_command_runs_normally(self, test_domain):
         identifier = str(uuid4())
         command = Register(user_id=identifier, email="john@example.com")
-        future = datetime.now(timezone.utc) + timedelta(minutes=5)
+        future = datetime.now(UTC) + timedelta(minutes=5)
 
         test_domain.process(command, asynchronous=False, deadline=future)
 
@@ -259,7 +253,7 @@ class TestSyncDeadlineEnforcement:
 class TestDeadlinePropagation:
     def test_downstream_command_inherits_deadline(self, test_domain):
         identifier = str(uuid4())
-        deadline = datetime.now(timezone.utc) + timedelta(minutes=5)
+        deadline = datetime.now(UTC) + timedelta(minutes=5)
         command = Register(user_id=identifier, email="john@example.com")
 
         # Register handler dispatches Activate synchronously within its context.
@@ -276,7 +270,7 @@ class TestDeadlinePropagation:
     def test_context_deadline_is_inherited_when_no_explicit_deadline(self, test_domain):
         # With a parent command in context carrying a deadline, a new command
         # enriched without an explicit deadline inherits the context's deadline.
-        context_deadline = datetime.now(timezone.utc) + timedelta(minutes=10)
+        context_deadline = datetime.now(UTC) + timedelta(minutes=10)
         parent = test_domain._command_processor.enrich(
             Register(user_id=str(uuid4()), email="parent@example.com"),
             asynchronous=True,
@@ -295,8 +289,8 @@ class TestDeadlinePropagation:
     def test_explicit_deadline_wins_over_context_deadline(self, test_domain):
         # When the context carries a deadline AND the caller passes an explicit
         # one, the explicit deadline wins for the new command.
-        context_deadline = datetime.now(timezone.utc) + timedelta(minutes=10)
-        explicit = datetime.now(timezone.utc) + timedelta(minutes=1)
+        context_deadline = datetime.now(UTC) + timedelta(minutes=10)
+        explicit = datetime.now(UTC) + timedelta(minutes=1)
         parent = test_domain._command_processor.enrich(
             Register(user_id=str(uuid4()), email="parent@example.com"),
             asynchronous=True,
@@ -334,7 +328,7 @@ class TestCoerceTimeout:
 class TestDefaultTimeout:
     def test_domain_config_default_applies(self, test_domain):
         test_domain.config["command_default_timeout"] = 60
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         command = Register(user_id=str(uuid4()), email="john@example.com")
 
         test_domain.process(command)
@@ -346,7 +340,7 @@ class TestDefaultTimeout:
         assert timedelta(seconds=55) <= (deadline - before) <= timedelta(seconds=65)
 
     def test_handler_timeout_option_applies(self, test_domain):
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         command = Ping(user_id=str(uuid4()))
 
         test_domain.process(command)
@@ -363,7 +357,7 @@ class TestDefaultTimeout:
     def test_handler_option_overrides_config_default(self, test_domain):
         # Config sets 60s, but Ping's handler declares 120s — handler wins.
         test_domain.config["command_default_timeout"] = 60
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         test_domain.process(Ping(user_id=str(uuid4())))
 
@@ -373,7 +367,7 @@ class TestDefaultTimeout:
 
     def test_explicit_deadline_overrides_defaults(self, test_domain):
         test_domain.config["command_default_timeout"] = 60
-        explicit = datetime.now(timezone.utc) + timedelta(hours=1)
+        explicit = datetime.now(UTC) + timedelta(hours=1)
 
         test_domain.process(Ping(user_id=str(uuid4())), deadline=explicit)
 

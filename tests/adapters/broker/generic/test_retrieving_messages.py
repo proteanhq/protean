@@ -127,7 +127,7 @@ def test_get_next_generates_uuid_identifier(broker):
     retrieved_message = broker.get_next(stream, consumer_group)
     assert retrieved_message is not None
 
-    retrieved_identifier, retrieved_payload = retrieved_message
+    retrieved_identifier, _retrieved_payload = retrieved_message
 
     # Should be a non-empty string identifier
     assert isinstance(retrieved_identifier, str)

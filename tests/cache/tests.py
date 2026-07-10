@@ -25,7 +25,7 @@ class TestCacheInitialization:
 
     def test_that_domain_initializes_cache_from_config(self, test_domain):
         assert len(list(test_domain.caches)) == 1
-        assert isinstance(list(test_domain.caches.values())[0], MemoryCache)
+        assert isinstance(next(iter(test_domain.caches.values())), MemoryCache)
 
     def test_that_cache_can_be_retrieved(self, test_domain):
         cache_name = next(iter(test_domain.caches))

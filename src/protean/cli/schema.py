@@ -22,13 +22,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 from rich import print
 from rich.console import Console
 from rich.syntax import Syntax
-from typing_extensions import Annotated
 
 from protean.cli._ir_utils import load_domain, load_domain_ir, load_ir_file
 from protean.ir.generators.base import short_name
@@ -108,10 +107,7 @@ def generate(
         raise typer.Abort()
 
     # Load IR
-    if domain:
-        ir_data = load_domain_ir(domain)
-    else:
-        ir_data = load_ir_file(ir)
+    ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
 
     # Write schemas and IR
     from protean.ir.generators.schema_writer import (  # noqa: PLC0415
@@ -302,10 +298,7 @@ def show(
         raise typer.Abort()
 
     # Load IR
-    if domain:
-        ir_data = load_domain_ir(domain)
-    else:
-        ir_data = load_ir_file(ir)
+    ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
 
     # Generate all schemas
     from protean.ir.generators.schema import generate_schemas  # noqa: PLC0415

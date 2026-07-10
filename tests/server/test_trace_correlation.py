@@ -28,7 +28,6 @@ from protean.utils.eventing import (
 )
 from protean.utils.mixins import handle
 
-
 # --- MessageTrace dataclass tests ---
 
 

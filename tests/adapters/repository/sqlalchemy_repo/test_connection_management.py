@@ -13,7 +13,7 @@ from sqlalchemy import orm, text
 
 from protean import Domain, UnitOfWork
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer
+from protean.fields import Integer, String
 from tests.shared import POSTGRES_URI
 
 
@@ -151,11 +151,10 @@ class TestConnectionLifecyclePostgresql:
         provider = self._register_and_setup(setup_domain)
         pool_obj = provider._engine.pool
 
-        with pytest.raises(ValueError):
-            with UnitOfWork():
-                repo = setup_domain.repository_for(DummyEntity)
-                repo.add(DummyEntity(name="Test", age=25))
-                raise ValueError("Simulated error")
+        with pytest.raises(ValueError), UnitOfWork():
+            repo = setup_domain.repository_for(DummyEntity)
+            repo.add(DummyEntity(name="Test", age=25))
+            raise ValueError("Simulated error")
 
         assert pool_obj.checkedout() == 0, (
             "Connection was not returned to pool after UoW exception"

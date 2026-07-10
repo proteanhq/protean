@@ -23,8 +23,9 @@ against a non-default provider.
 """
 
 import re
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from protean.utils.globals import current_domain
 
@@ -88,7 +89,7 @@ def _limit_values(statement: str, parameters: Any) -> Iterator[int]:
                 yield parameters[index]
 
 
-def _resolve_engine(engine: "Optional[Engine]") -> "Optional[Engine]":
+def _resolve_engine(engine: "Engine | None") -> "Engine | None":
     """Resolve the SQLAlchemy engine to observe.
 
     Returns the explicit ``engine`` if given; otherwise the active domain's
@@ -113,7 +114,7 @@ def _resolve_engine(engine: "Optional[Engine]") -> "Optional[Engine]":
 
 @contextmanager
 def _listen(
-    engine: "Optional[Engine]", callback: Callable[[str, Any], None]
+    engine: "Engine | None", callback: Callable[[str, Any], None]
 ) -> Iterator[None]:
     """Invoke ``callback(statement, parameters)`` for each query in the block.
 
@@ -146,8 +147,8 @@ def _listen(
 
 @contextmanager
 def capture_queries(
-    engine: "Optional[Engine]" = None,
-) -> Iterator[List[Tuple[str, Any]]]:
+    engine: "Engine | None" = None,
+) -> Iterator[list[tuple[str, Any]]]:
     """Capture ``(statement, parameters)`` for each query in the block.
 
     Unlike the ``assert_*`` helpers, this makes no assertion of its own; it just
@@ -159,7 +160,7 @@ def capture_queries(
     assertion is meaningful.
     """
     resolved = _resolve_engine(engine)
-    captured: List[Tuple[str, Any]] = []
+    captured: list[tuple[str, Any]] = []
     with _listen(
         resolved, lambda statement, params: captured.append((statement, params))
     ):
@@ -168,8 +169,8 @@ def capture_queries(
 
 @contextmanager
 def assert_query_count(
-    expected: int, engine: "Optional[Engine]" = None
-) -> Iterator[List[str]]:
+    expected: int, engine: "Engine | None" = None
+) -> Iterator[list[str]]:
     """Assert exactly ``expected`` queries are issued in the block.
 
     A "query" is a data round trip (``SELECT``/``INSERT``/``UPDATE``/``DELETE``/
@@ -181,7 +182,7 @@ def assert_query_count(
     only the counted queries. No-op when no SQLAlchemy engine is resolved.
     """
     resolved = _resolve_engine(engine)
-    statements: List[str] = []
+    statements: list[str] = []
     with _listen(resolved, lambda statement, _params: statements.append(statement)):
         yield statements
 
@@ -199,8 +200,8 @@ def assert_query_count(
 
 @contextmanager
 def assert_no_subquery_wrap(
-    engine: "Optional[Engine]" = None,
-) -> Iterator[List[str]]:
+    engine: "Engine | None" = None,
+) -> Iterator[list[str]]:
     """Fail if any query wraps a ``count`` around a subquery.
 
     Catches the ``SELECT count(*) FROM (SELECT ... ) AS anon_1`` shape that a
@@ -208,7 +209,7 @@ def assert_no_subquery_wrap(
     No-op when no SQLAlchemy engine is resolved.
     """
     resolved = _resolve_engine(engine)
-    statements: List[str] = []
+    statements: list[str] = []
     with _listen(resolved, lambda statement, _params: statements.append(statement)):
         yield statements
 
@@ -227,8 +228,8 @@ def assert_no_subquery_wrap(
 def assert_no_overfetch(
     expected_returned: int,
     ratio: float = 1.5,
-    engine: "Optional[Engine]" = None,
-) -> Iterator[List[Tuple[str, Any]]]:
+    engine: "Engine | None" = None,
+) -> Iterator[list[tuple[str, Any]]]:
     """Fail if any ``LIMIT`` exceeds ``expected_returned * ratio``.
 
     Catches over-fetch patterns such as ``min(limit * 3, 1000)`` that pull far
@@ -237,7 +238,7 @@ def assert_no_overfetch(
     or bound parameters. No-op when no SQLAlchemy engine is resolved.
     """
     resolved = _resolve_engine(engine)
-    executions: List[Tuple[str, Any]] = []
+    executions: list[tuple[str, Any]] = []
     with _listen(
         resolved, lambda statement, params: executions.append((statement, params))
     ):
@@ -247,13 +248,15 @@ def assert_no_overfetch(
         return
 
     threshold = expected_returned * ratio
-    offenders = []
+    offenders: list[tuple[str, int]] = []
     for statement, parameters in executions:
         # Check every LIMIT in the statement, not just the first: an outer
         # over-fetch can sit behind a smaller inner-subquery limit.
-        for limit in _limit_values(statement, parameters):
-            if limit > threshold:
-                offenders.append((statement, limit))
+        offenders.extend(
+            (statement, limit)
+            for limit in _limit_values(statement, parameters)
+            if limit > threshold
+        )
 
     if offenders:
         raise AssertionError(
@@ -262,7 +265,7 @@ def assert_no_overfetch(
         )
 
 
-def _format_statements(statements: List[str]) -> str:
+def _format_statements(statements: list[str]) -> str:
     return "\n".join(f"  {i + 1}. {_trim(s)}" for i, s in enumerate(statements))
 
 

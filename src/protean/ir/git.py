@@ -16,7 +16,7 @@ import subprocess
 from pathlib import PurePosixPath
 from typing import Any
 
-__all__ = ["load_ir_from_commit", "GitError"]
+__all__ = ["GitError", "load_ir_from_commit"]
 
 
 class GitError(Exception):
@@ -63,8 +63,8 @@ def load_ir_from_commit(
             encoding="utf-8",
             check=True,
         )
-    except FileNotFoundError:
-        raise GitError("git is not installed or not found on PATH")
+    except FileNotFoundError as exc:
+        raise GitError("git is not installed or not found on PATH") from exc
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip()
         raise GitError(

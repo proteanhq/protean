@@ -5,6 +5,7 @@ Unit tests for error paths use mock domains and need no infrastructure.
 """
 
 import asyncio
+import contextlib
 import json
 from unittest.mock import MagicMock, patch
 
@@ -561,10 +562,9 @@ class TestConsumersEndpoint:
 
         # Create stream with a message, set up group, and read
         redis_conn.xadd(stream, {"data": "hello"})
-        try:
+        # Group may already exist
+        with contextlib.suppress(Exception):
             redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
-        except Exception:
-            pass  # Group may already exist
         redis_conn.xreadgroup(group, consumer_name, {stream: ">"}, count=1)
 
         response = client.get("/api/consumers")
@@ -648,10 +648,8 @@ class TestWorkersEndpoint:
 
         redis_conn.xadd(stream, {"data": "msg1"})
         redis_conn.xadd(stream, {"data": "msg2"})
-        try:
+        with contextlib.suppress(Exception):
             redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
-        except Exception:
-            pass
 
         redis_conn.xreadgroup(group, consumer_w1, {stream: ">"}, count=1)
         redis_conn.xreadgroup(group, consumer_w2, {stream: ">"}, count=1)
@@ -679,10 +677,8 @@ class TestWorkersEndpoint:
         consumer = "ThroughputHandler-sparkhost-999-ccddee"
 
         redis_conn.xadd(stream, {"data": "msg"})
-        try:
+        with contextlib.suppress(Exception):
             redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
-        except Exception:
-            pass
         redis_conn.xreadgroup(group, consumer, {stream: ">"}, count=1)
 
         response = client.get("/api/workers")
@@ -713,10 +709,8 @@ class TestWorkersEndpoint:
         consumer = "ActiveHandler-activehost-111-ffffff"
 
         redis_conn.xadd(stream, {"data": "msg"})
-        try:
+        with contextlib.suppress(Exception):
             redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
-        except Exception:
-            pass
         # Read immediately — idle will be near 0
         redis_conn.xreadgroup(group, consumer, {stream: ">"}, count=1)
 
@@ -749,10 +743,8 @@ class TestWorkersEndpoint:
             (stream2, group2, consumer2),
         ]:
             redis_conn.xadd(stream, {"data": "msg"})
-            try:
+            with contextlib.suppress(Exception):
                 redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
-            except Exception:
-                pass
             redis_conn.xreadgroup(group, consumer, {stream: ">"}, count=1)
 
         response = client.get("/api/workers")
@@ -944,7 +936,7 @@ class TestStreamsEndpointWithMockRedis:
 
     def test_streams_aggregates_xlen_and_consumer_groups(self):
         """Streams endpoint aggregates xlen and consumer group data."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (
             0,
             [b"orders::order", b"inventory::product"],
@@ -971,7 +963,7 @@ class TestStreamsEndpointWithMockRedis:
 
     def test_streams_handles_bytes_keys_in_consumer_groups(self):
         """Streams endpoint handles consumer group dicts with bytes keys."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (0, [b"orders::order"])
         mock_redis.xlen.return_value = 42
         mock_redis.xinfo_groups.return_value = [
@@ -992,7 +984,7 @@ class TestStreamsEndpointWithMockRedis:
 
     def test_streams_handles_mixed_string_and_bytes_keys(self):
         """Streams endpoint handles dicts with a mix of string and bytes keys."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (0, [b"orders::order"])
         mock_redis.xlen.return_value = 10
         # Dict with string "name" but bytes "pending"
@@ -1011,7 +1003,7 @@ class TestStreamsEndpointWithMockRedis:
 
     def test_streams_skips_non_dict_group_entries(self):
         """Streams endpoint skips group entries that are not dicts."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (0, [b"orders::order"])
         mock_redis.xlen.return_value = 10
         mock_redis.xinfo_groups.return_value = [
@@ -1030,7 +1022,7 @@ class TestStreamsEndpointWithMockRedis:
 
     def test_streams_handles_xinfo_groups_exception(self):
         """Streams endpoint handles exceptions from xinfo_groups gracefully."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (0, [b"orders::order"])
         mock_redis.xlen.side_effect = Exception("Redis error")
 
@@ -1052,7 +1044,7 @@ class TestConsumersEndpointBytesHandling:
 
     def test_consumers_decodes_bytes_group_and_consumer_names(self):
         """Consumer endpoint decodes bytes keys in group and consumer info."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (0, [b"orders::order"])
         mock_redis.xinfo_groups.return_value = [
             {b"name": b"OrderHandler", "pending": 0, "lag": 0}
@@ -1082,7 +1074,7 @@ class TestConsumersEndpointBytesHandling:
 
     def test_consumers_handles_mixed_bytes_and_string_keys(self):
         """Consumer endpoint handles dicts with mixed bytes/string keys."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (0, [b"orders::order"])
         mock_redis.xinfo_groups.return_value = [
             {"name": "OrderHandler", b"pending": 0, "lag": 0}
@@ -1108,7 +1100,7 @@ class TestConsumersEndpointBytesHandling:
 
     def test_consumers_skips_non_dict_consumer_entries(self):
         """Consumer endpoint skips consumer entries that are not dicts."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (0, [b"orders::order"])
         mock_redis.xinfo_groups.return_value = [
             {"name": "OrderHandler", "pending": 0, "lag": 0}
@@ -1127,7 +1119,7 @@ class TestConsumersEndpointBytesHandling:
 
     def test_consumers_skips_group_with_no_name(self):
         """Consumer endpoint skips groups where name resolves to None."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_redis.scan.return_value = (0, [b"orders::order"])
         mock_redis.xinfo_groups.return_value = [
             {"pending": 0, "lag": 0},  # no "name" key at all
@@ -1149,7 +1141,7 @@ class TestQueueDepthStreamAggregation:
 
     def test_queue_depth_aggregates_lag_and_pending(self):
         """Queue depth totals include stream_depth (max lag) and consumer_pending."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
 
         # _discover_streams sorts alphabetically, so inventory comes first
@@ -1197,7 +1189,7 @@ class TestQueueDepthStreamAggregation:
 
     def test_queue_depth_handles_bytes_keys_in_groups(self):
         """Queue depth handles consumer group dicts with bytes keys."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
 
         mock_redis.scan.return_value = (0, [b"orders::order"])
@@ -1217,7 +1209,7 @@ class TestQueueDepthStreamAggregation:
 
     def test_queue_depth_handles_xlen_exception(self):
         """Queue depth handles Redis xlen exceptions gracefully."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
 
         mock_redis.scan.return_value = (0, [b"orders::order"])
@@ -1243,7 +1235,7 @@ class TestStatsEndpointStreamAggregation:
 
     def test_stats_aggregates_xlen_and_pending(self):
         """Stats endpoint aggregates total_messages and in_flight counts."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
 
         mock_redis.scan.return_value = (
@@ -1272,7 +1264,7 @@ class TestStatsEndpointStreamAggregation:
 
     def test_stats_handles_bytes_keys_in_groups(self):
         """Stats endpoint handles consumer group dicts with bytes keys."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
 
         mock_redis.scan.return_value = (0, [b"orders::order"])
@@ -1292,7 +1284,7 @@ class TestStatsEndpointStreamAggregation:
 
     def test_stats_handles_xlen_exception(self):
         """Stats endpoint handles exceptions from stream queries gracefully."""
-        mock_domain, mock_broker, mock_redis = _make_mock_domain_with_broker()
+        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
         mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
 
         mock_redis.scan.return_value = (0, [b"orders::order"])

@@ -4,7 +4,8 @@ import copy
 import functools
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, cast
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 if TYPE_CHECKING:
     from protean.port.dao import BaseLookup
@@ -29,7 +30,7 @@ class RegisterLookupMixin:
         return cls.get_lookups().get(lookup_name, None)
 
     @classmethod
-    @functools.lru_cache(maxsize=None)
+    @functools.cache
     def get_lookups(cls) -> dict[str, type["BaseLookup"]]:
         """Fetch all Lookups"""
         class_lookups = [
@@ -59,7 +60,7 @@ class RegisterLookupMixin:
         Merge dicts in reverse to preference the order of the original list. e.g.,
         merge_dicts([a, b]) will preference the keys in 'a' over those in 'b'.
         """
-        merged: dict[str, type["BaseLookup"]] = {}
+        merged: dict[str, type[BaseLookup]] = {}
         for d in reversed(dicts):
             merged.update(d)
         return merged
@@ -191,7 +192,7 @@ class Node:
         return template % (self.connector, ", ".join(str(c) for c in self.children))
 
     def __repr__(self) -> str:
-        return "<%s: %s>" % (self.__class__.__name__, self)
+        return f"<{self.__class__.__name__}: {self}>"
 
     def __deepcopy__(self, memodict: dict[int, Any]) -> "Node":
         obj = Node(connector=self.connector, negated=self.negated)
@@ -329,7 +330,7 @@ class Q(Node):
 
     def deconstruct(self) -> tuple[str, tuple[Any, ...], dict[str, Any]]:
         """Deconstruct a Q Object"""
-        path = "%s.%s" % (self.__class__.__module__, self.__class__.__name__)
+        path = f"{self.__class__.__module__}.{self.__class__.__name__}"
         args: tuple[Any, ...] = ()
         kwargs: dict[str, Any] = {}
 

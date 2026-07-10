@@ -31,15 +31,12 @@ class Email(BaseValueObject):
     @classmethod
     def validate(cls, address):
         """Business rules of Email address"""
-        if (
+        return not (
             not isinstance(address, str)
             or "@" not in address
             or address.count("@") > 1
             or len(address) > 255
-        ):
-            return False
-
-        return True
+        )
 
 
 class User(BaseAggregate):

@@ -1,6 +1,6 @@
 """Tests for _ReverseCompare class in memory repository"""
 
-from datetime import datetime, date
+from datetime import date, datetime
 
 from protean.adapters.repository.memory import _ReverseCompare
 
@@ -71,7 +71,7 @@ class TestReverseCompareBetweenReverseCompareInstances:
         rc3 = _ReverseCompare(3)
 
         assert rc1 == rc2
-        assert not (rc1 == rc3)
+        assert rc1 != rc3
 
     def test_not_equal_with_reverse_instances(self):
         """Test __ne__ between _ReverseCompare instances"""
@@ -79,7 +79,7 @@ class TestReverseCompareBetweenReverseCompareInstances:
         rc2 = _ReverseCompare(5)
         rc3 = _ReverseCompare(3)
 
-        assert not (rc1 != rc2)
+        assert rc1 == rc2
         assert rc1 != rc3
 
     def test_greater_than_with_reverse_instances(self):
@@ -126,12 +126,12 @@ class TestReverseCompareWithNonReverseValues:
         """Test __eq__ with regular values"""
         rc = _ReverseCompare(5)
         assert rc == 5
-        assert not (rc == 3)
+        assert rc != 3
 
     def test_not_equal_with_regular_value(self):
         """Test __ne__ with regular values"""
         rc = _ReverseCompare(5)
-        assert not (rc != 5)
+        assert rc == 5
         assert rc != 3
 
     def test_greater_than_with_regular_value(self):
@@ -289,11 +289,11 @@ class TestReverseCompareEdgeCases:
 
         # None == None should be True
         assert rc1 == rc2
-        assert not (rc1 != rc2)
+        assert rc1 == rc2
 
         # None != 5 should be True
         assert rc1 != rc3
-        assert not (rc1 == rc3)
+        assert rc1 != rc3
 
     def test_chained_comparisons(self):
         """Test chained comparison operations"""

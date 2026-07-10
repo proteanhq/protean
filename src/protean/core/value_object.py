@@ -1,14 +1,14 @@
 """Value Object module providing the base class for immutable value objects."""
 
+import contextlib
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
-    Callable,
     ClassVar,
-    Optional,
     Self,
     TypeVar,
     cast,
@@ -32,7 +32,8 @@ from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.reflection import _FIELDS, fields as get_fields
+from protean.utils.reflection import _FIELDS
+from protean.utils.reflection import fields as get_fields
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         super().__init_subclass__(**kwargs)
 
         # Initialize invariant storage (model_fields is NOT yet populated here)
-        setattr(cls, "_invariants", defaultdict(dict))
+        cls._invariants = defaultdict(dict)
         # Set empty __container_fields__ as placeholder
         setattr(cls, _FIELDS, {})
 
@@ -151,17 +152,15 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
             if isinstance(value, ValueObjectDescriptor):
                 vo_cls = value.value_object_cls
                 # Remove the descriptor from the class namespace
-                try:
+                with contextlib.suppress(AttributeError):
                     delattr(cls, name)
-                except AttributeError:
-                    pass
                 # Add as a typed Pydantic annotation (optional by default)
                 required = getattr(value, "required", False)
                 if required:
                     own_annots[name] = vo_cls
                 else:
                     pf = PydanticField(default=None)
-                    own_annots[name] = Annotated[Optional[vo_cls], pf]
+                    own_annots[name] = Annotated[vo_cls | None, pf]  # type: ignore[operator]
                 processed.add(name)
 
         # 2. Annotation style: descriptor in __annotations__
@@ -173,7 +172,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
                     own_annots[name] = vo_cls
                 else:
                     pf = PydanticField(default=None)
-                    own_annots[name] = Annotated[Optional[vo_cls], pf]
+                    own_annots[name] = Annotated[vo_cls | None, pf]  # type: ignore[operator]
 
         cls.__annotations__ = own_annots
 
@@ -208,7 +207,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e))
+            raise ValidationError(convert_pydantic_errors(e)) from e
 
     def model_post_init(self, __context: Any) -> None:
         if self.meta_.abstract is True:
@@ -233,7 +232,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         for klass in type(self).__mro__:
             for name, attr in vars(klass).items():
                 if callable(attr) and hasattr(attr, "_invariant"):
-                    self._invariants[getattr(attr, "_invariant")][name] = attr
+                    self._invariants[attr._invariant][name] = attr
 
     def __setattr__(self, name: str, value: Any) -> None:
         if not getattr(self, "_initialized", False):
@@ -317,12 +316,12 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         return hash(frozenset(self.to_dict().items()))
 
     def __repr__(self) -> str:
-        return "<%s: %s>" % (self.__class__.__name__, self)
+        return f"<{self.__class__.__name__}: {self}>"
 
     def __str__(self) -> str:
-        return "%s object (%s)" % (
+        return "{} object ({})".format(
             self.__class__.__name__,
-            "{}".format(self.to_dict()),
+            f"{self.to_dict()}",
         )
 
     def __bool__(self) -> bool:
@@ -356,7 +355,7 @@ def value_object_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
                 and callable(method)
                 and hasattr(method, "_invariant")
             ):
-                vo_cls._invariants[getattr(method, "_invariant")][method_name] = method
+                vo_cls._invariants[method._invariant][method_name] = method
 
     return element_cls
 
@@ -407,7 +406,7 @@ def value_object_from_entity(
             # class.
             child_vo_cls = value_object_from_entity(cast("type[Any]", value.to_cls))
             vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
-            annotations[key] = Optional[child_vo_cls]
+            annotations[key] = child_vo_cls | None
             namespace[key] = None
             association_descriptors[key] = vo_descriptor
 
@@ -434,7 +433,7 @@ def value_object_from_entity(
             if getattr(value, "required", False):
                 annotations[key] = vo_cls
             else:
-                annotations[key] = Optional[vo_cls]
+                annotations[key] = vo_cls | None  # type: ignore[operator]
                 namespace[key] = None
             association_descriptors[key] = value
 

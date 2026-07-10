@@ -19,7 +19,6 @@ from protean.domain import Domain
 from protean.fields import HasOne, String
 from protean.utils.mixins import handle
 
-
 # ─── Element definitions ────────────────────────────────────────────────
 
 

@@ -1,6 +1,6 @@
 """Fixture: fields with defaults resolve to base type (not Optional)."""
 
-from protean.fields import String, Integer, Float, Boolean
+from protean.fields import Boolean, Float, Integer, String
 
 # Fields with explicit defaults → base type (not Optional)
 s = String(default="hello")

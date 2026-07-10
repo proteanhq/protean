@@ -31,18 +31,21 @@ def test_find_domain_in_module():
     class Module:
         pass
 
-    pytest.raises(NoDomainException, find_domain_in_module, Module)
+    with pytest.raises(NoDomainException):
+        find_domain_in_module(Module)
 
     class Module:
         my_domain1 = Domain(name="name1")
         my_domain2 = Domain(name="name2")
 
-    pytest.raises(NoDomainException, find_domain_in_module, Module)
+    with pytest.raises(NoDomainException):
+        find_domain_in_module(Module)
 
     class Module:
         foo = "bar"
 
-    pytest.raises(NoDomainException, find_domain_in_module, Module)
+    with pytest.raises(NoDomainException):
+        find_domain_in_module(Module)
 
 
 class TestDomainLoading:

@@ -4,7 +4,7 @@ import os
 import secrets
 import socket
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
@@ -44,12 +44,12 @@ class StreamSubscription(BaseSubscription):
         self,
         engine: "Engine",
         stream_category: str,
-        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
-        messages_per_tick: Optional[int] = None,
-        blocking_timeout_ms: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        retry_delay_seconds: Optional[float] = None,
-        enable_dlq: Optional[bool] = None,
+        handler: type[BaseEventHandler | BaseCommandHandler],
+        messages_per_tick: int | None = None,
+        blocking_timeout_ms: int | None = None,
+        max_retries: int | None = None,
+        retry_delay_seconds: float | None = None,
+        enable_dlq: bool | None = None,
     ) -> None:
         """
         Initialize the StreamSubscription object.
@@ -128,10 +128,10 @@ class StreamSubscription(BaseSubscription):
         self.dlq_stream = f"{self.stream_category}:dlq"
 
         # Track retry counts for messages
-        self.retry_counts: Dict[str, int] = {}
+        self.retry_counts: dict[str, int] = {}
 
         # Get broker from domain
-        self.broker: Optional[BaseBroker] = None
+        self.broker: BaseBroker | None = None
 
         # Priority lanes configuration
         lanes_config = server_config.get("priority_lanes", {})
@@ -149,7 +149,7 @@ class StreamSubscription(BaseSubscription):
         cls,
         engine: "Engine",
         stream_category: str,
-        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
+        handler: type[BaseEventHandler | BaseCommandHandler],
         config: "SubscriptionConfig",
     ) -> "StreamSubscription":
         """Create a StreamSubscription instance from a SubscriptionConfig.
@@ -358,7 +358,7 @@ class StreamSubscription(BaseSubscription):
                 backoff = min(2 ** (consecutive_errors - 1), 30)
                 await asyncio.sleep(backoff)
 
-    async def _read_primary_nonblocking(self) -> List[tuple[str, dict[str, Any]]]:
+    async def _read_primary_nonblocking(self) -> list[tuple[str, dict[str, Any]]]:
         """Non-blocking read from primary (production) stream.
 
         Uses ``timeout_ms=0`` so the call returns immediately if no messages
@@ -384,7 +384,7 @@ class StreamSubscription(BaseSubscription):
             logger.error(f"Error reading primary stream {self.stream_category}: {e}")
             return []
 
-    async def _read_backfill_blocking(self) -> List[tuple[str, dict[str, Any]]]:
+    async def _read_backfill_blocking(self) -> list[tuple[str, dict[str, Any]]]:
         """Blocking read from backfill stream with capped timeout.
 
         Uses a short timeout (capped at 1 second) so we frequently re-check
@@ -412,7 +412,7 @@ class StreamSubscription(BaseSubscription):
             logger.error(f"Error reading backfill stream {self.backfill_stream}: {e}")
             return []
 
-    async def get_next_batch_of_messages(self) -> List[tuple[str, dict[str, Any]]]:
+    async def get_next_batch_of_messages(self) -> list[tuple[str, dict[str, Any]]]:
         """
         Get the next batch of messages using blocking read.
 
@@ -445,7 +445,7 @@ class StreamSubscription(BaseSubscription):
 
     async def process_batch(
         self,
-        messages: List[tuple[str, dict[str, Any]]],
+        messages: list[tuple[str, dict[str, Any]]],
         stream: str | None = None,
     ) -> int:
         """
@@ -521,7 +521,7 @@ class StreamSubscription(BaseSubscription):
 
     async def _deserialize_message(
         self, identifier: str, payload: dict[str, Any], stream: str | None = None
-    ) -> Optional[Message]:
+    ) -> Message | None:
         """Deserialize a message payload, handling errors by moving to DLQ."""
         try:
             return Message.deserialize(payload)
@@ -533,7 +533,7 @@ class StreamSubscription(BaseSubscription):
     async def _acknowledge_message(
         self,
         identifier: str,
-        message: Optional[Message] = None,
+        message: Message | None = None,
         stream: str | None = None,
     ) -> bool:
         """Acknowledge successful message processing.

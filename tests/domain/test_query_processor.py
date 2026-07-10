@@ -15,7 +15,6 @@ from protean.exceptions import IncorrectUsageError
 from protean.fields import Float, Identifier, String
 from protean.utils.mixins import read
 
-
 # ─── Shared domain elements ─────────────────────────────────────────────
 
 

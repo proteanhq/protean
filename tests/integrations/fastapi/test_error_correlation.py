@@ -14,7 +14,6 @@ Verifies that:
 from uuid import uuid4
 
 import pytest
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -35,7 +34,6 @@ from protean.integrations.fastapi import (
 )
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
-
 
 # ---------------------------------------------------------------------------
 # Domain elements (used only for command-processing error tests)

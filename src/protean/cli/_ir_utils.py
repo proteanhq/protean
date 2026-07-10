@@ -38,7 +38,7 @@ def load_domain(domain_path: str) -> Domain:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         print(f"[red]Error:[/red] {msg}")
         logger.error(msg)
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
     assert derived_domain is not None
 
@@ -48,7 +48,7 @@ def load_domain(domain_path: str) -> Domain:
         msg = f"Error initialising Protean domain: {exc}"
         print(f"[red]Error:[/red] {msg}")
         logger.error(msg)
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
     return derived_domain
 
@@ -68,7 +68,7 @@ def load_domain_ir(domain_path: str) -> dict[str, Any]:
         msg = f"Error generating IR from Protean domain: {exc}"
         print(f"[red]Error:[/red] {msg}")
         logger.error(msg)
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
 
 def load_ir_file(path: str) -> dict[str, Any]:
@@ -85,10 +85,10 @@ def load_ir_file(path: str) -> dict[str, Any]:
         file_contents = file_path.read_text(encoding="utf-8")
     except OSError as exc:
         print(f"[red]Error:[/red] could not read {path}: {exc}")
-        raise typer.Abort()
+        raise typer.Abort() from exc
     try:
         # json.loads is typed to return Any; IR files are JSON objects.
         return cast("dict[str, Any]", json.loads(file_contents))
     except json.JSONDecodeError as exc:
         print(f"[red]Error:[/red] invalid JSON in {path}: {exc}")
-        raise typer.Abort()
+        raise typer.Abort() from exc

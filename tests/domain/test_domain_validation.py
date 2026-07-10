@@ -24,7 +24,6 @@ from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import HasMany, HasOne, Identifier, String
 from protean.utils.mixins import handle, read
 
-
 # ─── Shared element definitions ─────────────────────────────────────────
 
 

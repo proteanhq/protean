@@ -9,7 +9,6 @@ import pytest
 
 from protean.ir.generators.clusters import generate_cluster_diagram
 
-
 # ------------------------------------------------------------------
 # Fixtures — minimal IR dicts for focused tests
 # ------------------------------------------------------------------

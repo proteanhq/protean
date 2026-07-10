@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any, Optional, Union
+from typing import Any
 
 from protean.core.projection import BaseProjection
 from protean.utils.inflection import underscore
@@ -41,9 +41,7 @@ class BaseCache(metaclass=ABCMeta):
         """Get the connection object for the cache"""
 
     @abstractmethod
-    def add(
-        self, projection: BaseProjection, ttl: Optional[Union[int, float]] = None
-    ) -> None:
+    def add(self, projection: BaseProjection, ttl: int | float | None = None) -> None:
         """Add projection record to cache
 
         KEY: Projection ID
@@ -59,7 +57,7 @@ class BaseCache(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get(self, key: str) -> Optional[BaseProjection]:
+    def get(self, key: str) -> BaseProjection | None:
         """Retrieve data by key"""
 
     @abstractmethod
@@ -89,7 +87,7 @@ class BaseCache(metaclass=ABCMeta):
         """Remove all entries in Cache"""
 
     @abstractmethod
-    def set_ttl(self, key: str, ttl: Union[int, float]) -> None:
+    def set_ttl(self, key: str, ttl: int | float) -> None:
         """Set a TTL explicitly on a key"""
 
     @abstractmethod

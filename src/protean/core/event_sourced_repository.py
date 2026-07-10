@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, cast, ClassVar, TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork

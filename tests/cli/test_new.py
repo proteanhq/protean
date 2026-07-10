@@ -44,29 +44,28 @@ class TestGenerator:
 
     def test_output_directory_is_current_directory_if_not_specified(self):
         # Create a temporary directory
-        with isolated_filesystem() as current_dir:
-            with isolated_filesystem():
-                args = [
-                    "new",
-                    "foobar",
-                    "--defaults",
-                    "--skip-setup",
-                    "-d",
-                    "author_name=John Doe",
-                    "-d",
-                    "author_email=john@doe.com",
-                ]
+        with isolated_filesystem() as current_dir, isolated_filesystem():
+            args = [
+                "new",
+                "foobar",
+                "--defaults",
+                "--skip-setup",
+                "-d",
+                "author_name=John Doe",
+                "-d",
+                "author_email=john@doe.com",
+            ]
 
-                # Switch to the target directory
-                os.chdir(current_dir)
+            # Switch to the target directory
+            os.chdir(current_dir)
 
-                result = runner.invoke(app, args)
+            result = runner.invoke(app, args)
 
-                assert result.exit_code == 0
+            assert result.exit_code == 0
 
-                # Output folder should be the current working directory
-                assert len(os.listdir(current_dir)) > 0
-                assert os.path.isfile(f"{current_dir}/{PROJECT_NAME}/README.md")
+            # Output folder should be the current working directory
+            assert len(os.listdir(current_dir)) > 0
+            assert os.path.isfile(f"{current_dir}/{PROJECT_NAME}/README.md")
 
     def test_pretend_project_generation(self):
         # Create a temporary directory

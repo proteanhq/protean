@@ -122,7 +122,7 @@ class RedisPubSubBroker(BaseBroker):
 
         for group_key, group_info in self._consumer_groups.items():
             # Extract stream and consumer group name from the combined key
-            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            _stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
 
             if consumer_group not in consumer_groups_info:
                 consumer_groups_info[consumer_group] = {
@@ -304,4 +304,3 @@ def register() -> None:
         logger.debug(
             f"Redis PubSub broker not registered: redis package not available ({e})"
         )
-        pass

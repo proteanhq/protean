@@ -24,7 +24,6 @@ from protean.fields import (
 )
 from protean.utils.reflection import declared_fields
 
-
 # ============================================================================
 # Shared domain element fixtures
 # ============================================================================
@@ -329,8 +328,8 @@ class TestResolveHandlerAndRepositoryStringReference:
     def test_repository_string_part_of_to_non_aggregate_is_rejected(self, test_domain):
         """A string part_of that names a non-aggregate stays unresolved and
         is reported at init, preserving the aggregate-only guarantee."""
-        from protean.exceptions import ConfigurationError
         from protean.core.repository import BaseRepository
+        from protean.exceptions import ConfigurationError
 
         class PostRepository(BaseRepository):
             pass

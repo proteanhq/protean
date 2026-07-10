@@ -1,6 +1,7 @@
 import pytest
 
 from protean.adapters.repository.sqlalchemy import MssqlProvider
+
 from .elements import MssqlTestEntity
 
 

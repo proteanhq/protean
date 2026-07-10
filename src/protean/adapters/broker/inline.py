@@ -2,8 +2,8 @@ import logging
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from protean.port.broker import (
     BaseBroker,
@@ -32,7 +32,7 @@ class InlineBroker(BaseBroker):
     __broker__ = "inline"
 
     def __init__(
-        self, name: str, domain: "Domain", conn_info: Dict[str, str | bool]
+        self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
     ) -> None:
         super().__init__(name, domain, conn_info)
 
@@ -620,7 +620,7 @@ class InlineBroker(BaseBroker):
         # Find all group keys for this consumer group
         matching_group_keys = [
             group_key
-            for group_key in self._in_flight.keys()
+            for group_key in self._in_flight
             if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}")
         ]
 
@@ -629,7 +629,7 @@ class InlineBroker(BaseBroker):
             stream = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
 
             stale_messages = []
-            for identifier, (msg_id, message, timestamp) in list(
+            for identifier, (_msg_id, message, timestamp) in list(
                 self._in_flight[group_key].items()
             ):
                 if timestamp < cutoff_time:
@@ -716,7 +716,7 @@ class InlineBroker(BaseBroker):
             failed_messages = self._failed_messages[group_key]
 
             # Find the message in failed messages
-            for i, (msg_id, message, retry_count, next_retry_time) in enumerate(
+            for i, (msg_id, message, _retry_count, _next_retry_time) in enumerate(
                 failed_messages
             ):
                 if msg_id == identifier:
@@ -744,7 +744,7 @@ class InlineBroker(BaseBroker):
 
         for consumer_group in list(self._operation_states.keys()):
             for identifier in list(self._operation_states[consumer_group].keys()):
-                state, timestamp = self._operation_states[consumer_group][identifier]
+                _state, timestamp = self._operation_states[consumer_group][identifier]
                 if timestamp < cutoff_time:
                     del self._operation_states[consumer_group][identifier]
 
@@ -775,7 +775,7 @@ class InlineBroker(BaseBroker):
         try:
             group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
             dlq_messages = self._dead_letter_queue[group_key]
-            for i, (msg_id, message, failure_reason, timestamp) in enumerate(
+            for i, (msg_id, message, _failure_reason, _timestamp) in enumerate(
                 dlq_messages
             ):
                 if msg_id == identifier:
@@ -836,9 +836,7 @@ class InlineBroker(BaseBroker):
                         payload=message,
                         failure_reason=failure_reason,
                         failed_at=(
-                            datetime.fromtimestamp(
-                                timestamp, tz=timezone.utc
-                            ).isoformat()
+                            datetime.fromtimestamp(timestamp, tz=UTC).isoformat()
                             if timestamp
                             else None
                         ),
@@ -868,9 +866,7 @@ class InlineBroker(BaseBroker):
                         payload=message,
                         failure_reason=failure_reason,
                         failed_at=(
-                            datetime.fromtimestamp(
-                                timestamp, tz=timezone.utc
-                            ).isoformat()
+                            datetime.fromtimestamp(timestamp, tz=UTC).isoformat()
                             if timestamp
                             else None
                         ),
@@ -882,11 +878,11 @@ class InlineBroker(BaseBroker):
     def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
         """Replay a single DLQ message back to its original stream."""
         for group_key, messages in self._dead_letter_queue.items():
-            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, _consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
-            for i, (identifier, message, failure_reason, timestamp) in enumerate(
+            for i, (identifier, message, _failure_reason, _timestamp) in enumerate(
                 messages
             ):
                 if identifier == dlq_id:
@@ -907,7 +903,7 @@ class InlineBroker(BaseBroker):
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
-            for identifier, message, failure_reason, timestamp in messages:
+            for _identifier, message, _failure_reason, _timestamp in messages:
                 self._publish(target_stream, message)
                 replayed += 1
             messages.clear()
@@ -1009,7 +1005,7 @@ class InlineBroker(BaseBroker):
         # Get unique streams and consumer groups
         streams = set(self._messages.keys())
         consumer_groups = set()
-        for group_key in self._consumer_groups.keys():
+        for group_key in self._consumer_groups:
             if CONSUMER_GROUP_SEPARATOR in group_key:
                 _, group_name = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
                 consumer_groups.add(group_name)

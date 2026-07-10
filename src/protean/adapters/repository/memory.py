@@ -2,12 +2,11 @@
 
 import copy
 import json
+import typing
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import date, datetime
 from itertools import count
-
-import typing
 from threading import Lock
 from typing import cast
 from uuid import UUID
@@ -180,7 +179,6 @@ class MemoryProvider(BaseProvider):
         For MemoryProvider, this is a no-op since there are no persistent
         connections or external resources to clean up.
         """
-        pass
 
     def decorate_database_model_class(
         self, entity_cls: type[typing.Any], database_model_cls: type[typing.Any]
@@ -325,8 +323,8 @@ class MemoryProvider(BaseProvider):
 
                 items.extend(list(input_db.values()))
 
-            except json.JSONDecodeError:
-                raise Exception("Query Malformed")
+            except json.JSONDecodeError as exc:
+                raise Exception("Query Malformed") from exc
             except KeyError:
                 # We encountered a repository where the key was not found
                 pass
@@ -430,7 +428,7 @@ class DictDAO(BaseDAO):
             for record_id, record in records.items():
                 if record_id == identifier:
                     continue
-                if all(record.get(k) == v for k, v in zip(keys, values)):
+                if all(record.get(k) == v for k, v in zip(keys, values, strict=False)):
                     fields_desc = ", ".join(index.fields)
                     values_desc = ", ".join(repr(v) for v in values)
                     raise ValidationError(

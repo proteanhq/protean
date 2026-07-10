@@ -1,12 +1,13 @@
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 from protean import UnitOfWork
 from protean.exceptions import (
     ConfigurationError,
-    TransactionError,
     ExpectedVersionError,
     InvalidOperationError,
+    TransactionError,
 )
 
 from .elements import Person, PersonRepository
@@ -51,17 +52,16 @@ class TestUnitOfWorkErrorHandling:
         person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
-        with pytest.raises(TransactionError) as exc_info:
-            with UnitOfWork() as uow:
-                repo = test_domain.repository_for(Person)
-                person = Person(first_name="Jane", last_name="Doe")
-                repo.add(person)
+        with pytest.raises(TransactionError) as exc_info, UnitOfWork() as uow:
+            repo = test_domain.repository_for(Person)
+            person = Person(first_name="Jane", last_name="Doe")
+            repo.add(person)
 
-                # Mock session.commit to raise a general exception
-                for session in uow._sessions.values():
-                    session.commit = Mock(
-                        side_effect=RuntimeError("Database connection failed")
-                    )
+            # Mock session.commit to raise a general exception
+            for session in uow._sessions.values():
+                session.commit = Mock(
+                    side_effect=RuntimeError("Database connection failed")
+                )
 
         # Check the error message and extra_info
         assert "Unit of Work commit failed" in str(exc_info.value)

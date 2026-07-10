@@ -3,8 +3,9 @@ import importlib
 import logging
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, ClassVar, Union
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any, ClassVar
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -89,7 +90,7 @@ def _get_version_retry_config() -> dict[str, Any]:
     return dict(_VERSION_RETRY_DEFAULTS)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _import_exception_type(path: str) -> type[BaseException]:
     """Resolve a dotted path (or bare builtin name) to an exception class.
 
@@ -144,11 +145,11 @@ def _resolve_exception_types(specs: Any) -> tuple[type[BaseException], ...]:
 
     try:
         iterator = iter(iterable)
-    except TypeError:
+    except TypeError as e:
         raise ConfigurationError(
             f"Invalid transient retry exceptions `{specs!r}`; expected an "
             f"exception type, a dotted-path string, or a list of them"
-        )
+        ) from e
 
     resolved: list[type[BaseException]] = []
     for spec in iterator:
@@ -286,7 +287,7 @@ def _deadline_exceeded_after(delay: float) -> bool:
     headers = getattr(getattr(msg, "metadata", None), "headers", None)
     if headers is None or getattr(headers, "deadline", None) is None:
         return False
-    next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
+    next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay)
     return bool(headers.is_expired(next_attempt_at))
 
 
@@ -310,7 +311,7 @@ class handle:
         self,
         target_cls: type,
         start: bool = False,
-        correlate: Union[str, dict[str, str], None] = None,
+        correlate: str | dict[str, str] | None = None,
         end: bool = False,
     ) -> None:
         self._target_cls = target_cls
@@ -497,10 +498,10 @@ class HandlerMixin:
         #   were initialized in __init__, the same collection object
         #   would be made available across all subclasses,
         #   defeating its purpose.
-        setattr(cls, "_handlers", defaultdict(set))
+        cls._handlers = defaultdict(set)
 
     @classmethod
-    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent, BaseQuery]) -> Any:
+    def _handle(cls, item: Message | BaseCommand | BaseEvent | BaseQuery) -> Any:
         """Handle a message, command, event, or query.
 
         Returns:
@@ -577,7 +578,7 @@ class HandlerMixin:
     def _dispatch_handlers(
         cls,
         handlers: set[Callable[..., Any]],
-        item: Union[BaseCommand, BaseEvent, BaseQuery],
+        item: BaseCommand | BaseEvent | BaseQuery,
     ) -> Any:
         """Dispatch item to registered handler methods."""
         # Map element_type to access log kind

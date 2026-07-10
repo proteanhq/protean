@@ -16,10 +16,10 @@ Exit codes:
 """
 
 import json
+from typing import Annotated
 
 import typer
 from rich import print
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
@@ -62,7 +62,7 @@ def upgrade_check(
         msg = f"Error loading Protean domain: {exc.args[0]}"
         print(f"[red]{msg}[/red]")
         logger.error(msg)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
 
     if derived_domain is None:  # pragma: no cover - derive_domain raises on failure
         print("[red]Error loading Protean domain: no domain found.[/red]")

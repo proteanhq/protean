@@ -1,6 +1,6 @@
 """Fixture: identifier fields are never Optional."""
 
-from protean.fields import Identifier, Auto
+from protean.fields import Auto, Identifier
 
 # Identifier with identifier=True → not Optional
 id_field = Identifier(identifier=True)

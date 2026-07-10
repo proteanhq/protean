@@ -1,25 +1,26 @@
 """Test OutboxProcessor functionality"""
 
 import asyncio
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
+
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
-from protean.fields import String, Integer
+from protean.fields import Integer, String
 from protean.server import Engine
 from protean.server.outbox_processor import OutboxProcessor
-from protean.utils.outbox import Outbox, OutboxStatus
 from protean.utils.eventing import (
-    Metadata,
-    MessageHeaders,
     DomainMeta,
     EventStoreMeta,
+    MessageHeaders,
+    Metadata,
     TraceParent,
 )
+from protean.utils.outbox import Outbox, OutboxStatus
 
 
 class MockEngine:
@@ -517,7 +518,7 @@ class TestMessageReconstruction:
             id="test-msg-id",
             type="TestDomain.DummyEvent.v1",
             stream="test-stream",
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
         )
 
         domain_meta = DomainMeta(
@@ -599,7 +600,7 @@ class TestMessageReconstruction:
             headers=MessageHeaders(
                 id="minimal-msg",
                 type="DummyEvent",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
                 stream="test-stream",
             )
         )
@@ -626,7 +627,7 @@ class TestMessageReconstruction:
             return "broker-msg-id"
 
         with patch.object(processor.broker, "publish", side_effect=capture_message):
-            success, error = await processor._publish_message(message)
+            success, _error = await processor._publish_message(message)
             assert success is True
 
         # Verify structure
@@ -707,7 +708,7 @@ class TestMessageReconstruction:
                 }
             },
             "array": [{"id": 1, "name": "Item 1"}, {"id": 2, "name": "Item 2"}],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "null_value": None,
             "boolean": True,
             "float": 3.14159,
@@ -717,7 +718,7 @@ class TestMessageReconstruction:
             headers=MessageHeaders(
                 id="complex-msg",
                 type="ComplexEvent",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
                 stream="test-stream",
             )
         )
@@ -744,7 +745,7 @@ class TestMessageReconstruction:
             return "broker-msg-id"
 
         with patch.object(processor.broker, "publish", side_effect=capture_message):
-            success, error = await processor._publish_message(message)
+            success, _error = await processor._publish_message(message)
             assert success is True
 
         # Verify complex data is preserved
@@ -764,7 +765,7 @@ class TestMessageReconstruction:
             headers=MessageHeaders(
                 id="error-msg",
                 type="DummyEvent",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
                 stream="test-stream",
             )
         )
@@ -967,7 +968,7 @@ class TestOutboxConfiguration:
             assert len(engine._outbox_processors) > 0
 
             # Get a processor and verify its configuration
-            processor = list(engine._outbox_processors.values())[0]
+            processor = next(iter(engine._outbox_processors.values()))
             assert processor.broker_provider_name == "custom_broker"
             assert processor.messages_per_tick == 15
             assert processor.tick_interval == 3
@@ -991,12 +992,14 @@ class TestOutboxConfiguration:
         domain = Domain(name="TestInvalidBroker", config=invalid_config)
         domain.init(traverse=False)
 
-        with domain.domain_context():
-            with pytest.raises(
+        with (
+            domain.domain_context(),
+            pytest.raises(
                 ValueError,
                 match="Broker provider 'nonexistent_broker' not configured in domain",
-            ):
-                Engine(domain, test_mode=True)
+            ),
+        ):
+            Engine(domain, test_mode=True)
 
     def test_outbox_disabled_by_default(self):
         """Test that outbox processors are not created when outbox is disabled"""
@@ -1097,7 +1100,7 @@ class TestOutboxConfiguration:
             engine = Engine(domain, test_mode=True)
 
             if engine._outbox_processors:
-                processor = list(engine._outbox_processors.values())[0]
+                processor = next(iter(engine._outbox_processors.values()))
                 assert processor.broker_provider_name == "default"
                 assert processor.messages_per_tick == 50
                 assert processor.tick_interval == 0.01
@@ -1237,7 +1240,7 @@ class TestOutboxProcessorEndToEnd:
                 headers=MessageHeaders(
                     id=f"batch-msg-{i}",
                     type="DummyEvent",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     stream="test-stream",
                 )
             )
@@ -1270,7 +1273,7 @@ class TestOutboxProcessorEndToEnd:
             headers=MessageHeaders(
                 id="low-priority",
                 type="DummyEvent",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
                 stream="test-stream",
             )
         )
@@ -1289,7 +1292,7 @@ class TestOutboxProcessorEndToEnd:
             headers=MessageHeaders(
                 id="high-priority",
                 type="DummyEvent",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
                 stream="test-stream",
             )
         )
@@ -1558,16 +1561,14 @@ class TestOutboxCleanup:
         # Create an abandoned message from 31 days ago
         old_message = persist_outbox_messages(outbox_test_domain, prefix="old")[0]
         old_message.status = OutboxStatus.ABANDONED.value
-        old_message.last_processed_at = datetime.now(timezone.utc) - timedelta(days=31)
+        old_message.last_processed_at = datetime.now(UTC) - timedelta(days=31)
         outbox_repo.add(old_message)
 
         # Create a recent abandoned message
         recent_message = persist_outbox_messages(outbox_test_domain, prefix="recent")[0]
         recent_message.message_id = "recent-msg"
         recent_message.status = OutboxStatus.ABANDONED.value
-        recent_message.last_processed_at = datetime.now(timezone.utc) - timedelta(
-            days=1
-        )
+        recent_message.last_processed_at = datetime.now(UTC) - timedelta(days=1)
         outbox_repo.add(recent_message)
 
         # Verify both messages exist
@@ -1593,7 +1594,7 @@ class TestOutboxCleanup:
         old_published = persist_outbox_messages(outbox_test_domain, prefix="oldpub")[0]
         old_published.message_id = "old-published"
         old_published.status = OutboxStatus.PUBLISHED.value
-        old_published.published_at = datetime.now(timezone.utc) - timedelta(days=8)
+        old_published.published_at = datetime.now(UTC) - timedelta(days=8)
         outbox_repo.add(old_published)
 
         # Create recent published message (1 day ago)
@@ -1602,7 +1603,7 @@ class TestOutboxCleanup:
         )[0]
         recent_published.message_id = "recent-published"
         recent_published.status = OutboxStatus.PUBLISHED.value
-        recent_published.published_at = datetime.now(timezone.utc) - timedelta(days=1)
+        recent_published.published_at = datetime.now(UTC) - timedelta(days=1)
         outbox_repo.add(recent_published)
 
         # Create old abandoned message (31 days ago)
@@ -1611,9 +1612,7 @@ class TestOutboxCleanup:
         ]
         old_abandoned.message_id = "old-abandoned"
         old_abandoned.status = OutboxStatus.ABANDONED.value
-        old_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(
-            days=31
-        )
+        old_abandoned.last_processed_at = datetime.now(UTC) - timedelta(days=31)
         outbox_repo.add(old_abandoned)
 
         # Create recent abandoned message (1 day ago)
@@ -1622,9 +1621,7 @@ class TestOutboxCleanup:
         )[0]
         recent_abandoned.message_id = "recent-abandoned"
         recent_abandoned.status = OutboxStatus.ABANDONED.value
-        recent_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(
-            days=1
-        )
+        recent_abandoned.last_processed_at = datetime.now(UTC) - timedelta(days=1)
         outbox_repo.add(recent_abandoned)
 
         # Clean up with 7 days for published, 30 days for abandoned
@@ -1737,7 +1734,7 @@ class TestOutboxPeriodicCleanup:
         old_published = persist_outbox_messages(outbox_test_domain, prefix="oldpub")[0]
         old_published.message_id = "old-pub"
         old_published.status = OutboxStatus.PUBLISHED.value
-        old_published.published_at = datetime.now(timezone.utc) - timedelta(days=2)
+        old_published.published_at = datetime.now(UTC) - timedelta(days=2)
         outbox_repo.add(old_published)
 
         old_abandoned = persist_outbox_messages(outbox_test_domain, prefix="oldaband")[
@@ -1745,7 +1742,7 @@ class TestOutboxPeriodicCleanup:
         ]
         old_abandoned.message_id = "old-aband"
         old_abandoned.status = OutboxStatus.ABANDONED.value
-        old_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(days=3)
+        old_abandoned.last_processed_at = datetime.now(UTC) - timedelta(days=3)
         outbox_repo.add(old_abandoned)
 
         # Create recent messages
@@ -1754,7 +1751,7 @@ class TestOutboxPeriodicCleanup:
         )[0]
         recent_published.message_id = "recent-pub"
         recent_published.status = OutboxStatus.PUBLISHED.value
-        recent_published.published_at = datetime.now(timezone.utc) - timedelta(hours=12)
+        recent_published.published_at = datetime.now(UTC) - timedelta(hours=12)
         outbox_repo.add(recent_published)
 
         # Verify messages exist before cleanup

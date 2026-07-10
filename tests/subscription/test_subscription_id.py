@@ -110,7 +110,7 @@ class TestSubscriptionId:
     def test_subscription_id_uniqueness(self, test_domain):
         """Test that multiple subscription instances have unique IDs"""
         engines = []
-        for i in range(5):  # Reduced from 10 to avoid overhead
+        for _i in range(5):  # Reduced from 10 to avoid overhead
             engine = Engine(test_domain, test_mode=True)
             engines.append(engine)
 

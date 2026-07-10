@@ -8,8 +8,8 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
-from protean.utils.globals import g
 from protean.utils.eventing import DomainMeta, Message, Metadata
+from protean.utils.globals import g
 
 
 class Register(BaseCommand):

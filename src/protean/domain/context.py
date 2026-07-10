@@ -2,9 +2,9 @@
 
 import logging
 import sys
-
+from collections.abc import Iterator
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Iterator, Optional, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from protean.utils.globals import _domain_context_stack
 
@@ -89,7 +89,7 @@ class _DomainContextGlobals:
     def __repr__(self) -> str:
         top = _domain_ctx_stack.top
         if top is not None:
-            return "<protean.g of %r>" % top.domain.name
+            return f"<protean.g of {top.domain.name!r}>"
         return object.__repr__(self)
 
 
@@ -101,7 +101,7 @@ def has_domain_context() -> bool:
     return _domain_ctx_stack.top is not None
 
 
-class DomainContext(object):
+class DomainContext:
     """The domain context binds an domain object implicitly
     to the current thread or greenlet.
     """
@@ -141,10 +141,7 @@ class DomainContext(object):
                 self.domain.do_teardown_domain_context(exc)
         finally:
             rv = _domain_ctx_stack.pop()
-        assert rv is self, "Popped wrong domain context.  (%r instead of %r)" % (
-            rv,
-            self,
-        )
+        assert rv is self, f"Popped wrong domain context.  ({rv!r} instead of {self!r})"
 
     def __enter__(self) -> "DomainContext":
         self.push()
@@ -153,9 +150,9 @@ class DomainContext(object):
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_value: Optional[BaseException],
-        tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        tb: TracebackType | None,
     ) -> None:
         self.pop(exc_value)
 

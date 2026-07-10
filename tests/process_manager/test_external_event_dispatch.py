@@ -15,8 +15,9 @@ events that are ALL registered with the same test domain. These tests use
 events from a simulated "foreign" domain.
 """
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
@@ -26,7 +27,6 @@ from protean.fields import Float, Identifier, String
 from protean.utils.eventing import Message
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
-
 
 # --- Internal aggregate + event (part of test domain) ---
 

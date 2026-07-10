@@ -16,8 +16,8 @@ from .elements import (
     Payment,
     PaymentConfirmed,
     PaymentFailed,
-    Shipping,
     ShipmentDelivered,
+    Shipping,
 )
 
 

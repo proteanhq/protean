@@ -24,8 +24,9 @@ a time. See ADR-0016.
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
-from typing import Any, Callable, Iterable, Iterator
+from typing import Any
 
 from protean.utils.globals import g
 
@@ -113,6 +114,6 @@ def _message_in_context(value: Any) -> Iterator[None]:
 
 def _set_message_context(value: Any) -> None:
     if value is not None:
-        setattr(g, "message_in_context", value)
+        g.message_in_context = value
     else:
         g.pop("message_in_context", None)

@@ -8,11 +8,10 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Annotated
 
 import typer
 from rich import print
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.utils.consume_idempotency import cleanup_processed_messages
@@ -30,11 +29,11 @@ def callback() -> None:
 def cleanup(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     retention_hours: Annotated[
-        Optional[int],
+        int | None,
         typer.Option(help="Prune markers older than this many hours"),
     ] = None,
     batch_size: Annotated[
-        Optional[int], typer.Option(help="Rows deleted per bounded batch")
+        int | None, typer.Option(help="Rows deleted per bounded batch")
     ] = None,
 ) -> None:
     """Prune consume-side idempotency markers older than the retention window.

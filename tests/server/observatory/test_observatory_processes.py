@@ -32,7 +32,6 @@ from protean.server.observatory.routes.processes import (
     merge_pm_subscription_status,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

@@ -183,13 +183,11 @@ domain.init(traverse=False)
 def test_fulfillment_happy_path():
     """Order confirmed → inventory reserved → shipment created → order completed."""
     # This test would use sync processing to verify the full chain
-    pass
 
 
 def test_fulfillment_compensation():
     """Shipment failed → inventory released → order cancelled."""
     # This test would verify compensation logic
-    pass
 
 
 # --8<-- [end:tests]

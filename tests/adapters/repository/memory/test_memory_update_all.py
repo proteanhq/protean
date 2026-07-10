@@ -4,7 +4,7 @@ import pytest
 
 from protean import UnitOfWork
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer, Boolean
+from protean.fields import Boolean, Integer, String
 from protean.utils.query import Q
 
 

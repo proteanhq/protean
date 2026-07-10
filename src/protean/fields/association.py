@@ -116,9 +116,7 @@ class Reference(FieldCacheMixin, Field):
 
     def get_attribute_name(self) -> str:
         """Return formatted attribute name for the shadow field"""
-        return self.referenced_as or "{}_{}".format(
-            self.field_name, self.linked_attribute
-        )
+        return self.referenced_as or f"{self.field_name}_{self.linked_attribute}"
 
     def get_shadow_field(self) -> "tuple[str | None, _ReferenceField]":
         """Return shadow field
@@ -753,10 +751,9 @@ class HasMany(Association):
         removed_ids: set[Any] = set()
         for item in items:
             identity = getattr(item, entity_id_fld.field_name)
-            if identity in current_value_ids:
-                if identity not in cache.removed:
-                    cache.removed[identity] = item
-                    removed_ids.add(identity)
+            if identity in current_value_ids and identity not in cache.removed:
+                cache.removed[identity] = item
+                removed_ids.add(identity)
 
             # Remove child entities
             if has_association_fields(item):
@@ -810,7 +807,7 @@ class HasMany(Association):
             cache = HasManyChanges()
 
         # Add objects in temporary cache
-        for _, item in cache.added.items():
+        for item in cache.added.values():
             data.append(item)
 
         # Update objects from temporary cache if present
@@ -824,7 +821,7 @@ class HasMany(Association):
         data = updated_objects
 
         # Remove objects marked as removed in temporary cache
-        for _, item in cache.removed.items():
+        for item in cache.removed.values():
             # Retain data that is not among deleted items
             data[:] = [
                 value

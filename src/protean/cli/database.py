@@ -1,8 +1,9 @@
 """CLI commands for database lifecycle management."""
 
+from typing import Annotated
+
 import typer
 from rich import print
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.exceptions import ConfigurationError
@@ -84,6 +85,6 @@ def setup_outbox(
             derived_domain.setup_outbox()
     except ConfigurationError as exc:
         print(f"Error: {exc.args[0]}")
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
     print("Outbox tables created successfully.")

@@ -45,43 +45,49 @@ class TestBrokerErrorHandling:
         """Test publish method when connection error occurs and recovery fails"""
         broker = InlineBroker("test_broker", test_domain, {})
 
-        with patch.object(
-            broker, "_publish", side_effect=Exception("Connection timeout")
+        with (
+            patch.object(
+                broker, "_publish", side_effect=Exception("Connection timeout")
+            ),
+            patch.object(broker, "_ensure_connection", return_value=False),
         ):
-            with patch.object(broker, "_ensure_connection", return_value=False):
-                with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover connection error check
-                    with pytest.raises(Exception, match="Connection timeout"):
-                        broker.publish("test_stream", {"data": "test"})
+            with patch.object(broker, "_is_connection_error", return_value=True):
+                # This should cover connection error check
+                with pytest.raises(Exception, match="Connection timeout"):
+                    broker.publish("test_stream", {"data": "test"})
 
     def test_publish_non_connection_error(self, test_domain):
         """Test publish method when non-connection error occurs"""
         broker = InlineBroker("test_broker", test_domain, {})
 
-        with patch.object(
-            broker, "_publish", side_effect=Exception("Non-connection error")
+        with (
+            patch.object(
+                broker, "_publish", side_effect=Exception("Non-connection error")
+            ),
+            patch.object(broker, "_is_connection_error", return_value=False),
         ):
-            with patch.object(broker, "_is_connection_error", return_value=False):
-                # This should cover else clause for non-connection errors
-                with pytest.raises(Exception, match="Non-connection error"):
-                    broker.publish("test_stream", {"data": "test"})
+            # This should cover else clause for non-connection errors
+            with pytest.raises(Exception, match="Non-connection error"):
+                broker.publish("test_stream", {"data": "test"})
 
     def test_health_stats_exception_handling(self, test_domain):
         """Test health_stats method when exception occurs"""
         broker = InlineBroker("test_broker", test_domain, {})
 
-        with patch.object(
-            broker, "_health_stats", side_effect=Exception("Health check failed")
+        with (
+            patch.object(
+                broker, "_health_stats", side_effect=Exception("Health check failed")
+            ),
+            patch.object(broker, "ping", side_effect=Exception("Ping failed")),
         ):
-            with patch.object(broker, "ping", side_effect=Exception("Ping failed")):
-                # This should cover exception handling in health_stats
-                stats = broker.health_stats()
+            # This should cover exception handling in health_stats
+            stats = broker.health_stats()
 
-                assert stats["status"] == "unhealthy"
-                assert stats["connected"] is False
-                assert stats["last_ping_ms"] is None
-                assert stats["uptime_seconds"] == 0
-                assert "error" in stats["details"]
+            assert stats["status"] == "unhealthy"
+            assert stats["connected"] is False
+            assert stats["last_ping_ms"] is None
+            assert stats["uptime_seconds"] == 0
+            assert "error" in stats["details"]
 
     def test_get_next_connection_error_with_successful_recovery(self, test_domain):
         """Test get_next method when connection error occurs but recovery succeeds"""
@@ -110,26 +116,30 @@ class TestBrokerErrorHandling:
         """Test get_next method when connection error occurs and recovery fails"""
         broker = InlineBroker("test_broker", test_domain, {})
 
-        with patch.object(
-            broker, "_get_next", side_effect=Exception("Connection timeout")
+        with (
+            patch.object(
+                broker, "_get_next", side_effect=Exception("Connection timeout")
+            ),
+            patch.object(broker, "_ensure_connection", return_value=False),
         ):
-            with patch.object(broker, "_ensure_connection", return_value=False):
-                with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover connection error check in get_next
-                    with pytest.raises(Exception, match="Connection timeout"):
-                        broker.get_next("test_stream", "test_group")
+            with patch.object(broker, "_is_connection_error", return_value=True):
+                # This should cover connection error check in get_next
+                with pytest.raises(Exception, match="Connection timeout"):
+                    broker.get_next("test_stream", "test_group")
 
     def test_get_next_non_connection_error(self, test_domain):
         """Test get_next method when non-connection error occurs"""
         broker = InlineBroker("test_broker", test_domain, {})
 
-        with patch.object(
-            broker, "_get_next", side_effect=Exception("Non-connection error")
+        with (
+            patch.object(
+                broker, "_get_next", side_effect=Exception("Non-connection error")
+            ),
+            patch.object(broker, "_is_connection_error", return_value=False),
         ):
-            with patch.object(broker, "_is_connection_error", return_value=False):
-                # This should cover the else clause for non-connection errors in get_next
-                with pytest.raises(Exception, match="Non-connection error"):
-                    broker.get_next("test_stream", "test_group")
+            # This should cover the else clause for non-connection errors in get_next
+            with pytest.raises(Exception, match="Non-connection error"):
+                broker.get_next("test_stream", "test_group")
 
     def test_read_connection_error_with_successful_recovery(self, test_domain):
         """Test read method when connection error occurs but recovery succeeds"""
@@ -169,13 +179,15 @@ class TestBrokerErrorHandling:
         """Test read method when non-connection error occurs"""
         broker = InlineBroker("test_broker", test_domain, {})
 
-        with patch.object(
-            broker, "_read", side_effect=Exception("Non-connection error")
+        with (
+            patch.object(
+                broker, "_read", side_effect=Exception("Non-connection error")
+            ),
+            patch.object(broker, "_is_connection_error", return_value=False),
         ):
-            with patch.object(broker, "_is_connection_error", return_value=False):
-                # This should cover the else clause for non-connection errors in read
-                with pytest.raises(Exception, match="Non-connection error"):
-                    broker.read("test_stream", "test_group", 1)
+            # This should cover the else clause for non-connection errors in read
+            with pytest.raises(Exception, match="Non-connection error"):
+                broker.read("test_stream", "test_group", 1)
 
     def test_ack_connection_error_with_successful_recovery(self, test_domain):
         """Test ack method when connection error occurs but recovery succeeds"""
@@ -215,13 +227,13 @@ class TestBrokerErrorHandling:
         """Test ack method when non-connection error occurs"""
         broker = InlineBroker("test_broker", test_domain, {})
 
-        with patch.object(
-            broker, "_ack", side_effect=Exception("Non-connection error")
+        with (
+            patch.object(broker, "_ack", side_effect=Exception("Non-connection error")),
+            patch.object(broker, "_is_connection_error", return_value=False),
         ):
-            with patch.object(broker, "_is_connection_error", return_value=False):
-                # This should cover the else clause for non-connection errors in ack
-                with pytest.raises(Exception, match="Non-connection error"):
-                    broker.ack("test_stream", "test_id", "test_group")
+            # This should cover the else clause for non-connection errors in ack
+            with pytest.raises(Exception, match="Non-connection error"):
+                broker.ack("test_stream", "test_id", "test_group")
 
     def test_nack_connection_error_with_successful_recovery(self, test_domain):
         """Test nack method when connection error occurs but recovery succeeds"""
@@ -261,13 +273,15 @@ class TestBrokerErrorHandling:
         """Test nack method when non-connection error occurs"""
         broker = InlineBroker("test_broker", test_domain, {})
 
-        with patch.object(
-            broker, "_nack", side_effect=Exception("Non-connection error")
+        with (
+            patch.object(
+                broker, "_nack", side_effect=Exception("Non-connection error")
+            ),
+            patch.object(broker, "_is_connection_error", return_value=False),
         ):
-            with patch.object(broker, "_is_connection_error", return_value=False):
-                # This should cover else clause for non-connection errors in nack
-                with pytest.raises(Exception, match="Non-connection error"):
-                    broker.nack("test_stream", "test_id", "test_group")
+            # This should cover else clause for non-connection errors in nack
+            with pytest.raises(Exception, match="Non-connection error"):
+                broker.nack("test_stream", "test_id", "test_group")
 
     def test_publish_with_sync_processing_and_subscribers(self, test_domain):
         """Test publish method with sync processing and registered subscribers"""

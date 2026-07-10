@@ -17,7 +17,6 @@ from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import HasMany, HasOne, Reference, String, ValueObject
 
-
 # ── Association resolution types ────────────────────────────────────────
 
 

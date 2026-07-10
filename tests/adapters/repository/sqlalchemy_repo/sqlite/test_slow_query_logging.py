@@ -28,7 +28,6 @@ from protean.utils.eventing import (
 )
 from protean.utils.globals import g
 
-
 SLOW_QUERY_LOGGER = "protean.adapters.repository.sqlalchemy.slow_query"
 QUERY_LOGGER = "protean.adapters.repository.sqlalchemy.query"
 

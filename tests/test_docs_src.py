@@ -26,8 +26,8 @@ def test_import_my_module():
         assert UserApplicationServices is not None
 
         assert True  # If the import succeeds, the test passes
-    except ImportError:
-        assert False, "Module in docs_src could not be imported"
+    except ImportError as e:
+        raise AssertionError("Module in docs_src could not be imported") from e
 
 
 def test_application_service_method_invocation():

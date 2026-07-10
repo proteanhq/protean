@@ -18,7 +18,7 @@ def cluster_ir():
 def order_cluster(cluster_ir):
     """Return the Order aggregate's cluster from the IR."""
     # Find the cluster keyed by the Order aggregate FQN
-    for key, cluster in cluster_ir["clusters"].items():
+    for cluster in cluster_ir["clusters"].values():
         if cluster["aggregate"]["name"] == "Order":
             return cluster
     pytest.fail("Order cluster not found")

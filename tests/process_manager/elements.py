@@ -7,7 +7,6 @@ from protean.core.process_manager import BaseProcessManager
 from protean.fields import Float, Identifier, String
 from protean.utils.mixins import handle
 
-
 # --- Aggregates ---
 
 

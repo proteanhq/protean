@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -9,7 +9,7 @@ from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.utils import Processing, fqn
-from protean.utils.eventing import MessageEnvelope, MessageHeaders, Metadata, DomainMeta
+from protean.utils.eventing import DomainMeta, MessageEnvelope, MessageHeaders, Metadata
 
 
 class UserLoggedIn(BaseEvent):
@@ -48,7 +48,7 @@ def test_metadata_defaults():
 
 
 def test_metadata_can_be_overridden():
-    now_timestamp = datetime.now(timezone.utc) - timedelta(hours=1)
+    now_timestamp = datetime.now(UTC) - timedelta(hours=1)
     event = UserLoggedIn(
         user_id=str(uuid4()),
         _metadata=Metadata(

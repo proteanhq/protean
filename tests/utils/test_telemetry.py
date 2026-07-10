@@ -3,13 +3,12 @@
 from unittest.mock import patch
 
 import pytest
-
 from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from protean.utils.telemetry import (
     _NoOpMeter,
@@ -19,7 +18,6 @@ from protean.utils.telemetry import (
     init_telemetry,
     shutdown_telemetry,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

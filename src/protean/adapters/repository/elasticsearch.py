@@ -5,26 +5,38 @@ import json
 import logging
 import types
 import typing
-from datetime import date as _date, datetime as _datetime
 from collections.abc import Sequence
+from datetime import date as _date
+from datetime import datetime as _datetime
 from typing import Any as _Any
 from uuid import UUID
 
-from elasticsearch import Elasticsearch, dsl as elasticsearch_dsl
-from elasticsearch.exceptions import ConflictError, NotFoundError
+from elasticsearch import Elasticsearch
+from elasticsearch import dsl as elasticsearch_dsl
 from elasticsearch.dsl import (
     Boolean as ESBoolean,
+)
+from elasticsearch.dsl import (
     Date as ESDate,
+)
+from elasticsearch.dsl import (
     Document,
-    Float as ESFloat,
     Index,
-    Integer as ESInteger,
     Keyword,
     Mapping,
-    Nested as ESNested,
     Search,
     query,
 )
+from elasticsearch.dsl import (
+    Float as ESFloat,
+)
+from elasticsearch.dsl import (
+    Integer as ESInteger,
+)
+from elasticsearch.dsl import (
+    Nested as ESNested,
+)
+from elasticsearch.exceptions import ConflictError, NotFoundError
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import Record, ResultSet
@@ -35,6 +47,10 @@ from protean.exceptions import (
     NotSupportedError,
     ObjectNotFoundError,
 )
+from protean.fields.association import _ReferenceField
+from protean.fields.basic import ValueObjectList
+from protean.fields.embedded import _ShadowField
+from protean.fields.resolved import ResolvedField
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import IdentityStrategy, IdentityType, _fully_qualified_name
@@ -42,10 +58,6 @@ from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import F, Q
 from protean.utils.reflection import attributes, id_field
-from protean.fields.association import _ReferenceField
-from protean.fields.basic import ValueObjectList
-from protean.fields.embedded import _ShadowField
-from protean.fields.resolved import ResolvedField
 
 logger = logging.getLogger(__name__)
 
@@ -452,15 +464,15 @@ class ElasticsearchDAO(BaseDAO):
                 except Exception as retry_exc:
                     logger.exception("repository.elasticsearch.filter_retry_failed")
                     raise DatabaseError(
-                        f"Database error during filtering: {str(retry_exc)}",
+                        f"Database error during filtering: {retry_exc!s}",
                         original_exception=retry_exc,
-                    )
+                    ) from retry_exc
             else:
                 logger.exception("repository.elasticsearch.filter_failed")
                 raise DatabaseError(
-                    f"Database error during filtering: {str(exc)}",
+                    f"Database error during filtering: {exc!s}",
                     original_exception=exc,
-                )
+                ) from exc
 
         return result
 
@@ -477,8 +489,8 @@ class ElasticsearchDAO(BaseDAO):
         except Exception as exc:
             logger.exception("repository.elasticsearch.create_failed")
             raise DatabaseError(
-                f"Database error during creation: {str(exc)}", original_exception=exc
-            )
+                f"Database error during creation: {exc!s}", original_exception=exc
+            ) from exc
 
         return model_obj
 
@@ -497,12 +509,12 @@ class ElasticsearchDAO(BaseDAO):
             existing = self.database_model_cls.get(
                 id=identifier, using=conn, index=self.database_model_cls._index._name
             )
-        except NotFoundError:
+        except NotFoundError as exc:
             logger.exception("repository.elasticsearch.record_not_found")
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
-            )
+            ) from exc
 
         # ``Document.get`` returns ``None`` (rather than raising) when
         # Elasticsearch responds without ``found``. Treat it the same as a
@@ -549,8 +561,8 @@ class ElasticsearchDAO(BaseDAO):
         except Exception as exc:
             logger.exception("repository.elasticsearch.update_failed")
             raise DatabaseError(
-                f"Database error during update: {str(exc)}", original_exception=exc
-            )
+                f"Database error during update: {exc!s}", original_exception=exc
+            ) from exc
 
         return model_obj
 
@@ -597,8 +609,8 @@ class ElasticsearchDAO(BaseDAO):
         except Exception as exc:
             logger.exception("repository.elasticsearch.update_all_failed")
             raise DatabaseError(
-                f"Database error during update_all: {str(exc)}", original_exception=exc
-            )
+                f"Database error during update_all: {exc!s}", original_exception=exc
+            ) from exc
 
     def _delete(self, model_obj: _Any) -> _Any:
         """Delete a Record from the Repository"""
@@ -610,7 +622,7 @@ class ElasticsearchDAO(BaseDAO):
                 using=conn,
                 refresh=True,
             )
-        except NotFoundError:
+        except NotFoundError as exc:
             logger.exception("repository.elasticsearch.record_not_found")
             id_field_obj = id_field(self.entity_cls)
             assert id_field_obj is not None
@@ -619,12 +631,12 @@ class ElasticsearchDAO(BaseDAO):
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
-            )
+            ) from exc
         except Exception as exc:
             logger.exception("repository.elasticsearch.delete_failed")
             raise DatabaseError(
-                f"Database error during deletion: {str(exc)}", original_exception=exc
-            )
+                f"Database error during deletion: {exc!s}", original_exception=exc
+            ) from exc
 
         return model_obj
 
@@ -676,8 +688,8 @@ class ElasticsearchDAO(BaseDAO):
         except Exception as exc:
             logger.exception("repository.elasticsearch.delete_top_failed")
             raise DatabaseError(
-                f"Database error during delete_top: {str(exc)}", original_exception=exc
-            )
+                f"Database error during delete_top: {exc!s}", original_exception=exc
+            ) from exc
 
         deleted: int = response.deleted
         return deleted
@@ -703,8 +715,8 @@ class ElasticsearchDAO(BaseDAO):
         except Exception as exc:
             logger.exception("repository.elasticsearch.delete_all_failed")
             raise DatabaseError(
-                f"Database error during delete_all: {str(exc)}", original_exception=exc
-            )
+                f"Database error during delete_all: {exc!s}", original_exception=exc
+            ) from exc
 
         return response.deleted
 
@@ -782,13 +794,10 @@ class ESProvider(BaseProvider):
 
     def namespaced_schema_name(self, schema_name: str) -> str:
         # Prepend Namespace prefix if one has been provided
-        if "NAMESPACE_PREFIX" in self.conn_info and self.conn_info["NAMESPACE_PREFIX"]:
+        if self.conn_info.get("NAMESPACE_PREFIX"):
             # Use custom separator if provided
             separator = "_"
-            if (
-                "NAMESPACE_SEPARATOR" in self.conn_info
-                and self.conn_info["NAMESPACE_SEPARATOR"]
-            ):
+            if self.conn_info.get("NAMESPACE_SEPARATOR"):
                 separator = self.conn_info["NAMESPACE_SEPARATOR"]
 
             schema_name = (
@@ -891,7 +900,7 @@ class ESProvider(BaseProvider):
             )
 
             # Gather adapter settings
-            if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
+            if self.conn_info.get("SETTINGS"):
                 options["settings"] = self.conn_info["SETTINGS"]
 
             # Set options into `Index` inner class for ElasticsearchModel
@@ -929,9 +938,11 @@ class ESProvider(BaseProvider):
                     if es_field is not None:
                         m.field(attr_name, es_field)
 
-            if hasattr(entity_cls, "_version"):
-                if "entity_version" not in custom_attrs_snapshot:
-                    m.field("entity_version", ESInteger())
+            if (
+                hasattr(entity_cls, "_version")
+                and "entity_version" not in custom_attrs_snapshot
+            ):
+                m.field("entity_version", ESInteger())
 
             decorated_database_database_model_cls._index.mapping(m)
 
@@ -964,7 +975,7 @@ class ESProvider(BaseProvider):
             # Construct Inner Index class with options
             options = {}
             options["name"] = schema_name
-            if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
+            if self.conn_info.get("SETTINGS"):
                 options["settings"] = self.conn_info["SETTINGS"]
 
             index_cls = type("Index", (object,), options)
@@ -1031,7 +1042,7 @@ class ESProvider(BaseProvider):
             **self.domain.registry.projections,
         }
 
-        for _, element_record in elements.items():
+        for element_record in elements.values():
             cls = element_record.cls
             # Skip elements this provider does not materialize as an index
             # (event-sourced aggregates/entities, cache-backed projections, and
@@ -1075,7 +1086,7 @@ class ESProvider(BaseProvider):
             if element_type in self.domain.registry._elements:
                 elements.update(self.domain.registry._elements[element_type])
 
-        for _, element_record in elements.items():
+        for element_record in elements.values():
             cls = element_record.cls
             # Skip elements this provider does not materialize as an index
             # (event-sourced aggregates/entities, cache-backed projections, and
@@ -1096,7 +1107,7 @@ class ESProvider(BaseProvider):
             **self.domain.registry.entities,
             **self.domain.registry.projections,
         }
-        for _, element_record in elements.items():
+        for element_record in elements.values():
             cls = element_record.cls
             # Skip elements this provider does not materialize as an index
             # (event-sourced aggregates/entities, cache-backed projections, and

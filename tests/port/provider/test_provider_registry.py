@@ -1,12 +1,12 @@
 """Tests for the ProviderRegistry plugin system."""
 
 import logging
-
-import pytest
 from unittest.mock import Mock, patch
 
-from protean.port.provider import registry, ProviderRegistry
+import pytest
+
 from protean.exceptions import ConfigurationError
+from protean.port.provider import ProviderRegistry, registry
 
 
 @pytest.mark.no_test_domain

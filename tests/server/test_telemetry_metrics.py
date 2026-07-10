@@ -13,11 +13,10 @@ Verifies that:
   telemetry is enabled, and falls back to hand-rolled text otherwise.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -34,12 +33,11 @@ from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 from protean.utils.telemetry import (
-    DomainMetrics,
     _DOMAIN_METRICS_KEY,
+    DomainMetrics,
     get_domain_metrics,
     shutdown_telemetry,
 )
-
 
 # ---------------------------------------------------------------------------
 # Domain elements for testing
@@ -281,7 +279,7 @@ class TestCommandExpiredCounter:
     def test_sync_expiry_increments_counter(self, test_domain, telemetry):
         _, metric_reader = telemetry
 
-        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        past = datetime.now(UTC) - timedelta(seconds=1)
         with pytest.raises(CommandExpiredError):
             test_domain.process(
                 OpenAccount(account_id=str(uuid4()), name="Acme"),
@@ -1647,7 +1645,7 @@ class TestNoOpFallbacks:
         from protean.utils.telemetry import _NoOpMeter, _NoOpObservableGauge
 
         meter = _NoOpMeter()
-        gauge = meter.create_observable_gauge("test.gauge", callbacks=[lambda: []])
+        gauge = meter.create_observable_gauge("test.gauge", callbacks=[list])
         assert isinstance(gauge, _NoOpObservableGauge)
 
     def test_create_observation_noop_fallback(self):
@@ -1809,9 +1807,7 @@ class TestOutboxProcessorMetrics:
         from unittest.mock import AsyncMock, MagicMock, patch
 
         processor = self._make_processor()
-        created = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-            seconds=1
-        )
+        created = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=1)
         mock_message = self._make_message(created_at=created)
         processor.outbox_repo.get.return_value = mock_message
 

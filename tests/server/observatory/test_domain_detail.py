@@ -9,7 +9,6 @@ Covers:
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Template: Panel Structure
 # ---------------------------------------------------------------------------
@@ -208,7 +207,7 @@ class TestDetailPanelClusterData:
 
     def test_cluster_has_aggregate_entry(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
-        for fqn, cluster in data["clusters"].items():
+        for cluster in data["clusters"].values():
             assert "aggregate" in cluster
 
     def test_cluster_has_element_sections(self, multi_agg_client):
@@ -227,7 +226,7 @@ class TestDetailPanelClusterData:
 
     def test_aggregate_has_fields(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
-        for fqn, cluster in data["clusters"].items():
+        for cluster in data["clusters"].values():
             agg = cluster["aggregate"]
             assert "fields" in agg
             assert isinstance(agg["fields"], dict)
@@ -235,31 +234,31 @@ class TestDetailPanelClusterData:
 
     def test_aggregate_has_identity_field(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
-        for fqn, cluster in data["clusters"].items():
+        for cluster in data["clusters"].values():
             agg = cluster["aggregate"]
             assert "identity_field" in agg
 
     def test_aggregate_has_options(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
-        for fqn, cluster in data["clusters"].items():
+        for cluster in data["clusters"].values():
             agg = cluster["aggregate"]
             assert "options" in agg
 
     def test_command_has_type_key(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
-        for fqn, cluster in data["clusters"].items():
-            for cmd_fqn, cmd in cluster.get("commands", {}).items():
+        for cluster in data["clusters"].values():
+            for cmd in cluster.get("commands", {}).values():
                 assert "__type__" in cmd
 
     def test_event_has_type_key(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
-        for fqn, cluster in data["clusters"].items():
-            for evt_fqn, evt in cluster.get("events", {}).items():
+        for cluster in data["clusters"].values():
+            for evt in cluster.get("events", {}).values():
                 assert "__type__" in evt
 
     def test_handler_has_handler_map(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
-        for fqn, cluster in data["clusters"].items():
-            for ch_fqn, ch in cluster.get("command_handlers", {}).items():
+        for cluster in data["clusters"].values():
+            for ch in cluster.get("command_handlers", {}).values():
                 assert "handlers" in ch
                 assert isinstance(ch["handlers"], dict)

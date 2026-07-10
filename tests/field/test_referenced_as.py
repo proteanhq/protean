@@ -3,8 +3,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.fields.basic import Integer, String
 from protean.utils.reflection import attributes
-
-from tests.shared import has_key_or_attr, get_value_from_key_or_attr
+from tests.shared import get_value_from_key_or_attr, has_key_or_attr
 
 
 class User(BaseAggregate):

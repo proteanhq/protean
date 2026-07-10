@@ -202,9 +202,8 @@ class TestAtomicChange:
 
     def test_invalid_transition_in_atomic(self):
         order = self.Order()
-        with pytest.raises(ValidationError) as exc:
-            with atomic_change(order):
-                order.status = "SHIPPED"
+        with pytest.raises(ValidationError) as exc, atomic_change(order):
+            order.status = "SHIPPED"
 
         assert "status" in exc.value.messages
 
@@ -222,19 +221,17 @@ class TestAtomicChange:
         with an invalid overall transition still fail."""
         order = self.Order()
 
-        with pytest.raises(ValidationError):
-            with atomic_change(order):
-                # Individual steps are valid, but overall DRAFT->CONFIRMED is not
-                order.status = "PLACED"
-                order.status = "CONFIRMED"
+        with pytest.raises(ValidationError), atomic_change(order):
+            # Individual steps are valid, but overall DRAFT->CONFIRMED is not
+            order.status = "PLACED"
+            order.status = "CONFIRMED"
 
     def test_terminal_in_atomic(self):
         order = self.Order()
         order.status = "CANCELLED"
 
-        with pytest.raises(ValidationError) as exc:
-            with atomic_change(order):
-                order.status = "DRAFT"
+        with pytest.raises(ValidationError) as exc, atomic_change(order):
+            order.status = "DRAFT"
 
         assert "terminal state" in str(exc.value.messages["status"])
 
@@ -242,10 +239,9 @@ class TestAtomicChange:
         """When an exception propagates, transition validation is skipped."""
         order = self.Order()
 
-        with pytest.raises(RuntimeError):
-            with atomic_change(order):
-                order.status = "SHIPPED"  # Would be invalid
-                raise RuntimeError("something broke")
+        with pytest.raises(RuntimeError), atomic_change(order):
+            order.status = "SHIPPED"  # Would be invalid
+            raise RuntimeError("something broke")
 
         # Status may have been set but the transition error is not raised
         # because the RuntimeError takes precedence

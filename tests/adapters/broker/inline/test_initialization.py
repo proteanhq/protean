@@ -17,7 +17,7 @@ def test_that_a_concrete_broker_can_be_initialized_successfully(test_domain):
 
 def test_that_domain_initializes_broker_from_config(test_domain):
     assert len(list(test_domain.brokers)) == 1
-    assert isinstance(list(test_domain.brokers.values())[0], InlineBroker)
+    assert isinstance(next(iter(test_domain.brokers.values())), InlineBroker)
 
 
 def test_that_inline_is_the_configured_broker(test_domain):

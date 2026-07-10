@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import uuid
+from datetime import UTC
 
 import pytest
 from fastapi.testclient import TestClient
@@ -552,9 +553,9 @@ class TestBuildTraceSummaryEdgeCases:
         assert summary["root_type"] == "Hdr.Type.v1"
 
     def test_datetime_time_produces_isoformat(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        dt = datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
         group = [
             (
                 {
@@ -659,7 +660,7 @@ class TestSearchTracesEndpoint:
         assert data["count"] == 1
 
     def test_search_by_stream_category(self, trace_domain, trace_client):
-        domain, _, _ = trace_domain
+        _domain, _, _ = trace_domain
         cat = Order.meta_.stream_category
         resp = trace_client.get(f"/api/timeline/traces/search?stream_category={cat}")
         assert resp.status_code == 200

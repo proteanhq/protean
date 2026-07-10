@@ -23,7 +23,7 @@ def test_any_handler(test_domain):
     test_domain.register(AllEventHandler, stream_category="$all")
     test_domain.init(traverse=False)
 
-    len(AllEventHandler._handlers) == 1
+    assert len(AllEventHandler._handlers) == 1
     assert AllEventHandler._handlers["$any"] == {AllEventHandler.universal_handler}
 
 

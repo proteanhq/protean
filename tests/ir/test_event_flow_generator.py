@@ -12,7 +12,6 @@ from protean.ir.generators.events import (
     generate_event_flow_diagram,
 )
 
-
 # ------------------------------------------------------------------
 # Fixtures — composable IR builders
 # ------------------------------------------------------------------

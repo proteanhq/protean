@@ -7,7 +7,6 @@ _validate_domain() and logged as warnings to alert developers early.
 
 import logging
 
-
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, Integer, String

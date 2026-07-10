@@ -14,11 +14,11 @@ Usage::
 """
 
 import json as json_mod
+from typing import Annotated
 
 import typer
 from rich import print
 from rich.table import Table
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 
@@ -49,7 +49,9 @@ def status(
     ] = False,
 ) -> None:
     """Show subscription lag status for all handlers."""
-    from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
+    from protean.server.subscription_status import (  # noqa: PLC0415
+        collect_subscription_statuses,
+    )
 
     derived_domain = load_domain(domain)
 

@@ -3,7 +3,8 @@
 import copy
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Iterator, KeysView, Union
+from collections.abc import Iterator, KeysView
+from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import NotSupportedError
 from protean.port.provider import DatabaseCapabilities
@@ -60,7 +61,7 @@ class QuerySet:
         self._domain = domain
         self._entity_cls = entity_cls
         self._criteria = criteria or Q()
-        self._result_cache: "ResultSet | None" = None
+        self._result_cache: ResultSet | None = None
         self._offset = offset or 0
 
         # Field selection set via ``only()``. ``None`` means "fetch full
@@ -168,7 +169,7 @@ class QuerySet:
 
         return clone
 
-    def order_by(self, order_by: Union[list[str], str]) -> "QuerySet":
+    def order_by(self, order_by: list[str] | str) -> "QuerySet":
         """Update order_by setting for filter set"""
         clone = self._clone()
 
@@ -503,14 +504,7 @@ class QuerySet:
 
     def __repr__(self) -> str:
         """Support friendly print of query criteria"""
-        return "<%s: entity: %s, criteria: %s, offset: %s, limit: %s, order_by: %s>" % (
-            self.__class__.__name__,
-            self._entity_cls,
-            self._criteria.deconstruct(),
-            self._offset,
-            self._limit,
-            self._order_by,
-        )
+        return f"<{self.__class__.__name__}: entity: {self._entity_cls}, criteria: {self._criteria.deconstruct()}, offset: {self._offset}, limit: {self._limit}, order_by: {self._order_by}>"
 
     def __getitem__(self, k: Any) -> Any:
         """Support slicing of results"""
@@ -723,7 +717,7 @@ class Record:
     # non-Optional, so both checkers flag the assignment. Genuine false-positive.
     __hash__ = None  # type: ignore[assignment]
 
-    __slots__ = ("_entity_name", "_data")
+    __slots__ = ("_data", "_entity_name")
 
     _entity_name: str
     _data: dict[str, Any]

@@ -7,7 +7,6 @@ instead of discovering the gap at runtime.
 
 import logging
 
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler

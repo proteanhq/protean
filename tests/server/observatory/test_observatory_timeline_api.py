@@ -26,8 +26,8 @@ from protean.fields import Identifier, String
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import (
     _build_causation_tree_from_group,
-    _extract_aggregate_id,
     _domain_from_stream,
+    _extract_aggregate_id,
     _extract_event_type,
     _extract_kind,
     _extract_message_id,
@@ -43,7 +43,6 @@ from protean.server.observatory.routes.timeline import (
     create_timeline_router,
     find_event_by_id,
 )
-
 from tests.server.observatory.conftest import route_paths
 
 # All tests in this module use standalone in-memory domains
@@ -410,8 +409,8 @@ class TestExtractAggregateId:
 
 class TestCollectAllEvents:
     def test_returns_events(self, domain_with_events):
-        domain, user1_id, user2_id = domain_with_events
-        events, cursor = collect_all_events([domain])
+        domain, _user1_id, _user2_id = domain_with_events
+        events, _cursor = collect_all_events([domain])
         assert len(events) == 3
 
     def test_respects_limit(self, domain_with_events):
@@ -1337,9 +1336,8 @@ class TestUniqueStoreDomains:
         domain_b._initialize()
         domain_b.init(traverse=False)
 
-        with domain_a.domain_context():
-            with domain_b.domain_context():
-                result = _unique_store_domains([domain_a, domain_b])
+        with domain_a.domain_context(), domain_b.domain_context():
+            result = _unique_store_domains([domain_a, domain_b])
 
         # Both use in-memory event stores with no database_uri, so they'll
         # fall back to id()-based keys (different store instances = different keys).
@@ -1516,9 +1514,8 @@ class TestMultiDomainDeduplication:
             u2 = User.register(str(uuid.uuid4()), "Bob")
             domain_b.event_store.store.append(u2._events[0])
 
-        with domain_a.domain_context():
-            with domain_b.domain_context():
-                events, _ = collect_all_events([domain_a, domain_b])
+        with domain_a.domain_context(), domain_b.domain_context():
+            events, _ = collect_all_events([domain_a, domain_b])
 
         # Both stores are distinct (different id()), so both events appear
         assert len(events) == 2

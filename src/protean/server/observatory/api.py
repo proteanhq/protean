@@ -9,7 +9,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -60,7 +60,7 @@ _WORKER_ACTIVE_THRESHOLD_MS = 5 * 60 * 1000  # 5 min
 _WORKER_IDLE_THRESHOLD_MS = 30 * 60 * 1000  # 30 min
 
 
-def _parse_worker_key(consumer_name: str) -> Tuple[str, str]:
+def _parse_worker_key(consumer_name: str) -> tuple[str, str]:
     """Extract (hostname, pid) from a consumer name.
 
     Consumer names follow the pattern: {ClassName}-{hostname}-{pid}-{random_hex}
@@ -92,7 +92,7 @@ def _parse_worker_key(consumer_name: str) -> Tuple[str, str]:
     return (consumer_name, "0")
 
 
-def _get_redis(domains: List[Domain]) -> "redis.Redis[Any] | None":
+def _get_redis(domains: list[Domain]) -> "redis.Redis[Any] | None":
     """Get a Redis connection from the first domain's broker."""
     for d in domains:
         try:
@@ -101,7 +101,7 @@ def _get_redis(domains: List[Domain]) -> "redis.Redis[Any] | None":
                 if broker and hasattr(broker, "redis_instance"):
                     # ``redis_instance`` is a dynamic attribute present only on
                     # the Redis broker subclasses, not the ``BaseBroker`` port.
-                    instance: "redis.Redis[Any]" = getattr(broker, "redis_instance")
+                    instance: redis.Redis[Any] = broker.redis_instance
                     return instance
         except Exception:
             continue
@@ -208,7 +208,7 @@ def _xinfo_consumers(
     return cast("list[Any]", xinfo(name, groupname))
 
 
-def create_api_router(domains: List[Domain]) -> APIRouter:
+def create_api_router(domains: list[Domain]) -> APIRouter:
     """Create the REST API router for observatory endpoints."""
     router = APIRouter()
 
@@ -512,9 +512,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
             # Status: use throughput as primary signal (if processing, it's active),
             # fall back to idle_ms from XINFO CONSUMERS
-            if total > 0:
-                w["status"] = "active"
-            elif w["min_idle_ms"] < _WORKER_ACTIVE_THRESHOLD_MS:
+            if total > 0 or w["min_idle_ms"] < _WORKER_ACTIVE_THRESHOLD_MS:
                 w["status"] = "active"
             elif w["min_idle_ms"] < _WORKER_IDLE_THRESHOLD_MS:
                 w["status"] = "idle"
@@ -637,10 +635,10 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.get("/traces")
     async def traces(
         count: int = Query(200, ge=1, le=1000, description="Number of traces"),
-        domain: Optional[str] = Query(None, description="Filter by domain"),
-        stream: Optional[str] = Query(None, description="Filter by stream"),
-        event: Optional[str] = Query(None, description="Filter by event type"),
-        message_id: Optional[str] = Query(
+        domain: str | None = Query(None, description="Filter by domain"),
+        stream: str | None = Query(None, description="Filter by stream"),
+        event: str | None = Query(None, description="Filter by event type"),
+        message_id: str | None = Query(
             None, description="Filter by message ID (lifecycle lookup)"
         ),
     ) -> JSONResponse:
@@ -752,7 +750,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     # Cache for the combined overview scan to avoid redundant XRANGE calls.
     # TTL is half the poller interval (5s) so data stays fresh but back-to-back
     # requests (e.g. window change triggering multiple pollers) are served instantly.
-    _overview_cache: dict[str, Tuple[float, dict[str, Any]]] = {}
+    _overview_cache: dict[str, tuple[float, dict[str, Any]]] = {}
     _OVERVIEW_CACHE_TTL_S = 3.0
 
     @router.get("/traces/overview")
@@ -877,12 +875,12 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
     @router.get("/traces/failed")
     async def traces_failed(
         window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
-        handler: Optional[str] = Query(None, description="Filter by handler name"),
-        message_type: Optional[str] = Query(None, description="Filter by message type"),
+        handler: str | None = Query(None, description="Filter by handler name"),
+        message_type: str | None = Query(None, description="Filter by message type"),
         limit: int = Query(25, ge=1, le=200, description="Page size"),
         offset: int = Query(0, ge=0, description="Number of entries to skip"),
-        start: Optional[str] = Query(None, description="Custom range start (ISO 8601)"),
-        end: Optional[str] = Query(None, description="Custom range end (ISO 8601)"),
+        start: str | None = Query(None, description="Custom range start (ISO 8601)"),
+        end: str | None = Query(None, description="Custom range end (ISO 8601)"),
     ) -> JSONResponse:
         """Failed and DLQ traces filtered by time window.
 
@@ -1013,7 +1011,9 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
         Returns per-subscription lag, pending count, DLQ depth, and
         overall summary for each monitored domain.
         """
-        from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
+        from protean.server.subscription_status import (  # noqa: PLC0415
+            collect_subscription_statuses,
+        )
 
         result: dict[str, Any] = {}
         for domain in domains:
@@ -1050,9 +1050,7 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
     @router.get("/dlq")
     async def dlq_list(
-        subscription: Optional[str] = Query(
-            None, description="Filter by stream category"
-        ),
+        subscription: str | None = Query(None, description="Filter by stream category"),
         limit: int = Query(25, ge=1, le=200, description="Page size"),
         offset: int = Query(0, ge=0, description="Number of entries to skip"),
     ) -> JSONResponse:
@@ -1060,7 +1058,10 @@ def create_api_router(domains: List[Domain]) -> APIRouter:
 
         Supports offset-based pagination via offset/limit params.
         """
-        from protean.utils.dlq import collect_dlq_streams, discover_subscriptions  # noqa: PLC0415
+        from protean.utils.dlq import (  # noqa: PLC0415
+            collect_dlq_streams,
+            discover_subscriptions,
+        )
 
         domain = domains[0]
         try:

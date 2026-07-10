@@ -23,7 +23,6 @@ from protean.server.subscription_status import (
     collect_subscription_statuses,
 )
 
-
 # ---------------------------------------------------------------------------
 # SubscriptionStatus dataclass
 # ---------------------------------------------------------------------------
@@ -420,7 +419,7 @@ class TestCollectOutboxStatuses:
         mock_domain = MagicMock()
         mock_domain.has_outbox = True
         mock_domain.config.get.return_value = {"broker": "default"}
-        mock_domain.providers.keys.return_value = ["default"]
+        mock_domain.providers.__iter__.return_value = iter(["default"])
 
         mock_outbox = MagicMock()
         mock_outbox.count_by_status.return_value = {
@@ -446,7 +445,7 @@ class TestCollectOutboxStatuses:
         mock_domain = MagicMock()
         mock_domain.has_outbox = True
         mock_domain.config.get.return_value = {"broker": "default"}
-        mock_domain.providers.keys.return_value = ["default"]
+        mock_domain.providers.__iter__.return_value = iter(["default"])
 
         mock_outbox = MagicMock()
         mock_outbox.count_by_status.return_value = {
@@ -466,7 +465,7 @@ class TestCollectOutboxStatuses:
         mock_domain = MagicMock()
         mock_domain.has_outbox = True
         mock_domain.config.get.return_value = {"broker": "default"}
-        mock_domain.providers.keys.return_value = ["default"]
+        mock_domain.providers.__iter__.return_value = iter(["default"])
         mock_domain.domain_context.return_value.__enter__ = MagicMock(
             side_effect=RuntimeError("db down")
         )

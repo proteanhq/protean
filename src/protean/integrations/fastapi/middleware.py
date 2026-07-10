@@ -26,8 +26,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable, Iterable
 from contextlib import nullcontext
-from typing import Any, Callable, Iterable, Optional
+from typing import Any
 from uuid import uuid4
 
 import structlog
@@ -57,7 +58,7 @@ _USER_AGENT_MAX_CHARS = 256
 _ID_HEADER_MAX_CHARS = 200
 
 
-def _sanitize_id_header(value: Optional[str]) -> Optional[str]:
+def _sanitize_id_header(value: str | None) -> str | None:
     """Strip and truncate a client-supplied ID header.
 
     Returns ``None`` when the input is ``None`` or empty after stripping,
@@ -142,12 +143,12 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app: ASGIApp,
-        route_domain_map: Optional[dict[str, Domain]] = None,
-        resolver: Optional[Callable[[str], Optional[Domain]]] = None,
-        emit_http_wide_event: Optional[bool] = None,
-        exclude_paths: Optional[Iterable[str]] = None,
-        log_request_headers: Optional[bool] = None,
-        log_response_headers: Optional[bool] = None,
+        route_domain_map: dict[str, Domain] | None = None,
+        resolver: Callable[[str], Domain | None] | None = None,
+        emit_http_wide_event: bool | None = None,
+        exclude_paths: Iterable[str] | None = None,
+        log_request_headers: bool | None = None,
+        log_response_headers: bool | None = None,
     ) -> None:
         super().__init__(app)
 
@@ -179,11 +180,11 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
         # request-specific domain is resolvable (unmapped paths, resolver-only
         # setups). The first registered domain is a stable choice — most
         # FastAPI apps only use one domain.
-        self._default_domain: Optional[Domain] = next(
+        self._default_domain: Domain | None = next(
             iter(self._route_domain_map.values()), None
         )
 
-    def _resolve_domain(self, path: str) -> Optional[Domain]:
+    def _resolve_domain(self, path: str) -> Domain | None:
         """Resolve a URL path to a Domain instance."""
         if self._resolver:
             return self._resolver(path)
@@ -195,7 +196,7 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
         return None
 
     @staticmethod
-    def _extract_correlation_id(request: Request) -> Optional[str]:
+    def _extract_correlation_id(request: Request) -> str | None:
         """Extract correlation ID from request headers.
 
         Checks ``X-Correlation-ID`` first, then falls back to ``X-Request-ID``.
@@ -210,7 +211,7 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
         return _sanitize_id_header(raw)
 
     def _resolve_http_logging_config(
-        self, request_domain: Optional[Domain]
+        self, request_domain: Domain | None
     ) -> dict[str, Any]:
         """Build the effective HTTP logging config for this request.
 
@@ -338,7 +339,7 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
     async def _run_endpoint(
         request: Request,
         call_next: Callable[[Request], Any],
-    ) -> tuple[Optional[Response], int, Optional[Exception]]:
+    ) -> tuple[Response | None, int, Exception | None]:
         """Run the downstream handler and normalise the result.
 
         Returns a ``(response, status_code, error)`` tuple. When the
@@ -358,13 +359,13 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
     def _emit_http_wide_event(
         *,
         request: Request,
-        response: Optional[Response],
+        response: Response | None,
         status_code: int,
         duration_ms: float,
         request_id: str,
-        correlation_id: Optional[str],
+        correlation_id: str | None,
         commands_dispatched: list[str],
-        error_info: Optional[Exception],
+        error_info: Exception | None,
         app_context: dict[str, Any],
         config: dict[str, Any],
     ) -> None:

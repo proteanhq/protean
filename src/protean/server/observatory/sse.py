@@ -8,14 +8,10 @@ event type, and message type.
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
 from fnmatch import fnmatch
 from typing import (
     Any,
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    List,
-    Optional,
     Protocol,
     cast,
 )
@@ -44,7 +40,7 @@ class _RedisStyleBroker(Protocol):
 
 
 def create_sse_endpoint(
-    domains: List[Domain],
+    domains: list[Domain],
 ) -> Callable[..., Awaitable[StreamingResponse]]:
     """Create the SSE streaming endpoint function.
 
@@ -54,12 +50,12 @@ def create_sse_endpoint(
 
     async def stream_events(
         request: Request,
-        domain: Optional[str] = Query(None, description="Filter by domain name"),
-        stream: Optional[str] = Query(None, description="Filter by stream category"),
-        event: Optional[str] = Query(
+        domain: str | None = Query(None, description="Filter by domain name"),
+        stream: str | None = Query(None, description="Filter by stream category"),
+        event: str | None = Query(
             None, description="Filter by event type (supports glob: handler.*)"
         ),
-        type: Optional[str] = Query(
+        type: str | None = Query(
             None, description="Filter by message type (supports glob)"
         ),
     ) -> StreamingResponse:

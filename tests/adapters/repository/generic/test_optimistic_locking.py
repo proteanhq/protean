@@ -89,9 +89,8 @@ class TestConcurrentUpdateDetection:
 
         # Second copy (stale) should fail
         copy2.value = 20
-        with pytest.raises(ExpectedVersionError):
-            with UnitOfWork():
-                test_domain.repository_for(Counter).add(copy2)
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            test_domain.repository_for(Counter).add(copy2)
 
     def test_value_unchanged_after_concurrent_conflict(self, test_domain):
         identifier = str(uuid4())
@@ -110,9 +109,8 @@ class TestConcurrentUpdateDetection:
 
         # Second copy fails
         copy2.value = 99
-        with pytest.raises(ExpectedVersionError):
-            with UnitOfWork():
-                test_domain.repository_for(Counter).add(copy2)
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            test_domain.repository_for(Counter).add(copy2)
 
         # Verify the winning value persisted
         final = test_domain.repository_for(Counter).get(identifier)

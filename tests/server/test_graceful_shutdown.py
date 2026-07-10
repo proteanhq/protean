@@ -165,11 +165,13 @@ class TestEngineShutdownOrder:
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
 
-            with patch.object(
-                domain, "close", side_effect=RuntimeError("cleanup failed")
+            with (
+                patch.object(
+                    domain, "close", side_effect=RuntimeError("cleanup failed")
+                ),
+                caplog.at_level(logging.ERROR),
             ):
-                with caplog.at_level(logging.ERROR):
-                    engine.loop.run_until_complete(engine.shutdown())
+                engine.loop.run_until_complete(engine.shutdown())
 
             assert any("engine.cleanup_failed" in r.message for r in caplog.records)
 
@@ -427,7 +429,9 @@ class TestEngineShutdownTaskExceptionRetrieval:
                 raise ValueError("task error")
 
             async def run_shutdown_with_failing_task():
-                asyncio.ensure_future(failing_task())
+                # Fire-and-forget on purpose: shutdown collects it via
+                # asyncio.all_tasks(), and the loop keeps it alive meanwhile.
+                asyncio.ensure_future(failing_task())  # noqa: RUF006
                 await task_started.wait()
                 await engine.shutdown()
 

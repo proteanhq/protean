@@ -1,7 +1,7 @@
 import importlib
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, DefaultDict, Optional, Set
+from typing import TYPE_CHECKING, Any, Optional
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
@@ -28,16 +28,16 @@ EVENT_STORE_PROVIDERS = {
 
 class EventStore:
     def __init__(self, domain: "Domain") -> None:
-        self.domain: "Domain" = domain
-        self._event_store: Optional["BaseEventStore"] = None
+        self.domain: Domain = domain
+        self._event_store: BaseEventStore | None = None
         # These hold handler/projector CLASSES (record.cls), not instances.
-        self._event_streams: DefaultDict[str, Set[type[BaseEventHandler]]] = (
+        self._event_streams: defaultdict[str, set[type[BaseEventHandler]]] = (
             defaultdict(set)
         )
-        self._command_streams: DefaultDict[str, Set[type[BaseCommandHandler]]] = (
+        self._command_streams: defaultdict[str, set[type[BaseCommandHandler]]] = (
             defaultdict(set)
         )
-        self._projectors: DefaultDict[str, Set[type[BaseProjector]]] = defaultdict(set)
+        self._projectors: defaultdict[str, set[type[BaseProjector]]] = defaultdict(set)
 
     @property
     def store(self) -> Optional["BaseEventStore"]:
@@ -67,7 +67,7 @@ class EventStore:
             importlib.import_module(event_store_module), event_store_class
         )
 
-        store: "BaseEventStore" = event_store_cls(self.domain, configured_event_store)
+        store: BaseEventStore = event_store_cls(self.domain, configured_event_store)
 
         return store
 
@@ -90,24 +90,24 @@ class EventStore:
         self._initialize_command_streams()
 
     def _initialize_event_streams(self) -> None:
-        for _, record in self.domain.registry.event_handlers.items():
+        for record in self.domain.registry.event_handlers.values():
             stream_category = (
                 record.cls.meta_.stream_category
                 or record.cls.meta_.part_of.meta_.stream_category
             )
             self._event_streams[stream_category].add(record.cls)
 
-        for _, record in self.domain.registry.projectors.items():
+        for record in self.domain.registry.projectors.values():
             for stream_category in record.cls.meta_.stream_categories:
                 self._event_streams[stream_category].add(record.cls)
                 self._projectors[fqn(record.cls.meta_.projector_for)].add(record.cls)
 
-        for _, record in self.domain.registry.process_managers.items():
+        for record in self.domain.registry.process_managers.values():
             for stream_category in record.cls.meta_.stream_categories:
                 self._event_streams[stream_category].add(record.cls)
 
     def _initialize_command_streams(self) -> None:
-        for _, record in self.domain.registry.command_handlers.items():
+        for record in self.domain.registry.command_handlers.values():
             self._command_streams[record.cls.meta_.part_of.meta_.stream_category].add(
                 record.cls
             )
@@ -184,7 +184,7 @@ class EventStore:
         """
         return self._projectors.get(fqn(projection_cls), set())
 
-    def command_handler_for(self, command: Any) -> Optional[type[BaseCommandHandler]]:
+    def command_handler_for(self, command: Any) -> type[BaseCommandHandler] | None:
         if not command.meta_.part_of:
             raise ConfigurationError(
                 f"Command `{command.__name__}` needs to be associated with an aggregate"

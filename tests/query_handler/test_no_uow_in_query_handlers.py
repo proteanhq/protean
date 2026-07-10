@@ -4,7 +4,8 @@ This is the inverse of tests/command_handler/test_uow_around_command_handlers.py
 which verifies that command handlers DO wrap in UoW.
 """
 
-import mock
+from unittest import mock
+
 import pytest
 
 from protean.core.projection import BaseProjection

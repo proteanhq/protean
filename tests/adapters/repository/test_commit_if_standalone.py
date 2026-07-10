@@ -4,12 +4,13 @@ These tests validate the unified commit/rollback helper that replaces
 the boilerplate that was repeated across all adapter DAO implementations.
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from protean import UnitOfWork
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer
+from protean.fields import Integer, String
 
 
 class StandaloneTestEntity(BaseAggregate):

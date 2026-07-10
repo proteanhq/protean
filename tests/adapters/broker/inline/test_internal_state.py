@@ -213,9 +213,8 @@ class TestInlineBrokerInternalState:
             if (
                 group_key.startswith(f"{stream}:")
                 and group_key != f"{stream}:{consumer_group1}"
-            ):
-                if broker._consumer_positions[group_key] >= 1:
-                    broker._consumer_positions[group_key] += 1
+            ) and broker._consumer_positions[group_key] >= 1:
+                broker._consumer_positions[group_key] += 1
 
         # Verify adjustment
         assert broker._consumer_positions[f"{stream}:{consumer_group1}"] == 1

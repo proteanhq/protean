@@ -25,7 +25,6 @@ from protean.cli.hooks import (
 from protean.ir.config import CompatConfig
 from tests.shared import change_working_directory_to
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -455,18 +454,20 @@ class TestCheckStalenessHookStale:
     def test_prints_stale_message(self, capsys):
         _write_ir(self._protean_dir, {"checksum": "sha256:old" + "0" * 58})
 
-        with patch(
-            "sys.argv",
-            [
-                "protean-check-staleness",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "protean-check-staleness",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                check_staleness_hook()
+            check_staleness_hook()
 
         captured = capsys.readouterr()
         assert "stale" in captured.err.lower()
@@ -474,18 +475,20 @@ class TestCheckStalenessHookStale:
     def test_prints_checksums_when_available(self, capsys):
         _write_ir(self._protean_dir, {"checksum": "sha256:old" + "0" * 58})
 
-        with patch(
-            "sys.argv",
-            [
-                "protean-check-staleness",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "protean-check-staleness",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                check_staleness_hook()
+            check_staleness_hook()
 
         captured = capsys.readouterr()
         assert "stored" in captured.err.lower()
@@ -494,18 +497,20 @@ class TestCheckStalenessHookStale:
     def test_prints_update_hint(self, capsys):
         _write_ir(self._protean_dir, {"checksum": "sha256:old"})
 
-        with patch(
-            "sys.argv",
-            [
-                "protean-check-staleness",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "protean-check-staleness",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                check_staleness_hook()
+            check_staleness_hook()
 
         captured = capsys.readouterr()
         assert "protean ir show" in captured.err
@@ -538,18 +543,20 @@ class TestCheckStalenessHookStale:
         """The update hint uses the configured --dir, not hardcoded .protean."""
         _write_ir(self._protean_dir, {"checksum": "sha256:old"})
 
-        with patch(
-            "sys.argv",
-            [
-                "protean-check-staleness",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "protean-check-staleness",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                check_staleness_hook()
+            check_staleness_hook()
 
         captured = capsys.readouterr()
         assert str(self._protean_dir) in captured.err
@@ -590,18 +597,20 @@ class TestCheckStalenessHookNoIR:
             assert exc_info.value.code == 1
 
     def test_prints_missing_ir_message(self, capsys):
-        with patch(
-            "sys.argv",
-            [
-                "protean-check-staleness",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "protean-check-staleness",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                check_staleness_hook()
+            check_staleness_hook()
 
         captured = capsys.readouterr()
         assert "no materialized ir" in captured.err.lower()
@@ -652,18 +661,20 @@ class TestCheckStalenessHookVersionMismatch:
             self._protean_dir,
             {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
         )
-        with patch(
-            "sys.argv",
-            [
-                "protean-check-staleness",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "protean-check-staleness",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                check_staleness_hook()
+            check_staleness_hook()
 
         captured = capsys.readouterr()
         assert "version mismatch" in captured.err.lower()
@@ -1181,7 +1192,7 @@ class TestCheckCompatHookBreaking:
         # appears to have "removed" it → breaking change.
         baseline_ir = json.loads(json.dumps(live_ir))  # deep copy
         baseline_ir["checksum"] = "sha256:modified_baseline"
-        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+        for cluster in baseline_ir.get("clusters", {}).values():
             cluster["aggregate"]["fields"]["extra_required_field"] = {
                 "type": "String",
                 "required": True,
@@ -1246,21 +1257,23 @@ class TestCheckCompatHookErrors:
 
     def test_exits_1_on_invalid_domain(self):
         """Invalid domain → exit 1 from _load_live_ir."""
-        with patch(
-            "protean.ir.git.load_ir_from_commit",
-            return_value={"checksum": "sha256:abc"},
-        ):
-            with patch(
+        with (
+            patch(
+                "protean.ir.git.load_ir_from_commit",
+                return_value={"checksum": "sha256:abc"},
+            ),
+            patch(
                 "sys.argv",
                 [
                     "protean-check-compat",
                     "-d",
                     "nonexistent_domain.py",
                 ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    check_compat_hook()
-                assert exc_info.value.code == 1
+            ),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                check_compat_hook()
+            assert exc_info.value.code == 1
 
     def test_exits_0_on_non_breaking_changes(self):
         """Non-breaking changes only — exit 0."""
@@ -1269,7 +1282,7 @@ class TestCheckCompatHookErrors:
         # Make baseline missing an optional field → live domain "added" it → safe
         baseline_ir = json.loads(json.dumps(live_ir))
         baseline_ir["checksum"] = "sha256:stripped_baseline"
-        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+        for cluster in baseline_ir.get("clusters", {}).values():
             fields = cluster["aggregate"]["fields"]
             for field_name, field_info in list(fields.items()):
                 if not field_info.get("identifier") and not field_info.get("required"):
@@ -1292,42 +1305,46 @@ class TestCheckCompatHookErrors:
 
     def test_exits_1_on_invalid_config(self, capsys):
         """Invalid config.toml → exit 1."""
-        with patch(
-            "protean.ir.config.load_config",
-            side_effect=ValueError("bad config"),
-        ):
-            with patch(
+        with (
+            patch(
+                "protean.ir.config.load_config",
+                side_effect=ValueError("bad config"),
+            ),
+            patch(
                 "sys.argv",
                 [
                     "protean-check-compat",
                     "-d",
                     "publishing7.py",
                 ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    check_compat_hook()
-                assert exc_info.value.code == 1
+            ),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                check_compat_hook()
+            assert exc_info.value.code == 1
 
         captured = capsys.readouterr()
         assert "invalid" in captured.err.lower()
 
     def test_exits_0_when_strictness_off(self):
         """strictness=off → exit 0 immediately."""
-        with patch(
-            "protean.ir.config.load_config",
-            return_value=CompatConfig(strictness="off"),
-        ):
-            with patch(
+        with (
+            patch(
+                "protean.ir.config.load_config",
+                return_value=CompatConfig(strictness="off"),
+            ),
+            patch(
                 "sys.argv",
                 [
                     "protean-check-compat",
                     "-d",
                     "publishing7.py",
                 ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    check_compat_hook()
-                assert exc_info.value.code == 0
+            ),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                check_compat_hook()
+            assert exc_info.value.code == 0
 
     def test_exits_1_when_no_domain_and_no_config(self):
         """No --domain and no [domains] → exit 1."""
@@ -1419,7 +1436,7 @@ class TestCheckCompatSingle:
         live_ir = _live_ir_for_test7()
         baseline_ir = json.loads(json.dumps(live_ir))
         baseline_ir["checksum"] = "sha256:modified"
-        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+        for cluster in baseline_ir.get("clusters", {}).values():
             cluster["aggregate"]["fields"]["extra_field"] = {
                 "type": "String",
                 "required": True,
@@ -1449,7 +1466,7 @@ class TestCheckCompatSingle:
 
         # Find the first cluster FQN to use as the exclude target
         first_fqn = next(iter(baseline_ir.get("clusters", {})))
-        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+        for cluster in baseline_ir.get("clusters", {}).values():
             cluster["aggregate"]["fields"]["excluded_field"] = {
                 "type": "String",
                 "required": True,
@@ -1476,7 +1493,7 @@ class TestCheckCompatSingle:
         baseline_ir = json.loads(json.dumps(live_ir))
         baseline_ir["checksum"] = "sha256:modified"
         # Remove an optional field from baseline → "added" in live → non-breaking
-        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+        for cluster in baseline_ir.get("clusters", {}).values():
             fields = cluster["aggregate"]["fields"]
             for field_name, field_info in list(fields.items()):
                 if not field_info.get("identifier") and not field_info.get("required"):

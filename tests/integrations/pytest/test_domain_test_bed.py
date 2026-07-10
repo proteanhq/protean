@@ -128,9 +128,8 @@ class TestDomainContext:
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
 
-        with pytest.raises(RuntimeError):
-            with bed.domain_context():
-                raise RuntimeError("test failure")
+        with pytest.raises(RuntimeError), bed.domain_context():
+            raise RuntimeError("test failure")
 
         # Cleanup still happens
         mock_provider._data_reset.assert_called_once()

@@ -3,8 +3,8 @@
 from protean import Domain, handle, invariant
 from protean.core.aggregate import apply
 from protean.core.database_model import BaseDatabaseModel
-from protean.fields import HasMany, HasOne, ValueObject as VOField
-
+from protean.fields import HasMany, HasOne
+from protean.fields import ValueObject as VOField
 from protean.fields.containers import Dict, List
 from protean.fields.simple import (
     Boolean,
@@ -66,7 +66,7 @@ def build_extended_field_test_domain() -> Domain:
     @domain.aggregate
     class Catalog:
         name = String(max_length=100, required=True, description="Catalog name")
-        items_cache = List(content_type=str, default=lambda: [])
+        items_cache = List(content_type=str, default=list)
         featured = HasOne(FeaturedItem)
 
     domain.init(traverse=False)
@@ -658,13 +658,9 @@ def build_description_test_domain() -> Domain:
     class OrderService:
         """Application service for order use cases."""
 
-        pass
-
     @domain.repository(part_of=Order)
     class OrderRepository:
         """Custom repository for orders."""
-
-        pass
 
     @domain.aggregate
     class Payment:
@@ -675,8 +671,6 @@ def build_description_test_domain() -> Domain:
     @domain.domain_service(part_of=[Order, Payment])
     class OrderValidator:
         """Validates orders across business rules."""
-
-        pass
 
     @domain.subscriber(broker="default", stream="ext_payments")
     class PaymentSubscriber:

@@ -23,7 +23,6 @@ from .elements import (
     build_via_and_min_length_domain,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -42,10 +41,10 @@ def _find_element(ir: dict, name: str) -> dict:
         if agg.get("name") == name:
             return agg
         for section in ("entities", "value_objects", "commands", "events"):
-            for fqn, elem in cluster.get(section, {}).items():
+            for elem in cluster.get(section, {}).values():
                 if elem.get("name") == name:
                     return elem
-    for fqn, proj in ir.get("projections", {}).items():
+    for proj in ir.get("projections", {}).values():
         if proj.get("name") == name:
             return proj
     raise KeyError(f"Element {name!r} not found in IR")
@@ -114,8 +113,7 @@ class TestStandardFieldMappings:
             if agg.get("fqn"):
                 flat[agg["fqn"]] = agg
             for section in ("entities", "value_objects"):
-                for fqn, elem in cluster.get(section, {}).items():
-                    flat[fqn] = elem
+                flat.update(cluster.get(section, {}))
 
         element = _find_element(ir, "Product")
         self.schema = generate_element_schema(element, all_elements=flat)
@@ -225,8 +223,7 @@ class TestRefAndDefs:
             if agg.get("fqn"):
                 flat[agg["fqn"]] = agg
             for section in ("entities", "value_objects"):
-                for fqn, elem in cluster.get(section, {}).items():
-                    flat[fqn] = elem
+                flat.update(cluster.get(section, {}))
 
         element = _find_element(ir, "Order")
         self.schema = generate_element_schema(element, all_elements=flat)
@@ -288,8 +285,7 @@ class TestHasOneRef:
             if agg.get("fqn"):
                 flat[agg["fqn"]] = agg
             for section in ("entities", "value_objects"):
-                for fqn, elem in cluster.get(section, {}).items():
-                    flat[fqn] = elem
+                flat.update(cluster.get(section, {}))
 
         element = _find_element(ir, "Catalog")
         schema = generate_element_schema(element, all_elements=flat)
@@ -377,8 +373,7 @@ class TestConstraints:
             if agg.get("fqn"):
                 flat[agg["fqn"]] = agg
             for section in ("entities", "value_objects"):
-                for fqn, elem in cluster.get(section, {}).items():
-                    flat[fqn] = elem
+                flat.update(cluster.get(section, {}))
         self.ir = ir
         self.flat = flat
 
@@ -694,8 +689,7 @@ class TestIntegrationDomain:
             if agg.get("fqn"):
                 flat[agg["fqn"]] = agg
             for section in ("entities", "value_objects"):
-                for fqn, elem in cluster.get(section, {}).items():
-                    flat[fqn] = elem
+                flat.update(cluster.get(section, {}))
 
         element = _find_element(self.ir, "LineItem")
         schema = generate_element_schema(element, all_elements=flat)
@@ -703,7 +697,7 @@ class TestIntegrationDomain:
         assert "Money" in schema["$defs"]
 
     def test_all_schemas_json_serializable(self):
-        for fqn, schema in self.schemas.items():
+        for schema in self.schemas.values():
             json_str = json.dumps(schema)
             assert json.loads(json_str) == schema
 

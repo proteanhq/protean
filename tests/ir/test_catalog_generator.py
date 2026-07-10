@@ -11,7 +11,6 @@ from protean.ir.generators.catalog import (
     generate_catalog,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers — composable IR builders
 # ---------------------------------------------------------------------------

@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

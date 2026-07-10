@@ -12,7 +12,7 @@ def bank_cluster():
     """Return the BankAccount aggregate's cluster."""
     domain = build_es_aggregate_domain()
     ir = IRBuilder(domain).build()
-    for _key, cluster in ir["clusters"].items():
+    for cluster in ir["clusters"].values():
         if cluster["aggregate"]["name"] == "BankAccount":
             return cluster
     pytest.fail("BankAccount cluster not found")

@@ -104,7 +104,7 @@ class TestDefaultModel:
         provider = test_domain.providers["default"]
         conn = provider.get_connection()
 
-        for _, aggregate_record in test_domain.registry.aggregates.items():
+        for aggregate_record in test_domain.registry.aggregates.values():
             index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
             if not index.exists():
                 index.create()
@@ -368,7 +368,7 @@ class TestCustomModel:
         provider = test_domain.providers["default"]
         conn = provider.get_connection()
 
-        for _, aggregate_record in test_domain.registry.aggregates.items():
+        for aggregate_record in test_domain.registry.aggregates.values():
             index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
             if not index.exists():
                 index.create()

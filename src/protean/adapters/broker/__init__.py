@@ -1,6 +1,7 @@
 import collections.abc
 import logging
-from typing import TYPE_CHECKING, Any, Iterator
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import ConfigurationError
 from protean.port.broker import BaseBroker, registry
@@ -69,7 +70,7 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
         self._brokers = broker_objects
 
         # Initialize subscribers for Brokers
-        for _, subscriber_record in self.domain.registry.subscribers.items():
+        for subscriber_record in self.domain.registry.subscribers.values():
             subscriber_cls = subscriber_record.cls
             broker_name = subscriber_cls.meta_.broker
 

@@ -5,7 +5,7 @@ initial context data. JavaScript handles live updates via SSE and polling.
 """
 
 import logging
-from typing import Any, List
+from typing import Any
 
 from fastapi import APIRouter, Request, Response
 from fastapi.templating import Jinja2Templates
@@ -15,13 +15,13 @@ from protean.domain import Domain
 logger = logging.getLogger(__name__)
 
 
-def _get_domain_names(domains: List[Domain]) -> list[str]:
+def _get_domain_names(domains: list[Domain]) -> list[str]:
     """Extract domain names for template context."""
     return [d.name for d in domains]
 
 
 def create_page_router(
-    domains: List[Domain],
+    domains: list[Domain],
     templates: Jinja2Templates,
 ) -> APIRouter:
     """Create the page router with all view routes."""

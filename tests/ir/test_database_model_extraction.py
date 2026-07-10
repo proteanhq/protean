@@ -19,7 +19,7 @@ def db_model_ir():
 def customer_cluster(db_model_ir):
     """Return the Customer aggregate cluster from the IR."""
     clusters = db_model_ir["clusters"]
-    for cluster_fqn, cluster in clusters.items():
+    for cluster in clusters.values():
         if cluster["aggregate"]["name"] == "Customer":
             return cluster
     pytest.fail("Customer cluster not found in IR")
@@ -84,7 +84,7 @@ class TestDatabaseModelExtraction:
     @staticmethod
     def _find_model(database_models: dict, name: str) -> dict:
         """Find a database model dict by class name."""
-        for model_fqn, model in database_models.items():
+        for model in database_models.values():
             if model["name"] == name:
                 return model
         pytest.fail(f"Database model '{name}' not found")

@@ -13,11 +13,11 @@ from protean.core.entity import invariant
 from protean.domain import Domain
 from protean.exceptions import ValidationError
 from protean.fields import Identifier, Integer, String
-from protean.utils import clone_class
 from protean.utils import (
     _fix_function_class_cell,
-    _rebuild_function_with_new_class_cell,
     _rebind_class_cells,
+    _rebuild_function_with_new_class_cell,
+    clone_class,
 )
 
 
@@ -350,7 +350,7 @@ class TestFixFunctionClassCellEdgeCases:
         class Original(Base):
             @Base.val.setter
             def val(self, value):
-                super(Original, self).__init__()  # just to trigger __class__ cell
+                super().__init__()  # just to trigger __class__ cell
                 self._val = value * 2
 
         prop = Original.__dict__["val"]
@@ -373,7 +373,7 @@ class TestFixFunctionClassCellEdgeCases:
         class Original(Base):
             @Base.val.deleter
             def val(self):
-                super(Original, self).__init__()  # trigger __class__ cell
+                super().__init__()  # trigger __class__ cell
                 self._val = None
 
         prop = Original.__dict__["val"]

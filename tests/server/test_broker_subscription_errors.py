@@ -15,7 +15,6 @@ from protean.domain import Processing
 from protean.server import Engine
 from protean.utils import fqn
 
-
 # ── Domain elements ─────────────────────────────────────────────────────
 
 call_counts: dict[str, int] = {}

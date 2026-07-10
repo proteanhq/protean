@@ -36,7 +36,7 @@ class TestFormatSSE:
         """_format_sse serializes data dict as JSON in data field."""
         result = _format_sse({"key": "value", "num": 42})
         lines = result.strip().split("\n")
-        data_line = [line for line in lines if line.startswith("data: ")][0]
+        data_line = next(line for line in lines if line.startswith("data: "))
         json_str = data_line[len("data: ") :]
         data = json.loads(json_str)
         assert data["key"] == "value"
@@ -50,18 +50,18 @@ class TestFormatSSE:
     def test_format_with_nested_data(self):
         """_format_sse handles nested dictionaries."""
         result = _format_sse({"metadata": {"retry": 3, "dlq": "stream-dlq"}})
-        data_line = [
+        data_line = next(
             line for line in result.strip().split("\n") if line.startswith("data: ")
-        ][0]
+        )
         data = json.loads(data_line[len("data: ") :])
         assert data["metadata"]["retry"] == 3
 
     def test_format_with_none_values(self):
         """_format_sse handles None values."""
         result = _format_sse({"handler": None, "error": None})
-        data_line = [
+        data_line = next(
             line for line in result.strip().split("\n") if line.startswith("data: ")
-        ][0]
+        )
         data = json.loads(data_line[len("data: ") :])
         assert data["handler"] is None
         assert data["error"] is None

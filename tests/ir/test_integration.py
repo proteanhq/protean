@@ -1,7 +1,7 @@
 """Integration tests for IR builder — exercises all sections simultaneously."""
 
 import pytest
-from jsonschema import validate, ValidationError
+from jsonschema import ValidationError, validate
 
 from protean.ir import load_schema
 from protean.ir.builder import IRBuilder

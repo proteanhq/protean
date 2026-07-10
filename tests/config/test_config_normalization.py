@@ -1,5 +1,6 @@
-import pytest
 import tomllib
+
+import pytest
 
 from protean.domain.config import Config2
 

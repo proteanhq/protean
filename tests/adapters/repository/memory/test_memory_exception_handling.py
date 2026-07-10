@@ -1,11 +1,12 @@
 """Test Memory Provider exception handling during database operations"""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from protean import UnitOfWork
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer
+from protean.fields import Integer, String
 from protean.utils.query import Q
 
 

@@ -21,7 +21,6 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
-
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -47,7 +46,6 @@ from protean.utils.telemetry import (
     extract_context_from_traceparent,
     inject_traceparent_from_context,
 )
-
 
 # ---------------------------------------------------------------------------
 # Domain elements for testing

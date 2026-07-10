@@ -56,21 +56,15 @@ import os
 import pathlib
 import sys
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
     Protocol,
-    Tuple,
-    Type,
     TypeVar,
-    Union,
     cast,
     dataclass_transform,
     overload,
@@ -122,18 +116,22 @@ from protean.fields import (
     Boolean,
     Date,
     DateTime,
-    Dict as DictField,
     Float,
     HasMany,
     HasOne,
     Identifier,
     Integer,
-    List as ListField,
     Reference,
     Status,
     String,
     Text,
     ValueObject,
+)
+from protean.fields import (
+    Dict as DictField,
+)
+from protean.fields import (
+    List as ListField,
 )
 from protean.fields.basic import ValueObjectList
 from protean.integrations.logging import (
@@ -147,8 +145,10 @@ from protean.port.event_store import CausationNode
 from protean.server.tracing import TraceEmitter
 from protean.utils import (
     DomainObjects,
-    Processing as Processing,
     fqn,
+)
+from protean.utils import (
+    Processing as Processing,
 )
 from protean.utils.container import Element
 from protean.utils.idempotency import IdempotencyStore
@@ -169,9 +169,9 @@ from protean.utils.telemetry import (
     init_telemetry,
 )
 
+from .command_processor import CommandProcessor
 from .config import Config2, ConfigAttribute, _default_config
 from .context import DomainContext, _DomainContextGlobals
-from .command_processor import CommandProcessor
 from .handler_setup import HandlerConfigurator
 from .infrastructure import InfrastructureManager
 from .query_processor import QueryProcessor
@@ -314,7 +314,7 @@ class Domain:
             # Handle frozen applications (PyInstaller, etc.)
             if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
                 # PyInstaller creates a temp folder and stores path in _MEIPASS
-                return str(getattr(sys, "_MEIPASS"))
+                return str(sys._MEIPASS)
 
             # Regular Python script
             try:
@@ -330,8 +330,8 @@ class Domain:
         self,
         root_path: str | None = None,
         name: str = "",
-        config: Optional[dict[str, Any]] = None,
-        identity_function: Optional[Callable[..., Any]] = None,
+        config: dict[str, Any] | None = None,
+        identity_function: Callable[..., Any] | None = None,
     ) -> None:
         self.root_path: str
         # Determine root_path based on resolution priority
@@ -387,8 +387,8 @@ class Domain:
         # Event enrichers receive (event, aggregate) and return dict[str, Any].
         # Command enrichers receive (command,) and return dict[str, Any].
         # Results are merged into metadata.extensions.
-        self._event_enrichers: List[Callable[..., Any]] = []
-        self._command_enrichers: List[Callable[..., Any]] = []
+        self._event_enrichers: list[Callable[..., Any]] = []
+        self._command_enrichers: list[Callable[..., Any]] = []
 
         # Composed helpers — see handler_setup.py, validation.py, etc.
         self._command_processor = CommandProcessor(self)
@@ -402,7 +402,7 @@ class Domain:
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
-        self.teardown_domain_context_functions: List[Callable[..., Any]] = []
+        self.teardown_domain_context_functions: list[Callable[..., Any]] = []
 
         # Placeholder array for resolving classes referenced by domain elements
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
@@ -429,7 +429,7 @@ class Domain:
     @property
     def _events_and_commands(
         self,
-    ) -> Dict[str, Union[Type[BaseCommand], Type[BaseEvent]]]:
+    ) -> dict[str, type[BaseCommand] | type[BaseEvent]]:
         return self._type_manager.events_and_commands
 
     @property
@@ -533,7 +533,7 @@ class Domain:
         return get_meter(self)
 
     @property
-    @lru_cache()
+    @lru_cache
     def camel_case_name(self) -> str:
         """Return the CamelCase name of the domain.
 
@@ -550,7 +550,7 @@ class Domain:
         return "".join(filter(str.isalnum, formatted_string))
 
     @property
-    @lru_cache()
+    @lru_cache
     def normalized_name(self) -> str:
         """Return the normalized name of the domain.
 
@@ -629,7 +629,7 @@ class Domain:
         if validate:
             self._validate_domain()
 
-    def init(self, traverse: bool = True) -> None:  # noqa: C901
+    def init(self, traverse: bool = True) -> None:
         """Parse the domain folder, and attach elements dynamically to the domain.
 
         Protean parses all files in the domain file's folder, as well as under it,
@@ -897,7 +897,7 @@ class Domain:
 
         logger.info("Domain infrastructure closed")
 
-    def load_config(self, config: Optional[dict[str, Any]] = None) -> Config2:
+    def load_config(self, config: dict[str, Any] | None = None) -> Config2:
         """Load configuration from a dict or a .toml file."""
         config_obj: Config2
         if config is not None:
@@ -983,7 +983,7 @@ class Domain:
         return f"Domain: {self.name}"
 
     @property
-    @lru_cache()
+    @lru_cache
     def registry(self) -> _DomainRegistry:
         return self._domain_registry
 
@@ -1025,7 +1025,7 @@ class Domain:
         internal: bool = False,
         auto_generated: bool = False,
         **opts: Any,
-    ) -> type[_T]:  # noqa: C901
+    ) -> type[_T]:
         """Register class into the domain"""
         # The email subsystem is deprecated (epic #1102, removed at v1.0.0).
         # This is the single funnel for both ``@domain.email`` (via
@@ -1076,7 +1076,7 @@ class Domain:
 
         # 1. Associations
         if has_fields(new_cls):
-            for _, field_obj in declared_fields(new_cls).items():
+            for field_obj in declared_fields(new_cls).values():
                 # Record Association references to resolve later
                 if isinstance(field_obj, (HasOne, HasMany, Reference)) and isinstance(
                     field_obj.to_cls, str
@@ -1106,7 +1106,7 @@ class Domain:
             # Also scan FieldSpec metadata for ValueObject descriptors
             # (e.g. List(content_type=ValueObject("InnerVO")))
             field_meta = getattr(new_cls, "__protean_field_meta__", {})
-            for _, spec in field_meta.items():
+            for spec in field_meta.values():
                 ct = getattr(spec, "content_type", None)
                 if isinstance(ct, ValueObject) and isinstance(ct.value_object_cls, str):
                     self._pending_class_resolutions[ct.value_object_cls].append(
@@ -1123,29 +1123,31 @@ class Domain:
             DomainObjects.COMMAND_HANDLER,
             DomainObjects.REPOSITORY,
             DomainObjects.EVENT_SOURCED_REPOSITORY,
-        ]:
-            if isinstance(new_cls.meta_.part_of, str):
-                self._pending_class_resolutions[new_cls.meta_.part_of].append(
-                    ("AggregateCls", (new_cls))
-                )
+        ] and isinstance(new_cls.meta_.part_of, str):
+            self._pending_class_resolutions[new_cls.meta_.part_of].append(
+                ("AggregateCls", (new_cls))
+            )
 
-        if element_type == DomainObjects.PROJECTOR:
-            if isinstance(new_cls.meta_.projector_for, str):
-                self._pending_class_resolutions[new_cls.meta_.projector_for].append(
-                    ("ProjectionCls", (new_cls))
-                )
+        if element_type == DomainObjects.PROJECTOR and isinstance(
+            new_cls.meta_.projector_for, str
+        ):
+            self._pending_class_resolutions[new_cls.meta_.projector_for].append(
+                ("ProjectionCls", (new_cls))
+            )
 
-        if element_type == DomainObjects.QUERY:
-            if isinstance(new_cls.meta_.part_of, str):
-                self._pending_class_resolutions[new_cls.meta_.part_of].append(
-                    ("QueryProjectionCls", (new_cls))
-                )
+        if element_type == DomainObjects.QUERY and isinstance(
+            new_cls.meta_.part_of, str
+        ):
+            self._pending_class_resolutions[new_cls.meta_.part_of].append(
+                ("QueryProjectionCls", (new_cls))
+            )
 
-        if element_type == DomainObjects.QUERY_HANDLER:
-            if isinstance(new_cls.meta_.part_of, str):
-                self._pending_class_resolutions[new_cls.meta_.part_of].append(
-                    ("QueryHandlerProjectionCls", (new_cls))
-                )
+        if element_type == DomainObjects.QUERY_HANDLER and isinstance(
+            new_cls.meta_.part_of, str
+        ):
+            self._pending_class_resolutions[new_cls.meta_.part_of].append(
+                ("QueryHandlerProjectionCls", (new_cls))
+            )
 
         return cast("type[_T]", new_cls)
 
@@ -1198,9 +1200,7 @@ class Domain:
         """
 
         # Reject unknown Domain Elements, identified by the absence of `element_type` class var
-        if getattr(element_cls, "element_type", None) not in [
-            element for element in DomainObjects
-        ]:
+        if getattr(element_cls, "element_type", None) not in list(DomainObjects):
             raise NotSupportedError(
                 f"Element `{element_cls.__name__}` is not a valid element class"
             )
@@ -1210,19 +1210,19 @@ class Domain:
         )
 
     def fetch_element_cls_from_registry(
-        self, element: str, element_types: Tuple[DomainObjects, ...]
+        self, element: str, element_types: tuple[DomainObjects, ...]
     ) -> "type[Element]":
         """Util Method to fetch an Element's class from its name"""
         try:
             # Try fetching by class name
-            element_cls: "type[Element]" = self._get_element_by_name(
+            element_cls: type[Element] = self._get_element_by_name(
                 element_types, element
             ).cls
             return element_cls
         except ConfigurationError:
             try:
                 # Try fetching by fully qualified class name
-                fq_element_cls: "type[Element]" = (
+                fq_element_cls: type[Element] = (
                     self._get_element_by_fully_qualified_name(
                         element_types, element
                     ).cls
@@ -1233,7 +1233,7 @@ class Domain:
                 raise
 
     def _get_element_by_name(
-        self, element_types: Tuple[DomainObjects, ...], element_name: str
+        self, element_types: tuple[DomainObjects, ...], element_name: str
     ) -> DomainRecord:
         """Fetch Domain record with the provided Element name"""
         try:
@@ -1262,15 +1262,15 @@ class Domain:
                         "element": f"Element {element_name} not registered in domain {self.name}"
                     }
                 )
-        except KeyError:
+        except KeyError as e:
             raise ConfigurationError(
                 {
                     "element": f"Element {element_name} not registered in domain {self.name}"
                 }
-            )
+            ) from e
 
     def _get_element_by_fully_qualified_name(
-        self, element_types: Tuple[DomainObjects, ...], element_fq_name: str
+        self, element_types: tuple[DomainObjects, ...], element_fq_name: str
     ) -> DomainRecord:
         """Fetch Domain record with the Fully Qualified Element name"""
         for element_type in element_types:
@@ -1286,7 +1286,7 @@ class Domain:
             )
 
     def _get_element_by_class(
-        self, element_types: Tuple[DomainObjects, ...], element_cls: type
+        self, element_types: tuple[DomainObjects, ...], element_cls: type
     ) -> DomainRecord:
         """Fetch Domain record with Element class details"""
         element_qualname = fqn(element_cls)
@@ -1326,7 +1326,7 @@ class Domain:
         self._type_manager.build_upcaster_chains()
 
     def register_external_event(
-        self, event_cls: Type[BaseEvent], type_string: str
+        self, event_cls: type[BaseEvent], type_string: str
     ) -> None:
         """Register an external event with the domain.
 
@@ -2111,9 +2111,9 @@ class Domain:
         self,
         command: BaseCommand,
         asynchronous: bool,
-        idempotency_key: Optional[str] = None,
+        idempotency_key: str | None = None,
         priority: int = 0,
-        correlation_id: Optional[str] = None,
+        correlation_id: str | None = None,
     ) -> BaseCommand:
         return self._command_processor.enrich(
             command,
@@ -2126,14 +2126,14 @@ class Domain:
     def process(
         self,
         command: Any,
-        asynchronous: Optional[bool] = None,
-        idempotency_key: Optional[str] = None,
+        asynchronous: bool | None = None,
+        idempotency_key: str | None = None,
         raise_on_duplicate: bool = False,
-        priority: Optional[int] = None,
-        correlation_id: Optional[str] = None,
-        deadline: Optional[datetime] = None,
-        timeout: Optional[timedelta] = None,
-    ) -> Optional[Any]:
+        priority: int | None = None,
+        correlation_id: str | None = None,
+        deadline: datetime | None = None,
+        timeout: timedelta | None = None,
+    ) -> Any | None:
         """Process command and return results based on specified preference.
 
         By default, Protean does not return values after processing commands. This behavior
@@ -2171,7 +2171,7 @@ class Domain:
             timeout=timeout,
         )
 
-    def command_handler_for(self, command: Any) -> Optional[type[BaseCommandHandler]]:
+    def command_handler_for(self, command: Any) -> type[BaseCommandHandler] | None:
         """Return Command Handler for a specific command."""
         return self._command_processor.handler_for(command)
 
@@ -2421,7 +2421,7 @@ class Domain:
             snapshots created.
         """
         results: dict[str, int] = {}
-        for _, record in self.registry._elements[DomainObjects.AGGREGATE.value].items():
+        for record in self.registry._elements[DomainObjects.AGGREGATE.value].values():
             if record.cls.meta_.is_event_sourced and not record.internal:
                 count = self._require_event_store().create_snapshots(record.cls)
                 results[record.cls.__name__] = count

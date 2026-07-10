@@ -21,7 +21,8 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from protean.ir.generators.base import (
     build_cmd_type_to_fqn,
@@ -30,7 +31,6 @@ from protean.ir.generators.base import (
     sanitize_mermaid_id,
     short_name,
 )
-
 
 # ---------------------------------------------------------------------------
 # Node ID helpers — prefixed to avoid collisions across handler types

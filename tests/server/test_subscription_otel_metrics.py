@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
-
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -44,7 +43,6 @@ from protean.utils.telemetry import (
     _DOMAIN_METRICS_KEY,
     get_domain_metrics,
 )
-
 
 # ---------------------------------------------------------------------------
 # Domain elements for testing

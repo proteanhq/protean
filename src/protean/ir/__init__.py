@@ -11,14 +11,14 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
-    "SCHEMA_VERSION",
-    "SCHEMA_PATH",
     "EXAMPLES_DIR",
+    "SCHEMA_PATH",
+    "SCHEMA_VERSION",
     "CompatConfig",
     "CompatibilityChange",
-    "IRBuilder",
     "CompatibilityReport",
     "GitError",
+    "IRBuilder",
     "StalenessResult",
     "StalenessStatus",
     "check_staleness",

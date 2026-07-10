@@ -7,7 +7,7 @@ Tests cover:
 - Edge cases for source derivation, subject extraction, and metadata branches
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import PropertyMock, patch
 from uuid import uuid4
 
@@ -26,7 +26,6 @@ from protean.utils.eventing import (
     Metadata,
     TraceParent,
 )
-
 
 # ── Domain elements ──────────────────────────────────────────────────
 
@@ -310,9 +309,7 @@ class TestFromCloudeventValid:
 
         assert message.metadata.headers.id == "evt-002"
         assert message.metadata.headers.type == "com.example.user.registered"
-        assert message.metadata.headers.time == datetime(
-            2026, 3, 2, 10, 30, tzinfo=timezone.utc
-        )
+        assert message.metadata.headers.time == datetime(2026, 3, 2, 10, 30, tzinfo=UTC)
         assert message.data == {"user_id": "abc123", "email": "j@ex.com"}
 
     def test_empty_data_defaults_to_empty_dict(self):
@@ -833,7 +830,7 @@ class TestToCloudeventBranches:
                 id="test",
                 type="Test.Event.v1",
                 stream="test::user-abc123",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
                 traceparent=tp,
             ),
             domain=DomainMeta(
@@ -861,7 +858,7 @@ class TestToCloudeventBranches:
                 id="test",
                 type="Test.Event.v1",
                 stream="test::user-abc123",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
             ),
             domain=DomainMeta(
                 stream_category="test::user",
@@ -942,7 +939,7 @@ class TestFromCloudeventTimeParsing:
 
     def test_time_as_datetime_object(self):
         """When time is already a datetime, use it directly."""
-        now = datetime(2026, 3, 2, 10, 30, tzinfo=timezone.utc)
+        now = datetime(2026, 3, 2, 10, 30, tzinfo=UTC)
         ce = {
             "specversion": "1.0",
             "id": "evt-001",
@@ -967,9 +964,7 @@ class TestFromCloudeventTimeParsing:
         }
         message = Message.from_cloudevent(ce)
 
-        assert message.metadata.headers.time == datetime(
-            2026, 3, 2, 10, 30, tzinfo=timezone.utc
-        )
+        assert message.metadata.headers.time == datetime(2026, 3, 2, 10, 30, tzinfo=UTC)
 
     def test_time_as_non_standard_type_ignored(self):
         """When time is neither datetime nor string, it stays None."""

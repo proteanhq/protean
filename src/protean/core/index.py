@@ -63,7 +63,7 @@ class Index:
     name: str | None = None
     unique: bool = False
     desc: tuple[str, ...] = ()
-    where: "Q | None" = None
+    where: Q | None = None
     include: tuple[str, ...] = ()
 
     def __init__(
@@ -72,7 +72,7 @@ class Index:
         name: str | None = None,
         unique: bool = False,
         desc: tuple[str, ...] | list[str] = (),
-        where: "Q | None" = None,
+        where: Q | None = None,
         include: tuple[str, ...] | list[str] = (),
     ) -> None:
         if not fields:
@@ -86,7 +86,7 @@ class Index:
         object.__setattr__(self, "include", tuple(include))
 
     @classmethod
-    def from_sql(cls, dialect: str, ddl: str, name: str | None = None) -> "RawIndex":
+    def from_sql(cls, dialect: str, ddl: str, name: str | None = None) -> RawIndex:
         """Escape hatch for dialect-specific DDL the framework cannot model.
 
         The schema generator emits the verbatim ``ddl`` only when the

@@ -37,9 +37,8 @@ class Order(BaseAggregate):
 
     @invariant.post
     def total_should_be_sum_of_item_prices(self):
-        if self.items:
-            if self.total != sum([item.price for item in self.items]):
-                raise ValidationError("Total should be sum of item prices")
+        if self.items and self.total != sum([item.price for item in self.items]):
+            raise ValidationError("Total should be sum of item prices")
 
     @invariant.post
     def must_have_at_least_one_item(self):

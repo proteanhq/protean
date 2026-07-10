@@ -14,7 +14,7 @@ error path:
 """
 
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -114,7 +114,7 @@ def _message_with_deadline(test_domain, deadline):
 async def test_deadline_stopped_retry_routes_through_error_path(test_domain):
     # Deadline is a couple of seconds out, so the first attempt runs; the
     # 3600s backoff would push any retry well past it, so the loop stops.
-    near = datetime.now(timezone.utc) + timedelta(seconds=2)
+    near = datetime.now(UTC) + timedelta(seconds=2)
     message = _message_with_deadline(test_domain, near)
 
     engine = Engine(domain=test_domain, test_mode=True)
@@ -134,7 +134,7 @@ async def test_deadline_stopped_retry_routes_through_error_path(test_domain):
 async def test_already_expired_command_is_skipped_before_any_attempt(test_domain):
     # Negative control: an already-elapsed deadline is skipped by the engine
     # before dispatch, so the handler never runs and the error path is bypassed.
-    past = datetime.now(timezone.utc) - timedelta(seconds=1)
+    past = datetime.now(UTC) - timedelta(seconds=1)
     message = _message_with_deadline(test_domain, past)
 
     engine = Engine(domain=test_domain, test_mode=True)

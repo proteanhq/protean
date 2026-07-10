@@ -234,7 +234,7 @@ def test_connection_resilience_preserves_message_integrity(broker):
         assert identifier is not None
 
         # Retrieve and verify message is uncorrupted
-        retrieved_id, retrieved_message = broker.get_next(stream, consumer_group)
+        _retrieved_id, retrieved_message = broker.get_next(stream, consumer_group)
         assert retrieved_message == original_message
 
 
@@ -435,9 +435,7 @@ def test_ensure_connection_with_multiple_failures(broker):
     def mock_ensure_connection():
         nonlocal call_count
         call_count += 1
-        if call_count <= 2:
-            return False
-        return True
+        return not call_count <= 2
 
     broker._ensure_connection = mock_ensure_connection
 

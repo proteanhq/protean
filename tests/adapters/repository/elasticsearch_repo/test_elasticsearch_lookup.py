@@ -63,7 +63,7 @@ class TestLookupFieldTypeDetection:
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        from .elements import Person, Alien
+        from .elements import Alien, Person
 
         test_domain.register(Person)
         test_domain.register(Alien)

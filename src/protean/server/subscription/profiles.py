@@ -14,7 +14,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from protean.exceptions import ConfigurationError
 
@@ -238,11 +238,11 @@ class SubscriptionConfig:
     )
 
     # Filtering options
-    origin_stream: Optional[str] = None
+    origin_stream: str | None = None
 
     # Per-subscription DLQ overrides (None = inherit global [server.dlq] values)
-    dlq_retention_hours: Optional[int] = None
-    dlq_alert_threshold: Optional[int] = None
+    dlq_retention_hours: int | None = None
+    dlq_alert_threshold: int | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -335,17 +335,17 @@ class SubscriptionConfig:
         cls,
         profile: SubscriptionProfile,
         *,
-        subscription_type: Optional[SubscriptionType] = None,
-        messages_per_tick: Optional[int] = None,
-        tick_interval: Optional[int] = None,
-        blocking_timeout_ms: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        retry_delay_seconds: Optional[float] = None,
-        enable_dlq: Optional[bool] = None,
-        position_update_interval: Optional[int] = None,
-        origin_stream: Optional[str] = None,
-        dlq_retention_hours: Optional[int] = None,
-        dlq_alert_threshold: Optional[int] = None,
+        subscription_type: SubscriptionType | None = None,
+        messages_per_tick: int | None = None,
+        tick_interval: int | None = None,
+        blocking_timeout_ms: int | None = None,
+        max_retries: int | None = None,
+        retry_delay_seconds: float | None = None,
+        enable_dlq: bool | None = None,
+        position_update_interval: int | None = None,
+        origin_stream: str | None = None,
+        dlq_retention_hours: int | None = None,
+        dlq_alert_threshold: int | None = None,
     ) -> "SubscriptionConfig":
         """Create a configuration from a profile with optional overrides.
 
@@ -538,12 +538,12 @@ class SubscriptionConfig:
         if isinstance(profile, str):
             try:
                 return SubscriptionProfile(profile.lower())
-            except ValueError:
+            except ValueError as e:
                 valid_profiles = ", ".join(p.value for p in SubscriptionProfile)
                 raise ConfigurationError(
                     f"Unknown subscription profile: '{profile}'. "
                     f"Valid profiles are: {valid_profiles}"
-                )
+                ) from e
 
         raise ConfigurationError(
             f"Profile must be a string or SubscriptionProfile, got {type(profile)}"
@@ -570,12 +570,12 @@ class SubscriptionConfig:
         if isinstance(sub_type, str):
             try:
                 return SubscriptionType(sub_type.lower())
-            except ValueError:
+            except ValueError as e:
                 valid_types = ", ".join(t.value for t in SubscriptionType)
                 raise ConfigurationError(
                     f"Unknown subscription type: '{sub_type}'. "
                     f"Valid types are: {valid_types}"
-                )
+                ) from e
 
         raise ConfigurationError(
             f"Subscription type must be a string or SubscriptionType, "

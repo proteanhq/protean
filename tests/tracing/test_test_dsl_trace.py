@@ -19,16 +19,15 @@ import pytest
 
 from protean.testing import given
 from protean.utils.eventing import Message
-
 from tests.tracing.elements import (
     ConfirmOrder,
     Order,
     OrderCommandHandler,
     OrderConfirmed,
     OrderPlaced,
+    OrderShipped,
     PlaceOrder,
     ShipOrder,
-    OrderShipped,
 )
 
 

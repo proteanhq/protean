@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 from protean.port.broker import OperationState
 
-
 # ============= ACK Tests =============
 
 

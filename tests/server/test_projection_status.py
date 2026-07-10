@@ -4,7 +4,7 @@ Exercises the collector against a real in-memory domain (registry walking, posit
 reading, lag/staleness aggregation, row counting) plus unit tests for the helpers.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,7 +28,6 @@ from protean.server.subscription_status import (
     _extract_position_time,
 )
 from protean.utils import fqn
-
 
 # ---------------------------------------------------------------------------
 # Test elements
@@ -88,7 +87,7 @@ def _write_events(store, n: int) -> int:
 
 def _write_position(store, position: int, *, when: str | None = None) -> None:
     """Simulate the projector having processed up to ``position`` at time ``when``."""
-    when = when or datetime.now(timezone.utc).isoformat()
+    when = when or datetime.now(UTC).isoformat()
     position_stream = f"position-{fqn(BalancesProjector)}-{_stream_category()}"
     store._write(
         position_stream,
@@ -209,7 +208,7 @@ class TestParseTime:
     def test_naive_iso_assumed_utc(self):
         result = _parse_time("2026-06-27T10:00:00")
         assert result is not None
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
     def test_garbage_returns_none(self):
         assert _parse_time("not-a-timestamp") is None
@@ -217,7 +216,7 @@ class TestParseTime:
     def test_z_suffix_parsed_as_utc(self):
         result = _parse_time("2026-06-27T10:00:00Z")
         assert result is not None
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
 
 # ---------------------------------------------------------------------------
@@ -256,11 +255,11 @@ class TestExtractPositionTime:
         assert _extract_position_time({"metadata": {"headers": "{bad"}}) is None
 
     def test_datetime_value_normalized_to_isoformat(self):
-        dt = datetime(2026, 5, 5, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 5, 5, 12, 0, 0, tzinfo=UTC)
         assert _extract_position_time({"time": dt}) == dt.isoformat()
 
     def test_metadata_datetime_value_normalized(self):
-        dt = datetime(2026, 5, 5, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 5, 5, 12, 0, 0, tzinfo=UTC)
         msg = {"metadata": {"headers": {"time": dt}}}
         assert _extract_position_time(msg) == dt.isoformat()
 
@@ -328,7 +327,7 @@ class TestRowCount:
 # ---------------------------------------------------------------------------
 
 
-_NOW = datetime(2026, 6, 27, 12, 0, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 6, 27, 12, 0, 0, tzinfo=UTC)
 
 
 def _feeder(lag, last_updated):

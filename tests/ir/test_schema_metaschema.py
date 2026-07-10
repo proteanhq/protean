@@ -29,7 +29,6 @@ from .elements import (
     build_via_and_min_length_domain,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -50,10 +49,10 @@ def _find_element(ir: dict, name: str) -> dict:
         if agg.get("name") == name:
             return agg
         for section in ("entities", "value_objects", "commands", "events"):
-            for fqn, elem in cluster.get(section, {}).items():
+            for elem in cluster.get(section, {}).values():
                 if elem.get("name") == name:
                     return elem
-    for fqn, proj in ir.get("projections", {}).items():
+    for proj in ir.get("projections", {}).values():
         if proj.get("name") == name:
             return proj
     raise KeyError(f"Element {name!r} not found in IR")
@@ -93,7 +92,7 @@ class TestMetaSchemaValidation:
         ir = _ir_for(builder_fn)
         schemas = generate_schemas(ir)
         assert schemas, f"No schemas generated for {builder_fn.__name__}"
-        for fqn, schema in schemas.items():
+        for schema in schemas.values():
             _validate_against_meta_schema(schema)
 
     def test_empty_element_passes_meta_schema(self):
@@ -161,8 +160,7 @@ class TestDeeplyNested:
             if agg.get("fqn"):
                 flat[agg["fqn"]] = agg
             for section in ("entities", "value_objects"):
-                for fqn, elem in cluster.get(section, {}).items():
-                    flat[fqn] = elem
+                flat.update(cluster.get(section, {}))
 
         # Order → LineItem (entity) → Money (VO)
         element = _find_element(ir, "Order")
@@ -311,7 +309,7 @@ class TestFactEvents:
         }
         assert fact_schemas, "No fact events found in schemas"
 
-        for fqn, schema in fact_schemas.items():
+        for schema in fact_schemas.values():
             assert schema.get("x-protean-auto-generated") is True
             _validate_against_meta_schema(schema)
 
@@ -331,7 +329,7 @@ class TestEndToEndPayloadValidation:
         self.schemas = generate_schemas(ir)
 
     def test_all_schemas_valid_against_meta_schema(self):
-        for fqn, schema in self.schemas.items():
+        for schema in self.schemas.values():
             _validate_against_meta_schema(schema)
 
     def test_valid_command_payload(self):
@@ -367,7 +365,7 @@ class TestEndToEndPayloadValidation:
             jsonschema.validate(payload, schema)
 
     def test_all_schemas_json_serializable_and_deterministic(self):
-        for fqn, schema in self.schemas.items():
+        for schema in self.schemas.values():
             json_str = json.dumps(schema, sort_keys=True)
             roundtrip = json.loads(json_str)
             assert roundtrip == schema

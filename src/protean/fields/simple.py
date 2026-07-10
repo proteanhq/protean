@@ -12,8 +12,9 @@ during class creation.
 
 import datetime
 import decimal
+from collections.abc import Callable
 from enum import Enum as _Enum
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import IncorrectUsageError
 from protean.fields.spec import FieldSpec

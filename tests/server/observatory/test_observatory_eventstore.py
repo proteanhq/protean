@@ -22,9 +22,7 @@ from protean.server.observatory.routes.eventstore import (
     create_eventstore_router,
     enrich_with_event_store_stats,
 )
-
 from tests.server.observatory.conftest import route_paths
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

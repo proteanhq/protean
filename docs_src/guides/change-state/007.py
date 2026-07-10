@@ -1,5 +1,5 @@
 # --8<-- [start:full]
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from protean import Domain, handle
@@ -10,7 +10,7 @@ publishing = Domain(name="Publishing")
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ArticleStatus(Enum):

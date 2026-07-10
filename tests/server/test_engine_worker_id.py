@@ -20,7 +20,6 @@ from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 from tests.shared import REDIS_URI
 
-
 # --- Domain elements ---
 
 

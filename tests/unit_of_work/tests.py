@@ -1,8 +1,9 @@
-import pytest
 from unittest.mock import Mock, patch
 
+import pytest
+
 from protean import UnitOfWork
-from protean.exceptions import TransactionError, InvalidOperationError
+from protean.exceptions import InvalidOperationError, TransactionError
 from protean.utils import Processing
 
 from .elements import Person, PersonRepository
@@ -88,13 +89,15 @@ class TestUnitOfWorkAdditionalCoverage:
             original_rollback(self_uow)
 
         with patch.object(UnitOfWork, "rollback", tracking_rollback):
-            with patch.object(
-                UnitOfWork, "commit", side_effect=TransactionError("Commit failed")
+            with (
+                patch.object(
+                    UnitOfWork, "commit", side_effect=TransactionError("Commit failed")
+                ),
+                pytest.raises(TransactionError),
+                UnitOfWork(),
             ):
-                with pytest.raises(TransactionError):
-                    with UnitOfWork():
-                        person = Person(first_name="Jane", last_name="Doe")
-                        repo.add(person)
+                person = Person(first_name="Jane", last_name="Doe")
+                repo.add(person)
 
             assert rollback_called
 

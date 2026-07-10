@@ -15,8 +15,8 @@ Verifies that:
 
 import logging
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -30,7 +30,6 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.fields import Identifier, String
 from protean.utils.logging import TailSamplingFilter, TailSamplingProcessor
 from protean.utils.mixins import handle
-
 
 # --- Domain elements ---
 

@@ -141,7 +141,7 @@ def rebuild_all_projections(
     """
     results: dict[str, RebuildResult] = {}
 
-    for _, record in domain.registry._elements[DomainObjects.PROJECTION.value].items():
+    for record in domain.registry._elements[DomainObjects.PROJECTION.value].values():
         if record.internal:
             continue
         result = rebuild_projection(domain, record.cls, batch_size)

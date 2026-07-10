@@ -1,6 +1,6 @@
 # --8<-- [start:full]
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from protean import Domain
 from protean.fields import DateTime, Identifier, String
@@ -33,7 +33,7 @@ class UserActivated:
     __version__ = 2
 
     user_id: Identifier(required=True)
-    activated_at: DateTime(required=True, default=lambda: datetime.now(timezone.utc))
+    activated_at: DateTime(required=True, default=lambda: datetime.now(UTC))
 
 
 domain.init(traverse=False)

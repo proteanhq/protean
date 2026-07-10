@@ -92,10 +92,9 @@ def test_expected_version_error(test_domain):
         user_dup1.activate()
         repo.add(user_dup1)
 
-    with pytest.raises(ExpectedVersionError) as exc:
-        with UnitOfWork():
-            user_dup2.change_name("Mike")
-            repo.add(user_dup2)
+    with pytest.raises(ExpectedVersionError) as exc, UnitOfWork():
+        user_dup2.change_name("Mike")
+        repo.add(user_dup2)
 
     assert (
         exc.value.args[0]

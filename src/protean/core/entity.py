@@ -5,12 +5,12 @@ import functools
 import logging
 import threading
 from collections import defaultdict
+from collections.abc import Callable
 from enum import Enum
 from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
     Self,
     TypeVar,
@@ -31,22 +31,22 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.fields.resolved import ResolvedField, convert_pydantic_errors
-from protean.integrations.logging import (
-    SECURITY_EVENT_INVARIANT_FAILED,
-    log_security_event,
-)
 from protean.fields import (
     HasMany,
     HasOne,
     Reference,
     ValueObject,
 )
-from protean.fields.basic import ValueObjectList
-from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.fields.association import Association, _ReferenceField
-from protean.fields.tempdata import AssociationCache
+from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
+from protean.fields.resolved import ResolvedField, convert_pydantic_errors
+from protean.fields.spec import FieldSpec, resolve_fieldspecs
+from protean.fields.tempdata import AssociationCache
+from protean.integrations.logging import (
+    SECURITY_EVENT_INVARIANT_FAILED,
+    log_security_event,
+)
 from protean.utils import (
     DomainObjects,
     _derive_element_class,
@@ -241,7 +241,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         super().__init_subclass__(**kwargs)
 
         # Initialize invariant storage
-        setattr(cls, "_invariants", defaultdict(dict))
+        cls._invariants = defaultdict(dict)
         # Set empty __container_fields__ as placeholder (populated later by __pydantic_init_subclass__)
         setattr(cls, _FIELDS, {})
 
@@ -428,7 +428,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # __container_fields__.  This prevents silently swallowing truly
         # unknown kwargs that Pydantic should reject.
         _shadow_field_names: set[str] = set()
-        for _, fobj in getattr(type(self), _FIELDS, {}).items():
+        for fobj in getattr(type(self), _FIELDS, {}).values():
             if isinstance(fobj, Reference):
                 attr_name = fobj.get_attribute_name()
                 if attr_name:
@@ -609,7 +609,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # Initialize Reference shadow fields to None when not already set
         for base_ref_obj in reference_fields(self).values():
             ref_obj = cast(Reference, base_ref_obj)
-            shadow_name, shadow = ref_obj.get_shadow_field()
+            shadow_name, _shadow = ref_obj.get_shadow_field()
             if shadow_name is not None and shadow_name not in self.__dict__:
                 self.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
@@ -637,7 +637,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         for klass in type(self).__mro__:
             for name, attr in vars(klass).items():
                 if callable(attr) and hasattr(attr, "_invariant"):
-                    self._invariants[getattr(attr, "_invariant")][name] = attr
+                    self._invariants[attr._invariant][name] = attr
 
     def defaults(self) -> None:
         """Placeholder for defaults.
@@ -908,7 +908,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
-                raise ValidationError(convert_pydantic_errors(e))
+                raise ValidationError(convert_pydantic_errors(e)) from e
 
             # Post-check invariants
             target._postcheck()
@@ -1114,17 +1114,17 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         return new_obj
 
     def __repr__(self) -> str:
-        return "<%s: %s>" % (self.__class__.__name__, self)
+        return f"<{self.__class__.__name__}: {self}>"
 
     def __str__(self) -> str:
         id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
         if id_field_name:
             identifier = getattr(self, id_field_name)
-            return "%s object (%s)" % (
+            return "{} object ({})".format(
                 self.__class__.__name__,
-                "{}: {}".format(id_field_name, identifier),
+                f"{id_field_name}: {identifier}",
             )
-        return "%s object" % self.__class__.__name__
+        return f"{self.__class__.__name__} object"
 
 
 # ---------------------------------------------------------------------------
@@ -1189,7 +1189,7 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
             setattr(entity_cls, _FIELDS, field_objects)
 
         # Set up shadow fields for Reference fields
-        for _, field_obj in getattr(entity_cls, _FIELDS, {}).items():
+        for field_obj in getattr(entity_cls, _FIELDS, {}).values():
             if isinstance(field_obj, Reference):
                 shadow_field_name, shadow_field = field_obj.get_shadow_field()
                 if shadow_field_name is not None:
@@ -1203,9 +1203,7 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
                 and callable(method)
                 and hasattr(method, "_invariant")
             ):
-                entity_cls._invariants[getattr(method, "_invariant")][method_name] = (
-                    method
-                )
+                entity_cls._invariants[method._invariant][method_name] = method
 
     return element_cls
 

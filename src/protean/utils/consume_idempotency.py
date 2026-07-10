@@ -31,8 +31,8 @@ See ADR-0017.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any
 
 from pydantic import Field
 
@@ -61,7 +61,7 @@ class ProcessedMessage(BaseAggregate):
     # same 255 ceiling as the outbox table for the (message_id, handler) index.
     message_id: Annotated[str, Field(max_length=255)]
     handler: Annotated[str, Field(max_length=255)]
-    processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    processed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # On a relational provider the composite unique index is the concurrency
@@ -104,7 +104,7 @@ class ProcessedMessageRepository(BaseRepository):
         if retention_hours < 0:
             raise ValueError("retention_hours cannot be negative")
 
-        threshold = datetime.now(timezone.utc) - timedelta(hours=retention_hours)
+        threshold = datetime.now(UTC) - timedelta(hours=retention_hours)
         return self._delete_in_batches(Q(processed_at__lt=threshold), batch_size)
 
 
@@ -153,8 +153,8 @@ def resolve_dispatch_context(
 
 def cleanup_processed_messages(
     domain: Any,
-    retention_hours: Optional[int] = None,
-    batch_size: Optional[int] = None,
+    retention_hours: int | None = None,
+    batch_size: int | None = None,
 ) -> int:
     """Prune consume-side idempotency markers older than the retention window.
 

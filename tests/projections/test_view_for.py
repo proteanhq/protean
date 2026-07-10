@@ -232,9 +232,8 @@ class TestReadViewCount:
 
         view = test_domain.view_for(PersonProjection)
 
-        with assert_no_subquery_wrap():
-            with assert_query_count(1) as statements:
-                result = view.count()
+        with assert_no_subquery_wrap(), assert_query_count(1) as statements:
+            result = view.count()
 
         assert result == 4
         selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]

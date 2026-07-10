@@ -39,15 +39,18 @@ import os
 import random
 import sys
 import time
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Optional, TypeVar, Union, cast
+from typing import Any, TypeVar, cast
 
 import structlog
 
 from protean.domain.context import has_domain_context
 from protean.integrations.logging import (
     LOG_RECORD_RESERVED_ATTRS as _RESERVED_LOG_RECORD_ATTRS,
+)
+from protean.integrations.logging import (
     make_redaction_processor,
 )
 from protean.utils.globals import current_domain, g
@@ -148,16 +151,16 @@ _FRAMEWORK_FIELDS = frozenset(
 
 
 def configure_logging(
-    level: Optional[str] = None,
+    level: str | None = None,
     format: str = "auto",
-    log_dir: Optional[Union[str, Path]] = None,
-    log_file_prefix: Optional[str] = None,
+    log_dir: str | Path | None = None,
+    log_file_prefix: str | None = None,
     max_bytes: int = 10 * 1024 * 1024,
     backup_count: int = 5,
-    extra_processors: Optional[list[Any]] = None,
-    per_logger: Optional[dict[str, str]] = None,
-    dict_config: Optional[dict[str, Any]] = None,
-    redact: Optional[list[str]] = None,
+    extra_processors: list[Any] | None = None,
+    per_logger: dict[str, str] | None = None,
+    dict_config: dict[str, Any] | None = None,
+    redact: list[str] | None = None,
 ) -> None:
     """Configure structured logging for a Protean application.
 
@@ -204,7 +207,7 @@ def configure_logging(
     # sensitive fields added anywhere upstream are masked before the renderer.
     if redact:
         redaction_proc = make_redaction_processor(redact)
-        extra_processors = list(extra_processors or []) + [redaction_proc]
+        extra_processors = [*list(extra_processors or []), redaction_proc]
 
     if dict_config is not None:
         logging.config.dictConfig(dict_config)
@@ -336,7 +339,7 @@ def unbind_event_context(*keys: str) -> None:
             extras.pop(key, None)
 
 
-def _http_wide_event_extras() -> Optional[dict[str, Any]]:
+def _http_wide_event_extras() -> dict[str, Any] | None:
     """Return the HTTP wide-event extras dict, or ``None`` when absent.
 
     Only present when ``DomainContextMiddleware`` has initialised it for
@@ -475,10 +478,7 @@ def _match_critical_stream(message_type: str, patterns: Iterable[str]) -> bool:
     """
     if not message_type:
         return False
-    for pattern in patterns:
-        if fnmatch.fnmatchcase(message_type, pattern):
-            return True
-    return False
+    return any(fnmatch.fnmatchcase(message_type, pattern) for pattern in patterns)
 
 
 class TailSamplingProcessor:
@@ -510,7 +510,7 @@ class TailSamplingProcessor:
         default_rate: float = 0.05,
         always_keep_errors: bool = True,
         always_keep_slow: bool = True,
-        critical_streams: Optional[Iterable[str]] = None,
+        critical_streams: Iterable[str] | None = None,
     ) -> None:
         self.default_rate = float(default_rate)
         self.always_keep_errors = bool(always_keep_errors)
@@ -585,7 +585,7 @@ class TailSamplingFilter(logging.Filter):
         default_rate: float = 0.05,
         always_keep_errors: bool = True,
         always_keep_slow: bool = True,
-        critical_streams: Optional[Iterable[str]] = None,
+        critical_streams: Iterable[str] | None = None,
     ) -> None:
         super().__init__()
         self.default_rate = float(default_rate)
@@ -653,7 +653,7 @@ def access_log_handler(
     _reset_access_log_counters()
 
     started_at = time.perf_counter()
-    error_info: Optional[Exception] = None
+    error_info: Exception | None = None
     try:
         yield
     except Exception as exc:
@@ -697,7 +697,7 @@ def _emit_wide_event(
     handler_cls: type,
     handler_method_name: str,
     duration_ms: float,
-    error_info: Optional[Exception],
+    error_info: Exception | None,
     app_context: dict[str, Any],
 ) -> None:
     """Build and emit the wide event log entry.
@@ -842,7 +842,7 @@ def configure_for_testing() -> None:
 
 
 def _build_shared_processors(
-    extra_processors: Optional[list[Any]] = None,
+    extra_processors: list[Any] | None = None,
 ) -> list[Any]:
     """Build the shared processor chain used by both stdlib and structlog paths.
 
@@ -904,13 +904,13 @@ def _build_processor_formatter(
 
 def _setup_stdlib_logging(
     numeric_level: int,
-    log_dir: Optional[Path],
+    log_dir: Path | None,
     log_file_prefix: str,
     max_bytes: int,
     backup_count: int,
     env: str = "development",
     format: str = "auto",
-    extra_processors: Optional[list[Any]] = None,
+    extra_processors: list[Any] | None = None,
 ) -> None:
     """Configure stdlib logging with ``ProcessorFormatter`` bridge.
 
@@ -978,7 +978,7 @@ def _setup_stdlib_logging(
 def _setup_structlog(
     env: str,
     format: str,
-    extra_processors: Optional[list[Any]] = None,
+    extra_processors: list[Any] | None = None,
 ) -> None:
     """Configure structlog processors and renderer.
 

@@ -23,7 +23,7 @@ import json
 import logging
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Path, Query
 from fastapi.responses import JSONResponse
@@ -54,14 +54,14 @@ _ERROR_EVENTS = {"handler.failed", "message.dlq"}
 # ---------------------------------------------------------------------------
 
 
-def _get_redis(domains: List["Domain"]) -> Any:
+def _get_redis(domains: list[Domain]) -> Any:
     """Get a Redis connection from the first domain's broker."""
     for d in domains:
         try:
             with d.domain_context():
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
-                    return getattr(broker, "redis_instance")
+                    return broker.redis_instance
         except Exception:
             continue
     return None
@@ -95,7 +95,7 @@ def _extract_handled_messages(handler_cls: type) -> list[str]:
     return names
 
 
-def collect_pm_metadata(domains: list["Domain"]) -> list[dict[str, Any]]:
+def collect_pm_metadata(domains: list[Domain]) -> list[dict[str, Any]]:
     """Walk domain registries, extract per-PM metadata (no Redis needed).
 
     Returns a list of PM dicts with keys:
@@ -106,7 +106,7 @@ def collect_pm_metadata(domains: list["Domain"]) -> list[dict[str, Any]]:
 
     for domain in domains:
         registry_dict = getattr(domain.registry, "process_managers", {})
-        for _name, record in registry_dict.items():
+        for record in registry_dict.values():
             pm_cls = record.cls
             meta = getattr(pm_cls, "meta_", None)
 
@@ -136,7 +136,7 @@ def collect_pm_metadata(domains: list["Domain"]) -> list[dict[str, Any]]:
 
 def merge_pm_subscription_status(
     pms: list[dict[str, Any]],
-    domains: list["Domain"],
+    domains: list[Domain],
 ) -> None:
     """Merge subscription status into PM dicts in-place.
 
@@ -274,7 +274,7 @@ def collect_pm_trace_metrics(
     return result
 
 
-def get_pm_instance_count(domain: "Domain", pm_cls: type) -> int | None:
+def get_pm_instance_count(domain: Domain, pm_cls: type) -> int | None:
     """Get the number of PM instances from the event store.
 
     Returns ``None`` if the event store is unavailable.
@@ -302,7 +302,7 @@ def get_pm_instance_count(domain: "Domain", pm_cls: type) -> int | None:
 
 
 def get_pm_instances(
-    domain: "Domain", pm_cls: type, limit: int = 50
+    domain: Domain, pm_cls: type, limit: int = 50
 ) -> list[dict[str, Any]]:
     """Enumerate PM instances from the event store.
 
@@ -441,7 +441,7 @@ def _serialize_pm(pm: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def create_processes_router(domains: list["Domain"]) -> APIRouter:
+def create_processes_router(domains: list[Domain]) -> APIRouter:
     """Create the /processes API router."""
     router = APIRouter()
 

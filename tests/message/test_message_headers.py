@@ -4,17 +4,17 @@ import pytest
 
 from protean import apply
 from protean.core.aggregate import BaseAggregate
-from protean.core.event import BaseEvent
 from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
 from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
 from protean.utils.eventing import (
+    DomainMeta,
     Message,
     MessageEnvelope,
     MessageHeaders,
-    TraceParent,
-    DomainMeta,
     Metadata,
+    TraceParent,
 )
 
 

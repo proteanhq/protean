@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 from starlette.routing import BaseRoute
 
 from protean.server.observatory import Observatory
-
 from tests.shared import initialize_domain
 
 

@@ -22,7 +22,9 @@ def register_elements(test_domain):
 @pytest.mark.postgresql
 def test_json_data_type_association(test_domain):
     database_model_cls = test_domain.repository_for(Event)._database_model
-    type(database_model_cls.payload.property.columns[0].type) is sa_types.JSON
+    assert isinstance(
+        database_model_cls.payload.property.columns[0].type, sa_types.JSON
+    )
 
 
 @pytest.mark.postgresql

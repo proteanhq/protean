@@ -1,6 +1,6 @@
-import pytest
-
 from unittest.mock import Mock
+
+import pytest
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.utils import Processing

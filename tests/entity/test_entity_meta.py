@@ -47,7 +47,7 @@ class TestEntityMeta:
     def test_entity_meta_has_declared_fields_on_construction(self):
         assert declared_fields(Person) is not None
         assert all(
-            key in declared_fields(Person).keys()
+            key in declared_fields(Person)
             for key in ["age", "first_name", "id", "last_name"]
         )
 
@@ -60,24 +60,24 @@ class TestEntityMeta:
 
     def test_default_and_overridden_abstract_flags(self):
         # Entity is not abstract by default
-        assert getattr(Person.meta_, "abstract") is False
+        assert Person.meta_.abstract is False
 
         # Entity can be marked explicitly as abstract
-        assert getattr(AbstractPerson.meta_, "abstract") is True
+        assert AbstractPerson.meta_.abstract is True
 
         # Derived Entity is not abstract by default
         assert hasattr(ConcretePerson.meta_, "abstract")
-        assert getattr(ConcretePerson.meta_, "abstract") is False
+        assert ConcretePerson.meta_.abstract is False
 
     def test_default_and_overridden_schema_name_in_meta(self):
         # Default
-        assert getattr(Person.meta_, "schema_name") == "person"
-        assert getattr(DbPerson.meta_, "schema_name") == "pepes"
+        assert Person.meta_.schema_name == "person"
+        assert DbPerson.meta_.schema_name == "pepes"
 
     def test_schema_name_can_be_overridden_in_entity_subclass(self):
         """Test that `schema_name` can be overridden"""
         assert hasattr(SqlPerson.meta_, "schema_name")
-        assert getattr(SqlPerson.meta_, "schema_name") == "people"
+        assert SqlPerson.meta_.schema_name == "people"
 
     def test_that_schema_is_not_inherited(self):
         assert Person.meta_.schema_name != Adult.meta_.schema_name

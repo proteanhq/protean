@@ -9,17 +9,17 @@ import types
 import typing
 import uuid
 from abc import abstractmethod
-from datetime import date as _date, datetime as _datetime
-from enum import Enum
 from collections.abc import Callable, Sequence
+from datetime import date as _date
+from datetime import datetime as _datetime
+from enum import Enum
 from typing import TYPE_CHECKING, ClassVar
 
-import sqlalchemy.dialects.postgresql as psql
 import sqlalchemy.dialects.mssql as mssql
+import sqlalchemy.dialects.postgresql as psql
 from sqlalchemy import (
-    Column,
     DDL,
-    Index as SAIndex,
+    Column,
     MetaData,
     Table,
     and_,
@@ -27,6 +27,7 @@ from sqlalchemy import (
     delete,
     event,
     func,
+    inspect,
     or_,
     orm,
     select,
@@ -34,23 +35,24 @@ from sqlalchemy import (
     true,
     update,
 )
+from sqlalchemy import (
+    Index as SAIndex,
+)
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import DatabaseError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from sqlalchemy.pool import QueuePool
-from sqlalchemy.exc import DatabaseError
-from sqlalchemy import inspect
 from sqlalchemy.schema import CreateIndex
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.database_model import BaseDatabaseModel
-from protean.core.index import Index as ProteanIndex, RawIndex
+from protean.core.index import Index as ProteanIndex
+from protean.core.index import RawIndex
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
-from protean.fields.resolved import ResolvedField
-from protean.fields.spec import FieldSpec
 from protean.exceptions import (
     ConfigurationError,
     ExpectedVersionError,
@@ -60,6 +62,8 @@ from protean.exceptions import (
 from protean.fields.association import Reference, _ReferenceField
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
+from protean.fields.resolved import ResolvedField
+from protean.fields.spec import FieldSpec
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import IdentityType, _fully_qualified_name
@@ -201,10 +205,10 @@ class GUID(TypeDecorator[uuid.UUID]):
             return value if isinstance(value, uuid.UUID) else uuid.UUID(value)
         else:
             if not isinstance(value, uuid.UUID):
-                return "%.32x" % uuid.UUID(value).int
+                return f"{uuid.UUID(value).int:032x}"
             else:
                 # hexstring
-                return "%.32x" % value.int
+                return f"{value.int:032x}"
 
     def process_result_value(
         self, value: typing.Any, dialect: typing.Any
@@ -568,7 +572,7 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
-    def __init_subclass__(cls, **kwargs: typing.Any) -> None:  # noqa: C901
+    def __init_subclass__(cls, **kwargs: typing.Any) -> None:
         def field_mapping_for(field_obj: typing.Any) -> typing.Any:
             """Return SQLAlchemy-equivalent type for Protean's field"""
             # Handle ResolvedField: resolve Python type → SA type
@@ -600,7 +604,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         # Update the class attrs with the entity attributes
         if "meta_" in cls.__dict__:
             entity_cls = cls.__dict__["meta_"].part_of
-            for _, field_obj in attributes(entity_cls).items():
+            for field_obj in attributes(entity_cls).values():
                 # ``attribute_name`` is ``None`` only on an unbound Field; the
                 # fields returned by ``attributes()`` are always bound.
                 attribute_name = field_obj.attribute_name or field_obj.field_name
@@ -793,9 +797,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             key = attr_obj.referenced_as or attr_obj.attribute_name
             assert key is not None
             value = item_dict.get(key)
-            if isinstance(attr_obj, ValueObjectList) and value:
-                item_dict[key] = attr_obj.as_dict(value)
-            elif hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple)):
+            if (isinstance(attr_obj, ValueObjectList) and value) or (
+                hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple))
+            ):
                 item_dict[key] = attr_obj.as_dict(value)
 
         return cls(**item_dict)
@@ -1566,14 +1570,17 @@ class SAProvider(BaseProvider):
             if element_type in self.domain.registry._elements:
                 elements.update(self.domain.registry._elements[element_type])
 
-        for _, element_record in elements.items():
+        for element_record in elements.values():
             cls = element_record.cls
             # Skip elements this provider does not materialize as a SQL table
             # (event-sourced aggregates/entities, cache-backed projections, and
             # elements owned by another provider). See BaseProvider.owns().
             if not self.owns(cls):
                 continue
-            self.domain.repository_for(cls)._dao
+            # Access ``_dao`` for its side effect: it constructs the DAO and
+            # registers the model's table with ``self._metadata`` before
+            # ``create_all`` below.
+            self.domain.repository_for(cls)._dao  # noqa: B018
 
         # Create all tables in a single transaction
         conn = self._engine.connect()

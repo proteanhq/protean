@@ -107,11 +107,11 @@ def _render_cluster(
 
         # composition from aggregate to VO
         for fname, fspec in sorted(agg.get("fields", {}).items()):
-            if fspec.get("kind") in ("value_object", "value_object_list"):
-                if fspec.get("target") == vo_fqn:
-                    lines.append(
-                        f"    {agg_sid} *-- {vo_sid} : {mermaid_escape(fname)}"
-                    )
+            if (
+                fspec.get("kind") in ("value_object", "value_object_list")
+                and fspec.get("target") == vo_fqn
+            ):
+                lines.append(f"    {agg_sid} *-- {vo_sid} : {mermaid_escape(fname)}")
 
     return lines
 

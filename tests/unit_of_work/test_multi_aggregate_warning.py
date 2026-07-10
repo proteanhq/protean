@@ -11,7 +11,6 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.fields import String
 from protean.fields.basic import Identifier
 
-
 # ── Domain elements ─────────────────────────────────────────────────────
 
 

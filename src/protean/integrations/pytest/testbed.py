@@ -64,10 +64,10 @@ class DomainFixture:
         try:
             yield self.domain
         finally:
-            for _, provider in current_domain.providers.items():
+            for provider in current_domain.providers.values():
                 provider._data_reset()
 
-            for _, broker in current_domain.brokers.items():
+            for broker in current_domain.brokers.values():
                 broker._data_reset()
 
             current_domain._require_event_store()._data_reset()

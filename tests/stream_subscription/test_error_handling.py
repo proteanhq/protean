@@ -67,9 +67,7 @@ class BrokenBroker:
         return self.messages
 
     def ack(self, stream, identifier, consumer_group):
-        if self.fail_ack:
-            return False
-        return True
+        return not self.fail_ack
 
     def nack(self, stream, identifier, consumer_group):
         return True

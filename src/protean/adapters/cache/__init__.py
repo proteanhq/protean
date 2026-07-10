@@ -94,8 +94,10 @@ class Caches(MutableMapping[str, BaseCache]):
         try:
             assert self._caches is not None
             return self._caches[provider_name].get_connection()
-        except KeyError:
-            raise AssertionError(f"No Provider registered with name {provider_name}")
+        except KeyError as exc:
+            raise AssertionError(
+                f"No Provider registered with name {provider_name}"
+            ) from exc
 
     def cache_for(self, projection_cls: "type[BaseProjection]") -> BaseCache:
         """Retrieve cache associated with the Projection"""

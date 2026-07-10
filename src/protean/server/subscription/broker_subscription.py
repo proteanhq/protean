@@ -4,8 +4,7 @@ import os
 import secrets
 import socket
 import time
-
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from protean.core.subscriber import BaseSubscriber
@@ -390,7 +389,7 @@ class BrokerSubscription(BaseSubscription):
                 "original_id": identifier,
                 "consumer_group": self.subscriber_name,
                 "consumer": self.subscription_id,
-                "failed_at": datetime.now(timezone.utc).isoformat(),
+                "failed_at": datetime.now(UTC).isoformat(),
                 "retry_count": self.retry_counts.get(identifier, self.max_retries),
             },
         }

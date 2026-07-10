@@ -14,7 +14,6 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.fields import Integer, String, ValueObject
 
-
 # ── Domain elements ──────────────────────────────────────────────────
 
 

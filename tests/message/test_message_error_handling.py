@@ -9,12 +9,12 @@ from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError, DeserializationError
 from protean.fields import Identifier, String
 from protean.utils.eventing import (
+    DomainMeta,
+    EventStoreMeta,
     Message,
     MessageEnvelope,
     MessageHeaders,
-    DomainMeta,
     Metadata,
-    EventStoreMeta,
 )
 
 

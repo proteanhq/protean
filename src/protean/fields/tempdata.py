@@ -23,7 +23,7 @@ class HasManyChanges:
     Each dict is keyed by the child entity's identity value.
     """
 
-    __slots__ = ("added", "updated", "removed")
+    __slots__ = ("added", "removed", "updated")
 
     def __init__(self) -> None:
         self.added: dict[Any, Any] = {}
@@ -69,5 +69,3 @@ class AssociationCache(dict[str, HasManyChanges | HasOneChanges]):
     create their entries lazily via ``setdefault()`` with the appropriate
     change-tracker type (``HasManyChanges`` or ``HasOneChanges``).
     """
-
-    pass

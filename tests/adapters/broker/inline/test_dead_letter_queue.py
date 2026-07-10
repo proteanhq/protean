@@ -80,9 +80,7 @@ def test_dlq_multiple_messages(broker):
     broker._max_retries = 0
 
     # Publish all messages
-    identifiers = []
-    for msg in messages:
-        identifiers.append(broker.publish(stream, msg))
+    identifiers = [broker.publish(stream, msg) for msg in messages]
 
     # Get and NACK all messages
     for _ in messages:

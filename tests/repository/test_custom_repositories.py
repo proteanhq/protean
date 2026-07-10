@@ -1,5 +1,3 @@
-from typing import List
-
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -16,7 +14,7 @@ class PersonGeneric(BaseAggregate):
 
 
 class PersonCustomRepository(BaseRepository):
-    def find_adults(self, minimum_age: int = 21) -> List[PersonGeneric]:
+    def find_adults(self, minimum_age: int = 21) -> list[PersonGeneric]:
         return self.query.filter(age__gte=minimum_age).all().items
 
 
@@ -27,12 +25,12 @@ class PersonSQLite(BaseAggregate):
 
 
 class PersonSQLiteGenericRepository(BaseRepository):
-    def find_adults(self, minimum_age: int = 21) -> List[PersonGeneric]:
+    def find_adults(self, minimum_age: int = 21) -> list[PersonGeneric]:
         return self.query.filter(age__gte=minimum_age).all().items
 
 
 class PersonSQLiteCustomRepository(BaseRepository):
-    def find_adults(self, minimum_age: int = 21) -> List[PersonGeneric]:
+    def find_adults(self, minimum_age: int = 21) -> list[PersonGeneric]:
         provider = current_domain.get_provider("sqlite")
         result = provider.raw("SELECT * FROM PERSON_GENERIC WHERE AGE >= 21")
 

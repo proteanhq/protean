@@ -1,30 +1,32 @@
+import contextlib
 import hashlib
 import json
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
-from enum import Enum
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, Optional, cast
+from datetime import UTC, datetime
+from enum import Enum
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, cast
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field as PydanticField, PrivateAttr
+from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic import Field as PydanticField
 
 from protean.core.value_object import BaseValueObject
-from protean.fields.resolved import ResolvedField
 from protean.exceptions import (
     ConfigurationError,
+    DeserializationError,
     IncorrectUsageError,
     InvalidDataError,
-    DeserializationError,
 )
 from protean.fields.association import Association, Reference
 from protean.fields.base import FieldBase
 from protean.fields.embedded import ValueObject as ValueObjectField
+from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, fields
 from protean.utils.globals import current_domain
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, fields
 
 if TYPE_CHECKING:
     from protean.core.command import BaseCommand
@@ -41,8 +43,8 @@ def ensure_utc(value: datetime) -> datetime:
     deadlines on a single, unambiguous timezone.
     """
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 class MessageType(Enum):
@@ -161,7 +163,7 @@ class MessageHeaders(BaseValueObject):
         if self.deadline is None:
             return False
 
-        reference = ensure_utc(now) if now else datetime.now(timezone.utc)
+        reference = ensure_utc(now) if now else datetime.now(UTC)
         return reference > ensure_utc(self.deadline)
 
 
@@ -399,7 +401,7 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
                 if value.required:
                     own_annots[name] = vo_cls
                 else:
-                    own_annots[name] = Optional[vo_cls]
+                    own_annots[name] = vo_cls | None  # type: ignore[operator]
                     defaults_to_set[name] = None
                 names_to_remove.append(name)
 
@@ -410,15 +412,13 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
                 if annot_value.required:
                     own_annots[name] = vo_cls
                 else:
-                    own_annots[name] = Optional[vo_cls]
+                    own_annots[name] = vo_cls | None  # type: ignore[operator]
                     defaults_to_set[name] = None
 
         # Remove descriptors from namespace
         for name in names_to_remove:
-            try:
+            with contextlib.suppress(AttributeError):
                 delattr(cls, name)
-            except AttributeError:
-                pass
 
         # Set defaults for optional VO fields
         for name, default in defaults_to_set.items():
@@ -586,12 +586,12 @@ class Message(Element, BaseModel, OptionsMixin):
         return hash(json.dumps(self.to_dict(), sort_keys=True))
 
     def __repr__(self) -> str:
-        return "<%s: %s>" % (self.__class__.__name__, self)
+        return f"<{self.__class__.__name__}: {self}>"
 
     def __str__(self) -> str:
-        return "%s object (%s)" % (
+        return "{} object ({})".format(
             self.__class__.__name__,
-            "{}".format(self.to_dict()),
+            f"{self.to_dict()}",
         )
 
     def __bool__(self) -> bool:
@@ -668,10 +668,10 @@ class Message(Element, BaseModel, OptionsMixin):
         if "headers" not in metadata_dict:
             headers_data = message.get("headers", {})
             headers_kwargs = {
-                "id": headers_data.get("id", message.get("id", None)),
-                "time": headers_data.get("time", message.get("time", None)),
-                "type": headers_data.get("type", message.get("type", None)),
-                "stream": headers_data.get("stream", message.get("stream", None)),
+                "id": headers_data.get("id", message.get("id")),
+                "time": headers_data.get("time", message.get("time")),
+                "type": headers_data.get("type", message.get("type")),
+                "stream": headers_data.get("stream", message.get("stream")),
                 "idempotency_key": headers_data.get("idempotency_key", None),
                 "deadline": headers_data.get("deadline", None),
             }
@@ -1062,7 +1062,7 @@ class Message(Element, BaseModel, OptionsMixin):
     @classmethod
     def _determine_expected_version(
         cls, message_object: Union["BaseEvent", "BaseCommand"]
-    ) -> Optional[int]:
+    ) -> int | None:
         """Determine the expected version for the message.
 
         Returns expected version for non-fact events, None otherwise.
@@ -1095,7 +1095,7 @@ class Message(Element, BaseModel, OptionsMixin):
         cls,
         metadata: Metadata,
         envelope: MessageEnvelope,
-        expected_version: Optional[int],
+        expected_version: int | None,
     ) -> Metadata:
         """Build final metadata with envelope and expected version."""
         metadata_dict = metadata.to_dict()
@@ -1529,9 +1529,9 @@ class Message(Element, BaseModel, OptionsMixin):
             extensions["ce_dataschema"] = ce_dataschema
 
         # Collect unknown CE extensions
-        for key, value in cloudevent.items():
-            if key not in _known_attrs:
-                extensions[key] = value
+        extensions.update(
+            {key: value for key, value in cloudevent.items() if key not in _known_attrs}
+        )
 
         # ── Assemble metadata ──
         metadata = Metadata(

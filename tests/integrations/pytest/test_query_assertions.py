@@ -22,9 +22,13 @@ from protean.integrations.pytest.query_assertions import _limit_values
 # minimal environments can still collect the suite.
 pytest.importorskip("sqlalchemy")
 
-from sqlalchemy import create_engine, select, table  # noqa: E402
-from sqlalchemy import column as sa_column  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import column as sa_column
+from sqlalchemy import (
+    create_engine,
+    select,
+    table,
+    text,
+)
 
 
 @pytest.fixture
@@ -39,10 +43,9 @@ def engine():
 
 class TestAssertQueryCount:
     def test_passes_on_exact_count(self, engine):
-        with engine.connect() as conn:
-            with assert_query_count(2, engine=engine):
-                conn.execute(text("SELECT 1"))
-                conn.execute(text("SELECT 2"))
+        with engine.connect() as conn, assert_query_count(2, engine=engine):
+            conn.execute(text("SELECT 1"))
+            conn.execute(text("SELECT 2"))
 
     def test_fails_on_wrong_count(self, engine):
         with engine.connect() as conn:
@@ -59,23 +62,20 @@ class TestAssertQueryCount:
 
     def test_pragma_and_transaction_statements_are_not_counted(self, engine):
         # Only data round trips count; PRAGMA/SET and BEGIN/COMMIT do not.
-        with engine.connect() as conn:
-            with assert_query_count(1, engine=engine):
-                conn.execute(text("PRAGMA case_sensitive_like = ON"))
-                conn.execute(text("SELECT 1"))
+        with engine.connect() as conn, assert_query_count(1, engine=engine):
+            conn.execute(text("PRAGMA case_sensitive_like = ON"))
+            conn.execute(text("SELECT 1"))
 
     def test_does_not_swallow_block_exception(self, engine):
         # A failure inside the block propagates; the count is not asserted over it.
-        with pytest.raises(ValueError):
-            with assert_query_count(1, engine=engine):
-                raise ValueError("boom")
+        with pytest.raises(ValueError), assert_query_count(1, engine=engine):
+            raise ValueError("boom")
 
 
 class TestAssertNoSubqueryWrap:
     def test_passes_on_flat_count(self, engine):
-        with engine.connect() as conn:
-            with assert_no_subquery_wrap(engine=engine):
-                conn.execute(text("SELECT count(*) FROM t"))
+        with engine.connect() as conn, assert_no_subquery_wrap(engine=engine):
+            conn.execute(text("SELECT count(*) FROM t"))
 
     def test_fails_on_subquery_wrapped_count(self, engine):
         with engine.connect() as conn:
@@ -86,9 +86,8 @@ class TestAssertNoSubqueryWrap:
                     )
 
     def test_plain_select_is_not_flagged(self, engine):
-        with engine.connect() as conn:
-            with assert_no_subquery_wrap(engine=engine):
-                conn.execute(text("SELECT id FROM t"))
+        with engine.connect() as conn, assert_no_subquery_wrap(engine=engine):
+            conn.execute(text("SELECT id FROM t"))
 
 
 class TestAssertNoOverfetch:

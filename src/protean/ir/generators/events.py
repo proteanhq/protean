@@ -69,7 +69,7 @@ def _render_cluster_subgraph(
     lines.append(f"        {agg_id}[{mermaid_escape(agg_short)}]")
 
     # Command nodes (parallelogram shape)
-    for cmd_fqn, cmd in sorted(cluster.get("commands", {}).items()):
+    for cmd_fqn, _cmd in sorted(cluster.get("commands", {}).items()):
         cmd_id = _cmd_node_id(cmd_fqn)
         cmd_short = short_name(cmd_fqn)
         lines.append(f"        {cmd_id}[/{mermaid_escape(cmd_short)}/]")
@@ -83,7 +83,7 @@ def _render_cluster_subgraph(
         lines.append(f"        {evt_id}([{mermaid_escape(evt_short)}])")
 
     # Command handler nodes and edges
-    for ch_fqn, ch in sorted(cluster.get("command_handlers", {}).items()):
+    for ch_fqn, _ch in sorted(cluster.get("command_handlers", {}).items()):
         ch_id = _handler_node_id(ch_fqn)
         ch_short = short_name(ch_fqn)
         lines.append(f"        {ch_id}[{mermaid_escape(ch_short)}]")

@@ -13,7 +13,7 @@ import importlib.util
 import os
 import sys
 import types
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -594,7 +594,7 @@ class TestESTutorialCh13(_ESTutorialBase):
                 )
             )
 
-            midpoint = datetime.now(timezone.utc)
+            midpoint = datetime.now(UTC)
 
             domain.process(
                 ch13.MakeWithdrawal(

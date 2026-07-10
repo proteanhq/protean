@@ -193,13 +193,15 @@ class DomainValidator:
     def _validate_identity_config(self) -> None:
         """Check ``identity_function`` is provided when ``identity_strategy`` is ``function``."""
         domain = self._domain
-        if domain.config["identity_strategy"] == domain.IdentityStrategy.FUNCTION.value:
-            if not domain._identity_function:
-                raise ConfigurationError(
-                    {
-                        "element": "Identity Strategy is set to `function`, but no Identity Function is provided"
-                    }
-                )
+        if (
+            domain.config["identity_strategy"] == domain.IdentityStrategy.FUNCTION.value
+            and not domain._identity_function
+        ):
+            raise ConfigurationError(
+                {
+                    "element": "Identity Strategy is set to `function`, but no Identity Function is provided"
+                }
+            )
 
     def _validate_association_fields(self) -> None:
         """Validate ``HasOne`` and ``HasMany`` fields on aggregates and entities.
@@ -215,7 +217,7 @@ class DomainValidator:
         )
         for _, element in owner_elements:
             owner_cls = element.cls
-            for _, field_obj in declared_fields(owner_cls).items():
+            for field_obj in declared_fields(owner_cls).values():
                 if isinstance(field_obj, (HasOne, HasMany)):
                     if isinstance(field_obj.to_cls, str):
                         raise IncorrectUsageError(
@@ -275,10 +277,10 @@ class DomainValidator:
         """
         registry = self._domain.registry
         handlers_by_command: dict[str, list[str]] = {}
-        for _, ch_record in registry._elements[
+        for ch_record in registry._elements[
             DomainObjects.COMMAND_HANDLER.value
-        ].items():
-            for command_type in ch_record.cls._handlers.keys():
+        ].values():
+            for command_type in ch_record.cls._handlers:
                 handlers_by_command.setdefault(command_type, []).append(
                     ch_record.cls.__name__
                 )
@@ -297,7 +299,7 @@ class DomainValidator:
     def _validate_entity_providers(self) -> None:
         """Check that entities have the same provider as their aggregate."""
         registry = self._domain.registry
-        for _, entity in registry._elements[DomainObjects.ENTITY.value].items():
+        for entity in registry._elements[DomainObjects.ENTITY.value].values():
             if (
                 entity.cls.meta_.aggregate_cluster.meta_.provider
                 != entity.cls.meta_.provider
@@ -310,46 +312,41 @@ class DomainValidator:
     def _validate_projector_associations(self) -> None:
         """Check that projections associated with projectors are registered."""
         registry = self._domain.registry
-        for _, projector in registry._elements[DomainObjects.PROJECTOR.value].items():
-            if projector.cls.meta_.projector_for:
-                if (
-                    fqn(projector.cls.meta_.projector_for)
-                    not in registry._elements[DomainObjects.PROJECTION.value]
-                ):
-                    raise IncorrectUsageError(
-                        f"`{projector.cls.meta_.projector_for.__name__}` is not a Projection, "
-                        f"or is not registered in domain {self._domain.name}"
-                    )
+        for projector in registry._elements[DomainObjects.PROJECTOR.value].values():
+            if projector.cls.meta_.projector_for and (
+                fqn(projector.cls.meta_.projector_for)
+                not in registry._elements[DomainObjects.PROJECTION.value]
+            ):
+                raise IncorrectUsageError(
+                    f"`{projector.cls.meta_.projector_for.__name__}` is not a Projection, "
+                    f"or is not registered in domain {self._domain.name}"
+                )
 
     def _validate_query_associations(self) -> None:
         """Check that queries are associated with registered projections."""
         registry = self._domain.registry
-        for _, query_record in registry._elements[DomainObjects.QUERY.value].items():
-            if query_record.cls.meta_.part_of:
-                if (
-                    fqn(query_record.cls.meta_.part_of)
-                    not in registry._elements[DomainObjects.PROJECTION.value]
-                ):
-                    raise IncorrectUsageError(
-                        f"`{query_record.cls.meta_.part_of.__name__}` is not a Projection, "
-                        f"or is not registered in domain {self._domain.name}"
-                    )
+        for query_record in registry._elements[DomainObjects.QUERY.value].values():
+            if query_record.cls.meta_.part_of and (
+                fqn(query_record.cls.meta_.part_of)
+                not in registry._elements[DomainObjects.PROJECTION.value]
+            ):
+                raise IncorrectUsageError(
+                    f"`{query_record.cls.meta_.part_of.__name__}` is not a Projection, "
+                    f"or is not registered in domain {self._domain.name}"
+                )
 
     def _validate_query_handler_associations(self) -> None:
         """Check that query handlers are associated with registered projections."""
         registry = self._domain.registry
-        for _, qh_record in registry._elements[
-            DomainObjects.QUERY_HANDLER.value
-        ].items():
-            if qh_record.cls.meta_.part_of:
-                if (
-                    fqn(qh_record.cls.meta_.part_of)
-                    not in registry._elements[DomainObjects.PROJECTION.value]
-                ):
-                    raise IncorrectUsageError(
-                        f"`{qh_record.cls.meta_.part_of.__name__}` is not a Projection, "
-                        f"or is not registered in domain {self._domain.name}"
-                    )
+        for qh_record in registry._elements[DomainObjects.QUERY_HANDLER.value].values():
+            if qh_record.cls.meta_.part_of and (
+                fqn(qh_record.cls.meta_.part_of)
+                not in registry._elements[DomainObjects.PROJECTION.value]
+            ):
+                raise IncorrectUsageError(
+                    f"`{qh_record.cls.meta_.part_of.__name__}` is not a Projection, "
+                    f"or is not registered in domain {self._domain.name}"
+                )
 
     def _validate_outbox_subscription_consistency(self) -> None:
         """Check that outbox and subscription type config are compatible."""
@@ -410,7 +407,7 @@ class DomainValidator:
             DomainObjects.ENTITY.value,
             DomainObjects.PROJECTION.value,
         ):
-            for _, record in registry._elements[element_type].items():
+            for record in registry._elements[element_type].values():
                 validate_indexes(record.cls)
 
     def _validate_upcaster_chains(self) -> None:
@@ -430,12 +427,12 @@ class DomainValidator:
         """Warn about registered Commands that have no handler."""
         registry = self._domain.registry
         all_handled_command_types: set[str] = set()
-        for _, ch_record in registry._elements[
+        for ch_record in registry._elements[
             DomainObjects.COMMAND_HANDLER.value
-        ].items():
+        ].values():
             all_handled_command_types.update(ch_record.cls._handlers.keys())
 
-        for _, cmd_record in registry._elements[DomainObjects.COMMAND.value].items():
+        for cmd_record in registry._elements[DomainObjects.COMMAND.value].values():
             if (
                 not cmd_record.cls.meta_.abstract
                 and cmd_record.cls.__type__ not in all_handled_command_types
@@ -457,11 +454,11 @@ class DomainValidator:
     def _warn_missing_apply_handlers(self) -> None:
         """Warn about events on event-sourced aggregates missing @apply handlers."""
         registry = self._domain.registry
-        for _, agg_record in registry._elements[DomainObjects.AGGREGATE.value].items():
+        for agg_record in registry._elements[DomainObjects.AGGREGATE.value].values():
             if not agg_record.cls.meta_.is_event_sourced:
                 continue
 
-            for _, evt_record in registry._elements[DomainObjects.EVENT.value].items():
+            for evt_record in registry._elements[DomainObjects.EVENT.value].values():
                 # Skip fact events — they are auto-generated and not
                 # expected to have @apply handlers.
                 if evt_record.cls.meta_.is_fact_event:

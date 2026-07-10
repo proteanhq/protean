@@ -1,12 +1,12 @@
 """Tests for Outbox aggregate behavior and state transitions."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from datetime import datetime, timezone, timedelta
 
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxStatus, ProcessingResult
-from protean.utils.eventing import MessageHeaders, DomainMeta, Metadata
 
 
 @pytest.fixture(autouse=True)
@@ -24,7 +24,7 @@ def sample_metadata():
             id="test-id",
             type="TestEvent",
             stream="test-stream",
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
         ),
         domain=DomainMeta(
             fqn="test.TestEvent",
@@ -101,7 +101,7 @@ class TestOutboxCreation:
 
     def test_created_at_is_set(self, sample_metadata):
         """Test that created_at is automatically set."""
-        before_creation = datetime.now(timezone.utc)
+        before_creation = datetime.now(UTC)
         outbox = Outbox.create_message(
             message_id="message-123",
             stream_name="test-stream",
@@ -109,7 +109,7 @@ class TestOutboxCreation:
             data={"key": "value"},
             metadata=sample_metadata,
         )
-        after_creation = datetime.now(timezone.utc)
+        after_creation = datetime.now(UTC)
 
         assert before_creation <= outbox.created_at <= after_creation
 
@@ -270,7 +270,7 @@ class TestStartProcessing:
     def test_start_processing_too_early_for_retry(self, sample_outbox):
         """Test starting to process before retry time fails."""
         sample_outbox.status = OutboxStatus.FAILED.value
-        sample_outbox.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+        sample_outbox.next_retry_at = datetime.now(UTC) + timedelta(minutes=10)
 
         success, result = sample_outbox.start_processing("worker-1")
 
@@ -281,7 +281,7 @@ class TestStartProcessing:
         """Test starting to process a failed message that's ready for retry."""
         sample_outbox.status = OutboxStatus.FAILED.value
         sample_outbox.retry_count = 1
-        sample_outbox.next_retry_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        sample_outbox.next_retry_at = datetime.now(UTC) - timedelta(minutes=1)
 
         success, result = sample_outbox.start_processing("worker-1")
 
@@ -292,7 +292,7 @@ class TestStartProcessing:
     def test_start_processing_sets_lock_duration(self, sample_outbox):
         """Test that start_processing sets correct lock duration."""
         lock_duration = 15
-        before_lock = datetime.now(timezone.utc)
+        before_lock = datetime.now(UTC)
 
         success, result = sample_outbox.start_processing(
             "worker-1", lock_duration_minutes=lock_duration
@@ -315,11 +315,11 @@ class TestMarkPublished:
         """Test marking a processing message as published."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
         sample_outbox.locked_by = "worker-1"
-        sample_outbox.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        sample_outbox.locked_until = datetime.now(UTC) + timedelta(minutes=5)
 
-        before_publish = datetime.now(timezone.utc)
+        before_publish = datetime.now(UTC)
         sample_outbox.mark_published()
-        after_publish = datetime.now(timezone.utc)
+        after_publish = datetime.now(UTC)
 
         assert sample_outbox.status == OutboxStatus.PUBLISHED.value
         assert before_publish <= sample_outbox.published_at <= after_publish
@@ -346,9 +346,9 @@ class TestMarkFailed:
         sample_outbox.locked_by = "worker-1"
         error = ValueError("Test error")
 
-        before_fail = datetime.now(timezone.utc)
+        before_fail = datetime.now(UTC)
         sample_outbox.mark_failed(error, base_delay_seconds=30)
-        after_fail = datetime.now(timezone.utc)
+        after_fail = datetime.now(UTC)
 
         assert sample_outbox.status == OutboxStatus.FAILED.value
         assert sample_outbox.retry_count == 1
@@ -376,7 +376,7 @@ class TestMarkFailed:
         sample_outbox.retry_count = 0
         error = ValueError("Test error")
 
-        before_fail = datetime.now(timezone.utc)
+        before_fail = datetime.now(UTC)
         sample_outbox.mark_failed(error, base_delay_seconds=base_delay)
 
         # Expected delay = base_delay * (2 ^ retry_count) = 60 * (2 ^ 1) = 120 seconds
@@ -406,7 +406,7 @@ class TestMarkAbandoned:
     def test_mark_abandoned(self, sample_outbox):
         """Test marking a message as abandoned."""
         sample_outbox.locked_by = "worker-1"
-        sample_outbox.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        sample_outbox.locked_until = datetime.now(UTC) + timedelta(minutes=5)
         reason = "Manual abandonment"
 
         sample_outbox.mark_abandoned(reason)
@@ -433,9 +433,9 @@ class TestResetForRetry:
     def test_reset_failed_message(self, sample_outbox):
         """Test resetting a failed message for retry."""
         sample_outbox.status = OutboxStatus.FAILED.value
-        sample_outbox.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        sample_outbox.next_retry_at = datetime.now(UTC) + timedelta(minutes=5)
         sample_outbox.locked_by = "worker-1"
-        sample_outbox.locked_until = datetime.now(timezone.utc) + timedelta(minutes=2)
+        sample_outbox.locked_until = datetime.now(UTC) + timedelta(minutes=2)
 
         result = sample_outbox.reset_for_retry()
 
@@ -558,14 +558,14 @@ class TestIsReadyForProcessing:
     def test_failed_message_ready_after_retry_time(self, sample_outbox):
         """Test that a failed message is ready after retry time has passed."""
         sample_outbox.status = OutboxStatus.FAILED.value
-        sample_outbox.next_retry_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        sample_outbox.next_retry_at = datetime.now(UTC) - timedelta(minutes=1)
 
         assert sample_outbox.is_ready_for_processing() is True
 
     def test_failed_message_not_ready_before_retry_time(self, sample_outbox):
         """Test that a failed message is not ready before retry time."""
         sample_outbox.status = OutboxStatus.FAILED.value
-        sample_outbox.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        sample_outbox.next_retry_at = datetime.now(UTC) + timedelta(minutes=5)
 
         assert sample_outbox.is_ready_for_processing() is False
 
@@ -579,7 +579,7 @@ class TestIsReadyForProcessing:
     def test_locked_message_not_ready(self, sample_outbox):
         """Test that a locked message is not ready for processing."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
-        sample_outbox.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        sample_outbox.locked_until = datetime.now(UTC) + timedelta(minutes=5)
 
         assert sample_outbox.is_ready_for_processing() is False
 
@@ -590,21 +590,21 @@ class TestPrivateHelperMethods:
     def test_is_locked_with_valid_lock(self, sample_outbox):
         """Test _is_locked with a valid lock."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
-        sample_outbox.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        sample_outbox.locked_until = datetime.now(UTC) + timedelta(minutes=5)
 
         assert sample_outbox._is_locked() is True
 
     def test_is_locked_with_expired_lock(self, sample_outbox):
         """Test _is_locked with an expired lock."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
-        sample_outbox.locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+        sample_outbox.locked_until = datetime.now(UTC) - timedelta(minutes=1)
 
         assert sample_outbox._is_locked() is False
 
     def test_is_locked_without_processing_status(self, sample_outbox):
         """Test _is_locked when status is not PROCESSING."""
         sample_outbox.status = OutboxStatus.PENDING.value
-        sample_outbox.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        sample_outbox.locked_until = datetime.now(UTC) + timedelta(minutes=5)
 
         assert sample_outbox._is_locked() is False
 
@@ -625,7 +625,7 @@ class TestPrivateHelperMethods:
     def test_clear_lock(self, sample_outbox):
         """Test _clear_lock clears lock fields."""
         sample_outbox.locked_by = "worker-1"
-        sample_outbox.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        sample_outbox.locked_until = datetime.now(UTC) + timedelta(minutes=5)
 
         sample_outbox._clear_lock()
 
@@ -637,7 +637,7 @@ class TestPrivateHelperMethods:
         base_delay = 30
         sample_outbox.retry_count = 2
 
-        before_calc = datetime.now(timezone.utc)
+        before_calc = datetime.now(UTC)
         sample_outbox._calculate_next_retry(base_delay)
 
         # Expected delay = 30 * (2 ^ 2) = 120 seconds
@@ -651,7 +651,7 @@ class TestPrivateHelperMethods:
         max_backoff = 300  # 5 minutes
         sample_outbox.retry_count = 10
 
-        before_calc = datetime.now(timezone.utc)
+        before_calc = datetime.now(UTC)
         sample_outbox._calculate_next_retry(base_delay, max_backoff_seconds=max_backoff)
 
         # Expected delay should not exceed max_backoff
@@ -664,7 +664,7 @@ class TestPrivateHelperMethods:
         base_delay = 30
         sample_outbox.retry_count = 10
 
-        before_calc = datetime.now(timezone.utc)
+        before_calc = datetime.now(UTC)
         sample_outbox._calculate_next_retry(base_delay)
 
         # Default max backoff is 3600 seconds (1 hour)
@@ -700,7 +700,7 @@ class TestBoundaryClockConditions:
     at the exact stored instant the retry is *due* and the lock is *expired*.
     """
 
-    FIXED = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    FIXED = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
     def test_retry_due_at_exact_next_retry_instant(self, sample_outbox, monkeypatch):
         """At now == next_retry_at the retry is due; start_processing proceeds."""
@@ -774,7 +774,7 @@ class TestNaiveDatetimeHandling:
         """Test is_ready_for_processing with a naive past next_retry_at."""
         sample_outbox.status = OutboxStatus.FAILED.value
         # Simulate DB returning a naive datetime (no tzinfo)
-        sample_outbox.next_retry_at = datetime.now(timezone.utc).replace(
+        sample_outbox.next_retry_at = datetime.now(UTC).replace(
             tzinfo=None
         ) - timedelta(minutes=1)
 
@@ -783,7 +783,7 @@ class TestNaiveDatetimeHandling:
     def test_is_ready_with_naive_next_retry_at_in_future(self, sample_outbox):
         """Test is_ready_for_processing with a naive future next_retry_at."""
         sample_outbox.status = OutboxStatus.FAILED.value
-        sample_outbox.next_retry_at = datetime.now(timezone.utc).replace(
+        sample_outbox.next_retry_at = datetime.now(UTC).replace(
             tzinfo=None
         ) + timedelta(minutes=5)
 
@@ -792,7 +792,7 @@ class TestNaiveDatetimeHandling:
     def test_start_processing_with_naive_next_retry_at_in_past(self, sample_outbox):
         """Test start_processing with a naive past next_retry_at."""
         sample_outbox.status = OutboxStatus.FAILED.value
-        sample_outbox.next_retry_at = datetime.now(timezone.utc).replace(
+        sample_outbox.next_retry_at = datetime.now(UTC).replace(
             tzinfo=None
         ) - timedelta(minutes=1)
 
@@ -804,7 +804,7 @@ class TestNaiveDatetimeHandling:
     def test_start_processing_with_naive_next_retry_at_in_future(self, sample_outbox):
         """Test start_processing with a naive future next_retry_at."""
         sample_outbox.status = OutboxStatus.FAILED.value
-        sample_outbox.next_retry_at = datetime.now(timezone.utc).replace(
+        sample_outbox.next_retry_at = datetime.now(UTC).replace(
             tzinfo=None
         ) + timedelta(minutes=5)
 
@@ -816,27 +816,27 @@ class TestNaiveDatetimeHandling:
     def test_is_locked_with_naive_locked_until(self, sample_outbox):
         """Test _is_locked with a naive future locked_until."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
-        sample_outbox.locked_until = datetime.now(timezone.utc).replace(
-            tzinfo=None
-        ) + timedelta(minutes=5)
+        sample_outbox.locked_until = datetime.now(UTC).replace(tzinfo=None) + timedelta(
+            minutes=5
+        )
 
         assert sample_outbox._is_locked() is True
 
     def test_is_locked_with_naive_expired_locked_until(self, sample_outbox):
         """Test _is_locked with a naive expired locked_until."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
-        sample_outbox.locked_until = datetime.now(timezone.utc).replace(
-            tzinfo=None
-        ) - timedelta(minutes=1)
+        sample_outbox.locked_until = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+            minutes=1
+        )
 
         assert sample_outbox._is_locked() is False
 
     def test_start_processing_locked_with_naive_locked_until(self, sample_outbox):
         """Test start_processing returns ALREADY_LOCKED with naive locked_until."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
-        sample_outbox.locked_until = datetime.now(timezone.utc).replace(
-            tzinfo=None
-        ) + timedelta(minutes=5)
+        sample_outbox.locked_until = datetime.now(UTC).replace(tzinfo=None) + timedelta(
+            minutes=5
+        )
 
         success, result = sample_outbox.start_processing("worker-2")
 
@@ -891,7 +891,7 @@ class TestEdgeCases:
 
         assert success is True
         assert result == ProcessingResult.SUCCESS
-        expected_unlock = datetime.now(timezone.utc) + timedelta(minutes=lock_duration)
+        expected_unlock = datetime.now(UTC) + timedelta(minutes=lock_duration)
         time_diff = abs((sample_outbox.locked_until - expected_unlock).total_seconds())
         assert time_diff < 1
 

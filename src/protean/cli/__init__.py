@@ -18,33 +18,34 @@ Why does this file exist, and why not put this in __main__?
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Annotated, Any
 
 import typer
 from rich import print
-from typing_extensions import Annotated
 
 from protean import __version__
-from protean.cli._helpers import CTX_LOG_CONFIGURED  # noqa: F401 — re-exported
-from protean.cli._helpers import cli_exception_handler  # noqa: F401 — re-exported
-from protean.cli._helpers import handle_cli_exceptions  # noqa: F401 — re-exported
+from protean.cli._helpers import (
+    CTX_LOG_CONFIGURED,
+    cli_exception_handler,
+    handle_cli_exceptions,  # noqa: F401 — re-exported
+)
 from protean.cli.check import check
 from protean.cli.database import app as db_app
 from protean.cli.dlq import app as dlq_app
 from protean.cli.docs import app as docs_app
 from protean.cli.events import app as events_app
-from protean.cli.ir import app as ir_app
-from protean.cli.schema import app as schema_app
 from protean.cli.idempotency import app as idempotency_app
-from protean.cli.outbox import app as outbox_app
+from protean.cli.ir import app as ir_app
 from protean.cli.new import new
 from protean.cli.observatory import observatory
+from protean.cli.outbox import app as outbox_app
 from protean.cli.projection import app as projection_app
+from protean.cli.schema import app as schema_app
 from protean.cli.shell import shell
 from protean.cli.snapshot import app as snapshot_app
-from protean.cli.upgrade import upgrade_check
 from protean.cli.subscriptions import app as subscriptions_app
 from protean.cli.test import app as test_app
+from protean.cli.upgrade import upgrade_check
 from protean.exceptions import NoDomainException
 from protean.server.engine import Engine
 from protean.utils.domain_discovery import derive_domain
@@ -93,21 +94,21 @@ def main(
         bool, typer.Option(help="Show version information", callback=version_callback)
     ] = False,
     log_level: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--log-level",
             help="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL",
         ),
     ] = None,
     log_format: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--log-format",
             help="Logging output format: auto, console, json",
         ),
     ] = None,
     log_config: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--log-config",
             help="Path to a JSON dictConfig file for logging",
@@ -223,7 +224,7 @@ def server(
                 )
                 print(msg)
                 logger.error("%s (%s)", msg, exc)
-                raise typer.Abort()
+                raise typer.Abort() from exc
 
             reloader = Reloader(
                 domain_path=domain,
@@ -242,7 +243,7 @@ def server(
             print(msg)  # Required for tests to capture output
             logger.error(msg)
 
-            raise typer.Abort()
+            raise typer.Abort() from exc
 
         assert derived_domain is not None
 

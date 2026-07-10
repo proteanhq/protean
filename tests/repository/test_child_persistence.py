@@ -117,8 +117,7 @@ class TestHasManyPersistence:
         assert refreshed_post.comments is not None
         assert len(refreshed_post.comments) == 2
         assert all(
-            comment in [comment for comment in refreshed_post.comments]
-            for comment in [comment1, comment2]
+            comment in list(refreshed_post.comments) for comment in [comment1, comment2]
         )
 
     def test_that_a_has_many_entity_can_be_removed(self, persisted_post):
@@ -220,7 +219,7 @@ class TestHasManyFetchObjectsState:
 
         team = team_repo.get(team_with_members)
         members = team.members
-        target = [m for m in members if m.name == "Alice"][0]
+        target = next(m for m in members if m.name == "Alice")
 
         target.score = 99
         member_repo.add(target)

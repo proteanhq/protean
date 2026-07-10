@@ -1,16 +1,16 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
 from protean._deprecation import warn_deprecated
-from protean.fields.resolved import convert_pydantic_errors
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,
 )
+from protean.fields.resolved import convert_pydantic_errors
 from protean.utils import (
     DomainObjects,
     _derive_element_class,
@@ -23,7 +23,6 @@ from protean.utils.eventing import (
     Metadata,
 )
 from protean.utils.globals import g
-
 
 # The ``published`` option a command silently inherited from ``BaseMessageType``
 # but never acted on: commands are internal and take no part in the published
@@ -129,7 +128,7 @@ class BaseCommand(BaseMessageType):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e))
+            raise ValidationError(convert_pydantic_errors(e)) from e
 
         # Build metadata
         self._build_metadata(incoming_metadata)
@@ -180,7 +179,7 @@ class BaseCommand(BaseMessageType):
             if not headers.type:
                 headers = MessageHeaders(
                     id=headers.id,
-                    time=headers.time or datetime.now(timezone.utc),
+                    time=headers.time or datetime.now(UTC),
                     type=self.__class__.__type__,
                     stream=headers.stream,
                     traceparent=headers.traceparent,
@@ -189,7 +188,7 @@ class BaseCommand(BaseMessageType):
                 )
         else:
             headers = MessageHeaders(
-                type=self.__class__.__type__, time=datetime.now(timezone.utc)
+                type=self.__class__.__type__, time=datetime.now(UTC)
             )
 
         # If metadata already has domain with sequence_id and asynchronous set (from enrich),

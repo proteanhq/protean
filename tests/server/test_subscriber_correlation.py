@@ -18,7 +18,6 @@ from protean.core.subscriber import BaseSubscriber
 from protean.server import Engine
 from protean.utils.eventing import Message
 from protean.utils.globals import g
-
 from tests.tracing.elements import (
     ConfirmOrder,
     Order,

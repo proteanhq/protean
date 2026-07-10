@@ -6,6 +6,7 @@ from protean import current_domain
 
 from .elements import (
     Balances,
+    ProfileUpdated,
     Registered,
     Transacted,
     Transaction,
@@ -13,7 +14,6 @@ from .elements import (
     User,
     UserDirectory,
     UserDirectoryProjector,
-    ProfileUpdated,
 )
 
 

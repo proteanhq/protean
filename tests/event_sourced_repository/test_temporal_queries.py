@@ -24,7 +24,6 @@ from protean.port.event_store import BaseEventStore
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
-
 # ---------------------------------------------------------------------------
 # Domain elements
 # ---------------------------------------------------------------------------

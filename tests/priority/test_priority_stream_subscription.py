@@ -13,7 +13,6 @@ import pytest
 
 from protean.server.subscription.stream_subscription import StreamSubscription
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -59,7 +59,6 @@ class TokenProjector(BaseProjector):
     @on(LoggedIn)
     def on_logged_in_2(self, event: LoggedIn):
         """This is a dummy method to test that multiple handlers can be recorded against the same event"""
-        pass
 
     @on(LoggedOut)
     def on_logged_out(self, event: LoggedOut):

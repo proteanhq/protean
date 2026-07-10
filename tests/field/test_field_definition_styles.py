@@ -32,7 +32,6 @@ from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
-from protean.fields.resolved import ResolvedField
 from protean.exceptions import ValidationError
 from protean.fields import (
     Boolean,
@@ -42,6 +41,7 @@ from protean.fields import (
     String,
     ValueObject,
 )
+from protean.fields.resolved import ResolvedField
 from protean.utils.reflection import declared_fields
 
 

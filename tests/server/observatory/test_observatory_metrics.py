@@ -4,6 +4,7 @@ Integration tests require a running Redis instance and are gated behind @pytest.
 Unit tests for error paths use mock domains and need no infrastructure.
 """
 
+import contextlib
 from unittest.mock import MagicMock
 
 import pytest
@@ -117,10 +118,8 @@ class TestPerConsumerMetrics:
         consumer_name = "MetricsHandler-metricshost-9876-aabbcc"
 
         redis_conn.xadd(stream, {"data": "metrics-msg"})
-        try:
+        with contextlib.suppress(Exception):
             redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
-        except Exception:
-            pass
         redis_conn.xreadgroup(group, consumer_name, {stream: ">"}, count=1)
 
         observatory = Observatory(domains=[test_domain])
@@ -145,10 +144,8 @@ class TestPerConsumerMetrics:
         consumer = "HelpHandler-host-1-abc"
 
         redis_conn.xadd(stream, {"data": "msg"})
-        try:
+        with contextlib.suppress(Exception):
             redis_conn.xgroup_create(stream, group, id="0", mkstream=True)
-        except Exception:
-            pass
         redis_conn.xreadgroup(group, consumer, {stream: ">"}, count=1)
 
         observatory = Observatory(domains=[test_domain])

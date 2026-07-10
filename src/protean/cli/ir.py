@@ -29,14 +29,13 @@ Usage::
 import json
 from dataclasses import asdict
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 from rich import print
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
-from typing_extensions import Annotated
 
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.exceptions import NoDomainException
@@ -179,7 +178,7 @@ def diff(
         config = load_config(dir)
     except ValueError as exc:
         print(f"[red]Error:[/red] Invalid .protean/config.toml: {exc}")
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
     # If compatibility checking is disabled, skip entirely
     if config.strictness == "off":
@@ -288,7 +287,7 @@ def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:
         return load_ir_from_commit(commit, ir_path)
     except GitError as exc:
         print(f"[red]Error:[/red] {exc}")
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
 
 def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
@@ -297,7 +296,7 @@ def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
         stored = load_stored_ir(Path(protean_dir))
     except ValueError as exc:
         print(f"[red]Error:[/red] {exc}")
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
     if stored is None:
         print(
@@ -581,16 +580,16 @@ def check(
         config = load_config(dir)
     except ValueError as exc:
         print(f"[red]Error:[/red] Invalid .protean/config.toml: {exc}")
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from exc
 
     try:
         result = check_staleness(domain, Path(dir), config=config)
     except NoDomainException as exc:
         print(f"[red]Error:[/red] {exc.args[0]}")
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from exc
     except Exception as exc:
         print(f"[red]Error:[/red] {exc}")
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from exc
 
     if format == "json":
         payload = {
@@ -682,7 +681,7 @@ def _print_summary(ir: dict[str, Any]) -> None:
     clusters = ir.get("clusters", {})
     if clusters:
         print(f"\n[bold]Clusters:[/bold] {len(clusters)}")
-        for cluster_fqn, cluster in sorted(clusters.items()):
+        for _cluster_fqn, cluster in sorted(clusters.items()):
             agg_name = cluster["aggregate"]["name"]
             entity_count = len(cluster.get("entities", {}))
             vo_count = len(cluster.get("value_objects", {}))

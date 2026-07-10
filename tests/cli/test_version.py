@@ -9,7 +9,5 @@ def test_main():
 
     from protean import __version__
 
-    assert result.output == "Protean {protean_version}\n".format(
-        protean_version=__version__
-    )
+    assert result.output == f"Protean {__version__}\n"
     assert result.exit_code == 0

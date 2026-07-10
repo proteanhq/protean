@@ -20,7 +20,6 @@ from protean.utils.eventing import Message
 from protean.utils.globals import current_domain, g
 from protean.utils.mixins import handle
 
-
 # ---------------------------------------------------------------------------
 # Captured context for assertions
 # ---------------------------------------------------------------------------

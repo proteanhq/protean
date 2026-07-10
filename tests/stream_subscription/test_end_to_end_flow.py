@@ -1,22 +1,22 @@
 """End-to-end tests for StreamSubscription with real Redis broker."""
 
 import asyncio
-import pytest
 from uuid import uuid4
 
-from protean.utils.mixins import handle
+import pytest
+
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.fields import Identifier, String, Integer
+from protean.fields import Identifier, Integer, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils import fqn
 from protean.utils.eventing import Message
 from protean.utils.globals import current_domain
-
+from protean.utils.mixins import handle
 
 failed_count = 0
 
@@ -261,7 +261,7 @@ class TestEndToEndFlow:
         broker.publish("test", message.to_dict())
 
         # Process with retries
-        for attempt in range(3):
+        for _attempt in range(3):
             messages = await subscription.get_next_batch_of_messages()
             if messages:
                 await subscription.process_batch(messages)

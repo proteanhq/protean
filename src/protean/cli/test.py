@@ -9,10 +9,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Annotated
 
 import typer
-from typing_extensions import Annotated
 
 if TYPE_CHECKING:
     from protean.port.provider import DatabaseCapabilities
@@ -274,7 +273,7 @@ class TestRunner:
 
         cmd = suite.command
         if quiet:
-            cmd = cmd + ["--tb=short", "-q"]
+            cmd = [*cmd, "--tb=short", "-q"]
 
         print(f"Running command: {' '.join(cmd)}")
         result = self.run_command(cmd)
@@ -487,9 +486,9 @@ def validate_category(value: str) -> str:
         # Validate that the uppercase version is a valid RunCategory
         RunCategory(value.upper())
         return value.upper()
-    except ValueError:
+    except ValueError as e:
         valid_categories = [cat.value for cat in RunCategory]
-        raise typer.BadParameter(f"'{value}' is not one of {valid_categories}")
+        raise typer.BadParameter(f"'{value}' is not one of {valid_categories}") from e
 
 
 @app.callback(invoke_without_command=True)
@@ -765,14 +764,14 @@ def test_adapter(
         typer.Option(help="Database connection URI (default: provider's default)"),
     ] = "",
     capabilities: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             help="Comma-separated capabilities to test (default: all declared)"
         ),
     ] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
     test_dir: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             help="Path to generic test directory (default: built-in tests)",
         ),
@@ -805,7 +804,7 @@ def test_adapter(
         ProviderRegistry.get(provider)
     except Exception as e:
         print(f"Error: {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     # 2. Get provider capabilities (instantiate temporarily to access property)
     #    We need a minimal domain to instantiate the provider for capabilities
@@ -826,7 +825,7 @@ def test_adapter(
             provider_class_name = provider_instance.__class__.__name__
     except Exception as e:
         print(f"Error initializing provider '{provider}': {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     # 3. Determine which capabilities to test
     requested: list[str] | None = None

@@ -5,7 +5,6 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String, Text
 from protean.utils import _fully_qualified_name
-
 from tests.adapters.database_model.dict_model.elements import (
     Provider,
     ProviderCustomModel,

@@ -1,8 +1,9 @@
 import inspect
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, cast, ClassVar, List, TYPE_CHECKING, TypeVar, Union
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
@@ -66,9 +67,9 @@ class BaseDomainService(Element, OptionsMixin):
         super().__init_subclass__(**kwargs)
 
         # Record invariant methods
-        setattr(cls, "_invariants", defaultdict(dict))
+        cls._invariants = defaultdict(dict)
 
-    def __init__(self, *aggregates: Union[BaseAggregate, List[BaseAggregate]]):
+    def __init__(self, *aggregates: BaseAggregate | list[BaseAggregate]):
         """Initialize a DomainService with one or more aggregates.
 
         Args:
@@ -136,13 +137,15 @@ def wrap_methods_with_invariant_calls(cls: type[_T]) -> type[_T]:
     """
     for method_name, method in inspect.getmembers(cls, predicate=inspect.isroutine):
         if (
-            not (method_name.startswith("__") and method_name.endswith("__"))
-            and not method_name.startswith("_")
-        ) or method_name == "__call__":
+            (
+                not (method_name.startswith("__") and method_name.endswith("__"))
+                and not method_name.startswith("_")
+            )
+            or method_name == "__call__"
+        ) and not hasattr(method, "__wrapped__"):
             # `@wraps` sets `__wrapped__` on the wrapper, so its presence
             # means this method was already wrapped in a prior factory call.
-            if not hasattr(method, "__wrapped__"):
-                setattr(cls, method_name, _make_invariant_wrapper(method))
+            setattr(cls, method_name, _make_invariant_wrapper(method))
 
     return cls
 
@@ -166,7 +169,7 @@ def domain_service_factory(element_cls: type[_T], domain: Any, **opts: Any) -> t
         if not (
             method_name.startswith("__") and method_name.endswith("__")
         ) and hasattr(method, "_invariant"):
-            service_cls._invariants[getattr(method, "_invariant")][method_name] = method
+            service_cls._invariants[method._invariant][method_name] = method
 
     element_cls = wrap_methods_with_invariant_calls(element_cls)
 

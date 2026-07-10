@@ -229,11 +229,8 @@ class TestSupervisorMonitorEdgeCases:
 
         def alive_then_dead():
             call_count[0] += 1
-            if call_count[0] <= 1:
-                # First call in the loop: worker is alive
-                return True
-            # Subsequent calls: worker is dead
-            return False
+            # First call in the loop: worker is alive; subsequent calls: dead
+            return call_count[0] <= 1
 
         mock_worker = MagicMock()
         mock_worker.is_alive.side_effect = alive_then_dead

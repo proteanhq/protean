@@ -98,8 +98,8 @@ domain.init(traverse=False)
 
 # @app.get("/storefront")
 def browse_storefront(
-    author: str = None,
-    in_stock: bool = None,
+    author: str | None = None,
+    in_stock: bool | None = None,
     sort: str = "title",
     limit: int = 20,
     offset: int = 0,

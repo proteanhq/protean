@@ -6,7 +6,6 @@ Merged from test_generic.py and test_persistence.py.
 
 import re
 from datetime import datetime
-from typing import List
 from uuid import uuid4
 
 import pytest
@@ -27,7 +26,7 @@ class Person(BaseAggregate):
 
 
 class PersonRepository(BaseRepository):
-    def find_adults(self, minimum_age: int = 21) -> List[Person]:
+    def find_adults(self, minimum_age: int = 21) -> list[Person]:
         return self.query.filter(age__gte=minimum_age).all().items
 
 
@@ -136,10 +135,9 @@ class TestConcurrency:
             person_dup1.first_name = "Jane"
             repo.add(person_dup1)
 
-        with pytest.raises(ExpectedVersionError) as exc:
-            with UnitOfWork():
-                person_dup2.first_name = "Baby"
-                repo.add(person_dup2)
+        with pytest.raises(ExpectedVersionError) as exc, UnitOfWork():
+            person_dup2.first_name = "Baby"
+            repo.add(person_dup2)
 
         # After _validate_and_update_version, person_dup2._version has been
         # advanced to _next_version (1).  The expected_version passed to

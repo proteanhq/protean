@@ -1,7 +1,7 @@
 """Fixture: fields in a class resolve to correct types via attribute access."""
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer, Float, Boolean
+from protean.fields import Boolean, Float, Integer, String
 
 
 class Order(BaseAggregate):

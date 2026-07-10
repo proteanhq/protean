@@ -117,4 +117,4 @@ class TestAggregateAssociations:
         test_domain.repository_for(Post).add(post)
 
         refreshed_post = test_domain.repository_for(Post).get(post.id)
-        print([c for c in refreshed_post.comments])
+        print(list(refreshed_post.comments))

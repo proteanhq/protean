@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from unittest.mock import patch
 from uuid import uuid4
@@ -115,10 +116,8 @@ def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog):
     # Replace the subscriptions with a mock that has a long-running start()
     async def long_running_start():
         """A start() coroutine that blocks for longer than the test cycles."""
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await asyncio.sleep(10)
-        except asyncio.CancelledError:
-            pass
 
     class FakeSubscription:
         async def start(self):

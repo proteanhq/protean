@@ -35,9 +35,7 @@ def test_multiple_consumer_groups_independent_processing(broker):
     messages = [{"id": i} for i in range(3)]
 
     # Publish messages
-    identifiers = []
-    for msg in messages:
-        identifiers.append(broker.publish(stream, msg))
+    identifiers = [broker.publish(stream, msg) for msg in messages]
 
     # Group 1 consumes first two messages
     for i in range(2):

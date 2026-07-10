@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Protocol, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast
 
 import inflection
 
@@ -28,7 +28,7 @@ class _ElementClass(Protocol):
 
 
 # Define property names for each element type
-def properties() -> Dict[str, str]:
+def properties() -> dict[str, str]:
     """Properties are named after of each element type and pluralized to
     indicate that all elements of the type will be returned.
 
@@ -97,30 +97,30 @@ class _DomainRegistry:
         # Declared here so static checkers (mypy, pyright) see them as real
         # attributes. Each returns the ``{qualname: DomainRecord}`` mapping of
         # non-internal elements for that element type.
-        aggregates: Dict[str, DomainRecord]
-        application_services: Dict[str, DomainRecord]
-        commands: Dict[str, DomainRecord]
-        command_handlers: Dict[str, DomainRecord]
-        database_models: Dict[str, DomainRecord]
-        domain_services: Dict[str, DomainRecord]
-        emails: Dict[str, DomainRecord]
-        entities: Dict[str, DomainRecord]
-        events: Dict[str, DomainRecord]
-        event_handlers: Dict[str, DomainRecord]
-        event_sourced_repositories: Dict[str, DomainRecord]
-        process_managers: Dict[str, DomainRecord]
-        projections: Dict[str, DomainRecord]
-        projectors: Dict[str, DomainRecord]
-        queries: Dict[str, DomainRecord]
-        query_handlers: Dict[str, DomainRecord]
-        repositories: Dict[str, DomainRecord]
-        subscribers: Dict[str, DomainRecord]
-        upcasters: Dict[str, DomainRecord]
-        value_objects: Dict[str, DomainRecord]
+        aggregates: dict[str, DomainRecord]
+        application_services: dict[str, DomainRecord]
+        commands: dict[str, DomainRecord]
+        command_handlers: dict[str, DomainRecord]
+        database_models: dict[str, DomainRecord]
+        domain_services: dict[str, DomainRecord]
+        emails: dict[str, DomainRecord]
+        entities: dict[str, DomainRecord]
+        events: dict[str, DomainRecord]
+        event_handlers: dict[str, DomainRecord]
+        event_sourced_repositories: dict[str, DomainRecord]
+        process_managers: dict[str, DomainRecord]
+        projections: dict[str, DomainRecord]
+        projectors: dict[str, DomainRecord]
+        queries: dict[str, DomainRecord]
+        query_handlers: dict[str, DomainRecord]
+        repositories: dict[str, DomainRecord]
+        subscribers: dict[str, DomainRecord]
+        upcasters: dict[str, DomainRecord]
+        value_objects: dict[str, DomainRecord]
 
     def __init__(self) -> None:
-        self._elements: Dict[str, Dict[str, DomainRecord]] = {}
-        self._elements_by_name: Dict[str, List[DomainRecord]] = {}
+        self._elements: dict[str, dict[str, DomainRecord]] = {}
+        self._elements_by_name: dict[str, list[DomainRecord]] = {}
 
         # Initialize placeholders for element types
         for element_type in DomainObjects:
@@ -209,7 +209,7 @@ class _DomainRegistry:
             )
 
     @property
-    def elements(self) -> Dict[str, List[Any]]:
+    def elements(self) -> dict[str, list[Any]]:
         """Return all registered elements grouped by type, excluding internal elements.
 
         Returns:
@@ -217,17 +217,18 @@ class _DomainRegistry:
         """
         elems = {}
         for name, element_type in properties().items():
-            items = []
-            for record in self._elements[element_type].values():
-                if not record.internal:
-                    items.append(record.cls)
+            items = [
+                record.cls
+                for record in self._elements[element_type].values()
+                if not record.internal
+            ]
 
             if items:  # Only add element type if there are elements of that type
                 elems[name] = items
 
         return elems
 
-    def _public_elements(self, element_type: str) -> Dict[str, DomainRecord]:
+    def _public_elements(self, element_type: str) -> dict[str, DomainRecord]:
         """Return a {qualname: DomainRecord} mapping **excluding** internal elements.
 
         Args:
@@ -249,7 +250,7 @@ class _DomainRegistry:
 def _create_element_property(element_type: str) -> property:
     """Factory function to create properties for element types."""
 
-    def getter(self: "_DomainRegistry") -> Dict[str, DomainRecord]:
+    def getter(self: "_DomainRegistry") -> dict[str, DomainRecord]:
         return self._public_elements(element_type)
 
     return property(getter)

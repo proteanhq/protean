@@ -26,7 +26,6 @@ from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle, read
 
-
 # --- Domain elements ---
 
 

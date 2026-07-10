@@ -4,15 +4,16 @@ These tests verify that the OutboxProcessor correctly routes messages to
 primary or backfill lanes based on message priority and configuration.
 """
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.domain import Domain
 from protean.fields import Integer, String
 from protean.server.outbox_processor import OutboxProcessor
-from protean.utils.eventing import Metadata, MessageHeaders, DomainMeta
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox
 
 
@@ -153,7 +154,7 @@ class TestPriorityLaneRouting:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]
@@ -178,7 +179,7 @@ class TestPriorityLaneRouting:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]
@@ -203,7 +204,7 @@ class TestPriorityLaneRouting:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]
@@ -228,7 +229,7 @@ class TestPriorityLaneRouting:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]
@@ -290,7 +291,7 @@ class TestPriorityLaneRouting:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]
@@ -328,9 +329,9 @@ class TestPriorityLaneRouting:
             ("critical", 100, "customer"),  # Far above -> primary
         ]
 
-        for msg_id, priority, expected_stream in test_cases:
+        for msg_id, priority, _expected_stream in test_cases:
             message = _create_outbox_message(msg_id, priority=priority)
-            success, error = await processor._publish_message(message)
+            success, _error = await processor._publish_message(message)
             assert success is True, f"Failed for message {msg_id}"
 
         # Verify each message was routed to the correct stream
@@ -377,7 +378,7 @@ class TestPriorityLaneRouting:
         mock_broker.publish = Mock(side_effect=capture_publish)
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         assert len(captured_payloads) == 1
@@ -437,7 +438,7 @@ class TestBoundaryPriority:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]
@@ -463,7 +464,7 @@ class TestBoundaryPriority:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]
@@ -488,7 +489,7 @@ class TestBoundaryPriority:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]
@@ -531,7 +532,7 @@ class TestEdgeCases:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         # Should publish to None/empty stream_category (no backfill suffix added)
@@ -567,7 +568,7 @@ class TestEdgeCases:
         mock_broker.publish = Mock(return_value="broker-msg-id")
         processor.broker = mock_broker
 
-        success, error = await processor._publish_message(message)
+        success, _error = await processor._publish_message(message)
 
         assert success is True
         stream_name = mock_broker.publish.call_args[0][0]

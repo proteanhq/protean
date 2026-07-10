@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.repository import BaseRepository

@@ -30,7 +30,6 @@ from protean.utils.eventing import (
 from protean.utils.globals import g
 from protean.utils.mixins import handle
 
-
 # ---------------------------------------------------------------------------
 # Domain elements for integration tests
 # ---------------------------------------------------------------------------

@@ -49,18 +49,20 @@ class TestCheckProviders:
         with domain.domain_context():
             for p in domain.providers.values():
                 p.is_alive = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
-            statuses, all_ok = check_providers(domain)
+            _statuses, all_ok = check_providers(domain)
             assert all_ok is False
 
     def test_handles_broken_providers_iterator(self, domain):
         """Outer except catches errors from iterating providers."""
-        with domain.domain_context():
-            with patch.object(
+        with (
+            domain.domain_context(),
+            patch.object(
                 type(domain.providers), "items", side_effect=RuntimeError("broken")
-            ):
-                statuses, all_ok = check_providers(domain)
-                assert all_ok is False
-                assert "_error" in statuses
+            ),
+        ):
+            statuses, all_ok = check_providers(domain)
+            assert all_ok is False
+            assert "_error" in statuses
 
 
 # ---------------------------------------------------------------------------
@@ -72,31 +74,33 @@ class TestCheckProviders:
 class TestCheckBrokers:
     def test_ok_with_inline_broker(self, domain):
         with domain.domain_context():
-            statuses, all_ok = check_brokers(domain)
+            _statuses, all_ok = check_brokers(domain)
             assert all_ok is True
 
     def test_returns_unavailable_when_broker_returns_false(self, domain):
         with domain.domain_context():
             for b in domain.brokers.values():
                 b.ping = lambda: False
-            statuses, all_ok = check_brokers(domain)
+            _statuses, all_ok = check_brokers(domain)
             assert all_ok is False
 
     def test_returns_unavailable_when_broker_raises(self, domain):
         with domain.domain_context():
             for b in domain.brokers.values():
                 b.ping = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
-            statuses, all_ok = check_brokers(domain)
+            _statuses, all_ok = check_brokers(domain)
             assert all_ok is False
 
     def test_handles_broken_brokers_iterator(self, domain):
-        with domain.domain_context():
-            with patch.object(
+        with (
+            domain.domain_context(),
+            patch.object(
                 type(domain.brokers), "items", side_effect=RuntimeError("broken")
-            ):
-                statuses, all_ok = check_brokers(domain)
-                assert all_ok is False
-                assert "_error" in statuses
+            ),
+        ):
+            statuses, all_ok = check_brokers(domain)
+            assert all_ok is False
+            assert "_error" in statuses
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +144,7 @@ class TestCheckEventStore:
 class TestCheckCaches:
     def test_ok_with_memory_cache(self, domain):
         with domain.domain_context():
-            statuses, all_ok = check_caches(domain)
+            _statuses, all_ok = check_caches(domain)
             assert all_ok is True
 
     def test_ok_when_cache_has_no_ping(self, domain):
@@ -167,14 +171,16 @@ class TestCheckCaches:
         with domain.domain_context():
             for c in domain.caches.values():
                 c.ping = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
-            statuses, all_ok = check_caches(domain)
+            _statuses, all_ok = check_caches(domain)
             assert all_ok is False
 
     def test_handles_broken_caches_iterator(self, domain):
-        with domain.domain_context():
-            with patch.object(
+        with (
+            domain.domain_context(),
+            patch.object(
                 type(domain.caches), "items", side_effect=RuntimeError("broken")
-            ):
-                statuses, all_ok = check_caches(domain)
-                assert all_ok is False
-                assert "_error" in statuses
+            ),
+        ):
+            statuses, all_ok = check_caches(domain)
+            assert all_ok is False
+            assert "_error" in statuses

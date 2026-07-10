@@ -7,7 +7,7 @@ import typing
 from collections import defaultdict
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
@@ -15,10 +15,8 @@ from pydantic_core import PydanticUndefined
 
 from protean._deprecation import warn_deprecated
 from protean.core.entity import BaseEntity, _EntityState
-from protean.core.value_object import value_object_from_entity
-from protean.fields.tempdata import AssociationCache
 from protean.core.event import BaseEvent
-from protean.fields.resolved import ResolvedField
+from protean.core.value_object import value_object_from_entity
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -27,12 +25,14 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.basic import ValueObjectList
+from protean.fields.resolved import ResolvedField
+from protean.fields.tempdata import AssociationCache
 from protean.utils import (
     DomainObjects,
     Processing,
     _derive_element_class,
-    fqn,
     _generate_identity,
+    fqn,
     inflection,
 )
 from protean.utils.container import DerivedDefault
@@ -129,8 +129,8 @@ class BaseAggregate(BaseEntity):
         super().__init_subclass__(**kwargs)
 
         # Event-Sourcing: per-subclass projection map and events class map
-        setattr(cls, "_projections", defaultdict(set))
-        setattr(cls, "_events_cls_map", {})
+        cls._projections = defaultdict(set)
+        cls._events_cls_map = {}
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
@@ -284,10 +284,9 @@ class BaseAggregate(BaseEntity):
         # the same code path used during live processing and event replay.
         # We use atomic_change so that invariants are checked before and
         # after the handler runs, preserving the "always valid" guarantee.
-        if self.meta_.is_event_sourced:
-            if not event.__class__.meta_.is_fact_event:
-                with atomic_change(self):
-                    self._apply_handler(event_with_metadata)
+        if self.meta_.is_event_sourced and not event.__class__.meta_.is_fact_event:
+            with atomic_change(self):
+                self._apply_handler(event_with_metadata)
 
     @staticmethod
     def _warn_if_deprecated(event_cls: type[BaseEvent]) -> None:
@@ -555,7 +554,7 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
                 else ValueObject(value_object_cls=result)
             )
             vo_cls = vo_descriptor.value_object_cls
-            annotations[key] = Optional[vo_cls]
+            annotations[key] = vo_cls | None
             namespace[key] = None
             association_descriptors[key] = vo_descriptor
 
@@ -583,7 +582,7 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
             # reason; it is the resolved class at fact-event build time.
             assert not isinstance(value.value_object_cls, str)
             vo_cls = value.value_object_cls
-            annotations[key] = Optional[vo_cls]
+            annotations[key] = vo_cls | None
             namespace[key] = None
             association_descriptors[key] = value
 
@@ -613,7 +612,7 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
     setattr(event_cls, _FIELDS, cf)
 
     # Store the fact event class as part of the aggregate itself
-    setattr(element_cls, "_fact_event_cls", event_cls)
+    element_cls._fact_event_cls = event_cls
 
     # Return the fact event class to be registered with the domain
     return event_cls
@@ -680,9 +679,7 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
                 and callable(method)
                 and hasattr(method, "_invariant")
             ):
-                aggregate_cls._invariants[getattr(method, "_invariant")][
-                    method_name
-                ] = method
+                aggregate_cls._invariants[method._invariant][method_name] = method
 
     # Set stream category to be `domain_name::aggregate_name`
     aggregate_cls.meta_.stream_category = (
@@ -698,7 +695,7 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
                 and callable(method)
                 and hasattr(method, "_event_cls")
             ):
-                event_cls = getattr(method, "_event_cls")
+                event_cls = method._event_cls
                 aggregate_cls._projections[fqn(event_cls)].add(method)
                 aggregate_cls._events_cls_map[fqn(event_cls)] = event_cls
 
@@ -822,7 +819,7 @@ def apply(fn: _F) -> _F:
     except StopIteration:
         raise IncorrectUsageError(
             f"Apply method `{fn.__name__}` should accept an argument annotated with the Event class"
-        )
+        ) from None
 
     @functools.wraps(fn)
     def wrapper(*args: Any) -> None:

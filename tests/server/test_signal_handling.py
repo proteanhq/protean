@@ -147,18 +147,20 @@ class TestSignalHandling:
                 captured_handler = handler
             return Mock()
 
-        with patch(
-            "asyncio.run_coroutine_threadsafe",
-            side_effect=mock_run_coroutine_threadsafe,
+        with (
+            patch(
+                "asyncio.run_coroutine_threadsafe",
+                side_effect=mock_run_coroutine_threadsafe,
+            ),
+            patch("signal.signal", side_effect=mock_signal_func),
         ):
-            with patch("signal.signal", side_effect=mock_signal_func):
-                engine._setup_signal_handlers()
+            engine._setup_signal_handlers()
 
-                # Simulate signal reception when the loop is "running"
-                if captured_handler:
-                    # Mock that the loop is running
-                    with patch.object(engine.loop, "is_running", return_value=True):
-                        captured_handler(signal.SIGTERM)
+            # Simulate signal reception when the loop is "running"
+            if captured_handler:
+                # Mock that the loop is running
+                with patch.object(engine.loop, "is_running", return_value=True):
+                    captured_handler(signal.SIGTERM)
 
         assert coroutine_called
 
@@ -393,13 +395,15 @@ class TestSignalHandling:
         def add_handler_side_effect(sig, callback):
             raise OSError("Signal not available on this platform")
 
-        with patch.object(
-            engine.loop,
-            "add_signal_handler",
-            side_effect=add_handler_side_effect,
+        with (
+            patch.object(
+                engine.loop,
+                "add_signal_handler",
+                side_effect=add_handler_side_effect,
+            ),
+            caplog.at_level("DEBUG"),
         ):
-            with caplog.at_level("DEBUG"):
-                engine._setup_signal_handlers()
+            engine._setup_signal_handlers()
 
         assert any("not available" in record.message for record in caplog.records)
 

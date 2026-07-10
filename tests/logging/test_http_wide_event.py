@@ -10,7 +10,7 @@ events produced by ``access_log_handler``.
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 from uuid import uuid4
 
 import pytest
@@ -25,7 +25,6 @@ from protean.integrations.fastapi import DomainContextMiddleware
 from protean.utils.globals import current_domain
 from protean.utils.logging import bind_event_context, unbind_event_context
 from protean.utils.mixins import handle
-
 
 # ---------------------------------------------------------------------------
 # Domain elements

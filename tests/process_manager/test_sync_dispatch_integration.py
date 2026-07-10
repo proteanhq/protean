@@ -11,8 +11,9 @@ All existing PM tests call _handle() directly with raw events. These tests
 exercise the complete path through UoW sync and Message-based async dispatch.
 """
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.utils.eventing import Message
@@ -25,8 +26,8 @@ from .elements import (
     Payment,
     PaymentConfirmed,
     PaymentFailed,
-    Shipping,
     ShipmentDelivered,
+    Shipping,
 )
 
 

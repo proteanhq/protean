@@ -17,7 +17,6 @@ from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
-
 # ─── Shared domain elements ─────────────────────────────────────────────
 
 

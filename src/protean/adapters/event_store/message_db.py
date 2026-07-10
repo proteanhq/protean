@@ -41,8 +41,8 @@ class MessageDBStore(BaseEventStore):
                 )
             except psycopg2.OperationalError as exc:
                 raise ConfigurationError(
-                    f"Unable to connect to Event Store - {str(exc)}"
-                )
+                    f"Unable to connect to Event Store - {exc!s}"
+                ) from exc
 
         return self._client
 

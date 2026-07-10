@@ -14,13 +14,11 @@ Verifies that:
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
 
 from protean.port.provider import BaseProvider
-
 
 # ---------------------------------------------------------------------------
 # Helpers

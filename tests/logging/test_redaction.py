@@ -266,7 +266,7 @@ class TestConfigureLoggingWiresRedaction:
         root.setLevel(logging.DEBUG)
 
         @log_method_call
-        def register(self_, username, password):  # noqa: ARG001
+        def register(self_, username, password):
             return "ok"
 
         register(object(), username="alice", password="s3cret")

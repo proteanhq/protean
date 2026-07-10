@@ -1,7 +1,8 @@
 """Tests for event dispatch and correlation in process managers."""
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from protean.core.process_manager import _resolve_correlation_value
 from protean.exceptions import ConfigurationError
@@ -13,8 +14,8 @@ from .elements import (
     Payment,
     PaymentConfirmed,
     PaymentFailed,
-    Shipping,
     ShipmentDelivered,
+    Shipping,
 )
 
 

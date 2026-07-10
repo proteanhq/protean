@@ -118,11 +118,13 @@ class ElementResolver:
         element_type = cls.element_type
         if element_type == DomainObjects.COMMAND_HANDLER:
             cls.meta_.stream_category = derive_command_stream_category(aggregate_cls)
-        elif element_type == DomainObjects.EVENT_HANDLER:
-            # Respect an explicitly configured stream_category; only derive
-            # when the handler relied on its aggregate for the value.
-            if cls.meta_.stream_category is None:
-                cls.meta_.stream_category = aggregate_cls.meta_.stream_category
+        # Respect an explicitly configured stream_category; only derive
+        # when the handler relied on its aggregate for the value.
+        elif (
+            element_type == DomainObjects.EVENT_HANDLER
+            and cls.meta_.stream_category is None
+        ):
+            cls.meta_.stream_category = aggregate_cls.meta_.stream_category
 
     def assign_aggregate_clusters(self) -> None:
         """Assign aggregate clusters to all relevant elements."""
@@ -130,7 +132,7 @@ class ElementResolver:
 
         # Assign Aggregates and Process Managers to their own cluster
         for element_type in [DomainObjects.AGGREGATE, DomainObjects.PROCESS_MANAGER]:
-            for _, element in registry._elements[element_type.value].items():
+            for element in registry._elements[element_type.value].values():
                 element.cls.meta_.aggregate_cluster = element.cls
 
         # Derive root aggregate for other elements
@@ -139,7 +141,7 @@ class ElementResolver:
             DomainObjects.EVENT,
             DomainObjects.COMMAND,
         ]:
-            for _, element in registry._elements[element_type.value].items():
+            for element in registry._elements[element_type.value].values():
                 part_of = element.cls.meta_.part_of
                 if part_of:
                     # Traverse up the graph tree to find the root aggregate
@@ -153,10 +155,8 @@ class ElementResolver:
     def set_aggregate_cluster_options(self) -> None:
         """Propagate aggregate-level options (like provider) to child entities."""
         registry = self._domain._domain_registry
-        for _, element in registry._elements[DomainObjects.ENTITY.value].items():
+        for element in registry._elements[DomainObjects.ENTITY.value].values():
             if not hasattr(element.cls.meta_, "provider"):
-                setattr(
-                    element.cls.meta_,
-                    "provider",
-                    element.cls.meta_.aggregate_cluster.meta_.provider,
+                element.cls.meta_.provider = (
+                    element.cls.meta_.aggregate_cluster.meta_.provider
                 )

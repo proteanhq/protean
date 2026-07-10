@@ -15,7 +15,6 @@ from protean.ir.generators.handlers import (
     generate_subscriber_diagram,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers — composable IR builders
 # ---------------------------------------------------------------------------

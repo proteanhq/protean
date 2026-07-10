@@ -1,6 +1,6 @@
 """Fixture: container fields (List, Dict) resolve to list/dict (never Optional)."""
 
-from protean.fields import List, Dict
+from protean.fields import Dict, List
 
 # Container fields have implicit defaults → never Optional
 lst = List()

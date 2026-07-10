@@ -4,7 +4,7 @@ from typing import Annotated
 from pydantic import Field
 
 from protean import Domain
-from protean.fields import String, Float, Boolean
+from protean.fields import Boolean, Float, String
 
 domain = Domain()
 

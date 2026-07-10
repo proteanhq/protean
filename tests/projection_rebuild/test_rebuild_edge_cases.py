@@ -15,9 +15,9 @@ from protean.utils.projection_rebuilder import (
 from .elements import (
     Balances,
     Registered,
+    Transacted,
     Transaction,
     TransactionProjector,
-    Transacted,
     User,
     UserDirectory,
 )
@@ -60,7 +60,7 @@ class TestLargeEventCount:
         user = User.register(email="batch@example.com", name="Batch")
         current_domain.repository_for(User).add(user)
 
-        for i in range(25):
+        for _i in range(25):
             txn = Transaction.transact(user_id=user.id, amount=1.0)
             current_domain.repository_for(Transaction).add(txn)
 

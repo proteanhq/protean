@@ -13,8 +13,9 @@ command renders the findings.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from protean.utils.outbox import Outbox
 
@@ -51,12 +52,12 @@ class UpgradeFinding:
 # ---------------------------------------------------------------------------
 
 
-def _databases(domain: "Domain") -> dict[str, dict[str, Any]]:
+def _databases(domain: Domain) -> dict[str, dict[str, Any]]:
     cfg = domain.config.get("databases", {})
     return {k: v for k, v in cfg.items() if isinstance(v, dict)}
 
 
-def _check_pool_defaults(domain: "Domain") -> list[UpgradeFinding]:
+def _check_pool_defaults(domain: Domain) -> list[UpgradeFinding]:
     """Warn when a SQL database relies on the raised default pool size."""
     findings: list[UpgradeFinding] = []
     for name, cfg in _databases(domain).items():
@@ -84,7 +85,7 @@ def _check_pool_defaults(domain: "Domain") -> list[UpgradeFinding]:
     return findings
 
 
-def _check_elasticsearch_server(domain: "Domain") -> list[UpgradeFinding]:
+def _check_elasticsearch_server(domain: Domain) -> list[UpgradeFinding]:
     """Warn that the Elasticsearch provider now defaults to the v8 client."""
     findings: list[UpgradeFinding] = []
     for name, cfg in _databases(domain).items():
@@ -111,7 +112,7 @@ def _check_elasticsearch_server(domain: "Domain") -> list[UpgradeFinding]:
     return findings
 
 
-def _check_health_port(domain: "Domain") -> list[UpgradeFinding]:
+def _check_health_port(domain: Domain) -> list[UpgradeFinding]:
     """Note the new default health-check port binding for ``protean server``."""
     server_cfg = domain.config.get("server", {})
     health = server_cfg.get("health", {}) if isinstance(server_cfg, dict) else {}
@@ -177,7 +178,7 @@ def _alter_statement(dialect: str, column: str, length: int, nullable: bool) -> 
     return f"  ALTER COLUMN {column} TYPE varchar({length})"
 
 
-def _check_outbox_schema(domain: "Domain") -> list[UpgradeFinding]:
+def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
     """Diff each live outbox table against the bounded Outbox model.
 
     For SQL providers whose ``outbox`` table still has unbounded string columns
@@ -270,7 +271,7 @@ def _check_outbox_schema(domain: "Domain") -> list[UpgradeFinding]:
 # ---------------------------------------------------------------------------
 
 # All checks, in report order. Each takes the domain and returns findings.
-_CHECKS: tuple[Callable[["Domain"], list[UpgradeFinding]], ...] = (
+_CHECKS: tuple[Callable[[Domain], list[UpgradeFinding]], ...] = (
     _check_pool_defaults,
     _check_elasticsearch_server,
     _check_health_port,
@@ -278,7 +279,7 @@ _CHECKS: tuple[Callable[["Domain"], list[UpgradeFinding]], ...] = (
 )
 
 
-def run_upgrade_checks(domain: "Domain") -> list[UpgradeFinding]:
+def run_upgrade_checks(domain: Domain) -> list[UpgradeFinding]:
     """Run every upgrade-readiness check against an initialized domain.
 
     Returns a flat, ordered list of findings. Each check is isolated: if one

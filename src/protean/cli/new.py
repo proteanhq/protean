@@ -2,12 +2,11 @@ import os
 import re
 import shutil
 import subprocess
-from typing import List
+from typing import Annotated
 
 import typer
 from copier import run_copy
 from rich.console import Console
-from typing_extensions import Annotated
 
 import protean
 
@@ -133,12 +132,17 @@ def new(
     output_folder: Annotated[
         str, typer.Option("--output-dir", "-o", show_default=False)
     ] = ".",
-    data: Annotated[List[str], typer.Option("--data", "-d", show_default=False)] = [],
+    data: Annotated[
+        list[str] | None, typer.Option("--data", "-d", show_default=False)
+    ] = None,
     pretend: Annotated[bool, typer.Option("--pretend", "-p")] = False,
     force: Annotated[bool, typer.Option("--force", "-f")] = False,
     defaults: Annotated[bool, typer.Option("--defaults")] = False,
     skip_setup: Annotated[bool, typer.Option("--skip-setup")] = False,
 ) -> None:
+    if data is None:
+        data = []
+
     def is_valid_project_name(project_name: str) -> bool:
         """
         Validates the project name against criteria that ensure compatibility across
@@ -148,10 +152,7 @@ def new(
         # and spaces. This pattern also disallows leading and trailing spaces.
         forbidden_characters = re.compile(r'[<>:"/\\|?*\s]')
 
-        if forbidden_characters.search(project_name) or not project_name:
-            return False
-
-        return True
+        return not (forbidden_characters.search(project_name) or not project_name)
 
     def clear_directory_contents(dir_path: str) -> None:
         """

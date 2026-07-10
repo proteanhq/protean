@@ -5,8 +5,9 @@ These bounds make SQL providers emit ``VARCHAR(N)`` instead of unbounded
 table. See issue #948 and the v0.16 migration guide.
 """
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from protean.exceptions import ValidationError
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
@@ -43,7 +44,7 @@ def sample_metadata():
             id="test-id",
             type="TestEvent",
             stream="test-stream",
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
         ),
         domain=DomainMeta(
             fqn="test.TestEvent",

@@ -76,7 +76,7 @@ _processing_priority: ContextVar[int] = ContextVar(
 
 
 @contextmanager
-def processing_priority(priority: "Priority | int") -> Generator[None, None, None]:
+def processing_priority(priority: Priority | int) -> Generator[None, None, None]:
     """Context manager to set processing priority for all operations in scope.
 
     All commands processed within this context will have their events tagged

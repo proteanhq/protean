@@ -9,10 +9,10 @@ SQLAlchemy and Elasticsearch providers.
 
 import pytest
 
-from protean.domain import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.projection import BaseProjection
+from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import HasMany, Identifier, Integer, String
 

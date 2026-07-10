@@ -14,7 +14,6 @@ import logging
 import pytest
 from sqlalchemy import text
 
-
 SLOW_QUERY_LOGGER = "protean.adapters.repository.sqlalchemy.slow_query"
 
 

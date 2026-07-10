@@ -276,7 +276,7 @@ async def test_subscription_poll_test_mode_sleep_zero(test_domain):
     # Wait for poll to complete
     try:
         await asyncio.wait_for(poll_task, timeout=1.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         subscription.keep_going = False
         await asyncio.wait_for(poll_task, timeout=0.5)
 

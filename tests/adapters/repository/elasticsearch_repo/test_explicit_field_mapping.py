@@ -5,9 +5,9 @@ for each Protean field type, and that custom @domain.model fields take
 precedence over auto-generated mappings.
 """
 
-import pytest
 from datetime import datetime
 
+import pytest
 from elasticsearch.dsl import Text
 
 from protean.core.aggregate import BaseAggregate

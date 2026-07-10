@@ -308,12 +308,11 @@ class TestEntityPreInvariantsChecks:
     ):
         # This check is enclosed within atomic_change()
         order.mark_shipped()
-        with pytest.raises(ValidationError) as exc:
-            with atomic_change(order):
-                order.add_items(
-                    OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0)
-                )
-                order.total_amount = 120.0
+        with pytest.raises(ValidationError) as exc, atomic_change(order):
+            order.add_items(
+                OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0)
+            )
+            order.total_amount = 120.0
 
         assert exc.value.messages["_entity"] == [
             "Order date must be in the past and status PENDING to update order"

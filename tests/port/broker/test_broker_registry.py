@@ -1,12 +1,12 @@
 """Tests for the BrokerRegistry plugin system."""
 
 import logging
-
-import pytest
 from unittest.mock import Mock, patch
 
-from protean.port.broker import registry, BrokerRegistry
+import pytest
+
 from protean.exceptions import ConfigurationError
+from protean.port.broker import BrokerRegistry, registry
 
 
 @pytest.mark.no_test_domain

@@ -231,9 +231,7 @@ class TestDiffTextCoverage:
         left = _write_ir(
             tmp_path,
             "left.json",
-            _minimal_ir(
-                clusters={"app.Order": _make_cluster("Order", **{"options": None})}
-            ),
+            _minimal_ir(clusters={"app.Order": _make_cluster("Order", options=None)}),
         )
         # Need to set options in the cluster properly
         left_cluster = _make_cluster("Order")

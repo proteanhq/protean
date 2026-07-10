@@ -1,6 +1,6 @@
 from protean.core.aggregate import BaseAggregate
-from protean.fields.resolved import ResolvedField
 from protean.fields import DateTime, Identifier, Integer, String
+from protean.fields.resolved import ResolvedField
 from protean.utils import _utcnow_func
 from protean.utils.reflection import declared_fields, fields, id_field
 

@@ -332,7 +332,7 @@ def test_property_creation_for_all_domain_object_types():
     register = _DomainRegistry()
 
     # Test that all properties from DomainObjects enum are available
-    for name, element_type in properties().items():
+    for name in properties():
         assert hasattr(register, name)
         prop_value = getattr(register, name)
         assert isinstance(prop_value, dict)

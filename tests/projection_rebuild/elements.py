@@ -12,7 +12,6 @@ from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector, on
 from protean.fields import Float, Identifier, String
 
-
 # ---- User aggregate ----
 
 

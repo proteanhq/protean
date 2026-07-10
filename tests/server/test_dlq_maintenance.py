@@ -9,6 +9,7 @@ Covers:
 - Graceful handling when no DLQ-capable broker exists
 """
 
+import contextlib
 import logging
 from unittest.mock import MagicMock, patch
 
@@ -26,7 +27,6 @@ from protean.server.dlq_maintenance import (
 )
 from protean.utils.dlq import discover_subscriptions
 from protean.utils.telemetry import get_domain_metrics
-
 
 # ── Domain elements ──────────────────────────────────────────────────────
 
@@ -505,10 +505,8 @@ class TestDLQMaintenanceStartAndRun:
             task.keep_going = False
             for t in running_tasks:
                 t.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await t
-                except asyncio.CancelledError:
-                    pass
 
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio

@@ -33,23 +33,22 @@ domain.init(traverse=False)
 # import_vintage_press.py
 def import_catalog(csv_path: str):
     """Import the Vintage Press catalog with BULK priority."""
-    with domain.domain_context():
-        with processing_priority(Priority.BULK):
-            with open(csv_path) as f:
-                reader = csv.DictReader(f)
-                for i, row in enumerate(reader, 1):
-                    domain.process(
-                        AddBook(
-                            title=row["title"],
-                            author=row["author"],
-                            isbn=row.get("isbn", ""),
-                            price_amount=float(row["price"]),
-                        )
+    with domain.domain_context(), processing_priority(Priority.BULK):
+        with open(csv_path) as f:
+            reader = csv.DictReader(f)
+            for i, row in enumerate(reader, 1):
+                domain.process(
+                    AddBook(
+                        title=row["title"],
+                        author=row["author"],
+                        isbn=row.get("isbn", ""),
+                        price_amount=float(row["price"]),
                     )
-                    if i % 10000 == 0:
-                        print(f"Progress: {i:,} books imported...")
+                )
+                if i % 10000 == 0:
+                    print(f"Progress: {i:,} books imported...")
 
-            print(f"Import complete: {i:,} books imported with BULK priority.")
+        print(f"Import complete: {i:,} books imported with BULK priority.")
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ import json
 import logging
 import types as _types
 import typing
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -32,11 +32,11 @@ from protean.ir import SCHEMA_VERSION
 from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
 from protean.utils.container import Element, OptionsMixin
+from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils.upcasting import (
     missing_upcaster_source_versions,
     upcaster_event_name,
 )
-from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -81,7 +81,7 @@ class IRBuilder:
             "domain": self._build_domain_metadata(),
             "elements": self._build_elements_index(),
             "flows": self._build_flows(),
-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "generated_at": datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "ir_version": SCHEMA_VERSION,
             "projections": self._build_projections(),
         }
@@ -1218,7 +1218,7 @@ class IRBuilder:
                 # For entities, use their aggregate cluster; for aggregates, use self
                 agg_cls = getattr(owner_cls.meta_, "aggregate_cluster", owner_cls)
 
-                for _name, field_obj in declared_fields(owner_cls).items():
+                for field_obj in declared_fields(owner_cls).values():
                     if isinstance(field_obj, ValueObject):
                         vo_fqn = self._resolved_fqn(field_obj.value_object_cls)
                         if vo_fqn not in vo_map:

@@ -29,8 +29,6 @@ from protean.utils.reflection import _FIELDS
 class NotificationEmail(BaseEmail):
     """A simple email with no custom __init__."""
 
-    pass
-
 
 class WelcomeEmail(BaseEmail):
     """Email with class-level constants and custom __init__."""

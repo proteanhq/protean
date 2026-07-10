@@ -156,7 +156,6 @@ class BaseSubscription(ABC):
         Returns:
             None
         """
-        pass
 
     @abstractmethod
     async def get_next_batch_of_messages(self) -> list[Any]:
@@ -198,7 +197,6 @@ class BaseSubscription(ABC):
         Returns:
             None
         """
-        pass
 
 
 def event_store_subscription_handlers(domain: "Domain") -> list[str]:
@@ -293,6 +291,6 @@ def event_store_multi_worker_error(handler_names: list[str], num_workers: int) -
 
 __all__ = [
     "BaseSubscription",
-    "event_store_subscription_handlers",
     "event_store_multi_worker_error",
+    "event_store_subscription_handlers",
 ]

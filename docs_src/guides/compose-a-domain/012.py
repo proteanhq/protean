@@ -1,5 +1,4 @@
 # --8<-- [start:full]
-from typing import List
 
 from protean import Domain
 from protean.fields import Integer, String
@@ -16,7 +15,7 @@ class Person:
 
 @domain.repository(part_of=Person)
 class PersonCustomRepository:
-    def adults(self, minimum_age: int = 21) -> List[Person]:
+    def adults(self, minimum_age: int = 21) -> list[Person]:
         return self.query.filter(age__gte=minimum_age).all().items
 
 

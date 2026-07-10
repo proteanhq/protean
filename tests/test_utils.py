@@ -2,9 +2,9 @@ import pytest
 
 from protean.exceptions import ConfigurationError
 from protean.utils import (
-    clone_class,
     _convert_str_values_to_list,
     _generate_identity,
+    clone_class,
     get_version,
 )
 

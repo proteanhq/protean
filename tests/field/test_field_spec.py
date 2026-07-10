@@ -14,9 +14,9 @@ from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ValidationError
 from protean.fields import List, String, ValueObject
 from protean.fields.spec import (
-    FieldSpec,
     _UNSET,
     _UNSET_TYPE,
+    FieldSpec,
     _coerce_to_str,
     _sanitize_string,
     resolve_fieldspecs,

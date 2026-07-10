@@ -6,7 +6,7 @@ consumers can correlate errors with the originating request without inspecting
 response headers.
 """
 
-from typing import Any, Optional, Union
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -22,7 +22,7 @@ from protean.exceptions import (
 from protean.utils.globals import g
 
 
-def _get_correlation_id() -> Optional[str]:
+def _get_correlation_id() -> str | None:
     """Read the active correlation ID from the domain context, if available.
 
     Prefers ``g.used_correlation_id`` (set by ``CommandProcessor.enrich()``)
@@ -37,7 +37,7 @@ def _get_correlation_id() -> Optional[str]:
     )
 
 
-def _error_body(error: Any, correlation_id: Optional[str]) -> dict[str, Any]:
+def _error_body(error: Any, correlation_id: str | None) -> dict[str, Any]:
     """Build the error response body, including ``correlation_id`` when present."""
     body: dict[str, Any] = {"error": error}
     if correlation_id is not None:
@@ -57,7 +57,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ValidationError)
     @app.exception_handler(InvalidDataError)
     async def validation_error_handler(
-        request: Request, exc: Union[ValidationError, InvalidDataError]
+        request: Request, exc: ValidationError | InvalidDataError
     ) -> JSONResponse:
         return JSONResponse(
             status_code=400,

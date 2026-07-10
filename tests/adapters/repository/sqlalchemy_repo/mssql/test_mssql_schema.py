@@ -1,12 +1,14 @@
 """Module to test MSSQL schema handling functionality"""
 
+import contextlib
+
 import pytest
 from sqlalchemy import inspect
 
 from protean import Domain
 from protean.adapters.repository.sqlalchemy import MssqlProvider
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer, Dict, List
+from protean.fields import Dict, Integer, List, String
 from tests.shared import MSSQL_URI
 
 
@@ -169,10 +171,8 @@ class TestMSSQLSchemaHandling:
                 provider = domain.providers["default"]
 
                 # Clean up any existing tables first
-                try:
-                    provider._drop_database_artifacts()
-                except Exception:
-                    pass  # Ignore if no tables exist
+                with contextlib.suppress(Exception):
+                    provider._drop_database_artifacts()  # Ignore if no tables exist
 
                 provider._create_database_artifacts()
 
@@ -252,9 +252,7 @@ class TestMSSQLSchemaHandling:
             result = provider.raw(query, {"name": "MSSQL Test Entity"})
 
             # Verify we get results by materializing them immediately
-            rows = []
-            for row in result:
-                rows.append(row)
+            rows = list(result)
 
             assert len(rows) >= 1
             # Find our record

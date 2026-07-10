@@ -12,7 +12,6 @@ Verifies that:
 from uuid import uuid4
 
 import pytest
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -23,7 +22,6 @@ from protean.fields import Identifier, String
 from protean.integrations.fastapi import DomainContextMiddleware
 from protean.utils.globals import current_domain, g
 from protean.utils.mixins import handle
-
 
 # ---------------------------------------------------------------------------
 # Domain elements

@@ -4,8 +4,8 @@ from typing import Any, ClassVar, TypeVar
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
 
-from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.exceptions import ValidationError
+from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.utils import (
     DomainObjects,
     _convert_str_values_to_list,
@@ -111,7 +111,7 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e))
+            raise ValidationError(convert_pydantic_errors(e)) from e
 
     def model_post_init(self, __context: Any) -> None:
         self.defaults()
@@ -157,12 +157,12 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
         return id(self)
 
     def __repr__(self) -> str:
-        return "<%s: %s>" % (self.__class__.__name__, self)
+        return f"<{self.__class__.__name__}: {self}>"
 
     def __str__(self) -> str:
-        return "%s object (%s)" % (
+        return "{} object ({})".format(
             self.__class__.__name__,
-            "{}".format(self.to_dict()),
+            f"{self.to_dict()}",
         )
 
     def __bool__(self) -> bool:
