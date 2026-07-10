@@ -45,39 +45,39 @@ classifiers = [
 ]
 
 dependencies = [
-    "bleach>=4.1.0",
+    "bleach>=6.4.0",
     "copier>=9.16.0,<10",
     "inflection>=0.5.1",
-    "ipython>=8.23,<10.0",
-    "marshmallow>=3.15.0",
+    "ipython>=9.15.0,<10.0",
+    "marshmallow>=4.3.0",
     "python-dateutil>=2.9.0.post0",
-    "typer>=0.12.3",
-    "fastapi>=0.110.0",
-    "jinja2>=3.1.0",
-    "uvicorn>=0.27.1",
-    "structlog>=24.1.0",
-    "werkzeug>=2.0.0",
-    "cffi>=1.16.5",
+    "typer>=0.26.8",
+    "fastapi>=0.139.0",
+    "jinja2>=3.1.6",
+    "uvicorn>=0.51.0",
+    "structlog>=26.1.0",
+    "werkzeug>=3.1.8",
+    "cffi>=2.1.0",
     "pydantic>=2.13.4,<3.0",
-    "greenlet>=3.0.3,<4",
+    "greenlet>=3.5.3,<4",
 ]
 
 [project.optional-dependencies]
-elasticsearch = ["elasticsearch>=8.18.0,<9.0.0"]
-redis = ["redis>=5.0.7,<8.1.0"]
-postgresql = ["sqlalchemy~=2.0.51", "psycopg2-binary>=2.9.9"]
+elasticsearch = ["elasticsearch>=9.4.1,<10.0.0"]
+redis = ["redis>=8.0.1,<8.1.0"]
+postgresql = ["sqlalchemy~=2.0.51", "psycopg2-binary>=2.9.12"]
 sqlite = ["sqlalchemy~=2.0.51"]
-mssql = ["sqlalchemy~=2.0.51", "pyodbc>=5.0.0"]
+mssql = ["sqlalchemy~=2.0.51", "pyodbc>=5.3.0"]
 message-db = ["message-db-py>=0.3.4"]
-flask = ["flask>=1.1.1"]
+flask = ["flask>=3.1.3"]
 sendgrid = ["sendgrid>=6.12.5"]
-dev = ["watchfiles>=0.21.0"]
+dev = ["watchfiles>=1.2.0"]
 telemetry = [
-    "opentelemetry-api>=1.20.0",
-    "opentelemetry-sdk>=1.20.0",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
-    "opentelemetry-instrumentation-fastapi>=0.41b0",
-    "opentelemetry-exporter-prometheus>=0.41b0",
+    "opentelemetry-api>=1.43.0",
+    "opentelemetry-sdk>=1.43.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.43.0",
+    "opentelemetry-instrumentation-fastapi>=0.64b0",
+    "opentelemetry-exporter-prometheus>=0.64b0",
 ]
 
 [project.scripts]
@@ -122,44 +122,44 @@ packages = ["src/protean"]
 
 [dependency-groups]
 dev = [
-    "check-manifest>=0.49",
-    "coverage>=7.3.2",
+    "check-manifest>=0.51",
+    "coverage>=7.15.0",
     "docutils>=0.23",
-    "pre-commit>=2.16.0",
-    "ruff>=0.15.20",
-    "twine>=4.0.2",
-    "nox>=2026.2.9",
-    "bump-my-version>=1.2.7",
+    "pre-commit>=4.6.0",
+    "ruff>=0.15.21",
+    "twine>=6.2.0",
+    "nox>=2026.4.10",
+    "bump-my-version>=1.4.1",
     "pyright>=1.1.411",
 ]
 test = [
-    "chardet>=3.0.2,<8",
+    "chardet>=7.4.3,<8",
     "diff-cover>=10.3.0",
     "mock==5.2.0",
-    "pytest-asyncio>=0.21.1",
+    "pytest-asyncio>=1.4.0",
     "pytest-mock==3.15.1",
-    "pytest>=8.2.1,<10.0.0",
+    "pytest>=9.1.1,<10.0.0",
     "mypy>=2.2.0",
-    "coverage>=7.8.0",
-    "httpx>=0.27.0",
-    "jsonschema>=4.20.0",
+    "coverage>=7.15.0",
+    "httpx>=0.28.1",
+    "jsonschema>=4.26.0",
     # Round-trip validation of generated Avro schemas (protean schema --format avro)
-    "fastavro>=1.9.0",
+    "fastavro>=1.12.2",
     # Portable open-file-descriptor probe for the fd-leak guard (PROTEAN_FD_REPORT); see #1168
-    "psutil>=5.9.0",
+    "psutil>=7.2.2",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",
-    "mkdocs-material>=9.5.15",
+    "mkdocs-material>=9.7.6",
     "mdx-include>=1.4.2",
-    "mkdocstrings[python]>=0.27,<2",
-    "pymdown-extensions>=10.21.2",
+    "mkdocstrings[python]>=1.0.4,<2",
+    "pymdown-extensions>=11.0.1",
 ]
 types = [
     "types-mock>=5.2.0.20260518",
-    "types-python-dateutil>=0.1.6",
-    "types-redis>=3.5.4",
-    "types-Werkzeug>=1.0.5",
+    "types-python-dateutil>=2.9.0.20260518",
+    "types-redis>=4.6.0.20241004",
+    "types-Werkzeug>=1.0.9",
 ]
 # Mutation testing. Installed only into the dedicated .venv-mutation environment
 # built by `make mutation` / scripts/mutation.sh — never the project .venv. That
@@ -168,7 +168,7 @@ types = [
 # mutmut 3.x segfaults ~20% of mutants there). See scripts/mutation.sh and
 # docs/community/contributing/mutation-testing.md for the full rationale.
 mutation = [
-    "mutmut>=3",
+    "mutmut>=3.6.0",
 ]
 
 ##################
