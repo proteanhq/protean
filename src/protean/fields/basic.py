@@ -4,6 +4,7 @@ import datetime
 
 from typing import Any, Callable, cast
 
+from protean._deprecation import warn_deprecated
 from protean.exceptions import ValidationError
 from protean.fields import Field
 from protean.fields.embedded import ValueObject
@@ -110,6 +111,11 @@ class Method(Field):
     """Helper field for custom methods associated with serializer fields"""
 
     def __init__(self, method_name: str, **kwargs: Any) -> None:
+        warn_deprecated(
+            "`Method` field",
+            removal="1.0.0",
+            alternative="Serializer fields are no longer supported.",
+        )
         self.method_name = method_name
         super().__init__(**kwargs)
 
@@ -126,6 +132,11 @@ class Nested(Field):
     """Helper field for nested objects associated with serializer fields"""
 
     def __init__(self, schema_name: str, many: bool = False, **kwargs: Any) -> None:
+        warn_deprecated(
+            "`Nested` field",
+            removal="1.0.0",
+            alternative="Serializer fields are no longer supported.",
+        )
         self.schema_name = schema_name
         self.many = many
         super().__init__(**kwargs)

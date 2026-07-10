@@ -69,14 +69,6 @@ A field that represents a list of values.
 - **`content_type`**: The type of items in the list. Defaults to `String`.
 Accepted field types are `Boolean`, `Date`, `DateTime`, `Float`, `Identifier`,
 `Integer`, `String`, and `Text`.
-- **`pickled`**: Whether the list should be pickled when stored. Defaults to
-`False`.
-
-!!!note
-    Some database implementations (like Postgresql) can store lists by default.
-    You can force it to store the pickled value as a Python object by
-    specifying `pickled=True`. Databases that don’t support lists simply store
-    the field as a python object.
 
 ```python hl_lines="10"
 --8<-- "guides/domain-definition/fields/container-fields/001.py:full"

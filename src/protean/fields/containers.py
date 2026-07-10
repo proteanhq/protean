@@ -7,13 +7,18 @@ import types as _types
 import typing
 from typing import TYPE_CHECKING, Any, cast
 
+from protean._deprecation import warn_deprecated
 from protean.exceptions import ValidationError
 from protean.fields.embedded import ValueObject as VODescriptor
 from protean.fields.spec import FieldSpec
 
+# Sentinel distinguishing "``pickled`` not passed" from an explicit
+# ``pickled=False``, so the deprecation warning fires on any explicit use.
+_PICKLED_UNSET: Any = object()
+
 
 def List(  # pyright: ignore[reportRedeclaration]
-    content_type: Any = None, pickled: bool = False, **kwargs: Any
+    content_type: Any = None, pickled: Any = _PICKLED_UNSET, **kwargs: Any
 ) -> FieldSpec:
     """A list field.
 
@@ -23,8 +28,17 @@ def List(  # pyright: ignore[reportRedeclaration]
     - A plain type: ``List(int)`` → ``list[int]``
     - ``None``: ``List()`` → ``list`` (untyped)
 
-    The ``pickled`` flag is a legacy parameter kept for backward compatibility.
+    The ``pickled`` flag is a dead legacy parameter — it is accepted but never
+    forwarded to the resulting ``FieldSpec`` and has no effect. It is deprecated
+    and will be removed in v1.0.0.
     """
+    if pickled is not _PICKLED_UNSET:
+        warn_deprecated(
+            "The `pickled` argument on `List`",
+            removal="1.0.0",
+            alternative="It has no effect.",
+        )
+
     # If content_type is a FieldSpec factory function (e.g. ``Integer`` rather
     # than ``Integer()``), call it to obtain a FieldSpec instance.
     if callable(content_type) and not isinstance(
@@ -88,7 +102,7 @@ def Dict(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
 if TYPE_CHECKING:
 
     def List(  # type: ignore[misc]
-        content_type: Any = None, pickled: bool = False, **kwargs: Any
+        content_type: Any = None, pickled: bool = ..., **kwargs: Any
     ) -> list[Any]: ...
 
     def Dict(**kwargs: Any) -> dict[str, Any]: ...  # type: ignore[misc]

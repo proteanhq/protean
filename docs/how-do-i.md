@@ -33,7 +33,7 @@ need by what you're trying to accomplish.
 | Define a domain event                           | [Events](./guides/domain-definition/events.md) |
 | Understand field arguments and options          | [Arguments](./reference/fields/arguments.md) |
 | Use simple scalar fields (String, Integer...)   | [Simple Fields](./reference/fields/simple-fields.md) |
-| Use container fields (List, Dict, Nested)       | [Container Fields](./reference/fields/container-fields.md) |
+| Use container fields (List, Dict)               | [Container Fields](./reference/fields/container-fields.md) |
 | Use association fields (HasOne, HasMany, Reference) | [Association Fields](./reference/fields/association-fields.md) |
 | Declare an index on an aggregate or entity      | [Declaring Indexes](./guides/domain-definition/indexes.md) |
 | Speed up a query that filters or sorts          | [Declaring Indexes](./guides/domain-definition/indexes.md) |

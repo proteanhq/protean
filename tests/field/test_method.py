@@ -1,10 +1,31 @@
 from datetime import datetime, timezone
 
+import pytest
+
+from protean._deprecation import RemovedInProtean10Warning
 from protean.fields import Method
 
 
 def utc_now():
     return datetime.now(timezone.utc)
+
+
+def test_method_is_deprecated():
+    """Instantiating a Method field warns it is removed at v1.0.0."""
+    # Match the concrete subject text so a copy-paste of the ``Nested`` message
+    # into ``Method.__init__`` would fail this test.
+    with pytest.warns(
+        RemovedInProtean10Warning, match=r"`Method` field is deprecated.*v1\.0\.0"
+    ) as record:
+        field = Method("fake_method")
+
+    # ``Method`` is a serializer field with no replacement element.
+    assert any(
+        "Serializer fields are no longer supported." in str(w.message) for w in record
+    )
+    # The field is still functional despite the deprecation.
+    assert field.method_name == "fake_method"
+    assert field._cast_to_type("x") == "x"
 
 
 def test_method_repr_and_str():

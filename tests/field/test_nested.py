@@ -1,4 +1,25 @@
+import pytest
+
+from protean._deprecation import RemovedInProtean10Warning
 from protean.fields import Nested
+
+
+def test_nested_is_deprecated():
+    """Instantiating a Nested field warns it is removed at v1.0.0."""
+    # Match the concrete subject text so a copy-paste of the ``Method`` message
+    # into ``Nested.__init__`` would fail this test.
+    with pytest.warns(
+        RemovedInProtean10Warning, match=r"`Nested` field is deprecated.*v1\.0\.0"
+    ) as record:
+        field = Nested("schema1")
+
+    # ``Nested`` is a serializer field with no replacement element.
+    assert any(
+        "Serializer fields are no longer supported." in str(w.message) for w in record
+    )
+    # The field is still functional despite the deprecation.
+    assert field.schema_name == "schema1"
+    assert field._cast_to_type("x") == "x"
 
 
 def test_nested_field_repr_and_str():

@@ -336,7 +336,7 @@ rules govern field representation:
 | `"list"` | `List` | Typed list container |
 | `"dict"` | `Dict` | Dictionary container |
 | `"value_object"` | `ValueObject(SomeVO)` | Embedded value object |
-| `"value_object_list"` | `ValueObjectList(SomeVO)` | List of embedded VOs |
+| `"value_object_list"` | `ValueObjectList` _(framework-internal)_ | List of embedded VOs |
 | `"has_one"` | `HasOne(SomeEntity)` | 1:1 child association |
 | `"has_many"` | `HasMany(SomeEntity)` | 1:N child association |
 | `"reference"` | `Reference(SomeAggregate)` | Back-reference to parent |
