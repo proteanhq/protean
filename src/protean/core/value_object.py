@@ -310,8 +310,8 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         if type(other) is not type(self):
             return False
         # The exact-type guard above guarantees ``other`` is the same
-        # ``BaseValueObject`` subclass; narrow for static checkers.
-        return self.to_dict() == cast("BaseValueObject", other).to_dict()
+        # ``BaseValueObject`` subclass, which static checkers narrow for us.
+        return self.to_dict() == other.to_dict()
 
     def __hash__(self) -> int:
         return hash(frozenset(self.to_dict().items()))
