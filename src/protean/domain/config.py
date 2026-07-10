@@ -189,7 +189,7 @@ def _default_config() -> dict[str, Any]:
             # subscription, and DLQ processing.
             "priority_lanes": {
                 "enabled": False,  # Off by default — opt in to two-lane routing
-                "threshold": 0,  # Priority below this routes to the backfill lane
+                "threshold": 0,  # Priority strictly below this routes to the backfill lane
                 "backfill_suffix": "backfill",  # Suffix for the backfill stream/DLQ
             },
         },
