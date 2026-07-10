@@ -158,6 +158,9 @@ tmp/*
 *.code-workspace
 # Local Claude Code config (not part of the project)
 /.claude
+# Claude Code guidance files — kept local for maintainer sessions, not shipped
+# in the public repo. Matches CLAUDE.md at any depth (root, docs/, tests/).
+CLAUDE.md
 
 # Poetry (legacy - removed in favor of uv)
 poetry.lock

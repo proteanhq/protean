@@ -696,7 +696,7 @@ def drain(
     domain = domain if domain is not None else current_domain
 
     # Local import: the server engine is a heavy subsystem, kept out of the
-    # module top so importing `protean.testing` stays cheap (CLAUDE.md #3).
+    # module top so importing `protean.testing` stays cheap.
     from protean.server.engine import Engine  # noqa: PLC0415
 
     for cycle in range(max_cycles):
@@ -706,7 +706,7 @@ def drain(
 
     # Reaching here means `until` was supplied (a `None` predicate returns on
     # the first cycle above) but stayed falsey for every pass. Surface the
-    # exhausted bound rather than swallowing it (CLAUDE.md: no silent caps).
+    # exhausted bound rather than swallowing it: no silent caps.
     warnings.warn(
         f"drain() exhausted max_cycles={max_cycles} before `until` became "
         "truthy; the awaited effect may not have settled. Raise max_cycles "

@@ -60,9 +60,6 @@ extra_javascript:
 exclude_docs: |
   adr/TEMPLATE.md
 
-not_in_nav: |
-  CLAUDE.md
-
 plugins:
   - privacy
   - search
