@@ -58,7 +58,10 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
 
     model_config = ConfigDict(extra="forbid", ignored_types=(str,))
 
-    _default_options: ClassVar[list[tuple[str, Any]]] = [("provider", "default")]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("provider", "default"),
+        ("suppress_checks", ()),
+    ]
 
     # Core email fields
     subject: str | None = None

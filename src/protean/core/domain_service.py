@@ -61,6 +61,7 @@ class BaseDomainService(Element, OptionsMixin):
 
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("part_of", None),
+        ("suppress_checks", ()),
     ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

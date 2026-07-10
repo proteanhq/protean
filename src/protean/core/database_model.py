@@ -47,6 +47,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
         ("database", None),
         ("part_of", None),
         ("schema_name", None),
+        ("suppress_checks", ()),
     ]
 
     @classmethod

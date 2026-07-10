@@ -235,6 +235,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
         ),
         ("limit", 100),
+        ("suppress_checks", ()),
     ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

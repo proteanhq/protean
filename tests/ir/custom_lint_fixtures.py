@@ -82,3 +82,44 @@ def error_level_rule(ir: dict) -> list[dict]:
 def non_dict_item_rule(ir: dict) -> list[dict]:
     """Returns a list containing a non-dict item."""
     return ["not a dict"]
+
+
+def repeated_code_rule(ir: dict) -> list[dict]:
+    """Returns three findings of the same code on distinct elements.
+
+    Carries only the minimal required keys (no ``category``/``rule``/
+    ``suggestion``) to prove the suppression stage tolerates their absence and
+    still subjects custom findings to the ``[lint].suppressions`` allow-list.
+    """
+    return [
+        {
+            "code": "REPEATED",
+            "element": f"test.element{i}",
+            "level": "info",
+            "message": f"Repeated finding {i}",
+        }
+        for i in range(3)
+    ]
+
+
+# Elements deliberately emitted OUT of sorted order (z, a, q, b, k) so that the
+# ``survivors.sort(...)`` stage in the allow-list is load-bearing: if the sort
+# were a no-op, the grandfathered-first-N set would differ.
+SCRAMBLED_ELEMENTS = ["test.z", "test.a", "test.q", "test.b", "test.k"]
+
+
+def scrambled_code_rule(ir: dict) -> list[dict]:
+    """Five findings of one code whose emission order ≠ ``(code, element)`` order.
+
+    Used to prove the deterministic total-order sort actually reorders findings
+    before the ``[lint].suppressions`` allow-list grandfathers the first N.
+    """
+    return [
+        {
+            "code": "SCRAMBLED",
+            "element": element,
+            "level": "info",
+            "message": "Scrambled finding",
+        }
+        for element in SCRAMBLED_ELEMENTS
+    ]

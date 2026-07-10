@@ -198,6 +198,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         ("subscription_type", None),
         ("subscription_profile", None),
         ("subscription_config", {}),
+        ("suppress_checks", ()),
     ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

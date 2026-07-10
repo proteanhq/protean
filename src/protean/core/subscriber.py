@@ -38,6 +38,7 @@ class BaseSubscriber(Element, OptionsMixin):
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("broker", "default"),
         ("stream", None),
+        ("suppress_checks", ()),
     ]
 
     @abstractmethod

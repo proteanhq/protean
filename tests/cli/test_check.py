@@ -279,3 +279,76 @@ class TestCheckQuietMode:
         assert "✗" not in result.output
         assert "!" not in result.output
         assert "·" not in result.output
+
+
+# Domain with warnings, opting out of warning gating (level="error")
+_LEVEL_ERROR_DOMAIN = "tests/support/domains/test32/domain32.py:domain"
+# Info-only domain gating on info (level="info")
+_LEVEL_INFO_DOMAIN = "tests/support/domains/test33/domain33.py:domain"
+# Domain with an invalid [lint].level value
+_LEVEL_INVALID_DOMAIN = "tests/support/domains/test34/domain34.py:domain"
+# Domain with a structural error AND level="error" (error floor invariant)
+_LEVEL_ERROR_WITH_ERROR_DOMAIN = "tests/support/domains/test35/domain35.py:domain"
+# Domain with a malformed [lint].suppressions value
+_BAD_SUPPRESSIONS_DOMAIN = "tests/support/domains/test36/domain36.py:domain"
+# Domain with a malformed [lint] value (not a table at all)
+_BAD_LINT_TABLE_DOMAIN = "tests/support/domains/test37/domain37.py:domain"
+
+
+@pytest.mark.no_test_domain
+class TestCheckLintLevelExitCode:
+    """``[lint].level`` sets the config-driven exit-code severity floor.
+
+    ``--level`` only affects display; ``[lint].level`` decides which severities
+    fail CI. The default ("warn") reproduces the historical exit codes, which
+    the surrounding suite already exercises (test25 warnings → 2, test27 info
+    → 0). These tests cover the two non-default floors and validation.
+    """
+
+    def test_default_warn_gates_warnings(self):
+        """Unset [lint].level defaults to "warn": warnings still exit 2."""
+        result = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN])
+        assert result.exit_code == 2
+
+    def test_default_warn_info_only_exits_zero(self):
+        """Unset [lint].level: an info-only domain exits 0 (info never gates)."""
+        result = runner.invoke(app, ["check", "-d", _INFO_DOMAIN])
+        assert result.exit_code == 0
+
+    def test_level_error_opts_out_of_warning_gating(self):
+        """[lint].level="error": a domain with warnings now exits 0."""
+        result = runner.invoke(app, ["check", "-d", _LEVEL_ERROR_DOMAIN])
+        assert result.exit_code == 0
+
+    def test_level_error_still_gates_errors(self):
+        """[lint].level="error": a domain that sets the floor to "error" and
+        has a structural error still exits 1 — the error floor is invariant."""
+        result = runner.invoke(app, ["check", "-d", _LEVEL_ERROR_WITH_ERROR_DOMAIN])
+        assert result.exit_code == 1
+
+    def test_malformed_suppressions_exits_with_clean_error(self):
+        """A non-integer [lint].suppressions count is a CLI error (exit 1),
+        not a traceback — validated before the IR build runs."""
+        result = runner.invoke(app, ["check", "-d", _BAD_SUPPRESSIONS_DOMAIN])
+        assert result.exit_code == 1
+        assert "[lint].suppressions" in result.output
+        assert "non-negative integer" in result.output
+
+    def test_malformed_lint_table_exits_with_clean_error(self):
+        """A non-table [lint] value (e.g. ``lint = 5``) is a CLI error (exit 1),
+        not a bare AttributeError — validated before any [lint] key is read."""
+        result = runner.invoke(app, ["check", "-d", _BAD_LINT_TABLE_DOMAIN])
+        assert result.exit_code == 1
+        assert "[lint]" in result.output
+        assert "must be a table" in result.output
+
+    def test_level_info_gates_info(self):
+        """[lint].level="info": an info-only domain now exits 2."""
+        result = runner.invoke(app, ["check", "-d", _LEVEL_INFO_DOMAIN])
+        assert result.exit_code == 2
+
+    def test_invalid_lint_level_exits_with_error(self):
+        """An invalid [lint].level value is a CLI error (exit 1)."""
+        result = runner.invoke(app, ["check", "-d", _LEVEL_INVALID_DOMAIN])
+        assert result.exit_code == 1
+        assert "Invalid [lint].level" in result.output

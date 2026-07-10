@@ -52,6 +52,7 @@ class BaseRepository(Element, OptionsMixin):
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("database", "ALL"),
         ("part_of", None),
+        ("suppress_checks", ()),
     ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseRepository":

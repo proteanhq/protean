@@ -14,10 +14,17 @@ Usage::
     # Quiet mode (counts only, for CI scripts)
     protean check --domain=my_app --quiet
 
-Exit codes:
-    0 — clean or info-only (no errors or warnings)
-    1 — errors found
-    2 — warnings only (no errors)
+Exit codes are gated by the ``[lint].level`` config key (default ``"warn"``),
+which sets the severity floor that fails CI. ``--level`` only affects display.
+
+    1 — errors found (always, regardless of ``[lint].level``)
+    2 — a gating finding at-or-above the floor (no errors)
+    0 — nothing at-or-above the floor
+
+``[lint].level`` maps to the floor as:
+    "error" — only errors gate (warnings and info exit 0)
+    "warn"  — errors and warnings gate; info exits 0 (default, historical behavior)
+    "info"  — errors, warnings, and info all gate
 """
 
 import json
@@ -38,6 +45,9 @@ _CONSOLE = Console()
 
 # Ordered from most severe to least — used for --level threshold filtering
 _LEVEL_ORDER = {"error": 0, "warning": 1, "info": 2}
+
+# Valid values for the ``[lint].level`` config key (the exit-code severity floor)
+_LINT_LEVELS = frozenset({"error", "warn", "info"})
 
 
 @handle_cli_exceptions("check")
@@ -92,6 +102,43 @@ def check(
 
     assert derived_domain is not None
 
+    # ``[lint].level`` is the config-driven exit-code floor (default "warn",
+    # which reproduces the historical exit codes). Validate up front, mirroring
+    # the ``--level`` validation, so a typo fails fast with a clear message.
+    # Imported locally to keep ``protean --help`` from eagerly pulling in the
+    # heavy IR builder subsystem.
+    from protean.ir.builder import (  # noqa: PLC0415
+        validate_lint_suppressions,
+        validate_lint_table,
+    )
+
+    lint_config = derived_domain.config.get("lint", {})
+    lint_table_error = validate_lint_table(lint_config)
+    if lint_table_error:
+        # Escape the literal ``[lint]`` so Rich does not parse it as markup.
+        escaped = lint_table_error.replace("[lint]", r"\[lint]")
+        print(f"[red]Invalid config: {escaped}[/red]")
+        raise typer.Exit(code=1)
+
+    lint_level = lint_config.get("level", "warn")
+    if lint_level not in _LINT_LEVELS:
+        # Escape the literal ``[lint]`` so Rich does not parse it as markup.
+        print(
+            rf"[red]Invalid \[lint].level: {lint_level!r}. "
+            f"Use 'error', 'warn', or 'info'.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    # ``[lint].suppressions`` is consumed by the IR builder; validate it here
+    # too so a config typo produces a clean CLI error instead of the builder's
+    # ``ConfigurationError`` traceback.
+    suppressions_error = validate_lint_suppressions(lint_config.get("suppressions", {}))
+    if suppressions_error:
+        # Escape the literal ``[lint]`` so Rich does not parse it as markup.
+        escaped = suppressions_error.replace("[lint]", r"\[lint]")
+        print(f"[red]Invalid config: {escaped}[/red]")
+        raise typer.Exit(code=1)
+
     result = derived_domain.check()
 
     # Preserve unfiltered counts for exit code — --level only affects display
@@ -128,11 +175,18 @@ def check(
     else:
         _print_rich(result)
 
-    # Exit codes use UNFILTERED counts — --level only affects display, not CI result
-    # 0=clean/info-only, 1=errors, 2=warnings only
+    # Exit codes use UNFILTERED counts — ``--level`` only affects display, not
+    # the CI result. ``[lint].level`` sets the severity floor that gates:
+    #   "error" → exit 1 on errors only
+    #   "warn"  → exit 1 on errors, exit 2 on warnings (default; info never gates)
+    #   "info"  → exit 1 on errors, exit 2 on any warning or info
     if unfiltered_counts["errors"] > 0:
         raise typer.Exit(code=1)
-    elif unfiltered_counts["warnings"] > 0:
+    if lint_level == "error":
+        return
+    if unfiltered_counts["warnings"] > 0:
+        raise typer.Exit(code=2)
+    if lint_level == "info" and unfiltered_counts["infos"] > 0:
         raise typer.Exit(code=2)
 
 

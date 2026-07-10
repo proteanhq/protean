@@ -4,6 +4,7 @@ import pytest
 
 from protean import Domain, handle
 from protean.core.aggregate import apply
+from protean.exceptions import ConfigurationError
 from protean.fields import Identifier
 from protean.fields.simple import Float, String
 from protean.ir.builder import IRBuilder
@@ -1058,3 +1059,558 @@ class TestCustomLintRules:
         assert "CUSTOM_CHECK" in codes
         assert "CUSTOM_A" in codes
         assert "CUSTOM_B" in codes
+
+
+# ── Enriched diagnostic schema (category / rule / suggestion) ────────
+
+
+def build_all_categories_domain() -> Domain:
+    """A domain that emits at least one diagnostic per built-in category."""
+    domain = Domain(name="AllCategories", root_path=".")
+
+    @domain.aggregate(deprecated={"since": "0.15", "removal": "1.0"})
+    class Order:  # deprecation + handler_completeness (no command handler)
+        name = String(max_length=100)
+
+    @domain.event(part_of=Order)
+    class OrderNudged:  # aggregate_design (EVENT_WITHOUT_DATA) + UNHANDLED_EVENT
+        pass
+
+    @domain.event(part_of=Order)
+    class OrderPlaced:  # versioning (UPCASTER_GAP) + UNHANDLED_EVENT
+        __version__ = 2
+        name = String()
+
+    domain.init(traverse=False)
+    return domain
+
+
+# The full set of built-in diagnostic codes. Every one must be exercised by
+# ``_all_builtin_diagnostics`` so the schema-enrichment assertions cover *every*
+# emit site — not just the handful ``build_all_categories_domain`` produces.
+_BUILTIN_CODES = frozenset(
+    {
+        "UNHANDLED_EVENT",
+        "UNUSED_COMMAND",
+        "ES_EVENT_MISSING_APPLY",
+        "PUBLISHED_NO_EXTERNAL_BROKER",
+        "AGGREGATE_WITHOUT_COMMAND_HANDLER",
+        "PROJECTION_WITHOUT_PROJECTOR",
+        "AGGREGATE_TOO_LARGE",
+        "HANDLER_TOO_BROAD",
+        "EVENT_WITHOUT_DATA",
+        "UPCASTER_GAP",
+        "DEPRECATED_ELEMENT",
+        "DEPRECATED_FIELD",
+        "DEPRECATED_OPTION",
+        "DEPRECATED_EMAIL",
+    }
+)
+
+
+def _build_completeness_domain() -> Domain:
+    """Emits UNUSED_COMMAND, PUBLISHED_NO_EXTERNAL_BROKER,
+    PROJECTION_WITHOUT_PROJECTOR, AGGREGATE_TOO_LARGE, HANDLER_TOO_BROAD,
+    DEPRECATED_FIELD (plus AGGREGATE_WITHOUT_COMMAND_HANDLER)."""
+    domain = Domain(name="EnrichCompleteness", root_path=".")
+    domain.config["lint"] = {"aggregate_size_limit": 1, "handler_breadth_limit": 1}
+
+    @domain.aggregate
+    class Order:
+        legacy = String(max_length=10, deprecated="0.15")  # DEPRECATED_FIELD
+
+    @domain.entity(part_of=Order)
+    class LineItem:  # two entities > size limit 1 → AGGREGATE_TOO_LARGE
+        sku = String(max_length=10)
+
+    @domain.entity(part_of=Order)
+    class Discount:
+        code = String(max_length=10)
+
+    @domain.command(part_of=Order)
+    class PlaceOrder:
+        name = String(required=True)
+
+    @domain.command(part_of=Order)
+    class CancelOrder:
+        name = String(required=True)
+
+    @domain.command(part_of=Order)
+    class ArchiveOrder:  # no handler → UNUSED_COMMAND
+        name = String(required=True)
+
+    @domain.command_handler(part_of=Order)
+    class OrderHandler:  # handles 2 > breadth limit 1 → HANDLER_TOO_BROAD
+        @handle(PlaceOrder)
+        def place(self, command):
+            pass
+
+        @handle(CancelOrder)
+        def cancel(self, command):
+            pass
+
+    @domain.event(part_of=Order, published=True)
+    class OrderShipped:  # published, no external broker → PUBLISHED_NO_EXTERNAL_BROKER
+        order_id = Identifier(required=True)
+
+    @domain.projection
+    class OrderView:  # no projector → PROJECTION_WITHOUT_PROJECTOR
+        order_id = Identifier(identifier=True)
+
+    domain.init(traverse=False)
+    return domain
+
+
+def _build_es_domain() -> Domain:
+    """Emits ES_EVENT_MISSING_APPLY and DEPRECATED_OPTION (the ``is_event_sourced``
+    alias emit site in ``_diagnose_deprecated_options``)."""
+    import warnings
+
+    domain = Domain(name="EnrichEs", root_path=".")
+
+    @domain.event(part_of="Wallet")
+    class WalletCreated:
+        wallet_id = Identifier(identifier=True)
+
+    @domain.event(part_of="Wallet")
+    class FundsAdded:
+        amount = Float(required=True)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # `is_event_sourced` alias is deprecated
+
+        @domain.aggregate(is_event_sourced=True)  # alias → DEPRECATED_OPTION
+        class Wallet:
+            balance = Float(default=0.0)
+
+            @apply
+            def created(self, event: WalletCreated) -> None:  # no @apply for FundsAdded
+                pass
+
+    domain.init(traverse=False)
+    return domain
+
+
+def _all_builtin_diagnostics() -> list[dict]:
+    """Diagnostics covering every built-in code, merged from focused domains.
+
+    A single domain cannot naturally emit all built-in codes without
+    interactions, so each code (or small compatible group) gets a minimal
+    domain. The merged list drives the schema-enrichment assertions across
+    *every* emit site — including the second ``DEPRECATED_OPTION`` site
+    (command ``published``) and ``DEPRECATED_EMAIL``, which are otherwise
+    unasserted.
+    """
+    import warnings
+
+    diagnostics: list[dict] = []
+    diagnostics += IRBuilder(build_all_categories_domain()).build()["diagnostics"]
+    diagnostics += IRBuilder(_build_completeness_domain()).build()["diagnostics"]
+    diagnostics += IRBuilder(_build_es_domain()).build()["diagnostics"]
+
+    # DEPRECATED_OPTION — command ``published`` emit site (distinct dict from
+    # the aggregate-alias site above; both are hand-copied and must be checked).
+    cmd_domain = Domain(name="EnrichCmdOption", root_path=".")
+
+    @cmd_domain.aggregate
+    class Order:
+        name = String(max_length=10)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+
+        @cmd_domain.command(part_of=Order, published=True)
+        class PlaceOrder:
+            name = String(required=True)
+
+    cmd_domain.init(traverse=False)
+    diagnostics += IRBuilder(cmd_domain).build()["diagnostics"]
+
+    # DEPRECATED_EMAIL — the email subsystem is itself deprecated.
+    email_domain = Domain(name="EnrichEmail")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+
+        @email_domain.email
+        class WelcomeMail:
+            pass
+
+    email_domain.init(traverse=False)
+    diagnostics += IRBuilder(email_domain).build()["diagnostics"]
+
+    return diagnostics
+
+
+@pytest.mark.no_test_domain
+class TestDiagnosticSchemaEnrichment:
+    """Every built-in diagnostic carries category, rule, and suggestion."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.domain = build_all_categories_domain()
+        self.ir = IRBuilder(self.domain).build()
+        self.diagnostics = self.ir["diagnostics"]
+
+    def test_every_builtin_emit_site_carries_enriched_keys(self):
+        """Assert across *all* built-in codes — not just the five
+        ``build_all_categories_domain`` produces. A missing/typo ``rule``/
+        ``suggestion`` key at any of the 16 emit sites fails here."""
+        diagnostics = _all_builtin_diagnostics()
+        observed = {d["code"] for d in diagnostics}
+        assert _BUILTIN_CODES <= observed, (
+            f"emit sites not exercised: {sorted(_BUILTIN_CODES - observed)}"
+        )
+        for d in diagnostics:
+            if d["code"] not in _BUILTIN_CODES:
+                continue  # custom/foreign findings are not schema-enriched
+            rule = d.get("rule")
+            assert d.get("category"), f"{d['code']} missing category"
+            assert isinstance(rule, dict), f"{d['code']} missing rule dict"
+            assert rule.get("rationale"), f"{d['code']} rule missing rationale"
+            assert rule.get("fix"), f"{d['code']} rule missing fix"
+            assert d.get("suggestion") == rule["fix"], f"{d['code']} suggestion drift"
+
+    def test_every_diagnostic_carries_the_enriched_keys(self):
+        assert len(self.diagnostics) > 0, "Expected diagnostics but got none"
+        for d in self.diagnostics:
+            assert d.get("category"), f"{d['code']} missing category"
+            rule = d.get("rule")
+            assert isinstance(rule, dict), f"{d['code']} missing rule dict"
+            assert rule.get("rationale"), f"{d['code']} rule missing rationale"
+            assert rule.get("fix"), f"{d['code']} rule missing fix"
+            assert d.get("suggestion"), f"{d['code']} missing suggestion"
+
+    def test_suggestion_defaults_to_rule_fix(self):
+        # The separate ``suggestion`` key is the forward-compat AI-override
+        # hook; for shipped rules it equals ``rule["fix"]`` (no override yet).
+        assert len(self.diagnostics) > 0
+        for d in self.diagnostics:
+            assert d["suggestion"] == d["rule"]["fix"]
+
+    def test_code_to_category_mapping(self):
+        by_code = {d["code"]: d["category"] for d in self.diagnostics}
+        assert by_code["AGGREGATE_WITHOUT_COMMAND_HANDLER"] == "handler_completeness"
+        assert by_code["EVENT_WITHOUT_DATA"] == "aggregate_design"
+        assert by_code["UPCASTER_GAP"] == "versioning"
+        assert by_code["DEPRECATED_ELEMENT"] == "deprecation"
+
+    def test_all_four_categories_present(self):
+        categories = {d["category"] for d in self.diagnostics}
+        assert {
+            "handler_completeness",
+            "aggregate_design",
+            "versioning",
+            "deprecation",
+        } <= categories
+
+
+# ── Per-element suppress_checks ─────────────────────────────────────
+
+
+def _codes_for(ir: dict, element_substr: str) -> list[str]:
+    """Codes of diagnostics whose element FQN contains ``element_substr``."""
+    return [
+        d["code"] for d in ir["diagnostics"] if element_substr in d.get("element", "")
+    ]
+
+
+@pytest.mark.no_test_domain
+class TestSuppressChecksOption:
+    """The per-element ``suppress_checks`` option drops the named codes."""
+
+    def test_aggregate_suppresses_its_own_code(self):
+        domain = Domain(name="SuppressAgg", root_path=".")
+
+        @domain.aggregate(suppress_checks=["AGGREGATE_WITHOUT_COMMAND_HANDLER"])
+        class Suppressed:
+            name = String(max_length=50)
+
+        @domain.aggregate
+        class Kept:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        # Suppressed aggregate: its finding is gone; Kept still has it. This
+        # also proves one element's suppression does not affect another.
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" not in _codes_for(ir, "Suppressed")
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" in _codes_for(ir, "Kept")
+
+    def test_event_suppression_via_registry_no_options_block(self):
+        """Events carry no IR ``options`` block, so suppression must resolve
+        from the registry — this is the load-bearing no-options-block path."""
+        domain = Domain(name="SuppressEvent", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order, suppress_checks=["UNHANDLED_EVENT"])
+        class OrderPlaced:
+            name = String()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "UNHANDLED_EVENT" not in _codes_for(ir, "OrderPlaced")
+
+    def test_command_inherits_suppress_checks(self):
+        """Commands pick up ``suppress_checks`` via the inherited option set
+        (``BaseMessageType`` → filtered comprehension in command.py)."""
+        domain = Domain(name="SuppressCommand", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.command(part_of=Order, suppress_checks=["UNUSED_COMMAND"])
+        class PlaceOrder:
+            name = String(required=True)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "UNUSED_COMMAND" not in _codes_for(ir, "PlaceOrder")
+
+    def test_unmatched_code_removes_nothing(self):
+        domain = Domain(name="SuppressNoMatch", root_path=".")
+
+        @domain.aggregate(suppress_checks=["NONEXISTENT_CODE"])
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" in _codes_for(ir, "Order")
+
+    def test_bare_string_is_normalised_to_single_code(self):
+        """A bare string (not a list) is treated as one code, not iterated
+        character-by-character — otherwise the finding silently survives."""
+        domain = Domain(name="SuppressBareString", root_path=".")
+
+        @domain.aggregate(suppress_checks="AGGREGATE_WITHOUT_COMMAND_HANDLER")
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" not in _codes_for(ir, "Order")
+
+
+# ── [lint].suppressions allow-list ──────────────────────────────────
+
+
+def _build_five_finding_domain(suppressions: dict | None = None) -> Domain:
+    """Domain with five AGGREGATE_WITHOUT_COMMAND_HANDLER findings.
+
+    One per aggregate (OrderA..OrderE), so the total order over survivors is
+    by aggregate FQN — deterministic and independent of rule execution order.
+    """
+    domain = Domain(name="AllowList", root_path=".")
+
+    @domain.aggregate
+    class OrderA:
+        name = String(max_length=50)
+
+    @domain.aggregate
+    class OrderB:
+        name = String(max_length=50)
+
+    @domain.aggregate
+    class OrderC:
+        name = String(max_length=50)
+
+    @domain.aggregate
+    class OrderD:
+        name = String(max_length=50)
+
+    @domain.aggregate
+    class OrderE:
+        name = String(max_length=50)
+
+    if suppressions is not None:
+        domain.config["lint"] = {"suppressions": suppressions}
+
+    domain.init(traverse=False)
+    return domain
+
+
+@pytest.mark.no_test_domain
+class TestSuppressionAllowList:
+    """``[lint].suppressions`` grandfathers the first N findings per code."""
+
+    def _handler_gap_elements(self, ir: dict) -> list[str]:
+        return sorted(
+            d["element"]
+            for d in ir["diagnostics"]
+            if d["code"] == "AGGREGATE_WITHOUT_COMMAND_HANDLER"
+        )
+
+    def test_count_grandfathers_first_n(self):
+        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 2})
+        ir = IRBuilder(domain).build()
+        survivors = self._handler_gap_elements(ir)
+        assert len(survivors) == 3
+
+    def test_survivors_are_the_deterministic_tail(self):
+        """The survivors are exactly those ranked *after* position N in the
+        (code, element, field, message) total order — not merely count − N."""
+        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 2})
+        ir = IRBuilder(domain).build()
+
+        all_elements = sorted(
+            fqn
+            for fqn in {
+                d["element"]
+                for d in IRBuilder(_build_five_finding_domain()).build()["diagnostics"]
+                if d["code"] == "AGGREGATE_WITHOUT_COMMAND_HANDLER"
+            }
+        )
+        assert len(all_elements) == 5
+        expected_survivors = all_elements[2:]  # first 2 grandfathered away
+        assert self._handler_gap_elements(ir) == expected_survivors
+
+    def test_build_is_deterministic(self):
+        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 2})
+        first = IRBuilder(domain).build()["diagnostics"]
+        second = IRBuilder(domain).build()["diagnostics"]
+        assert first == second
+
+    def test_absent_suppressions_keeps_all(self):
+        domain = _build_five_finding_domain()
+        ir = IRBuilder(domain).build()
+        assert len(self._handler_gap_elements(ir)) == 5
+
+    def test_zero_count_suppresses_nothing(self):
+        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 0})
+        ir = IRBuilder(domain).build()
+        assert len(self._handler_gap_elements(ir)) == 5
+
+    def test_custom_rule_findings_are_subject_to_allow_list(self):
+        """Custom findings with only the minimal keys are still allow-listed
+        and default to category='custom' — no KeyError on the absent keys."""
+        domain = Domain(name="CustomAllowList", root_path=".")
+        domain.config["lint"] = {
+            "rules": [f"{_FIXTURES}.repeated_code_rule"],
+            "suppressions": {"REPEATED": 1},
+        }
+
+        @domain.aggregate
+        class Widget:
+            label = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        repeated = [d for d in ir["diagnostics"] if d["code"] == "REPEATED"]
+        assert len(repeated) == 2  # 3 emitted, first 1 grandfathered
+        assert all(d["category"] == "custom" for d in repeated)
+
+    def test_grandfathered_set_follows_sort_not_emission_order(self):
+        """The load-bearing ``survivors.sort(...)``: findings emitted OUT of
+        sort order (z, a, q, b, k) must be grandfathered by *sorted* order, so
+        the first two removed are ``a``/``b`` — not the first two *emitted*
+        (``z``/``a``). Replacing the sort with a no-op would fail this."""
+        domain = Domain(name="ScrambledAllowList", root_path=".")
+        domain.config["lint"] = {
+            "rules": [f"{_FIXTURES}.scrambled_code_rule"],
+            "suppressions": {"SCRAMBLED": 2},
+        }
+
+        @domain.aggregate
+        class Widget:
+            label = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        survivors = sorted(
+            d["element"] for d in ir["diagnostics"] if d["code"] == "SCRAMBLED"
+        )
+        # sorted(z,a,q,b,k) = a,b,k,q,z; first two (a,b) grandfathered away.
+        assert survivors == ["test.k", "test.q", "test.z"]
+
+
+@pytest.mark.no_test_domain
+class TestSuppressionsConfigValidation:
+    """``[lint].suppressions`` must be a table of non-negative integers."""
+
+    def _domain_with_suppressions(self, suppressions) -> Domain:
+        domain = Domain(name="BadSuppressions", root_path=".")
+        domain.config["lint"] = {"suppressions": suppressions}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        return domain
+
+    def test_string_count_raises_configuration_error(self):
+        domain = self._domain_with_suppressions({"AGGREGATE_TOO_LARGE": "3"})
+        with pytest.raises(ConfigurationError, match="non-negative integer"):
+            IRBuilder(domain).build()
+
+    def test_negative_count_raises_configuration_error(self):
+        domain = self._domain_with_suppressions({"AGGREGATE_TOO_LARGE": -1})
+        with pytest.raises(ConfigurationError, match="non-negative integer"):
+            IRBuilder(domain).build()
+
+    def test_boolean_count_raises_configuration_error(self):
+        # ``bool`` is an ``int`` subclass — must be rejected, not read as 1.
+        domain = self._domain_with_suppressions({"AGGREGATE_TOO_LARGE": True})
+        with pytest.raises(ConfigurationError, match="non-negative integer"):
+            IRBuilder(domain).build()
+
+    def test_non_table_raises_configuration_error(self):
+        domain = self._domain_with_suppressions(5)
+        with pytest.raises(ConfigurationError, match="table of"):
+            IRBuilder(domain).build()
+
+    def test_valid_zero_count_does_not_raise(self):
+        domain = self._domain_with_suppressions(
+            {"AGGREGATE_WITHOUT_COMMAND_HANDLER": 0}
+        )
+        # Must build cleanly — 0 is a valid non-negative integer.
+        ir = IRBuilder(domain).build()
+        assert any(
+            d["code"] == "AGGREGATE_WITHOUT_COMMAND_HANDLER" for d in ir["diagnostics"]
+        )
+
+
+@pytest.mark.no_test_domain
+class TestLintTableConfigValidation:
+    """``[lint]`` itself must be a table — non-CLI entry points (``protean
+    generate``, materialize hooks, staleness detection) build the IR directly
+    without going through ``protean check``'s validation, so the builder must
+    reject a malformed ``[lint]`` before any ``[lint]``-scoped rule reads it."""
+
+    def test_non_table_lint_raises_configuration_error(self):
+        domain = Domain(name="BadLintTable", root_path=".")
+        domain.config["lint"] = 5
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        with pytest.raises(ConfigurationError, match=r"\[lint\] must be a table"):
+            IRBuilder(domain).build()
+
+    def test_non_table_lint_raises_before_aggregate_size_limit_read(self):
+        """``aggregate_size_limit`` (line ~1900) runs before the suppression
+        stage in ``_collect_diagnostics`` — the guard must fire before *any*
+        rule reads ``[lint]``, not just before ``_apply_suppressions``."""
+        domain = Domain(name="BadLintTableEarly", root_path=".")
+        domain.config["lint"] = "not-a-table"
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        with pytest.raises(ConfigurationError, match=r"\[lint\] must be a table"):
+            IRBuilder(domain).build()

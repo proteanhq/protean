@@ -72,6 +72,7 @@ class BaseQueryHandler(Element, HandlerMixin, OptionsMixin):
         # (``_set_defaults`` skips it when a concrete value is already on
         # ``meta_``), mirroring ``getattr(cls.meta_, "part_of", None)``.
         ("part_of", None),
+        ("suppress_checks", ()),
     ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseQueryHandler":
