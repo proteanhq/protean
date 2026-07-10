@@ -259,6 +259,75 @@ class TestTemplateGeneration:
                 if expected_value != "inline":
                     assert "broker" in domain_toml.lower()
 
+    def test_default_event_store_configuration_uses_singular_section(self):
+        """The framework only ever reads config["event_store"] (singular) --
+        assert the scaffold writes that section, not the plural
+        `[event_stores...]` the framework silently drops."""
+        with isolated_filesystem() as project_dir:
+            args = [
+                "new",
+                "test_event_store_memory",
+                "-o",
+                project_dir,
+                "--defaults",
+                "--skip-setup",
+                "-d",
+                "author_name=Test",
+                "-d",
+                "author_email=test@test.com",
+                "-d",
+                "event_store=memory",
+            ]
+            result = runner.invoke(app, args)
+            assert result.exit_code == 0
+
+            domain_toml = (
+                Path(project_dir)
+                / "test_event_store_memory"
+                / "src"
+                / "test_event_store_memory"
+                / "domain.toml"
+            ).read_text()
+
+            assert "[event_store]" in domain_toml
+            assert "[event_stores" not in domain_toml
+            assert 'provider = "memory"' in domain_toml
+
+    def test_message_db_event_store_configuration_uses_singular_section(self):
+        """MessageDB choice must render the singular `[event_store]` section
+        with the underscore provider value (`message_db`) that
+        `EVENT_STORE_PROVIDERS` resolves -- not the hyphenated `message-db`
+        template choice value, which would KeyError at Domain.init()."""
+        with isolated_filesystem() as project_dir:
+            args = [
+                "new",
+                "test_event_store_message_db",
+                "-o",
+                project_dir,
+                "--defaults",
+                "--skip-setup",
+                "-d",
+                "author_name=Test",
+                "-d",
+                "author_email=test@test.com",
+                "-d",
+                "event_store=message-db",
+            ]
+            result = runner.invoke(app, args)
+            assert result.exit_code == 0
+
+            domain_toml = (
+                Path(project_dir)
+                / "test_event_store_message_db"
+                / "src"
+                / "test_event_store_message_db"
+                / "domain.toml"
+            ).read_text()
+
+            assert "[event_store]" in domain_toml
+            assert "[event_stores" not in domain_toml
+            assert 'provider = "message_db"' in domain_toml
+
     def test_copier_answers_file_is_created(self):
         """Test that .copier-answers.yml is created with correct answers."""
         with isolated_filesystem() as project_dir:

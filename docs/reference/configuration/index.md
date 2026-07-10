@@ -132,6 +132,16 @@ c4bf0121035265bf44657217c33a7d041fe9e505961fc7da5d976aa0eaf5cf94
 
 *Do not reveal your secret key when posting questions or committing code.*
 
+### `env`
+
+Reserved for informational use. Protean does not read this key to select
+which environment overlay (`[staging]`, `[prod]`, etc.) to apply: overlay
+selection is driven entirely by the `PROTEAN_ENV` environment variable,
+described in [Multiple Environments](#multiple-environments). Setting `env`
+in `domain.toml` has no effect on Protean's own behavior.
+
+Default: `None`
+
 ### `identity_strategy`
 
 The default strategy to use to generate an identity value. Can be overridden
@@ -159,7 +169,13 @@ Whether to process commands synchronously or asynchronously.
 
 Supported options are `sync` and `async`.
 
-Default: `sync`
+Default: `async`
+
+!!! note
+    The `protean new` scaffold writes an explicit `command_processing = "sync"`
+    override into the generated `domain.toml` (see the sample above), which is
+    why new projects behave synchronously out of the box. The framework
+    default, absent any override, is `async`.
 
 ### `command_default_timeout`
 
@@ -181,7 +197,30 @@ Whether to process events synchronously or asynchronously.
 
 Supported options are `sync` and `async`.
 
-Default: `sync`
+Default: `async`
+
+!!! note
+    The `protean new` scaffold writes an explicit `event_processing = "sync"`
+    override into the generated `domain.toml` (see the sample above), which is
+    why new projects behave synchronously out of the box. The framework
+    default, absent any override, is `async`.
+
+### `message_processing`
+
+Whether to process incoming messages from external brokers (subscribers)
+synchronously or asynchronously.
+
+Supported options are `sync` and `async`.
+
+Default: `async`
+
+### `source_uri`
+
+Overrides the CloudEvents `source` URI-reference attribute stamped on
+outgoing event/command envelopes. When unset, Protean derives
+`urn:protean:<domain-name>` from the domain's name.
+
+Default: `None`
 
 ### `lenient_deserialization`
 
@@ -421,6 +460,13 @@ host = "127.0.0.1"           # Bind address (loopback; use "0.0.0.0" to expose)
 port = 8080                  # Listen port
 port_auto_increment = false  # Try 8081, 8082, ... if the port is taken
 
+# Two-lane event/command routing (backfill vs. primary stream)
+# Off by default; opt in by setting enabled = true.
+[server.priority_lanes]
+enabled = false               # Off by default; enable two-lane routing
+threshold = 0                 # Priority below this routes to the backfill lane
+backfill_suffix = "backfill"  # Suffix for the backfill stream/DLQ
+
 # Handler-specific overrides
 [server.subscriptions.OrderEventHandler]
 profile = "fast"
@@ -491,6 +537,22 @@ The server exposes `GET /healthz`, `GET /livez`, and `GET /readyz`. For
 the probe response bodies, readiness semantics, and FastAPI router
 factory, see
 [Server Hardening reference](../server/hardening.md#health-checks).
+
+#### Priority Lanes
+
+The `[server.priority_lanes]` section configures two-lane event/command
+routing: production messages flow through the primary stream while
+bulk/migration messages are routed to a separate backfill stream. It is
+**disabled by default**: set `enabled = true` to activate it.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `false` | Whether to activate priority lanes. When `false`, all messages use a single stream regardless of priority. |
+| `threshold` | int | `0` | Priority values strictly below this threshold are routed to the backfill lane. |
+| `backfill_suffix` | str | `"backfill"` | Suffix appended to the stream category to form the backfill stream name. |
+
+Read more in [Priority Lanes](../../concepts/async-processing/priority-lanes.md)
+and [Using Priority Lanes](../../guides/server/using-priority-lanes.md).
 
 ### `outbox`
 
@@ -581,6 +643,27 @@ Without `redis_url` configured, idempotency deduplication is disabled and
 `domain.process()` works normally with no errors.
 
 Read more in [Command Idempotency](../../patterns/command-idempotency.md).
+
+### `consume_idempotency`
+
+This section configures cleanup of the consume-side idempotency markers used
+by projectors to detect and skip already-processed messages (the
+`ProcessedMessage` marker; distinct from the command idempotency store
+above). See [ADR-0017](../../adr/0017-consume-side-idempotency-for-projectors.md).
+
+```toml
+[consume_idempotency.cleanup]
+retention_hours = 168  # Prune markers older than this (default: 7 days)
+batch_size = 5000      # Rows deleted per bounded cleanup batch
+```
+
+| Key | Description | Default |
+| --- | ----------- | ------- |
+| `cleanup.retention_hours` | Prune `ProcessedMessage` markers older than this window (hours). | `168` (7 days) |
+| `cleanup.batch_size` | Rows deleted per bounded cleanup batch. | `5000` |
+
+Read more in [Projectors](../../guides/consume-state/projectors.md) and the
+[`protean data idempotency`](../cli/data/idempotency.md) CLI command.
 
 ## Custom Attributes
 

@@ -62,17 +62,12 @@ password = ${ELASTICSEARCH_PASSWORD|}
 {%- endif %}
 
 # Default Event Store Configuration
-[event_stores.default]
-provider = "{{ event_store }}"
+[event_store]
 {%- if event_store == "message-db" %}
-database_uri = ${MESSAGE_DB_URL|"postgresql://message_store:message_store@localhost:5433/message_store"}
-{%- endif %}
-
-{%- if event_store == "message-db" %}
-# MessageDB Event Store
-[event_stores.message_db]
 provider = "message_db"
 database_uri = ${MESSAGE_DB_URL|"postgresql://message_store:message_store@localhost:5433/message_store"}
+{%- else %}
+provider = "{{ event_store }}"
 {%- endif %}
 
 # Default Broker Configuration
