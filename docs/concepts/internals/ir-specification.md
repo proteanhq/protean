@@ -108,10 +108,11 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 ### Version discipline in tooling
 
 `protean ir check` compares the stored baseline's `ir_version` against the
-current schema version before comparing checksums. A baseline built against an
-older schema is reported as a **version mismatch** (exit code 3), distinct from
-stale content (exit code 1), because checksums are not comparable across schema
-versions. Regenerate the baseline against the current schema to clear it.
+current schema version before comparing checksums. A baseline built against a
+different schema version is reported as a **version mismatch** (exit code 3),
+distinct from stale content (exit code 1), because checksums are not comparable
+across schema versions. Regenerate the baseline against the current schema to
+clear it.
 
 ---
 

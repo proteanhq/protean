@@ -34,6 +34,7 @@ from typing import Any
 import typer
 from rich import print
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 from typing_extensions import Annotated
 
@@ -574,7 +575,7 @@ def check(
       0 — IR is fresh (matches live domain)
       1 — IR is stale (domain has changed)
       2 — No materialized IR found in the given directory
-      3 — Schema version mismatch (baseline built against an older schema)
+      3 — Schema version mismatch (baseline built against a different schema version)
     """
     try:
         config = load_config(dir)
@@ -635,10 +636,15 @@ def _print_check_text(result: StalenessResult, protean_dir: str = ".protean") ->
             ".protean/ir.json[/bold] to update."
         )
     elif result.status == StalenessStatus.VERSION_MISMATCH:
+        # stored_version comes from the on-disk baseline; escape it so a stray
+        # rich-markup tag in a corrupt file cannot raise MarkupError here (this
+        # runs outside check()'s try/except).
+        stored = escape(result.stored_version or "?")
+        current = escape(result.current_version or "?")
         print(
             "[yellow]IR schema version mismatch — the materialized baseline was "
-            f"built against schema {result.stored_version}, but the current "
-            f"schema is {result.current_version}.[/yellow]"
+            f"built against schema {stored}, but the current "
+            f"schema is {current}.[/yellow]"
         )
         if result.ir_file:
             print(f"  file:    {result.ir_file}")

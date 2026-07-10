@@ -80,7 +80,9 @@ class StalenessResult:
     """Absolute path to the IR file that was checked, or ``None`` if absent."""
 
     stored_version: str | None = None
-    """``ir_version`` read from the materialized IR file, or ``None`` if absent."""
+    """``ir_version`` from the materialized IR, populated only on a
+    VERSION_MISMATCH outcome; ``None`` on every other outcome (FRESH/STALE/NO_IR)
+    even when the stored file carries an ``ir_version``."""
 
     current_version: str | None = None
     """Current schema version the live domain builds against, or ``None`` if
@@ -136,7 +138,8 @@ def check_staleness(
         - ``status=NO_IR`` — no ``ir.json`` found in *protean_dir*.
         - ``status=VERSION_MISMATCH`` — the stored ``ir_version`` differs from
           the current :data:`~protean.ir.SCHEMA_VERSION`; the baseline was
-          materialized against an older schema and must be regenerated.
+          materialized against a different schema version and must be
+          regenerated.
     """
     if config is None:
         config = load_config(protean_dir)
@@ -173,8 +176,11 @@ def check_staleness(
     # checksum is not comparable to a live checksum computed under the current
     # schema. Report VERSION_MISMATCH and short-circuit — building the live IR
     # would only yield a misleading STALE. A baseline with no ``ir_version``
-    # (legacy/bare) falls through to the checksum path unchanged.
-    stored_version: str | None = stored_ir.get("ir_version")
+    # (legacy/bare) falls through to the checksum path unchanged. A non-string
+    # ``ir_version`` (corrupt baseline) is coerced to ``str`` so the result
+    # field honours its ``str | None`` contract for JSON consumers.
+    raw_version = stored_ir.get("ir_version")
+    stored_version: str | None = str(raw_version) if raw_version is not None else None
     if stored_version is not None and stored_version != SCHEMA_VERSION:
         return StalenessResult(
             status=StalenessStatus.VERSION_MISMATCH,

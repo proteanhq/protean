@@ -387,8 +387,25 @@ class TestCheckStalenessVersionMismatch:
         assert result.stored_checksum == "sha256:whatever"
         assert result.ir_file is not None
 
-    def test_version_mismatch_short_circuits_before_building_live_ir(self):
-        # domain_checksum stays None because the live IR is never built.
+    def test_version_mismatch_when_stored_version_is_newer(self):
+        # The branch fires on ANY version difference, not only older baselines.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "9.9.9", "checksum": "sha256:whatever"},
+        )
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.status == StalenessStatus.VERSION_MISMATCH
+        assert result.stored_version == "9.9.9"
+        assert result.current_version == SCHEMA_VERSION
+
+    def test_version_mismatch_short_circuits_before_building_live_ir(self, monkeypatch):
+        # The live IR is never built: derive_domain is not called at all.
+        def _fail(*args, **kwargs):
+            raise AssertionError("derive_domain must not be called on mismatch")
+
+        monkeypatch.setattr("protean.ir.staleness.derive_domain", _fail)
         _write_ir(
             self._protean_dir,
             {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
@@ -396,7 +413,22 @@ class TestCheckStalenessVersionMismatch:
 
         result = check_staleness("publishing7.py", self._protean_dir)
 
+        assert result.status == StalenessStatus.VERSION_MISMATCH
         assert result.domain_checksum is None
+
+    def test_non_string_version_coerced_to_str(self):
+        # A corrupt baseline with a non-string ir_version still yields a
+        # str stored_version, honouring the StalenessResult field contract.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": 0.1, "checksum": "sha256:whatever"},
+        )
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.status == StalenessStatus.VERSION_MISMATCH
+        assert result.stored_version == "0.1"
+        assert isinstance(result.stored_version, str)
 
     def test_same_version_matching_checksum_is_fresh(self):
         # Negative #1: matching version + matching checksum → FRESH, not mismatch.
@@ -522,6 +554,23 @@ class TestCheckCLIText:
         assert "version mismatch" in result.output.lower()
         assert "0.0.9" in result.output
         assert SCHEMA_VERSION in result.output
+
+    def test_malformed_version_markup_does_not_crash(self):
+        # A stored ir_version carrying rich-markup syntax must not raise
+        # MarkupError from _print_check_text — it is escaped and exits 3.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "[/bold]", "checksum": "sha256:whatever"},
+        )
+        result = runner.invoke(
+            app,
+            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
+        )
+        # A clean typer.Exit surfaces as SystemExit; a MarkupError (the bug)
+        # would surface as a MarkupError with exit_code 1.
+        assert result.exit_code == 3
+        assert isinstance(result.exception, SystemExit)
+        assert "version mismatch" in result.output.lower()
 
 
 # ---------------------------------------------------------------------------

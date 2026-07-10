@@ -251,6 +251,13 @@ def _check_staleness_single(
             print(f"  stored:  {result.stored_checksum[:16]}...", file=sys.stderr)
         if result.domain_checksum:
             print(f"  current: {result.domain_checksum[:16]}...", file=sys.stderr)
+    elif result.status == StalenessStatus.VERSION_MISMATCH:
+        print(
+            f"IR schema version mismatch for {domain_module} — the baseline was "
+            f"built against schema {result.stored_version}, but the current "
+            f"schema is {result.current_version}.",
+            file=sys.stderr,
+        )
     else:
         print(
             f"No materialized IR found in '{target_path}'.",
