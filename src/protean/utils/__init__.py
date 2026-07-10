@@ -399,7 +399,7 @@ def _track_id_field(cls: type) -> None:
 _T = TypeVar("_T")
 
 
-def _normalize_deprecated(value: Any) -> dict[str, str] | None:
+def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] | None:
     """Normalize the ``deprecated`` decorator option.
 
     Accepts:
@@ -410,7 +410,7 @@ def _normalize_deprecated(value: Any) -> dict[str, str] | None:
 
     Raises :class:`ConfigurationError` on invalid input.
     """
-    if value is None or value is False:
+    if value is None or value is False:  # type: ignore[comparison-overlap]
         return None
     if isinstance(value, str):
         return {"since": value}
