@@ -115,7 +115,9 @@ class TestServerCommand:
         args = ["server", "--domain", "publishing7.py", "--debug"]
         result = runner.invoke(app, args)
 
-        assert result.exit_code != 0
+        # Exit code 2 is Click's usage error, decoupling the intent (unknown
+        # option) from a domain-load failure that also yields non-zero.
+        assert result.exit_code == 2
         assert "No such option: --debug" in result.output
 
     def test_server_raises_system_exit_on_error_in_run(self):
@@ -363,7 +365,7 @@ class TestServerCommand:
             ]
             result = runner.invoke(app, args)
 
-            assert result.exit_code != 0
+            assert result.exit_code == 2
             assert "No such option: --debug" in result.output
             MockReloader.assert_not_called()
 

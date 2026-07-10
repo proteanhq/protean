@@ -182,7 +182,7 @@ class TestObservatoryCommand:
                 ["observatory", "--domain", "publishing7.py", "--debug"],
             )
 
-            assert result.exit_code != 0
+            assert result.exit_code == 2
             assert "No such option: --debug" in _ANSI_RE.sub("", result.output)
 
     def test_observatory_default_logging_level(self):

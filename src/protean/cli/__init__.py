@@ -16,6 +16,7 @@ Why does this file exist, and why not put this in __main__?
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -186,7 +187,13 @@ def server(
 
     parent_obj = getattr(ctx, "obj", None) or {}
     if not parent_obj.get(CTX_LOG_CONFIGURED):
-        configure_logging(level="INFO")
+        # Honor PROTEAN_LOG_LEVEL for the bootstrap default so it reaches the
+        # supervisor's QueueListener too: in multi-worker mode the listener
+        # copies these handlers, and (with respect_handler_level) an INFO
+        # listener would drop DEBUG records the workers forward. This makes
+        # `PROTEAN_LOG_LEVEL=DEBUG` a working replacement for the removed
+        # `--debug` flag across single-worker, multi-worker, and reload runs.
+        configure_logging(level=os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
 
     with cli_exception_handler("server"):
         if workers < 1:

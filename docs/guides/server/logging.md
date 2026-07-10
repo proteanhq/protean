@@ -123,12 +123,13 @@ the full key list, types, defaults, and precedence rules.
 ## Override from the CLI
 
 Every `protean` command accepts three global flags that take precedence over
-`domain.toml`:
+`domain.toml`. They are defined on the top-level callback, so they must precede
+the subcommand:
 
 ```bash
-protean server --log-level DEBUG
-protean server --log-format json
-protean server --log-config ./logging.json      # full dictConfig JSON
+protean --log-level DEBUG server
+protean --log-format json server
+protean --log-config ./logging.json server      # full dictConfig JSON
 ```
 
 `--log-config` bypasses the environment-aware setup and applies the supplied
@@ -136,7 +137,11 @@ JSON via `logging.config.dictConfig()`. The correlation filter is still
 installed on the root logger afterwards.
 
 The `--debug` flag on `protean server` and `protean observatory` was removed in
-v0.17.0. Use `--log-level DEBUG` instead.
+v0.17.0. Use `protean --log-level DEBUG server` instead for the single-process
+server. For multi-worker (`--workers N`) or `--reload` runs, set
+`PROTEAN_LOG_LEVEL=DEBUG` instead: it is honored by both the supervisor (so the
+worker log listener passes DEBUG records through) and each spawned worker (which
+configures its own logging on startup).
 
 ---
 

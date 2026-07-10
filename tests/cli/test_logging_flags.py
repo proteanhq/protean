@@ -222,8 +222,44 @@ class TestRemovedDebugFlag:
                 ["server", "--domain", "publishing7.py", "--debug"],
             )
 
-            assert result.exit_code != 0
+            assert result.exit_code == 2
             assert "No such option: --debug" in result.output
+
+    def test_env_log_level_debug_replaces_debug_flag(self):
+        """PROTEAN_LOG_LEVEL=DEBUG drives the server bootstrap to DEBUG.
+
+        This is the documented multi-worker/reload replacement for the removed
+        ``--debug`` flag: the bootstrap must honor the env var rather than
+        forcing INFO, so the supervisor's log listener passes worker DEBUG
+        records through.
+        """
+        change_working_directory_to("test7")
+
+        with (
+            patch("protean.cli.Engine") as MockEngine,
+            patch.dict(os.environ, {"PROTEAN_LOG_LEVEL": "DEBUG"}),
+        ):
+            mock_engine = MockEngine.return_value
+            mock_engine.exit_code = 0
+
+            result = runner.invoke(app, ["server", "--domain", "publishing7.py"])
+
+            assert result.exit_code == 0
+            assert logging.getLogger().level == logging.DEBUG
+
+    def test_bootstrap_defaults_to_info_without_env(self, monkeypatch):
+        """Without PROTEAN_LOG_LEVEL, the server bootstrap stays at INFO."""
+        change_working_directory_to("test7")
+        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
+
+        with patch("protean.cli.Engine") as MockEngine:
+            mock_engine = MockEngine.return_value
+            mock_engine.exit_code = 0
+
+            result = runner.invoke(app, ["server", "--domain", "publishing7.py"])
+
+            assert result.exit_code == 0
+            assert logging.getLogger().level == logging.INFO
 
 
 class TestGlobalFlagsInHelpText:

@@ -1,5 +1,6 @@
 """CLI command for running the Protean Observatory observability server."""
 
+import os
 from typing import List
 
 import click
@@ -46,7 +47,9 @@ def observatory(
     ctx = click.get_current_context(silent=True)
     parent_obj = getattr(ctx, "obj", None) or {} if ctx else {}
     if not parent_obj.get(CTX_LOG_CONFIGURED):
-        configure_logging(level="INFO")
+        # Honor PROTEAN_LOG_LEVEL so `PROTEAN_LOG_LEVEL=DEBUG protean
+        # observatory` replaces the removed `--debug` flag.
+        configure_logging(level=os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
 
     if not domain:
         print("Error: at least one --domain is required")
