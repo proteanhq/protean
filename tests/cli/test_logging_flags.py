@@ -7,6 +7,7 @@ removed --debug flag is rejected in favour of --log-level DEBUG.
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +19,10 @@ from protean.cli import app
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
+
+# Rich/Typer styles the offending option name in error panels, so strip ANSI
+# escape codes before substring assertions to stay robust when CI forces color.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 @pytest.fixture(autouse=True)
@@ -223,7 +228,7 @@ class TestRemovedDebugFlag:
             )
 
             assert result.exit_code == 2
-            assert "No such option: --debug" in result.output
+            assert "No such option: --debug" in _ANSI_RE.sub("", result.output)
 
     def test_env_log_level_debug_replaces_debug_flag(self):
         """PROTEAN_LOG_LEVEL=DEBUG drives the server bootstrap to DEBUG.
@@ -271,9 +276,7 @@ class TestGlobalFlagsInHelpText:
 
     @staticmethod
     def _strip_ansi(text: str) -> str:
-        import re
-
-        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+        return _ANSI_RE.sub("", text)
 
     def test_help_shows_log_level(self):
         """protean --help shows --log-level in the output."""
