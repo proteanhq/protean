@@ -1366,3 +1366,94 @@ class TestIRBuilderFieldDeprecatedResolvedField:
             "since": "0.14",
             "removal": "0.17",
         }
+
+
+# =====================================================================
+# IR Diagnostics — DEPRECATED_EMAIL (email subsystem, epic #1102)
+# =====================================================================
+
+
+@pytest.mark.no_test_domain
+class TestIRDiagnosticsEmailDeprecated:
+    """The email subsystem is not projected into the IR, so its deprecation
+    diagnostic reads the registry directly. One INFO-level ``DEPRECATED_EMAIL``
+    per registered email element; none when no email is registered."""
+
+    @pytest.fixture(autouse=True)
+    def setup_domain(self) -> None:
+        self.domain = Domain(name="TestEmailDiag")
+
+    def test_registered_email_yields_diagnostic(self) -> None:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            @self.domain.email
+            class WelcomeMail:
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
+        assert len(email_diags) == 1
+        assert email_diags[0]["level"] == "info"
+        assert "WelcomeMail" in email_diags[0]["message"]
+        assert "v1.0.0" in email_diags[0]["message"]
+
+    def test_multiple_registered_emails_yield_one_diagnostic_each(self) -> None:
+        """One diagnostic *per* email element — guards against a regression that
+        appends a single diagnostic regardless of how many are registered."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            @self.domain.email
+            class WelcomeMail:
+                pass
+
+            @self.domain.email
+            class GoodbyeMail:
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
+        assert len(email_diags) == 2
+        messages = " ".join(d["message"] for d in email_diags)
+        assert "WelcomeMail" in messages
+        assert "GoodbyeMail" in messages
+
+    def test_no_email_no_diagnostic(self) -> None:
+        @self.domain.aggregate
+        class Order:
+            pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
+        assert email_diags == []
+
+    def test_internal_email_yields_no_diagnostic(self) -> None:
+        """Internal/auto-generated email records are skipped: the deprecation
+        diagnostic targets user code, not platform-internal registrations."""
+        import warnings
+
+        from protean.core.email import BaseEmail
+
+        class InternalMail(BaseEmail):
+            pass
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.domain.register(InternalMail, internal=True)
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
+        assert email_diags == []
