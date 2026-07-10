@@ -18,7 +18,7 @@
     "generated_at": {
       "type": "string",
       "format": "date-time",
-      "description": "ISO 8601 UTC timestamp of generation"
+      "description": "ISO 8601 UTC timestamp of generation (optional; omitted from canonical baselines)"
     },
     "checksum": {
       "type": "string",
@@ -62,7 +62,6 @@
   "required": [
     "$schema",
     "ir_version",
-    "generated_at",
     "checksum",
     "domain",
     "clusters",
@@ -128,6 +127,32 @@
       "additionalProperties": true
     },
 
+    "resilience": {
+      "type": "object",
+      "description": "Deadline/retry policy for a handler (sparse; only declared options appear)",
+      "properties": {
+        "timeout": {
+          "type": "number",
+          "description": "Default command validity window, in seconds"
+        },
+        "retries": {
+          "type": "integer",
+          "description": "Max retry attempts on transient exceptions"
+        },
+        "backoff": {
+          "type": "string",
+          "enum": ["exponential", "linear", "fixed"]
+        },
+        "retry_exceptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fully-qualified names of exception types treated as transient"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+
     "fields_map": {
       "type": "object",
       "description": "Map of field name to field definition",
@@ -167,7 +192,8 @@
         { "$ref": "#/$defs/field_value_object_list" },
         { "$ref": "#/$defs/field_has_one" },
         { "$ref": "#/$defs/field_has_many" },
-        { "$ref": "#/$defs/field_reference" }
+        { "$ref": "#/$defs/field_reference" },
+        { "$ref": "#/$defs/field_status" }
       ]
     },
 
@@ -325,6 +351,27 @@
         "auto_generated": { "type": "boolean" }
       },
       "required": ["kind", "target"],
+      "additionalProperties": true
+    },
+
+    "field_status": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "status" },
+        "type": { "const": "Status" },
+        "required": { "type": "boolean" },
+        "default": {},
+        "choices": { "type": "array", "items": { "type": "string" } },
+        "transitions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
       "additionalProperties": true
     },
 
@@ -487,6 +534,7 @@
             "element_type": { "const": "COMMAND_HANDLER" },
             "part_of": { "type": "string", "minLength": 1 },
             "stream_category": { "type": "string", "minLength": 1 },
+            "resilience": { "$ref": "#/$defs/resilience" },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": { "$ref": "#/$defs/standard_handler_map" }
           },
@@ -511,6 +559,7 @@
                 { "type": "null" }
               ]
             },
+            "resilience": { "$ref": "#/$defs/resilience" },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": { "$ref": "#/$defs/standard_handler_map" }
           },
@@ -542,7 +591,8 @@
           "type": "object",
           "properties": {
             "element_type": { "const": "REPOSITORY" },
-            "part_of": { "type": "string", "minLength": 1 }
+            "part_of": { "type": "string", "minLength": 1 },
+            "database": { "type": "string", "minLength": 1 }
           },
           "required": ["part_of"]
         }
@@ -561,7 +611,7 @@
             "database": { "type": "string", "minLength": 1 },
             "schema_name": { "type": "string", "minLength": 1 }
           },
-          "required": ["part_of", "database", "schema_name"]
+          "required": ["part_of"]
         }
       ]
     },
@@ -758,10 +808,16 @@
           "items": {
             "type": "object",
             "properties": {
-              "__type__": { "type": "string", "minLength": 1 },
-              "fqn": { "type": "string", "minLength": 1 }
+              "fields": {
+                "type": "object",
+                "description": "Field schemas for the published event",
+                "additionalProperties": { "$ref": "#/$defs/field" }
+              },
+              "fqn": { "type": "string", "minLength": 1 },
+              "type": { "type": "string", "minLength": 1 },
+              "version": { "type": "integer", "minimum": 1 }
             },
-            "required": ["__type__", "fqn"],
+            "required": ["fields", "fqn", "type", "version"],
             "additionalProperties": true
           }
         }

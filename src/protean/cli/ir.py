@@ -574,6 +574,7 @@ def check(
       0 — IR is fresh (matches live domain)
       1 — IR is stale (domain has changed)
       2 — No materialized IR found in the given directory
+      3 — Schema version mismatch (baseline built against an older schema)
     """
     try:
         config = load_config(dir)
@@ -596,6 +597,8 @@ def check(
             "domain_checksum": result.domain_checksum,
             "stored_checksum": result.stored_checksum,
             "ir_file": str(result.ir_file) if result.ir_file else None,
+            "stored_version": result.stored_version,
+            "current_version": result.current_version,
         }
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -606,6 +609,7 @@ def check(
         StalenessStatus.FRESH: 0,
         StalenessStatus.STALE: 1,
         StalenessStatus.NO_IR: 2,
+        StalenessStatus.VERSION_MISMATCH: 3,
     }
     raise typer.Exit(code=_exit_codes[result.status])
 
@@ -629,6 +633,18 @@ def _print_check_text(result: StalenessResult, protean_dir: str = ".protean") ->
         print(
             "\n  Run [bold]protean ir show --domain <module> --canonical > "
             ".protean/ir.json[/bold] to update."
+        )
+    elif result.status == StalenessStatus.VERSION_MISMATCH:
+        print(
+            "[yellow]IR schema version mismatch — the materialized baseline was "
+            f"built against schema {result.stored_version}, but the current "
+            f"schema is {result.current_version}.[/yellow]"
+        )
+        if result.ir_file:
+            print(f"  file:    {result.ir_file}")
+        print(
+            "\n  Regenerate the baseline: [bold]protean ir show --domain <module> "
+            "--canonical > .protean/ir.json[/bold]."
         )
     else:  # NO_IR
         location = str(result.ir_file) if result.ir_file else protean_dir

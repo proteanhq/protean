@@ -9,6 +9,8 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from protean.ir import SCHEMA_VERSION
+from protean.ir.config import CompatConfig
 from protean.ir.staleness import (
     StalenessResult,
     StalenessStatus,
@@ -115,6 +117,17 @@ class TestStalenessResult:
         assert StalenessStatus.FRESH.value == "fresh"
         assert StalenessStatus.STALE.value == "stale"
         assert StalenessStatus.NO_IR.value == "no_ir"
+        assert StalenessStatus.VERSION_MISMATCH.value == "version_mismatch"
+
+    def test_version_fields_default_to_none(self):
+        result = StalenessResult(
+            status=StalenessStatus.STALE,
+            domain_checksum="sha256:new",
+            stored_checksum="sha256:old",
+            ir_file=None,
+        )
+        assert result.stored_version is None
+        assert result.current_version is None
 
     def test_result_is_frozen(self):
         result = StalenessResult(
@@ -332,6 +345,106 @@ class TestCheckStalenessNoIR:
 
 
 # ---------------------------------------------------------------------------
+# TestCheckStalenessVersionMismatch — schema version discipline
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestCheckStalenessVersionMismatch:
+    """check_staleness() distinguishes an older-schema baseline from stale content."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_version_mismatch_when_stored_version_differs(self):
+        # Older schema version → VERSION_MISMATCH, regardless of checksum.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.status == StalenessStatus.VERSION_MISMATCH
+
+    def test_version_mismatch_populates_versions(self):
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.stored_version == "0.0.9"
+        assert result.current_version == SCHEMA_VERSION
+        assert result.stored_checksum == "sha256:whatever"
+        assert result.ir_file is not None
+
+    def test_version_mismatch_short_circuits_before_building_live_ir(self):
+        # domain_checksum stays None because the live IR is never built.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.domain_checksum is None
+
+    def test_same_version_matching_checksum_is_fresh(self):
+        # Negative #1: matching version + matching checksum → FRESH, not mismatch.
+        live_ir = _live_ir_for_test7()
+        assert live_ir["ir_version"] == SCHEMA_VERSION
+        _write_ir(self._protean_dir, live_ir)
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.status == StalenessStatus.FRESH
+
+    def test_same_version_differing_checksum_is_stale(self):
+        # Negative #1: matching version but stale content → STALE, not mismatch.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": SCHEMA_VERSION, "checksum": "sha256:outdated"},
+        )
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.status == StalenessStatus.STALE
+
+    def test_absent_version_falls_through_to_checksum(self):
+        # Negative #2: a bare baseline with no ir_version keeps legacy behavior
+        # (checksum comparison → STALE), never VERSION_MISMATCH.
+        _write_ir(self._protean_dir, {"checksum": "sha256:outdated"})
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.status == StalenessStatus.STALE
+
+    def test_disabled_gate_wins_over_version_mismatch(self):
+        # Negative #3: staleness disabled → FRESH even when versions differ.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+
+        result = check_staleness(
+            "publishing7.py",
+            self._protean_dir,
+            config=CompatConfig(staleness_enabled=False),
+        )
+
+        assert result.status == StalenessStatus.FRESH
+
+
+# ---------------------------------------------------------------------------
 # TestCheckCLIText — `protean ir check` text output
 # ---------------------------------------------------------------------------
 
@@ -396,6 +509,19 @@ class TestCheckCLIText:
             ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
         )
         assert "stored" in result.output.lower() or "current" in result.output.lower()
+
+    def test_version_mismatch_output_names_both_versions(self):
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+        result = runner.invoke(
+            app,
+            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
+        )
+        assert "version mismatch" in result.output.lower()
+        assert "0.0.9" in result.output
+        assert SCHEMA_VERSION in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +678,49 @@ class TestCheckCLIJSON:
         assert parsed["stored_checksum"] is None
         assert parsed["ir_file"] is None
 
+    def test_json_version_mismatch_has_status_and_versions(self):
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "check",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+                "-f",
+                "json",
+            ],
+        )
+        parsed = json.loads(result.output)
+        assert parsed["status"] == "version_mismatch"
+        assert parsed["stored_version"] == "0.0.9"
+        assert parsed["current_version"] == SCHEMA_VERSION
+
+    def test_json_fresh_has_null_versions(self):
+        # stored_version/current_version are only populated on a mismatch.
+        self._write_live_ir()
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "check",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+                "-f",
+                "json",
+            ],
+        )
+        parsed = json.loads(result.output)
+        assert parsed["stored_version"] is None
+        assert parsed["current_version"] is None
+
 
 # ---------------------------------------------------------------------------
 # TestCheckCLIExitCodes — exit code contract
@@ -601,6 +770,17 @@ class TestCheckCLIExitCodes:
             ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
         )
         assert result.exit_code == 2
+
+    def test_exit_3_on_version_mismatch(self):
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+        result = runner.invoke(
+            app,
+            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
+        )
+        assert result.exit_code == 3
 
     def test_exit_2_on_invalid_domain(self, tmp_path):
         result = runner.invoke(
@@ -702,3 +882,22 @@ class TestPrintCheckTextBranches:
 
         captured = capsys.readouterr()
         assert "/my/.protean" in captured.out
+
+    def test_version_mismatch_with_none_ir_file(self, capsys):
+        from protean.cli.ir import _print_check_text
+        from protean.ir.staleness import StalenessResult, StalenessStatus
+
+        result = StalenessResult(
+            status=StalenessStatus.VERSION_MISMATCH,
+            domain_checksum=None,
+            stored_checksum="sha256:whatever",
+            ir_file=None,
+            stored_version="0.0.9",
+            current_version="0.1.0",
+        )
+        # None ir_file must not raise; both versions appear in the message.
+        _print_check_text(result)
+
+        captured = capsys.readouterr()
+        assert "0.0.9" in captured.out
+        assert "0.1.0" in captured.out

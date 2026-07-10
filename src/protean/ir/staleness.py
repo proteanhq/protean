@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import NoDomainException
+from protean.ir import SCHEMA_VERSION
 from protean.ir.builder import IRBuilder
 from protean.ir.config import load_config
 from protean.utils.domain_discovery import derive_domain
@@ -52,6 +53,15 @@ class StalenessStatus(str, Enum):
     NO_IR = "no_ir"
     """No materialized IR file was found in the given directory."""
 
+    VERSION_MISMATCH = "version_mismatch"
+    """The materialized IR was produced against a different schema version.
+
+    A baseline whose ``ir_version`` differs from the current
+    :data:`~protean.ir.SCHEMA_VERSION` cannot be compared by checksum — the
+    checksum spaces are not comparable across schema versions. Regenerate the
+    baseline against the current schema.
+    """
+
 
 @dataclass(frozen=True)
 class StalenessResult:
@@ -68,6 +78,13 @@ class StalenessResult:
 
     ir_file: Path | None
     """Absolute path to the IR file that was checked, or ``None`` if absent."""
+
+    stored_version: str | None = None
+    """``ir_version`` read from the materialized IR file, or ``None`` if absent."""
+
+    current_version: str | None = None
+    """Current schema version the live domain builds against, or ``None`` if
+    the version was not compared (e.g. FRESH/STALE/NO_IR outcomes)."""
 
 
 def load_stored_ir(protean_dir: Path | str) -> tuple[dict[str, Any], Path] | None:
@@ -117,6 +134,9 @@ def check_staleness(
           disabled via config.
         - ``status=STALE`` — checksums differ.
         - ``status=NO_IR`` — no ``ir.json`` found in *protean_dir*.
+        - ``status=VERSION_MISMATCH`` — the stored ``ir_version`` differs from
+          the current :data:`~protean.ir.SCHEMA_VERSION`; the baseline was
+          materialized against an older schema and must be regenerated.
     """
     if config is None:
         config = load_config(protean_dir)
@@ -144,6 +164,26 @@ def check_staleness(
 
     stored_ir, ir_path = stored
     stored_checksum: str | None = stored_ir.get("checksum")
+
+    # ------------------------------------------------------------------ #
+    # 1a. Schema version discipline                                        #
+    # ------------------------------------------------------------------ #
+    # A baseline carrying an ``ir_version`` that differs from the current
+    # schema version was materialized against an older (or newer) schema; its
+    # checksum is not comparable to a live checksum computed under the current
+    # schema. Report VERSION_MISMATCH and short-circuit — building the live IR
+    # would only yield a misleading STALE. A baseline with no ``ir_version``
+    # (legacy/bare) falls through to the checksum path unchanged.
+    stored_version: str | None = stored_ir.get("ir_version")
+    if stored_version is not None and stored_version != SCHEMA_VERSION:
+        return StalenessResult(
+            status=StalenessStatus.VERSION_MISMATCH,
+            domain_checksum=None,
+            stored_checksum=stored_checksum,
+            ir_file=ir_path.resolve(),
+            stored_version=stored_version,
+            current_version=SCHEMA_VERSION,
+        )
 
     # ------------------------------------------------------------------ #
     # 2. Build the live IR and compute its checksum                        #

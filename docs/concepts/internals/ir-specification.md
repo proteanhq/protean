@@ -88,6 +88,30 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 2. **MAY add new keys**, top-level sections, or element type values in minor
    versions.
 3. **MUST include `ir_version`** in every document.
+4. **MUST bump the schema version on any structural change.** Any change to the
+   JSON Schema (a new key, section, or element type) bumps the IR schema minor
+   version. The `ir_version` a document carries is the version it was built
+   against.
+5. **MUST keep the published schema byte-identical to the runtime schema.** The
+   runtime schema at `src/protean/ir/schema/vX/schema.json` is authoritative;
+   `IRBuilder` emits against it and examples validate against it. The published
+   copy at `docs/assets/ir/vX/schema.json` MUST be a byte-for-byte copy. A test
+   (`tests/ir/test_schema_publication.py`) enforces this in CI, so re-publish the
+   docs copy in the same change that edits the runtime schema.
+
+!!! note "IR schema 1.0"
+
+    The IR schema stays at `0.x` while the framework is pre-1.0. IR schema
+    **1.0 is cut alongside framework 1.0**, in a separate release-time change,
+    once the structure is frozen.
+
+### Version discipline in tooling
+
+`protean ir check` compares the stored baseline's `ir_version` against the
+current schema version before comparing checksums. A baseline built against an
+older schema is reported as a **version mismatch** (exit code 3), distinct from
+stale content (exit code 1), because checksums are not comparable across schema
+versions. Regenerate the baseline against the current schema to clear it.
 
 ---
 
