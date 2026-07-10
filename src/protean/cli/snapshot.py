@@ -1,10 +1,9 @@
 """CLI commands for event-sourced aggregate snapshotting."""
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Annotated, cast
 
 import typer
 from rich import print
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.exceptions import (
@@ -68,7 +67,7 @@ def _resolve_aggregate(
 
     Returns the class or None (with error printed).
     """
-    for _, record in domain.registry._elements[DomainObjects.AGGREGATE.value].items():
+    for record in domain.registry._elements[DomainObjects.AGGREGATE.value].values():
         if record.cls.__name__ == aggregate_name:
             # registry stores element classes as ``Any``; narrow to the
             # aggregate class type expected by the snapshot APIs.
@@ -89,7 +88,7 @@ def _create_single(domain: "Domain", aggregate_name: str, identifier: str) -> No
         print(f"Snapshot created for {aggregate_name} with identifier {identifier}.")
     except (ObjectNotFoundError, IncorrectUsageError) as exc:
         print(f"Error: {exc.args[0]}")
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
 
 def _create_for_aggregate(domain: "Domain", aggregate_name: str) -> None:
@@ -103,7 +102,7 @@ def _create_for_aggregate(domain: "Domain", aggregate_name: str) -> None:
         print(f"Created {count} snapshot(s) for {aggregate_name}.")
     except IncorrectUsageError as exc:
         print(f"Error: {exc.args[0]}")
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
 
 def _create_all(domain: "Domain") -> None:

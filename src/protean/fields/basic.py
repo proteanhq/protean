@@ -1,17 +1,17 @@
 """Module for defining the ValueObjectList field descriptor and backward-compat re-exports"""
 
 import datetime
-
-from typing import Any, Callable, cast
+from collections.abc import Callable
+from typing import Any, ClassVar, cast
 
 from protean._deprecation import warn_deprecated
 from protean.exceptions import ValidationError
 from protean.fields import Field
-from protean.fields.embedded import ValueObject
 
 # Re-export FieldSpec factory functions for backward compatibility.
 # Old code uses ``from protean.fields.basic import String, Integer, ...``
 from protean.fields.containers import Dict, List
+from protean.fields.embedded import ValueObject
 from protean.fields.simple import (
     Auto,
     Boolean,
@@ -47,7 +47,7 @@ class ValueObjectList(Field):
     :type pickled: bool, optional
     """
 
-    default_error_messages = {
+    default_error_messages: ClassVar[dict[str, str]] = {
         "invalid": '"{value}" value must be of list type.',
         "invalid_content": "Invalid value {value}",
     }
@@ -75,10 +75,8 @@ class ValueObjectList(Field):
             self.fail("invalid", value=value)
 
         if isinstance(self.content_type, ValueObject):
-            new_value = []
             try:
-                for item in value:
-                    new_value.append(self.content_type._load(item))
+                new_value = [self.content_type._load(item) for item in value]
             except ValidationError:
                 self.fail("invalid_content", value=value)
             return new_value

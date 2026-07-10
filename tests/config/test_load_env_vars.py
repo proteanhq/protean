@@ -1,9 +1,9 @@
 import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-from mock import patch
 
 from protean.domain.config import Config2
 from protean.exceptions import ConfigurationError

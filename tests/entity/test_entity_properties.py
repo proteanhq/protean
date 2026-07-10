@@ -2,8 +2,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from protean.fields.resolved import ResolvedField
 from protean.exceptions import InvalidOperationError, ValidationError
+from protean.fields.resolved import ResolvedField
 from protean.utils.reflection import (
     _ID_FIELD_NAME,
     attributes,

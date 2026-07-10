@@ -241,21 +241,21 @@ class TestAssociationFields:
     """Association fields resolve to the correct generic types."""
 
     def test_has_one_resolves_to_optional_entity(self) -> None:
-        notes, errors = _get_field_results("association_fields.py")
+        notes, _errors = _get_field_results("association_fields.py")
         types = _extract_revealed_types(notes)
         # HasOne(OrderItem) → OrderItem | None
         assert "| None" in types[0]
         assert "OrderItem" in types[0]
 
     def test_has_many_resolves_to_list(self) -> None:
-        notes, errors = _get_field_results("association_fields.py")
+        notes, _errors = _get_field_results("association_fields.py")
         types = _extract_revealed_types(notes)
         # HasMany(OrderItem) → list[OrderItem]
         assert types[1].startswith("list[")
         assert "OrderItem" in types[1]
 
     def test_value_object_resolves_to_optional_vo(self) -> None:
-        notes, errors = _get_field_results("association_fields.py")
+        notes, _errors = _get_field_results("association_fields.py")
         types = _extract_revealed_types(notes)
         # ValueObject(Address) → Address | None
         assert "| None" in types[2]
@@ -290,7 +290,7 @@ class TestDecoratorAggregate:
     """@domain.aggregate injects BaseAggregate methods and auto-id."""
 
     def test_revealed_types(self) -> None:
-        notes, errors = _get_decorator_results("decorator_aggregate.py")
+        notes, _errors = _get_decorator_results("decorator_aggregate.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "str",  # customer.id (auto-injected)
@@ -299,7 +299,7 @@ class TestDecoratorAggregate:
         ]
 
     def test_no_attribute_errors(self) -> None:
-        notes, errors = _get_decorator_results("decorator_aggregate.py")
+        _notes, errors = _get_decorator_results("decorator_aggregate.py")
         # raise_ and _events should be accessible without errors
         assert not errors
 
@@ -308,7 +308,7 @@ class TestDecoratorEntity:
     """@domain.entity injects BaseEntity methods and auto-id."""
 
     def test_revealed_types(self) -> None:
-        notes, errors = _get_decorator_results("decorator_entity.py")
+        notes, _errors = _get_decorator_results("decorator_entity.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "str",  # addr.id (auto-injected)
@@ -316,7 +316,7 @@ class TestDecoratorEntity:
         ]
 
     def test_no_attribute_errors(self) -> None:
-        notes, errors = _get_decorator_results("decorator_entity.py")
+        _notes, errors = _get_decorator_results("decorator_entity.py")
         assert not errors
 
 
@@ -324,14 +324,14 @@ class TestDecoratorCommand:
     """@domain.command injects BaseCommand methods."""
 
     def test_revealed_types(self) -> None:
-        notes, errors = _get_decorator_results("decorator_command.py")
+        notes, _errors = _get_decorator_results("decorator_command.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "def () -> dict[str, Any]",  # cmd.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
-        notes, errors = _get_decorator_results("decorator_command.py")
+        _notes, errors = _get_decorator_results("decorator_command.py")
         assert not errors
 
 
@@ -339,14 +339,14 @@ class TestDecoratorEvent:
     """@domain.event injects BaseEvent methods."""
 
     def test_revealed_types(self) -> None:
-        notes, errors = _get_decorator_results("decorator_event.py")
+        notes, _errors = _get_decorator_results("decorator_event.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "def () -> dict[str, Any]",  # evt.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
-        notes, errors = _get_decorator_results("decorator_event.py")
+        _notes, errors = _get_decorator_results("decorator_event.py")
         assert not errors
 
 
@@ -354,14 +354,14 @@ class TestDecoratorValueObject:
     """@domain.value_object injects BaseValueObject methods."""
 
     def test_revealed_types(self) -> None:
-        notes, errors = _get_decorator_results("decorator_value_object.py")
+        notes, _errors = _get_decorator_results("decorator_value_object.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "def () -> dict[str, Any]",  # money.to_dict
         ]
 
     def test_no_attribute_errors(self) -> None:
-        notes, errors = _get_decorator_results("decorator_value_object.py")
+        _notes, errors = _get_decorator_results("decorator_value_object.py")
         assert not errors
 
 
@@ -369,7 +369,7 @@ class TestDecoratorCrossUsage:
     """Cross-type usage: decorator with parens, explicit inheritance."""
 
     def test_revealed_types(self) -> None:
-        notes, errors = _get_decorator_results("decorator_cross_usage.py")
+        notes, _errors = _get_decorator_results("decorator_cross_usage.py")
         types = _extract_revealed_types(notes)
         assert types == [
             "str",  # order.id (with parens)
@@ -378,7 +378,7 @@ class TestDecoratorCrossUsage:
         ]
 
     def test_no_attribute_errors(self) -> None:
-        notes, errors = _get_decorator_results("decorator_cross_usage.py")
+        _notes, errors = _get_decorator_results("decorator_cross_usage.py")
         assert not errors
 
 
@@ -395,13 +395,13 @@ class TestDecoratorNonDomain:
     """
 
     def test_no_base_injection_for_non_domain(self) -> None:
-        notes, errors = _get_decorator_results("decorator_non_domain.py")
+        notes, _errors = _get_decorator_results("decorator_non_domain.py")
         types = _extract_revealed_types(notes)
         # Should reveal str for obj.name, NOT inject BaseAggregate methods
         assert "str" in types
 
     def test_no_attribute_errors_for_non_domain(self) -> None:
-        notes, errors = _get_decorator_results("decorator_non_domain.py")
+        _notes, errors = _get_decorator_results("decorator_non_domain.py")
         # Should not have attribute errors (we're not accessing injected methods)
         assert not errors
 

@@ -198,7 +198,7 @@ class HealthServer:
                 writer.write(_json_response(404, {"error": "Not Found"}))
 
             await writer.drain()
-        except (asyncio.TimeoutError, ConnectionResetError, BrokenPipeError):
+        except (TimeoutError, ConnectionResetError, BrokenPipeError):
             pass
         except Exception:
             logger.debug("Health server connection error", exc_info=True)

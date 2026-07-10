@@ -2,8 +2,8 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields.basic import String, Integer
-from protean.fields.association import Reference, HasMany, HasOne
+from protean.fields.association import HasMany, HasOne, Reference
+from protean.fields.basic import Integer, String
 from protean.utils.reflection import attributes
 
 

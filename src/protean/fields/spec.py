@@ -6,11 +6,13 @@ It is consumed during class creation and translated into Pydantic-compatible
 Pydantic's native machinery remains — FieldSpec itself is not stored on the class.
 """
 
+import contextlib
 import datetime as _dt
 import decimal
 import warnings
+from collections.abc import Callable, Iterable
 from enum import Enum
-from typing import Annotated, Any, Callable, Iterable, Literal, Optional
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from pydantic import AfterValidator, BeforeValidator
@@ -21,7 +23,7 @@ from protean.fields.base import (
     EMPTY_VALUES,
     normalize_field_renamed_from,
 )
-from protean.utils import _normalize_deprecated, _generate_identity
+from protean.utils import _generate_identity, _normalize_deprecated
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +171,7 @@ class FieldSpec:
             and self.default is _UNSET
             and (not self.identifier or is_increment_id)
         ):
-            resolved = Optional[resolved]
+            resolved = resolved | None
 
         return resolved
 
@@ -476,10 +478,8 @@ def resolve_fieldspecs(cls: type) -> None:
 
     # Remove FieldSpec objects from namespace so Pydantic doesn't see them
     for name in names_to_remove:
-        try:
+        with contextlib.suppress(AttributeError):
             delattr(cls, name)
-        except AttributeError:
-            pass
 
     # 2. Scan annotations for annotation-style FieldSpecs
     for name, annot_value in list(own_annots.items()):

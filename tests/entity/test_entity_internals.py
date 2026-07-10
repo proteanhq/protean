@@ -5,7 +5,7 @@ import copy
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity, _ID_FIELD_NAME
+from protean.core.entity import _ID_FIELD_NAME, BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import (
@@ -166,7 +166,7 @@ class TestEntityDeepCopy:
         object.__setattr__(order, "__pydantic_private__", None)
         copied = order.__deepcopy__({})
         assert copied is not order
-        assert getattr(copied, "__pydantic_private__") is None
+        assert copied.__pydantic_private__ is None
 
 
 # ---------------------------------------------------------------------------

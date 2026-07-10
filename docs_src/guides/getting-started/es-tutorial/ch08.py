@@ -15,7 +15,6 @@ from protean.exceptions import ValidationError
 from protean.fields import DateTime, Float, Identifier, Integer, String
 from protean.utils.globals import current_domain
 
-
 # --8<-- [start:domain_setup]
 domain = Domain("fidelis")
 
@@ -82,7 +81,7 @@ class Account:
         )
         return account
 
-    def deposit(self, amount: float, reference: str = None) -> None:
+    def deposit(self, amount: float, reference: str | None = None) -> None:
         if amount <= 0:
             raise ValidationError({"amount": ["Deposit amount must be positive"]})
         self.raise_(
@@ -93,7 +92,7 @@ class Account:
             )
         )
 
-    def withdraw(self, amount: float, reference: str = None) -> None:
+    def withdraw(self, amount: float, reference: str | None = None) -> None:
         if amount <= 0:
             raise ValidationError({"amount": ["Withdrawal amount must be positive"]})
         self.raise_(
@@ -104,7 +103,7 @@ class Account:
             )
         )
 
-    def close(self, reason: str = None) -> None:
+    def close(self, reason: str | None = None) -> None:
         self.raise_(
             AccountClosed(
                 account_id=str(self.id),

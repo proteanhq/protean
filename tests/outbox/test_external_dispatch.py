@@ -31,7 +31,6 @@ from protean.utils.eventing import (
 )
 from protean.utils.outbox import Outbox, OutboxStatus
 
-
 # ---------------------------------------------------------------------------
 # Domain elements
 # ---------------------------------------------------------------------------

@@ -9,10 +9,10 @@ without having to manually configure the application.
 
 import sys
 import typing
+from typing import Annotated
 
 import typer
 from IPython.terminal.embed import InteractiveShellEmbed
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
@@ -31,7 +31,7 @@ def shell(
         domain_instance = derive_domain(domain)
     except NoDomainException as exc:
         logger.error(f"Error loading Protean domain: {exc.args[0]}")
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
     if domain_instance is None:
         logger.error("Could not derive a Protean domain")

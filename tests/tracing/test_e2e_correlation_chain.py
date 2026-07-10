@@ -11,7 +11,6 @@ Verifies that correlation_id and causation_id flow correctly across:
 from uuid import uuid4
 
 import pytest
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
@@ -26,7 +25,6 @@ from protean.integrations.fastapi import DomainContextMiddleware
 from protean.server import Engine
 from protean.utils.eventing import Message
 from protean.utils.globals import current_domain
-
 from tests.tracing.elements import (
     ConfirmOrder,
     Order,

@@ -100,8 +100,8 @@ class InfrastructureManager:
             except Exception as e:
                 raise ConfigurationError(
                     f"Failed to initialize {label} for provider "
-                    f"'{provider_name}': {str(e)}"
-                )
+                    f"'{provider_name}': {e!s}"
+                ) from e
 
     def initialize_outbox(self) -> None:
         """Initialize outbox repositories for all managed providers."""
@@ -158,14 +158,14 @@ class InfrastructureManager:
         runs.
         """
         # Force DAO creation for outbox repos so their tables are included
-        for _provider_name, outbox_repo in self.outbox_repos.items():
+        for outbox_repo in self.outbox_repos.values():
             outbox_repo._dao  # noqa: B018
 
         # Same for the consume-side idempotency marker tables.
-        for _provider_name, pm_repo in self.processed_message_repos.items():
+        for pm_repo in self.processed_message_repos.values():
             pm_repo._dao  # noqa: B018
 
-        for _, provider in self._domain.providers.items():
+        for provider in self._domain.providers.values():
             if not provider.managed:
                 continue
             provider._create_database_artifacts()
@@ -185,9 +185,9 @@ class InfrastructureManager:
                 "in your domain configuration."
             )
         # Force DAO creation for outbox repos, then create pending tables
-        for _provider_name, outbox_repo in self.outbox_repos.items():
+        for outbox_repo in self.outbox_repos.values():
             outbox_repo._dao  # noqa: B018
-        for _, provider in self._domain.providers.items():
+        for provider in self._domain.providers.values():
             if not provider.managed:
                 continue
             provider._create_database_artifacts()  # Idempotent
@@ -204,7 +204,7 @@ class InfrastructureManager:
         # Ensure provider metadata is populated (idempotent)
         self.setup_database()
 
-        for _, provider in domain.providers.items():
+        for provider in domain.providers.values():
             if not provider.managed:
                 continue
             provider._data_reset()
@@ -216,7 +216,7 @@ class InfrastructureManager:
 
         Providers with ``managed = false`` are skipped.
         """
-        for _, provider in self._domain.providers.items():
+        for provider in self._domain.providers.values():
             if not provider.managed:
                 continue
             provider._drop_database_artifacts()

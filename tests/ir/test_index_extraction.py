@@ -70,7 +70,7 @@ class TestIndexExtraction:
         assert builder._extract_indexes(Plain) == []
 
     def test_schema_includes_x_protean_indexes(self):
-        domain, product_cls = _indexed_domain()
+        domain, _product_cls = _indexed_domain()
         ir = domain.to_ir()
 
         # Locate the Product aggregate IR entry.

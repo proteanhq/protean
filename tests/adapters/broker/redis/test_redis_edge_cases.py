@@ -537,11 +537,14 @@ class TestRedisEdgeCases:
         broker.redis_instance = mock_redis
 
         # Mock Redis.from_url to also fail
-        with patch(
-            "redis.Redis.from_url", side_effect=Exception("Cannot create connection")
+        with (
+            patch(
+                "redis.Redis.from_url",
+                side_effect=Exception("Cannot create connection"),
+            ),
+            caplog.at_level(logging.ERROR),
         ):
-            with caplog.at_level(logging.ERROR):
-                result = broker._ensure_connection()
+            result = broker._ensure_connection()
 
         # Should return False and log errors
         assert result is False

@@ -7,8 +7,9 @@ imports every subcommand module, so subcommand modules cannot import from
 
 import functools
 import sys
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich import print
@@ -60,7 +61,7 @@ def load_domain(domain_path: str) -> "Domain":
         msg = f"Error loading Protean domain: {exc.args[0]}"
         print(msg)
         logger.error(msg)
-        raise typer.Abort()
+        raise typer.Abort() from exc
 
     assert derived_domain is not None
     derived_domain.init()

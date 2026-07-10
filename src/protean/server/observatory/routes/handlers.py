@@ -16,7 +16,7 @@ import json
 import logging
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, List, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Path, Query
 from fastapi.responses import JSONResponse
@@ -54,7 +54,7 @@ _THROUGHPUT_BUCKET_S = 10
 # ---------------------------------------------------------------------------
 
 
-def _get_redis(domains: List[Domain]) -> Any:
+def _get_redis(domains: list[Domain]) -> Any:
     """Get a Redis connection from the first domain's broker.
 
     Returns the live ``redis.Redis`` client (typed ``Any`` — the ``redis``
@@ -175,7 +175,7 @@ def collect_handler_metadata(domains: list[Domain]) -> list[dict[str, Any]]:
         domain_name = domain.name
         for attr, class_type in registry_attrs:
             registry_dict = getattr(domain.registry, attr, {})
-            for _name, record in registry_dict.items():
+            for record in registry_dict.values():
                 handler_cls = record.cls
                 handler_type = _handler_type_label(class_type)
 

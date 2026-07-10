@@ -1,6 +1,6 @@
 """Tests that the async engine rejects commands whose deadline elapsed in queue."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -67,7 +67,7 @@ def _message_with_deadline(test_domain, deadline):
 
 @pytest.mark.asyncio
 async def test_expired_command_is_skipped_not_failed(test_domain):
-    past = datetime.now(timezone.utc) - timedelta(seconds=1)
+    past = datetime.now(UTC) - timedelta(seconds=1)
     message = _message_with_deadline(test_domain, past)
 
     engine = Engine(domain=test_domain, test_mode=True)
@@ -83,7 +83,7 @@ async def test_expired_command_is_skipped_not_failed(test_domain):
 
 @pytest.mark.asyncio
 async def test_non_expired_command_is_handled(test_domain):
-    future = datetime.now(timezone.utc) + timedelta(minutes=5)
+    future = datetime.now(UTC) + timedelta(minutes=5)
     message = _message_with_deadline(test_domain, future)
 
     engine = Engine(domain=test_domain, test_mode=True)

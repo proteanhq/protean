@@ -79,21 +79,21 @@ class Account:
         )
         return account
 
-    def deposit(self, amount: float, reference: str = None) -> None:
+    def deposit(self, amount: float, reference: str | None = None) -> None:
         if amount <= 0:
             raise ValidationError({"amount": ["Deposit amount must be positive"]})
         self.raise_(
             DepositMade(account_id=str(self.id), amount=amount, reference=reference)
         )
 
-    def withdraw(self, amount: float, reference: str = None) -> None:
+    def withdraw(self, amount: float, reference: str | None = None) -> None:
         if amount <= 0:
             raise ValidationError({"amount": ["Withdrawal amount must be positive"]})
         self.raise_(
             WithdrawalMade(account_id=str(self.id), amount=amount, reference=reference)
         )
 
-    def close(self, reason: str = None) -> None:
+    def close(self, reason: str | None = None) -> None:
         self.raise_(AccountClosed(account_id=str(self.id), reason=reason))
 
     @apply

@@ -22,5 +22,5 @@ class DummyEmailProvider(BaseEmailProvider):
     def send_email(self, email_message: "BaseEmail") -> bool:
         """Output message into log"""
 
-        logger.debug("Email message dispatched: %s" % email_message)
+        logger.debug(f"Email message dispatched: {email_message}")
         return True

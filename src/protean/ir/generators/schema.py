@@ -295,20 +295,16 @@ def _build_flat_elements(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
             elements[agg_fqn] = agg
 
         # Entities
-        for ent_fqn, ent in cluster.get("entities", {}).items():
-            elements[ent_fqn] = ent
+        elements.update(cluster.get("entities", {}))
 
         # Value objects
-        for vo_fqn, vo in cluster.get("value_objects", {}).items():
-            elements[vo_fqn] = vo
+        elements.update(cluster.get("value_objects", {}))
 
         # Commands
-        for cmd_fqn, cmd in cluster.get("commands", {}).items():
-            elements[cmd_fqn] = cmd
+        elements.update(cluster.get("commands", {}))
 
         # Events
-        for evt_fqn, evt in cluster.get("events", {}).items():
-            elements[evt_fqn] = evt
+        elements.update(cluster.get("events", {}))
 
     # Projections (nested under a "projection" key)
     for proj_fqn, proj_wrapper in ir.get("projections", {}).items():

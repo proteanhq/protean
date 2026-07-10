@@ -12,7 +12,7 @@ def account_cluster():
     """Return the Account aggregate's cluster."""
     domain = build_handler_test_domain()
     ir = IRBuilder(domain).build()
-    for _key, cluster in ir["clusters"].items():
+    for cluster in ir["clusters"].values():
         if cluster["aggregate"]["name"] == "Account":
             return cluster
     pytest.fail("Account cluster not found")
@@ -23,7 +23,7 @@ def resilient_order_cluster():
     """Return the Order aggregate's cluster from the resilient handler domain."""
     domain = build_resilient_handler_test_domain()
     ir = IRBuilder(domain).build()
-    for _key, cluster in ir["clusters"].items():
+    for cluster in ir["clusters"].values():
         if cluster["aggregate"]["name"] == "Order":
             return cluster
     pytest.fail("Order cluster not found")

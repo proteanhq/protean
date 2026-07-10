@@ -169,12 +169,10 @@ def test_retry_with_multiple_messages(broker):
     broker._retry_delay = 0.5
 
     # Publish messages
-    identifiers = []
-    for msg in messages:
-        identifiers.append(broker.publish(stream, msg))
+    identifiers = [broker.publish(stream, msg) for msg in messages]
 
     # Get and NACK all messages
-    for i in range(3):
+    for _i in range(3):
         result = broker.get_next(stream, consumer_group)
         assert result is not None
         broker.nack(stream, result[0], consumer_group)

@@ -23,6 +23,7 @@ Usage:
     supervisor.run()
 """
 
+import contextlib
 import logging
 import logging.handlers
 import multiprocessing
@@ -94,8 +95,8 @@ class Supervisor:
         # is created from the spawn context so it is safe to share with child
         # processes; the listener runs on the supervisor and owns the real
         # stream/file handlers.
-        self._log_queue: Optional["multiprocessing.Queue[logging.LogRecord]"] = None
-        self._queue_listener: Optional[logging.handlers.QueueListener] = None
+        self._log_queue: multiprocessing.Queue[logging.LogRecord] | None = None
+        self._queue_listener: logging.handlers.QueueListener | None = None
 
     def run(self) -> None:
         """Spawn workers and block until all have exited.
@@ -233,12 +234,11 @@ class Supervisor:
         """Install signal handlers in the supervisor process."""
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
-        try:
+        # SIGHUP not available on Windows
+        with contextlib.suppress(OSError, AttributeError):
             signal.signal(signal.SIGHUP, self._handle_signal)
-        except (OSError, AttributeError):
-            pass  # SIGHUP not available on Windows
 
-    def _handle_signal(self, signum: int, frame: Optional[FrameType]) -> None:
+    def _handle_signal(self, signum: int, frame: FrameType | None) -> None:
         """Propagate shutdown to all workers on receiving a signal."""
         if self._shutting_down:
             return
@@ -292,10 +292,8 @@ class Supervisor:
         # Send SIGTERM to each living worker
         for worker in self.workers:
             if worker.is_alive() and worker.pid:
-                try:
+                with contextlib.suppress(ProcessLookupError, OSError):
                     os.kill(worker.pid, signal.SIGTERM)
-                except (ProcessLookupError, OSError):
-                    pass
 
         # Wait for workers to exit gracefully
         deadline = time.monotonic() + _SHUTDOWN_TIMEOUT_SECONDS

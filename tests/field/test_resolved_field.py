@@ -2,7 +2,6 @@
 
 import datetime
 from enum import Enum
-from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -144,7 +143,7 @@ class TestResolvedFieldContentType:
         field_info.default = None
         field_info.metadata = []
 
-        rf = ResolvedField("items", field_info, Optional[list[str]])
+        rf = ResolvedField("items", field_info, list[str] | None)
         assert rf.content_type is str
 
     def test_content_type_with_union_list_none(self):

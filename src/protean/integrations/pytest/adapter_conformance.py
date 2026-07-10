@@ -40,6 +40,7 @@ conftest.py for full control over provider configuration::
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import Iterator
@@ -121,16 +122,15 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("protean-conformance", "Protean adapter conformance")
 
     # --db may already be defined by tests/conftest.py when running
-    # inside Protean's own repository.
-    try:
+    # inside Protean's own repository. Suppress the ValueError raised when it
+    # was already registered by another conftest.
+    with contextlib.suppress(ValueError):
         group.addoption(
             "--db",
             action="store",
             default="MEMORY",
             help="Database provider key (e.g. MEMORY, POSTGRESQL)",
         )
-    except ValueError:
-        pass  # Already registered by another conftest
 
     group.addoption(
         "--db-provider",

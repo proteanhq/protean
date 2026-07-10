@@ -11,9 +11,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from protean.server.tracing import (
+    _SUBSCRIBER_CHECK_TTL,
     TRACE_CHANNEL,
     TraceEmitter,
-    _SUBSCRIBER_CHECK_TTL,
 )
 from tests.shared import initialize_domain
 

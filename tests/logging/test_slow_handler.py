@@ -20,7 +20,6 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
-
 # --- Domain elements ---
 
 

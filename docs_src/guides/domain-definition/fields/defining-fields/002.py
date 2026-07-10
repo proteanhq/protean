@@ -1,6 +1,6 @@
 # --8<-- [start:full]
 from protean import Domain
-from protean.fields import String, Integer, HasOne
+from protean.fields import HasOne, Integer, String
 
 domain = Domain()
 

@@ -1,10 +1,11 @@
 """Tests for OutboxRepository query methods."""
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
+import pytest
+
+from protean.utils.eventing import DomainMeta, Metadata
 from protean.utils.outbox import Outbox, OutboxRepository, OutboxStatus
-from protean.utils.eventing import Metadata, DomainMeta
 
 
 @pytest.fixture(autouse=True)
@@ -25,7 +26,7 @@ def sample_metadata():
         headers=MessageHeaders(
             id="test-id",
             type="TestEvent",
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
             stream="test-stream",
         ),
         domain=DomainMeta(
@@ -76,7 +77,7 @@ def create_sample_messages(test_domain, sample_metadata):
             )
             msg.status = OutboxStatus.FAILED.value
             msg.retry_count = i + 1
-            msg.next_retry_at = datetime.now(timezone.utc) - timedelta(
+            msg.next_retry_at = datetime.now(UTC) - timedelta(
                 minutes=5
             )  # Ready for retry
             messages.append(msg)
@@ -92,7 +93,7 @@ def create_sample_messages(test_domain, sample_metadata):
                 priority=i + 20,
             )
             msg.status = OutboxStatus.PUBLISHED.value
-            msg.published_at = datetime.now(timezone.utc)
+            msg.published_at = datetime.now(UTC)
             messages.append(msg)
 
         # Create PROCESSING messages
@@ -106,7 +107,7 @@ def create_sample_messages(test_domain, sample_metadata):
         )
         msg.status = OutboxStatus.PROCESSING.value
         msg.locked_by = "worker-1"
-        msg.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        msg.locked_until = datetime.now(UTC) + timedelta(minutes=5)
         messages.append(msg)
 
         # Create ABANDONED message
@@ -257,7 +258,7 @@ class TestFindUnprocessedBoundaryConditions:
         # Lock expired 1 second ago — still PENDING since claim is what flips
         # status to PROCESSING.
         msg.locked_by = "old-worker"
-        msg.locked_until = datetime.now(timezone.utc) - timedelta(seconds=1)
+        msg.locked_until = datetime.now(UTC) - timedelta(seconds=1)
         outbox_repo.add(msg)
 
         unprocessed = outbox_repo.find_unprocessed()
@@ -274,7 +275,7 @@ class TestFindUnprocessedBoundaryConditions:
             metadata=sample_metadata,
         )
         msg.locked_by = "worker-A"
-        msg.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        msg.locked_until = datetime.now(UTC) + timedelta(minutes=5)
         outbox_repo.add(msg)
 
         assert outbox_repo.find_unprocessed() == []
@@ -290,7 +291,7 @@ class TestFindUnprocessedBoundaryConditions:
         )
         msg.status = OutboxStatus.FAILED.value
         msg.retry_count = 1
-        msg.next_retry_at = datetime.now(timezone.utc) - timedelta(milliseconds=1)
+        msg.next_retry_at = datetime.now(UTC) - timedelta(milliseconds=1)
         outbox_repo.add(msg)
 
         unprocessed = outbox_repo.find_unprocessed()
@@ -308,7 +309,7 @@ class TestFindUnprocessedBoundaryConditions:
         )
         msg.status = OutboxStatus.FAILED.value
         msg.retry_count = 1
-        msg.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        msg.next_retry_at = datetime.now(UTC) + timedelta(minutes=5)
         outbox_repo.add(msg)
 
         assert outbox_repo.find_unprocessed() == []
@@ -389,7 +390,7 @@ class TestFindUnprocessedBoundaryConditions:
         (locked) at the boundary. Now is frozen to exactly ``locked_until`` so the
         equality case is exercised deterministically.
         """
-        fixed = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fixed = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         msg = Outbox.create_message(
             message_id="reclaim-at-boundary",
             stream_name="s",
@@ -626,8 +627,8 @@ class TestOutboxRepositoryTimeBasedQueries:
         )
         msg.status = OutboxStatus.PROCESSING.value
         msg.locked_by = "worker-1"
-        msg.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
-        msg.last_processed_at = datetime.now(timezone.utc) - timedelta(
+        msg.locked_until = datetime.now(UTC) + timedelta(minutes=5)
+        msg.last_processed_at = datetime.now(UTC) - timedelta(
             minutes=15
         )  # 15 minutes ago
 
@@ -659,9 +660,7 @@ class TestOutboxRepositoryTimeBasedQueries:
             data={"old": True},
             metadata=sample_metadata,
         )
-        old_msg.created_at = datetime.now(timezone.utc) - timedelta(
-            hours=48
-        )  # 48 hours ago
+        old_msg.created_at = datetime.now(UTC) - timedelta(hours=48)  # 48 hours ago
 
         outbox_repo.add(recent_msg)
         outbox_repo.add(old_msg)
@@ -685,7 +684,7 @@ class TestOutboxRepositoryTimeBasedQueries:
         )
         ready_msg.status = OutboxStatus.FAILED.value
         ready_msg.retry_count = 1
-        ready_msg.next_retry_at = datetime.now(timezone.utc) - timedelta(
+        ready_msg.next_retry_at = datetime.now(UTC) - timedelta(
             minutes=5
         )  # 5 minutes ago
 
@@ -699,7 +698,7 @@ class TestOutboxRepositoryTimeBasedQueries:
         )
         not_ready_msg.status = OutboxStatus.FAILED.value
         not_ready_msg.retry_count = 1
-        not_ready_msg.next_retry_at = datetime.now(timezone.utc) + timedelta(
+        not_ready_msg.next_retry_at = datetime.now(UTC) + timedelta(
             minutes=5
         )  # 5 minutes from now
 
@@ -765,9 +764,7 @@ class TestOutboxRepositoryAggregateQueries:
             metadata=sample_metadata,
         )
         old_msg.status = OutboxStatus.PUBLISHED.value
-        old_msg.published_at = datetime.now(timezone.utc) - timedelta(
-            hours=200
-        )  # 200 hours ago
+        old_msg.published_at = datetime.now(UTC) - timedelta(hours=200)  # 200 hours ago
 
         # Create a recent published message
         recent_msg = Outbox.create_message(
@@ -778,7 +775,7 @@ class TestOutboxRepositoryAggregateQueries:
             metadata=sample_metadata,
         )
         recent_msg.status = OutboxStatus.PUBLISHED.value
-        recent_msg.published_at = datetime.now(timezone.utc) - timedelta(
+        recent_msg.published_at = datetime.now(UTC) - timedelta(
             hours=24
         )  # 24 hours ago
 
@@ -841,7 +838,7 @@ class TestOutboxRepositoryLimitAndOrdering:
             )
             msg.status = OutboxStatus.FAILED.value
             msg.retry_count = 1
-            msg.next_retry_at = datetime.now(timezone.utc) - timedelta(
+            msg.next_retry_at = datetime.now(UTC) - timedelta(
                 minutes=i
             )  # Different retry times
 
@@ -906,7 +903,7 @@ class TestOutboxRepositoryEdgeCases:
         )
         msg.status = OutboxStatus.PROCESSING.value
         msg.locked_by = "worker-1"
-        msg.last_processed_at = datetime.now(timezone.utc)
+        msg.last_processed_at = datetime.now(UTC)
 
         outbox_repo.add(msg)
 
@@ -1007,7 +1004,7 @@ class TestClaimBatch:
         )
         msg.status = OutboxStatus.PROCESSING.value
         msg.locked_by = "other-worker"
-        msg.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        msg.locked_until = datetime.now(UTC) + timedelta(minutes=5)
         outbox_repo.add(msg)
 
         assert outbox_repo.claim_batch("worker-A", limit=50) == []
@@ -1026,7 +1023,7 @@ class TestClaimBatch:
         )
         msg.status = OutboxStatus.PROCESSING.value
         msg.locked_by = "dead-worker"
-        msg.locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+        msg.locked_until = datetime.now(UTC) - timedelta(minutes=1)
         outbox_repo.add(msg)
 
         claimed = outbox_repo.claim_batch("worker-A", limit=50)
@@ -1047,7 +1044,7 @@ class TestClaimBatch:
         msg.status = OutboxStatus.FAILED.value
         msg.retry_count = 1
         msg.locked_by = "dead-worker"
-        msg.locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+        msg.locked_until = datetime.now(UTC) - timedelta(minutes=1)
         outbox_repo.add(msg)
 
         claimed = outbox_repo.claim_batch("worker-A", limit=50)

@@ -34,24 +34,26 @@ class TestCliExceptionHandler:
         """When a command raises an unhandled exception, it is logged."""
         change_working_directory_to("test7")
 
-        with patch(
-            "protean.cli.derive_domain",
-            side_effect=RuntimeError("boom"),
+        with (
+            patch(
+                "protean.cli.derive_domain",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch("protean.cli._helpers.logger") as mock_logger,
         ):
-            with patch("protean.cli._helpers.logger") as mock_logger:
-                result = runner.invoke(
-                    app,
-                    ["server", "--domain", "publishing7.py"],
-                )
+            result = runner.invoke(
+                app,
+                ["server", "--domain", "publishing7.py"],
+            )
 
-                assert result.exit_code != 0
-                assert isinstance(result.exception, RuntimeError)
+            assert result.exit_code != 0
+            assert isinstance(result.exception, RuntimeError)
 
-                # Check that the exception handler called logger.exception
-                mock_logger.exception.assert_called_once()
-                call_args = mock_logger.exception.call_args
-                assert call_args[0][0] == "cli.command_failed"
-                assert call_args[1]["command"] == "server"
+            # Check that the exception handler called logger.exception
+            mock_logger.exception.assert_called_once()
+            call_args = mock_logger.exception.call_args
+            assert call_args[0][0] == "cli.command_failed"
+            assert call_args[1]["command"] == "server"
 
     def test_server_exit_code_nonzero_on_failure(self):
         """Unhandled exception produces a non-zero exit code."""
@@ -71,31 +73,35 @@ class TestCliExceptionHandler:
 
     def test_shell_command_logs_exception_on_failure(self):
         """The exception handler is installed on the shell command."""
-        with patch(
-            "protean.cli.shell.derive_domain",
-            side_effect=RuntimeError("shell boom"),
+        with (
+            patch(
+                "protean.cli.shell.derive_domain",
+                side_effect=RuntimeError("shell boom"),
+            ),
+            patch("protean.cli._helpers.logger") as mock_logger,
         ):
-            with patch("protean.cli._helpers.logger") as mock_logger:
-                result = runner.invoke(app, ["shell", "--domain", "foobar"])
+            result = runner.invoke(app, ["shell", "--domain", "foobar"])
 
-                assert result.exit_code != 0
-                assert isinstance(result.exception, RuntimeError)
-                mock_logger.exception.assert_called_once()
-                assert mock_logger.exception.call_args[1]["command"] == "shell"
+            assert result.exit_code != 0
+            assert isinstance(result.exception, RuntimeError)
+            mock_logger.exception.assert_called_once()
+            assert mock_logger.exception.call_args[1]["command"] == "shell"
 
     def test_check_command_logs_exception_on_failure(self):
         """The exception handler is installed on the check command."""
-        with patch(
-            "protean.cli.check.derive_domain",
-            side_effect=RuntimeError("check boom"),
+        with (
+            patch(
+                "protean.cli.check.derive_domain",
+                side_effect=RuntimeError("check boom"),
+            ),
+            patch("protean.cli._helpers.logger") as mock_logger,
         ):
-            with patch("protean.cli._helpers.logger") as mock_logger:
-                result = runner.invoke(app, ["check", "--domain", "foobar"])
+            result = runner.invoke(app, ["check", "--domain", "foobar"])
 
-                assert result.exit_code != 0
-                assert isinstance(result.exception, RuntimeError)
-                mock_logger.exception.assert_called_once()
-                assert mock_logger.exception.call_args[1]["command"] == "check"
+            assert result.exit_code != 0
+            assert isinstance(result.exception, RuntimeError)
+            mock_logger.exception.assert_called_once()
+            assert mock_logger.exception.call_args[1]["command"] == "check"
 
     def test_abort_is_not_caught(self):
         """typer.Abort passes through the handler without logging."""

@@ -253,6 +253,8 @@ def _build_metric_reader(config: dict[str, Any]) -> Any:
     elif exporter_name == "console":
         from opentelemetry.sdk.metrics.export import (  # noqa: PLC0415
             ConsoleMetricExporter,
+        )
+        from opentelemetry.sdk.metrics.export import (  # noqa: PLC0415
             PeriodicExportingMetricReader as _PeriodicReader,
         )
 
@@ -270,7 +272,9 @@ def _build_prometheus_reader() -> Any:
     Returns ``None`` when the package is not available.
     """
     try:
-        from opentelemetry.exporter.prometheus import PrometheusMetricReader  # noqa: PLC0415
+        from opentelemetry.exporter.prometheus import (  # noqa: PLC0415
+            PrometheusMetricReader,
+        )
 
         return PrometheusMetricReader()
     except ImportError:
@@ -376,7 +380,9 @@ def instrument_fastapi_app(app: Any, **kwargs: Any) -> bool:
         return False
 
     try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: PLC0415
+        from opentelemetry.instrumentation.fastapi import (  # noqa: PLC0415
+            FastAPIInstrumentor,
+        )
     except ImportError:
         logger.warning(
             "FastAPI telemetry instrumentation requires "
@@ -412,7 +418,7 @@ def set_span_error(span: Any, exc: BaseException) -> None:
 class _NoOpSpan:
     """Minimal no-op span that supports the context-manager protocol."""
 
-    def __enter__(self) -> "_NoOpSpan":
+    def __enter__(self) -> _NoOpSpan:
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -471,8 +477,6 @@ class _NoOpHistogram:
 
 class _NoOpObservableGauge:
     """Minimal no-op observable gauge returned when OTEL is not installed."""
-
-    pass
 
 
 class _NoOpMeter:

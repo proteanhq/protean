@@ -82,7 +82,7 @@ def test_tracking_keys(opts_dict):
     options = Options({"foo": "bar"})
     assert set(options.keys()) == {"abstract", "foo"}
 
-    setattr(options, "baz", "qux")
+    options.baz = "qux"
     assert set(options.keys()) == {"abstract", "foo", "baz"}
 
     options.waldo = "fred"

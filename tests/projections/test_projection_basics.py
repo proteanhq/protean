@@ -13,7 +13,7 @@ Validates:
 - Registration with domain
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
 import pytest
@@ -52,7 +52,7 @@ class AbstractPerson(BaseProjection):
     age: int = 5
 
 
-class BuildingStatus(str, Enum):
+class BuildingStatus(StrEnum):
     WIP = "WIP"
     DONE = "DONE"
 

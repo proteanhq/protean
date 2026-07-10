@@ -41,7 +41,7 @@ class TestValueObjectListExtraction:
         self.ir = _build_and_extract(domain)
 
         # Find Article cluster
-        for fqn, cluster in self.ir["clusters"].items():
+        for cluster in self.ir["clusters"].values():
             if cluster["aggregate"]["name"] == "Article":
                 self.article_fields = cluster["aggregate"]["fields"]
                 break
@@ -188,7 +188,7 @@ class TestPMCorrelateString:
 
         domain.init(traverse=False)
         ir = _build_and_extract(domain)
-        pm = list(ir["flows"]["process_managers"].values())[0]
+        pm = next(iter(ir["flows"]["process_managers"].values()))
         # Find handler with correlate
         for handler_info in pm["handlers"].values():
             if "correlate" in handler_info:

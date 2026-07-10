@@ -1,5 +1,6 @@
+from unittest.mock import patch
+
 import pytest
-from mock import patch
 
 from protean.adapters import DummyEmailProvider
 from protean.core.email import BaseEmail

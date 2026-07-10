@@ -225,9 +225,8 @@ class TestForeignKeyInsertOrdering:
         vault.add_coins(Coin(denomination=1))
         vault.add_coins(Coin(denomination=2))
 
-        with capture_queries() as captured:
-            with UnitOfWork():
-                current_domain.repository_for(Vault).add(vault)
+        with capture_queries() as captured, UnitOfWork():
+            current_domain.repository_for(Vault).add(vault)
 
         _assert_top_down(captured, "vault", "coin")
 
@@ -238,9 +237,8 @@ class TestForeignKeyInsertOrdering:
         locker = Locker(name="l")
         locker.badge = Badge(code="b")
 
-        with capture_queries() as captured:
-            with UnitOfWork():
-                current_domain.repository_for(Locker).add(locker)
+        with capture_queries() as captured, UnitOfWork():
+            current_domain.repository_for(Locker).add(locker)
 
         _assert_top_down(captured, "locker", "badge")
 
@@ -253,9 +251,8 @@ class TestForeignKeyInsertOrdering:
         area.add_spots(Spot(label="s"))
         zone.add_areas(area)
 
-        with capture_queries() as captured:
-            with UnitOfWork():
-                current_domain.repository_for(Zone).add(zone)
+        with capture_queries() as captured, UnitOfWork():
+            current_domain.repository_for(Zone).add(zone)
 
         _assert_top_down(captured, "zone", "area", "spot")
 

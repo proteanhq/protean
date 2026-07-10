@@ -12,7 +12,6 @@ from protean.ir.diff import _classify_removal, _parse_version_tuple, diff_ir
 from protean.utils import _normalize_deprecated
 from protean.utils.mixins import handle, read
 
-
 # =====================================================================
 # _normalize_deprecated
 # =====================================================================
@@ -407,7 +406,7 @@ class TestIRBuilderDeprecated:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, EventOrder)
-        event = list(cluster["events"].values())[0]
+        event = next(iter(cluster["events"].values()))
         assert event["deprecated"] == {"since": "0.15"}
 
     def test_field_deprecated_in_ir(self) -> None:
@@ -518,7 +517,7 @@ class TestIRBuilderSupersededBy:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        placed = list(cluster["events"].values())[0]
+        placed = next(iter(cluster["events"].values()))
         assert placed["superseded_by"] == "OrderConfirmed"
 
     def test_no_superseded_by_key_when_unset(self) -> None:
@@ -534,7 +533,7 @@ class TestIRBuilderSupersededBy:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        placed = list(cluster["events"].values())[0]
+        placed = next(iter(cluster["events"].values()))
         assert "superseded_by" not in placed
 
     def test_diagnostic_names_the_successor(self) -> None:
@@ -947,7 +946,7 @@ class TestIRBuilderDeprecatedAllElements:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        entity = list(cluster["entities"].values())[0]
+        entity = next(iter(cluster["entities"].values()))
         assert entity["deprecated"] == {"since": "0.16"}
 
     def test_value_object_deprecated_in_ir(self) -> None:
@@ -964,7 +963,7 @@ class TestIRBuilderDeprecatedAllElements:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        vo = list(cluster["value_objects"].values())[0]
+        vo = next(iter(cluster["value_objects"].values()))
         assert vo["deprecated"] == {"since": "0.15"}
 
     def test_command_deprecated_in_ir(self) -> None:
@@ -983,7 +982,7 @@ class TestIRBuilderDeprecatedAllElements:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        cmd = list(cluster["commands"].values())[0]
+        cmd = next(iter(cluster["commands"].values()))
         assert cmd["deprecated"] == {"since": "0.15", "removal": "0.18"}
 
     def test_command_handler_deprecated_in_ir(self) -> None:
@@ -1005,7 +1004,7 @@ class TestIRBuilderDeprecatedAllElements:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        handler = list(cluster["command_handlers"].values())[0]
+        handler = next(iter(cluster["command_handlers"].values()))
         assert handler["deprecated"] == {"since": "0.16"}
 
     def test_event_handler_deprecated_in_ir(self) -> None:
@@ -1027,7 +1026,7 @@ class TestIRBuilderDeprecatedAllElements:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        handler = list(cluster["event_handlers"].values())[0]
+        handler = next(iter(cluster["event_handlers"].values()))
         assert handler["deprecated"] == {"since": "0.16"}
 
     def test_repository_deprecated_in_ir(self) -> None:
@@ -1043,7 +1042,7 @@ class TestIRBuilderDeprecatedAllElements:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        repo = list(cluster["repositories"].values())[0]
+        repo = next(iter(cluster["repositories"].values()))
         assert repo["deprecated"] == {"since": "0.16"}
 
     def test_database_model_deprecated_in_ir(self) -> None:
@@ -1059,7 +1058,7 @@ class TestIRBuilderDeprecatedAllElements:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        model = list(cluster["database_models"].values())[0]
+        model = next(iter(cluster["database_models"].values()))
         assert model["deprecated"] == {"since": "0.16"}
 
     def test_application_service_deprecated_in_ir(self) -> None:
@@ -1075,7 +1074,7 @@ class TestIRBuilderDeprecatedAllElements:
         ir = IRBuilder(self.domain).build()
 
         cluster = self._find_cluster(ir, Order)
-        svc = list(cluster["application_services"].values())[0]
+        svc = next(iter(cluster["application_services"].values()))
         assert svc["deprecated"] == {"since": "0.16"}
 
     def test_projection_deprecated_in_ir(self) -> None:
@@ -1086,7 +1085,7 @@ class TestIRBuilderDeprecatedAllElements:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        proj = list(ir["projections"].values())[0]
+        proj = next(iter(ir["projections"].values()))
         assert proj["projection"]["deprecated"] == {"since": "0.16"}
 
     def test_domain_service_deprecated_in_ir(self) -> None:
@@ -1105,7 +1104,7 @@ class TestIRBuilderDeprecatedAllElements:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        ds = list(ir["flows"]["domain_services"].values())[0]
+        ds = next(iter(ir["flows"]["domain_services"].values()))
         assert ds["deprecated"] == {"since": "0.16"}
 
     def test_subscriber_deprecated_in_ir(self) -> None:
@@ -1117,7 +1116,7 @@ class TestIRBuilderDeprecatedAllElements:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        sub = list(ir["flows"]["subscribers"].values())[0]
+        sub = next(iter(ir["flows"]["subscribers"].values()))
         assert sub["deprecated"] == {"since": "0.16"}
 
     def test_process_manager_deprecated_in_ir(self) -> None:
@@ -1141,7 +1140,7 @@ class TestIRBuilderDeprecatedAllElements:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        pm = list(ir["flows"]["process_managers"].values())[0]
+        pm = next(iter(ir["flows"]["process_managers"].values()))
         assert pm["deprecated"] == {"since": "0.16"}
 
     def test_projector_deprecated_in_ir(self) -> None:
@@ -1170,8 +1169,8 @@ class TestIRBuilderDeprecatedAllElements:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        proj = list(ir["projections"].values())[0]
-        projector = list(proj["projectors"].values())[0]
+        proj = next(iter(ir["projections"].values()))
+        projector = next(iter(proj["projectors"].values()))
         assert projector["deprecated"] == {"since": "0.16"}
 
     def test_query_deprecated_in_ir(self) -> None:
@@ -1186,8 +1185,8 @@ class TestIRBuilderDeprecatedAllElements:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        proj = list(ir["projections"].values())[0]
-        query = list(proj["queries"].values())[0]
+        proj = next(iter(ir["projections"].values()))
+        query = next(iter(proj["queries"].values()))
         assert query["deprecated"] == {"since": "0.16"}
 
     def test_query_handler_deprecated_in_ir(self) -> None:
@@ -1208,8 +1207,8 @@ class TestIRBuilderDeprecatedAllElements:
         self.domain.init(traverse=False)
         ir = IRBuilder(self.domain).build()
 
-        proj = list(ir["projections"].values())[0]
-        qh = list(proj["query_handlers"].values())[0]
+        proj = next(iter(ir["projections"].values()))
+        qh = next(iter(proj["query_handlers"].values()))
         assert qh["deprecated"] == {"since": "0.16"}
 
 
@@ -1343,7 +1342,7 @@ class TestIRBuilderFieldDeprecatedResolvedField:
         from protean.utils import fqn as get_fqn
 
         cluster = ir["clusters"][get_fqn(Order)]
-        cmd = list(cluster["commands"].values())[0]
+        cmd = next(iter(cluster["commands"].values()))
         assert cmd["fields"]["old_field"]["deprecated"] == {"since": "0.14"}
 
     def test_event_field_deprecated_in_published_contract(self) -> None:

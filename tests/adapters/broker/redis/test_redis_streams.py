@@ -147,8 +147,8 @@ def test_redis_streams_concurrent_consumers(redis_broker):
     assert total_consumed <= len(messages)
 
     # No message should be consumed by both consumers
-    ids1 = set(msg[0] for msg in msgs1)
-    ids2 = set(msg[0] for msg in msgs2)
+    ids1 = {msg[0] for msg in msgs1}
+    ids2 = {msg[0] for msg in msgs2}
     assert len(ids1.intersection(ids2)) == 0
 
 
@@ -963,9 +963,8 @@ def test_ensure_connection_with_reconnection_success(redis_broker, monkeypatch):
     def mock_ping():
         nonlocal ping_call_count
         ping_call_count += 1
-        if ping_call_count == 1:
-            return False  # First ping fails
-        return True  # Second ping succeeds
+        # First ping fails; second ping succeeds
+        return ping_call_count != 1
 
     def mock_redis_from_url(url):
         return redis_broker.redis_instance

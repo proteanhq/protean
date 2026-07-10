@@ -14,7 +14,6 @@ import pytest
 
 from protean.port.event_store import CausationNode
 from protean.testing import assert_chain
-
 from tests.tracing.elements import (
     ConfirmOrder,
     Order,
@@ -22,9 +21,9 @@ from tests.tracing.elements import (
     OrderConfirmed,
     OrderPlaced,
     OrderPlacedAutoConfirmHandler,
+    OrderShipped,
     PlaceOrder,
     ShipOrder,
-    OrderShipped,
 )
 
 

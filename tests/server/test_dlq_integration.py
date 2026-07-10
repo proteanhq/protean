@@ -21,7 +21,6 @@ from protean.fields import String
 from protean.server.engine import Engine
 from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
 
-
 # ── Shared domain elements ──────────────────────────────────────────────
 
 

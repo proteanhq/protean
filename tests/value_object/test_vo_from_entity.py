@@ -1,7 +1,7 @@
 """Tests for value_object_from_entity(), ValueObjectFromEntity field, and
 BaseEntity.from_value_object() round-trip."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -56,7 +56,7 @@ class Invoice(BaseEntity):
 
 class TimestampedEntity(BaseEntity):
     label: String(required=True)
-    created_at: DateTime(default=lambda: datetime.now(timezone.utc))
+    created_at: DateTime(default=lambda: datetime.now(UTC))
 
 
 class Cart(BaseAggregate):
@@ -378,7 +378,7 @@ class TestFactEventRefactoring:
         class Order(BaseAggregate):
             customer_id: Identifier(required=True)
             total: Float(required=True)
-            ordered_at: DateTime(default=lambda: datetime.now(timezone.utc))
+            ordered_at: DateTime(default=lambda: datetime.now(UTC))
 
         test_domain.register(Order, fact_events=True)
         test_domain.init(traverse=False)

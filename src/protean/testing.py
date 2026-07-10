@@ -76,11 +76,11 @@ import difflib
 import inspect
 import json
 import warnings
+from collections.abc import Callable, Iterator, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from collections.abc import Callable, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
@@ -119,22 +119,22 @@ from protean.utils.sync_dispatch import dispatch_events_sync
 # The returned ``*Result``/``EventLog``/``EventSequence`` types stay in because
 # callers type-annotate against them.
 __all__ = [
-    "given",
-    "EventLog",
     "AggregateResult",
-    "ProcessResult",
-    "drain",
-    "process_and_wait",
+    "EventLog",
     "EventSequence",
     "ProcessManagerResult",
+    "ProcessResult",
     "ProjectionResult",
     "assert_chain",
     "assert_snapshot",
+    "drain",
     "get_generic_test_dir",
+    "given",
+    "process_and_wait",
 ]
 
 
-def _event_store_of(domain: "Domain") -> "BaseEventStore":
+def _event_store_of(domain: Domain) -> BaseEventStore:
     """Return the domain's initialised event store, narrowing away ``None``.
 
     The testing DSL always runs against a live, fully-initialised domain, so
@@ -165,7 +165,7 @@ def _flatten_messages(
 
 
 def given(
-    cls_or_event: "type | BaseEvent", *events: "BaseEvent"
+    cls_or_event: type | BaseEvent, *events: BaseEvent
 ) -> AggregateResult | ProcessManagerResult | EventSequence:
     """Start a test sentence.
 
@@ -298,7 +298,7 @@ class AggregateResult:
 
     def __init__(
         self,
-        aggregate_cls: "type[BaseAggregate]",
+        aggregate_cls: type[BaseAggregate],
         given_events: list[Any] | None = None,
     ) -> None:
         self._aggregate_cls = aggregate_cls
@@ -474,7 +474,7 @@ class AggregateResult:
     # Internal
     # ------------------------------------------------------------------
 
-    def _seed_events(self, domain: "Domain") -> Any:
+    def _seed_events(self, domain: Domain) -> Any:
         """Write given events to the event store and process handlers.
 
         Reconstitutes the aggregate from events to determine its identity,
@@ -636,7 +636,7 @@ class ProcessResult:
         return f"<ProcessResult {status} events={len(self._events)}>"
 
 
-def _events_for_correlation(domain: "Domain", correlation_id: str) -> list[Any]:
+def _events_for_correlation(domain: Domain, correlation_id: str) -> list[Any]:
     """Load every event in a correlation chain as domain objects.
 
     Reads the correlation group from the event store and returns the
@@ -660,7 +660,7 @@ def _events_for_correlation(domain: "Domain", correlation_id: str) -> list[Any]:
 
 
 def drain(
-    domain: "Domain | None" = None,
+    domain: Domain | None = None,
     *,
     until: Callable[[], bool] | None = None,
     max_cycles: int = 5,
@@ -719,7 +719,7 @@ def drain(
 
 def process_and_wait(
     command: Any,
-    domain: "Domain | None" = None,
+    domain: Domain | None = None,
     *,
     until: Callable[[], bool] | None = None,
     max_cycles: int = 5,
@@ -762,7 +762,7 @@ def process_and_wait(
     error: Exception | None = None
     try:
         result = domain.process(command, correlation_id=correlation_id)
-    except Exception as exc:  # noqa: BLE001 — captured for the caller to assert on
+    except Exception as exc:
         error = exc
 
     # Drain only when something is left to process asynchronously. A
@@ -899,7 +899,7 @@ class ProcessManagerResult:
 
     def __init__(
         self,
-        pm_cls: "type[BaseProcessManager]",
+        pm_cls: type[BaseProcessManager],
         events: list[Any] | None = None,
         *,
         correlation_value: str | None = None,

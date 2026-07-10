@@ -1,11 +1,11 @@
 from abc import abstractmethod
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from protean.core.queryset import Record
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import attributes, declared_fields
-from typing import Any, cast, ClassVar, TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity

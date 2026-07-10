@@ -14,12 +14,11 @@ Usage::
 """
 
 import json as json_mod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich import print
 from rich.table import Table
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.utils import DomainObjects
@@ -78,7 +77,7 @@ def _resolve_projection(
 
     Returns the class or None (with error printed).
     """
-    for _, record in domain.registry._elements[DomainObjects.PROJECTION.value].items():
+    for record in domain.registry._elements[DomainObjects.PROJECTION.value].values():
         projection_cls: type[BaseProjection] = record.cls
         if projection_cls.__name__ == projection_name:
             return projection_cls
@@ -158,7 +157,9 @@ def status(
     (``staleness``) and in events (``lag``) across all the projectors that feed it,
     plus its current row count. Does not require the server to be running.
     """
-    from protean.server.projection_status import collect_projection_statuses  # noqa: PLC0415
+    from protean.server.projection_status import (  # noqa: PLC0415
+        collect_projection_statuses,
+    )
 
     derived_domain = load_domain(domain)
 

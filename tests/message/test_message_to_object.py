@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -7,9 +7,9 @@ from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-from protean.exceptions import InvalidDataError, DeserializationError
+from protean.exceptions import DeserializationError, InvalidDataError
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message, Metadata, DomainMeta, MessageHeaders
+from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
 
 
 class Register(BaseCommand):
@@ -90,7 +90,7 @@ def test_invalid_message_throws_exception():
             headers=MessageHeaders(
                 id=str(uuid4()),
                 type="test.Invalid",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
             ),
             domain=DomainMeta(kind="INVALID"),
         ),

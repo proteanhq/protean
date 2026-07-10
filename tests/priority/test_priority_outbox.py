@@ -5,7 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import Integer, String
-from protean.utils.eventing import Metadata, MessageHeaders, DomainMeta
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxStatus
 
 

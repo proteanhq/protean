@@ -14,16 +14,14 @@ Verifies that:
 from uuid import uuid4
 
 import pytest
-
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -32,7 +30,6 @@ from protean.fields import Identifier, String
 from protean.integrations.fastapi import DomainContextMiddleware, instrument_app
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
-
 
 # ---------------------------------------------------------------------------
 # Domain elements for testing

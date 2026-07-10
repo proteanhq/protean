@@ -6,8 +6,9 @@ factory options (unprefixed stream categories, aggregates option),
 and the default_factory / id_field paths in _load_or_create.
 """
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
@@ -23,8 +24,8 @@ from .elements import (
     Payment,
     PaymentConfirmed,
     PaymentFailed,
-    Shipping,
     ShipmentDelivered,
+    Shipping,
 )
 
 

@@ -1,10 +1,11 @@
 """Comprehensive tests for field type detection and caching optimization in Elasticsearch adapter"""
 
-import pytest
 from datetime import datetime
 
+import pytest
+
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer, Float, Boolean, DateTime, Date
+from protean.fields import Boolean, Date, DateTime, Float, Integer, String
 
 
 class DummyEntity(BaseAggregate):
@@ -269,11 +270,11 @@ class TestFieldTypeDetectionEdgeCases:
 
         # Test different lookup types for string field — none should use .keyword
         from protean.adapters.repository.elasticsearch import (
+            Contains,
+            Endswith,
             Exact,
             In,
-            Contains,
             Startswith,
-            Endswith,
         )
 
         string_field = "name"
@@ -291,9 +292,9 @@ class TestFieldTypeDetectionEdgeCases:
             query_dict = lookup.as_expression().to_dict()
 
             # No field should use .keyword subfield (all strings are Keyword type)
-            field_used = list(query_dict.values())[0]
+            field_used = next(iter(query_dict.values()))
             if isinstance(field_used, dict):
-                field_name = list(field_used.keys())[0]
+                field_name = next(iter(field_used.keys()))
                 assert not field_name.endswith(".keyword"), (
                     f"{lookup_class.__name__} should NOT use .keyword for Keyword-mapped field"
                 )

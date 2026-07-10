@@ -95,9 +95,8 @@ def test_invalid_identity_function_raises_exception():
     domain.register(TestAggregate)
     domain.init(traverse=False)
 
-    with domain.domain_context():
-        with pytest.raises(ConfigurationError) as exc:
-            TestAggregate()
+    with domain.domain_context(), pytest.raises(ConfigurationError) as exc:
+        TestAggregate()
 
     assert str(exc.value) == "Identity function is invalid"
 
@@ -115,8 +114,7 @@ def test_identity_function_returns_no_value():
     domain.register(TestAggregate)
     domain.init(traverse=False)
 
-    with domain.domain_context():
-        with pytest.raises(ConfigurationError) as exc:
-            TestAggregate()
+    with domain.domain_context(), pytest.raises(ConfigurationError) as exc:
+        TestAggregate()
 
     assert str(exc.value) == "Failed to generate identity value"

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -32,8 +32,8 @@ if TYPE_CHECKING:
     from protean.ir.config import CompatConfig
 
 __all__ = [
-    "StalenessStatus",
     "StalenessResult",
+    "StalenessStatus",
     "check_staleness",
     "load_stored_ir",
 ]
@@ -41,7 +41,7 @@ __all__ = [
 _IR_FILENAME = "ir.json"
 
 
-class StalenessStatus(str, Enum):
+class StalenessStatus(StrEnum):
     """Outcome of a staleness check."""
 
     FRESH = "fresh"

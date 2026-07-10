@@ -177,8 +177,6 @@ class TestCloneClass:
         class OriginalClass:
             """Original docstring."""
 
-            pass
-
         # Manually set some attributes that should be excluded
         OriginalClass.__module__ = "original_module"
 
@@ -370,9 +368,10 @@ class TestCloneClass:
 
     def test_clone_domain_aggregate(self):
         """Test cloning an actual Protean domain aggregate."""
-        from protean.core.aggregate import BaseAggregate
-        from protean.fields import String, Integer, DateTime
         from datetime import datetime
+
+        from protean.core.aggregate import BaseAggregate
+        from protean.fields import DateTime, Integer, String
 
         class User(BaseAggregate):
             name: String(max_length=50, required=True)

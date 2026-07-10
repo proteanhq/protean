@@ -22,7 +22,7 @@ Example:
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import ConfigurationError
 from protean.server.subscription.profiles import (
@@ -74,9 +74,9 @@ class ConfigResolver:
 
     def resolve(
         self,
-        handler_cls: 'Type["HandlerMixin"] | "CommandDispatcherProtocol"',
+        handler_cls: 'type["HandlerMixin"] | "CommandDispatcherProtocol"',
         *,
-        stream_category: Optional[str] = None,
+        stream_category: str | None = None,
     ) -> SubscriptionConfig:
         """Resolve the final subscription configuration for a handler.
 
@@ -258,7 +258,7 @@ class ConfigResolver:
         return dict(subscriptions.get(handler_name, {}))
 
     def _get_handler_meta_config(
-        self, handler_cls: 'Type["HandlerMixin"] | "CommandDispatcherProtocol"'
+        self, handler_cls: 'type["HandlerMixin"] | "CommandDispatcherProtocol"'
     ) -> dict[str, Any]:
         """Extract subscription configuration from handler's Meta options.
 
@@ -318,9 +318,9 @@ class ConfigResolver:
             A new merged configuration dictionary.
         """
         result = dict(base)
-        for key, value in override.items():
-            if value is not None:
-                result[key] = value
+        result.update(
+            {key: value for key, value in override.items() if value is not None}
+        )
         return result
 
     def _resolve_profile(
@@ -343,11 +343,11 @@ class ConfigResolver:
         if isinstance(profile, str):
             try:
                 return SubscriptionProfile(profile.lower())
-            except ValueError:
+            except ValueError as e:
                 valid = ", ".join(p.value for p in SubscriptionProfile)
                 raise ConfigurationError(
                     f"Unknown subscription profile '{profile}'. Valid profiles: {valid}"
-                )
+                ) from e
 
         return SubscriptionProfile.PRODUCTION
 
@@ -388,11 +388,12 @@ class ConfigResolver:
         """
         subscription_type = resolved.get("subscription_type")
 
-        if subscription_type == SubscriptionType.EVENT_STORE:
-            # EVENT_STORE does not support DLQ
-            if resolved.get("enable_dlq"):
-                resolved["enable_dlq"] = False
-                logger.debug("Disabled enable_dlq for EVENT_STORE subscription type")
+        # EVENT_STORE does not support DLQ
+        if subscription_type == SubscriptionType.EVENT_STORE and resolved.get(
+            "enable_dlq"
+        ):
+            resolved["enable_dlq"] = False
+            logger.debug("Disabled enable_dlq for EVENT_STORE subscription type")
 
     def _log_event_store_warning(self, handler_name: str) -> None:
         """Log a warning when using EVENT_STORE subscription type in production.

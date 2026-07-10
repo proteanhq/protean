@@ -6,7 +6,7 @@ from sqlalchemy import inspect
 from protean import Domain
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer
+from protean.fields import Integer, String
 from tests.shared import POSTGRES_URI
 
 
@@ -234,7 +234,7 @@ class TestPostgreSQLSchemaHandling:
 
     def test_concurrent_schema_operations(self, test_domain):
         """Test that concurrent operations on schema work correctly"""
-        from .elements import Person, Alien
+        from .elements import Alien, Person
 
         # Verify both tables exist (should be created by conftest)
         person_dao = test_domain.repository_for(Person)._dao

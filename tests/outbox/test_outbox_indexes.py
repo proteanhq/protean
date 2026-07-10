@@ -1,10 +1,12 @@
 """The Outbox aggregate declares the recommended indexes (issue #944)."""
 
+from datetime import UTC
+
 import pytest
 from sqlalchemy import inspect
 
-from protean.domain import Domain
 from protean.core.index import Index
+from protean.domain import Domain
 from protean.utils.outbox import DEFAULT_TARGET_BROKER, OUTBOX_INDEXES, Outbox
 from protean.utils.reflection import declared_fields
 
@@ -72,7 +74,7 @@ class TestOutboxDualWriteUniqueness:
     ``message_id`` and distinguished only by ``target_broker`` (issue #1009)."""
 
     def _sample_metadata(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 
@@ -81,7 +83,7 @@ class TestOutboxDualWriteUniqueness:
                 id="identity::customer-abc-0.1",
                 type="CustomerRegistered",
                 stream="identity::customer-abc",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
             ),
             domain=DomainMeta(
                 fqn="identity.CustomerRegistered",
@@ -193,7 +195,7 @@ class TestTargetBrokerNotNull:
     NULL rows are coerced to it on read."""
 
     def _metadata(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 
@@ -202,7 +204,7 @@ class TestTargetBrokerNotNull:
                 id="identity::customer-abc-0.1",
                 type="CustomerRegistered",
                 stream="identity::customer-abc",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
             ),
             domain=DomainMeta(fqn="identity.X", kind="event", version="1.0"),
         )

@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
 
 from protean.core.entity import _EntityState
-from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.exceptions import (
     IncorrectUsageError,
     InvalidOperationError,
@@ -17,6 +16,7 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.association import Association
+from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
@@ -237,7 +237,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
 
         # Build the set of known shadow field names from VO descriptors
         _shadow_field_names: set[str] = set()
-        for _, fobj in getattr(type(self), _FIELDS, {}).items():
+        for fobj in getattr(type(self), _FIELDS, {}).values():
             if isinstance(fobj, ValueObject):
                 for sf in fobj.embedded_fields.values():
                     if sf.attribute_name is not None:
@@ -285,7 +285,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e))
+            raise ValidationError(convert_pydantic_errors(e)) from e
 
     def model_post_init(self, __context: Any) -> None:
         # Pop init context from the thread-local stack (pushed by __init__)
@@ -378,7 +378,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
-                raise ValidationError(convert_pydantic_errors(e))
+                raise ValidationError(convert_pydantic_errors(e)) from e
 
             # Mark projection as changed so repository persists updates
             self._state.mark_changed()
@@ -436,12 +436,12 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         self._state = value
 
     def __repr__(self) -> str:
-        return "<%s: %s>" % (self.__class__.__name__, self)
+        return f"<{self.__class__.__name__}: {self}>"
 
     def __str__(self) -> str:
-        return "%s object (%s)" % (
+        return "{} object ({})".format(
             self.__class__.__name__,
-            "{}".format(self.to_dict()),
+            f"{self.to_dict()}",
         )
 
 

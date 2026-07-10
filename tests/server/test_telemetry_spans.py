@@ -18,7 +18,6 @@ Verifies that:
 from uuid import uuid4
 
 import pytest
-
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -38,7 +37,6 @@ from protean.fields import Float, Identifier, String
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.globals import current_domain, g
 from protean.utils.mixins import handle, read
-
 
 # ---------------------------------------------------------------------------
 # Domain elements for testing

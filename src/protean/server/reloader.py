@@ -29,14 +29,15 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import multiprocessing
 import os
 import signal
 import threading
+from collections.abc import Sequence
 from multiprocessing.process import BaseProcess
 from pathlib import Path
-from typing import Sequence
 
 from watchfiles import PythonFilter, watch
 
@@ -162,10 +163,8 @@ class Reloader:
             return
 
         if process.is_alive() and process.pid:
-            try:
+            with contextlib.suppress(ProcessLookupError, OSError):
                 os.kill(process.pid, signal.SIGTERM)
-            except (ProcessLookupError, OSError):
-                pass
 
         process.join(timeout=_SHUTDOWN_TIMEOUT_SECONDS)
         if process.is_alive():
@@ -202,10 +201,9 @@ class Reloader:
         """Install SIGINT/SIGTERM handlers on the reloader process."""
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
-        try:
+        # SIGHUP is unavailable on non-POSIX platforms.
+        with contextlib.suppress(OSError, AttributeError):  # pragma: no cover
             signal.signal(signal.SIGHUP, self._handle_signal)
-        except (OSError, AttributeError):  # pragma: no cover - non-POSIX
-            pass
 
     def _handle_signal(self, signum: int, frame: object) -> None:
         """Request shutdown when the reloader receives a terminating signal."""

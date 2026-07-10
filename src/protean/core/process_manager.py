@@ -25,11 +25,11 @@ Example::
 """
 
 import logging
+from collections.abc import Callable
 from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
     Optional,
     TypeVar,
@@ -75,7 +75,7 @@ logger = logging.getLogger(__name__)
 
 def _resolve_correlation_value(
     event: Union["BaseCommand", BaseEvent, "BaseQuery"],
-    correlate_spec: Union[str, dict[str, str]],
+    correlate_spec: str | dict[str, str],
 ) -> str:
     """Extract the correlation value from an event using the correlate spec.
 
@@ -162,10 +162,10 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
     # Internal state (PrivateAttr — excluded from model_dump/schema)
     _version: int = PrivateAttr(default=-1)
     _is_complete: bool = PrivateAttr(default=False)
-    _correlation_value: Optional[str] = PrivateAttr(default=None)
+    _correlation_value: str | None = PrivateAttr(default=None)
 
     # ClassVar set during _setup_process_managers — the auto-generated transition event
-    _transition_event_cls: ClassVar[Optional[type[BaseEvent]]] = None
+    _transition_event_cls: ClassVar[type[BaseEvent] | None] = None
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseProcessManager":
         if cls is BaseProcessManager:
@@ -301,12 +301,12 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         return hash(getattr(self, id_field_name))
 
     def __repr__(self) -> str:
-        return "<%s: %s>" % (self.__class__.__name__, self)
+        return f"<{self.__class__.__name__}: {self}>"
 
     def __str__(self) -> str:
-        return "%s object (%s)" % (
+        return "{} object ({})".format(
             self.__class__.__name__,
-            "{}".format(self.to_dict()),
+            f"{self.to_dict()}",
         )
 
     # ------------------------------------------------------------------
@@ -324,7 +324,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         state as a transition event in the PM's own event store stream.
         """
         # Deserialize
-        domain_object: Union["BaseCommand", BaseEvent, "BaseQuery"] = (
+        domain_object: BaseCommand | BaseEvent | BaseQuery = (
             item.to_domain_object() if isinstance(item, Message) else item
         )
 
@@ -524,9 +524,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         state: dict[str, Any] = {}
         for fname in cls.model_fields:
             value = getattr(pm_instance, fname, None)
-            if isinstance(value, datetime):
-                value = value.isoformat()
-            elif isinstance(value, date):
+            if isinstance(value, (datetime, date)):
                 value = value.isoformat()
             state[fname] = value
 

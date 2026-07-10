@@ -20,7 +20,8 @@ import asyncio
 import importlib
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from protean.port.broker import BrokerCapabilities
 from protean.utils.dlq import discover_subscriptions
@@ -86,9 +87,9 @@ class DLQMaintenanceTask:
         check_interval: Seconds between maintenance cycles.
     """
 
-    def __init__(self, engine: "Engine") -> None:
+    def __init__(self, engine: Engine) -> None:
         self.engine = engine
-        self.domain: "Domain" = engine.domain
+        self.domain: Domain = engine.domain
         self.keep_going = True
 
         dlq_config = self.domain.config.get("server", {}).get("dlq", {})
@@ -126,7 +127,7 @@ class DLQMaintenanceTask:
         ``SubscriptionConfig``.  We index by DLQ stream name at init
         time rather than re-walking the engine on every cycle.
         """
-        for _name, subscription in self.engine._subscriptions.items():
+        for subscription in self.engine._subscriptions.values():
             config = getattr(subscription, "config", None)
             if config is None:
                 continue
@@ -202,14 +203,14 @@ class DLQMaintenanceTask:
 
     @staticmethod
     def _trim_and_depth(
-        broker: "BaseBroker", dlq_stream: str, min_id: str
+        broker: BaseBroker, dlq_stream: str, min_id: str
     ) -> tuple[int, int]:
         """Run trim + depth in a single thread call."""
         trimmed = broker.dlq_trim(dlq_stream, min_id)
         depth = broker.dlq_depth(dlq_stream)
         return trimmed, depth
 
-    def _get_broker(self) -> "BaseBroker | None":
+    def _get_broker(self) -> BaseBroker | None:
         """Return the first broker that supports DLQ, or None."""
         for broker in self.domain.brokers.values():
             if broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
@@ -217,7 +218,7 @@ class DLQMaintenanceTask:
         return None
 
     @staticmethod
-    def _dlq_streams(sub_info: "SubscriptionInfo") -> list[str]:
+    def _dlq_streams(sub_info: SubscriptionInfo) -> list[str]:
         """Return all DLQ stream names for a subscription."""
         streams = [sub_info.dlq_stream]
         if sub_info.backfill_dlq_stream:

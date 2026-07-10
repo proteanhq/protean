@@ -44,7 +44,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from typing import Callable
+from collections.abc import Callable
 
 from mypy.nodes import (
     ARG_NAMED_OPT,
@@ -505,10 +505,7 @@ def _detect_protean_base_class(info: TypeInfo) -> str | None:
 
 def _is_subclass(info: TypeInfo, base_info: TypeInfo) -> bool:
     """Check if ``info`` is already a subclass of ``base_info``."""
-    for base in info.mro:
-        if base.fullname == base_info.fullname:
-            return True
-    return False
+    return any(base.fullname == base_info.fullname for base in info.mro)
 
 
 def _copy_base_symbols(info: TypeInfo, base_info: TypeInfo) -> None:
@@ -559,10 +556,7 @@ def _maybe_inject_auto_id(
 
 def _has_attribute(info: TypeInfo, name: str) -> bool:
     """Check if an attribute is declared in the class or any of its bases."""
-    for mro_entry in info.mro:
-        if name in mro_entry.names:
-            return True
-    return False
+    return any(name in mro_entry.names for mro_entry in info.mro)
 
 
 def _make_symbol_table_node(var: Var) -> SymbolTableNode:
@@ -681,9 +675,9 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
         # Resolve the callee to a known field factory
         callee = rvalue.callee
         callee_fullname: str | None = None
-        if isinstance(callee, RefExpr) and callee.fullname:
-            callee_fullname = callee.fullname
-        elif isinstance(callee, MemberExpr):
+        if (isinstance(callee, RefExpr) and callee.fullname) or isinstance(
+            callee, MemberExpr
+        ):
             callee_fullname = callee.fullname
 
         # At MRO time, fullname may not be resolved yet.
@@ -929,9 +923,9 @@ def _synthesize_has_many_methods(ctx: ClassDefContext) -> None:
         if isinstance(rvalue, CallExpr):
             callee = rvalue.callee
             callee_fullname: str | None = None
-            if isinstance(callee, RefExpr) and callee.fullname:
-                callee_fullname = callee.fullname
-            elif isinstance(callee, MemberExpr):
+            if (isinstance(callee, RefExpr) and callee.fullname) or isinstance(
+                callee, MemberExpr
+            ):
                 callee_fullname = callee.fullname
             if callee_fullname is None and isinstance(callee, NameExpr):
                 callee_fullname = _SHORT_NAME_TO_CANONICAL.get(callee.name)
@@ -1006,10 +1000,7 @@ def _synthesize_has_many_methods(ctx: ClassDefContext) -> None:
         has_many_methods = [
             n
             for n in info.names
-            if n.startswith("add_")
-            or n.startswith("remove_")
-            or n.startswith("get_one_from_")
-            or n.startswith("filter_")
+            if n.startswith(("add_", "remove_", "get_one_from_", "filter_"))
         ]
         print(
             f"[protean-mypy-debug] synthesized HasMany methods for "
@@ -1051,10 +1042,10 @@ def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
     elif (
         isinstance(first_arg_type, Instance)
         and first_arg_type.type.fullname == "builtins.type"
+        and first_arg_type.args
     ):
         # type[X] — extract the type argument
-        if first_arg_type.args:
-            target_type = first_arg_type.args[0]
+        target_type = first_arg_type.args[0]
 
     if target_type is None or isinstance(target_type, AnyType):
         # Forward reference string or unresolvable — fall back

@@ -10,10 +10,9 @@ from protean.core.entity import BaseEntity
 from protean.core.projection import BaseProjection
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.fields import HasMany, Identifier, Integer, String
+from tests.shared import initialize_domain
 
 from .elements import Alien, Person
-
-from tests.shared import initialize_domain
 
 
 @pytest.mark.elasticsearch

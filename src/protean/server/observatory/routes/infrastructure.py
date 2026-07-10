@@ -66,7 +66,7 @@ def sanitize_config(config: Any) -> Any:
         return config
 
 
-def _server_info(domains: list["Domain"]) -> dict[str, Any]:
+def _server_info(domains: list[Domain]) -> dict[str, Any]:
     """Collect server information: Python version, Protean version, domains."""
     domain_info = []
     for domain in domains:
@@ -104,7 +104,7 @@ def _server_info(domains: list["Domain"]) -> dict[str, Any]:
     }
 
 
-def _database_status(domain: "Domain") -> dict[str, Any]:
+def _database_status(domain: Domain) -> dict[str, Any]:
     """Check database provider health."""
     result: dict[str, Any] = {
         "status": "unknown",
@@ -133,7 +133,7 @@ def _database_status(domain: "Domain") -> dict[str, Any]:
     return result
 
 
-def _broker_status(domain: "Domain") -> dict[str, Any]:
+def _broker_status(domain: Domain) -> dict[str, Any]:
     """Check broker health using health_stats()."""
     result: dict[str, Any] = {
         "status": "unknown",
@@ -185,7 +185,7 @@ def _broker_status(domain: "Domain") -> dict[str, Any]:
     return result
 
 
-def _event_store_status(domain: "Domain") -> dict[str, Any]:
+def _event_store_status(domain: Domain) -> dict[str, Any]:
     """Check event store health."""
     result: dict[str, Any] = {
         "status": "unknown",
@@ -212,7 +212,7 @@ def _event_store_status(domain: "Domain") -> dict[str, Any]:
     return result
 
 
-def _cache_status(domain: "Domain") -> dict[str, Any]:
+def _cache_status(domain: Domain) -> dict[str, Any]:
     """Check cache health."""
     result: dict[str, Any] = {
         "status": "unknown",
@@ -260,7 +260,7 @@ def _cache_status(domain: "Domain") -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def create_infrastructure_router(domains: list["Domain"]) -> APIRouter:
+def create_infrastructure_router(domains: list[Domain]) -> APIRouter:
     """Create the /infrastructure API router."""
     router = APIRouter()
 

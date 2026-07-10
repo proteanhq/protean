@@ -5,15 +5,15 @@ causing _setup_process_managers to fail with AttributeError when resolving
 handler event types.
 """
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.process_manager import BaseProcessManager
 from protean.fields import Float, Identifier, String
 from protean.utils.mixins import handle
-
 
 # --- Local aggregate (belongs to this domain) ---
 

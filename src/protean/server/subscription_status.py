@@ -16,6 +16,7 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections import defaultdict
@@ -296,10 +297,8 @@ def _collect_stream_status(
 
             # DLQ depth
             dlq_depth = 0
-            try:
+            with contextlib.suppress(Exception):
                 dlq_depth = redis_conn.xlen(f"{stream_category}:dlq")
-            except Exception:
-                pass
 
             status = _classify_status(lag, pending)
 
@@ -461,7 +460,7 @@ def _collect_outbox_statuses(domain: Domain) -> list[SubscriptionStatus]:
     outbox_config = domain.config.get("outbox", {})
     broker_provider_name = outbox_config.get("broker", "default")
 
-    for database_provider_name in domain.providers.keys():
+    for database_provider_name in domain.providers:
         name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
         stream_label = f"{database_provider_name} \u2192 {broker_provider_name}"
 

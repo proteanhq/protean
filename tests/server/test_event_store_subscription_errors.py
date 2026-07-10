@@ -1167,10 +1167,11 @@ class TestPollAndCleanup:
             await asyncio.sleep(0.05)
             sub.engine.shutting_down = True
 
-        asyncio.create_task(stop_engine())
+        stop_task = asyncio.create_task(stop_engine())
         await asyncio.wait_for(sub.poll(), timeout=2.0)
 
         assert sub.engine.shutting_down
+        await stop_task
 
     @pytest.mark.asyncio
     async def test_cleanup_updates_position_to_store(self, test_domain):

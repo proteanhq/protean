@@ -46,7 +46,8 @@ strings (or ``0`` for ``trace_flags``).
 """
 
 import logging
-from typing import Any, Callable, Iterable, Optional
+from collections.abc import Callable, Iterable
+from typing import Any
 
 # OpenTelemetry trace helpers are resolved lazily on first use so that merely
 # importing this module (e.g. from ``Domain.configure_logging``) does not
@@ -324,7 +325,7 @@ _REDACTED = "[REDACTED]"
 _MAX_REDACT_DEPTH = 5
 
 
-def _build_key_set(redact: Optional[Iterable[str]]) -> frozenset[str]:
+def _build_key_set(redact: Iterable[str] | None) -> frozenset[str]:
     """Return a frozenset of lowercased redact keys.
 
     Always includes :data:`DEFAULT_REDACT_KEYS` so operators cannot
@@ -383,7 +384,7 @@ class ProteanRedactionFilter(logging.Filter):
         logging.getLogger().addFilter(ProteanRedactionFilter())
     """
 
-    def __init__(self, redact: Optional[Iterable[str]] = None) -> None:
+    def __init__(self, redact: Iterable[str] | None = None) -> None:
         super().__init__()
         self._keys = _build_key_set(redact)
 
@@ -401,7 +402,7 @@ class ProteanRedactionFilter(logging.Filter):
 
 
 def make_redaction_processor(
-    redact: Optional[Iterable[str]] = None,
+    redact: Iterable[str] | None = None,
 ) -> Callable[[Any, str, dict[str, Any]], dict[str, Any]]:
     """Build a structlog processor that masks sensitive fields in the event dict.
 
@@ -501,13 +502,13 @@ def log_security_event(event_type: str, **fields: Any) -> None:
 __all__ = [
     "DEFAULT_REDACT_KEYS",
     "LOG_RECORD_RESERVED_ATTRS",
-    "OTelTraceContextFilter",
-    "ProteanCorrelationFilter",
-    "ProteanRedactionFilter",
     "SECURITY_EVENT_INVALID_OPERATION",
     "SECURITY_EVENT_INVALID_STATE",
     "SECURITY_EVENT_INVARIANT_FAILED",
     "SECURITY_EVENT_VALIDATION_FAILED",
+    "OTelTraceContextFilter",
+    "ProteanCorrelationFilter",
+    "ProteanRedactionFilter",
     "log_security_event",
     "make_redaction_processor",
     "protean_correlation_processor",

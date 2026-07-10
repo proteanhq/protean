@@ -1,14 +1,14 @@
 """Fixture: simple field factories resolve to correct Python types."""
 
 from protean.fields import (
-    String,
-    Text,
-    Integer,
-    Float,
-    Decimal,
     Boolean,
     Date,
     DateTime,
+    Decimal,
+    Float,
+    Integer,
+    String,
+    Text,
 )
 
 # Required fields → base type (not Optional)

@@ -286,10 +286,7 @@ def collect_all_events(
     if len(filtered) > limit and page:
         last_pos = page[-1].get("global_position")
         if last_pos is not None:
-            if order == "desc":
-                next_cursor = last_pos - 1
-            else:
-                next_cursor = last_pos + 1
+            next_cursor = last_pos - 1 if order == "desc" else last_pos + 1
 
     return page, next_cursor
 
@@ -538,7 +535,7 @@ def _load_traces_for_correlation(
                     # ``redis_instance`` is specific to the Redis broker adapters
                     # and is not part of the BaseBroker contract; access it
                     # dynamically after the ``hasattr`` guard.
-                    redis_conn = getattr(broker, "redis_instance")
+                    redis_conn = broker.redis_instance
                     break
         except Exception:
             continue
@@ -928,7 +925,7 @@ def search_traces(
 # ---------------------------------------------------------------------------
 
 
-def create_timeline_router(domains: list["Domain"]) -> APIRouter:
+def create_timeline_router(domains: list[Domain]) -> APIRouter:
     """Create the /timeline API router."""
     router = APIRouter()
 

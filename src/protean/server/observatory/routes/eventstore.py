@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def collect_aggregate_stream_metadata(
-    domains: list["Domain"],
+    domains: list[Domain],
 ) -> list[dict[str, Any]]:
     """Walk domain registries for all aggregates, extract stream metadata.
 
@@ -48,7 +48,7 @@ def collect_aggregate_stream_metadata(
 
     for domain in domains:
         registry_dict = getattr(domain.registry, "aggregates", {})
-        for _fqn, record in registry_dict.items():
+        for record in registry_dict.values():
             agg_cls = record.cls
             meta = getattr(agg_cls, "meta_", None)
 
@@ -113,7 +113,7 @@ def enrich_with_event_store_stats(
             )
 
 
-def collect_outbox_status(domains: list["Domain"]) -> dict[str, dict[str, Any]]:
+def collect_outbox_status(domains: list[Domain]) -> dict[str, dict[str, Any]]:
     """Collect outbox counts per domain.
 
     Returns ``{domain_name: {"status": "ok", "counts": {...}}}``
@@ -165,7 +165,7 @@ def _serialize_aggregate(agg: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def create_eventstore_router(domains: list["Domain"]) -> APIRouter:
+def create_eventstore_router(domains: list[Domain]) -> APIRouter:
     """Create the /eventstore API router."""
     router = APIRouter()
 

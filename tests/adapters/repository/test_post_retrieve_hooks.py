@@ -15,7 +15,6 @@ from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.fields import HasOne, Identifier, Integer, String
 
-
 # --- Domain elements for testing ---
 
 

@@ -62,22 +62,24 @@ class TestObservatoryCommand:
 
         mock_domain = MagicMock()
 
-        with patch(
-            "protean.cli.observatory.derive_domain", return_value=mock_domain
-        ) as mock_derive:
-            with patch(OBSERVATORY_CLS) as MockObservatory:
-                mock_obs = MockObservatory.return_value
+        with (
+            patch(
+                "protean.cli.observatory.derive_domain", return_value=mock_domain
+            ) as mock_derive,
+            patch(OBSERVATORY_CLS) as MockObservatory,
+        ):
+            mock_obs = MockObservatory.return_value
 
-                args = ["observatory", "--domain", "publishing7.py"]
-                result = runner.invoke(app, args)
+            args = ["observatory", "--domain", "publishing7.py"]
+            result = runner.invoke(app, args)
 
-                assert result.exit_code == 0
-                mock_derive.assert_called_once_with("publishing7.py")
-                mock_domain.init.assert_called_once()
-                MockObservatory.assert_called_once_with(
-                    domains=[mock_domain], title="Protean Observatory"
-                )
-                mock_obs.run.assert_called_once()
+            assert result.exit_code == 0
+            mock_derive.assert_called_once_with("publishing7.py")
+            mock_domain.init.assert_called_once()
+            MockObservatory.assert_called_once_with(
+                domains=[mock_domain], title="Protean Observatory"
+            )
+            mock_obs.run.assert_called_once()
 
     def test_observatory_handles_no_domain_exception(self):
         """Test that the observatory command gracefully handles NoDomainException."""
@@ -106,9 +108,8 @@ class TestObservatoryCommand:
         """Test the empty-domain guard inside the function body."""
         from protean.cli.observatory import observatory as obs_fn
 
-        with patch(OBSERVATORY_CLS):
-            with pytest.raises(typer.Abort):
-                obs_fn(domain=[], host="0.0.0.0", port=9000, title="T")
+        with patch(OBSERVATORY_CLS), pytest.raises(typer.Abort):
+            obs_fn(domain=[], host="0.0.0.0", port=9000, title="T")
 
     def test_observatory_custom_host(self):
         """Test that observatory accepts a custom host."""
@@ -211,30 +212,32 @@ class TestObservatoryCommand:
             call_count += 1
             return mock_domain1 if call_count == 1 else mock_domain2
 
-        with patch(
-            "protean.cli.observatory.derive_domain",
-            side_effect=derive_side_effect,
+        with (
+            patch(
+                "protean.cli.observatory.derive_domain",
+                side_effect=derive_side_effect,
+            ),
+            patch(OBSERVATORY_CLS) as MockObservatory,
         ):
-            with patch(OBSERVATORY_CLS) as MockObservatory:
-                mock_obs = MockObservatory.return_value
+            mock_obs = MockObservatory.return_value
 
-                args = [
-                    "observatory",
-                    "--domain",
-                    "publishing7.py",
-                    "--domain",
-                    "publishing7.py",
-                ]
-                result = runner.invoke(app, args)
+            args = [
+                "observatory",
+                "--domain",
+                "publishing7.py",
+                "--domain",
+                "publishing7.py",
+            ]
+            result = runner.invoke(app, args)
 
-                assert result.exit_code == 0
-                mock_domain1.init.assert_called_once()
-                mock_domain2.init.assert_called_once()
-                MockObservatory.assert_called_once_with(
-                    domains=[mock_domain1, mock_domain2],
-                    title="Protean Observatory",
-                )
-                mock_obs.run.assert_called_once()
+            assert result.exit_code == 0
+            mock_domain1.init.assert_called_once()
+            mock_domain2.init.assert_called_once()
+            MockObservatory.assert_called_once_with(
+                domains=[mock_domain1, mock_domain2],
+                title="Protean Observatory",
+            )
+            mock_obs.run.assert_called_once()
 
     def test_observatory_second_domain_invalid(self):
         """Test that observatory aborts if any domain in a multi-domain list is invalid."""

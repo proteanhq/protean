@@ -16,8 +16,8 @@ __all__ = (
     "EmailProviders",
     "InlineBroker",
     "MemoryCache",
+    "MemoryEventStore",
     "MemoryModel",
     "MemoryProvider",
-    "MemoryEventStore",
     "Providers",
 )

@@ -11,7 +11,7 @@ Covers:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -155,7 +155,7 @@ class TestCorrelationAPIForGraph:
             message_type="Test.PlaceOrder.v1",
             kind="COMMAND",
             stream="order-abc123",
-            time=datetime(2026, 4, 1, 10, 0, 0, tzinfo=timezone.utc).isoformat(),
+            time=datetime(2026, 4, 1, 10, 0, 0, tzinfo=UTC).isoformat(),
             global_position=1,
             handler="PlaceOrderHandler",
             duration_ms=45.2,
@@ -169,7 +169,7 @@ class TestCorrelationAPIForGraph:
                 message_type=f"Test.Event{i}.v1",
                 kind="EVENT",
                 stream=f"order-abc{i}",
-                time=datetime(2026, 4, 1, 10, 0, i, tzinfo=timezone.utc).isoformat(),
+                time=datetime(2026, 4, 1, 10, 0, i, tzinfo=UTC).isoformat(),
                 global_position=1 + i,
                 handler=f"Handler{i}" if i % 2 == 0 else None,
                 duration_ms=10.0 + i,

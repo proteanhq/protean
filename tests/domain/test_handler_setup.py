@@ -20,7 +20,6 @@ from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Identifier, String
 from protean.utils.mixins import handle, read
 
-
 # ─── Shared fixtures ────────────────────────────────────────────────────
 
 

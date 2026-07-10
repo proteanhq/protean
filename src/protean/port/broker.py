@@ -1,11 +1,11 @@
-from dataclasses import dataclass
-from importlib import import_module, metadata
 import logging
 import time
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
+from dataclasses import dataclass
 from enum import Enum, Flag, auto
-from typing import TYPE_CHECKING, Any, Dict, Optional, Type
+from importlib import import_module, metadata
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError, ValidationError
@@ -178,7 +178,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
         return bool(self.capabilities & capabilities)
 
-    def publish(self, stream: str, message: dict[str, Any]) -> Optional[str]:
+    def publish(self, stream: str, message: dict[str, Any]) -> str | None:
         """Publish a message to the broker.
 
         Args:
@@ -780,7 +780,7 @@ class BaseBroker(metaclass=ABCMeta):
         resources (e.g. the inline broker) work without changes.
         """
 
-    def register(self, subscriber_cls: Type[BaseSubscriber]) -> None:
+    def register(self, subscriber_cls: type[BaseSubscriber]) -> None:
         """Register a subscriber to this broker against its stream.
 
         Args:
@@ -802,7 +802,7 @@ class BrokerRegistry:
     based on whether the required dependencies are installed.
     """
 
-    _brokers: Dict[str, str] = {}
+    _brokers: ClassVar[dict[str, str]] = {}
     _initialized: bool = False
 
     @classmethod
@@ -842,7 +842,7 @@ class BrokerRegistry:
         logger.debug(f"Registered broker '{name}' -> {broker_class_path}")
 
     @classmethod
-    def get(cls, name: str) -> Type[BaseBroker]:
+    def get(cls, name: str) -> type[BaseBroker]:
         """Get a broker class by name.
 
         Args:
@@ -874,10 +874,10 @@ class BrokerRegistry:
             raise ConfigurationError(
                 f"Failed to load broker '{name}' from '{broker_path}': {e}. "
                 f"Ensure the required dependencies are installed."
-            )
+            ) from e
 
     @classmethod
-    def list(cls) -> Dict[str, str]:
+    def list(cls) -> dict[str, str]:
         """List all registered brokers.
 
         Returns:

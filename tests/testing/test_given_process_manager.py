@@ -16,7 +16,6 @@ from protean.fields import Float, Identifier, String
 from protean.testing import EventSequence, ProcessManagerResult, given
 from protean.utils.mixins import handle
 
-
 # ---------------------------------------------------------------------------
 # Domain elements for testing
 # ---------------------------------------------------------------------------

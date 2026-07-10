@@ -24,9 +24,7 @@ from protean.server.observatory.routes.infrastructure import (
     _server_info,
     sanitize_config,
 )
-
 from tests.server.observatory.conftest import route_paths
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

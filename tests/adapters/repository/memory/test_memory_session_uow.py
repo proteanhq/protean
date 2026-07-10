@@ -4,7 +4,7 @@ import pytest
 
 from protean import UnitOfWork
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String, Integer
+from protean.fields import Integer, String
 
 
 class Product(BaseAggregate):
@@ -42,7 +42,7 @@ def test_memory_session_uses_existing_uow_session(test_domain):
         )
         product_data = first_session._db["data"].get(schema_name, {})
         assert len(product_data) == 1
-        assert list(product_data.values())[0]["name"] == "Laptop"
+        assert next(iter(product_data.values()))["name"] == "Laptop"
 
         # Same data should be accessible through second session
         product_data_2 = second_session._db["data"].get(schema_name, {})
@@ -61,7 +61,7 @@ def test_memory_session_commit_updates_uow_session(test_domain):
 
         # Modify data in the session
         schema_name = "product"
-        product_id = list(session._db["data"][schema_name].keys())[0]
+        product_id = next(iter(session._db["data"][schema_name].keys()))
         session._db["data"][schema_name][product_id]["price"] = 30
 
         # Commit should update the UoW session data
@@ -112,7 +112,7 @@ def test_memory_session_commit_without_uow(test_domain):
 
     # Modify data in the session
     schema_name = "product"
-    product_id = list(session._db["data"][schema_name].keys())[0]
+    product_id = next(iter(session._db["data"][schema_name].keys()))
     session._db["data"][schema_name][product_id]["price"] = 250
 
     # Commit should update the provider's database directly

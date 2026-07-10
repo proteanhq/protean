@@ -23,7 +23,7 @@ class TestQ:
 
     def test_deconstruct_negated(self):
         q = ~Q(price__gt=10.0)
-        path, args, kwargs = q.deconstruct()
+        _path, args, kwargs = q.deconstruct()
         assert args == ()
         assert kwargs == {
             "price__gt": 10.0,
@@ -34,7 +34,7 @@ class TestQ:
         q1 = Q(price__gt=10.0)
         q2 = Q(price=11.0)
         q3 = q1 | q2
-        path, args, kwargs = q3.deconstruct()
+        _path, args, kwargs = q3.deconstruct()
         assert args == (
             ("price__gt", 10.0),
             ("price", 11.0),
@@ -45,7 +45,7 @@ class TestQ:
         q1 = Q(price__gt=10.0)
         q2 = Q(price=11.0)
         q = q1 & q2
-        path, args, kwargs = q.deconstruct()
+        _path, args, kwargs = q.deconstruct()
         assert args == (
             ("price__gt", 10.0),
             ("price", 11.0),
@@ -54,7 +54,7 @@ class TestQ:
 
     def test_deconstruct_multiple_kwargs(self):
         q = Q(price__gt=10.0, price=11.0)
-        path, args, kwargs = q.deconstruct()
+        _path, args, kwargs = q.deconstruct()
         assert args == (
             ("price", 11.0),
             ("price__gt", 10.0),
@@ -63,26 +63,26 @@ class TestQ:
 
     def test_reconstruct(self):
         q = Q(price__gt=10.0)
-        path, args, kwargs = q.deconstruct()
+        _path, args, kwargs = q.deconstruct()
         assert Q(*args, **kwargs) == q
 
     def test_reconstruct_negated(self):
         q = ~Q(price__gt=10.0)
-        path, args, kwargs = q.deconstruct()
+        _path, args, kwargs = q.deconstruct()
         assert Q(*args, **kwargs) == q
 
     def test_reconstruct_or(self):
         q1 = Q(price__gt=10.0)
         q2 = Q(price=11.0)
         q = q1 | q2
-        path, args, kwargs = q.deconstruct()
+        _path, args, kwargs = q.deconstruct()
         assert Q(*args, **kwargs) == q
 
     def test_reconstruct_and(self):
         q1 = Q(price__gt=10.0)
         q2 = Q(price=11.0)
         q = q1 & q2
-        path, args, kwargs = q.deconstruct()
+        _path, args, kwargs = q.deconstruct()
         assert Q(*args, **kwargs) == q
 
     def test_deconstruct_single_child(self):
@@ -96,7 +96,7 @@ class TestQ:
     def test_deconstruct_multiple_children(self):
         """deconstruct with multiple children."""
         q = Q(name="Alice", age=30)
-        path, args, kwargs = q.deconstruct()
+        _path, args, kwargs = q.deconstruct()
         assert len(args) == 2  # Two sorted children
         assert kwargs == {}
 
@@ -105,13 +105,13 @@ class TestQ:
         q1 = Q(name="Alice")
         q2 = Q(age=30)
         q = q1 | q2
-        path, args, kwargs = q.deconstruct()
+        _path, _args, kwargs = q.deconstruct()
         assert kwargs.get("_connector") == Q.OR
 
     def test_deconstruct_negated_flag(self):
         """deconstruct includes _negated=True when negated."""
         q = ~Q(name="Alice")
-        path, args, kwargs = q.deconstruct()
+        _path, _args, kwargs = q.deconstruct()
         assert kwargs.get("_negated") is True
 
 

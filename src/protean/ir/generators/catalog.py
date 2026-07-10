@@ -25,7 +25,6 @@ from typing import Any
 
 from protean.ir.generators.base import field_type_label, short_name
 
-
 # ---------------------------------------------------------------------------
 # Field table helpers
 # ---------------------------------------------------------------------------

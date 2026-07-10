@@ -16,7 +16,6 @@ from protean.server.health import (
     _parse_request_line,
 )
 
-
 # ---------------------------------------------------------------------------
 # Unit tests: HTTP helpers
 # ---------------------------------------------------------------------------
@@ -283,7 +282,7 @@ class TestHealthServerIntegration:
         _, _, loop, port = health_server
 
         async def _send_empty():
-            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            _reader, writer = await asyncio.open_connection("127.0.0.1", port)
             writer.close()
             await writer.wait_closed()
 
@@ -348,19 +347,21 @@ class TestHealthServerEdgeCases:
         mock_config.__contains__ = original_config.__contains__
         domain.config = mock_config
 
-        with domain.domain_context():
-            with patch.object(
+        with (
+            domain.domain_context(),
+            patch.object(
                 type(domain),
                 "has_outbox",
                 new_callable=PropertyMock,
                 return_value=False,
-            ):
-                engine = Engine(domain, test_mode=True)
-                hs = engine._health_server
-                assert hs.enabled is True
-                assert hs.host == "127.0.0.1"
-                assert hs.port == 8080
-                assert hs.port_auto_increment is False
+            ),
+        ):
+            engine = Engine(domain, test_mode=True)
+            hs = engine._health_server
+            assert hs.enabled is True
+            assert hs.host == "127.0.0.1"
+            assert hs.port == 8080
+            assert hs.port_auto_increment is False
 
     def test_start_fails_gracefully_on_port_conflict(self):
         """HealthServer logs a warning and continues if port is in use."""

@@ -58,20 +58,20 @@ def find_domain_by_string(module: ModuleType, domain_name: str) -> Domain:
     # attribute name or function call.
     try:
         expr = ast.parse(domain_name.strip(), mode="eval").body
-    except SyntaxError:
+    except SyntaxError as e:
         raise NoDomainException(
             f"Failed to parse {domain_name!r} as an attribute name or function call."
-        )
+        ) from e
 
     if isinstance(expr, ast.Name):
         # Handle attribute name
         name = expr.id
         try:
             domain = getattr(module, name)
-        except AttributeError:
+        except AttributeError as e:
             raise NoDomainException(
                 f"Failed to find attribute {name!r} in {module.__name__!r}."
-            )
+            ) from e
     elif isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name):
         # Handle function call, ensuring it's a simple function call without arguments
         function_name = expr.func.id
@@ -86,10 +86,10 @@ def find_domain_by_string(module: ModuleType, domain_name: str) -> Domain:
                     raise NoDomainException(
                         f"{function_name!r} is not callable in {module.__name__!r}."
                     )
-            except AttributeError:
+            except AttributeError as e:
                 raise NoDomainException(
                     f"Failed to find function {function_name!r} in {module.__name__!r}."
-                )
+                ) from e
         else:
             raise NoDomainException(
                 f"Function calls with arguments are not supported: {domain_name!r}."
@@ -189,7 +189,9 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
 
     if domain_import_path:
         logger.debug("Deriving domain from %s...", domain_import_path)
-        path, name = (re.split(r":(?![\\/])", domain_import_path, 1) + [None])[:2]
+        parts = re.split(r":(?![\\/])", domain_import_path, maxsplit=1)
+        path = parts[0]
+        name = parts[1] if len(parts) > 1 else None
         import_name = prepare_import(path)
         domain = locate_domain(import_name, name)
     else:

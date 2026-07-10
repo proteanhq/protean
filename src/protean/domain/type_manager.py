@@ -63,14 +63,14 @@ class TypeManager:
         """
         registry = self._domain._domain_registry
         for element_type in [DomainObjects.EVENT, DomainObjects.COMMAND]:
-            for _, element in registry._elements[element_type.value].items():
+            for element in registry._elements[element_type.value].values():
                 type_string = (
                     f"{self._domain.camel_case_name}."
                     f"{element.cls.__name__}."
                     f"v{element.cls.__version__}"
                 )
 
-                setattr(element.cls, "__type__", type_string)
+                element.cls.__type__ = type_string
                 self.events_and_commands[type_string] = element.cls
 
     def _populate_chain(self, chain: UpcasterChain) -> None:
@@ -131,12 +131,12 @@ class TypeManager:
             raise IncorrectUsageError(f"Class `{event_cls.__name__}` is not an Event")
 
         self.events_and_commands[type_string] = event_cls
-        setattr(event_cls, "__type__", type_string)
+        event_cls.__type__ = type_string
 
     def generate_fact_event_classes(self) -> None:
         """Generate FactEvent classes for all aggregates with ``fact_events`` enabled."""
         registry = self._domain._domain_registry
-        for _, element in registry._elements[DomainObjects.AGGREGATE.value].items():
+        for element in registry._elements[DomainObjects.AGGREGATE.value].values():
             if element.cls.meta_.fact_events:
                 event_cls = element_to_fact_event(element.cls)
                 registered = self._domain.register(

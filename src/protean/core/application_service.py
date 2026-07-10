@@ -3,13 +3,12 @@ from __future__ import annotations
 import functools
 import logging
 from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
-from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ class BaseApplicationService(Element, OptionsMixin):
 
     element_type = DomainObjects.APPLICATION_SERVICE
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseApplicationService":
+    def __new__(cls, *args: Any, **kwargs: Any) -> BaseApplicationService:
         if cls is BaseApplicationService:
             raise NotSupportedError("BaseApplicationService cannot be instantiated")
         return object.__new__(cls, *args, **kwargs)

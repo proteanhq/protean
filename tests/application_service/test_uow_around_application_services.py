@@ -1,4 +1,4 @@
-import mock
+from unittest import mock
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService, use_case

@@ -5,16 +5,16 @@ state dict, which are not JSON-serializable. This caused UoW commit failures
 when the transition event was written to the event store.
 """
 
-import pytest
 from datetime import date, datetime
 from uuid import uuid4
+
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.process_manager import BaseProcessManager
 from protean.fields import Date, DateTime, Identifier, String
 from protean.utils.mixins import handle
-
 
 # --- Domain elements with datetime fields ---
 

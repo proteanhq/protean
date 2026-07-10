@@ -1,6 +1,6 @@
 import logging
 from abc import abstractmethod
-from typing import Any, ClassVar, TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, _derive_element_class

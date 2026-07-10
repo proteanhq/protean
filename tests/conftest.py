@@ -1,6 +1,7 @@
 """Module to setup Factories and other required artifacts for tests"""
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -444,10 +445,8 @@ def _close_test_clients(monkeypatch):
     yield
 
     for client in created:
-        try:
+        with contextlib.suppress(Exception):
             client.close()
-        except Exception:  # noqa: BLE001 - best-effort teardown cleanup
-            pass
 
 
 @pytest.fixture(scope="module", autouse=True)

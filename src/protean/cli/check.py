@@ -21,12 +21,11 @@ Exit codes:
 """
 
 import json
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 from rich import print
 from rich.console import Console
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
@@ -89,7 +88,7 @@ def check(
         msg = f"Error loading Protean domain: {exc.args[0]}"
         print(f"[red]{msg}[/red]")
         logger.error(msg)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
 
     assert derived_domain is not None
 

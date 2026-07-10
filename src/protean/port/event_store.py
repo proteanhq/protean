@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict, deque
-from dataclasses import dataclass, field as dc_field
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -27,7 +28,7 @@ class CausationNode:
     stream: str
     time: str | None
     global_position: int | None
-    children: list["CausationNode"] = dc_field(default_factory=list)
+    children: list[CausationNode] = dc_field(default_factory=list)
     handler: str | None = None
     duration_ms: float | None = None
     delta_ms: float | None = None
@@ -41,7 +42,7 @@ class BaseEventStore(metaclass=ABCMeta):
     classes with the domain.
     """
 
-    def __init__(self, name: str, domain: "Domain", conn_info: Dict[str, str]) -> None:
+    def __init__(self, name: str, domain: Domain, conn_info: dict[str, str]) -> None:
         self.name = name
         self.domain = domain
         self.conn_info = conn_info
@@ -78,14 +79,14 @@ class BaseEventStore(metaclass=ABCMeta):
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Read messages from the event store.
 
         Implemented by the concrete event store adapter.
         """
 
     @abstractmethod
-    def _read_last_message(self, stream_name: str) -> Optional[Dict[str, Any]]:
+    def _read_last_message(self, stream_name: str) -> dict[str, Any] | None:
         """Read the last message from the event store.
 
         Implemented by the concrete event store adapter.
@@ -109,20 +110,18 @@ class BaseEventStore(metaclass=ABCMeta):
             stream, sql=sql, position=position, no_of_messages=no_of_messages
         )
 
-        messages = []
-        for raw_message in raw_messages:
-            messages.append(Message.deserialize(raw_message))
+        messages = [Message.deserialize(raw_message) for raw_message in raw_messages]
 
         return messages
 
-    def read_last_message(self, stream: str) -> Optional[Message]:
+    def read_last_message(self, stream: str) -> Message | None:
         raw_message = self._read_last_message(stream)
         if raw_message:
             return Message.deserialize(raw_message)
 
         return None
 
-    def append(self, object: Union[BaseEvent, BaseCommand]) -> int:
+    def append(self, object: BaseEvent | BaseCommand) -> int:
         tracer = self.domain.tracer
 
         with tracer.start_as_current_span(
@@ -160,12 +159,12 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def load_aggregate(
         self,
-        part_of: Type[BaseAggregate],
+        part_of: type[BaseAggregate],
         identifier: str,
         *,
         at_version: int | None = None,
         as_of: datetime | None = None,
-    ) -> Optional[BaseAggregate]:
+    ) -> BaseAggregate | None:
         """Load an aggregate from underlying events.
 
         By default, reconstitutes the aggregate to its current (latest) state.
@@ -195,8 +194,8 @@ class BaseEventStore(metaclass=ABCMeta):
     # ------------------------------------------------------------------
 
     def _load_aggregate_current(
-        self, part_of: Type[BaseAggregate], identifier: str
-    ) -> Optional[BaseAggregate]:
+        self, part_of: type[BaseAggregate], identifier: str
+    ) -> BaseAggregate | None:
         """Load the aggregate at its latest version (existing behaviour)."""
         snapshot_message = self._read_last_message(
             f"{part_of.meta_.stream_category}:snapshot-{identifier}"
@@ -216,7 +215,7 @@ class BaseEventStore(metaclass=ABCMeta):
                 )
             )
 
-            events: list[Union[BaseEvent, BaseCommand]] = []
+            events: list[BaseEvent | BaseCommand] = []
             for event_message in event_stream:
                 event = Message.deserialize(event_message).to_domain_object()
                 aggregate._apply(event)
@@ -264,10 +263,10 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def _load_aggregate_at_version(
         self,
-        part_of: Type[BaseAggregate],
+        part_of: type[BaseAggregate],
         identifier: str,
         at_version: int,
-    ) -> Optional[BaseAggregate]:
+    ) -> BaseAggregate | None:
         """Load an aggregate at a specific version.
 
         Version is 0-indexed: version 0 = state after the first event.
@@ -279,7 +278,7 @@ class BaseEventStore(metaclass=ABCMeta):
             f"{part_of.meta_.stream_category}:snapshot-{identifier}"
         )
 
-        aggregate: Optional[BaseAggregate] = None
+        aggregate: BaseAggregate | None = None
 
         if snapshot_message:
             snapshot_version: int = snapshot_message["data"].get("_version", -1)
@@ -361,10 +360,10 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def _load_aggregate_as_of(
         self,
-        part_of: Type[BaseAggregate],
+        part_of: type[BaseAggregate],
         identifier: str,
         as_of: datetime,
-    ) -> Optional[BaseAggregate]:
+    ) -> BaseAggregate | None:
         """Load an aggregate as of a specific timestamp.
 
         Snapshots are skipped entirely — events are read from position 0 and
@@ -399,7 +398,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         return aggregate
 
-    def create_snapshot(self, part_of: Type[BaseAggregate], identifier: str) -> bool:
+    def create_snapshot(self, part_of: type[BaseAggregate], identifier: str) -> bool:
         """Create a snapshot for a specific event-sourced aggregate instance.
 
         Reads the full event stream for the aggregate, reconstructs it via
@@ -459,7 +458,7 @@ class BaseEventStore(metaclass=ABCMeta):
         return identifier.startswith("fact-")
 
     @abstractmethod
-    def _stream_identifiers(self, stream_category: str) -> List[str]:
+    def _stream_identifiers(self, stream_category: str) -> list[str]:
         """Return all unique aggregate identifiers for a given stream category.
 
         Stream names follow the pattern ``{category}-{identifier}``.
@@ -475,7 +474,7 @@ class BaseEventStore(metaclass=ABCMeta):
             Sorted list of unique aggregate identifiers.
         """
 
-    def create_snapshots(self, part_of: Type[BaseAggregate]) -> int:
+    def create_snapshots(self, part_of: type[BaseAggregate]) -> int:
         """Create snapshots for all instances of an event-sourced aggregate.
 
         Discovers all unique aggregate identifiers in the stream category,
@@ -834,8 +833,8 @@ class BaseEventStore(metaclass=ABCMeta):
         """
 
     def _last_event_of_type(
-        self, event_cls: Type[BaseEvent], stream_category: str | None = None
-    ) -> Optional[Union[BaseEvent, BaseCommand]]:
+        self, event_cls: type[BaseEvent], stream_category: str | None = None
+    ) -> BaseEvent | BaseCommand | None:
         stream_category = stream_category or "$all"
         events = [
             event
@@ -850,8 +849,8 @@ class BaseEventStore(metaclass=ABCMeta):
         )
 
     def _events_of_type(
-        self, event_cls: Type[BaseEvent], stream_category: str | None = None
-    ) -> List[Union[BaseEvent, BaseCommand]]:
+        self, event_cls: type[BaseEvent], stream_category: str | None = None
+    ) -> list[BaseEvent | BaseCommand]:
         """Read events of a specific type in a given stream.
 
         This is a utility method, especially useful for testing purposes, that retrieves events of a

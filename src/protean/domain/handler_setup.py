@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Protocol, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -89,9 +90,7 @@ class HandlerConfigurator:
         - No duplicate handlers for the same command
         """
         registry = self._domain._domain_registry
-        for _, element in registry._elements[
-            DomainObjects.COMMAND_HANDLER.value
-        ].items():
+        for element in registry._elements[DomainObjects.COMMAND_HANDLER.value].values():
             if element.cls._handlers:  # Protect against re-registration
                 continue
 
@@ -155,8 +154,8 @@ class HandlerConfigurator:
         Multiple handlers per event type are allowed.
         """
         registry = self._domain._domain_registry
-        for _, element in registry._elements[DomainObjects.EVENT_HANDLER.value].items():
-            for method_name, method in _discover_handler_methods(element.cls):
+        for element in registry._elements[DomainObjects.EVENT_HANDLER.value].values():
+            for _method_name, method in _discover_handler_methods(element.cls):
                 if method._target_cls == "$any":
                     # Only one $any handler per event handler class
                     element.cls._handlers["$any"] = {method}
@@ -180,7 +179,7 @@ class HandlerConfigurator:
         Validates that each handler method targets an event class.
         """
         registry = self._domain._domain_registry
-        for _, element in registry._elements[DomainObjects.PROJECTOR.value].items():
+        for element in registry._elements[DomainObjects.PROJECTOR.value].values():
             if element.cls._handlers:  # Protect against re-registration
                 continue
 
@@ -210,9 +209,7 @@ class HandlerConfigurator:
         validate them, generate transition events, and infer stream categories.
         """
         registry = self._domain._domain_registry
-        for _, element in registry._elements[
-            DomainObjects.PROCESS_MANAGER.value
-        ].items():
+        for element in registry._elements[DomainObjects.PROCESS_MANAGER.value].values():
             pm_cls = element.cls
 
             # Build handler map
@@ -285,7 +282,7 @@ class HandlerConfigurator:
             f"{transition_cls.__name__}."
             f"v{getattr(transition_cls, '__version__', 1)}"
         )
-        setattr(transition_cls, "__type__", type_string)
+        transition_cls.__type__ = type_string
         self._domain._events_and_commands[type_string] = transition_cls
 
         # Store transition event class on PM
@@ -312,9 +309,9 @@ class HandlerConfigurator:
     def set_query_type(self) -> None:
         """Set ``__type__`` on registered queries for handler routing."""
         registry = self._domain._domain_registry
-        for _, element in registry._elements[DomainObjects.QUERY.value].items():
+        for element in registry._elements[DomainObjects.QUERY.value].values():
             type_string = f"{self._domain.camel_case_name}.{element.cls.__name__}"
-            setattr(element.cls, "__type__", type_string)
+            element.cls.__type__ = type_string
 
     def setup_query_handlers(self) -> None:
         """Discover ``@read``-decorated methods in query handlers and build
@@ -328,7 +325,7 @@ class HandlerConfigurator:
         """
 
         registry = self._domain._domain_registry
-        for _, element in registry._elements[DomainObjects.QUERY_HANDLER.value].items():
+        for element in registry._elements[DomainObjects.QUERY_HANDLER.value].values():
             if element.cls._handlers:  # Protect against re-registration
                 continue
 

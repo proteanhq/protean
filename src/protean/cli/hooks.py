@@ -65,7 +65,6 @@ from protean.ir.diff import classify_changes, diff_ir
 from protean.ir.git import GitError
 from protean.ir.staleness import StalenessStatus, check_staleness
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -107,7 +106,7 @@ def _load_live_ir(domain_path: str) -> dict[str, Any]:
         domain = derive_domain(domain_path)
     except NoDomainException as exc:
         print(f"Error loading domain: {exc.args[0]}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     if domain is None:
         print(
@@ -121,7 +120,7 @@ def _load_live_ir(domain_path: str) -> dict[str, Any]:
         return domain.to_ir()
     except Exception as exc:
         print(f"Error generating IR: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
 
 def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict[str, Any]:
@@ -298,7 +297,7 @@ def check_staleness_hook() -> None:
         config = load_config(args.dir)
     except ValueError as exc:
         print(f"Error: Invalid .protean/config.toml: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     # If staleness checking is disabled, exit immediately
     if not config.staleness_enabled:
@@ -433,7 +432,7 @@ def check_compat_hook() -> None:
         config = load_config(args.dir)
     except ValueError as exc:
         print(f"Error: Invalid .protean/config.toml: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     if config.strictness == "off":
         raise SystemExit(0)

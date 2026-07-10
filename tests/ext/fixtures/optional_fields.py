@@ -1,6 +1,6 @@
 """Fixture: non-required fields without defaults resolve to Optional types."""
 
-from protean.fields import String, Integer, Float, Boolean, Date, DateTime
+from protean.fields import Boolean, Date, DateTime, Float, Integer, String
 
 # Non-required fields without defaults → Optional (T | None)
 s = String(max_length=100)

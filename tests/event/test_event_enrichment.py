@@ -339,7 +339,6 @@ class TestFactEventEnrichment:
         """Re-register User with fact_events=True."""
         # Elements already registered by module-level fixture;
         # we need a fresh domain with fact_events enabled.
-        pass
 
     def test_enrichers_run_on_fact_events(self, test_domain):
         """Fact events raised during repository.add() also get enriched."""

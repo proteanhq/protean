@@ -1,5 +1,5 @@
 # --8<-- [start:full]
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from protean.domain import Domain
 from protean.fields import DateTime, String
@@ -8,7 +8,7 @@ publishing = Domain(__name__)
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 @publishing.aggregate

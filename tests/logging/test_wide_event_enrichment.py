@@ -23,10 +23,9 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
-from protean.utils.logging import bind_event_context, unbind_event_context
 from protean.utils.globals import current_domain
+from protean.utils.logging import bind_event_context, unbind_event_context
 from protean.utils.mixins import handle
-
 
 # --- Domain elements ---
 

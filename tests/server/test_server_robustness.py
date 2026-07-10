@@ -2,18 +2,18 @@ from uuid import uuid4
 
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
-from protean import apply
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils import Processing
-from protean.utils.eventing import Metadata, DomainMeta, Message, MessageHeaders
+from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
 from protean.utils.mixins import handle
 
 # Global variables to track processing

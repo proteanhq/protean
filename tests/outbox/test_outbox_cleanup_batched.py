@@ -6,11 +6,12 @@ comes from the ``batch_size`` argument, falling back to ``[outbox.cleanup]``
 config (default 5000).
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
+import pytest
+
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxRepository, OutboxStatus
-from protean.utils.eventing import Metadata, DomainMeta, MessageHeaders
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +28,7 @@ def sample_metadata():
         headers=MessageHeaders(
             id="test-id",
             type="TestEvent",
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
             stream="test-stream",
         ),
         domain=DomainMeta(
@@ -50,7 +51,7 @@ def make_messages(outbox_repo, sample_metadata):
     """Factory: add ``count`` messages of ``status`` aged ``hours_old``."""
 
     def _make(count, status=OutboxStatus.PUBLISHED.value, hours_old=200):
-        aged = datetime.now(timezone.utc) - timedelta(hours=hours_old)
+        aged = datetime.now(UTC) - timedelta(hours=hours_old)
         for i in range(count):
             msg = Outbox.create_message(
                 message_id=f"msg-{status}-{hours_old}-{i}",

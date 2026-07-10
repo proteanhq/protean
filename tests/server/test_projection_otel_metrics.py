@@ -5,10 +5,9 @@ observations when the metrics are scraped with telemetry enabled. Mirrors
 ``test_subscription_otel_metrics.py``.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
-
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -109,7 +108,7 @@ def _seed_caught_up(test_domain):
             f"position-{fqn(BalancesProjector)}-{category}",
             "Read",
             {"position": head},
-            metadata={"headers": {"time": datetime.now(timezone.utc).isoformat()}},
+            metadata={"headers": {"time": datetime.now(UTC).isoformat()}},
         )
 
 

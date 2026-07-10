@@ -6,7 +6,7 @@ in time or at a specific version.  Temporal aggregates are read-only —
 they represent a historical snapshot and cannot raise new events.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from protean import Domain, apply, handle, invariant
 from protean.exceptions import IncorrectUsageError, ValidationError
@@ -81,7 +81,7 @@ class Account:
         )
         return account
 
-    def deposit(self, amount: float, reference: str = None) -> None:
+    def deposit(self, amount: float, reference: str | None = None) -> None:
         if amount <= 0:
             raise ValidationError({"amount": ["Deposit amount must be positive"]})
         self.raise_(
@@ -92,7 +92,7 @@ class Account:
             )
         )
 
-    def withdraw(self, amount: float, reference: str = None) -> None:
+    def withdraw(self, amount: float, reference: str | None = None) -> None:
         if amount <= 0:
             raise ValidationError({"amount": ["Withdrawal amount must be positive"]})
         self.raise_(
@@ -103,7 +103,7 @@ class Account:
             )
         )
 
-    def close(self, reason: str = None) -> None:
+    def close(self, reason: str | None = None) -> None:
         self.raise_(
             AccountClosed(
                 account_id=str(self.id),
@@ -215,7 +215,7 @@ if __name__ == "__main__":
         )
 
         # Capture a timestamp between events for as_of queries
-        midpoint = datetime.now(timezone.utc)
+        midpoint = datetime.now(UTC)
 
         # Event 3: WithdrawalMade -> balance $1200
         domain.process(

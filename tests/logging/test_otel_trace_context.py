@@ -17,8 +17,8 @@ Verifies that:
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 from unittest.mock import patch
 
 import pytest
@@ -43,7 +43,6 @@ from protean.utils.eventing import (
     Metadata,
 )
 from protean.utils.globals import g
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -288,7 +287,7 @@ class TestDomainConfigureLoggingOTel:
     ) -> None:
         """User-supplied processors must see the injected trace fields."""
 
-        def user_processor(logger, method, event_dict):  # noqa: ARG001
+        def user_processor(logger, method, event_dict):
             return event_dict
 
         domain = Domain(

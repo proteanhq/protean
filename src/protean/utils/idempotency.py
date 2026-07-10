@@ -10,7 +10,7 @@ and the system behaves as if idempotency is disabled.
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class IdempotencyStore:
 
     def __init__(
         self,
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         ttl: int = 86400,
         error_ttl: int = 60,
     ) -> None:
@@ -61,7 +61,7 @@ class IdempotencyStore:
     def _key(self, idempotency_key: str) -> str:
         return f"idempotency:{idempotency_key}"
 
-    def check(self, idempotency_key: str) -> Optional[dict[str, Any]]:
+    def check(self, idempotency_key: str) -> dict[str, Any] | None:
         """Look up an idempotency record.
 
         Returns:
@@ -89,7 +89,7 @@ class IdempotencyStore:
         self,
         idempotency_key: str,
         result: Any,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> None:
         """Record a successful command processing.
 
@@ -116,7 +116,7 @@ class IdempotencyStore:
         self,
         idempotency_key: str,
         error: str,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> None:
         """Record a failed command processing with a short TTL.
 

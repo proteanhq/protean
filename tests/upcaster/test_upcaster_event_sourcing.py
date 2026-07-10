@@ -7,7 +7,6 @@ from protean.core.event import BaseEvent
 from protean.core.upcaster import BaseUpcaster
 from protean.fields import Float, Identifier, String
 
-
 # ── Domain elements ──────────────────────────────────────────────────────
 
 

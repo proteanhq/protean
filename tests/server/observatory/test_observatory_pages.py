@@ -10,15 +10,13 @@ import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
-from protean.server.observatory import Observatory, _STATIC_DIR, _TEMPLATES_DIR
+from protean.server.observatory import _STATIC_DIR, _TEMPLATES_DIR, Observatory
 from protean.server.observatory.routes import create_all_routes
 from protean.server.observatory.routes.pages import (
     _get_domain_names,
     create_page_router,
 )
-
 from tests.server.observatory.conftest import route_paths
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

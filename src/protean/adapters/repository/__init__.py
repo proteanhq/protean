@@ -178,7 +178,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         # repository dynamically that would work with the other providers.
         if aggregate_name not in self._repositories:
             # First, register all explicitly-defined repositories
-            for _, repository in self.domain.registry.repositories.items():
+            for repository in self.domain.registry.repositories.values():
                 if repository.cls.meta_.part_of.__name__ == part_of.__name__:
                     self._register_repository(part_of, repository.cls)
 

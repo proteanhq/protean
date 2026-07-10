@@ -4,37 +4,37 @@ Custom Protean exception classes
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 # Re-exported here as the public, stable category users filter on to promote
 # Protean deprecations to errors in CI (see ADR-0004). The emission machinery
 # and per-version subclasses live in ``protean._deprecation``.
-from protean._deprecation import ProteanDeprecationWarning  # noqa: F401
+from protean._deprecation import ProteanDeprecationWarning
 
 __all__ = [
-    "ProteanException",
-    "ProteanExceptionWithMessage",
-    "NoDomainException",
+    "CommandExpiredError",
     "ConfigurationError",
-    "ObjectNotFoundError",
-    "TooManyObjectsError",
+    "DatabaseError",
+    "DeserializationError",
+    "DuplicateCommandError",
+    "ExpectedVersionError",
+    "IncorrectUsageError",
     "InsufficientDataError",
     "InvalidDataError",
-    "InvalidStateError",
     "InvalidOperationError",
+    "InvalidStateError",
+    "NoDomainException",
     "NotSupportedError",
-    "IncorrectUsageError",
-    "ValidationError",
-    "DatabaseError",
-    "SendError",
-    "ExpectedVersionError",
-    "TransactionError",
-    "DuplicateCommandError",
-    "CommandExpiredError",
-    "DeserializationError",
+    "ObjectNotFoundError",
     # Re-exported deprecation category (see the import above); the public,
     # stable filter target users promote to errors in CI.
     "ProteanDeprecationWarning",
+    "ProteanException",
+    "ProteanExceptionWithMessage",
+    "SendError",
+    "TooManyObjectsError",
+    "TransactionError",
+    "ValidationError",
 ]
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class ProteanException(Exception):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args)
 
-        self.extra_info = kwargs.get("extra_info", None)
+        self.extra_info = kwargs.get("extra_info")
 
     def __reduce__(self) -> tuple[Any, tuple[Any]]:
         return (self.__class__, (self.args[0],))
@@ -83,7 +83,7 @@ class ProteanExceptionWithMessage(ProteanException):
     def __init__(
         self,
         messages: "dict[str, list[str]] | list[str] | str",
-        traceback: Optional[str] = None,
+        traceback: str | None = None,
         **kwargs: Any,
     ) -> None:
         logger.debug(f"Exception:: {messages}")

@@ -1,4 +1,4 @@
-import mock
+from unittest import mock
 
 from protean.port.event_store import BaseEventStore
 

@@ -4,18 +4,17 @@ import os
 import secrets
 import socket
 import time
-
-from datetime import datetime, timezone
-from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
-from protean.utils.eventing import Message, MessageType
 from protean.utils import fqn
+from protean.utils.eventing import Message, MessageType
 
 from . import BaseSubscription
 
@@ -27,7 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class FailedPositionStatus(str, Enum):
+class FailedPositionStatus(StrEnum):
     """Status of a failed position record in the event store."""
 
     FAILED = "Failed"
@@ -103,7 +102,7 @@ class EventStoreSubscription(BaseSubscription):
         self,
         engine: "Engine",
         stream_category: str,
-        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
+        handler: type[BaseEventHandler | BaseCommandHandler],
         messages_per_tick: int = 10,
         position_update_interval: int = 10,
         origin_stream: str | None = None,
@@ -201,7 +200,7 @@ class EventStoreSubscription(BaseSubscription):
         )
         # In-memory cache of failed position info (populated from event store on init)
         # Maps global_position -> {"retry_count": int, "stream_name": str|None, "stream_position": int|None}
-        self._failed_positions: Dict[int, dict[str, Any]] = {}
+        self._failed_positions: dict[int, dict[str, Any]] = {}
         self._last_recovery_time: float = 0.0
 
     @classmethod
@@ -209,7 +208,7 @@ class EventStoreSubscription(BaseSubscription):
         cls,
         engine: "Engine",
         stream_category: str,
-        handler: type[Union[BaseEventHandler, BaseCommandHandler]],
+        handler: type[BaseEventHandler | BaseCommandHandler],
         config: "SubscriptionConfig",
     ) -> "EventStoreSubscription":
         """Create an EventStoreSubscription instance from a SubscriptionConfig.
@@ -369,7 +368,7 @@ class EventStoreSubscription(BaseSubscription):
                 "headers": {
                     "id": str(uuid4()),
                     "type": "Read",
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": datetime.now(UTC).isoformat(),
                     "stream": self.subscriber_stream_name,
                 },
                 "domain": {
@@ -379,7 +378,7 @@ class EventStoreSubscription(BaseSubscription):
             },
         )
 
-    def filter_on_origin(self, messages: List[Message]) -> List[Message]:
+    def filter_on_origin(self, messages: list[Message]) -> list[Message]:
         """
         Filter messages based on the origin stream name.
 
@@ -407,7 +406,7 @@ class EventStoreSubscription(BaseSubscription):
         logger.debug(f"Filtered {len(filtered_messages)} out of {len(messages)}")
         return filtered_messages
 
-    async def get_next_batch_of_messages(self) -> List[Message]:
+    async def get_next_batch_of_messages(self) -> list[Message]:
         """
         Get the next batch of messages to process.
 
@@ -426,7 +425,7 @@ class EventStoreSubscription(BaseSubscription):
 
         return self.filter_on_origin(messages)
 
-    async def process_batch(self, messages: List[Message]) -> int:
+    async def process_batch(self, messages: list[Message]) -> int:
         """
         Process a batch of messages.
 
@@ -606,7 +605,7 @@ class EventStoreSubscription(BaseSubscription):
                 "headers": {
                     "id": str(uuid4()),
                     "type": FailedPositionStatus.FAILED.value,
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": datetime.now(UTC).isoformat(),
                     "stream": self.failed_positions_stream,
                 },
                 "domain": {
@@ -647,7 +646,7 @@ class EventStoreSubscription(BaseSubscription):
                 "headers": {
                     "id": str(uuid4()),
                     "type": status.value,
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": datetime.now(UTC).isoformat(),
                     "stream": self.failed_positions_stream,
                 },
                 "domain": {
@@ -769,7 +768,7 @@ class EventStoreSubscription(BaseSubscription):
                 "headers": {
                     "id": str(uuid4()),
                     "type": "Checkpoint",
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": datetime.now(UTC).isoformat(),
                     "stream": self.recovery_checkpoint_stream,
                 },
                 "domain": {
@@ -779,7 +778,7 @@ class EventStoreSubscription(BaseSubscription):
             },
         )
 
-    def _get_unresolved_positions(self) -> Dict[int, dict[str, Any]]:
+    def _get_unresolved_positions(self) -> dict[int, dict[str, Any]]:
         """Get positions that need recovery (still in Failed state).
 
         Returns:

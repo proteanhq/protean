@@ -35,11 +35,10 @@ class TestAtomicTransactions:
         """Test transaction rollback on exception"""
         person = Person(first_name="Jane", last_name="Doe", age=30)
 
-        with pytest.raises(Exception):
-            with UnitOfWork():
-                test_domain.repository_for(Person).add(person)
-                # Force a rollback by raising an exception
-                raise ValueError("Forced rollback")
+        with pytest.raises(Exception), UnitOfWork():
+            test_domain.repository_for(Person).add(person)
+            # Force a rollback by raising an exception
+            raise ValueError("Forced rollback")
 
         # Verify the person was not saved
         all_persons = test_domain.repository_for(Person).query.all()
@@ -50,11 +49,10 @@ class TestAtomicTransactions:
         person1 = Person(first_name="Alice", last_name="Smith", age=28)
         person2 = Person(first_name="Bob", last_name="Jones", age=32)
 
-        with pytest.raises(Exception):
-            with UnitOfWork():
-                test_domain.repository_for(Person).add(person1)
-                test_domain.repository_for(Person).add(person2)
-                raise ValueError("Forced rollback after multiple adds")
+        with pytest.raises(Exception), UnitOfWork():
+            test_domain.repository_for(Person).add(person1)
+            test_domain.repository_for(Person).add(person2)
+            raise ValueError("Forced rollback after multiple adds")
 
         # Verify neither person was saved
         all_persons = test_domain.repository_for(Person).query.all()
@@ -63,12 +61,11 @@ class TestAtomicTransactions:
     def test_successful_transaction_after_failed_one(self, test_domain):
         """Test that a successful transaction works after a failed one"""
         # First, a failed transaction
-        with pytest.raises(Exception):
-            with UnitOfWork():
-                test_domain.repository_for(Person).add(
-                    Person(first_name="Failed", last_name="Person", age=99)
-                )
-                raise ValueError("Forced rollback")
+        with pytest.raises(Exception), UnitOfWork():
+            test_domain.repository_for(Person).add(
+                Person(first_name="Failed", last_name="Person", age=99)
+            )
+            raise ValueError("Forced rollback")
 
         # Then a successful transaction
         person = Person(first_name="Success", last_name="Person", age=25)

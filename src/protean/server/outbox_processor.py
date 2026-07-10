@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 import logging
-from typing import TYPE_CHECKING, List, Optional, cast
+from typing import TYPE_CHECKING, cast
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
@@ -34,9 +34,9 @@ class OutboxProcessor(BaseSubscription):
         broker_provider_name: str,
         messages_per_tick: int = 10,
         tick_interval: float = 1,
-        worker_id: Optional[str] = None,
+        worker_id: str | None = None,
         is_external: bool = False,
-        max_tick_interval: Optional[float] = None,
+        max_tick_interval: float | None = None,
     ) -> None:
         """
         Initialize the OutboxProcessor.
@@ -132,8 +132,8 @@ class OutboxProcessor(BaseSubscription):
         # logs it before ``initialize()`` runs) reads this stable identifier,
         # keeping the attribute a ``str`` as the base class declares.
         self.subscriber_name: str = self.subscription_id
-        self.broker: Optional[BaseBroker] = None
-        self.outbox_repo: Optional[OutboxRepository] = None
+        self.broker: BaseBroker | None = None
+        self.outbox_repo: OutboxRepository | None = None
 
     async def initialize(self) -> None:
         """
@@ -185,7 +185,7 @@ class OutboxProcessor(BaseSubscription):
             },
         )
 
-    async def get_next_batch_of_messages(self) -> List[Outbox]:
+    async def get_next_batch_of_messages(self) -> list[Outbox]:
         """
         Atomically claim the next batch of outbox messages for processing.
 
@@ -217,7 +217,7 @@ class OutboxProcessor(BaseSubscription):
 
         return messages
 
-    async def process_batch(self, messages: List[Outbox]) -> int:
+    async def process_batch(self, messages: list[Outbox]) -> int:
         """
         Process a batch of outbox messages.
 
@@ -424,7 +424,7 @@ class OutboxProcessor(BaseSubscription):
                         metrics.outbox_published.add(1)
                         # Compute outbox latency from created_at to now
                         if hasattr(message, "created_at") and message.created_at:
-                            now = datetime.datetime.now(datetime.timezone.utc)
+                            now = datetime.datetime.now(datetime.UTC)
                             created = ensure_utc_aware(message.created_at)
                             latency_s = (now - created).total_seconds()
                             if latency_s >= 0:
@@ -576,7 +576,6 @@ class OutboxProcessor(BaseSubscription):
             },
         )
         # Any cleanup specific to outbox processor can be added here
-        pass
 
     def _mark_message_failed(self, message: Outbox, error: Exception | None) -> None:
         """

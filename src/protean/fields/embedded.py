@@ -88,7 +88,7 @@ class ValueObject(Field):
             # Validate the class being passed is a subclass of BaseValueObject
             self._validate_value_object_cls(value_object_cls)
 
-        self._value_object_cls: "type[BaseValueObject] | str" = value_object_cls
+        self._value_object_cls: type[BaseValueObject] | str = value_object_cls
 
         self._embedded_fields: dict[str, _ShadowField] = {}
 
@@ -127,7 +127,7 @@ class ValueObject(Field):
         self.attribute_name = self.get_attribute_name()
 
     @property
-    @lru_cache()
+    @lru_cache
     def embedded_fields(self) -> dict[str, _ShadowField]:
         """Property to retrieve embedded fields"""
         if len(self._embedded_fields) == 0:
@@ -174,10 +174,9 @@ class ValueObject(Field):
     def get_shadow_fields(self) -> list[tuple[str | None, _ShadowField]]:
         """Return shadow field
         Primarily used during Entity initialization to register shadow field"""
-        shadow_fields: list[tuple[str | None, _ShadowField]] = []
-        for field in self.embedded_fields.values():
-            shadow_fields.append((field.attribute_name, field))
-        return shadow_fields
+        return [
+            (field.attribute_name, field) for field in self.embedded_fields.values()
+        ]
 
     def _cast_to_type(self, value: Any) -> Any:
         # The string forward-ref has been resolved to a concrete class by the

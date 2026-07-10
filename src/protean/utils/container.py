@@ -1,7 +1,7 @@
 import copy
 import logging
-from typing import Any, Callable, ClassVar
-
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,9 @@ class Options(dict[str, Any]):
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
     """
 
-    def __init__(self, opts: dict[str, str | bool | None] | None = {}) -> None:
+    def __init__(self, opts: dict[str, str | bool | None] | None = None) -> None:
+        if opts is None:
+            opts = {}
         super().__init__()
 
         if opts is None:
@@ -45,17 +47,19 @@ class Options(dict[str, Any]):
         else:
             try:
                 opts = dict(opts)
-            except (TypeError, ValueError):
-                raise ValueError(f"Invalid options `{opts}`. Must be a dict.")
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"Invalid options `{opts}`. Must be a dict.") from e
 
         self.update(opts)
-        self["abstract"] = opts.get("abstract", None) or False
+        self["abstract"] = opts.get("abstract") or False
 
     def __getattr__(self, name: str) -> Any:
         try:
             return self[name]
         except KeyError:
-            raise AttributeError(f"'Options' object has no attribute '{name}'")
+            raise AttributeError(
+                f"'Options' object has no attribute '{name}'"
+            ) from None
 
     def __setattr__(self, name: str, value: Any) -> None:
         self[name] = value
@@ -64,7 +68,9 @@ class Options(dict[str, Any]):
         try:
             del self[name]
         except KeyError:
-            raise AttributeError(f"'Options' object has no attribute '{name}'")
+            raise AttributeError(
+                f"'Options' object has no attribute '{name}'"
+            ) from None
 
     def __add__(self, other: "Options") -> "Options":
         new_options = self.__class__(self)
@@ -82,7 +88,7 @@ class OptionsMixin:
             cls (Protean Element): Subclass to initialize with metadata
         """
         if not hasattr(cls, "meta_"):
-            setattr(cls, "meta_", Options())
+            cls.meta_ = Options()
 
         # Assign default options
         cls._set_defaults()

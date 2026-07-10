@@ -566,14 +566,14 @@ class BaseDAO(metaclass=ABCMeta):
 
         if not results:
             raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} "
+                f"`{self.entity_cls.__name__}` object with values {list(kwargs.items())} "
                 f"does not exist."
             )
 
         if len(results) > 1:
             raise TooManyObjectsError(
                 f"More than one object of `{self.entity_cls.__name__}` exist "
-                f"with values {[item for item in kwargs.items()]}",
+                f"with values {list(kwargs.items())}",
             )
 
         # Return the first result, because `filter` would have returned an array

@@ -26,14 +26,14 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 from rich import print
-from typing_extensions import Annotated
 
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.ir.generators.base import mermaid_fence
@@ -49,7 +49,7 @@ def callback() -> None:
 @app.command()
 def preview() -> None:
     """Run a live preview server"""
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         subprocess.call(
             [
                 sys.executable,
@@ -60,8 +60,6 @@ def preview() -> None:
                 "--dev-addr=0.0.0.0:8000",
             ]
         )
-    except KeyboardInterrupt:
-        pass
 
 
 # ---------------------------------------------------------------------------
@@ -158,10 +156,7 @@ def generate(
         raise typer.Abort()
 
     # --- Load IR ----------------------------------------------------------
-    if domain:
-        ir_data = load_domain_ir(domain)
-    else:
-        ir_data = load_ir_file(ir)
+    ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
 
     # --- Generate output --------------------------------------------------
     content = _generate_output(

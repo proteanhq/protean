@@ -13,7 +13,6 @@ from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
 from protean.fields import HasMany, Integer, String, ValueObject
 
-
 # ── Domain elements ──────────────────────────────────────────────────
 
 

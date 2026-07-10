@@ -28,12 +28,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich import print
 from rich.table import Table
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.port.broker import BrokerCapabilities
@@ -56,7 +55,7 @@ def callback() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_broker(domain: "Domain") -> "BaseBroker":
+def _get_broker(domain: Domain) -> BaseBroker:
     """Retrieve the default broker from the domain."""
     broker = domain.brokers.get("default")
     if broker is None:
@@ -68,7 +67,7 @@ def _get_broker(domain: "Domain") -> "BaseBroker":
     return broker
 
 
-def _resolve_dlq_streams(domain: "Domain", subscription: str | None) -> list[str]:
+def _resolve_dlq_streams(domain: Domain, subscription: str | None) -> list[str]:
     """Resolve DLQ stream names, optionally filtered by subscription."""
     if subscription:
         # Map subscription name to DLQ stream(s)

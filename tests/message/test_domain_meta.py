@@ -1,7 +1,8 @@
 """Tests for DomainMeta value object in message metadata."""
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -9,12 +10,12 @@ from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils.eventing import (
+    DomainMeta,
     Message,
     MessageEnvelope,
     MessageHeaders,
-    DomainMeta,
-    Metadata,
     MessageType,
+    Metadata,
 )
 
 
@@ -254,7 +255,7 @@ class TestDomainMetaInMessage:
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.Registered",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     stream="user-123",
                 ),
                 domain=domain_meta,
@@ -276,7 +277,7 @@ class TestDomainMetaInMessage:
                 "headers": {
                     "id": "msg-456",
                     "type": "test.Register",
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": datetime.now(UTC).isoformat(),
                     "stream": "user:command",
                 },
                 "domain": {
@@ -334,7 +335,7 @@ class TestDomainMetaInMessage:
                 headers=MessageHeaders(
                     id="event-123",
                     type="test.Registered",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     stream="redis_streams::user-user-123",
                 ),
                 domain=DomainMeta(
@@ -360,7 +361,7 @@ class TestDomainMetaInMessage:
                 headers=MessageHeaders(
                     id="cmd-123",
                     type="test.Register",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     stream="redis_streams::user:command",
                 ),
                 domain=DomainMeta(

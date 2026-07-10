@@ -84,7 +84,7 @@ class TestReferenceFieldAssociation:
         assert author.account_email == account.email
 
         # Accessing attribute shows it up in __dict__
-        getattr(author, "account")
+        author.account
         assert "account" in author.__dict__
 
     def test_value_assignment_via_shadow_attribute_during_initialization(
@@ -202,4 +202,4 @@ class TestReferenceFieldAssociation:
         author = Author(first_name="John", last_name="Doe", account_email=account.email)
 
         for _ in range(3):
-            getattr(author, "account")
+            author.account

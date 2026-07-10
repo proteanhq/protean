@@ -3,7 +3,8 @@
 import enum
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from typing import Any, Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any, ClassVar
 
 from protean import exceptions
 from protean.fields.mixins import FieldDescriptorMixin
@@ -93,7 +94,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     - `error_messages`: A dictionary of error messages for validation errors.
     """
 
-    default_error_messages = {
+    default_error_messages: ClassVar[dict[str, str]] = {
         "invalid": "Value is not a valid type for this field.",
         "unique": "{entity_name} with {field_name} '{value}' is already present.",
         "required": "is required",
@@ -102,7 +103,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     }
 
     # Default validators for a Field
-    default_validators: list[Callable[..., Any]] = []
+    default_validators: ClassVar[list[Callable[..., Any]]] = []
 
     # These values will trigger the self.required check.
     empty_values: tuple[Any, ...] = EMPTY_VALUES
@@ -216,10 +217,10 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         """A helper method that simply raises a `ValidationError`."""
         try:
             msg = self.error_messages[key]
-        except KeyError:
+        except KeyError as e:
             class_name = self.__class__.__name__
             msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
-            raise exceptions.ValidationError({key: [msg]})
+            raise exceptions.ValidationError({key: [msg]}) from e
 
         # Format message with supplied arguments
         msg = msg.format(**kwargs)

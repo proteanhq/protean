@@ -1,16 +1,16 @@
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
-from protean.fields.resolved import convert_pydantic_errors
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,
 )
+from protean.fields.resolved import convert_pydantic_errors
 from protean.utils import (
     DomainObjects,
     _derive_element_class,
@@ -117,7 +117,7 @@ class BaseEvent(BaseMessageType):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e))
+            raise ValidationError(convert_pydantic_errors(e)) from e
 
         # Store expected version as regular attr (before _initialized is set)
         object.__setattr__(self, "_expected_version", expected_version)
@@ -166,7 +166,7 @@ class BaseEvent(BaseMessageType):
             traceparent = inject_traceparent_from_context()
             headers = MessageHeaders(
                 type=self.__class__.__type__,
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
                 traceparent=traceparent,
             )
 

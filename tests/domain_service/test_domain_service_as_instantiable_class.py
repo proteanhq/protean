@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from uuid import uuid4
 
@@ -41,9 +41,7 @@ class Order(BaseAggregate):
 
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
-        self.raise_(
-            OrderConfirmed(order_id=self.id, confirmed_at=datetime.now(timezone.utc))
-        )
+        self.raise_(OrderConfirmed(order_id=self.id, confirmed_at=datetime.now(UTC)))
 
 
 class OrderItem(BaseEntity):
@@ -74,7 +72,7 @@ class Inventory(BaseAggregate):
             StockReserved(
                 product_id=self.product_id,
                 quantity=quantity,
-                reserved_at=datetime.now(timezone.utc),
+                reserved_at=datetime.now(UTC),
             )
         )
 

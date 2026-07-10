@@ -417,7 +417,7 @@ class TestDAOLookupRegistration:
             lookup_name = "sample"
 
             def as_expression(self):
-                return "%s %s %s" % (
+                return "{} {} {}".format(
                     self.process_source(),
                     "<<<>>>",
                     self.process_target(),

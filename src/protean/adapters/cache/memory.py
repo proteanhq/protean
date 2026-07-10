@@ -1,8 +1,9 @@
 import collections.abc
 import re
 import time
+from collections.abc import Iterator
 from threading import RLock
-from typing import Any, Iterator, Optional, Union
+from typing import Any
 
 from protean.core.projection import BaseProjection
 from protean.port.cache import BaseCache
@@ -12,23 +13,19 @@ from protean.utils.reflection import id_field
 
 class TTLDict(collections.abc.MutableMapping[str, Any]):
     def __init__(
-        self, default_ttl: Optional[Union[int, float]], *args: Any, **kwargs: Any
+        self, default_ttl: int | float | None, *args: Any, **kwargs: Any
     ) -> None:
         self._default_ttl = default_ttl
-        self._values: dict[str, tuple[Optional[float], Any]] = {}
+        self._values: dict[str, tuple[float | None, Any]] = {}
         self._lock = RLock()
         self.update(*args, **kwargs)
 
     def __repr__(self) -> str:
-        return "<TTLDict@%#08x; ttl=%r, v=%r;>" % (
-            id(self),
-            self._default_ttl,
-            self._values,
+        return (
+            f"<TTLDict@{id(self):#08x}; ttl={self._default_ttl!r}, v={self._values!r};>"
         )
 
-    def set_ttl(
-        self, key: str, ttl: Union[int, float], now: Optional[float] = None
-    ) -> None:
+    def set_ttl(self, key: str, ttl: int | float, now: float | None = None) -> None:
         """Set TTL for the given key"""
         if now is None:
             now = time.time()
@@ -36,7 +33,7 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             _expire, value = self._values[key]
             self._values[key] = (now + ttl, value)
 
-    def get_ttl(self, key: str, now: Optional[float] = None) -> float:
+    def get_ttl(self, key: str, now: float | None = None) -> float:
         """Return remaining TTL for a key"""
         if now is None:
             now = time.time()
@@ -52,7 +49,7 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             self._values[key] = (timestamp, value)
 
     def is_expired(
-        self, key: str, now: Optional[float] = None, remove: bool = False
+        self, key: str, now: float | None = None, remove: bool = False
     ) -> bool:
         """Check if key has expired"""
         with self._lock:
@@ -74,13 +71,13 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
 
     def __iter__(self) -> Iterator[str]:
         with self._lock:
-            for key in self._values.keys():
+            for key in self._values:
                 if not self.is_expired(key):
                     yield key
 
     def __setitem__(self, key: str, value: Any) -> None:
         with self._lock:
-            expire: Optional[float]
+            expire: float | None
             if self._default_ttl is None:
                 expire = None
             else:
@@ -118,9 +115,7 @@ class MemoryCache(BaseCache):
         """Get the connection object for the repository"""
         return self._db._values
 
-    def add(
-        self, projection: BaseProjection, ttl: Optional[Union[int, float]] = None
-    ) -> None:
+    def add(self, projection: BaseProjection, ttl: int | float | None = None) -> None:
         """Add projection record to cache
 
         KEY: Projection ID
@@ -143,7 +138,7 @@ class MemoryCache(BaseCache):
         if ttl:
             self._db.set_ttl(key, ttl)
 
-    def get(self, key: str) -> Optional[BaseProjection]:
+    def get(self, key: str) -> BaseProjection | None:
         projection_name = key.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
@@ -193,7 +188,7 @@ class MemoryCache(BaseCache):
         # preserved — reassigning a plain {} broke set_ttl/get_ttl afterwards.
         self._db.clear()
 
-    def set_ttl(self, key: str, ttl: Union[int, float]) -> None:
+    def set_ttl(self, key: str, ttl: int | float) -> None:
         self._db.set_ttl(key, ttl)
 
     def get_ttl(self, key: str) -> float:

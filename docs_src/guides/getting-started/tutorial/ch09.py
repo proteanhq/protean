@@ -13,6 +13,8 @@ domain = Domain("bookshelf")
 # bookshelf/models.py
 from enum import Enum
 
+from bookshelf import domain
+
 from protean.fields import (
     Float,
     HasMany,
@@ -22,8 +24,6 @@ from protean.fields import (
     Text,
     ValueObject,
 )
-
-from bookshelf import domain
 
 
 @domain.value_object
@@ -109,10 +109,10 @@ class Inventory:
 
 # --8<-- [start:events]
 # bookshelf/events.py
-from protean.fields import Float, Identifier, String
-
 from bookshelf import domain
 from bookshelf.models import Book, Order
+
+from protean.fields import Float, Identifier, String
 
 
 @domain.event(part_of=Book)
@@ -146,10 +146,10 @@ class OrderShipped:
 
 # --8<-- [start:commands]
 # bookshelf/commands.py
-from protean.fields import Float, Identifier, Integer, String, Text
-
 from bookshelf import domain
 from bookshelf.models import Book, Order
+
+from protean.fields import Float, Identifier, Integer, String, Text
 
 
 @domain.command(part_of=Book)
@@ -184,14 +184,14 @@ class ShipOrder:
 
 # --8<-- [start:handlers]
 # bookshelf/handlers.py
-from protean import handle
-from protean.fields import Identifier
-from protean.utils.globals import current_domain
-
 from bookshelf import domain
 from bookshelf.commands import AddBook, ConfirmOrder, PlaceOrder, ShipOrder
 from bookshelf.events import BookAdded, OrderConfirmed, OrderShipped
 from bookshelf.models import Book, Inventory, Money, Order, OrderItem
+
+from protean import handle
+from protean.fields import Identifier
+from protean.utils.globals import current_domain
 
 
 @domain.command_handler(part_of=Book)
@@ -274,12 +274,12 @@ class OrderEventHandler:
 
 # --8<-- [start:projections]
 # bookshelf/projections.py
-from protean.core.projector import on
-from protean.fields import Float, Identifier, String
-
 from bookshelf import domain
 from bookshelf.events import BookAdded, BookPriceUpdated
 from bookshelf.models import Book
+
+from protean.core.projector import on
+from protean.fields import Float, Identifier, String
 
 
 @domain.projection

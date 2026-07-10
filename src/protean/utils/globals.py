@@ -59,8 +59,8 @@ def _find_uow() -> "UnitOfWork":
 # unaffected.
 _domain_context_stack: LocalStack = cast("Any", LocalStack)()
 _uow_context_stack: LocalStack = cast("Any", LocalStack)()
-current_domain: "Domain" = LocalProxy(_find_domain)  # type: ignore  # noqa: F821
-current_uow: "UnitOfWork" = LocalProxy(_find_uow)  # type: ignore  # noqa: F821
+current_domain: "Domain" = LocalProxy(_find_domain)  # type: ignore
+current_uow: "UnitOfWork" = LocalProxy(_find_uow)  # type: ignore
 # ``g`` is a request-scoped scratch namespace (Werkzeug-style) that intentionally
 # holds arbitrary attributes; typing it ``Any`` reflects that dynamic contract.
 g: Any = LocalProxy(partial(_lookup_domain_object, "g"))

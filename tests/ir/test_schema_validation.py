@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from jsonschema import validate, ValidationError
+from jsonschema import ValidationError, validate
 
 from protean.ir import EXAMPLES_DIR, load_schema
 from protean.ir.builder import IRBuilder

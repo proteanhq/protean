@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
-from protean.fields import Identifier, String, Boolean
+from protean.fields import Boolean, Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 

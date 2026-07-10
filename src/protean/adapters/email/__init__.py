@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 class EmailProviders:
     def __init__(self, domain: "Domain") -> None:
         self.domain = domain
-        self._email_providers: dict[str, "BaseEmailProvider"] | None = None
+        self._email_providers: dict[str, BaseEmailProvider] | None = None
 
     def _initialize_email_providers(self) -> None:
         """Read config file and initialize email providers"""
         configured_email_providers = self.domain.config["email_providers"]
-        email_provider_objects: dict[str, "BaseEmailProvider"] = {}
+        email_provider_objects: dict[str, BaseEmailProvider] = {}
 
         if configured_email_providers and isinstance(configured_email_providers, dict):
             if "default" not in configured_email_providers:
@@ -48,14 +48,16 @@ class EmailProviders:
         try:
             assert self._email_providers is not None
             return self._email_providers[provider_name]
-        except KeyError:
-            raise AssertionError(f"No Provider registered with name {provider_name}")
+        except KeyError as exc:
+            raise AssertionError(
+                f"No Provider registered with name {provider_name}"
+            ) from exc
 
     def send_email(self, email: "BaseEmail") -> None:
         """Push email through registered provider"""
         if self._email_providers is None:
             self._initialize_email_providers()
 
-        logger.debug(f"Pushing {email.__class__.__name__} with content {repr(email)}")
+        logger.debug(f"Pushing {email.__class__.__name__} with content {email!r}")
         assert self._email_providers is not None
         self._email_providers[email.meta_.provider].send_email(email)

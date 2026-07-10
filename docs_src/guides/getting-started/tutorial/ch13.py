@@ -1,8 +1,8 @@
 # --8<-- [start:full]
 from protean import Domain, handle, invariant
+from protean.exceptions import ValidationError
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
 from protean.utils.globals import current_domain
-from protean.exceptions import ValidationError
 
 domain = Domain("bookshelf")
 domain.config["command_processing"] = "sync"
@@ -167,7 +167,7 @@ def test_confirm_order_out_of_stock():
     try:
         service = OrderFulfillmentService(order, [inv])
         service.confirm_order()
-        assert False, "Should have raised ValidationError"
+        raise AssertionError("Should have raised ValidationError")
     except ValidationError as e:
         assert "Insufficient stock" in str(e.messages)
 

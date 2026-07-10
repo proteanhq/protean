@@ -29,9 +29,7 @@ from protean.server.observatory.routes.handlers import (
     create_handlers_router,
     merge_subscription_status,
 )
-
 from tests.server.observatory.conftest import route_paths
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -1094,7 +1092,7 @@ class TestRouteWiring:
         from protean.server.observatory.routes import create_all_routes
 
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-        page_router, api_router = create_all_routes([test_domain], templates)
+        _page_router, api_router = create_all_routes([test_domain], templates)
 
         # API router should have /handlers routes
         api_paths = route_paths(api_router.routes)
@@ -1299,7 +1297,7 @@ class TestEndpointExceptionPaths:
 
     def test_list_trace_metrics_exception_graceful(self):
         """Trace metrics exception in list endpoint doesn't crash."""
-        obs, mock_redis = self._make_obs_with_redis()
+        obs, _mock_redis = self._make_obs_with_redis()
         client = TestClient(obs.app)
 
         with (
@@ -1332,7 +1330,7 @@ class TestEndpointExceptionPaths:
 
     def test_detail_with_redis_and_metrics(self):
         """Detail endpoint with Redis returns metrics and recent messages."""
-        obs, mock_redis = self._make_obs_with_redis()
+        obs, _mock_redis = self._make_obs_with_redis()
         client = TestClient(obs.app)
 
         with (
@@ -1373,7 +1371,7 @@ class TestEndpointExceptionPaths:
 
     def test_detail_trace_metrics_exception_graceful(self):
         """Trace metrics exception in detail endpoint caught."""
-        obs, mock_redis = self._make_obs_with_redis()
+        obs, _mock_redis = self._make_obs_with_redis()
         client = TestClient(obs.app)
 
         with (
@@ -1392,7 +1390,7 @@ class TestEndpointExceptionPaths:
 
     def test_detail_recent_messages_exception_graceful(self):
         """Recent messages exception in detail endpoint returns empty list."""
-        obs, mock_redis = self._make_obs_with_redis()
+        obs, _mock_redis = self._make_obs_with_redis()
         client = TestClient(obs.app)
 
         with (

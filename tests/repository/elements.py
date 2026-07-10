@@ -1,5 +1,4 @@
 import re
-from typing import List
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import invariant
@@ -16,7 +15,7 @@ class Person(BaseAggregate):
 
 
 class PersonRepository(BaseRepository):
-    def find_adults(self, minimum_age: int = 21) -> List[Person]:
+    def find_adults(self, minimum_age: int = 21) -> list[Person]:
         return self.query.filter(age__gte=minimum_age).all().items
 
 

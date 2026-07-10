@@ -11,7 +11,6 @@ import pytest
 
 from protean.utils.processing import Priority, current_priority, processing_priority
 
-
 # ---------------------------------------------------------------------------
 # Priority enum tests
 # ---------------------------------------------------------------------------

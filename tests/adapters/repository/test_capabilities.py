@@ -365,7 +365,7 @@ class TestRequiredLookups:
             "in",
             "isnull",
         }
-        assert BaseProvider.REQUIRED_LOOKUPS == expected
+        assert expected == BaseProvider.REQUIRED_LOOKUPS
 
     def test_memory_provider_has_all_required_lookups(self):
         """MemoryProvider should register all required lookups."""

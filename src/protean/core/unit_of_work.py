@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from collections import defaultdict
 from types import TracebackType
@@ -123,7 +124,7 @@ class UnitOfWork:
 
     def _clear_events_from_items(self) -> None:
         """Clear events from all items in the identity map"""
-        for provider, items in self._identity_map.items():
+        for items in self._identity_map.values():
             for item in items.values():
                 # Clear events from the item
                 item._events = []
@@ -150,7 +151,7 @@ class UnitOfWork:
         self._in_progress = True
         _uow_stack.push(self)
 
-    def commit(self) -> None:  # noqa: C901
+    def commit(self) -> None:
         """Commit all changes, persist outbox messages, and dispatch events.
 
         Raises:
@@ -185,7 +186,7 @@ class UnitOfWork:
 
             self._do_commit(span)
 
-    def _do_commit(self, span: Any) -> None:  # noqa: C901
+    def _do_commit(self, span: Any) -> None:
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
         from protean.utils.outbox import (  # noqa: PLC0415
             DEFAULT_TARGET_BROKER,
@@ -327,7 +328,7 @@ class UnitOfWork:
             # aggregate cleanly.
             event_store = current_domain.event_store.store
             assert event_store is not None
-            for provider, events in all_events.items():
+            for events in all_events.values():
                 for event in events:
                     event_store.append(event)
 
@@ -340,7 +341,7 @@ class UnitOfWork:
                 _uow_stack.pop()
 
             # Commit the relational session (aggregate state + outbox rows).
-            for provider_name, session in self._sessions.items():
+            for session in self._sessions.values():
                 session.commit()
 
             # Dispatch messages to their designated broker
@@ -373,10 +374,8 @@ class UnitOfWork:
             metrics.uow_events_per_commit.record(total_events)
 
             # Record UoW outcome for the access log wide event
-            try:
+            with contextlib.suppress(Exception):
                 g._access_log_uow_outcome = "committed"
-            except Exception:
-                pass
 
             logger.debug("uow.commit_successful")
         except ValueError as exc:
@@ -398,7 +397,7 @@ class UnitOfWork:
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise TransactionError(
-                f"Unit of Work commit failed: {str(exc)}",
+                f"Unit of Work commit failed: {exc!s}",
                 extra_info={
                     "original_exception": exc.__class__.__name__,
                     "original_message": str(exc),
@@ -441,10 +440,8 @@ class UnitOfWork:
             raise InvalidOperationError("UnitOfWork is not in progress")
 
         # Record UoW outcome for the access log wide event
-        try:
+        with contextlib.suppress(Exception):
             g._access_log_uow_outcome = "rolled_back"
-        except Exception:
-            pass
 
         # Exit from Unit of Work. Guarded on identity so a double-pop (when the
         # relational commit failed after _do_commit already popped this UoW)

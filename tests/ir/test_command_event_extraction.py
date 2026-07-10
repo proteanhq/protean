@@ -12,7 +12,7 @@ def order_cluster():
     """Return the Order aggregate's cluster from the command/event test domain."""
     domain = build_command_event_test_domain()
     ir = IRBuilder(domain).build()
-    for _key, cluster in ir["clusters"].items():
+    for cluster in ir["clusters"].values():
         if cluster["aggregate"]["name"] == "Order":
             return cluster
     pytest.fail("Order cluster not found")

@@ -83,7 +83,7 @@ class TestSetupDatabase:
             domain.setup_database()
             # Verify provider artifacts were created by checking
             # that the method delegated to provider
-            for _, provider in domain.providers.items():
+            for provider in domain.providers.values():
                 # Memory provider always succeeds — just ensure no error
                 assert provider is not None
 
@@ -106,7 +106,7 @@ class TestSetupDatabase:
             domain.truncate_database()  # should not raise
             # Verify provider data_reset was called by checking
             # that the method delegated to provider
-            for _, provider in domain.providers.items():
+            for provider in domain.providers.values():
                 assert provider is not None
 
     @pytest.mark.no_test_domain

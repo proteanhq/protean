@@ -77,9 +77,9 @@ class QueryProcessor:
 
         Returns ``None`` when no handler is registered.
         """
-        for _, record in self._domain.registry._elements[
+        for record in self._domain.registry._elements[
             DomainObjects.QUERY_HANDLER.value
-        ].items():
+        ].values():
             handler_cls: type[BaseQueryHandler] = record.cls
             if query.__class__.__type__ in handler_cls._handlers:
                 return handler_cls

@@ -12,16 +12,15 @@ from uuid import uuid4
 import pytest
 
 from protean.utils.eventing import Message
-
 from tests.tracing.elements import (
     ConfirmOrder,
     Order,
     OrderCommandHandler,
     OrderConfirmed,
     OrderPlaced,
+    OrderShipped,
     PlaceOrder,
     ShipOrder,
-    OrderShipped,
 )
 
 

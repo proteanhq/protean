@@ -4,6 +4,7 @@ from .base import Field, FieldBase
 from .basic import Method, Nested, ValueObjectList
 from .containers import Dict, List
 from .embedded import ValueObject, ValueObjectFromEntity
+from .resolved import ResolvedField
 from .simple import (
     Auto,
     Boolean,
@@ -17,7 +18,6 @@ from .simple import (
     String,
     Text,
 )
-from .resolved import ResolvedField
 from .spec import FieldSpec
 
 __all__ = [
@@ -28,29 +28,29 @@ __all__ = [
     "DateTime",
     "Decimal",
     "Dict",
-    "Float",
-    "Identifier",
-    "Integer",
-    "List",
-    "Status",
-    "String",
-    "Text",
-    # FieldSpec class
-    "FieldSpec",
-    # Resolved field metadata
-    "ResolvedField",
     # Descriptor engine backing the descriptor-style fields (associations
     # such as HasMany/HasOne/Reference, ValueObject(List), Method/Nested) and
     # the extension point for custom fields
     "Field",
     "FieldBase",
-    # Serializer fields
-    "Method",
-    "Nested",
+    # FieldSpec class
+    "FieldSpec",
+    "Float",
     # Association descriptors
     "HasMany",
     "HasOne",
+    "Identifier",
+    "Integer",
+    "List",
+    # Serializer fields
+    "Method",
+    "Nested",
     "Reference",
+    # Resolved field metadata
+    "ResolvedField",
+    "Status",
+    "String",
+    "Text",
     "ValueObject",
     "ValueObjectFromEntity",
     "ValueObjectList",

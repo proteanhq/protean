@@ -5,6 +5,7 @@ without using mocks, focusing on real message flow scenarios.
 """
 
 import asyncio
+import contextlib
 from uuid import uuid4
 
 import pytest
@@ -48,7 +49,6 @@ class Payment(BaseAggregate):
         """Process a payment by issuing a command."""
         # Commands are typically not raised from aggregates, but for testing
         # we can simulate the command creation
-        pass
 
 
 class OrderEvent(BaseEvent):
@@ -543,11 +543,9 @@ async def test_poll_iteration_in_test_mode(test_domain, engine):
 
         subscription.get_next_batch_of_messages = count_iterations
 
-        # Run poll for a short time
-        try:
+        # Run poll for a short time; expected if poll doesn't stop naturally
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(subscription.poll(), timeout=1.0)
-        except asyncio.TimeoutError:
-            pass  # Expected if poll doesn't stop naturally
 
         # Should have completed at least one iteration
         assert iteration_count >= 2

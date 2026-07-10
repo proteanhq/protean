@@ -17,8 +17,10 @@ from protean.cli.test import (
     _print_conformance_report,
     _provider_has_capability_for_marker,
     _run_pytest_for_marker,
-    test_adapter as cli_test_adapter,
     validate_category,
+)
+from protean.cli.test import (
+    test_adapter as cli_test_adapter,
 )
 
 
@@ -891,7 +893,7 @@ class TestDatabaseEmptyMarkerBranches:
         original_dbs = TEST_CONFIGS["databases"]
         try:
             # Add an unknown database to the config list
-            TEST_CONFIGS["databases"] = list(original_dbs) + ["UNKNOWN_DB"]
+            TEST_CONFIGS["databases"] = [*list(original_dbs), "UNKNOWN_DB"]
 
             suites = runner.generate_test_suites()
             suite_names = [s.name for s in suites]
@@ -917,7 +919,7 @@ class TestDatabaseEmptyMarkerBranches:
         # Inject an unknown database into the config list
         original_dbs = TEST_CONFIGS["databases"]
         try:
-            TEST_CONFIGS["databases"] = ["UNKNOWN_DB_X"] + list(original_dbs)
+            TEST_CONFIGS["databases"] = ["UNKNOWN_DB_X", *list(original_dbs)]
             runner.run_category_tests("DATABASE")
         finally:
             TEST_CONFIGS["databases"] = original_dbs

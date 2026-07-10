@@ -1,4 +1,4 @@
-from mock import Mock, patch
+from unittest.mock import Mock, patch
 
 from protean.adapters.broker import Brokers
 from protean.adapters.cache import Caches

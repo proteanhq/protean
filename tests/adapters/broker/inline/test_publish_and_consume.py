@@ -130,7 +130,7 @@ def test_reliable_messaging_broker_retrieved_message_has_uuid_identifier(broker)
     # Get the message
     retrieved_message = broker.get_next(stream, consumer_group)
     assert retrieved_message is not None
-    retrieved_id, retrieved_payload = retrieved_message
+    retrieved_id, _retrieved_payload = retrieved_message
 
     # Verify identifier is a UUID
     assert retrieved_id == published_id
@@ -148,9 +148,7 @@ def test_reliable_messaging_broker_get_next_generates_uuid_identifier(broker):
 
     # Publish multiple messages
     messages = [{"data": i} for i in range(3)]
-    published_ids = []
-    for msg in messages:
-        published_ids.append(broker.publish(stream, msg))
+    published_ids = [broker.publish(stream, msg) for msg in messages]
 
     # Get all messages and verify identifiers
     for i, expected_msg in enumerate(messages):

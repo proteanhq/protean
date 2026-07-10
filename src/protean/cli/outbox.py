@@ -9,9 +9,10 @@ Usage::
 
 from __future__ import annotations
 
+from typing import Annotated
+
 import typer
 from rich import print
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.utils.outbox import reconcile_outbox

@@ -4,20 +4,19 @@ Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
 
+import contextlib
 import importlib.metadata
 import keyword
 import logging
 import types
+from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import Enum, StrEnum
 from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
-    Callable,
     ClassVar,
-    Optional,
-    Type,
     TypeVar,
     cast,
     get_args,
@@ -25,7 +24,8 @@ from typing import (
 )
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field as PydanticField
+from pydantic import BaseModel
+from pydantic import Field as PydanticField
 from pydantic.fields import FieldInfo
 
 from protean._deprecation import warn_deprecated
@@ -86,7 +86,7 @@ class _TypeMatcher:
     Ex. mocked_object.assert_called_once_with(_TypeMatcher(TargetCls))
     """
 
-    def __init__(self, expected_type: Type[Any]) -> None:
+    def __init__(self, expected_type: type[Any]) -> None:
         self.expected_type = expected_type
 
     def __eq__(self, other: object) -> bool:
@@ -273,13 +273,9 @@ def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
         attr_value = vars(new_cls)[attr_name]
         fixed = _fix_function_class_cell(attr_value, new_cls, original_cls)
         if fixed is not None:
-            try:
+            # guard for C-extension / read-only descriptors
+            with contextlib.suppress(AttributeError, TypeError):  # pragma: no cover
                 type.__setattr__(new_cls, attr_name, fixed)
-            except (
-                AttributeError,
-                TypeError,
-            ):  # pragma: no cover – guard for C-extension / read-only descriptors
-                pass
 
 
 def _prepare_pydantic_namespace(
@@ -548,15 +544,15 @@ def _derive_element_class(
 
 
 def _generate_identity(
-    identity_strategy: Optional[str] = None,
+    identity_strategy: str | None = None,
     identity_function: Callable[[], Any] | None = None,
-    identity_type: Optional[str] = None,
+    identity_type: str | None = None,
 ) -> str | int | UUID:
     """Generate Unique Identifier, based on configured strategy and type.
 
     If an identity type is provided, it will override the domain's configuration.
     """
-    id_value: Optional[str | int | UUID] = None
+    id_value: str | int | UUID | None = None
 
     # Consider strategy defined in the Auto field. If not provided, fall back to the
     #   domain's configuration.
@@ -600,7 +596,7 @@ def _generate_identity(
 _ElementT = TypeVar("_ElementT", bound="Element")
 
 
-def clone_class(cls: Type[_ElementT], new_name: str) -> Type[_ElementT]:
+def clone_class(cls: type[_ElementT], new_name: str) -> type[_ElementT]:
     """Clone a class with a new name.
 
     Creates a new class with the same attributes and behavior as the original,
@@ -651,7 +647,7 @@ def clone_class(cls: Type[_ElementT], new_name: str) -> Type[_ElementT]:
         pydantic_metaclass = cast(type, type(cls))
         new_cls = pydantic_metaclass(new_name, (cls,), {"__annotations__": {}})
         new_cls.__qualname__ = new_name
-        return cast("Type[_ElementT]", new_cls)
+        return cast("type[_ElementT]", new_cls)
 
     # Create a shallow copy of class attributes, excluding the unwanted ones
     attrs = {}
@@ -691,7 +687,7 @@ def clone_class(cls: Type[_ElementT], new_name: str) -> Type[_ElementT]:
     # from the original cls to new_cls (PEP 3135).
     _rebind_class_cells(new_cls, cls)
 
-    return cast("Type[_ElementT]", new_cls)
+    return cast("type[_ElementT]", new_cls)
 
 
 __all__ = [

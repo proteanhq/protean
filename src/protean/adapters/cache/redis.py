@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional, Union
+from typing import Any
 
 import redis
 
@@ -42,7 +42,7 @@ class RedisCache(BaseCache):
         pool_kwargs = {
             key: value for key, value in conn_info.items() if key in self._POOL_KEYS
         }
-        self.r: "redis.Redis[Any] | None" = redis.Redis.from_url(
+        self.r: redis.Redis[Any] | None = redis.Redis.from_url(
             conn_info["URI"], **pool_kwargs
         )
 
@@ -69,9 +69,7 @@ class RedisCache(BaseCache):
     def get_connection(self) -> "redis.Redis[Any]":
         return self._client
 
-    def add(
-        self, projection: BaseProjection, ttl: Optional[Union[int, float]] = None
-    ) -> None:
+    def add(self, projection: BaseProjection, ttl: int | float | None = None) -> None:
         """Add projection record to cache
 
         KEY: Projection ID
@@ -99,7 +97,7 @@ class RedisCache(BaseCache):
             key, int(resolved_ttl * 1000), json.dumps(projection.to_dict())
         )
 
-    def get(self, key: str) -> Optional[BaseProjection]:
+    def get(self, key: str) -> BaseProjection | None:
         projection_name = key.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
@@ -112,7 +110,7 @@ class RedisCache(BaseCache):
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
-        cursor, values = self._client.scan(
+        _cursor, values = self._client.scan(
             cursor=last_position, match=key_pattern, count=size
         )
         results: list[BaseProjection] = []
@@ -144,7 +142,7 @@ class RedisCache(BaseCache):
     def flush_all(self) -> None:
         self._client.flushall()
 
-    def set_ttl(self, key: str, ttl: Union[int, float]) -> None:
+    def set_ttl(self, key: str, ttl: int | float) -> None:
         self._client.pexpire(key, int(ttl * 1000))
 
     def get_ttl(self, key: str) -> float:

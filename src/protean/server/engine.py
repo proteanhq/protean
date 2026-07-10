@@ -1,11 +1,12 @@
 import asyncio
+import contextlib
 import logging
 import platform
 import signal
 import time
-from signal import Signals
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Type, Union
+from signal import Signals
+from typing import TYPE_CHECKING, Any
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -15,7 +16,6 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.port.broker import BrokerCapabilities
-from protean.utils.globals import g
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -23,6 +23,7 @@ from protean.utils.eventing import (
     Metadata,
     new_correlation_id,
 )
+from protean.utils.globals import g
 from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
     create_observation,
@@ -35,10 +36,10 @@ from protean.utils.telemetry import (
 
 from .dlq_maintenance import DLQMaintenanceTask
 from .health import HealthServer
+from .outbox_processor import OutboxProcessor
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.factory import SubscriptionFactory
 from .tracing import TraceEmitter
-from .outbox_processor import OutboxProcessor
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -58,8 +59,8 @@ class CommandDispatcher:
     def __init__(
         self,
         stream_category: str,
-        handler_map: dict[str, Type[BaseCommandHandler]],
-        source_handler_cls: Type[BaseCommandHandler],
+        handler_map: dict[str, type[BaseCommandHandler]],
+        source_handler_cls: type[BaseCommandHandler],
     ) -> None:
         """
         Args:
@@ -70,7 +71,7 @@ class CommandDispatcher:
         """
         self._stream_category = stream_category
         self._handler_map = handler_map
-        self._last_resolved_handler: Type[BaseCommandHandler] | None = None
+        self._last_resolved_handler: type[BaseCommandHandler] | None = None
         self._last_resolved_item: BaseCommand | BaseEvent | None = None
 
         # Identity attributes for fqn() and logging
@@ -94,7 +95,7 @@ class CommandDispatcher:
 
     def resolve_handler(
         self, message: "Message | BaseCommand | BaseEvent"
-    ) -> Type[BaseCommandHandler] | None:
+    ) -> type[BaseCommandHandler] | None:
         """Look up the specific handler class for a message.
 
         Caches the deserialized domain object so that _handle() can reuse it
@@ -228,6 +229,10 @@ class Engine:
         self.exit_code = 0
         self.shutting_down = False  # Flag to indicate the engine is shutting down
 
+        # Keep a strong reference to the shutdown task so it isn't garbage
+        # collected mid-flight (see RUF006).
+        self._shutdown_task: asyncio.Task[Any] | None = None
+
         # Store original signal handlers for cleanup
         self._original_signal_handlers: dict[signal.Signals, Any] = {}
 
@@ -261,7 +266,7 @@ class Engine:
         self._subscription_factory = SubscriptionFactory(self)
 
         # Gather all handler subscriptions
-        self._subscriptions: dict[str, "BaseSubscription"] = {}
+        self._subscriptions: dict[str, BaseSubscription] = {}
         self._register_handler_subscriptions()
 
         # Gather broker subscriptions
@@ -359,11 +364,11 @@ class Engine:
             for provider_name, outbox_repo in self.domain._outbox_repos.items():
                 try:
                     outbox_repo._dao  # noqa: B018
-                except Exception:
+                except Exception as e:
                     raise ConfigurationError(
                         f"Outbox table not found for provider '{provider_name}'. "
                         "Run 'protean db setup' or 'protean db setup-outbox' to create it."
-                    )
+                    ) from e
         else:
             logger.debug("engine.outbox_disabled")
 
@@ -421,10 +426,7 @@ class Engine:
         # CommandDispatcher subscription per group. This ensures each command message
         # is read by exactly one subscription and routed to the correct handler.
         handlers_by_stream = defaultdict(list)
-        for (
-            handler_name,
-            handler_record,
-        ) in self.domain.registry.command_handlers.items():
+        for handler_record in self.domain.registry.command_handlers.values():
             handler_cls = handler_record.cls
             stream_category = self._infer_stream_category(handler_cls)
             handlers_by_stream[stream_category].append(handler_cls)
@@ -493,7 +495,7 @@ class Engine:
                 )
 
     def _infer_stream_category(
-        self, handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]]
+        self, handler_cls: type[BaseCommandHandler | BaseEventHandler]
     ) -> str:
         """Infer the stream category for a handler.
 
@@ -587,7 +589,7 @@ class Engine:
 
     async def handle_broker_message(
         self,
-        subscriber_cls: Type[BaseSubscriber],
+        subscriber_cls: type[BaseSubscriber],
         message: dict[str, Any],
         *,
         message_id: str | None = None,
@@ -667,7 +669,7 @@ class Engine:
 
     async def handle_message(
         self,
-        handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]],
+        handler_cls: type[BaseCommandHandler | BaseEventHandler],
         message: Message,
         worker_id: str | None = None,
     ) -> bool:
@@ -989,18 +991,16 @@ class Engine:
         ):
             # Restore original signal handlers
             for sig, original_handler in self._original_signal_handlers.items():
-                try:
+                # Ignore errors during cleanup
+                with contextlib.suppress(OSError, ValueError):
                     signal.signal(sig, original_handler)
-                except (OSError, ValueError):
-                    pass  # Ignore errors during cleanup
         else:
             # Remove signal handlers from the event loop
             signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
             for s in signals:
-                try:
+                # Ignore errors during cleanup
+                with contextlib.suppress(OSError, ValueError):
                     self.loop.remove_signal_handler(s)
-                except (OSError, ValueError):
-                    pass  # Ignore errors during cleanup
 
     @staticmethod
     def _on_health_server_done(task: "asyncio.Task[Any]") -> None:
@@ -1176,7 +1176,9 @@ class Engine:
                     self.shutting_down = (
                         True  # Set flag immediately to prevent multiple shutdown calls
                     )
-                    asyncio.create_task(self.shutdown(exit_code=1))
+                    self._shutdown_task = asyncio.create_task(
+                        self.shutdown(exit_code=1)
+                    )
                 # Don't re-raise the exception - let the loop drain gracefully
             else:
                 logger.error(

@@ -1,11 +1,9 @@
 import logging
 import os
 import re
-import warnings
-
-from typing import Any
-
 import tomllib
+import warnings
+from typing import Any
 
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import DEFAULT_REDACT_KEYS
@@ -308,7 +306,8 @@ class Config2(dict[str, Any]):
         if not config_file_name:
             warnings.warn(
                 f"No configuration file found in {os.path.dirname(path)}"
-                f" or its immediate 2 parent directories. Using default configuration."
+                f" or its immediate 2 parent directories. Using default configuration.",
+                stacklevel=2,
             )
             # Return default config when no config file is found
             return cls(**_default_config())

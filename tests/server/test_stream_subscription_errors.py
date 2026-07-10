@@ -18,7 +18,6 @@ from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 
-
 # ── Domain elements ─────────────────────────────────────────────────────
 
 handler_counter = 0

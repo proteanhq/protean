@@ -6,7 +6,7 @@ Event delivery is at-least-once. A non-idempotent accumulating projector
 UnitOfWork as its read-model write, so a redelivery is skipped.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -287,9 +287,8 @@ class TestConsumeIdempotencyRelational:
         with UnitOfWork():
             repo.mark("msg-1", "handler-A")
 
-        with pytest.raises(Exception):
-            with UnitOfWork():
-                repo.mark("msg-1", "handler-A")  # duplicate pair → index rejects
+        with pytest.raises(Exception), UnitOfWork():
+            repo.mark("msg-1", "handler-A")  # duplicate pair → index rejects
 
         # A different pair still inserts.
         with UnitOfWork():
@@ -337,7 +336,7 @@ def _old_marker(repo, message_id, handler="h", hours_ago=200):
         ProcessedMessage(
             message_id=message_id,
             handler=handler,
-            processed_at=datetime.now(timezone.utc) - timedelta(hours=hours_ago),
+            processed_at=datetime.now(UTC) - timedelta(hours=hours_ago),
         )
     )
 

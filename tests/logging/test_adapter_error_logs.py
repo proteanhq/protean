@@ -18,8 +18,9 @@ class TestSqlAlchemyCredentialRedaction:
     def test_connection_failed_redacts_password(self, caplog):
         """is_alive() failure logs a redacted URI with password replaced by ***."""
         try:
-            from protean.adapters.repository.sqlalchemy import SAProvider
             from sqlalchemy.exc import DatabaseError
+
+            from protean.adapters.repository.sqlalchemy import SAProvider
         except ImportError:
             pytest.skip("sqlalchemy not installed")
 
@@ -64,8 +65,9 @@ class TestSqlAlchemyCredentialRedaction:
     def test_connection_failed_handles_unparseable_uri(self, caplog):
         """is_alive() failure with an unparseable URI logs '<unparseable>'."""
         try:
-            from protean.adapters.repository.sqlalchemy import SAProvider
             from sqlalchemy.exc import DatabaseError
+
+            from protean.adapters.repository.sqlalchemy import SAProvider
         except ImportError:
             pytest.skip("sqlalchemy not installed")
 

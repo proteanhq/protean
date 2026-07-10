@@ -55,7 +55,7 @@ class TestEngineObservatoryConfigFallback:
     @pytest.mark.no_test_domain
     def test_fallback_when_config_get_raises_attribute_error(self):
         """Engine uses default retention when config.get raises AttributeError."""
-        from unittest.mock import patch, PropertyMock
+        from unittest.mock import PropertyMock, patch
 
         domain = Domain(name="Test")
         domain.init(traverse=False)
@@ -68,15 +68,17 @@ class TestEngineObservatoryConfigFallback:
         mock_config.__contains__ = original_config.__contains__
         domain.config = mock_config
 
-        with domain.domain_context():
-            with patch.object(
+        with (
+            domain.domain_context(),
+            patch.object(
                 type(domain),
                 "has_outbox",
                 new_callable=PropertyMock,
                 return_value=False,
-            ):
-                engine = Engine(domain, test_mode=True)
-                assert engine.emitter._retention_ms == 7 * 86_400_000
+            ),
+        ):
+            engine = Engine(domain, test_mode=True)
+            assert engine.emitter._retention_ms == 7 * 86_400_000
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +116,7 @@ class TestEngineOutboxValidation:
 
         with domain.domain_context():
             # Sabotage the outbox repo to simulate missing table
-            for provider_name, outbox_repo in domain._outbox_repos.items():
+            for outbox_repo in domain._outbox_repos.values():
                 original_dao = type(outbox_repo)._dao
                 type(outbox_repo)._dao = property(
                     lambda self: (_ for _ in ()).throw(Exception("table not found"))

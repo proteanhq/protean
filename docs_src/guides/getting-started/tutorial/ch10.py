@@ -1,5 +1,8 @@
 # --8<-- [start:full]
 # --8<-- [start:app_setup]
+from bookshelf import domain
+from bookshelf.commands import AddBook, ConfirmOrder, PlaceOrder, ShipOrder
+from bookshelf.projections import BookCatalog
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -7,10 +10,6 @@ from protean.integrations.fastapi import (
     DomainContextMiddleware,
     register_exception_handlers,
 )
-
-from bookshelf import domain
-from bookshelf.commands import AddBook, ConfirmOrder, PlaceOrder, ShipOrder
-from bookshelf.projections import BookCatalog
 
 domain.init()
 

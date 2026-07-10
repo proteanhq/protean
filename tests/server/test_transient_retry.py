@@ -10,7 +10,7 @@ The policy is opt-in (disabled by default) and configurable domain-wide via
 ``@domain.command_handler(retries=..., backoff=..., retry_exceptions=...)``.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from unittest.mock import patch
 from uuid import uuid4
@@ -37,7 +37,6 @@ from protean.utils.mixins import (
     _transient_backoff_delay,
     handle,
 )
-
 
 # ---------------------------------------------------------------------------
 # Domain elements shared across tests
@@ -812,17 +811,17 @@ class TestDeadlineExceededHelper:
         assert _deadline_exceeded_after(10.0) is False
 
     def test_past_deadline_is_exceeded(self, test_domain):
-        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        past = datetime.now(UTC) - timedelta(seconds=1)
         g.message_in_context = _message_with_deadline(test_domain, past)
         assert _deadline_exceeded_after(0.0) is True
 
     def test_far_future_deadline_not_exceeded(self, test_domain):
-        future = datetime.now(timezone.utc) + timedelta(minutes=5)
+        future = datetime.now(UTC) + timedelta(minutes=5)
         g.message_in_context = _message_with_deadline(test_domain, future)
         assert _deadline_exceeded_after(0.1) is False
 
     def test_deadline_within_backoff_window_is_exceeded(self, test_domain):
-        near = datetime.now(timezone.utc) + timedelta(seconds=1)
+        near = datetime.now(UTC) + timedelta(seconds=1)
         g.message_in_context = _message_with_deadline(test_domain, near)
         # Sleeping an hour would start the next attempt well past the deadline.
         assert _deadline_exceeded_after(3600.0) is True
@@ -837,7 +836,7 @@ class TestRetryRespectsDeadline:
     @patch("protean.utils.mixins.time.sleep")
     def test_transient_retry_stops_when_deadline_passed(self, mock_sleep, test_domain):
         """An already-elapsed deadline suppresses the transient retry."""
-        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        past = datetime.now(UTC) - timedelta(seconds=1)
         attempts = 0
 
         class H(BaseCommandHandler):
@@ -862,7 +861,7 @@ class TestRetryRespectsDeadline:
         self, mock_sleep, test_domain
     ):
         """Stops when the backoff would push the next attempt past the deadline."""
-        near = datetime.now(timezone.utc) + timedelta(seconds=1)
+        near = datetime.now(UTC) + timedelta(seconds=1)
         attempts = 0
 
         class H(BaseCommandHandler):
@@ -887,7 +886,7 @@ class TestRetryRespectsDeadline:
     @patch("protean.utils.mixins.time.sleep")
     def test_retry_proceeds_when_deadline_far_future(self, mock_sleep, test_domain):
         """A far-future deadline does not interfere with normal retries."""
-        future = datetime.now(timezone.utc) + timedelta(minutes=5)
+        future = datetime.now(UTC) + timedelta(minutes=5)
         attempts = 0
 
         class H(BaseCommandHandler):
@@ -910,7 +909,7 @@ class TestRetryRespectsDeadline:
     @patch("protean.utils.mixins.time.sleep")
     def test_version_retry_stops_when_deadline_passed(self, mock_sleep, test_domain):
         """The version (OCC) retry branch also halts at the deadline."""
-        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+        past = datetime.now(UTC) - timedelta(seconds=1)
         attempts = 0
 
         class H(BaseCommandHandler):

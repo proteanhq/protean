@@ -50,14 +50,14 @@ def test_customers_basic_structure():
         orders=[order],
     )
 
-    len(customer.orders) == 1
-    customer.orders[0] == order
-    customer.orders[0].customer_id == customer.id
-    customer.orders[0].customer == customer
-    len(customer.orders[0].items) == 2
-    customer.orders[0].items[0] == items[0]
-    customer.orders[0].items[0].order_id == order.id
-    customer.orders[0].items[0].order == order
+    assert len(customer.orders) == 1
+    assert customer.orders[0] == order
+    assert customer.orders[0].customer_id == customer.id
+    assert customer.orders[0].customer == customer
+    assert len(customer.orders[0].items) == 2
+    assert customer.orders[0].items[0] == items[0]
+    assert customer.orders[0].items[0].order_id == order.id
+    assert customer.orders[0].items[0].order == order
 
 
 @pytest.fixture
@@ -87,8 +87,8 @@ class TestEntityAssociationsAdd:
     def test_all_associations_are_persisted_on_direct_initialization(self, customer):
         assert len(customer.orders) == 1
         assert customer.orders[0].ordered_on == datetime.today().date()
-        customer.orders[0].customer_id == customer.id
-        customer.orders[0].customer == customer
+        assert customer.orders[0].customer_id == customer.id
+        assert customer.orders[0].customer == customer
 
         assert len(customer.orders[0].items) == 2
         item1 = next(item for item in customer.orders[0].items if item.id == "item-1")

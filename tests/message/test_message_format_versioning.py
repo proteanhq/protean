@@ -8,10 +8,10 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
 from protean.utils.eventing import (
+    DomainMeta,
     Message,
     MessageEnvelope,
     MessageHeaders,
-    DomainMeta,
     Metadata,
 )
 

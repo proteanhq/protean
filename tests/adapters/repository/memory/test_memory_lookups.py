@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from protean.adapters.repository.memory import (
+    Any,
     Contains,
     Endswith,
     Exact,
@@ -12,7 +13,6 @@ from protean.adapters.repository.memory import (
     In,
     LessThan,
     LessThanOrEqual,
-    Any,
     Startswith,
 )
 

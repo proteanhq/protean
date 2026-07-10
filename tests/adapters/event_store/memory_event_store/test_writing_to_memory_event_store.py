@@ -14,7 +14,7 @@ def test_write_to_event_store(test_domain):
 
 
 def test_that_position_is_incremented(test_domain):
-    for i in range(3):
+    for _i in range(3):
         test_domain.event_store.store._write("testStream-123", "Event1", {"foo": "bar"})
 
     repo = test_domain.repository_for(MemoryMessage)

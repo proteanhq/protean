@@ -1,6 +1,7 @@
+import contextlib
 import logging
 from functools import lru_cache
-from typing import Any, cast, ClassVar, TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -64,7 +65,7 @@ class BaseRepository(Element, OptionsMixin):
         self._provider = provider
 
     @property
-    @lru_cache()
+    @lru_cache
     def _database_model(self) -> type[Any]:
         """Retrieve Database Model class connected to Entity"""
         # Look up custom models registered for this entity, keyed by database type.
@@ -93,7 +94,7 @@ class BaseRepository(Element, OptionsMixin):
         return database_model_cls
 
     @property
-    @lru_cache()
+    @lru_cache
     def _dao(self) -> BaseDAO:
         """Return the Data Access Object for this repository's aggregate.
 
@@ -204,7 +205,7 @@ class BaseRepository(Element, OptionsMixin):
         """
         return self.query.filter(criteria).all().total > 0
 
-    def add(self, item: Any) -> Any:  # noqa: C901
+    def add(self, item: Any) -> Any:
         """This method helps persist or update aggregates or projections into the persistence store.
 
         Returns the persisted item.
@@ -224,10 +225,8 @@ class BaseRepository(Element, OptionsMixin):
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
         """
         # Increment access log repo save counter
-        try:
+        with contextlib.suppress(Exception):
             g._access_log_repo_saves = getattr(g, "_access_log_repo_saves", 0) + 1
-        except Exception:
-            pass
 
         tracer = self._domain.tracer
 
@@ -245,7 +244,7 @@ class BaseRepository(Element, OptionsMixin):
                 set_span_error(span, exc)
                 raise
 
-    def _do_add(self, item: Any) -> Any:  # noqa: C901
+    def _do_add(self, item: Any) -> Any:
         """Internal add logic wrapped by the ``protean.repository.add`` span."""
         # `add` is typically invoked in handler methods in Command Handlers and Event Handlers, which are
         #   enclosed in a UoW automatically. Therefore, if there is a UoW in progress, we can assume
@@ -346,19 +345,18 @@ class BaseRepository(Element, OptionsMixin):
                 #   These are ones whose attributes have been changed directly
                 #   instead of being routed via `add`/`remove`
                 for item in getattr(entity, field_name):
-                    if item.state_.is_changed:
-                        # If the item was changed directly AND added via `add`, then
-                        #   we give preference to the object in the cache
-                        if item not in cache.updated:
-                            self._persist_child(field.to_cls, item)
+                    # If the item was changed directly AND added via `add`, then
+                    #   we give preference to the object in the cache
+                    if item.state_.is_changed and item not in cache.updated:
+                        self._persist_child(field.to_cls, item)
 
-                for _, item in cache.removed.items():
+                for item in cache.removed.values():
                     self._remove_child(field.to_cls, item)
 
-                for _, item in cache.updated.items():
+                for item in cache.updated.values():
                     self._persist_child(field.to_cls, item)
 
-                for _, item in cache.added.items():
+                for item in cache.added.values():
                     item.state_.mark_new()
                     self._persist_child(field.to_cls, item)
 
@@ -418,11 +416,10 @@ class BaseRepository(Element, OptionsMixin):
                     self._dao._flush()
                     for item in getattr(entity, field_name):
                         self._sync_children(item)
-            elif isinstance(field, HasOne):
-                if has_association_fields(field.to_cls):
-                    self._dao._flush()
-                    if getattr(entity, field_name):
-                        self._sync_children(getattr(entity, field_name))
+            elif isinstance(field, HasOne) and has_association_fields(field.to_cls):
+                self._dao._flush()
+                if getattr(entity, field_name):
+                    self._sync_children(getattr(entity, field_name))
 
         # Clear all caches atomically after all DAO operations completed successfully
         for ent, fname in cache_clears:
@@ -458,10 +455,8 @@ class BaseRepository(Element, OptionsMixin):
         domain-friendly design patterns like the `Specification` pattern.
         """
         # Increment access log repo load counter
-        try:
+        with contextlib.suppress(Exception):
             g._access_log_repo_loads = getattr(g, "_access_log_repo_loads", 0) + 1
-        except Exception:
-            pass
 
         tracer = self._domain.tracer
 

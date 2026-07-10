@@ -1,8 +1,8 @@
 """Tests for process manager lifecycle management (start, complete, end)."""
 
-import pytest
 from uuid import uuid4
 
+import pytest
 
 from .elements import (
     Order,
@@ -11,8 +11,8 @@ from .elements import (
     Payment,
     PaymentConfirmed,
     PaymentFailed,
-    Shipping,
     ShipmentDelivered,
+    Shipping,
 )
 
 

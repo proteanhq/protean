@@ -15,7 +15,6 @@ from protean.core.upcaster import BaseUpcaster
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
 
-
 # --- Shared fixtures ---------------------------------------------------------
 
 

@@ -1,6 +1,6 @@
 import threading
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from pydantic import Field
@@ -8,8 +8,8 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.port.event_store import BaseEventStore
-from protean.utils.globals import current_domain
 from protean.utils.eventing import Metadata
+from protean.utils.globals import current_domain
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -174,7 +174,7 @@ class MemoryEventStore(BaseEventStore):
         repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
         return repo.read(stream_name, sql, position, no_of_messages)
 
-    def _read_last_message(self, stream_name: str) -> Optional[dict[str, Any]]:
+    def _read_last_message(self, stream_name: str) -> dict[str, Any] | None:
         repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
 
         messages = repo.read(stream_name)

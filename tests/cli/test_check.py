@@ -6,7 +6,6 @@ Covers exit codes, output formats, error handling, --level filter, and --quiet m
 import json
 
 import pytest
-
 from typer.testing import CliRunner
 
 from protean.cli import app

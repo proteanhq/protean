@@ -9,7 +9,7 @@ definitions (not legacy assignment style) to verify the Pydantic migration
 works end-to-end.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -28,7 +28,6 @@ from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
-
 
 # ---------------------------------------------------------------------------
 # Domain elements: mixing annotation-style and raw Pydantic styles
@@ -56,9 +55,7 @@ class Invoice(BaseAggregate):
     customer_name: String(max_length=200, required=True)
     items = HasMany(LineItem)
     status: String(choices=["DRAFT", "SENT", "PAID", "CANCELLED"], default="DRAFT")
-    created_at: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 # Commands

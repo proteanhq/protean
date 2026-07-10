@@ -27,13 +27,12 @@ Usage::
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich import print
 from rich.table import Table
 from rich.tree import Tree as RichTree
-from typing_extensions import Annotated
 
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
@@ -62,7 +61,7 @@ def _resolve_aggregate(domain: "Domain", aggregate_name: str) -> Any:
     Returns the aggregate class (registry entries are untyped ``Any``) or
     ``None`` when no aggregate matches the given name.
     """
-    for _, record in domain.registry._elements[DomainObjects.AGGREGATE.value].items():
+    for record in domain.registry._elements[DomainObjects.AGGREGATE.value].values():
         if record.cls.__name__ == aggregate_name:
             return record.cls
 
@@ -275,7 +274,7 @@ def stats(
         total_events = 0
         total_instances = 0
 
-        for _, record in aggregates.items():
+        for record in aggregates.values():
             agg_cls = record.cls
             stream_category = agg_cls.meta_.stream_category
             is_es = "Yes" if agg_cls.meta_.is_event_sourced else "No"

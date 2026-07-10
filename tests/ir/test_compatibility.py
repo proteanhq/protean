@@ -16,7 +16,6 @@ from protean.ir.diff import (
     diff_ir,
 )
 
-
 # ------------------------------------------------------------------
 # Shared helpers (mirrors test_diff.py conventions)
 # ------------------------------------------------------------------
@@ -689,7 +688,8 @@ def _evt(name: str, version: int, fields: dict) -> dict:
         name,
         f"app.{name}",
         fields=fields,
-        **{"__version__": version, "__type__": f"Test.{name}.v{version}"},
+        __version__=version,
+        __type__=f"Test.{name}.v{version}",
     )
 
 
@@ -983,11 +983,9 @@ class TestUpcasterMitigation:
             "OrderPlaced",
             "app.OrderPlaced",
             {"amount": _std("Float")},
-            **{
-                "__version__": 1,
-                "__type__": "Test.OrderPlaced.v1",
-                "published": True,
-            },
+            __version__=1,
+            __type__="Test.OrderPlaced.v1",
+            published=True,
         )
         right_event = _evt("OrderPlaced", 2, {})  # v2, internal (no published)
         left = self._ir({"app.OrderPlaced": left_event})

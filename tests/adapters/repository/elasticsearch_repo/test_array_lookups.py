@@ -5,6 +5,8 @@ Elasticsearch fields are natively multivalued, so both lookups render as a
 the given values.
 """
 
+import contextlib
+
 import pytest
 from elasticsearch.exceptions import NotFoundError
 
@@ -69,10 +71,8 @@ class TestArrayLookupQueries:
 
         # Drop only this aggregate's index, leaving the shared ones in place.
         model_cls = repository._dao.database_model_cls
-        try:
+        with contextlib.suppress(NotFoundError):
             model_cls._index.delete(using=provider.get_connection())
-        except NotFoundError:
-            pass
 
     def _names(self, items):
         return sorted(item.name for item in items)

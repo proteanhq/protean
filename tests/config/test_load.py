@@ -39,7 +39,7 @@ class TestLoadingTOML:
 
         domain = derive_domain("domain14")
         assert domain is not None
-        domain.config["custom"]["FOO"] == "bar"
+        assert domain.config["custom"]["FOO"] == "bar"
 
     @pytest.mark.no_test_domain
     def test_domain_prioritizes_dot_domain_toml_over_domain_toml(self):

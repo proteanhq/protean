@@ -10,8 +10,8 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.fields.resolved import ResolvedField
 from protean.fields import Auto, Identifier, Integer, String
+from protean.fields.resolved import ResolvedField
 from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.reflection import (
@@ -213,7 +213,7 @@ class TestProjectionMeta:
     def test_projection_meta_has_declared_fields_on_construction(self):
         assert declared_fields(Person) is not None
         assert all(
-            key in declared_fields(Person).keys()
+            key in declared_fields(Person)
             for key in ["age", "first_name", "person_id", "last_name"]
         )
 
@@ -225,41 +225,41 @@ class TestProjectionMeta:
         assert declared_fields(Person)["person_id"].field_kind == "identifier"
 
     def test_default_and_overridden_abstract_flag_in_meta(self):
-        assert getattr(Person.meta_, "abstract") is False
-        assert getattr(AbstractPerson.meta_, "abstract") is True
+        assert Person.meta_.abstract is False
+        assert AbstractPerson.meta_.abstract is True
 
     def test_abstract_can_be_overridden_from_projection_abstract_class(self):
         """Test that `abstract` flag can be overridden"""
 
         assert hasattr(ConcretePerson.meta_, "abstract")
-        assert getattr(ConcretePerson.meta_, "abstract") is False
+        assert ConcretePerson.meta_.abstract is False
 
     def test_default_and_overridden_schema_name_in_meta(self):
-        assert getattr(Person.meta_, "schema_name") == "person"
-        assert getattr(DbPerson.meta_, "schema_name") == "peoples"
+        assert Person.meta_.schema_name == "person"
+        assert DbPerson.meta_.schema_name == "peoples"
 
     def test_schema_name_can_be_overridden_in_projection_subclass(self):
         """Test that `schema_name` can be overridden"""
         assert hasattr(SqlPerson.meta_, "schema_name")
-        assert getattr(SqlPerson.meta_, "schema_name") == "people"
+        assert SqlPerson.meta_.schema_name == "people"
 
     def test_default_and_overridden_provider_in_meta(self):
-        assert getattr(Person.meta_, "provider") == "default"
-        assert getattr(DifferentDbPerson.meta_, "provider") == "non-default"
+        assert Person.meta_.provider == "default"
+        assert DifferentDbPerson.meta_.provider == "non-default"
 
     def test_provider_can_be_overridden_in_projection_subclass(self):
         """Test that `provider` can be overridden"""
         assert hasattr(SqlDifferentDbPerson.meta_, "provider")
-        assert getattr(SqlDifferentDbPerson.meta_, "provider") == "non-default-sql"
+        assert SqlDifferentDbPerson.meta_.provider == "non-default-sql"
 
     def test_default_and_overridden_order_by_in_meta(self):
-        assert getattr(Person.meta_, "order_by") == ()
-        assert getattr(OrderedPerson.meta_, "order_by") == "first_name"
+        assert Person.meta_.order_by == ()
+        assert OrderedPerson.meta_.order_by == "first_name"
 
     def test_order_by_can_be_overridden_in_projection_subclass(self):
         """Test that `order_by` can be overridden"""
         assert hasattr(OrderedPersonSubclass.meta_, "order_by")
-        assert getattr(OrderedPersonSubclass.meta_, "order_by") == "last_name"
+        assert OrderedPersonSubclass.meta_.order_by == "last_name"
 
     def test_that_schema_is_not_inherited(self):
         assert Person.meta_.schema_name != Adult.meta_.schema_name

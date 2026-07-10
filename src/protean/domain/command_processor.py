@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from protean.core.command import BaseCommand
@@ -51,8 +51,8 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_deadline(
-    deadline: Optional[datetime], timeout: Optional[timedelta]
-) -> Optional[datetime]:
+    deadline: datetime | None, timeout: timedelta | None
+) -> datetime | None:
     """Resolve an absolute UTC deadline from ``deadline`` or ``timeout``.
 
     ``deadline`` and ``timeout`` are mutually exclusive. A ``timeout`` is
@@ -65,7 +65,7 @@ def resolve_deadline(
     if timeout is not None:
         if not isinstance(timeout, timedelta):
             raise IncorrectUsageError("`timeout` must be a `datetime.timedelta`.")
-        return datetime.now(timezone.utc) + timeout
+        return datetime.now(UTC) + timeout
 
     if deadline is not None:
         if not isinstance(deadline, datetime):
@@ -88,7 +88,7 @@ def coerce_timeout(value: Any) -> timedelta:
 
 
 def raise_if_expired(
-    headers: Optional[MessageHeaders], command_type: str, metrics: Any = None
+    headers: MessageHeaders | None, command_type: str, metrics: Any = None
 ) -> None:
     """Raise :class:`CommandExpiredError` when the command deadline has passed.
 
@@ -116,7 +116,7 @@ class CommandProcessor:
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
 
-    def _default_deadline_for(self, command: BaseCommand) -> Optional[datetime]:
+    def _default_deadline_for(self, command: BaseCommand) -> datetime | None:
         """Resolve a default deadline from the handler option or domain config.
 
         Precedence: the handling command handler's ``timeout`` option wins over
@@ -137,10 +137,10 @@ class CommandProcessor:
         self,
         command: BaseCommand,
         asynchronous: bool,
-        idempotency_key: Optional[str] = None,
+        idempotency_key: str | None = None,
         priority: int = 0,
-        correlation_id: Optional[str] = None,
-        deadline: Optional[datetime] = None,
+        correlation_id: str | None = None,
+        deadline: datetime | None = None,
     ) -> BaseCommand:
         """Enrich a command with metadata (stream, type, headers, etc.)."""
         tracer = self._domain.tracer
@@ -268,14 +268,14 @@ class CommandProcessor:
     def process(
         self,
         command: Any,
-        asynchronous: Optional[bool] = None,
-        idempotency_key: Optional[str] = None,
+        asynchronous: bool | None = None,
+        idempotency_key: str | None = None,
         raise_on_duplicate: bool = False,
-        priority: Optional[int] = None,
-        correlation_id: Optional[str] = None,
-        deadline: Optional[datetime] = None,
-        timeout: Optional[timedelta] = None,
-    ) -> Optional[Any]:
+        priority: int | None = None,
+        correlation_id: str | None = None,
+        deadline: datetime | None = None,
+        timeout: timedelta | None = None,
+    ) -> Any | None:
         """Process command and return results based on specified preference.
 
         By default, Protean does not return values after processing commands. This behavior
@@ -537,7 +537,7 @@ class CommandProcessor:
 
             return position
 
-    def handler_for(self, command: Any) -> Optional[type[BaseCommandHandler]]:
+    def handler_for(self, command: Any) -> type[BaseCommandHandler] | None:
         """Return Command Handler for a specific command.
 
         Args:

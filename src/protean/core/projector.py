@@ -1,8 +1,9 @@
+from typing import Any, ClassVar, TypeVar
+
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import DerivedDefault, Element, OptionsMixin
 from protean.utils.mixins import HandlerMixin, handle
-from typing import Any, ClassVar, TypeVar
 
 
 class BaseProjector(Element, HandlerMixin, OptionsMixin):

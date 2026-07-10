@@ -14,7 +14,6 @@ from protean.server.engine import _extract_source_message_id
 from protean.utils.eventing import Message
 from protean.utils.globals import g
 
-
 # ---------------------------------------------------------------------------
 # Module-level state captured by test subscribers
 # ---------------------------------------------------------------------------

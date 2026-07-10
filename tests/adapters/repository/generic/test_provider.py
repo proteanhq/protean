@@ -7,11 +7,11 @@ and configuration error messages.
 import pytest
 
 from protean.adapters.repository import Providers
-from protean.port.provider import registry as provider_registry
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import String
 from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import registry as provider_registry
 
 
 class User(BaseAggregate):
@@ -348,8 +348,10 @@ class TestConfigurationErrorMessages:
             }
         }
 
-        with domain.domain_context():
-            with pytest.raises(
+        with (
+            domain.domain_context(),
+            pytest.raises(
                 ConfigurationError, match="You must define a 'default' provider"
-            ):
-                domain.providers._initialize()
+            ),
+        ):
+            domain.providers._initialize()

@@ -16,8 +16,8 @@ from .elements import (
     Payment,
     PaymentConfirmed,
     PaymentFailed,
-    Shipping,
     ShipmentDelivered,
+    Shipping,
 )
 
 
@@ -40,7 +40,7 @@ def test_handle_decorator_preserves_start_attribute(test_domain):
     test_domain.init(traverse=False)
 
     # Find the start handler
-    for event_type, handlers in OrderFulfillmentPM._handlers.items():
+    for handlers in OrderFulfillmentPM._handlers.values():
         for handler_method in handlers:
             if handler_method.__name__ == "on_order_placed":
                 assert getattr(handler_method, "_start", False) is True
@@ -55,7 +55,7 @@ def test_handle_decorator_preserves_correlate_attribute(test_domain):
     )
     test_domain.init(traverse=False)
 
-    for event_type, handlers in OrderFulfillmentPM._handlers.items():
+    for handlers in OrderFulfillmentPM._handlers.values():
         for handler_method in handlers:
             assert getattr(handler_method, "_correlate", None) == "order_id"
 
@@ -67,7 +67,7 @@ def test_handle_decorator_preserves_end_attribute(test_domain):
     )
     test_domain.init(traverse=False)
 
-    for event_type, handlers in OrderFulfillmentPM._handlers.items():
+    for handlers in OrderFulfillmentPM._handlers.values():
         for handler_method in handlers:
             if handler_method.__name__ == "on_payment_failed":
                 assert getattr(handler_method, "_end", False) is True

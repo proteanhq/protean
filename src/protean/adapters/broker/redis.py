@@ -4,11 +4,7 @@ import time
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
-    List,
     Literal,
-    Optional,
-    Tuple,
     cast,
     overload,
 )
@@ -55,7 +51,7 @@ class RedisBroker(BaseBroker):
     )
 
     def __init__(
-        self, name: str, domain: "Domain", conn_info: Dict[str, str | bool]
+        self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
     ) -> None:
         super().__init__(name, domain, conn_info)
 
@@ -64,7 +60,7 @@ class RedisBroker(BaseBroker):
         self._pool_kwargs: dict[str, Any] = {
             key: value for key, value in conn_info.items() if key in self._POOL_KEYS
         }
-        self.redis_instance: Optional["redis.Redis[Any]"] = None
+        self.redis_instance: redis.Redis[Any] | None = None
         self._connect()
         self._consumer_name = f"consumer-{int(time.time() * 1000)}"
         self._created_groups_set: set[str] = set()
@@ -82,7 +78,7 @@ class RedisBroker(BaseBroker):
         # ``conn_info`` is typed ``dict[str, str | bool]`` by the broker port
         # contract; the URI is always a string at runtime.
         uri = cast(str, self.conn_info["URI"])
-        instance: "redis.Redis[Any]" = redis.Redis.from_url(uri, **self._pool_kwargs)
+        instance: redis.Redis[Any] = redis.Redis.from_url(uri, **self._pool_kwargs)
         self.redis_instance = instance
         return instance
 
@@ -123,7 +119,7 @@ class RedisBroker(BaseBroker):
 
     def _get_next(
         self, stream: str, consumer_group: str
-    ) -> Optional[Tuple[str, dict[str, Any]]]:
+    ) -> tuple[str, dict[str, Any]] | None:
         """Get next message from Redis Stream using consumer group
 
         Reads the next available message, prioritizing new messages over pending ones.
@@ -161,7 +157,7 @@ class RedisBroker(BaseBroker):
 
     def _extract_message_from_response(
         self, response: Any
-    ) -> Optional[Tuple[str, dict[str, Any]]]:
+    ) -> tuple[str, dict[str, Any]] | None:
         """Extract message from Redis response"""
         if not (response and response[0][1]):
             return None
@@ -177,7 +173,7 @@ class RedisBroker(BaseBroker):
 
     def _handle_redis_error(
         self, error: redis.ResponseError, stream: str, consumer_group: str
-    ) -> Optional[Tuple[str, dict[str, Any]]]:
+    ) -> tuple[str, dict[str, Any]] | None:
         """Handle Redis errors during message retrieval"""
         if "NOGROUP" in str(error):
             self._ensure_group(consumer_group, stream)
@@ -216,11 +212,11 @@ class RedisBroker(BaseBroker):
 
     def _read(
         self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> List[Tuple[str, dict[str, Any]]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Read multiple messages from Redis Stream"""
         self._ensure_group(consumer_group, stream)
 
-        messages: List[Tuple[str, dict[str, Any]]] = []
+        messages: list[tuple[str, dict[str, Any]]] = []
         try:
             # Read all requested messages at once to maintain order
             # First try to read new messages
@@ -269,7 +265,7 @@ class RedisBroker(BaseBroker):
         consumer_name: str,
         timeout_ms: int = 5000,
         count: int = 1,
-    ) -> List[Tuple[str, dict[str, Any]]]:
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from Redis Stream using blocking mode with XREADGROUP.
 
         This method uses Redis's XREADGROUP with BLOCK parameter for efficient
@@ -302,7 +298,7 @@ class RedisBroker(BaseBroker):
             # If we got pending messages, return them
             if response:
                 messages = []
-                for stream_name, stream_messages in response:
+                for _stream_name, stream_messages in response:
                     for message_id, fields in stream_messages:
                         if fields:  # Pending messages might have None fields if they've been claimed
                             redis_id_str = self._decode_if_bytes(message_id)
@@ -330,7 +326,7 @@ class RedisBroker(BaseBroker):
 
             # Extract messages from response
             messages = []
-            for stream_name, stream_messages in response:
+            for _stream_name, stream_messages in response:
                 for message_id, fields in stream_messages:
                     redis_id_str = self._decode_if_bytes(message_id)
                     message = self._deserialize_message(fields)
@@ -357,7 +353,7 @@ class RedisBroker(BaseBroker):
                     if not response:
                         return []
                     messages = []
-                    for stream_name, stream_messages in response:
+                    for _stream_name, stream_messages in response:
                         for message_id, fields in stream_messages:
                             redis_id_str = self._decode_if_bytes(message_id)
                             message = self._deserialize_message(fields)
@@ -735,7 +731,7 @@ class RedisBroker(BaseBroker):
 
         return streams
 
-    def _get_stream_info(self, stream: str) -> Optional[dict[str, Any]]:
+    def _get_stream_info(self, stream: str) -> dict[str, Any] | None:
         """Get info for a specific stream"""
         try:
             # redis-stubs leaves xinfo_groups untyped (stub gap, not our bug).
@@ -759,7 +755,7 @@ class RedisBroker(BaseBroker):
 
     def _extract_group_data(
         self, group_info: dict[Any, Any], stream: str
-    ) -> Optional[Tuple[str, dict[str, Any]]]:
+    ) -> tuple[str, dict[str, Any]] | None:
         """Extract group data from Redis group info"""
         try:
             # Handle both bytes and string keys
@@ -791,9 +787,9 @@ class RedisBroker(BaseBroker):
             logger.debug(f"Error extracting group data: {e}")
             return None
 
-    def _extract_consumers_data(self, consumers_info: Any) -> List[dict[str, Any]]:
+    def _extract_consumers_data(self, consumers_info: Any) -> list[dict[str, Any]]:
         """Extract consumers data from Redis consumer info"""
-        consumers: List[dict[str, Any]] = []
+        consumers: list[dict[str, Any]] = []
         for consumer_info in consumers_info:
             if not isinstance(consumer_info, dict):
                 continue
@@ -1106,4 +1102,3 @@ def register() -> None:
     except ImportError as e:
         # Redis not available, skip registration
         logger.debug(f"Redis broker not registered: redis package not available ({e})")
-        pass

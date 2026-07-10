@@ -51,7 +51,7 @@ def _infer_stream_category(handler_cls: type) -> str | None:
     return None
 
 
-def discover_subscriptions(domain: "Domain") -> list[SubscriptionInfo]:
+def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
     """Walk the domain registry and return subscription metadata.
 
     Inspects event handlers, command handlers, and projectors to derive
@@ -82,27 +82,27 @@ def discover_subscriptions(domain: "Domain") -> list[SubscriptionInfo]:
         infos.append(info)
 
     # Event handlers
-    for _, record in domain.registry._elements.get(
+    for record in domain.registry._elements.get(
         DomainObjects.EVENT_HANDLER.value, {}
-    ).items():
+    ).values():
         handler_cls = record.cls
         stream_cat = _infer_stream_category(handler_cls)
         if stream_cat:
             _add(handler_cls, stream_cat)
 
     # Command handlers
-    for _, record in domain.registry._elements.get(
+    for record in domain.registry._elements.get(
         DomainObjects.COMMAND_HANDLER.value, {}
-    ).items():
+    ).values():
         handler_cls = record.cls
         stream_cat = _infer_stream_category(handler_cls)
         if stream_cat:
             _add(handler_cls, stream_cat)
 
     # Projectors (may subscribe to multiple stream categories)
-    for _, record in domain.registry._elements.get(
+    for record in domain.registry._elements.get(
         DomainObjects.PROJECTOR.value, {}
-    ).items():
+    ).values():
         handler_cls = record.cls
         stream_categories = getattr(
             getattr(handler_cls, "meta_", None), "stream_categories", None
@@ -112,9 +112,9 @@ def discover_subscriptions(domain: "Domain") -> list[SubscriptionInfo]:
                 _add(handler_cls, stream_cat)
 
     # Subscribers (broker subscriptions with external streams)
-    for _, record in domain.registry._elements.get(
+    for record in domain.registry._elements.get(
         DomainObjects.SUBSCRIBER.value, {}
-    ).items():
+    ).values():
         handler_cls = record.cls
         meta = getattr(handler_cls, "meta_", None)
         stream = getattr(meta, "stream", None) if meta else None
@@ -134,7 +134,7 @@ def discover_subscriptions(domain: "Domain") -> list[SubscriptionInfo]:
     return infos
 
 
-def collect_dlq_streams(domain: "Domain") -> list[str]:
+def collect_dlq_streams(domain: Domain) -> list[str]:
     """Return a flat list of all DLQ stream names for the domain."""
     streams: list[str] = []
     for info in discover_subscriptions(domain):

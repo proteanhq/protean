@@ -103,13 +103,15 @@ class TestAutoConfigureLogging:
 
         _clear_root_logger()
 
-        with patch(
-            "protean.domain.Domain.configure_logging",
-            side_effect=RuntimeError("logging boom"),
+        with (
+            patch(
+                "protean.domain.Domain.configure_logging",
+                side_effect=RuntimeError("logging boom"),
+            ),
+            patch.dict(os.environ, {}, clear=True),
         ):
-            with patch.dict(os.environ, {}, clear=True):
-                # Should not raise
-                domain.init(traverse=False)
+            # Should not raise
+            domain.init(traverse=False)
 
     def test_auto_config_uses_domain_toml_logging_section(self):
         """Auto-configuration picks up [logging] from domain config."""

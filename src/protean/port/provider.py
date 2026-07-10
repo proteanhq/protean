@@ -452,7 +452,7 @@ class ProviderRegistry:
     based on whether the required dependencies are installed.
     """
 
-    _providers: dict[str, str] = {}
+    _providers: ClassVar[dict[str, str]] = {}
     _initialized: bool = False
 
     @classmethod
@@ -526,7 +526,7 @@ class ProviderRegistry:
             raise ConfigurationError(
                 f"Failed to load provider '{name}' from '{provider_path}': {e}. "
                 f"Ensure the required dependencies are installed."
-            )
+            ) from e
 
         # Validate that all required lookups are registered
         missing = provider_cls.validate_lookups()

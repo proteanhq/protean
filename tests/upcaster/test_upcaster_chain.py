@@ -8,7 +8,6 @@ from protean.core.upcaster import BaseUpcaster
 from protean.exceptions import ConfigurationError
 from protean.fields import Float, Identifier, String
 
-
 # ── Domain elements ──────────────────────────────────────────────────────
 
 

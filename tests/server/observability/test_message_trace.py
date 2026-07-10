@@ -1,7 +1,7 @@
 """Tests for the MessageTrace dataclass."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from protean.server.tracing import MessageTrace
 
@@ -135,7 +135,7 @@ class TestMessageTraceSerialization:
 
     def test_to_json_handles_non_serializable_metadata(self):
         """to_json uses default=str for non-JSON-serializable values."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         trace = MessageTrace(
             event="handler.started",
             domain="test",

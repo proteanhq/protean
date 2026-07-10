@@ -18,7 +18,6 @@ from protean.fields import Float, Identifier, String
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 
-
 # ── Domain elements ──────────────────────────────────────────────────────
 
 

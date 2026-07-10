@@ -173,7 +173,7 @@ def test_read_blocking_with_non_connection_error(broker):
     if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
         original_read_blocking = broker._read_blocking
 
-        def mock_read_blocking_error(*args, **kwargs):  # noqa: ARG001
+        def mock_read_blocking_error(*args, **kwargs):
             raise ValueError("Invalid argument")
 
         broker._read_blocking = mock_read_blocking_error
@@ -194,7 +194,7 @@ def test_read_blocking_with_non_connection_error(broker):
         # Test fallback path with non-connection error
         original_read = broker._read
 
-        def mock_read_error(*args, **kwargs):  # noqa: ARG001
+        def mock_read_error(*args, **kwargs):
             raise ValueError("Invalid argument")
 
         broker._read = mock_read_error
@@ -233,7 +233,7 @@ def test_read_blocking_connection_recovery_failure(broker):
             # For brokers with blocking read support
             original_read_blocking = broker._read_blocking
 
-            def mock_read_blocking_error(*args, **kwargs):  # noqa: ARG001
+            def mock_read_blocking_error(*args, **kwargs):
                 raise Exception("Connection reset by peer")
 
             broker._read_blocking = mock_read_blocking_error
@@ -377,7 +377,7 @@ def test_read_blocking_connection_error_without_recovery(broker):
         # Track calls
         ensure_called = [False]
 
-        def mock_read_blocking_error(*args, **kwargs):  # noqa: ARG001
+        def mock_read_blocking_error(*args, **kwargs):
             raise Exception("Socket closed")
 
         def mock_ensure_connection_fail():
@@ -435,7 +435,9 @@ def test_read_blocking_with_various_connection_errors(broker):
         for error_msg in connection_errors:
             call_count = [0]
 
-            def mock_read_blocking(*args, **kwargs):
+            def mock_read_blocking(
+                *args, call_count=call_count, error_msg=error_msg, **kwargs
+            ):
                 call_count[0] += 1
                 if call_count[0] == 1:
                     raise Exception(error_msg)
@@ -478,7 +480,7 @@ def test_read_blocking_connection_error_logging(broker, caplog):
         original_read_blocking = broker._read_blocking
         original_ensure_connection = broker._ensure_connection
 
-        def mock_read_blocking_error(*args, **kwargs):  # noqa: ARG001
+        def mock_read_blocking_error(*args, **kwargs):
             raise Exception("Connection refused by broker")
 
         def mock_ensure_connection():

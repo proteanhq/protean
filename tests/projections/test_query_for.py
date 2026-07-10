@@ -206,11 +206,12 @@ class TestViewForQuery:
         assert results.has_prev is False
 
     def test_iteration(self, test_domain, seeded_projections):
-        names = []
-        for item in test_domain.view_for(PersonProjection).query.filter(
-            last_name="Doe"
-        ):
-            names.append(item.first_name)
+        names = [
+            item.first_name
+            for item in test_domain.view_for(PersonProjection).query.filter(
+                last_name="Doe"
+            )
+        ]
 
         assert len(names) == 3
         assert set(names) == {"John", "Jane", "Baby"}

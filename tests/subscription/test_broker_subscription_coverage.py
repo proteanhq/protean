@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
@@ -105,13 +106,11 @@ async def test_broker_subscription_poll_test_mode_sleep_zero(test_domain):
     # Wait for poll to complete
     try:
         await asyncio.wait_for(poll_task, timeout=1.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         subscription.keep_going = False
-        try:
+        # Expected when loop exits
+        with contextlib.suppress(asyncio.CancelledError):
             await asyncio.wait_for(poll_task, timeout=0.5)
-        except asyncio.CancelledError:
-            # Expected when loop exits
-            pass
 
     # Verify tick was called at least once (means the loop ran)
     # With tick_interval=0, the loop runs very fast and may exit before 3 iterations

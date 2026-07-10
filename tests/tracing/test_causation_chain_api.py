@@ -15,7 +15,6 @@ import pytest
 
 from protean.port.event_store import BaseEventStore, CausationNode
 from protean.utils.eventing import Message
-
 from tests.tracing.elements import (
     ConfirmOrder,
     Order,
@@ -23,11 +22,10 @@ from tests.tracing.elements import (
     OrderConfirmed,
     OrderPlaced,
     OrderPlacedAutoConfirmHandler,
+    OrderShipped,
     PlaceOrder,
     ShipOrder,
-    OrderShipped,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

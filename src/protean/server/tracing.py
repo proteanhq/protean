@@ -13,8 +13,8 @@ import json
 import logging
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -41,19 +41,19 @@ class MessageTrace:
     message_id: str  # Domain event/command UUID
     message_type: str  # "CustomerRegistered"
     status: str  # "ok", "error", "retry"
-    handler: Optional[str] = None  # "CustomerProjector"
-    duration_ms: Optional[float] = None  # Processing time (handler stages)
-    error: Optional[str] = None  # Error message for failures
-    metadata: Optional[dict[str, Any]] = field(default_factory=dict)  # Extra context
-    payload: Optional[dict[str, Any]] = None  # Message payload (event/command data)
-    worker_id: Optional[str] = None  # Subscription instance that processed this message
-    correlation_id: Optional[str] = None  # Correlation chain identifier
-    causation_id: Optional[str] = None  # Parent message identifier
+    handler: str | None = None  # "CustomerProjector"
+    duration_ms: float | None = None  # Processing time (handler stages)
+    error: str | None = None  # Error message for failures
+    metadata: dict[str, Any] | None = field(default_factory=dict)  # Extra context
+    payload: dict[str, Any] | None = None  # Message payload (event/command data)
+    worker_id: str | None = None  # Subscription instance that processed this message
+    correlation_id: str | None = None  # Correlation chain identifier
+    causation_id: str | None = None  # Parent message identifier
     timestamp: str = ""  # ISO 8601, filled automatically
 
     def __post_init__(self) -> None:
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat()
+            self.timestamp = datetime.now(UTC).isoformat()
 
     def to_json(self) -> str:
         """Serialize to JSON for transport."""
@@ -137,14 +137,14 @@ class TraceEmitter:
         message_id: str,
         message_type: str,
         status: str = "ok",
-        handler: Optional[str] = None,
-        duration_ms: Optional[float] = None,
-        error: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-        payload: Optional[dict[str, Any]] = None,
-        worker_id: Optional[str] = None,
-        correlation_id: Optional[str] = None,
-        causation_id: Optional[str] = None,
+        handler: str | None = None,
+        duration_ms: float | None = None,
+        error: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
+        worker_id: str | None = None,
+        correlation_id: str | None = None,
+        causation_id: str | None = None,
     ) -> None:
         """Emit a trace event. No-op when nobody is listening and persistence is off."""
         has_subscribers = self._check_subscribers()

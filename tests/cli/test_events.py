@@ -3,7 +3,7 @@
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -671,7 +671,7 @@ class TestFormatTime:
         assert _format_time(None) == "-"
 
     def test_datetime_object(self):
-        dt = datetime(2026, 2, 22, 10, 30, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 2, 22, 10, 30, 0, tzinfo=UTC)
         assert _format_time(dt) == "2026-02-22 10:30:00"
 
     def test_iso_string(self):

@@ -19,7 +19,7 @@ benchmarks — they assert statement *counts* and *shapes*, which are
 deterministic, rather than wall-clock duration.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -28,7 +28,7 @@ from protean.integrations.pytest import (
     assert_no_subquery_wrap,
     assert_query_count,
 )
-from protean.utils.eventing import DomainMeta, Metadata, MessageHeaders
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxRepository, OutboxStatus
 
 
@@ -46,7 +46,7 @@ def sample_metadata():
         headers=MessageHeaders(
             id="perf-id",
             type="TestEvent",
-            time=datetime.now(timezone.utc),
+            time=datetime.now(UTC),
             stream="perf-stream",
         ),
         domain=DomainMeta(
@@ -85,7 +85,7 @@ def _seed(test_domain, sample_metadata):
         )
         msg.status = OutboxStatus.FAILED.value
         msg.retry_count = 1
-        msg.next_retry_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        msg.next_retry_at = datetime.now(UTC) - timedelta(minutes=5)
         repo.add(msg)
 
     for i in range(4):
@@ -98,7 +98,7 @@ def _seed(test_domain, sample_metadata):
             priority=i + 20,
         )
         msg.status = OutboxStatus.PUBLISHED.value
-        msg.published_at = datetime.now(timezone.utc) - timedelta(days=30)
+        msg.published_at = datetime.now(UTC) - timedelta(days=30)
         repo.add(msg)
 
     for i in range(2):
@@ -112,7 +112,7 @@ def _seed(test_domain, sample_metadata):
         )
         msg.status = OutboxStatus.ABANDONED.value
         msg.retry_count = 5
-        msg.last_processed_at = datetime.now(timezone.utc) - timedelta(days=60)
+        msg.last_processed_at = datetime.now(UTC) - timedelta(days=60)
         repo.add(msg)
 
 

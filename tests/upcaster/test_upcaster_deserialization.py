@@ -9,7 +9,6 @@ from protean.exceptions import DeserializationError
 from protean.fields import Float, Identifier, String
 from protean.utils.eventing import Message
 
-
 # ── Domain elements ──────────────────────────────────────────────────────
 
 

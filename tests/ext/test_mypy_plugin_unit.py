@@ -16,10 +16,10 @@ Covers:
 from unittest.mock import MagicMock
 
 from protean.ext.mypy_plugin import (
+    _REEXPORT_MAP,
     DECORATOR_BASE_CLASS_MAP,
     FIELD_TYPE_MAP,
     ProteanPlugin,
-    _REEXPORT_MAP,
     _extract_decorator_name,
     _extract_decorator_name_from_expr,
     _field_factory_hook,
@@ -296,7 +296,7 @@ class TestDecoratorBaseClassMap:
 
     def test_base_class_fqns_follow_naming_convention(self):
         """Each FQN should be protean.core.<module>.Base<ClassName>."""
-        for decorator_name, fqn in DECORATOR_BASE_CLASS_MAP.items():
+        for fqn in DECORATOR_BASE_CLASS_MAP.values():
             assert fqn.startswith("protean.core."), (
                 f"{fqn} doesn't start with protean.core."
             )

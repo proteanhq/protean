@@ -83,8 +83,8 @@ class TestDomainContext:
                     test_domain._get_element_by_class(
                         (DomainObjects.AGGREGATE,), FooBar
                     )
-                except Exception:
-                    raise Exception("ElementNotFound")
+                except Exception as e:
+                    raise Exception("ElementNotFound") from e
 
         assert len(cleanup_stuff) == 1
         assert isinstance(cleanup_stuff[0], Exception)

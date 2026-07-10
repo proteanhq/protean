@@ -412,7 +412,7 @@ class TestDiffCLIWithConfig:
         # Create baseline with an extra field
         baseline_ir = json.loads(json.dumps(live_ir))
         baseline_ir["checksum"] = "sha256:modified_baseline"
-        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+        for cluster in baseline_ir.get("clusters", {}).values():
             cluster["aggregate"]["fields"]["extra_required_field"] = {
                 "type": "String",
                 "required": True,
@@ -885,7 +885,7 @@ class TestCompatHookWarnMode:
         # Create baseline with an extra required field
         baseline_ir = json.loads(json.dumps(live_ir))
         baseline_ir["checksum"] = "sha256:modified_baseline"
-        for cluster_fqn, cluster in baseline_ir.get("clusters", {}).items():
+        for cluster in baseline_ir.get("clusters", {}).values():
             cluster["aggregate"]["fields"]["extra_required_field"] = {
                 "type": "String",
                 "required": True,

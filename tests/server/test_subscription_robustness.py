@@ -3,11 +3,11 @@ from uuid import uuid4
 
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
-from protean import apply
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription

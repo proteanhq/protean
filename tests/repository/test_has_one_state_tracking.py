@@ -9,7 +9,7 @@ import pytest
 
 from protean.utils.globals import current_domain
 
-from .child_entities import Post, PostMeta, Comment
+from .child_entities import Comment, Post, PostMeta
 
 
 @pytest.fixture(autouse=True)

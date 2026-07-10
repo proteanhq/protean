@@ -4,9 +4,10 @@ Queries are lightweight, immutable DTOs representing read intents against
 projections -- the read-side counterpart of commands.
 """
 
+import contextlib
 import json
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -120,7 +121,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
                 if value.required:
                     own_annots[name] = vo_cls
                 else:
-                    own_annots[name] = Optional[vo_cls]
+                    own_annots[name] = vo_cls | None  # type: ignore[operator]
                     defaults_to_set[name] = None
                 names_to_remove.append(name)
 
@@ -131,15 +132,14 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
                 if annot_value.required:
                     own_annots[name] = vo_cls
                 else:
-                    own_annots[name] = Optional[vo_cls]
+                    own_annots[name] = vo_cls | None  # type: ignore[operator]
                     defaults_to_set[name] = None
 
         # Remove descriptors from namespace
         for name in names_to_remove:
-            try:
+            # Already removed by a parent __init_subclass__
+            with contextlib.suppress(AttributeError):
                 delattr(cls, name)
-            except AttributeError:  # pragma: no cover
-                pass  # Already removed by a parent __init_subclass__
 
         # Set defaults for optional VO fields
         for name, default in defaults_to_set.items():
@@ -213,7 +213,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e))
+            raise ValidationError(convert_pydantic_errors(e)) from e
 
         object.__setattr__(self, "_initialized", True)
 

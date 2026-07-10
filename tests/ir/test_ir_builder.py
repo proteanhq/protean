@@ -203,7 +203,7 @@ class TestCanonicalIR:
         self.ir = self.domain.to_ir()
 
     def test_strips_only_generated_at(self):
-        assert CANONICAL_EXCLUDED_KEYS == frozenset({"generated_at"})
+        assert frozenset({"generated_at"}) == CANONICAL_EXCLUDED_KEYS
         canonical = canonical_ir(self.ir)
         assert "generated_at" not in canonical
         # Readable/content-derived keys are retained.

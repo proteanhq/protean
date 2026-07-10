@@ -17,10 +17,10 @@ Usage:
 """
 
 import asyncio
+import contextlib
 import ipaddress
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 import uvicorn
 from fastapi import FastAPI
@@ -75,12 +75,10 @@ class _GracefulShutdownMiddleware:
             # the final empty body so uvicorn doesn't log
             # "ASGI callable returned without completing response."
             if response_started:
-                try:
+                with contextlib.suppress(Exception):
                     await send(
                         {"type": "http.response.body", "body": b"", "more_body": False}
                     )
-                except Exception:
-                    pass
 
 
 class Observatory:
@@ -100,10 +98,10 @@ class Observatory:
 
     def __init__(
         self,
-        domains: List[Domain],
+        domains: list[Domain],
         title: str = "Protean Observatory",
         enable_cors: bool = True,
-        cors_origins: Optional[list[str]] = None,
+        cors_origins: list[str] | None = None,
     ) -> None:
         self.domains = domains
         self.title = title
@@ -199,7 +197,7 @@ class Observatory:
 
 
 def create_observatory_app(
-    domains: List[Domain],
+    domains: list[Domain],
     title: str = "Protean Observatory",
 ) -> FastAPI:
     """Factory function to create an Observatory FastAPI app for uvicorn."""

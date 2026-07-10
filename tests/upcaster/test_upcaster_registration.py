@@ -8,7 +8,6 @@ from protean.core.upcaster import BaseUpcaster
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Float, Identifier, String
 
-
 # ── Domain elements used across tests ────────────────────────────────────
 
 

@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -8,7 +8,6 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import Date, DateTime, Identifier, String
 from protean.utils.eventing import Message
-
 from tests.event.elements import Person, PersonAdded
 
 
@@ -117,7 +116,7 @@ def test_reconstruction_of_event_from_message():
 
 def test_that_dates_in_message_are_serialized_and_deserialized():
     person_id = str(uuid4())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     event = PersonRegisteredWithDate(
         id=person_id,

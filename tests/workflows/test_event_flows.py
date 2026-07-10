@@ -6,7 +6,7 @@ Event Consumption flows:
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -42,7 +42,7 @@ class Order(BaseAggregate):
     customer_id: Identifier(required=True)
     items = HasMany("OrderItem")
     total: Float(required=True)
-    ordered_at: DateTime(default=lambda: datetime.now(timezone.utc))
+    ordered_at: DateTime(default=lambda: datetime.now(UTC))
 
 
 class OrderItem(BaseEntity):
@@ -227,7 +227,7 @@ def test_workflow_among_protean_domains(test_domain, shipment_domain):
             customer_id="1",
             items=[OrderItemVO(product_id="1", price=100.0, quantity=1)],
             total=100.0,
-            ordered_at=datetime.now(timezone.utc),
+            ordered_at=datetime.now(UTC),
         )
         test_domain.process(command)
 

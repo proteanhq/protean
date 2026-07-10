@@ -65,9 +65,10 @@ class TestTraverseModuleCaching:
 
         # Clean up sys.modules
         for key in list(sys.modules.keys()):
-            if "test_cache" in key or "elements" in key:
-                if key.startswith(tmp_path.name):
-                    del sys.modules[key]
+            if ("test_cache" in key or "elements" in key) and key.startswith(
+                tmp_path.name
+            ):
+                del sys.modules[key]
 
         # Verify that modules were registered in sys.modules before execution
         if execution_order:

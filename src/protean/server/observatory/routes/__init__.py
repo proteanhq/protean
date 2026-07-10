@@ -4,8 +4,6 @@ Composes page routes (Jinja2-rendered views) and additional API routes
 into FastAPI routers that the Observatory class mounts.
 """
 
-from typing import List
-
 from fastapi import APIRouter
 from fastapi.templating import Jinja2Templates
 
@@ -21,7 +19,7 @@ from .timeline import create_timeline_router
 
 
 def create_all_routes(
-    domains: List[Domain],
+    domains: list[Domain],
     templates: Jinja2Templates,
 ) -> tuple[APIRouter, APIRouter]:
     """Create all Observatory routes.

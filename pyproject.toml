@@ -181,7 +181,29 @@ mutation = [
 # verified reasons (optional dep, monkeypatch test seam, lazy CLI startup,
 # PEP-562 export, circular-import breaker, dynamic module) and must carry an
 # explicit `# noqa: PLC0415`.
-extend-select = ["PLC0415"]
+extend-select = [
+    "PLC0415", # imports at module top (function-local imports need an explicit noqa)
+    "I",       # isort — import ordering (isort config is set below)
+    "UP",      # pyupgrade — modernize syntax for the minimum Python (3.11+)
+    "B",       # flake8-bugbear — likely bugs (raise-without-from, mutable defaults, …)
+    "C4",      # flake8-comprehensions
+    "SIM",     # flake8-simplify
+    "PIE",     # flake8-pie — misc small lints
+    "PERF",    # perflint — performance anti-patterns
+    "RUF",     # Ruff-specific rules
+]
+ignore = [
+    "SIM117", # combining nested `with` statements often hurts readability (3+ contexts)
+    "SIM108", # if/else-to-ternary frequently reads worse than the explicit form
+    "B027",   # empty base-class methods are intentional optional hooks
+    "B019",   # lru_cache on methods is deliberate here (framework-level singletons)
+    "B009",   # getattr/setattr with a constant is the idiomatic mypy-clean way to
+    "B010",   # read/write dynamic attributes on decorator-wrapped/typed objects here
+
+    "RUF001", # ambiguous-unicode: intentional typographic / mathematical characters
+    "RUF002", # (same, in docstrings)
+    "RUF003", # (same, in comments)
+]
 
 [tool.ruff.lint.per-file-ignores]
 # Mypy test fixtures use reveal_type() which is a mypy built-in, not a runtime function
@@ -189,8 +211,10 @@ extend-select = ["PLC0415"]
 # Tutorial ch09 concatenates multiple module files into one for documentation snippets
 "docs_src/guides/getting-started/tutorial/ch09.py" = ["E402", "F811"]
 # Tests legitimately use function-local imports (fixtures, lazy patches);
-# the import-at-top rule is scoped to framework source.
-"tests/**/*.py" = ["PLC0415"]
+# the import-at-top rule is scoped to framework source. B018 (bare attribute
+# access to trigger lazy loads in conftests), B017/RUF043 (broad pytest.raises
+# patterns), and RUF012 (mutable fixtures on test classes) are all fine in tests.
+"tests/**/*.py" = ["PLC0415", "B018", "B017", "RUF012", "RUF043"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["protean"]

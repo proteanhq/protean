@@ -12,7 +12,6 @@ from protean.core.entity import BaseEntity
 from protean.exceptions import IncorrectUsageError
 from protean.fields import HasMany, HasOne, Integer, Reference, String
 
-
 # ── Domain elements ─────────────────────────────────────────────────────
 
 

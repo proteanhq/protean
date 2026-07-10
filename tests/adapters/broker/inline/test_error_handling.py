@@ -1,8 +1,8 @@
 """Tests for error handling and edge cases in InlineBroker."""
 
+import contextlib
 import logging
 from unittest.mock import patch
-
 
 # ============= ACK Error Handling Tests =============
 
@@ -354,10 +354,10 @@ def test_requeue_messages_exception_handling(broker):
     broker._requeue_messages(stream, consumer_group, [])
 
     # Test with None messages
-    try:
-        broker._requeue_messages(stream, consumer_group, None)
-    except Exception:
-        pass  # Expected to handle or fail gracefully
+    with contextlib.suppress(Exception):
+        broker._requeue_messages(
+            stream, consumer_group, None
+        )  # Expected to handle or fail gracefully
 
 
 def test_remove_failed_message_exception_handling(broker):
@@ -374,10 +374,8 @@ def test_remove_failed_message_exception_handling(broker):
     broker._failed_messages[group_key] = None
 
     # Should handle gracefully
-    try:
+    with contextlib.suppress(Exception):
         broker._remove_failed_message(stream, consumer_group, identifier)
-    except Exception:
-        pass  # Expected to handle gracefully
 
 
 def test_get_in_flight_message_nonexistent(broker):

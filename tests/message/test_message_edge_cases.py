@@ -1,22 +1,23 @@
 """Test cases for edge cases and coverage improvements in message handling."""
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
+
 from protean.core.aggregate import BaseAggregate
-from protean.core.event import BaseEvent
 from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
 from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
 from protean.utils.eventing import (
+    DomainMeta,
+    EventStoreMeta,
     Message,
     MessageEnvelope,
     MessageHeaders,
-    DomainMeta,
-    Metadata,
-    EventStoreMeta,
     MessageType,
+    Metadata,
 )
 
 
@@ -72,7 +73,7 @@ class TestTraceParentHandling:
             "headers": {
                 "id": str(uuid4()),
                 "type": "test.Event",
-                "time": datetime.now(timezone.utc).isoformat(),
+                "time": datetime.now(UTC).isoformat(),
                 "stream": "test-stream",
                 "traceparent": {
                     "trace_id": trace_id,
@@ -104,7 +105,7 @@ class TestMessageExtractionFallbacks:
             metadata={
                 "headers": MessageHeaders(
                     type="test.Event",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     # id is not set
                 ),
             },
@@ -124,7 +125,7 @@ class TestMessageExtractionFallbacks:
             metadata={
                 "headers": MessageHeaders(
                     id=str(uuid4()),
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     # type is not set
                 ),
             },
@@ -153,7 +154,7 @@ class TestMessageDeserializationEdgeCases:
             },
             # These values should be picked up when headers aren't present
             "id": str(uuid4()),
-            "time": datetime.now(timezone.utc).isoformat(),
+            "time": datetime.now(UTC).isoformat(),
             "type": "test.Registered.v1",
             "stream": "test::user-123",
         }
@@ -176,7 +177,7 @@ class TestMessageDeserializationEdgeCases:
             "metadata": {
                 "headers": {
                     "id": str(uuid4()),
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": datetime.now(UTC).isoformat(),
                     "type": "test.Registered.v1",
                     "stream": "test::user-123",
                     "traceparent": {
@@ -208,7 +209,7 @@ class TestMessageDeserializationEdgeCases:
             "metadata": {
                 "headers": {
                     "id": str(uuid4()),
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": datetime.now(UTC).isoformat(),
                     "type": "test.Registered.v1",
                     "stream": "test::user-123",
                 },
@@ -237,7 +238,7 @@ class TestMessageDeserializationEdgeCases:
             "metadata": {
                 "headers": {
                     "id": str(uuid4()),
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": datetime.now(UTC).isoformat(),
                     "type": "test.Registered.v1",
                     "stream": "test::user-123",
                 },
@@ -272,7 +273,7 @@ class TestMessageSafeGetAttr:
                     id=str(uuid4()),
                     stream="test-stream",
                     type="test.Event",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                 ),
                 "event_store": EventStoreMeta(
                     position=10,
@@ -296,7 +297,7 @@ class TestMessageSafeGetAttr:
                 "headers": MessageHeaders(
                     id=str(uuid4()),
                     type="test.Event",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     # stream is not set
                 ),
             },
@@ -322,7 +323,7 @@ class TestMessageSafeGetAttr:
                 "headers": MessageHeaders(
                     id=str(uuid4()),
                     type="test.Event",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                 )
             },
         )
@@ -348,7 +349,7 @@ class TestMessageBuildErrorContext:
                     id=str(uuid4()),
                     stream="test-stream",
                     type="test.Event",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                 ),
                 "domain": DomainMeta(
                     fqn="test.Event",
@@ -417,7 +418,7 @@ class TestMessageFromDomainObjectEdgeCases:
             "headers": MessageHeaders(
                 id=str(uuid4()),
                 type="test.Register",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
             ),
             "domain": DomainMeta(
                 fqn="test.Register",
@@ -452,7 +453,7 @@ class TestMessageFromDomainObjectEdgeCases:
             "headers": MessageHeaders(
                 id=str(uuid4()),
                 type="test.UserFactEvent",
-                time=datetime.now(timezone.utc),
+                time=datetime.now(UTC),
             ),
             "domain": DomainMeta(
                 fqn="test.UserFactEvent",
@@ -484,7 +485,7 @@ class TestMessageToDomainObjectValidation:
                 "headers": MessageHeaders(
                     id=str(uuid4()),
                     type=Registered.__type__,  # Use the actual registered type
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                     stream="test::user-123",
                 ),
                 "domain": DomainMeta(
@@ -513,7 +514,7 @@ class TestMessageToDomainObjectValidation:
                 "headers": MessageHeaders(
                     id=str(uuid4()),
                     type="test.Unknown",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                 ),
                 "domain": DomainMeta(
                     fqn="test.Unknown",
@@ -540,7 +541,7 @@ class TestMessageToDomainObjectValidation:
                 "headers": MessageHeaders(
                     id=str(uuid4()),
                     type="test.UnregisteredEvent.v1",
-                    time=datetime.now(timezone.utc),
+                    time=datetime.now(UTC),
                 ),
                 "domain": DomainMeta(
                     fqn="test.UnregisteredEvent",

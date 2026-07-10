@@ -47,7 +47,8 @@ Plus OTel counters and histograms when telemetry is active:
 
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, List, TypeVar, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from fastapi import Response
 
@@ -115,7 +116,7 @@ _scrape_cache = _ScrapeCache()
 
 
 def _collect_subscription_statuses(
-    domains: List[Domain],
+    domains: list[Domain],
 ) -> list[tuple[Domain, "SubscriptionStatus"]]:
     """Collect subscription statuses from all domains.
 
@@ -124,14 +125,15 @@ def _collect_subscription_statuses(
     """
 
     def _do_collect() -> list[tuple[Domain, "SubscriptionStatus"]]:
-        from protean.server.subscription_status import collect_subscription_statuses  # noqa: PLC0415
+        from protean.server.subscription_status import (  # noqa: PLC0415
+            collect_subscription_statuses,
+        )
 
-        results: list[tuple[Domain, "SubscriptionStatus"]] = []
+        results: list[tuple[Domain, SubscriptionStatus]] = []
         for domain in domains:
             try:
                 statuses = collect_subscription_statuses(domain)
-                for s in statuses:
-                    results.append((domain, s))
+                results.extend((domain, s) for s in statuses)
             except Exception as exc:
                 logger.debug(
                     "Shared collection: subscription status failed for %s: %s",
@@ -144,7 +146,7 @@ def _collect_subscription_statuses(
 
 
 def _collect_projection_statuses(
-    domains: List[Domain],
+    domains: list[Domain],
 ) -> list[tuple[Domain, "ProjectionStatus"]]:
     """Collect projection statuses from all domains.
 
@@ -153,14 +155,20 @@ def _collect_projection_statuses(
     """
 
     def _do_collect() -> list[tuple[Domain, "ProjectionStatus"]]:
-        from protean.server.projection_status import collect_projection_statuses  # noqa: PLC0415
+        from protean.server.projection_status import (  # noqa: PLC0415
+            collect_projection_statuses,
+        )
 
-        results: list[tuple[Domain, "ProjectionStatus"]] = []
+        results: list[tuple[Domain, ProjectionStatus]] = []
         for domain in domains:
             try:
                 # Scrape path only reads staleness; skip the row COUNT queries.
-                for s in collect_projection_statuses(domain, include_row_count=False):
-                    results.append((domain, s))
+                results.extend(
+                    (domain, s)
+                    for s in collect_projection_statuses(
+                        domain, include_row_count=False
+                    )
+                )
             except Exception as exc:
                 logger.debug(
                     "Shared collection: projection status failed for %s: %s",
@@ -173,7 +181,7 @@ def _collect_projection_statuses(
 
 
 def _collect_pool_stats(
-    domains: List[Domain],
+    domains: list[Domain],
 ) -> list[tuple[str, str, dict[str, int]]]:
     """Collect connection pool statistics from all providers across domains.
 
@@ -204,7 +212,7 @@ def _collect_pool_stats(
 
 
 def _collect_broker_pool_stats(
-    domains: List[Domain],
+    domains: list[Domain],
 ) -> list[tuple[str, int, int, int]]:
     """Collect broker connection pool statistics.
 
@@ -248,7 +256,7 @@ def _collect_broker_pool_stats(
 _GAUGES_REGISTERED_KEY = "_otel_infra_gauges_registered"
 
 
-def _register_infrastructure_gauges(domains: List[Domain]) -> None:
+def _register_infrastructure_gauges(domains: list[Domain]) -> None:
     """Register ``ObservableGauge`` callbacks on the first domain with an active meter.
 
     These callbacks are invoked on every Prometheus scrape and yield
@@ -504,7 +512,7 @@ def _register_infrastructure_gauges(domains: List[Domain]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _hand_rolled_metrics(domains: List[Domain]) -> str:
+def _hand_rolled_metrics(domains: list[Domain]) -> str:
     """Generate Prometheus text exposition using hand-rolled formatting.
 
     Used when OTel is not installed or telemetry is disabled.
@@ -806,7 +814,7 @@ def _hand_rolled_metrics(domains: List[Domain]) -> str:
 
 
 def create_metrics_endpoint(
-    domains: List[Domain],
+    domains: list[Domain],
 ) -> Callable[[], Any]:
     """Create the Prometheus metrics endpoint function.
 

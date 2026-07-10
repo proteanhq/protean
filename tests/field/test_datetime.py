@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from protean.core.value_object import BaseValueObject
 from protean.fields import DateTime
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Timestamped(BaseValueObject):
@@ -49,7 +49,7 @@ def test_aware_datetime_preserves_offset():
 def test_serialized_datetime_round_trips():
     for value in (
         datetime(2024, 1, 2, 3, 4, 5),  # naive
-        datetime(2024, 1, 2, 3, 4, 5, tzinfo=timezone.utc),  # aware, UTC
+        datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC),  # aware, UTC
         datetime(  # aware, non-UTC offset
             2024, 1, 2, 3, 4, 5, tzinfo=timezone(timedelta(hours=5, minutes=30))
         ),

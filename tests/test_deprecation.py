@@ -14,9 +14,9 @@ import pytest
 import protean.exceptions
 from protean._deprecation import (
     ProteanDeprecationWarning,
-    RemovedInProtean10Warning,
     RemovedInProtean017Warning,
     RemovedInProtean018Warning,
+    RemovedInProtean10Warning,
     deprecated,
     warn_deprecated,
 )

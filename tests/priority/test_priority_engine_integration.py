@@ -28,7 +28,6 @@ from protean.server.outbox_processor import OutboxProcessor
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.mixins import handle
 
-
 # ---------------------------------------------------------------------------
 # Test domain elements (minimal set required for Engine initialization)
 # ---------------------------------------------------------------------------
@@ -335,14 +334,14 @@ class TestEnginePriorityRestoration:
     @pytest.mark.asyncio
     async def test_handle_message_sets_priority_context(self):
         """Engine.handle_message wraps handler in processing_priority(metadata.priority)."""
-        from protean.utils.processing import current_priority
-        from protean.utils.eventing import (
-            Message,
-            Metadata,
-            MessageHeaders,
-            DomainMeta,
-        )
         from protean.server.engine import Engine
+        from protean.utils.eventing import (
+            DomainMeta,
+            Message,
+            MessageHeaders,
+            Metadata,
+        )
+        from protean.utils.processing import current_priority
 
         captured_priority = []
 
@@ -393,13 +392,13 @@ class TestEnginePriorityRestoration:
     @pytest.mark.asyncio
     async def test_handle_message_default_priority_when_no_domain_meta(self):
         """When message has no DomainMeta, priority defaults to 0."""
-        from protean.utils.processing import current_priority
+        from protean.server.engine import Engine
         from protean.utils.eventing import (
             Message,
-            Metadata,
             MessageHeaders,
+            Metadata,
         )
-        from protean.server.engine import Engine
+        from protean.utils.processing import current_priority
 
         captured_priority = []
 

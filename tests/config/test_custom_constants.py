@@ -27,7 +27,7 @@ class TestConstantsOnDomain:
 
         domain = derive_domain("domain14")
         assert domain is not None
-        domain.FOO == "bar"
+        assert domain.FOO == "bar"
 
     def test_when_no_constants_are_defined(self):
         domain = Domain()

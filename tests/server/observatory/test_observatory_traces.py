@@ -4,6 +4,7 @@ Tests for the trace stream persistence (XADD) in TraceEmitter, the
 /api/traces history endpoint, and the /api/traces/stats aggregation endpoint.
 """
 
+import contextlib
 import json
 from unittest.mock import MagicMock
 
@@ -18,7 +19,6 @@ from protean.server.tracing import (
     MessageTrace,
     TraceEmitter,
 )
-
 from tests.shared import initialize_domain
 
 
@@ -52,15 +52,11 @@ def redis_conn(test_domain):
         if broker and hasattr(broker, "redis_instance"):
             conn = broker.redis_instance
             # Clean up trace stream before and after test
-            try:
+            with contextlib.suppress(Exception):
                 conn.delete(TRACE_STREAM)
-            except Exception:
-                pass
             yield conn
-            try:
+            with contextlib.suppress(Exception):
                 conn.delete(TRACE_STREAM)
-            except Exception:
-                pass
         else:
             pytest.skip("Redis broker not available")
 

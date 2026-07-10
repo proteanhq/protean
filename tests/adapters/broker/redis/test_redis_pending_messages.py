@@ -1,8 +1,9 @@
 """Tests for Redis Streams pending message handling and retry mechanisms."""
 
-import pytest
 import time
 from uuid import uuid4
+
+import pytest
 
 from protean.adapters.broker.redis import RedisBroker
 

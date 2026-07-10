@@ -12,7 +12,7 @@ class TestResultSet:
 
         assert len(resultset) == 2
         assert resultset.first == "foo"
-        assert [item for item in resultset] == ["foo", "bar"]  # Test __iter__
+        assert list(resultset) == ["foo", "bar"]  # Test __iter__
 
     def test_resultset_first_and_last(self):
         resultset = ResultSet(

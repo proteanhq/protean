@@ -29,7 +29,6 @@ from pydantic_core import PydanticUndefined
 
 from protean.exceptions import ValidationError
 
-
 # ---------------------------------------------------------------------------
 # Error message templates for ResolvedField.fail()
 # ---------------------------------------------------------------------------

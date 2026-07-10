@@ -13,7 +13,6 @@ import pytest
 
 from protean.server.observatory.routes.domain import _build_flow_graph
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -360,7 +359,7 @@ class TestBuildFlowGraph:
     def test_process_manager_edges(self, rich_flow_graph):
         """PM should have event edges from the events it handles."""
         graph = rich_flow_graph
-        pm_node = [n for n in graph["nodes"] if n["type"] == "process_manager"][0]
+        pm_node = next(n for n in graph["nodes"] if n["type"] == "process_manager")
         pm_edges = [e for e in graph["edges"] if e["target"] == pm_node["id"]]
         assert len(pm_edges) >= 2, (
             "PM should have edges from OrderPlaced and ShipmentDispatched"
@@ -604,14 +603,12 @@ class TestFlowGraphEdgeCases:
                 ),
                 # Second cluster also has an event handler for the same event
                 "app.Inventory": self._minimal_cluster(
-                    **{
-                        "aggregate": {"name": "Inventory", "options": {}},
-                        "event_handlers": {
-                            "app.InvEH": {
-                                "handlers": {"Order.OrderPlaced.v1": ["on_placed"]},
-                            }
-                        },
-                    }
+                    aggregate={"name": "Inventory", "options": {}},
+                    event_handlers={
+                        "app.InvEH": {
+                            "handlers": {"Order.OrderPlaced.v1": ["on_placed"]},
+                        }
+                    },
                 ),
             },
             "flows": {"process_managers": {}},
