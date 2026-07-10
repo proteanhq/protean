@@ -130,9 +130,7 @@ class TestUnitOfWorkErrorHandling:
 
             # Check that error was logged via logger.exception
             mock_logger.exception.assert_called_once()
-            assert "uow.rollback_failed" in str(
-                mock_logger.exception.call_args
-            )
+            assert "uow.rollback_failed" in str(mock_logger.exception.call_args)
 
     def test_session_initialization_when_not_active(self, test_domain):
         """Test session initialization when session is not active"""

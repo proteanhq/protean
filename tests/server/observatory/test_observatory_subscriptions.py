@@ -8,6 +8,10 @@ no infrastructure.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
+
+from protean.server.observatory import Observatory
+from protean.server.subscription_status import SubscriptionStatus
 
 
 @pytest.fixture(autouse=True)
@@ -16,10 +20,6 @@ def _clear_scrape_cache():
     from protean.server.observatory.metrics import _scrape_cache
 
     _scrape_cache.clear()
-from fastapi.testclient import TestClient
-
-from protean.server.observatory import Observatory
-from protean.server.subscription_status import SubscriptionStatus
 
 
 # ---------------------------------------------------------------------------

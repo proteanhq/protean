@@ -1,0 +1,6 @@
+# Code ownership for automatic review requests.
+#
+# Protean is developed under a single-maintainer model (see CONTRIBUTING.md), so
+# the whole repository is owned by the maintainer. GitHub requests their review
+# on every pull request.
+* @subhashb

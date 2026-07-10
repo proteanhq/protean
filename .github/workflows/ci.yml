@@ -185,6 +185,22 @@ jobs:
           MSSQL_PORT: 51433
           MSSQL_HOST: localhost
 
+      # Project coverage floor. `protean test -c FULL` already ran
+      # `coverage combine`, so the merged `.coverage` for this leg exists; re-report
+      # it with a hard threshold so a PR that drops overall coverage fails CI.
+      # This threshold lives here, not in `[tool.coverage.report]`, because that
+      # config is also read by the local `protean test` (CORE) run, whose
+      # in-memory-only coverage sits well below the full-suite figure — a global
+      # `fail_under` would break the primary dev command. Gated to one Python
+      # version: src/protean has no version-conditional code, so every leg's
+      # coverage is equivalent, and a single check avoids per-leg flake.
+      # `success() &&` is required: a custom `if` drops the implicit success guard,
+      # so without it this step would run even after the test step failed (when no
+      # merged `.coverage` exists) and report a confusing "no data" error.
+      - name: Enforce coverage floor
+        if: success() && matrix.python-version == '3.13'
+        run: uv run coverage report --fail-under=94
+
       - name: CodeCOV
         if: success() || failure()
         uses: codecov/codecov-action@v5.4.2
@@ -219,6 +235,42 @@ jobs:
 
       - name: Mypy
         run: uv run mypy src/protean
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Lint (ruff)
+    # Fast, service-free quality gate. Runs the same ruff lint + format checks
+    # as the pre-commit hook, but in CI where they can't be bypassed (hooks not
+    # installed, `--no-verify`, web edits, bot commits). Format is verified with
+    # `--check`, never applied. Uses the ruff pinned in uv.lock so CI and local
+    # runs stay on the same version.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Ruff only reads source files and its pyproject config; it does not import
+      # protean, so the default sync (project + dev group, no adapter extras) is
+      # all it needs and keeps this job fast.
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Ruff lint
+        run: uv run ruff check
+
+      - name: Ruff format check
+        run: uv run ruff format --check
 
   # Publishes the docs via the GitHub Actions Pages pipeline (build the site,
   # then deploy the artifact) instead of `mkdocs gh-deploy` to the gh-pages

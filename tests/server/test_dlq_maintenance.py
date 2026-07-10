@@ -494,7 +494,11 @@ class TestDLQMaintenanceStartAndRun:
             await task.start()
 
             # The loop task should exist
-            running_tasks = [t for t in asyncio.all_tasks() if "dlq-maintenance" in (t.get_name() or "")]
+            running_tasks = [
+                t
+                for t in asyncio.all_tasks()
+                if "dlq-maintenance" in (t.get_name() or "")
+            ]
             assert len(running_tasks) > 0
 
             # Clean up
@@ -524,7 +528,6 @@ class TestDLQMaintenanceStartAndRun:
 
             # Simulate shutting_down after first check
             call_count = 0
-            original_cycle = task._maintenance_cycle
 
             async def mock_cycle():
                 nonlocal call_count
@@ -582,10 +585,12 @@ class TestSubscriptionConfigDLQOverrides:
         """from_dict reads dlq override keys."""
         from protean.server.subscription.profiles import SubscriptionConfig
 
-        config = SubscriptionConfig.from_dict({
-            "dlq_retention_hours": 48,
-            "dlq_alert_threshold": 25,
-        })
+        config = SubscriptionConfig.from_dict(
+            {
+                "dlq_retention_hours": 48,
+                "dlq_alert_threshold": 25,
+            }
+        )
         assert config.dlq_retention_hours == 48
         assert config.dlq_alert_threshold == 25
 
@@ -594,7 +599,9 @@ class TestSubscriptionConfigDLQOverrides:
         from protean.exceptions import ConfigurationError
         from protean.server.subscription.profiles import SubscriptionConfig
 
-        with pytest.raises(ConfigurationError, match="dlq_retention_hours must be positive"):
+        with pytest.raises(
+            ConfigurationError, match="dlq_retention_hours must be positive"
+        ):
             SubscriptionConfig(dlq_retention_hours=-1)
 
     def test_validation_rejects_zero_threshold(self):
@@ -602,7 +609,9 @@ class TestSubscriptionConfigDLQOverrides:
         from protean.exceptions import ConfigurationError
         from protean.server.subscription.profiles import SubscriptionConfig
 
-        with pytest.raises(ConfigurationError, match="dlq_alert_threshold must be positive"):
+        with pytest.raises(
+            ConfigurationError, match="dlq_alert_threshold must be positive"
+        ):
             SubscriptionConfig(dlq_alert_threshold=0)
 
     def test_to_dict_includes_dlq_fields(self):

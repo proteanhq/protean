@@ -138,9 +138,7 @@ def _make_event_message(test_domain) -> Message:
     """Helper to create a valid event Message."""
     identifier = str(uuid4())
     user = User(id=identifier, email="test@example.com", name="Test")
-    user.raise_(
-        Registered(id=identifier, email="test@example.com", name="Test")
-    )
+    user.raise_(Registered(id=identifier, email="test@example.com", name="Test"))
     return Message.from_domain_object(user._events[-1])
 
 
@@ -232,9 +230,7 @@ class TestStreamSubscriptionMessagesProcessed:
         sub.broker = MagicMock()
         sub.broker.ack = MagicMock(return_value=True)
 
-        await sub.process_batch(
-            [("msg-1", serialized)], stream="test::user"
-        )
+        await sub.process_batch([("msg-1", serialized)], stream="test::user")
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.messages_processed"
@@ -258,9 +254,7 @@ class TestStreamSubscriptionMessagesProcessed:
         sub.broker.nack = MagicMock(return_value=True)
         sub.retry_delay_seconds = 0
 
-        await sub.process_batch(
-            [("msg-1", serialized)], stream="test::user"
-        )
+        await sub.process_batch([("msg-1", serialized)], stream="test::user")
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.messages_processed"
@@ -325,9 +319,7 @@ class TestStreamSubscriptionProcessingDuration:
         sub.broker = MagicMock()
         sub.broker.ack = MagicMock(return_value=True)
 
-        await sub.process_batch(
-            [("msg-1", serialized)], stream="test::user"
-        )
+        await sub.process_batch([("msg-1", serialized)], stream="test::user")
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.processing_duration"
@@ -373,13 +365,9 @@ class TestStreamSubscriptionRetries:
         sub.broker = MagicMock()
         sub.broker.nack = MagicMock(return_value=True)
 
-        await sub.process_batch(
-            [("msg-1", serialized)], stream="test::user"
-        )
+        await sub.process_batch([("msg-1", serialized)], stream="test::user")
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.subscription.retries"
-        )
+        points = _get_metric_data_points(metric_reader, "protean.subscription.retries")
         assert len(points) >= 1
         assert points[0].value == 1
         assert dict(points[0].attributes)["subscription"] == "FailingEventHandler"
@@ -401,16 +389,10 @@ class TestStreamSubscriptionRetries:
         sub.broker.nack = MagicMock(return_value=True)
 
         # Process the same message twice (simulating re-delivery)
-        await sub.process_batch(
-            [("msg-1", serialized)], stream="test::user"
-        )
-        await sub.process_batch(
-            [("msg-1", serialized)], stream="test::user"
-        )
+        await sub.process_batch([("msg-1", serialized)], stream="test::user")
+        await sub.process_batch([("msg-1", serialized)], stream="test::user")
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.subscription.retries"
-        )
+        points = _get_metric_data_points(metric_reader, "protean.subscription.retries")
         assert len(points) >= 1
         total = sum(p.value for p in points)
         assert total == 2
@@ -455,9 +437,7 @@ class TestStreamSubscriptionDLQRouted:
         sub.broker.publish = MagicMock()
 
         # First attempt → retry (retry_count 1 >= max_retries 1 → DLQ)
-        await sub.process_batch(
-            [("msg-1", serialized)], stream="test::user"
-        )
+        await sub.process_batch([("msg-1", serialized)], stream="test::user")
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.dlq_routed"
@@ -508,9 +488,7 @@ class TestBrokerSubscriptionMessagesProcessed:
         ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
         assert len(ok_points) == 1
         assert ok_points[0].value == 1
-        assert (
-            dict(ok_points[0].attributes)["subscription"] == "SucceedingSubscriber"
-        )
+        assert dict(ok_points[0].attributes)["subscription"] == "SucceedingSubscriber"
 
     @pytest.mark.asyncio
     async def test_failure_increments_counter_with_error(self, test_domain, telemetry):
@@ -568,9 +546,7 @@ class TestBrokerSubscriptionProcessingDuration:
         assert len(points) >= 1
         assert points[0].sum > 0
         assert points[0].count == 1
-        assert (
-            dict(points[0].attributes)["subscription"] == "SucceedingSubscriber"
-        )
+        assert dict(points[0].attributes)["subscription"] == "SucceedingSubscriber"
 
 
 class TestBrokerSubscriptionRetries:
@@ -602,9 +578,7 @@ class TestBrokerSubscriptionRetries:
 
         await sub.process_batch([("msg-1", {"data": "test"})])
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.subscription.retries"
-        )
+        points = _get_metric_data_points(metric_reader, "protean.subscription.retries")
         assert len(points) >= 1
         assert points[0].value == 1
         assert dict(points[0].attributes)["subscription"] == "FailingSubscriber"
@@ -701,21 +675,15 @@ class TestEngineObservableGauges:
         # Engine creation registers the gauges as a side effect
         Engine(test_domain, test_mode=True)
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.engine.uptime_seconds"
-        )
+        points = _get_metric_data_points(metric_reader, "protean.engine.uptime_seconds")
         assert len(points) >= 1
         assert points[0].value >= 0
 
-    def test_engine_active_subscriptions_counts_correctly(
-        self, test_domain, telemetry
-    ):
+    def test_engine_active_subscriptions_counts_correctly(self, test_domain, telemetry):
         metric_reader = telemetry
         engine = Engine(test_domain, test_mode=True)
 
-        expected_count = len(engine._subscriptions) + len(
-            engine._broker_subscriptions
-        )
+        expected_count = len(engine._subscriptions) + len(engine._broker_subscriptions)
         assert expected_count > 0  # Ensure we have subscriptions to count
 
         points = _get_metric_data_points(

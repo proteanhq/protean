@@ -107,6 +107,7 @@ protean = "protean.ext.mypy_plugin:plugin"
 Homepage = "https://docs.proteanhq.com"
 Documentation = "https://docs.proteanhq.com"
 Repository = "https://github.com/proteanhq/protean"
+Issues = "https://github.com/proteanhq/protean/issues"
 Changelog = "https://github.com/proteanhq/protean/blob/main/CHANGELOG.md"
 
 [build-system]

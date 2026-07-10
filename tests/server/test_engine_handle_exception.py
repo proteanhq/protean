@@ -34,6 +34,7 @@ def test_handle_exception_with_exception(engine):
         ) as mock_shutdown,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
+
         async def run_engine():
             loop.create_task(faulty_task())
             engine.run()
@@ -53,7 +54,9 @@ def test_handle_exception_with_exception(engine):
         )
         # Verify exc_info was passed (stack trace through structured pipeline)
         call_kwargs = error_calls[0].kwargs
-        assert "exc_info" in call_kwargs, "exc_info must be passed for structured tracebacks"
+        assert "exc_info" in call_kwargs, (
+            "exc_info must be passed for structured tracebacks"
+        )
         mock_shutdown.assert_called_once_with(exit_code=1)
 
 
@@ -72,6 +75,7 @@ def test_exception_handler_with_message_only(engine):
         mock.patch.object(engine, "shutdown") as mock_shutdown,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
+
         async def run_engine():
             # Engine.run() sets the exception handler but also starts the loop.
             # We need to set the handler manually and trigger the message-only path.
@@ -137,6 +141,7 @@ def test_handle_exception_while_running(engine):
         ) as mock_shutdown,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
+
         async def run_engine():
             loop.create_task(faulty_task())
             engine.run()
@@ -173,6 +178,7 @@ def test_exception_handler_skips_shutdown_when_already_shutting_down(engine):
         ) as mock_shutdown,
         mock.patch("protean.server.engine.logger.error") as mock_logger_error,
     ):
+
         async def faulty_task():
             raise Exception("Test exception during shutdown")
 
