@@ -243,7 +243,7 @@ historical schema variant.
 schema:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order(BaseAggregate):
     order_id = Identifier(identifier=True)
     total_amount = Float()

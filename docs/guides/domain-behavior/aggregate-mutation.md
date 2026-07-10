@@ -135,7 +135,7 @@ and the framework automatically invokes the corresponding `@apply`
 handler to perform the state change:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     status: String(max_length=20, default="PENDING")
 

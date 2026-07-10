@@ -20,7 +20,7 @@ history. This gives you a complete, immutable audit trail and the ability
 to answer "what was the state at time T?" for any aggregate.
 
 In Protean, you enable Event Sourcing on a per-aggregate basis by marking
-it with `is_event_sourced=True`. The aggregate uses `@apply` methods to
+it with `event_sourced=True`. The aggregate uses `@apply` methods to
 define how each event type mutates state, and an Event Sourced Repository
 handles persistence to the event store.
 
@@ -69,7 +69,7 @@ sequenceDiagram
 
 | CQRS Element | Event Sourcing Change |
 |--------------|-----------------------|
-| `@domain.aggregate` | Add `is_event_sourced=True` option |
+| `@domain.aggregate` | Add `event_sourced=True` option |
 | Aggregate methods | Use `@apply` decorator for event application |
 | `@domain.repository` | Replace with `@domain.event_sourced_repository` |
 | Persistence Store | Replace with **Event Store** (e.g., Message DB) |
@@ -81,7 +81,7 @@ Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 
 | Element | Purpose |
 |---------|---------|
-| Event Sourced Aggregates | Aggregates with `is_event_sourced=True` that derive state from events |
+| Event Sourced Aggregates | Aggregates with `event_sourced=True` that derive state from events |
 | `@apply` decorator | Methods that define how each event type mutates aggregate state — called automatically by `raise_()` and during replay |
 | Event Sourced Repository | Persists events and reconstructs aggregates from event streams |
 | Fact Events | Auto-generated snapshot events capturing full aggregate state |
@@ -165,7 +165,7 @@ by `raise_()` during live operations and during event replay —
 making them the **single source of truth** for all state mutations:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     status: String(default="draft")
     total: Float(default=0.0)
@@ -207,7 +207,7 @@ others use event sourcing — the decision is explicit and per-aggregate:
 class Product:
     ...
 
-@domain.aggregate(is_event_sourced=True)  # Event Sourced — state from events
+@domain.aggregate(event_sourced=True)  # Event Sourced — state from events
 class Order:
     ...
 ```

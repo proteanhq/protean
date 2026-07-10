@@ -168,7 +168,7 @@ For event-sourced aggregates, `raise_()` wraps the `@apply` handler in
 `atomic_change`. The same start-to-end validation applies:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     status = Status(OrderStatus, default="DRAFT", transitions={
         OrderStatus.DRAFT: [OrderStatus.PLACED],

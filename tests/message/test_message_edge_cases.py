@@ -440,8 +440,11 @@ class TestMessageFromDomainObjectEdgeCases:
             email: String()
             name: String()
 
-        # Register the fact event with is_fact_event meta option
-        test_domain.register(UserFactEvent, part_of=User, is_fact_event=True)
+        # Register the fact event, then mark it as a fact event directly.
+        # ``is_fact_event`` is framework-internal and cannot be passed to
+        # ``register`` (it is set by the framework during fact-event generation).
+        test_domain.register(UserFactEvent, part_of=User)
+        UserFactEvent.meta_.is_fact_event = True
         test_domain.init(traverse=False)
 
         # Simulate a fact event (name ends with FactEvent)

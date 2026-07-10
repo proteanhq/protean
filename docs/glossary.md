@@ -130,7 +130,7 @@ A pattern where domain events carry the complete state of an aggregate, allowing
 
 ### Event Sourcing
 
-A persistence pattern in which an aggregate's state is stored as a sequence of immutable domain events rather than as a current-state snapshot. The aggregate's state at any point in time can be reconstructed by replaying its events from the beginning. In Protean, aggregates opt in with `is_event_sourced=True`.
+A persistence pattern in which an aggregate's state is stored as a sequence of immutable domain events rather than as a current-state snapshot. The aggregate's state at any point in time can be reconstructed by replaying its events from the beginning. In Protean, aggregates opt in with `event_sourced=True`.
 
 [Learn more →](concepts/architecture/event-sourcing.md) | **See also**: [Event Store](#event-store), [Event Stream](#event-stream), [Replay](#replay), [Snapshot](#snapshot)
 
@@ -176,9 +176,9 @@ A decorator used on methods within event-sourced aggregates to mutate aggregate 
 
 [Learn more →](guides/domain-behavior/aggregate-mutation.md) | **See also**: [Event Sourcing](#event-sourcing), [Aggregate](#aggregate), [Domain Event](#domain-event)
 
-### `is_event_sourced` Option
+### `event_sourced` Option
 
-An aggregate decorator option (`@domain.aggregate(is_event_sourced=True)`) that switches the aggregate's persistence model from current-state storage to event sourcing. When enabled, the aggregate's state is derived entirely from replaying its event stream rather than loading a snapshot from a database table.
+An aggregate decorator option (`@domain.aggregate(event_sourced=True)`) that switches the aggregate's persistence model from current-state storage to event sourcing. When enabled, the aggregate's state is derived entirely from replaying its event stream rather than loading a snapshot from a database table. (The old `is_event_sourced` spelling is a deprecated alias, removed in v1.0.0.)
 
 [Learn more →](guides/pathways/event-sourcing.md) | **See also**: [Event Sourcing](#event-sourcing), [`@apply` Decorator](#apply-decorator)
 

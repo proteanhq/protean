@@ -64,7 +64,7 @@ class BaseAggregate(BaseEntity):
 
     | Option | Type | Description |
     |--------|------|-------------|
-    | ``is_event_sourced`` | ``bool`` | Enable event-sourcing mode (default: ``False``). |
+    | ``event_sourced`` | ``bool`` | Enable event-sourcing mode (default: ``False``). |
     | ``fact_events`` | ``bool`` | Auto-generate fact events on persistence (default: ``False``). |
     | ``stream_category`` | ``str`` | Override the event stream category name. |
     | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
@@ -87,6 +87,11 @@ class BaseAggregate(BaseEntity):
     # Event sourcing maps (ClassVar — populated by factory)
     _projections: ClassVar[defaultdict[str, set[Any]]] = defaultdict(set)
     _events_cls_map: ClassVar[dict[str, Any]] = {}
+
+    # Deprecated option names supplied at registration (e.g. the
+    # ``is_event_sourced`` alias). Set by ``aggregate_factory`` and read by the
+    # IR builder to emit ``DEPRECATED_OPTION`` diagnostics. Empty by default.
+    _deprecated_options_used: ClassVar[tuple[str, ...]] = ()
 
     if TYPE_CHECKING:
         # Assigned per-subclass by the fact-event factory via
@@ -626,6 +631,23 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
         opts["limit"] = None
 
+    # Normalize the `event_sourced` boolean option. The internal storage key is
+    # `is_event_sourced`; `event_sourced` is the canonical user-facing spelling
+    # and `is_event_sourced` is a deprecated alias. Both the `@domain.aggregate`
+    # decorator and `domain.register` route through this factory, so both
+    # entry points get the alias handling.
+    alias_used = "is_event_sourced" in opts
+    if alias_used:
+        warn_deprecated(
+            "`is_event_sourced`",
+            removal="1.0.0",
+            alternative="Use `event_sourced` instead.",
+            stacklevel=3,
+        )
+    if "event_sourced" in opts:
+        # Canonical wins if both are supplied.
+        opts["is_event_sourced"] = opts.pop("event_sourced")
+
     # Always route to Pydantic base
     base_cls = BaseAggregate
 
@@ -637,6 +659,12 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     # (``_invariants``, ``meta_``, ``_projections``, ``_events_cls_map``) are
     # visible to both type checkers.
     aggregate_cls = cast("type[BaseAggregate]", element_cls)
+
+    # Record the deprecated alias usage for the `DEPRECATED_OPTION` check
+    # diagnostic. Set on the derived class (which `derive_element_class` may
+    # have rebuilt) so the IR builder can read it off the registry.
+    if alias_used:
+        aggregate_cls._deprecated_options_used = ("is_event_sourced",)
 
     # Iterate through methods marked as `@invariant` and record them for later use
     for klass in aggregate_cls.__mro__:

@@ -303,6 +303,12 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
 
     _metadata: Any = PrivateAttr(default=None)
 
+    # ``is_fact_event`` is framework-set metadata (assigned during fact-event
+    # generation), not a user-facing option. It keeps a default in
+    # ``_default_options`` so ``meta_.is_fact_event`` is always present, but is
+    # declared internal here so ``derive_element_class`` rejects user input.
+    _internal_options: ClassVar[frozenset[str]] = frozenset({"is_fact_event"})
+
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("abstract", False),
         ("aggregate_cluster", None),

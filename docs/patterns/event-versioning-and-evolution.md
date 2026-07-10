@@ -481,7 +481,7 @@ it will encounter every historical event version.
 they reach the handler:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order(BaseAggregate):
     # ... fields ...
 
@@ -499,7 +499,7 @@ manually, either with separate handlers for each version or tolerant-reader
 patterns:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order(BaseAggregate):
     @apply
     def on_order_placed(self, event: OrderPlaced):

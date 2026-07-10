@@ -87,7 +87,7 @@ create a blank aggregate with auto-generated identity, then raise a
 creation event whose `@apply` handler populates the remaining state:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     customer_name: String(max_length=150, required=True)
     status: String(max_length=20, default="PENDING")
@@ -263,13 +263,13 @@ Groups an aggregate with other aggregates into a named cluster. This is
 primarily used internally by Protean to organize aggregate-related elements
 and resolve cross-references.
 
-### `is_event_sourced`
+### `event_sourced`
 
 When `True`, the aggregate's state is derived entirely from its event
 stream rather than loaded from a database. Business methods must use
 `raise_()` and `@apply` handlers instead of direct mutation. See the
 [Event Sourcing pathway](../pathways/event-sourcing.md) for a complete
-walkthrough.
+walkthrough. (The old `is_event_sourced` spelling is a deprecated alias.)
 
 For details on `auto_add_id_field`, `schema_name`, `database_model`, and
 other options, see

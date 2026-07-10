@@ -98,7 +98,7 @@ Total: 70 event(s) across 23 aggregate instance(s)
 ```
 
 The **ES?** column indicates whether the aggregate is configured as
-event-sourced (`is_event_sourced=True`).
+event-sourced (`event_sourced=True`).
 
 ## `protean events search`
 
