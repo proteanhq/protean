@@ -30,11 +30,19 @@ updates:
         applies-to: security-updates
     ignore:
       # Major bumps of these two need deliberate handling, not the weekly group.
-      # mypy majors change reveal_type() output and tighten checks (breaking the
-      # plugin tests and adding new errors); adopt them in a dedicated PR.
+      # NB: pin explicit version *ranges* rather than
+      # `update-types: ["version-update:semver-major"]`. Dependabot can't reliably
+      # classify ">=" requirement updates (deps in [dependency-groups] /
+      # [project.optional-dependencies]) into a semver bucket — the same limitation
+      # that broke the group's update-types filter (#1171) — so a semver-major
+      # ignore silently fails to hold them (elasticsearch 8->9 slipped into #1178).
+      # A `versions` range is matched directly and is not subject to that.
+      #
+      # mypy: hold on 2.x — 3.x majors change reveal_type() output and tighten
+      # checks; adopt them in a dedicated PR (2.x adopted in #1175).
       - dependency-name: "mypy"
-        update-types: ["version-update:semver-major"]
-      # The elasticsearch 9.x client migration is tracked separately (#1150); the
-      # adapter is pinned to the 8.x line and CI runs against ES 8.7.
+        versions: [">=3.0.0"]
+      # elasticsearch: hold on 8.x — the 9.x client migration is tracked in #1150,
+      # the adapter is pinned to the 8.x line, and CI runs against ES 8.7.
       - dependency-name: "elasticsearch"
-        update-types: ["version-update:semver-major"]
+        versions: [">=9.0.0"]
