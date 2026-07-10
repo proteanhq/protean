@@ -84,6 +84,22 @@ def validate_lint_suppressions(suppressions: Any) -> str | None:
     return None
 
 
+def validate_lint_table(lint_config: Any) -> str | None:
+    """Return an error message if ``[lint]`` itself is not a table, else ``None``.
+
+    Every ``[lint]``-scoped setting (``level``, ``suppressions``,
+    ``aggregate_size_limit``, ``handler_breadth_limit``, ``rules``, ...) is read
+    via ``domain.config.get("lint", {}).get(<key>, ...)``. If a user sets
+    ``[lint]`` itself to a non-table (e.g. ``lint = 5``), that first ``.get(...)``
+    raises a bare ``AttributeError`` before any of those individual reads —
+    including :func:`validate_lint_suppressions` — get a chance to run. Callers
+    must check this *before* reading any ``[lint]`` key.
+    """
+    if not isinstance(lint_config, dict):
+        return f"[lint] must be a table, got {type(lint_config).__name__}."
+    return None
+
+
 class IRBuilder:
     """Build the Intermediate Representation for a Protean domain.
 
@@ -1457,6 +1473,14 @@ class IRBuilder:
 
     def _collect_diagnostics(self, ir: dict[str, Any]) -> None:
         """Collect diagnostic warnings and info findings from the built IR."""
+        # Guard the whole ``[lint]`` table up front — every rule below reads
+        # ``self._domain.config.get("lint", {})``, so a malformed non-table
+        # value must fail here with a clear error, not as a bare
+        # AttributeError from whichever rule happens to read it first.
+        lint_error = validate_lint_table(self._domain.config.get("lint", {}))
+        if lint_error:
+            raise ConfigurationError(lint_error)
+
         # Warning-level rules
         self._diagnose_unhandled_events(ir)
         self._diagnose_unused_commands(ir)

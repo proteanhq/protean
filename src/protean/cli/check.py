@@ -106,7 +106,21 @@ def check(
     # ``[lint].level`` is the config-driven exit-code floor (default "warn",
     # which reproduces the historical exit codes). Validate up front, mirroring
     # the ``--level`` validation, so a typo fails fast with a clear message.
+    # Imported locally to keep ``protean --help`` from eagerly pulling in the
+    # heavy IR builder subsystem.
+    from protean.ir.builder import (  # noqa: PLC0415
+        validate_lint_suppressions,
+        validate_lint_table,
+    )
+
     lint_config = derived_domain.config.get("lint", {})
+    lint_table_error = validate_lint_table(lint_config)
+    if lint_table_error:
+        # Escape the literal ``[lint]`` so Rich does not parse it as markup.
+        escaped = lint_table_error.replace("[lint]", r"\[lint]")
+        print(f"[red]Invalid config: {escaped}[/red]")
+        raise typer.Exit(code=1)
+
     lint_level = lint_config.get("level", "warn")
     if lint_level not in _LINT_LEVELS:
         # Escape the literal ``[lint]`` so Rich does not parse it as markup.
@@ -118,10 +132,7 @@ def check(
 
     # ``[lint].suppressions`` is consumed by the IR builder; validate it here
     # too so a config typo produces a clean CLI error instead of the builder's
-    # ``ConfigurationError`` traceback. Imported locally to keep ``protean
-    # --help`` from eagerly pulling in the heavy IR builder subsystem.
-    from protean.ir.builder import validate_lint_suppressions  # noqa: PLC0415
-
+    # ``ConfigurationError`` traceback.
     suppressions_error = validate_lint_suppressions(lint_config.get("suppressions", {}))
     if suppressions_error:
         # Escape the literal ``[lint]`` so Rich does not parse it as markup.

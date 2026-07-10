@@ -292,6 +292,8 @@ _LEVEL_INVALID_DOMAIN = "tests/support/domains/test34/domain34.py:domain"
 _LEVEL_ERROR_WITH_ERROR_DOMAIN = "tests/support/domains/test35/domain35.py:domain"
 # Domain with a malformed [lint].suppressions value
 _BAD_SUPPRESSIONS_DOMAIN = "tests/support/domains/test36/domain36.py:domain"
+# Domain with a malformed [lint] value (not a table at all)
+_BAD_LINT_TABLE_DOMAIN = "tests/support/domains/test37/domain37.py:domain"
 
 
 @pytest.mark.no_test_domain
@@ -332,6 +334,14 @@ class TestCheckLintLevelExitCode:
         assert result.exit_code == 1
         assert "[lint].suppressions" in result.output
         assert "non-negative integer" in result.output
+
+    def test_malformed_lint_table_exits_with_clean_error(self):
+        """A non-table [lint] value (e.g. ``lint = 5``) is a CLI error (exit 1),
+        not a bare AttributeError — validated before any [lint] key is read."""
+        result = runner.invoke(app, ["check", "-d", _BAD_LINT_TABLE_DOMAIN])
+        assert result.exit_code == 1
+        assert "[lint]" in result.output
+        assert "must be a table" in result.output
 
     def test_level_info_gates_info(self):
         """[lint].level="info": an info-only domain now exits 2."""
