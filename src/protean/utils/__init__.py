@@ -400,16 +400,19 @@ _T = TypeVar("_T")
 
 
 def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] | None:
-    """Normalize the ``deprecated`` decorator option.
+    """Normalize the ``deprecated`` value used by element decorators and by
+    the ``Field``/``FieldSpec`` ``deprecated`` parameter.
 
     Accepts:
-    - ``None`` / ``False`` → ``None``
+    - ``None`` → ``None``
     - ``"0.15"`` (shorthand) → ``{"since": "0.15"}``
     - ``{"since": "0.15"}`` → as-is
     - ``{"since": "0.15", "removal": "0.18"}`` → as-is
 
     Raises :class:`ConfigurationError` on invalid input.
     """
+    # `False` is also tolerated as a `None` synonym for backward compatibility,
+    # but intentionally left off the type hint and docstring above.
     if value is None or value is False:  # type: ignore[comparison-overlap]
         return None
     if isinstance(value, str):
@@ -417,7 +420,7 @@ def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] 
     if isinstance(value, dict):
         if "since" not in value:
             raise ConfigurationError(
-                f"The `deprecated` option must include a 'since' key (got {value!r})"
+                f"The `deprecated` value must include a 'since' key (got {value!r})"
             )
         result: dict[str, str] = {"since": str(value["since"])}
         if "removal" in value:

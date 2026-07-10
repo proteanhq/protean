@@ -263,13 +263,17 @@ class TestNormalizerParity:
     def test_rejection_parity(self, value: object) -> None:
         from protean.fields.spec import FieldSpec
 
-        with pytest.raises(ConfigurationError):
+        # `match="deprecated"` locks these to the normalizer's own errors
+        # (both its messages mention "deprecated"); an unrelated
+        # ConfigurationError, e.g. from a reordered "unknown option" check,
+        # would not match and would correctly fail this test.
+        with pytest.raises(ConfigurationError, match="deprecated"):
             String(deprecated=value)
 
-        with pytest.raises(ConfigurationError):
+        with pytest.raises(ConfigurationError, match="deprecated"):
             FieldSpec(str, deprecated=value)
 
-        with pytest.raises(ConfigurationError):
+        with pytest.raises(ConfigurationError, match="deprecated"):
 
             @self.domain.aggregate(deprecated=value)
             class Order:
@@ -289,12 +293,59 @@ class TestNormalizerParity:
     def test_deprecated_false_returns_none_for_field(self) -> None:
         assert String(deprecated=False).deprecated is None
 
+    def test_deprecated_false_returns_none_for_fieldspec(self) -> None:
+        from protean.fields.spec import FieldSpec
+
+        assert FieldSpec(str, deprecated=False).deprecated is None
+
     def test_deprecated_false_returns_none_for_element(self) -> None:
         @self.domain.aggregate(deprecated=False)
         class Order:
             pass
 
         assert Order.meta_.deprecated is None
+
+    def test_fieldspec_missing_since_raises_actionable_message(self) -> None:
+        from protean.fields.spec import FieldSpec
+
+        with pytest.raises(ConfigurationError, match="'since' key"):
+            FieldSpec(str, deprecated={"removal": "0.18"})
+
+    def test_configuration_error_is_not_a_value_error(self) -> None:
+        """Locks the documented breaking change: field-level `deprecated`
+        errors are `ConfigurationError`, which callers relying on the old
+        `except ValueError` will no longer catch.
+        """
+        assert not issubclass(ConfigurationError, ValueError)
+
+    def test_clone_preserves_already_normalized_deprecated(self) -> None:
+        """`Field._clone` re-runs the normalizer on an already-normalized
+        dict; the result must be unchanged (the normalizer is idempotent).
+
+        Uses `ValueObjectList`, a genuine `protean.fields.base.Field`
+        subclass whose constructor accepts no extra required positional
+        args (so `Field._clone`'s generic `self.__class__(**kwargs)` works)
+        — `String()` (used elsewhere in this file for "field-level" checks)
+        actually returns a `FieldSpec`, which has no `_clone`.
+        """
+        from protean.fields.basic import ValueObjectList
+
+        field = ValueObjectList(deprecated={"since": "0.15", "removal": "0.18"})
+        cloned = field._clone()
+        assert cloned.deprecated == {"since": "0.15", "removal": "0.18"}
+
+    def test_reference_field_invalid_deprecated_raises_configuration_error(
+        self,
+    ) -> None:
+        """Exercises `Field.__init__` (base.py) directly via `Reference`, the
+        one genuine `Field` subclass entry point in this parity suite — the
+        other "field-level" checks above go through `String()`, which is a
+        `FieldSpec` factory, not `Field`.
+        """
+        from protean.fields.association import Reference
+
+        with pytest.raises(ConfigurationError, match="deprecated"):
+            Reference("SomeClass", deprecated={"removal": "0.18"})
 
 
 # =====================================================================
