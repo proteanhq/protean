@@ -1,21 +1,19 @@
 """Tests for CLI global logging flags (--log-level, --log-format, --log-config).
 
 Verifies the Typer callback wires up logging correctly and that the
-deprecated --debug flag still works with a deprecation warning.
+removed --debug flag is rejected in favour of --log-level DEBUG.
 """
 
 import json
 import logging
 import os
 import sys
-import warnings
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
-from protean._deprecation import RemovedInProtean017Warning
 from protean.cli import app
 from tests.shared import change_working_directory_to
 
@@ -210,33 +208,9 @@ class TestLogConfigFlag:
         assert "Invalid JSON in log config" in result.output
 
 
-class TestDeprecatedDebugFlag:
-    def test_debug_flag_emits_deprecation_warning(self):
-        """--debug emits a DeprecationWarning mentioning the new flag."""
-        change_working_directory_to("test7")
-
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-
-            with patch("protean.cli.Engine") as MockEngine:
-                mock_engine = MockEngine.return_value
-                mock_engine.exit_code = 0
-
-                result = runner.invoke(
-                    app,
-                    ["server", "--domain", "publishing7.py", "--debug"],
-                )
-
-            assert result.exit_code == 0
-
-            deprecation_warnings = [
-                w for w in caught if issubclass(w.category, RemovedInProtean017Warning)
-            ]
-            assert len(deprecation_warnings) > 0, "Expected RemovedInProtean017Warning"
-            assert "--debug is deprecated" in str(deprecation_warnings[0].message)
-
-    def test_debug_flag_still_sets_debug_level(self):
-        """--debug still sets logging level to DEBUG for backward compat."""
+class TestRemovedDebugFlag:
+    def test_debug_flag_rejected(self):
+        """--debug was removed; --log-level DEBUG is the supported replacement."""
         change_working_directory_to("test7")
 
         with patch("protean.cli.Engine") as MockEngine:
@@ -248,8 +222,8 @@ class TestDeprecatedDebugFlag:
                 ["server", "--domain", "publishing7.py", "--debug"],
             )
 
-            assert result.exit_code == 0
-            assert logging.getLogger().level == logging.DEBUG
+            assert result.exit_code != 0
+            assert "No such option: --debug" in result.output
 
 
 class TestGlobalFlagsInHelpText:

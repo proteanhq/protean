@@ -157,8 +157,9 @@ root callback before any subcommand runs:
 | `--log-format` | `auto` \| `console` \| `json` | Overrides the resolved format. Invalid values exit with code `2`. |
 | `--log-config` | path to JSON file | Applies the JSON as a `logging.config.dictConfig`. Mutually exclusive with `--log-level` / `--log-format`: when present, they are ignored. |
 
-`protean server --debug` is deprecated and will be removed in v0.17.0. It is
-equivalent to `--log-level DEBUG`.
+The `--debug` flag on `protean server` and `protean observatory` was removed in
+v0.17.0. Use the global `--log-level DEBUG` flag instead (for example,
+`protean --log-level DEBUG server`).
 
 When any of these flags are used, CLI commands skip the later `Domain.init()`
 auto-configuration to avoid clobbering the explicit setup.

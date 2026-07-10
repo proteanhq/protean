@@ -27,13 +27,11 @@ from protean import __version__
 from protean.cli._helpers import CTX_LOG_CONFIGURED  # noqa: F401 — re-exported
 from protean.cli._helpers import cli_exception_handler  # noqa: F401 — re-exported
 from protean.cli._helpers import handle_cli_exceptions  # noqa: F401 — re-exported
-from protean.cli._helpers import warn_debug_flag_deprecated
 from protean.cli.check import check
 from protean.cli.database import app as db_app
 from protean.cli.dlq import app as dlq_app
 from protean.cli.docs import app as docs_app
 from protean.cli.events import app as events_app
-from protean.cli.generate import app as generate_app
 from protean.cli.ir import app as ir_app
 from protean.cli.schema import app as schema_app
 from protean.cli.idempotency import app as idempotency_app
@@ -68,7 +66,6 @@ app.add_typer(dlq_app, name="dlq")
 app.add_typer(idempotency_app, name="idempotency")
 app.add_typer(outbox_app, name="outbox")
 app.add_typer(events_app, name="events")
-app.add_typer(generate_app, name="generate")
 app.add_typer(ir_app, name="ir")
 app.add_typer(schema_app, name="schema")
 app.add_typer(docs_app, name="docs")
@@ -164,7 +161,6 @@ def server(
     ctx: typer.Context,
     domain: Annotated[str, typer.Option()] = ".",
     test_mode: Annotated[bool, typer.Option()] = False,
-    debug: Annotated[bool, typer.Option()] = False,
     workers: Annotated[int, typer.Option(help="Number of worker processes")] = 1,
     reload: Annotated[
         bool,
@@ -188,12 +184,9 @@ def server(
 ) -> None:
     """Run Async Background Server"""
 
-    if debug:
-        warn_debug_flag_deprecated()
-
     parent_obj = getattr(ctx, "obj", None) or {}
     if not parent_obj.get(CTX_LOG_CONFIGURED):
-        configure_logging(level="DEBUG" if debug else "INFO")
+        configure_logging(level="INFO")
 
     with cli_exception_handler("server"):
         if workers < 1:
@@ -228,7 +221,6 @@ def server(
             reloader = Reloader(
                 domain_path=domain,
                 test_mode=test_mode,
-                debug=debug,
             )
             reloader.run()
 
@@ -254,7 +246,7 @@ def server(
             derived_domain.init()
 
             with derived_domain.domain_context():
-                engine = Engine(derived_domain, test_mode=test_mode, debug=debug)
+                engine = Engine(derived_domain, test_mode=test_mode)
                 engine.run()
 
             if engine.exit_code != 0:
@@ -299,7 +291,6 @@ def server(
                 domain_path=domain,
                 num_workers=workers,
                 test_mode=test_mode,
-                debug=debug,
                 acknowledge_event_store_risk=allow_event_store_multiworker,
             )
             supervisor.run()

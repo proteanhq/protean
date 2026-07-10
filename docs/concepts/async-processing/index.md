@@ -77,7 +77,7 @@ With this configuration, events, commands, and broker messages are all processed
 protean server --domain=your_domain
 
 # Start with debug logging
-protean server --domain=your_domain --debug
+protean --log-level DEBUG server --domain=your_domain
 
 # Run in test mode (processes pending events/commands/messages and exits)
 protean server --domain=your_domain --test-mode

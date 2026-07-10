@@ -510,7 +510,12 @@ def test(
         ),
     ] = False,
 ) -> None:
-    """Run tests with various configurations and coverage options."""
+    """[Framework development] Run tests with various configurations and coverage options.
+
+    This command is for contributors working on Protean itself: it drives the
+    framework's own pytest suite and hardcodes framework-repo paths. It is not
+    intended for end-user application projects.
+    """
     runner = TestRunner()
 
     match category:
@@ -773,7 +778,11 @@ def test_adapter(
         ),
     ] = None,
 ) -> None:
-    """Run the generic conformance test suite against a database provider.
+    """[Framework development] Run the generic conformance test suite against a database provider.
+
+    This command is for contributors building or validating a database adapter
+    against Protean's own conformance tests; it is not part of an end-user
+    application workflow.
 
     Tests are automatically selected based on the provider's declared
     capabilities. Results show which capability areas pass or fail.

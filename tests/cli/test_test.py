@@ -1367,3 +1367,35 @@ class TestTestAdapterCommand:
 
         captured = capsys.readouterr()
         assert "Conformance Report" in captured.out
+
+
+class TestFrameworkDevelopmentHelp:
+    """`protean test` and `test-adapter` advertise themselves as framework tooling.
+
+    Rich/Typer may inject ANSI escape codes, so strip them before matching.
+    """
+
+    @staticmethod
+    def _strip_ansi(text: str) -> str:
+        import re
+
+        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+    def test_test_help_marks_framework_development(self, cli_runner):
+        """`protean test --help` labels the command as framework development."""
+        result = cli_runner.invoke(app, ["test", "--help"])
+        assert result.exit_code == 0
+        assert "Framework development" in self._strip_ansi(result.output)
+
+    def test_test_adapter_short_help_marks_framework_development(self, cli_runner):
+        """The test-adapter subcommand carries the framework-development marker.
+
+        It surfaces in the ``protean test --help`` command list; invoking
+        ``test test-adapter --help`` directly would first trigger the ``test``
+        callback (which runs the suite), so the group listing is the seam.
+        """
+        result = cli_runner.invoke(app, ["test", "--help"])
+        assert result.exit_code == 0
+        output = self._strip_ansi(result.output)
+        assert "test-adapter" in output
+        assert "[Framework development]" in output

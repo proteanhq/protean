@@ -135,8 +135,8 @@ protean server --log-config ./logging.json      # full dictConfig JSON
 JSON via `logging.config.dictConfig()`. The correlation filter is still
 installed on the root logger afterwards.
 
-`protean server --debug` is deprecated in favor of `--log-level DEBUG` and
-will be removed in v0.17.0.
+The `--debug` flag on `protean server` and `protean observatory` was removed in
+v0.17.0. Use `--log-level DEBUG` instead.
 
 ---
 

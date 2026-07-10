@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 import typer
 from rich import print
 
-from protean._deprecation import warn_deprecated
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
@@ -27,21 +26,6 @@ logger = get_logger(__name__)
 # Shared between cli/__init__.py (callback) and subcommands that have their
 # own logging setup (server, observatory) to avoid double-configuration.
 CTX_LOG_CONFIGURED = "_protean_log_configured"
-
-
-def warn_debug_flag_deprecated() -> None:
-    """Emit the ``--debug`` deprecation shared by ``server`` and ``observatory``.
-
-    Both commands replaced ``--debug`` with ``--log-level DEBUG``; keeping the
-    message and removal version in one place stops the two copies from drifting.
-    ``stacklevel=2`` attributes the warning to the command body, not this helper.
-    """
-    warn_deprecated(
-        "--debug",
-        removal="0.17.0",
-        alternative="Use --log-level DEBUG instead.",
-        stacklevel=2,
-    )
 
 
 @contextmanager

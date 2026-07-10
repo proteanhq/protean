@@ -14,7 +14,6 @@ protean server [OPTIONS]
 |---------------------------------|-----------------------------------------------------------------------------|---------|
 | `--domain`                      | Sets the domain context for the server.                                     | `.`     |
 | `--test-mode`                   | Runs the server in test mode.                                               | `False` |
-| `--debug`                       | Enables debug mode for verbose logging.                                    | `False` |
 | `--workers`                     | Number of worker processes to spawn.                                       | `1`     |
 | `--reload`                      | Auto-reload on file changes (development only; cannot combine with `--workers > 1`). | `False` |
 | `--allow-event-store-multiworker`| Allow `--workers > 1` even with event-store subscriptions (see below).      | `False` |
@@ -69,16 +68,17 @@ To run the server in test mode, which may alter certain behaviors to facilitate 
 protean server --test-mode
 ```
 
-### Debug Mode
+### Verbose Logging
 
-To enable debug mode with additional logging and information:
+To raise the log verbosity, pass the global `--log-level DEBUG` flag before the
+subcommand:
 
 ```shell
-protean server --debug
+protean --log-level DEBUG server
 ```
 
-You can combine these options as needed:
+You can combine it with other options as needed:
 
 ```shell
-protean server --domain auth --debug
+protean --log-level DEBUG server --domain auth
 ```

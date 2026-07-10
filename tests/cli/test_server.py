@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 from pathlib import Path
@@ -106,20 +105,18 @@ class TestServerCommand:
             assert result.exit_code == 0
             mock_engine_instance.run.assert_called_once()  # Ensure `run` was called
             MockEngine.assert_called_once_with(
-                ANY, test_mode=True, debug=False
+                ANY, test_mode=True
             )  # Ensure Engine was instantiated with the correct arguments
 
-    def test_server_runs_in_debug_mode(self):
-        """Test that the server runs in debug mode and sets the correct logger level"""
+    def test_server_debug_flag_removed(self):
+        """The removed --debug flag is rejected: no such option, non-zero exit."""
         change_working_directory_to("test7")
 
-        # Mock the logger used in the Engine class
-        with patch("protean.server.engine.logger") as mock_logger:
-            args = ["server", "--domain", "publishing7.py", "--debug"]
-            result = runner.invoke(app, args)
+        args = ["server", "--domain", "publishing7.py", "--debug"]
+        result = runner.invoke(app, args)
 
-            assert result.exit_code == 0
-            mock_logger.setLevel.assert_called_once_with(logging.DEBUG)
+        assert result.exit_code != 0
+        assert "No such option: --debug" in result.output
 
     def test_server_raises_system_exit_on_error_in_run(self):
         """Test that the server command raises a TyperExit with the correct exit code on error in run"""
@@ -182,7 +179,6 @@ class TestServerCommand:
                 domain_path="publishing7.py",
                 num_workers=2,
                 test_mode=False,
-                debug=False,
                 acknowledge_event_store_risk=False,
             )
             mock_supervisor.run.assert_called_once()
@@ -239,7 +235,6 @@ class TestServerCommand:
                 domain_path="event_store_domain.py",
                 num_workers=2,
                 test_mode=False,
-                debug=False,
                 acknowledge_event_store_risk=True,
             )
             mock_supervisor.run.assert_called_once()
@@ -262,7 +257,6 @@ class TestServerCommand:
                 domain_path="stream_domain.py",
                 num_workers=2,
                 test_mode=False,
-                debug=False,
                 acknowledge_event_store_risk=False,
             )
             mock_supervisor.run.assert_called_once()
@@ -285,7 +279,6 @@ class TestServerCommand:
                     domain_path="publishing7.py",
                     num_workers=2,
                     test_mode=False,
-                    debug=False,
                     acknowledge_event_store_risk=False,
                 )
                 mock_supervisor.run.assert_called_once()
@@ -317,7 +310,6 @@ class TestServerCommand:
             MockReloader.assert_called_once_with(
                 domain_path="publishing7.py",
                 test_mode=False,
-                debug=False,
             )
             mock_reloader.run.assert_called_once()
 
@@ -334,8 +326,8 @@ class TestServerCommand:
 
             assert result.exit_code == 5
 
-    def test_server_reload_forwards_test_mode_and_debug(self):
-        """--reload must forward --test-mode and --debug to the Reloader."""
+    def test_server_reload_forwards_test_mode(self):
+        """--reload forwards --test-mode to the Reloader (no debug kwarg)."""
         change_working_directory_to("test7")
 
         with patch("protean.server.reloader.Reloader") as MockReloader:
@@ -348,7 +340,6 @@ class TestServerCommand:
                 "publishing7.py",
                 "--reload",
                 "--test-mode",
-                "--debug",
             ]
             result = runner.invoke(app, args)
 
@@ -356,8 +347,25 @@ class TestServerCommand:
             MockReloader.assert_called_once_with(
                 domain_path="publishing7.py",
                 test_mode=True,
-                debug=True,
             )
+
+    def test_server_reload_rejects_debug_flag(self):
+        """--reload with the removed --debug flag is rejected before reloading."""
+        change_working_directory_to("test7")
+
+        with patch("protean.server.reloader.Reloader") as MockReloader:
+            args = [
+                "server",
+                "--domain",
+                "publishing7.py",
+                "--reload",
+                "--debug",
+            ]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code != 0
+            assert "No such option: --debug" in result.output
+            MockReloader.assert_not_called()
 
     def test_server_reload_rejects_multiple_workers(self):
         """--reload is incompatible with --workers > 1."""
