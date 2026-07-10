@@ -12,10 +12,17 @@ def utc_now():
 
 def test_method_is_deprecated():
     """Instantiating a Method field warns it is removed at v1.0.0."""
-    with pytest.warns(RemovedInProtean10Warning) as record:
+    # Match the concrete subject text so a copy-paste of the ``Nested`` message
+    # into ``Method.__init__`` would fail this test.
+    with pytest.warns(
+        RemovedInProtean10Warning, match=r"`Method` field is deprecated.*v1\.0\.0"
+    ) as record:
         field = Method("fake_method")
 
-    assert "v1.0.0" in str(record[0].message)
+    # ``Method`` is a serializer field with no replacement element.
+    assert any(
+        "Serializer fields are no longer supported." in str(w.message) for w in record
+    )
     # The field is still functional despite the deprecation.
     assert field.method_name == "fake_method"
     assert field._cast_to_type("x") == "x"

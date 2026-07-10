@@ -380,17 +380,39 @@ class TestFieldSpecValidateDefault:
 # ---------------------------------------------------------------------------
 class TestListPickledDeprecation:
     def test_pickled_true_is_deprecated(self):
-        with pytest.warns(RemovedInProtean10Warning) as record:
+        with pytest.warns(
+            RemovedInProtean10Warning,
+            match=r"`pickled` argument on `List` is deprecated.*v1\.0\.0",
+        ):
             spec = List(pickled=True)
 
-        assert "v1.0.0" in str(record[0].message)
-        # The kwarg is ignored, not fatal — a usable list spec is returned.
+        # The kwarg is ignored, not fatal — a usable list spec is returned...
         assert isinstance(spec, FieldSpec)
+        # ...and, crucially, it is *never forwarded* to the FieldSpec: the
+        # resulting spec is structurally identical to one built without it.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            assert vars(spec) == vars(List())
+        assert not hasattr(spec, "pickled")
 
     def test_pickled_false_is_deprecated(self):
         """Even an explicit ``pickled=False`` warns — the arg is going away."""
         with pytest.warns(RemovedInProtean10Warning):
             List(pickled=False)
+
+    @pytest.mark.parametrize("value", [None, 0, "", False, True])
+    def test_pickled_warns_for_any_explicit_value(self, value):
+        """The sentinel design means *any* explicit value warns, including
+        falsy ones — a future ``if pickled:`` regression would silently stop
+        warning on ``None``/``0``/``""``/``False`` and go uncaught otherwise."""
+        with pytest.warns(RemovedInProtean10Warning):
+            List(pickled=value)
+
+    def test_pickled_warns_when_passed_positionally(self):
+        """``pickled`` is the second positional parameter; a positional pass
+        must warn just as a keyword pass does."""
+        with pytest.warns(RemovedInProtean10Warning):
+            List(String(), True)
 
     def test_list_without_pickled_does_not_warn(self):
         """The common paths emit no deprecation warning."""
