@@ -159,9 +159,9 @@ class TestRegisterExternalEvent:
 
         assert "Ext.ExternalEvent.v1" in test_domain._events_and_commands
         # The event should not appear in the domain's element registry
-        from protean.utils import fully_qualified_name
+        from protean.utils import _fully_qualified_name
 
-        assert fully_qualified_name(ExternalEvent) not in test_domain.registry.events
+        assert _fully_qualified_name(ExternalEvent) not in test_domain.registry.events
 
     def test_registering_non_event_class_raises_error(self, test_domain):
         class NotAnEvent:

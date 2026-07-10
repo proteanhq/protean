@@ -1,6 +1,6 @@
 """Tests for _rebind_class_cells: fixing zero-argument super() after type() recreation.
 
-When derive_element_class creates a new class via type(), methods' __class__
+When _derive_element_class creates a new class via type(), methods' __class__
 closure cells still reference the original class, breaking zero-argument
 super() (PEP 3135).  _rebind_class_cells fixes this.
 """
@@ -415,7 +415,7 @@ class TestRebindClassCellsEdgeCases:
             def greet(cls):
                 return "child+" + super().greet()
 
-        # Recreate via type() like derive_element_class does
+        # Recreate via type() like _derive_element_class does
         new_dict = Original.__dict__.copy()
         new_dict.pop("__dict__", None)
         NewClass = type("NewClass", (Base,), new_dict)

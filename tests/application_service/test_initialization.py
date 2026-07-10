@@ -3,7 +3,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
 from protean.exceptions import NotSupportedError
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 
 class DummyAggregate(BaseAggregate):
@@ -30,7 +30,7 @@ class TestApplicationServiceRegistration:
         test_domain.register(DummyApplicationService, part_of=DummyAggregate)
 
         assert (
-            fully_qualified_name(DummyApplicationService)
+            _fully_qualified_name(DummyApplicationService)
             in test_domain.registry.application_services
         )
 
@@ -43,7 +43,7 @@ class TestApplicationServiceRegistration:
                 pass
 
         assert (
-            fully_qualified_name(AnnotatedApplicationService)
+            _fully_qualified_name(AnnotatedApplicationService)
             in test_domain.registry.application_services
         )
 

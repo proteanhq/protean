@@ -9,7 +9,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import DateTime, HasMany, HasOne, Reference, String, Text
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.reflection import declared_fields
 
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
@@ -88,17 +88,17 @@ class TestElementRegistration:
         test_domain.registry.register_element(UserAggregate)
 
         assert test_domain.registry.aggregates != {}
-        assert fully_qualified_name(UserAggregate) in test_domain.registry.aggregates
+        assert _fully_qualified_name(UserAggregate) in test_domain.registry.aggregates
 
     def test_register_entity_with_domain(self, test_domain):
         test_domain.registry.register_element(UserEntity)
 
-        assert fully_qualified_name(UserEntity) in test_domain.registry.entities
+        assert _fully_qualified_name(UserEntity) in test_domain.registry.entities
 
     def test_register_value_object_with_domain(self, test_domain):
         test_domain.registry.register_element(UserVO)
 
-        assert fully_qualified_name(UserVO) in test_domain.registry.value_objects
+        assert _fully_qualified_name(UserVO) in test_domain.registry.value_objects
 
     def test_that_an_improperly_subclassed_element_cannot_be_registered(
         self, test_domain

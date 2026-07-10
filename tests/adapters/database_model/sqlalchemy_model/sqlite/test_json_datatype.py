@@ -3,12 +3,12 @@ from sqlalchemy import types as sa_types
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import DateTime, Dict, String
-from protean.utils import utcnow_func
+from protean.utils import _utcnow_func
 
 
 class Event(BaseAggregate):
     name: String(max_length=255)
-    created_at: DateTime(default=utcnow_func)
+    created_at: DateTime(default=_utcnow_func)
     payload: Dict()
 
 

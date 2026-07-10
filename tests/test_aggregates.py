@@ -5,7 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import NotSupportedError, ValidationError
 from protean.fields import Date, DateTime, HasMany, Reference, String
-from protean.utils import fully_qualified_name, utcnow_func
+from protean.utils import _fully_qualified_name, _utcnow_func
 from protean.utils.reflection import declared_fields
 
 
@@ -15,7 +15,7 @@ class TestAggregateRegistration:
         class Post(BaseAggregate):
             name: String(max_length=50)
 
-        assert fully_qualified_name(Post) in test_domain.registry.aggregates
+        assert _fully_qualified_name(Post) in test_domain.registry.aggregates
 
     def test_manual_registration_of_aggregate_with_domain(self, test_domain):
         class Post(BaseAggregate):
@@ -23,7 +23,7 @@ class TestAggregateRegistration:
 
         test_domain.register(Post)
 
-        assert fully_qualified_name(Post) in test_domain.registry.aggregates
+        assert _fully_qualified_name(Post) in test_domain.registry.aggregates
 
 
 class TestAggregateFieldDeclarations:
@@ -62,8 +62,8 @@ class TestAggregateIdentity:
     def test_that_abstract_aggregates_get_an_id_field_by_default(self, test_domain):
         @test_domain.aggregate(abstract=True)
         class TimeStamped:
-            created_at: DateTime(default=utcnow_func)
-            updated_at: DateTime(default=utcnow_func)
+            created_at: DateTime(default=_utcnow_func)
+            updated_at: DateTime(default=_utcnow_func)
 
         assert "id" in declared_fields(TimeStamped)
 
@@ -72,8 +72,8 @@ class TestAggregateIdentity:
     ):
         @test_domain.aggregate(auto_add_id_field=False)
         class TimeStamped:
-            created_at: DateTime(default=utcnow_func)
-            updated_at: DateTime(default=utcnow_func)
+            created_at: DateTime(default=_utcnow_func)
+            updated_at: DateTime(default=_utcnow_func)
 
         assert "id" not in declared_fields(TimeStamped)
 

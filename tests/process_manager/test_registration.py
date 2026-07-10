@@ -5,7 +5,7 @@ import pytest
 from protean.core.process_manager import BaseProcessManager
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Identifier, String
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.mixins import handle
 
 from .elements import (
@@ -48,7 +48,7 @@ def test_registering_a_process_manager_manually(test_domain):
     test_domain.init(traverse=False)
 
     assert (
-        fully_qualified_name(OrderFulfillmentPM)
+        _fully_qualified_name(OrderFulfillmentPM)
         in test_domain.registry.process_managers
     )
 
@@ -71,7 +71,7 @@ def test_registering_a_process_manager_via_decorator(test_domain):
 
     test_domain.init(traverse=False)
 
-    assert fully_qualified_name(SimplePM) in test_domain.registry.process_managers
+    assert _fully_qualified_name(SimplePM) in test_domain.registry.process_managers
 
 
 def test_process_manager_requires_at_least_one_start_handler(test_domain):

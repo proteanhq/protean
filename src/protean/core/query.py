@@ -21,7 +21,7 @@ from protean.fields.base import FieldBase
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
 
@@ -257,9 +257,9 @@ _T = TypeVar("_T")
 def query_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     base_cls = BaseQuery
 
-    element_cls = derive_element_class(element_cls, base_cls, **opts)
+    element_cls = _derive_element_class(element_cls, base_cls, **opts)
 
-    # `derive_element_class` returns a subclass of ``base_cls`` (here
+    # `_derive_element_class` returns a subclass of ``base_cls`` (here
     # ``BaseQuery``); narrow to expose ``meta_`` to the type checkers. The
     # unbounded ``_T`` return contract is preserved via ``element_cls`` below.
     query_cls = cast("type[BaseQuery]", element_cls)

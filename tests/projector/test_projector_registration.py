@@ -3,7 +3,7 @@ import pytest
 from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector
 from protean.exceptions import IncorrectUsageError
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 from .elements import Token, TokenProjector, User
 
@@ -14,7 +14,7 @@ def test_registering_a_projector_manually(test_domain):
     except Exception:
         pytest.fail("Failed to register a Projector manually")
 
-    assert fully_qualified_name(TokenProjector) in test_domain.registry.projectors
+    assert _fully_qualified_name(TokenProjector) in test_domain.registry.projectors
 
 
 def test_registering_a_projector_via_annotation(test_domain):
@@ -27,7 +27,7 @@ def test_registering_a_projector_via_annotation(test_domain):
     except Exception:
         pytest.fail("Failed to register a Projector via annotation")
 
-    assert fully_qualified_name(DuplicateProjector) in test_domain.registry.projectors
+    assert _fully_qualified_name(DuplicateProjector) in test_domain.registry.projectors
 
 
 def test_projection_has_to_be_registered_with_the_domain(test_domain):

@@ -13,7 +13,7 @@ from protean.exceptions import (
 )
 from protean.utils import (
     DomainObjects,
-    derive_element_class,
+    _derive_element_class,
     fqn,
 )
 from protean.utils.eventing import (
@@ -234,9 +234,9 @@ def domain_event_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
     # Always route to Pydantic base
     base_cls = BaseEvent
 
-    element_cls = derive_element_class(element_cls, base_cls, **opts)
+    element_cls = _derive_element_class(element_cls, base_cls, **opts)
 
-    # `derive_element_class` returns a subclass of ``base_cls`` (here
+    # `_derive_element_class` returns a subclass of ``base_cls`` (here
     # ``BaseEvent``); narrow to expose ``meta_`` to the type checkers. The
     # unbounded ``_T`` return contract is preserved via ``element_cls`` below.
     event_cls = cast("type[BaseEvent]", element_cls)

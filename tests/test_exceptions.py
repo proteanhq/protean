@@ -98,3 +98,41 @@ class TestProteanExceptionWithMessage:
         assert exception_instance.messages == messages
         assert exception_instance.traceback is None
         assert exception_instance.extra_info == extra_info
+
+
+class TestPublicSurface:
+    """`protean.exceptions.__all__` freezes the module's star-export."""
+
+    def _star_import(self):
+        namespace: dict[str, object] = {}
+        exec("from protean.exceptions import *", namespace)
+        return {name for name in namespace if not name.startswith("__")}
+
+    def test_star_import_matches_all(self):
+        from protean import exceptions
+
+        assert self._star_import() == set(exceptions.__all__)
+
+    def test_every_exported_name_is_a_deprecation_category_or_exception(self):
+        from protean import exceptions
+        from protean._deprecation import ProteanDeprecationWarning
+
+        for name in exceptions.__all__:
+            obj = getattr(exceptions, name)
+            assert isinstance(obj, type)
+            if name == "ProteanDeprecationWarning":
+                assert issubclass(obj, ProteanDeprecationWarning)
+            else:
+                assert issubclass(obj, exceptions.ProteanException)
+
+    def test_deprecation_category_is_exported(self):
+        # The re-exported filter target is public and must survive `import *`.
+        assert "ProteanDeprecationWarning" in self._star_import()
+
+    def test_incidental_imports_are_not_exported(self):
+        # `logging` and `datetime` are module-level imports, not public API;
+        # `__all__` must keep them out of the star-export.
+        exported = self._star_import()
+        assert "logging" not in exported
+        assert "datetime" not in exported
+        assert "Any" not in exported

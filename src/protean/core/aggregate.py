@@ -30,9 +30,9 @@ from protean.fields.basic import ValueObjectList
 from protean.utils import (
     DomainObjects,
     Processing,
-    derive_element_class,
+    _derive_element_class,
     fqn,
-    generate_identity,
+    _generate_identity,
     inflection,
 )
 from protean.utils.container import DerivedDefault
@@ -466,7 +466,7 @@ class BaseAggregate(BaseEntity):
         if id_field_name in identity_kwargs:
             aggregate.__dict__[id_field_name] = identity_kwargs[id_field_name]  # pyright: ignore[reportIndexIssue]
         else:
-            aggregate.__dict__[id_field_name] = generate_identity()  # pyright: ignore[reportIndexIssue]
+            aggregate.__dict__[id_field_name] = _generate_identity()  # pyright: ignore[reportIndexIssue]
 
         return aggregate
 
@@ -656,7 +656,7 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     base_cls = BaseAggregate
 
     # Derive the aggregate class from the base aggregate class
-    element_cls = derive_element_class(element_cls, base_cls, **opts)
+    element_cls = _derive_element_class(element_cls, base_cls, **opts)
 
     # The derived class is always a ``BaseAggregate`` subclass at runtime;
     # narrow the unbound ``type[_T]`` typevar so the injected class attributes

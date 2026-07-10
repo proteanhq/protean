@@ -3,7 +3,7 @@ from mock import patch
 
 from protean.adapters import DummyEmailProvider
 from protean.core.email import BaseEmail
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 from .elements import Person, PersonAdded, WelcomeEmail, WelcomeNewPerson
 
@@ -26,7 +26,7 @@ class TestEmailRegistration:
     def test_that_email_can_be_registered_with_domain(self, test_domain):
         test_domain.register(WelcomeEmail)
 
-        assert fully_qualified_name(WelcomeEmail) in test_domain.registry.emails
+        assert _fully_qualified_name(WelcomeEmail) in test_domain.registry.emails
 
     def test_that_email_can_be_registered_via_annotations(self, test_domain):
         @test_domain.email
@@ -34,7 +34,7 @@ class TestEmailRegistration:
             def special_method(self):
                 pass
 
-        assert fully_qualified_name(AnnotatedEmail) in test_domain.registry.emails
+        assert _fully_qualified_name(AnnotatedEmail) in test_domain.registry.emails
 
 
 class TestEmailTriggering:

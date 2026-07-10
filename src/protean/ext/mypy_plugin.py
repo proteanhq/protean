@@ -185,7 +185,7 @@ def _resolve_association_fullname(fullname: str) -> str | None:
 # Decorator → base class mapping
 # ---------------------------------------------------------------------------
 # Maps each decorator method name to the FQN of the base class that
-# Protean injects at runtime via derive_element_class() → type().
+# Protean injects at runtime via _derive_element_class() → type().
 DECORATOR_BASE_CLASS_MAP: dict[str, str] = {
     "aggregate": "protean.core.aggregate.BaseAggregate",
     "entity": "protean.core.entity.BaseEntity",

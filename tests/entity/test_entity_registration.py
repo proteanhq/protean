@@ -1,7 +1,7 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.fields import String
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 
 class TestEntityRegistration:
@@ -15,7 +15,7 @@ class TestEntityRegistration:
         test_domain.register(Post)
         test_domain.register(Comment, part_of=Post)
 
-        assert fully_qualified_name(Comment) in test_domain.registry.entities
+        assert _fully_qualified_name(Comment) in test_domain.registry.entities
         assert Comment.meta_.part_of == Post
 
     def test_setting_provider_in_decorator_based_registration(self, test_domain):

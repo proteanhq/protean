@@ -7,7 +7,7 @@ from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Identifier, String, ValueObject
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.eventing import MessageEnvelope
 from protean.utils.reflection import data_fields, declared_fields, fields
 
@@ -82,7 +82,7 @@ class TestDomainEventDefinition:
                         "deadline": None,
                     },
                     "domain": {
-                        "fqn": fully_qualified_name(UserAdded),
+                        "fqn": _fully_qualified_name(UserAdded),
                         "kind": "EVENT",
                         "origin_stream": None,
                         "stream_category": None,
@@ -124,7 +124,7 @@ class TestDomainEventDefinition:
                     "deadline": None,
                 },
                 "domain": {
-                    "fqn": fully_qualified_name(UserAdded),
+                    "fqn": _fully_qualified_name(UserAdded),
                     "kind": "EVENT",
                     "origin_stream": None,
                     "stream_category": "test::user",
@@ -304,7 +304,7 @@ class TestDomainEventRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
         test_domain.register(PersonAdded, part_of=Person)
 
-        assert fully_qualified_name(PersonAdded) in test_domain.registry.events
+        assert _fully_qualified_name(PersonAdded) in test_domain.registry.events
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
         @test_domain.event(part_of=Person)
@@ -312,7 +312,9 @@ class TestDomainEventRegistration:
             def special_method(self):
                 pass
 
-        assert fully_qualified_name(AnnotatedDomainEvent) in test_domain.registry.events
+        assert (
+            _fully_qualified_name(AnnotatedDomainEvent) in test_domain.registry.events
+        )
 
     def test_domain_stores_event_type_for_easy_retrieval(self, test_domain):
         test_domain.register(PersonAdded, part_of=Person)
@@ -327,7 +329,7 @@ class TestDomainEventRegistration:
         test_domain.register_external_event(ExternalEvent, "Bar.ExternalEvent.v1")
 
         assert "Bar.ExternalEvent.v1" in test_domain._events_and_commands
-        assert fully_qualified_name(ExternalEvent) not in test_domain.registry.events
+        assert _fully_qualified_name(ExternalEvent) not in test_domain.registry.events
 
     def test_registering_invalid_external_event_class(self, test_domain):
         class Dummy:

@@ -17,7 +17,7 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.fields import ValueObject
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.reflection import (
     _FIELDS,
     attributes,
@@ -245,7 +245,7 @@ class TestVOSerialization:
 # ---------------------------------------------------------------------------
 class TestVODomainRegistration:
     def test_aggregate_with_vo_registered(self, test_domain):
-        assert fully_qualified_name(Customer) in test_domain.registry.aggregates
+        assert _fully_qualified_name(Customer) in test_domain.registry.aggregates
 
     def test_vo_registered(self, test_domain):
-        assert fully_qualified_name(Address) in test_domain.registry.value_objects
+        assert _fully_qualified_name(Address) in test_domain.registry.value_objects

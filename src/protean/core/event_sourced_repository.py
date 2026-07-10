@@ -9,7 +9,7 @@ from protean.exceptions import (
     NotSupportedError,
     ObjectNotFoundError,
 )
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
 from protean.utils.telemetry import set_span_error
@@ -206,7 +206,7 @@ _T = TypeVar("_T")
 def event_sourced_repository_factory(
     element_cls: type[_T], domain: Any, **opts: Any
 ) -> type[_T]:
-    element_cls = derive_element_class(element_cls, BaseEventSourcedRepository, **opts)
+    element_cls = _derive_element_class(element_cls, BaseEventSourcedRepository, **opts)
 
     # `meta_` is injected by the element metaclass and is not visible on the
     # unbound TypeVar; narrow to the concrete base to access it.

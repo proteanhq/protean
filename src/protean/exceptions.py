@@ -11,6 +11,32 @@ from typing import Any, Optional
 # and per-version subclasses live in ``protean._deprecation``.
 from protean._deprecation import ProteanDeprecationWarning  # noqa: F401
 
+__all__ = [
+    "ProteanException",
+    "ProteanExceptionWithMessage",
+    "NoDomainException",
+    "ConfigurationError",
+    "ObjectNotFoundError",
+    "TooManyObjectsError",
+    "InsufficientDataError",
+    "InvalidDataError",
+    "InvalidStateError",
+    "InvalidOperationError",
+    "NotSupportedError",
+    "IncorrectUsageError",
+    "ValidationError",
+    "DatabaseError",
+    "SendError",
+    "ExpectedVersionError",
+    "TransactionError",
+    "DuplicateCommandError",
+    "CommandExpiredError",
+    "DeserializationError",
+    # Re-exported deprecation category (see the import above); the public,
+    # stable filter target users promote to errors in CI.
+    "ProteanDeprecationWarning",
+]
+
 logger = logging.getLogger(__name__)
 
 

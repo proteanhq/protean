@@ -64,3 +64,7 @@ current_uow: "UnitOfWork" = LocalProxy(_find_uow)  # type: ignore  # noqa: F821
 # ``g`` is a request-scoped scratch namespace (Werkzeug-style) that intentionally
 # holds arbitrary attributes; typing it ``Any`` reflects that dynamic contract.
 g: Any = LocalProxy(partial(_lookup_domain_object, "g"))
+
+# Only the three request-scoped proxies are public; the lookup helpers and the
+# context stacks above stay internal and are excluded from ``import *``.
+__all__ = ["current_domain", "current_uow", "g"]

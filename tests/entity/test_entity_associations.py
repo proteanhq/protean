@@ -18,7 +18,7 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.fields import HasMany, HasOne, Reference
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.reflection import (
     _FIELDS,
     association_fields,
@@ -404,10 +404,10 @@ class TestSerialization:
 # ---------------------------------------------------------------------------
 class TestDomainRegistration:
     def test_aggregate_with_associations_registered(self, test_domain):
-        assert fully_qualified_name(Order) in test_domain.registry.aggregates
+        assert _fully_qualified_name(Order) in test_domain.registry.aggregates
 
     def test_child_entity_registered_as_part_of(self, test_domain):
-        assert fully_qualified_name(OrderItem) in test_domain.registry.entities
+        assert _fully_qualified_name(OrderItem) in test_domain.registry.entities
 
     def test_has_one_entity_registered_as_part_of(self, test_domain):
-        assert fully_qualified_name(ShippingInfo) in test_domain.registry.entities
+        assert _fully_qualified_name(ShippingInfo) in test_domain.registry.entities

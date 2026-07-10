@@ -50,7 +50,7 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
-    derive_element_class,
+    _derive_element_class,
     fqn,
     inflection,
 )
@@ -606,7 +606,7 @@ def process_manager_factory(
     Returns:
         The fully configured process manager class.
     """
-    element_cls = derive_element_class(element_cls, BaseProcessManager, **opts)
+    element_cls = _derive_element_class(element_cls, BaseProcessManager, **opts)
 
     # Prefix stream_category with domain name
     element_cls.meta_.stream_category = (

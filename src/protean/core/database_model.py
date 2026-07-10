@@ -2,7 +2,7 @@ from abc import abstractmethod
 
 from protean.core.queryset import Record
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import attributes, declared_fields
 from typing import Any, cast, ClassVar, TYPE_CHECKING, TypeVar
@@ -206,7 +206,7 @@ _T = TypeVar("_T")
 
 
 def database_model_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
-    element_cls = derive_element_class(element_cls, BaseDatabaseModel, **opts)
+    element_cls = _derive_element_class(element_cls, BaseDatabaseModel, **opts)
 
     # The derived class is always a ``BaseDatabaseModel`` subclass at runtime;
     # narrow the unbound ``type[_T]`` typevar so the injected class attribute

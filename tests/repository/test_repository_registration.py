@@ -4,7 +4,7 @@ from protean.core.entity import BaseEntity
 from protean.core.repository import BaseRepository
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import String
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from tests.shared import ELASTICSEARCH_URI
 
 from .elements import Person, PersonRepository
@@ -25,7 +25,7 @@ class TestRepositoryRegistration:
         test_domain.register(PersonRepository, part_of=Person)
 
         assert (
-            fully_qualified_name(PersonRepository) in test_domain.registry.repositories
+            _fully_qualified_name(PersonRepository) in test_domain.registry.repositories
         )
 
     def test_that_repository_can_be_registered_via_annotations_with_part_of_parameter(
@@ -37,7 +37,7 @@ class TestRepositoryRegistration:
                 pass
 
         assert (
-            fully_qualified_name(AnnotatedRepository)
+            _fully_qualified_name(AnnotatedRepository)
             in test_domain.registry.repositories
         )
 
@@ -98,10 +98,10 @@ class TestRepositoryRegistration:
         )
         assert (
             "ALL"
-            in test_domain.providers._repositories[fully_qualified_name(GenericUser)]
+            in test_domain.providers._repositories[_fully_qualified_name(GenericUser)]
         )
         assert (
-            test_domain.providers._repositories[fully_qualified_name(GenericUser)][
+            test_domain.providers._repositories[_fully_qualified_name(GenericUser)][
                 "ALL"
             ].__name__
             == "GenericUserRepository"

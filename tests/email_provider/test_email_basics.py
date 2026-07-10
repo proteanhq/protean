@@ -19,7 +19,7 @@ import pytest
 
 from protean.core.email import BaseEmail
 from protean.exceptions import InsufficientDataError, InvalidDataError, ValidationError
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.reflection import _FIELDS
 
 
@@ -251,11 +251,11 @@ class TestEmailFieldsBridge:
 class TestEmailRegistration:
     def test_register_email(self, test_domain):
         test_domain.register(NotificationEmail)
-        assert fully_qualified_name(NotificationEmail) in test_domain.registry.emails
+        assert _fully_qualified_name(NotificationEmail) in test_domain.registry.emails
 
     def test_register_welcome_email(self, test_domain):
         test_domain.register(WelcomeEmail)
-        assert fully_qualified_name(WelcomeEmail) in test_domain.registry.emails
+        assert _fully_qualified_name(WelcomeEmail) in test_domain.registry.emails
 
 
 # ---------------------------------------------------------------------------
