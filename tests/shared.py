@@ -3,6 +3,7 @@
 import contextlib
 import os
 import shutil
+import stat
 import sys
 import tempfile
 from collections.abc import Iterator
@@ -84,7 +85,18 @@ def isolated_filesystem() -> Iterator[str]:
         yield temp_dir
     finally:
         os.chdir(cwd)
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        try:
+            shutil.rmtree(temp_dir)
+        except OSError:
+            # An entry may have been made read-only during the test; make the
+            # tree writable and retry once so cleanup is reliable rather than
+            # silently skipped. A genuine failure then surfaces instead of being
+            # swallowed.
+            for root, dirs, files in os.walk(temp_dir):
+                for name in (*dirs, *files):
+                    with contextlib.suppress(OSError):
+                        os.chmod(os.path.join(root, name), stat.S_IRWXU)
+            shutil.rmtree(temp_dir)
 
 
 def change_working_directory_to(path):
