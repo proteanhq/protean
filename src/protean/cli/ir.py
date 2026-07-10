@@ -626,7 +626,7 @@ def _print_check_text(result: StalenessResult, protean_dir: str = ".protean") ->
             "[yellow]IR is stale — domain has changed since last materialization.[/yellow]"
         )
         if result.stored_checksum:
-            print(f"  stored:  {result.stored_checksum[:16]}…")
+            print(f"  stored:  {escape(result.stored_checksum[:16])}…")
         if result.domain_checksum:
             print(f"  current: {result.domain_checksum[:16]}…")
         if result.ir_file:

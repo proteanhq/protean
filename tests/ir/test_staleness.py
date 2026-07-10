@@ -572,6 +572,25 @@ class TestCheckCLIText:
         assert isinstance(result.exception, SystemExit)
         assert "version mismatch" in result.output.lower()
 
+    def test_malformed_stale_checksum_markup_does_not_crash(self):
+        # A stored checksum carrying rich-markup syntax must not raise
+        # MarkupError from the STALE branch of _print_check_text — it is
+        # escaped and exits 1.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": SCHEMA_VERSION, "checksum": "[/bold]sha256:outdated"},
+        )
+        result = runner.invoke(
+            app,
+            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
+        )
+        # STALE also exits 1, so exit_code alone can't distinguish the bug —
+        # check that the exception is a clean typer.Exit (SystemExit), not an
+        # uncaught MarkupError.
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)
+        assert "stale" in result.output.lower()
+
 
 # ---------------------------------------------------------------------------
 # TestCheckCLIJSON — `protean ir check --format json`

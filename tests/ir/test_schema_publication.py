@@ -56,6 +56,10 @@ class TestSchemaPublication:
     def test_published_copy_is_byte_identical(self, runtime_schema: Path):
         version_dir = runtime_schema.parent.name
         published = _PUBLISHED_SCHEMA_ROOT / version_dir / "schema.json"
+        assert published.exists(), (
+            f"Runtime schema {runtime_schema} has no published copy at {published}. "
+            "Publish it by copying the runtime schema verbatim."
+        )
         assert published.read_bytes() == runtime_schema.read_bytes(), (
             f"Published schema {published} has drifted from runtime schema "
             f"{runtime_schema}. Re-sync by copying the runtime schema verbatim."
