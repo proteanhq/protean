@@ -180,7 +180,7 @@ mutation = [
 # Imports must live at module top. Function-local imports are allowed only for
 # verified reasons (optional dep, monkeypatch test seam, lazy CLI startup,
 # PEP-562 export, circular-import breaker, dynamic module) and must carry an
-# explicit `# noqa: PLC0415`. See CLAUDE.md > Common Pitfalls.
+# explicit `# noqa: PLC0415`.
 extend-select = ["PLC0415"]
 
 [tool.ruff.lint.per-file-ignores]

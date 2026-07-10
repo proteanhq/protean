@@ -179,6 +179,33 @@ domain logic hasn't changed.
 
 ---
 
+## What belongs in Protean
+
+Protean is opinionated on purpose. It guides you toward correct DDD patterns
+rather than accommodating every possible feature, and the same filter decides
+what lives in the framework itself:
+
+- **Domain concerns belong in the framework; infrastructure concerns belong in
+  adapters.** Schema migrations, document-style persistence, and storage-specific
+  optimizations are adapter responsibilities. Protean defines the port contracts,
+  and each adapter owns its own infrastructure.
+- **DDD purity over convenience.** Aggregates have a single surrogate identity
+  rather than composite keys. Validation lives in the domain layer as invariants,
+  not in the database. Hard deletion is an infrastructure escape hatch, not a
+  domain operation.
+- **No abstractions over technology-specific concerns.** If a feature only makes
+  sense for one adapter (Alembic migrations for SQLAlchemy, say), it does not
+  belong in core Protean. The Ports and Adapters pattern exists precisely to keep
+  those concerns separate.
+- **Coherence over feature breadth.** Fixing inconsistencies, unifying patterns,
+  and improving type safety come before adding new capabilities. A smaller,
+  coherent framework serves you better than a large, sprawling one.
+
+These are the boundaries a change is measured against, which is why a new feature
+often begins as a conversation about whether it belongs in the framework at all.
+
+---
+
 ## Deep dives
 
 - [The Always-Valid Domain](always-valid.md) -- How four validation layers

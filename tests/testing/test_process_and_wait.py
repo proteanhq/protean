@@ -266,8 +266,8 @@ class TestProcessAndWaitAsync:
 class TestProcessAndWaitMixedMode:
     """Sync command handling with async event processing (and the reverse).
 
-    A new config combination is a distinct entry point (CLAUDE.md: "config
-    keys reach every entry point"), so both crossed modes are exercised.
+    A new config combination is a distinct entry point (config keys must reach
+    every entry point), so both crossed modes are exercised.
     """
 
     def test_sync_command_async_events(self, test_domain, order_id):
