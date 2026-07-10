@@ -31,13 +31,13 @@ jobs:
       # Service images are pulled from this org's public GHCR mirror (populated
       # by mirror-images.yml), not Docker Hub. Public GHCR packages need no auth,
       # so there is no login step and fork PRs pull them with zero secrets.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
       - name: Cache Docker images
         id: docker-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/docker-images
           key: docker-images-${{ runner.os }}-v3
@@ -146,12 +146,12 @@ jobs:
           echo "All services are ready!"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -203,7 +203,7 @@ jobs:
 
       - name: CodeCOV
         if: success() || failure()
-        uses: codecov/codecov-action@v5.4.2
+        uses: codecov/codecov-action@v7.0.0
         with:
           files: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -216,17 +216,17 @@ jobs:
     # pyproject.toml — a clean run is green and NEW errors outside the quarantine
     # fail CI. The quarantine shrinks per type-safety sub-issue (see ADR-0018).
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -246,17 +246,17 @@ jobs:
     # `--check`, never applied. Uses the ruff pinned in uv.lock so CI and local
     # runs stay on the same version.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -296,18 +296,18 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
 
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           key: mkdocs-material-${{ env.cache_id }}
           path: .cache
@@ -321,10 +321,10 @@ jobs:
         run: uv run mkdocs build
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
