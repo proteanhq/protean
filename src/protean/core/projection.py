@@ -20,7 +20,7 @@ from protean.fields.association import Association
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
-    derive_element_class,
+    _derive_element_class,
     inflection,
 )
 from protean.utils.container import DerivedDefault, Element, OptionsMixin
@@ -465,9 +465,9 @@ def projection_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
     base_cls = BaseProjection
 
     # Derive the projection class from the base projection class
-    element_cls = derive_element_class(element_cls, base_cls, **opts)
+    element_cls = _derive_element_class(element_cls, base_cls, **opts)
 
-    # ``derive_element_class`` returns a ``BaseProjection`` subclass; narrow so
+    # ``_derive_element_class`` returns a ``BaseProjection`` subclass; narrow so
     # the projection-only surface (``meta_``) is visible to the type checker.
     projection_cls = cast(type[BaseProjection], element_cls)
 

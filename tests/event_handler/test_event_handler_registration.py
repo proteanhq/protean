@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 
 class User(BaseAggregate):
@@ -27,7 +27,7 @@ def test_registering_an_event_handler_manually(test_domain):
         pytest.fail("Failed to register an Event Handler manually")
 
     assert (
-        fully_qualified_name(UserEventHandlers) in test_domain.registry.event_handlers
+        _fully_qualified_name(UserEventHandlers) in test_domain.registry.event_handlers
     )
 
 
@@ -42,5 +42,5 @@ def test_registering_an_event_handler_via_annotation(test_domain):
         pytest.fail("Failed to register an Event Handler via annotation")
 
     assert (
-        fully_qualified_name(UserEventHandlers) in test_domain.registry.event_handlers
+        _fully_qualified_name(UserEventHandlers) in test_domain.registry.event_handlers
     )

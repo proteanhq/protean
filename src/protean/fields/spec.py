@@ -21,7 +21,7 @@ from protean.fields.base import (
     EMPTY_VALUES,
     normalize_field_renamed_from,
 )
-from protean.utils import _normalize_deprecated, generate_identity
+from protean.utils import _normalize_deprecated, _generate_identity
 
 
 # ---------------------------------------------------------------------------
@@ -213,14 +213,14 @@ class FieldSpec:
                     # actual value generation; default to None here.
                     kwargs["default"] = None
                 elif self.field_kind in ("identifier", "auto"):
-                    # Use generate_identity with identity_* options from Auto()
+                    # Use _generate_identity with identity_* options from Auto()
                     _id_strategy = getattr(self, "_identity_strategy", None)
                     _id_function = getattr(self, "_identity_function", None)
                     _id_type = getattr(self, "_identity_type", None)
 
                     kwargs["default_factory"] = (
                         lambda s=_id_strategy, f=_id_function, t=_id_type: (
-                            generate_identity(
+                            _generate_identity(
                                 identity_strategy=s,
                                 identity_function=f,
                                 identity_type=t,

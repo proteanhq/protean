@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import NotSupportedError
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 
 class NotifySSOSubscriber(BaseSubscriber):
@@ -29,7 +29,7 @@ class TestSubscriberRegistration:
         test_domain.register(NotifySSOSubscriber, stream="person_added")
 
         assert (
-            fully_qualified_name(NotifySSOSubscriber)
+            _fully_qualified_name(NotifySSOSubscriber)
             in test_domain.registry.subscribers
         )
 
@@ -40,6 +40,6 @@ class TestSubscriberRegistration:
                 pass
 
         assert (
-            fully_qualified_name(AnnotatedSubscriber)
+            _fully_qualified_name(AnnotatedSubscriber)
             in test_domain.registry.subscribers
         )

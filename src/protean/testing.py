@@ -113,6 +113,26 @@ from protean.utils.globals import current_domain
 from protean.utils.reflection import _ID_FIELD_NAME
 from protean.utils.sync_dispatch import dispatch_events_sync
 
+# The public testing DSL surface. ``import *`` yields exactly these names,
+# keeping incidental imports (``Message``, ``fqn``, ``warnings``, …) and the
+# deprecated ``assert_valid``/``assert_invalid`` shims out of the star-export.
+# The returned ``*Result``/``EventLog``/``EventSequence`` types stay in because
+# callers type-annotate against them.
+__all__ = [
+    "given",
+    "EventLog",
+    "AggregateResult",
+    "ProcessResult",
+    "drain",
+    "process_and_wait",
+    "EventSequence",
+    "ProcessManagerResult",
+    "ProjectionResult",
+    "assert_chain",
+    "assert_snapshot",
+    "get_generic_test_dir",
+]
+
 
 def _event_store_of(domain: "Domain") -> "BaseEventStore":
     """Return the domain's initialised event store, narrowing away ``None``.

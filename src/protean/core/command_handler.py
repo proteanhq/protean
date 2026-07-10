@@ -47,7 +47,7 @@ Example:
 from typing import Any, ClassVar, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.mixins import HandlerMixin
 
@@ -147,7 +147,7 @@ def derive_command_stream_category(aggregate_cls: Any) -> str:
 def command_handler_factory(
     element_cls: type[_T], domain: Any, **opts: Any
 ) -> type[_T]:
-    element_cls = derive_element_class(element_cls, BaseCommandHandler, **opts)
+    element_cls = _derive_element_class(element_cls, BaseCommandHandler, **opts)
 
     if not (element_cls.meta_.part_of):
         raise IncorrectUsageError(

@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Integer, String
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.reflection import fields
 
 
@@ -78,7 +78,7 @@ class TestCommandRegistration:
         test_domain.register(UserRegistrationCommand, part_of=User)
 
         assert (
-            fully_qualified_name(UserRegistrationCommand)
+            _fully_qualified_name(UserRegistrationCommand)
             in test_domain.registry.commands
         )
 
@@ -89,7 +89,8 @@ class TestCommandRegistration:
             new_password: String(required=True, max_length=255)
 
         assert (
-            fully_qualified_name(ChangePasswordCommand) in test_domain.registry.commands
+            _fully_qualified_name(ChangePasswordCommand)
+            in test_domain.registry.commands
         )
 
 

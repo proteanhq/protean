@@ -25,7 +25,7 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 
 
@@ -121,7 +121,7 @@ class TestProjectionStructure:
 # ---------------------------------------------------------------------------
 class TestProjectionRegistration:
     def test_manual_registration(self, test_domain):
-        assert fully_qualified_name(Person) in test_domain.registry.projections
+        assert _fully_qualified_name(Person) in test_domain.registry.projections
 
     def test_id_field_mandatory(self, test_domain):
         with pytest.raises(IncorrectUsageError) as exc:
@@ -142,7 +142,7 @@ class TestProjectionRegistration:
 
         Regression test: __pydantic_init_subclass__ skipped __track_id_field()
         because the inherited meta_.abstract was True at class-creation time.
-        derive_element_class must re-trigger id tracking when clearing the flag.
+        _derive_element_class must re-trigger id tracking when clearing the flag.
         """
 
         @test_domain.projection(abstract=True)

@@ -76,7 +76,7 @@ class TestEquality:
     """Test __eq__ on process managers.
 
     OrderFulfillmentPM already subclasses BaseProcessManager so
-    derive_element_class modifies it in-place without adding an auto id field.
+    _derive_element_class modifies it in-place without adding an auto id field.
     Without an explicit identifier field, __eq__ always returns False.
     """
 

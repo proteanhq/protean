@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String, Text
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 from tests.adapters.database_model.dict_model.elements import (
     Provider,
@@ -107,7 +107,7 @@ class TestMultipleModelsPerAggregate:
         test_domain.register(OrderMemoryModel, part_of=Order, database="memory")
         test_domain.register(OrderOtherModel, part_of=Order, database="postgresql")
 
-        entity_key = fully_qualified_name(Order)
+        entity_key = _fully_qualified_name(Order)
         assert "memory" in test_domain._database_models[entity_key]
         assert "postgresql" in test_domain._database_models[entity_key]
         assert test_domain._database_models[entity_key]["memory"] is OrderMemoryModel

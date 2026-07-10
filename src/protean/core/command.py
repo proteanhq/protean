@@ -13,7 +13,7 @@ from protean.exceptions import (
 )
 from protean.utils import (
     DomainObjects,
-    derive_element_class,
+    _derive_element_class,
     fqn,
 )
 from protean.utils.eventing import (
@@ -30,7 +30,7 @@ from protean.utils.globals import g
 # language. Deprecated in 0.17 (warn + ``protean check`` diagnostic), removed at
 # 1.0 where ``command_factory`` will raise ``IncorrectUsageError`` naming the
 # option instead of dropping it. (``is_fact_event`` is framework-internal and
-# rejected outright by ``derive_element_class``; it is not deprecated here.)
+# rejected outright by ``_derive_element_class``; it is not deprecated here.)
 _DEPRECATED_COMMAND_OPTIONS: tuple[str, ...] = ("published",)
 
 
@@ -258,7 +258,7 @@ def command_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]
     base_cls = BaseCommand
 
     # Warn-and-drop options that commands used to inherit but never honoured.
-    # This MUST run before ``derive_element_class``: once these options are no
+    # This MUST run before ``_derive_element_class``: once these options are no
     # longer in ``BaseCommand._default_options``, that call would raise
     # ``ConfigurationError("Unknown option(s) ...")`` and skip the deprecation
     # window. Both the ``@domain.command`` decorator and ``domain.register()``
@@ -277,7 +277,7 @@ def command_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]
             opts.pop(opt)
             deprecated_used.append(opt)
 
-    element_cls = derive_element_class(element_cls, base_cls, **opts)
+    element_cls = _derive_element_class(element_cls, base_cls, **opts)
 
     # Record the dropped options on the class so ``protean check`` can surface
     # them as a ``DEPRECATED_OPTION`` diagnostic. The runtime warning above fires
@@ -288,7 +288,7 @@ def command_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]
     # inherited from a base command class.
     element_cls._deprecated_options = tuple(deprecated_used)  # type: ignore[attr-defined]
 
-    # `derive_element_class` returns a subclass of ``base_cls`` (here
+    # `_derive_element_class` returns a subclass of ``base_cls`` (here
     # ``BaseCommand``); narrow to expose ``meta_`` to the type checkers. The
     # unbounded ``_T`` return contract is preserved via ``element_cls`` below.
     command_cls = cast("type[BaseCommand]", element_cls)

@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Integer, String, Text
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 
 class Person(BaseAggregate):
@@ -38,7 +38,9 @@ class TestDatabaseModelInitialization:
         test_domain.register(PersonModel, part_of=Person)
 
         # Check that model is registered with domain
-        assert fully_qualified_name(PersonModel) in test_domain.registry.database_models
+        assert (
+            _fully_qualified_name(PersonModel) in test_domain.registry.database_models
+        )
 
     def test_database_model_with_subset_of_fields_is_valid(self, test_domain):
         class Order(BaseAggregate):
@@ -51,7 +53,7 @@ class TestDatabaseModelInitialization:
         test_domain.register(Order)
         test_domain.register(OrderModel, part_of=Order)
 
-        assert fully_qualified_name(OrderModel) in test_domain.registry.database_models
+        assert _fully_qualified_name(OrderModel) in test_domain.registry.database_models
 
     def test_database_model_with_extra_fields_raises_error(self, test_domain):
         class Order(BaseAggregate):

@@ -1,6 +1,6 @@
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 
 class TestAggregateRegistration:
@@ -10,7 +10,7 @@ class TestAggregateRegistration:
 
         test_domain.register(User)
 
-        assert fully_qualified_name(User) in test_domain.registry.aggregates
+        assert _fully_qualified_name(User) in test_domain.registry.aggregates
 
     def test_settings_in_manual_registration(self, test_domain):
         class User(BaseAggregate):

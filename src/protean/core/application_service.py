@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from typing import TypeVar
 
@@ -62,7 +62,7 @@ _T = TypeVar("_T", bound=BaseApplicationService)
 def application_service_factory(
     element_cls: type[_T], domain: Any, **opts: Any
 ) -> type[_T]:
-    element_cls = derive_element_class(element_cls, BaseApplicationService, **opts)
+    element_cls = _derive_element_class(element_cls, BaseApplicationService, **opts)
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(

@@ -49,8 +49,8 @@ from protean.fields.tempdata import AssociationCache
 from protean.fields.embedded import _ShadowField
 from protean.utils import (
     DomainObjects,
-    derive_element_class,
-    generate_identity,
+    _derive_element_class,
+    _generate_identity,
     inflection,
 )
 from protean.utils.container import DerivedDefault, Element, OptionsMixin
@@ -338,7 +338,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 cls,
                 "id",
                 PydanticField(
-                    default_factory=generate_identity,
+                    default_factory=_generate_identity,
                     json_schema_extra={
                         "identifier": True,
                         "_auto_generated": True,
@@ -1146,9 +1146,9 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     base_cls = BaseEntity
 
     # Derive the entity class from the base entity class
-    element_cls = derive_element_class(element_cls, base_cls, **opts)
+    element_cls = _derive_element_class(element_cls, base_cls, **opts)
 
-    # ``derive_element_class`` returns a ``BaseEntity`` subclass; narrow so the
+    # ``_derive_element_class`` returns a ``BaseEntity`` subclass; narrow so the
     # entity-only surface (``meta_``, ``_invariants``, ``declared_fields``) is
     # visible to static checkers. Mirrors ``value_object_factory``.
     entity_cls = cast(type[BaseEntity], element_cls)

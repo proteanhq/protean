@@ -9,7 +9,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import DateTime, Identifier, String, Text
 from protean.fields.basic import Boolean
-from protean.utils import utcnow_func
+from protean.utils import _utcnow_func
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
@@ -30,7 +30,7 @@ class Created(BaseEvent):
 
 class Published(BaseEvent):
     id = Identifier(required=True)
-    published_time = DateTime(default=utcnow_func)
+    published_time = DateTime(default=_utcnow_func)
 
 
 class Post(BaseAggregate):

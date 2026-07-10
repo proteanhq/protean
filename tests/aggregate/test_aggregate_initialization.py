@@ -6,7 +6,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.exceptions import NotSupportedError, ValidationError
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.reflection import attributes, declared_fields
 
 from .elements import (
@@ -33,7 +33,7 @@ class TestAggregateStructure:
 
     def test_successful_aggregate_registration(self, test_domain):
         test_domain.register(Role)
-        assert fully_qualified_name(Role) in test_domain.registry.aggregates
+        assert _fully_qualified_name(Role) in test_domain.registry.aggregates
 
     def test_field_definitions_declared_in_aggregate(self):
         declared_fields_keys = list(

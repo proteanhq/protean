@@ -22,7 +22,7 @@ from protean.exceptions import (
 )
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
 from protean.utils.query import F, Q
@@ -185,7 +185,7 @@ class MemoryProvider(BaseProvider):
     def decorate_database_model_class(
         self, entity_cls: type[typing.Any], database_model_cls: type[typing.Any]
     ) -> type[typing.Any]:
-        cache_key = fully_qualified_name(entity_cls)
+        cache_key = _fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
         if cache_key in self._database_model_classes:
@@ -225,7 +225,7 @@ class MemoryProvider(BaseProvider):
     ) -> type[typing.Any]:
         """Return associated, fully-baked Model class"""
         database_model_cls = None
-        cache_key = fully_qualified_name(entity_cls)
+        cache_key = _fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
         if cache_key in self._database_model_classes:

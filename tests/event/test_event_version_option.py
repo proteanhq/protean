@@ -44,7 +44,7 @@ class TestVersionOption:
 
     def test_version_option_on_plain_class(self, test_domain):
         """`version=N` also works for a plain class that does not subclass
-        `BaseEvent` — the recreation path in `derive_element_class`. (Every
+        `BaseEvent` — the recreation path in `_derive_element_class`. (Every
         other test here uses the mutate path — the one #1159 broke — so this
         guards both branches in one file.)"""
 

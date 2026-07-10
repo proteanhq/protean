@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Protocol, cast
 import inflection
 
 from protean.exceptions import NotSupportedError
-from protean.utils import DomainObjects, fully_qualified_name
+from protean.utils import DomainObjects, _fully_qualified_name
 from protean.utils.container import Element
 
 logger = logging.getLogger(__name__)
@@ -174,7 +174,7 @@ class _DomainRegistry:
         element = cast(_ElementClass, element_cls)
 
         # Element name is always the fully qualified name of the class
-        element_name = fully_qualified_name(element_cls)
+        element_name = _fully_qualified_name(element_cls)
 
         element_dict = self._elements[element.element_type.value]
         if element_name in element_dict:

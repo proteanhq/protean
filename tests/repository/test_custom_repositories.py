@@ -5,7 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.fields import Integer, String
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.globals import current_domain
 
 
@@ -55,7 +55,7 @@ class TestRepositoryConstructionAndRegistration:
         custom_test_domain.repository_for(PersonGeneric)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
-            fully_qualified_name(PersonGeneric)
+            _fully_qualified_name(PersonGeneric)
         ]["ALL"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonGeneric)
 
@@ -68,7 +68,7 @@ class TestRepositoryConstructionAndRegistration:
         custom_test_domain.repository_for(PersonGeneric)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
-            fully_qualified_name(PersonGeneric)
+            _fully_qualified_name(PersonGeneric)
         ]["ALL"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonGeneric)
 
@@ -82,7 +82,7 @@ class TestRepositoryConstructionAndRegistration:
         custom_test_domain.repository_for(PersonSQLite)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
-            fully_qualified_name(PersonSQLite)
+            _fully_qualified_name(PersonSQLite)
         ]["ALL"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
 
@@ -99,7 +99,7 @@ class TestRepositoryConstructionAndRegistration:
         custom_test_domain.repository_for(PersonSQLite)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
-            fully_qualified_name(PersonSQLite)
+            _fully_qualified_name(PersonSQLite)
         ]["sqlite"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
 
@@ -117,7 +117,7 @@ class TestRepositoryConstructionAndRegistration:
         custom_test_domain.repository_for(PersonSQLite)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
-            fully_qualified_name(PersonSQLite)
+            _fully_qualified_name(PersonSQLite)
         ]["sqlite"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
 

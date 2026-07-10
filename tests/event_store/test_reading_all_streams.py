@@ -5,7 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields import DateTime, Identifier, String, Text
-from protean.utils import utcnow_func
+from protean.utils import _utcnow_func
 
 
 class Registered(BaseEvent):
@@ -64,7 +64,7 @@ class Created(BaseEvent):
 
 class Published(BaseEvent):
     id = Identifier(required=True)
-    published_time = DateTime(default=utcnow_func)
+    published_time = DateTime(default=_utcnow_func)
 
 
 class Post(BaseAggregate):

@@ -8,8 +8,8 @@ from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.exceptions import ValidationError
 from protean.utils import (
     DomainObjects,
-    convert_str_values_to_list,
-    derive_element_class,
+    _convert_str_values_to_list,
+    _derive_element_class,
 )
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
@@ -118,11 +118,11 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
 
     def defaults(self) -> None:
         """Initialize email fields, converting string values to lists."""
-        self.to = convert_str_values_to_list(self.to)
-        self.cc = convert_str_values_to_list(self.cc)
-        self.bcc = convert_str_values_to_list(self.bcc)
+        self.to = _convert_str_values_to_list(self.to)
+        self.cc = _convert_str_values_to_list(self.cc)
+        self.bcc = _convert_str_values_to_list(self.bcc)
         self.reply_to = (
-            convert_str_values_to_list(self.reply_to)
+            _convert_str_values_to_list(self.reply_to)
             if self.reply_to
             else self.from_email
         )
@@ -130,9 +130,9 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
     @property
     def recipients(self) -> list[str]:
         """Return list of all recipients (to + cc + bcc)."""
-        to = convert_str_values_to_list(self.to)
-        cc = convert_str_values_to_list(self.cc)
-        bcc = convert_str_values_to_list(self.bcc)
+        to = _convert_str_values_to_list(self.to)
+        cc = _convert_str_values_to_list(self.cc)
+        bcc = _convert_str_values_to_list(self.bcc)
         return [email for email in (to + cc + bcc) if email]
 
     # ------------------------------------------------------------------
@@ -182,4 +182,4 @@ def email_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     # Always route to Pydantic base
     base_cls = BaseEmail
 
-    return derive_element_class(element_cls, base_cls, **opts)
+    return _derive_element_class(element_cls, base_cls, **opts)

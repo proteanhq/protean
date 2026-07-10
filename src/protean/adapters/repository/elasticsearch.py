@@ -37,7 +37,7 @@ from protean.exceptions import (
 )
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import IdentityStrategy, IdentityType, fully_qualified_name
+from protean.utils import IdentityStrategy, IdentityType, _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import F, Q
@@ -857,7 +857,7 @@ class ESProvider(BaseProvider):
         schema_name = self.namespaced_schema_name(
             database_model_cls.derive_schema_name()
         )
-        cache_key = fully_qualified_name(entity_cls)
+        cache_key = _fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
         if cache_key in self._database_model_classes:
@@ -951,7 +951,7 @@ class ESProvider(BaseProvider):
     def construct_database_model_class(self, entity_cls: _Any) -> type[_Any]:
         """Return a fully-baked Model class for a given Entity class"""
         database_model_cls = None
-        cache_key = fully_qualified_name(entity_cls)
+        cache_key = _fully_qualified_name(entity_cls)
         schema_name = self.namespaced_schema_name(entity_cls.meta_.schema_name)
 
         # Return the model class if it was already seen/decorated

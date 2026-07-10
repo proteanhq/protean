@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
 from protean.port.provider import BaseProvider, registry
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -94,7 +94,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         # and is used for all databases.
         database = repository_cls.meta_.database
 
-        aggregate_name = fully_qualified_name(part_of)
+        aggregate_name = _fully_qualified_name(part_of)
 
         self._repositories[aggregate_name][database] = repository_cls
 
@@ -169,7 +169,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         provider = self._providers[provider_name]
         database = provider.__class__.__database__
 
-        aggregate_name = fully_qualified_name(part_of)
+        aggregate_name = _fully_qualified_name(part_of)
 
         # One-time repository registration process for Aggregates
         #

@@ -28,6 +28,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field as PydanticField
 from pydantic.fields import FieldInfo
 
+from protean._deprecation import warn_deprecated
 from protean.exceptions import ConfigurationError
 from protean.utils.container import Options, OptionsMixin
 from protean.utils.globals import current_domain
@@ -79,10 +80,10 @@ def ensure_utc_aware(dt: datetime) -> datetime:
     return dt
 
 
-class TypeMatcher:
+class _TypeMatcher:
     """Allow assertion on object type.
 
-    Ex. mocked_object.assert_called_once_with(TypeMatcher(TargetCls))
+    Ex. mocked_object.assert_called_once_with(_TypeMatcher(TargetCls))
     """
 
     def __init__(self, expected_type: Type[Any]) -> None:
@@ -92,7 +93,7 @@ class TypeMatcher:
         return isinstance(other, self.expected_type)
 
 
-def utcnow_func() -> datetime:
+def _utcnow_func() -> datetime:
     """Return the current time in UTC with timezone information"""
     return datetime.now(UTC)
 
@@ -101,15 +102,15 @@ def get_version() -> str:
     return importlib.metadata.version("protean")
 
 
-def fully_qualified_name(cls: type) -> str:
+def _fully_qualified_name(cls: type) -> str:
     """Return Fully Qualified name along with module"""
     return ".".join([cls.__module__, cls.__qualname__])
 
 
-fqn = fully_qualified_name
+fqn = _fully_qualified_name
 
 
-def convert_str_values_to_list(value: Any) -> list[Any]:
+def _convert_str_values_to_list(value: Any) -> list[Any]:
     if not value:
         return []
     elif isinstance(value, str):
@@ -262,7 +263,7 @@ def _fix_function_class_cell(
 def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
     """Rebind ``__class__`` closure cells in methods after dynamic class creation.
 
-    When a class is recreated via ``type()`` (as in ``derive_element_class`` or
+    When a class is recreated via ``type()`` (as in ``_derive_element_class`` or
     ``clone_class``), copied methods still hold ``__class__`` closure cells
     pointing to the *original* class.  This breaks zero-argument ``super()``
     (PEP 3135).  This function walks the new class's namespace and rewrites
@@ -288,7 +289,7 @@ def _prepare_pydantic_namespace(
 ) -> None:
     """Prepare a class namespace dict for dynamic Pydantic class creation.
 
-    When ``derive_element_class`` routes a plain (non-Pydantic) class to a
+    When ``_derive_element_class`` routes a plain (non-Pydantic) class to a
     Pydantic base, the namespace must be adjusted:
 
     1. ``meta_`` must have a ``ClassVar`` annotation (Pydantic rejects
@@ -365,7 +366,7 @@ def _prepare_pydantic_namespace(
         if not has_id:
             annots["id"] = str | int | UUID
             new_dict["id"] = PydanticField(
-                default_factory=generate_identity,
+                default_factory=_generate_identity,
                 json_schema_extra={
                     "identifier": True,
                     "_auto_generated": True,
@@ -384,7 +385,7 @@ def _track_id_field(cls: type) -> None:
 
     This is a standalone helper that mirrors the ``__track_id_field``
     classmethods on ``BaseEntity`` and ``BaseProjection``.  It is used by
-    :func:`derive_element_class` to re-trigger identity tracking after the
+    :func:`_derive_element_class` to re-trigger identity tracking after the
     ``meta_.abstract`` flag has been cleared.
     """
     id_fields = [
@@ -432,7 +433,7 @@ def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] 
     )
 
 
-def derive_element_class(
+def _derive_element_class(
     element_cls: type[_T],
     base_cls: type[OptionsMixin],
     **opts: Any,
@@ -546,7 +547,7 @@ def derive_element_class(
     return element_cls
 
 
-def generate_identity(
+def _generate_identity(
     identity_strategy: Optional[str] = None,
     identity_function: Callable[[], Any] | None = None,
     identity_type: Optional[str] = None,
@@ -695,16 +696,48 @@ def clone_class(cls: Type[_ElementT], new_name: str) -> Type[_ElementT]:
 
 __all__ = [
     "Cache",
-    "convert_str_values_to_list",
     "Database",
-    "derive_element_class",
     "DomainObjects",
-    "fully_qualified_name",
-    "generate_identity",
-    "get_version",
     "IdentityStrategy",
     "IdentityType",
     "Processing",
-    "TypeMatcher",
-    "utcnow_func",
+    "get_version",
 ]
+
+
+# Plumbing helpers that were historically importable from ``protean.utils`` but
+# are not part of the 1.0 public surface (epic #1102, sub-issue 7). Their live
+# implementations are the underscore-prefixed definitions above; framework code
+# imports those directly and never self-warns. The old public spellings remain
+# importable for one deprecation window through the module ``__getattr__`` below,
+# each emitting ``RemovedInProtean10Warning`` on access.
+_DEPRECATED_PLUMBING: dict[str, Any] = {
+    "derive_element_class": _derive_element_class,
+    "generate_identity": _generate_identity,
+    "fully_qualified_name": _fully_qualified_name,
+    "convert_str_values_to_list": _convert_str_values_to_list,
+    "TypeMatcher": _TypeMatcher,
+    "utcnow_func": _utcnow_func,
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Serve the deprecated ``protean.utils`` plumbing names (PEP 562).
+
+    This fires only when normal attribute lookup misses the module globals, so
+    the underscore-prefixed implementations used throughout the framework never
+    reach here. A deprecated public name warns and returns its implementation;
+    every other unknown attribute raises ``AttributeError`` so ``hasattr``
+    probing and ``--doctest-modules`` collection behave as usual. (``dir()``
+    reads ``__dict__`` and never invokes ``__getattr__``, so the deprecated
+    names do not appear in it — they stay importable, just not enumerable.)
+    """
+    impl = _DEPRECATED_PLUMBING.get(name)
+    if impl is not None:
+        warn_deprecated(
+            f"`protean.utils.{name}`",
+            removal="1.0.0",
+            alternative="It is internal plumbing with no public replacement.",
+        )
+        return impl
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

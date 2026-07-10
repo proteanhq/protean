@@ -62,7 +62,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import IdentityType, fully_qualified_name
+from protean.utils import IdentityType, _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
@@ -1600,7 +1600,7 @@ class SAProvider(BaseProvider):
         self, entity_cls: typing.Any, database_model_cls: typing.Any
     ) -> type:
         schema_name = database_model_cls.derive_schema_name()
-        cache_key = fully_qualified_name(entity_cls)
+        cache_key = _fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
         if cache_key in self._database_model_classes:
@@ -1667,7 +1667,7 @@ class SAProvider(BaseProvider):
     def construct_database_model_class(self, entity_cls: typing.Any) -> type:
         """Return a fully-baked Model class for a given Entity class"""
         database_model_cls = None
-        cache_key = fully_qualified_name(entity_cls)
+        cache_key = _fully_qualified_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
         if cache_key in self._database_model_classes:

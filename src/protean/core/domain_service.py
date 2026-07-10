@@ -6,7 +6,7 @@ from typing import Any, Callable, cast, ClassVar, List, TYPE_CHECKING, TypeVar, 
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,7 @@ def wrap_methods_with_invariant_calls(cls: type[_T]) -> type[_T]:
 
 
 def domain_service_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
-    element_cls = derive_element_class(element_cls, BaseDomainService, **opts)
+    element_cls = _derive_element_class(element_cls, BaseDomainService, **opts)
 
     # The derived class is always a ``BaseDomainService`` subclass at runtime;
     # narrow the unbound ``type[_T]`` typevar so the injected class attributes

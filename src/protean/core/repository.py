@@ -12,8 +12,8 @@ from protean.port.provider import BaseProvider
 from protean.utils import (
     Database,
     DomainObjects,
-    derive_element_class,
-    fully_qualified_name,
+    _derive_element_class,
+    _fully_qualified_name,
 )
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow, g
@@ -71,7 +71,7 @@ class BaseRepository(Element, OptionsMixin):
         # Prefer a model targeting this provider's database type; fall back to a
         # generic model (database=None) if no type-specific one exists.
         entity_models = self._domain._database_models.get(
-            fully_qualified_name(self.meta_.part_of), {}
+            _fully_qualified_name(self.meta_.part_of), {}
         )
         database_type = self._provider.__class__.__database__
         custom_model_cls = entity_models.get(database_type) or entity_models.get(None)
@@ -486,11 +486,11 @@ _T = TypeVar("_T")
 
 
 def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
-    # Pop internal flag before passing opts to derive_element_class,
+    # Pop internal flag before passing opts to _derive_element_class,
     # which validates that all options are known element options.
     auto_constructed = opts.pop("_auto_constructed", False)
 
-    element_cls = derive_element_class(element_cls, BaseRepository, **opts)
+    element_cls = _derive_element_class(element_cls, BaseRepository, **opts)
 
     # The derived class is always a ``BaseRepository`` subclass at runtime;
     # narrow the unbound ``type[_T]`` typevar so the injected ``meta_``

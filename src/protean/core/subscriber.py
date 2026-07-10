@@ -3,7 +3,7 @@ from abc import abstractmethod
 from typing import Any, ClassVar, TYPE_CHECKING, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 
 if TYPE_CHECKING:
@@ -79,7 +79,7 @@ _T = TypeVar("_T", bound=OptionsMixin)
 
 
 def subscriber_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
-    element_cls = derive_element_class(element_cls, BaseSubscriber, **opts)
+    element_cls = _derive_element_class(element_cls, BaseSubscriber, **opts)
 
     if not element_cls.meta_.stream:
         raise IncorrectUsageError(

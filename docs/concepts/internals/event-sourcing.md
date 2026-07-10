@@ -97,7 +97,7 @@ Used by factory methods to create a new ES aggregate with identity:
 1. Calls `_create_for_reconstitution()` to get a blank aggregate
 2. **Enables invariant checks** (`_disable_invariant_checks=False`)
 3. Sets identity — from `identity_kwargs` if provided, otherwise
-   auto-generates via `generate_identity()`
+   auto-generates via `_generate_identity()`
 
 All state beyond identity is populated by the creation event's `@apply`
 handler when the factory calls `raise_()`:

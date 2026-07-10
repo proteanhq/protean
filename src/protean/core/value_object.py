@@ -30,7 +30,7 @@ from protean.fields.embedded import ValueObject as ValueObjectDescriptor
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS, fields as get_fields
 
@@ -342,9 +342,9 @@ def value_object_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
     # Always route to Pydantic base
     base_cls = BaseValueObject
 
-    element_cls = derive_element_class(element_cls, base_cls, **opts)
+    element_cls = _derive_element_class(element_cls, base_cls, **opts)
 
-    # ``derive_element_class`` returns a ``BaseValueObject`` subclass; narrow so the
+    # ``_derive_element_class`` returns a ``BaseValueObject`` subclass; narrow so the
     # ``_invariants`` registry is visible to static checkers.
     vo_cls = cast(type[BaseValueObject], element_cls)
 

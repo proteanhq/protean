@@ -12,7 +12,7 @@ from protean.exceptions import (
 )
 from protean.fields.resolved import ResolvedField
 from protean.fields import Auto, Identifier, Integer, String
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.reflection import (
     _ID_FIELD_NAME,
@@ -153,7 +153,7 @@ class TestProjectionRegistration:
 
         test_domain.register(Comment)
 
-        assert fully_qualified_name(Comment) in test_domain.registry.projections
+        assert _fully_qualified_name(Comment) in test_domain.registry.projections
 
     def test_setting_provider_in_decorator_based_registration(self, test_domain):
         @test_domain.projection
@@ -161,7 +161,7 @@ class TestProjectionRegistration:
             comment_id: Identifier(identifier=True)
             content: String(max_length=500)
 
-        assert fully_qualified_name(Comment) in test_domain.registry.projections
+        assert _fully_qualified_name(Comment) in test_domain.registry.projections
 
     def test_id_field_mandatory_in_projections(self, test_domain):
         with pytest.raises(IncorrectUsageError) as excinfo:

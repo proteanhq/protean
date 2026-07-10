@@ -5,7 +5,7 @@ from protean.core import domain_service
 from protean.core.aggregate import BaseAggregate
 from protean.core.domain_service import BaseDomainService
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import fully_qualified_name
+from protean.utils import _fully_qualified_name
 
 
 class Aggregate1(BaseAggregate):
@@ -50,7 +50,7 @@ def test_that_domain_service_can_be_registered_with_domain(test_domain):
     test_domain.register(perform_something, part_of=[Aggregate1, Aggregate2])
 
     assert (
-        fully_qualified_name(perform_something) in test_domain.registry.domain_services
+        _fully_qualified_name(perform_something) in test_domain.registry.domain_services
     )
 
 
@@ -61,7 +61,7 @@ def test_that_domain_service_can_be_registered_via_annotations(test_domain):
             pass
 
     assert (
-        fully_qualified_name(AnnotatedDomainService)
+        _fully_qualified_name(AnnotatedDomainService)
         in test_domain.registry.domain_services
     )
 
@@ -79,17 +79,17 @@ def test_that_domain_service_is_associated_with_aggregates(test_domain):
     class do_something:
         pass
 
-    assert fully_qualified_name(do_something) in test_domain.registry.domain_services
+    assert _fully_qualified_name(do_something) in test_domain.registry.domain_services
     assert (
         Aggregate3
         in test_domain.registry.domain_services[
-            fully_qualified_name(do_something)
+            _fully_qualified_name(do_something)
         ].cls.meta_.part_of
     )
     assert (
         Aggregate4
         in test_domain.registry.domain_services[
-            fully_qualified_name(do_something)
+            _fully_qualified_name(do_something)
         ].cls.meta_.part_of
     )
 

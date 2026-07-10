@@ -332,7 +332,7 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         # resolved here (at class creation). The `version=` decorator option
         # cannot be — `__init_subclass__` runs before the decorator populates
         # `meta_` — so it is applied later by `_resolve_declared_version`, called
-        # from `derive_element_class`. Record whether `__version__` was declared
+        # from `_derive_element_class`. Record whether `__version__` was declared
         # explicitly (before we default it) so that resolver can reject setting
         # both.
         cls._version_is_explicit = "__version__" in cls.__dict__
@@ -360,7 +360,7 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
     def _resolve_declared_version(cls) -> None:
         """Apply the ``version=`` decorator option to ``__version__``.
 
-        Called from ``derive_element_class`` once ``meta_`` is populated —
+        Called from ``_derive_element_class`` once ``meta_`` is populated —
         ``__init_subclass__`` runs too early to observe the decorator option.
         The class-attribute form (``__version__ = N``) is resolved eagerly in
         ``__init_subclass__``; this method only handles the decorator option and

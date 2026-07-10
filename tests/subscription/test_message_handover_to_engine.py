@@ -9,7 +9,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
-from protean.utils import Processing, TypeMatcher
+from protean.utils import Processing, _TypeMatcher
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 
@@ -83,5 +83,5 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     await subscription.tick()
 
     mock_handle_message.assert_called_once_with(
-        UserEventHandler, TypeMatcher(Message), worker_id=mock.ANY
+        UserEventHandler, _TypeMatcher(Message), worker_id=mock.ANY
     )
