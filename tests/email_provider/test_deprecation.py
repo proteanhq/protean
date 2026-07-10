@@ -20,13 +20,19 @@ from protean._deprecation import (
     ProteanDeprecationWarning,
     RemovedInProtean10Warning,
 )
+from protean.adapters.email.dummy import DummyEmailProvider
 from protean.core.email import BaseEmail
 from protean.exceptions import InsufficientDataError, InvalidDataError
 from protean.utils import fully_qualified_name
 
-# Message the register/send/get/config warnings share must name the removal
-# version; the email token appears in every subject.
-_MATCH = r"deprecated.*v1\.0\.0"
+# Message the register/send/get/config warnings share must name the *email*
+# subject and the removal version — pinning ``email`` keeps these tests from
+# passing on some unrelated future v1.0.0 deprecation. Every email subject
+# (``@domain.email``, ``send_email()``, ``get_email_provider()``,
+# ``email_providers``) contains the ``email`` token.
+_MATCH = r"email.*deprecated.*v1\.0\.0"
+# The config warning additionally names the ``email_providers`` block.
+_CONFIG_MATCH = r"email_providers.*deprecated.*v1\.0\.0"
 
 
 class WelcomeEmail(BaseEmail):
@@ -87,7 +93,9 @@ class TestEmailOperationsDeprecated:
         with pytest.warns(RemovedInProtean10Warning, match=_MATCH):
             provider = test_domain.get_email_provider("default")
 
-        assert provider is not None
+        # The deprecated façade still resolves the real provider, not just
+        # "something non-None".
+        assert isinstance(provider, DummyEmailProvider)
 
 
 @pytest.mark.no_test_domain
@@ -95,7 +103,7 @@ class TestEmailConfigDeprecated:
     """A non-default ``email_providers`` block warns; the default stays silent."""
 
     def test_non_default_email_config_warns(self):
-        with pytest.warns(RemovedInProtean10Warning, match=_MATCH):
+        with pytest.warns(RemovedInProtean10Warning, match=_CONFIG_MATCH):
             domain = Domain(
                 name="CustomEmail",
                 config={
@@ -124,10 +132,13 @@ class TestEmailConfigDeprecated:
             warnings.simplefilter("always")
             Domain(name="DefaultEmail", config={})
 
-        email_warnings = [
-            w
+        # Filter on the category, not the message text: coupling to the exact
+        # subject wording would let a reworded spurious warning slip through and
+        # rot this guard into a tautology. Constructing a default domain must
+        # emit no Protean deprecation warning at all.
+        deprecations = [
+            str(w.message)
             for w in caught
             if isinstance(w.message, ProteanDeprecationWarning)
-            and "email_providers" in str(w.message).lower()
         ]
-        assert email_warnings == []
+        assert deprecations == []

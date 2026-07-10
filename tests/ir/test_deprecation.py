@@ -1402,6 +1402,31 @@ class TestIRDiagnosticsEmailDeprecated:
         assert "WelcomeMail" in email_diags[0]["message"]
         assert "v1.0.0" in email_diags[0]["message"]
 
+    def test_multiple_registered_emails_yield_one_diagnostic_each(self) -> None:
+        """One diagnostic *per* email element — guards against a regression that
+        appends a single diagnostic regardless of how many are registered."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            @self.domain.email
+            class WelcomeMail:
+                pass
+
+            @self.domain.email
+            class GoodbyeMail:
+                pass
+
+        self.domain.init(traverse=False)
+        ir = IRBuilder(self.domain).build()
+
+        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
+        assert len(email_diags) == 2
+        messages = " ".join(d["message"] for d in email_diags)
+        assert "WelcomeMail" in messages
+        assert "GoodbyeMail" in messages
+
     def test_no_email_no_diagnostic(self) -> None:
         @self.domain.aggregate
         class Order:
