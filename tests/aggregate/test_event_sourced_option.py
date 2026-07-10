@@ -17,6 +17,7 @@ from protean._deprecation import (
     RemovedInProtean10Warning,
 )
 from protean.core.aggregate import BaseAggregate
+from protean.domain import Domain
 from protean.fields import Integer, String
 
 
@@ -71,7 +72,10 @@ class TestEventSourcedCanonicalOption:
 
 class TestIsEventSourcedAlias:
     def test_alias_still_sets_internal_flag(self, test_domain):
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(
+            RemovedInProtean10Warning,
+            match=r"Use `event_sourced` instead\. Will be removed in v1\.0\.0",
+        ):
 
             @test_domain.aggregate(is_event_sourced=True)
             class Person(BaseAggregate):
@@ -99,6 +103,27 @@ class TestIsEventSourcedAlias:
 
         assert Person.meta_.is_event_sourced is True
 
+    def test_canonical_wins_when_both_supplied_reverse(self, test_domain):
+        # The reverse precedence: canonical `event_sourced=False` must win over
+        # `is_event_sourced=True`, guarding against a "canonical only overrides
+        # when truthy" bug that would let the alias win here.
+        with pytest.warns(RemovedInProtean10Warning):
+
+            @test_domain.aggregate(event_sourced=False, is_event_sourced=True)
+            class Person(BaseAggregate):
+                name: String()
+
+        assert Person.meta_.is_event_sourced is False
+
+    def test_non_bool_value_coerced_to_bool(self, test_domain):
+        # `event_sourced=None` must land on `meta_` as the documented `bool`
+        # (False), not leak `None` onto the IR wire node.
+        @test_domain.aggregate(event_sourced=None)
+        class Person(BaseAggregate):
+            name: String()
+
+        assert Person.meta_.is_event_sourced is False
+
 
 class TestDeprecatedOptionDiagnostic:
     def test_alias_yields_deprecated_option_diagnostic(self, test_domain):
@@ -118,6 +143,28 @@ class TestDeprecatedOptionDiagnostic:
         test_domain.register(_alias_aggregate(), event_sourced=True)
 
         report = test_domain.check(traverse=False)
+
+        diagnostics = [
+            d for d in report["diagnostics"] if d["code"] == "DEPRECATED_OPTION"
+        ]
+        assert diagnostics == []
+
+    @pytest.mark.no_test_domain
+    def test_re_registering_same_class_with_canonical_clears_marker(self):
+        # The same aggregate class object can be shared across bounded contexts.
+        # Registering it with the alias in one domain must not leave a stale
+        # marker that makes a second domain (using the canonical spelling)
+        # falsely report the already-migrated code as deprecated.
+        widget = _alias_aggregate()
+
+        domain_a = Domain(name="AliasDomain", root_path=__file__)
+        with pytest.warns(RemovedInProtean10Warning):
+            domain_a.register(widget, is_event_sourced=True)
+        domain_a.check(traverse=False)
+
+        domain_b = Domain(name="CanonicalDomain", root_path=__file__)
+        domain_b.register(widget, event_sourced=True)
+        report = domain_b.check(traverse=False)
 
         diagnostics = [
             d for d in report["diagnostics"] if d["code"] == "DEPRECATED_OPTION"

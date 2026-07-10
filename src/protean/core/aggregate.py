@@ -647,6 +647,10 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     if "event_sourced" in opts:
         # Canonical wins if both are supplied.
         opts["is_event_sourced"] = opts.pop("event_sourced")
+    if "is_event_sourced" in opts:
+        # Coerce to the documented `bool` contract so a value like `None` does
+        # not leak onto `meta_`/the IR wire node (and suppress the default).
+        opts["is_event_sourced"] = bool(opts["is_event_sourced"])
 
     # Always route to Pydantic base
     base_cls = BaseAggregate
@@ -662,9 +666,11 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
 
     # Record the deprecated alias usage for the `DEPRECATED_OPTION` check
     # diagnostic. Set on the derived class (which `derive_element_class` may
-    # have rebuilt) so the IR builder can read it off the registry.
-    if alias_used:
-        aggregate_cls._deprecated_options_used = ("is_event_sourced",)
+    # have rebuilt) so the IR builder can read it off the registry. Always
+    # assign — the same class object can be re-registered (e.g. shared across
+    # bounded contexts) with the canonical spelling, and a stale marker would
+    # make `check()` falsely flag already-migrated code.
+    aggregate_cls._deprecated_options_used = ("is_event_sourced",) if alias_used else ()
 
     # Iterate through methods marked as `@invariant` and record them for later use
     for klass in aggregate_cls.__mro__:

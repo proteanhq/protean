@@ -40,6 +40,9 @@ class TestIsFactEventRejected:
                 name: String()
 
         assert "is_fact_event" in str(exc.value)
+        # Assert the internal-option branch fired, not the generic
+        # unknown-option branch (whose message also contains "is_fact_event").
+        assert "framework" in str(exc.value)
 
     def test_register_command_with_is_fact_event_raises(self, test_domain):
         class SomeCommand(BaseCommand):
@@ -50,6 +53,9 @@ class TestIsFactEventRejected:
             test_domain.register(SomeCommand, part_of=User, is_fact_event=True)
 
         assert "is_fact_event" in str(exc.value)
+        # Assert the internal-option branch fired, not the generic
+        # unknown-option branch (whose message also contains "is_fact_event").
+        assert "framework" in str(exc.value)
 
 
 class TestIsFactEventDefaultPreserved:
