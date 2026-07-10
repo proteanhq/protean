@@ -12,6 +12,7 @@ Each positive test also asserts the machinery still works after warning
 """
 
 import warnings
+from typing import Any
 
 import pytest
 
@@ -39,7 +40,7 @@ class WelcomeEmail(BaseEmail):
     SUBJECT = "Welcome!"
     TEMPLATE = "Hi %NAME%, welcome!"
 
-    def __init__(self, to=None, data=None):
+    def __init__(self, to: Any = None, data: Any = None) -> None:
         if to is None or data is None:
             raise InsufficientDataError("`to` and `data` fields are mandatory")
         if not isinstance(data, dict):

@@ -1034,7 +1034,7 @@ class Domain:
         # email elements, so this only fires on user code.
         if element_type == DomainObjects.EMAIL:
             warn_deprecated(
-                "The `@domain.email` element",
+                "The email element",
                 removal="1.0.0",
                 alternative=_EMAIL_DEPRECATION_ALTERNATIVE,
             )
