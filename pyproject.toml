@@ -153,7 +153,7 @@ docs = [
     "mkdocs>=1.6.1,<2",
     "mkdocs-material>=9.7.6",
     "mdx-include>=1.4.2",
-    "mkdocstrings[python]>=1.0.4,<2",
+    "mkdocstrings[python]>=1.0.5,<2",
     "pymdown-extensions>=11.0.1",
 ]
 types = [
