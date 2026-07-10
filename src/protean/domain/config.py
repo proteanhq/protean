@@ -183,6 +183,15 @@ def _default_config() -> dict[str, Any]:
                 # ...) so several engines can share a host without colliding.
                 "port_auto_increment": False,
             },
+            # Two-lane event/command routing: production messages flow through
+            # the primary stream while bulk/migration messages are routed to a
+            # separate backfill stream, mirrored across outbox, stream
+            # subscription, and DLQ processing.
+            "priority_lanes": {
+                "enabled": False,  # Off by default — opt in to two-lane routing
+                "threshold": 0,  # Priority strictly below this routes to the backfill lane
+                "backfill_suffix": "backfill",  # Suffix for the backfill stream/DLQ
+            },
         },
         "idempotency": {
             "redis_url": None,  # e.g. "redis://localhost:6379/5"

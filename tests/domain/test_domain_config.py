@@ -2,8 +2,11 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
+from protean.domain.config import Config2, _default_config
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto
+from protean.server.outbox_processor import OutboxProcessor
+from protean.server.subscription.stream_subscription import StreamSubscription
 
 
 def test_invalid_identity_strategy():
@@ -34,3 +37,94 @@ def test_error_on_no_identity_function_if_strategy_is_function():
         domain.init(traverse=False)
 
     assert "no Identity Function is provided" in exc.value.args[0]["element"]
+
+
+class TestPriorityLanesDefaults:
+    """`server.priority_lanes` defaults must match the runtime `.get()`
+    fallbacks in outbox_processor.py, stream_subscription.py, and dlq.py so
+    that adding an explicit default is behavior-preserving."""
+
+    def test_default_config_has_priority_lanes(self):
+        config = _default_config()
+        assert config["server"]["priority_lanes"] == {
+            "enabled": False,
+            "threshold": 0,
+            "backfill_suffix": "backfill",
+        }
+
+    def test_partial_override_merges_with_defaults(self):
+        """A user overriding only `enabled` must still get the default
+        `threshold`/`backfill_suffix` — proving `_deep_merge` preserves the
+        unset keys instead of replacing the whole sub-dict."""
+        config = Config2.load_from_dict(
+            {"server": {"priority_lanes": {"enabled": True}}}
+        )
+
+        assert config["server"]["priority_lanes"] == {
+            "enabled": True,
+            "threshold": 0,
+            "backfill_suffix": "backfill",
+        }
+
+    @pytest.mark.no_test_domain
+    def test_domain_with_no_priority_lanes_override_initializes(self):
+        """The always-present default must pass `_validate_priority_lanes_config`
+        for every domain, not just ones that configure it explicitly."""
+        domain = Domain(__name__, "TestNoPriorityLanesOverride")
+
+        class AutoTest(BaseAggregate):
+            auto_field: Auto(identifier=True)
+
+        domain.register(AutoTest)
+        domain.init(traverse=False)  # Should not raise
+
+        assert domain.config["server"]["priority_lanes"] == {
+            "enabled": False,
+            "threshold": 0,
+            "backfill_suffix": "backfill",
+        }
+
+
+class _MockEngine:
+    """Minimal stand-in for `Engine` — enough for `OutboxProcessor` /
+    `StreamSubscription.__init__` to read `engine.domain.config` and
+    `engine.loop`."""
+
+    def __init__(self, domain):
+        self.domain = domain
+        self.loop = None
+
+
+class _FakeHandler:
+    """Minimal stand-in for an event/command handler class."""
+
+    __name__ = "FakeHandler"
+    __module__ = "tests.domain"
+    __qualname__ = "FakeHandler"
+
+
+@pytest.mark.no_test_domain
+class TestPriorityLanesConsumersReadDefault:
+    """Couples the `_default_config()` `priority_lanes` default to the actual
+    runtime consumers (`OutboxProcessor`, `StreamSubscription`), so a `.get()`
+    fallback drifting from the explicit default is caught here, not just by
+    manual inspection of the two literals."""
+
+    def test_outbox_processor_reads_default_lanes_config(self):
+        domain = Domain(config=_default_config())
+        processor = OutboxProcessor(_MockEngine(domain), "default", "default")
+
+        assert processor._lanes_enabled is False
+        assert processor._lane_threshold == 0
+        assert processor._backfill_suffix == "backfill"
+
+    def test_stream_subscription_reads_default_lanes_config(self):
+        domain = Domain(config=_default_config())
+        subscription = StreamSubscription(
+            engine=_MockEngine(domain),
+            stream_category="orders",
+            handler=_FakeHandler,
+        )
+
+        assert subscription._lanes_enabled is False
+        assert subscription._backfill_suffix == "backfill"
